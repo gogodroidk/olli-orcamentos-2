@@ -21,16 +21,16 @@
 > **Pronto quando:** técnico digita "Midea E4" e recebe diagnóstico estruturado em <90s, offline.
 
 ## 🤖 ETAPA 2 — Diagnóstico por IA *(a OLLI Técnica)*
-- [ ] `2.1` Conectar API Claude (🔑 key do Igor). Serviço `olliIA(prompt)` com o prompt-base do briefing.
-- [ ] `2.2` **Cache primeiro:** consulta `cache_ia` antes de chamar a API; grava a resposta.
-- [ ] `2.3` Tela **"Me ajuda com esse caso"**: campo livre (ex: "LG inverter CH05, condensadora não parte") → resposta no formato: resumo · causa provável · testes em ordem · peça suspeita · **não faça ainda** · confiança · **mensagem pro cliente** · **sugestão de orçamento** · fontes.
-- [ ] `2.4` **Fallback:** se a IA falhar/estourar limite, mostra o resultado da BASE de códigos (rede de segurança).
+- [x] `2.1` Conectar API Claude (🔑 key do Igor). Serviço `olliIA(prompt)` com o prompt-base do briefing.
+- [x] `2.2` **Cache primeiro:** consulta `cache_ia` antes de chamar a API; grava a resposta.
+- [x] `2.3` Tela **"Me ajuda com esse caso"**: campo livre (ex: "LG inverter CH05, condensadora não parte") → resposta no formato: resumo · causa provável · testes em ordem · peça suspeita · **não faça ainda** · confiança · **mensagem pro cliente** · **sugestão de orçamento** · fontes.
+- [x] `2.4` **Fallback:** se a IA falhar/estourar limite, mostra o resultado da BASE de códigos (rede de segurança).
 - [ ] `2.5` Limite de chamadas de IA no plano grátis (medir custo real por chamada antes de precificar).
 > **Pronto quando:** IA responde diagnóstico acionável, cache funciona, e cai pro plano B se a API falhar.
 
 ## 💰 ETAPA 3 — Loop de dinheiro *(o que paga a conta)*
 - [ ] `3.1` **Diagnóstico → orçamento** em 1 toque (puxa serviço/peça sugerida do diagnóstico).
-- [ ] `3.2` **Link do cliente** (Cloudflare Worker + Supabase): página clara → **Aprovar / Recusar / Dúvida no WhatsApp**.
+- [x] `3.2` **Link do cliente** (Cloudflare Worker + Supabase): página clara → **Aprovar / Recusar / Dúvida no WhatsApp**.
 - [ ] `3.3` Aprovação grava status no backend + **notifica o prestador** (push `expo-notifications`) + atualiza o app.
 - [ ] `3.4` **"Orçamentos parados"** na Home + botão **Cobrar** (mensagem automática por estágio: 1/3/5/7 dias).
 - [ ] `3.5` Recibo + **"Receber agora"** (Pix/link) ao concluir.

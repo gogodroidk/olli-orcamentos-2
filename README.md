@@ -43,7 +43,7 @@ Concluído (handoff): app funcional de orçamento (wizard de 4 etapas), PDF, cat
 (serviços/produtos), clientes, recibo, backup na nuvem (Supabase), tema escuro "cockpit",
 Home cockpit e a base de 602 códigos de erro exportada em `assets/codigos_erro.json`.
 
-Implementado neste branch (Etapas 0 e 1 do `PROCESSO`):
+Implementado neste branch (Etapas 0 a 3 do `PROCESSO`):
 
 - **Etapa 0 — Fundação:** campo `segmento` no cadastro da empresa; tabela `cache_ia`
   (cache de diagnóstico por `código+marca`); função `track(evento, props)` gravando em
@@ -52,14 +52,25 @@ Implementado neste branch (Etapas 0 e 1 do `PROCESSO`):
   602 códigos na primeira abertura; **tela de busca** (marca → busca livre por código/sintoma
   → diagnóstico estruturado: falha, causa, ação inicial, severidade, confiança e fonte
   auditável); filtro por marca em chips; **Regra de Ouro** visível; botão **"não achei meu
-  erro"** que salva o caso (`casos_erro`) para enriquecer a base.
+  erro"** que salva o caso (`casos_erro`).
+- **Etapa 2 — Diagnóstico por IA (OLLI Técnica):** Edge Function `supabase/functions/diagnostico`
+  (chave Anthropic **server-side**, cache global + prompt caching); serviço `olliIA` com cache
+  local → IA → **fallback pra base de códigos**; tela "Me ajuda com esse caso". Falta só o Igor
+  ligar a `ANTHROPIC_API_KEY` (deploy da função). *2.5 limite no plano grátis fica para a Etapa 6.*
+- **Etapa 3 — Link do cliente (3.2):** Cloudflare Worker (`cloudflare/orcamento-link`) com página
+  pública **Aprovar/Recusar/WhatsApp** + migration `orcamentos_publicos`; botão "Link" no app.
+  Falta o Igor aplicar a migration, configurar o Worker (`service_role`) e apontar o domínio.
 
-As próximas etapas (diagnóstico por IA, link do cliente, planos) dependem de credenciais do
-Igor (Anthropic, Cloudflare, Stripe) — ver `PROCESSO_OLLI_0_a_100.md`.
+Pendências reais (honesto): IA limitada por plano (2.5), diagnóstico→orçamento em 1 toque (3.1),
+push na aprovação (3.3), cobrança automática por estágio (3.4), "Receber agora" Pix (3.5) e os
+**planos/Stripe (Etapa 6)** — este último **adiado de propósito pelo Conselho** até a validação.
+Ver `PROCESSO_OLLI_0_a_100.md`.
 
 ## Backend (Supabase)
 
-Projeto **OLLI ORCAMENTOS** (`yiaeplqinnnnniyvwtls`). Schema e RLS em `backend/migrations/`.
-As tabelas de fundação novas (`cache_ia`, `eventos`, `codigos_erro`, `casos_erro`) têm a
-migration correspondente em `backend/migrations/` pronta para aplicar quando for ligar o sync
-na nuvem — o app já funciona 100% offline com SQLite local.
+Projeto **OLLI ORCAMENTOS** (`yiaeplqinnnnniyvwtls`). Schema e RLS em `backend/migrations/`:
+`0001` (núcleo), `0002` (`cache_ia`, `eventos`, `codigos_erro`, `casos_erro`) e `0003`
+(`orcamentos_publicos`, para o link do cliente). As migrations novas estão prontas para aplicar
+quando for ligar o sync/IA/link na nuvem — o app já funciona 100% offline com SQLite local. A
+chave da Anthropic vive na Edge Function `supabase/functions/diagnostico`; o `service_role` vive
+no Cloudflare Worker. Nenhuma chave secreta entra no app (só a anon key pública).
