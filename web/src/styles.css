@@ -1,0 +1,327 @@
+/*
+ * Minimal, neutral, PLACEHOLDER styling.
+ * Everything is driven by the CSS variables in :root, so the owner's future
+ * design can drop in by changing these tokens (and a few rules) with little
+ * churn. Keep components markup-light and lean on these classes.
+ */
+:root {
+  --brand: #0a2540;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --text: #1a2333;
+  --muted: #6b7280;
+  --primary: #0a2540;
+  --primary-text: #ffffff;
+  --error: #dc2626;
+  --radius: 8px;
+  --gap: 16px;
+  --sidebar-w: 220px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--primary);
+}
+
+/* ── Generic helpers ─────────────────────────────────────────── */
+.muted {
+  color: var(--muted);
+}
+.error {
+  color: var(--error);
+}
+.centered {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+.btn {
+  font: inherit;
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding: 6px 8px;
+}
+.btn-ghost:hover {
+  color: var(--text);
+}
+
+/* ── App shell ───────────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--brand);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 14px;
+  padding-top: max(20px, env(safe-area-inset-top));
+}
+
+.brand {
+  font-weight: 800;
+  letter-spacing: 2px;
+  font-size: 22px;
+}
+.brand-lg {
+  font-size: 28px;
+  text-align: center;
+  color: var(--brand);
+}
+
+.nav {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-link {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  font-size: 15px;
+}
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.nav-link.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.user-email {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-footer .btn-ghost {
+  color: rgba(255, 255, 255, 0.85);
+  align-self: flex-start;
+}
+.sidebar-footer .btn-ghost:hover {
+  color: #fff;
+}
+
+.content {
+  flex: 1;
+  padding: 28px;
+  padding: max(28px, env(safe-area-inset-top)) 28px 28px;
+  overflow: auto;
+}
+
+/* ── Page bits ───────────────────────────────────────────────── */
+.page-title {
+  margin: 0 0 20px;
+  font-size: 24px;
+}
+.section-title {
+  margin: 28px 0 12px;
+  font-size: 16px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--gap);
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stat-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* ── Tables ──────────────────────────────────────────────────── */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.table th {
+  background: #fafbfc;
+  color: var(--muted);
+  font-weight: 600;
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Status badge ────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Auth pages ──────────────────────────────────────────────── */
+.auth-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth-title {
+  margin: 4px 0 4px;
+  font-size: 20px;
+  text-align: center;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+.field span {
+  color: var(--muted);
+}
+.field input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.field input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+.auth-alt {
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ── Responsive: stack sidebar on top for narrow screens ──────── */
+@media (max-width: 640px) {
+  .app-shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    gap: 12px;
+  }
+  .nav {
+    margin-top: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .sidebar-footer {
+    margin: 0 0 0 auto;
+    padding: 0;
+    border: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+  .user-email {
+    display: none;
+  }
+  .content {
+    padding: 18px;
+  }
+}

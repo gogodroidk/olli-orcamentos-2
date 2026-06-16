@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #E9EDF2; }
+  * { box-sizing: border-box; }
+  @keyframes olliBlink { 0%,93%,100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
+  @keyframes olliPop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+  .olli-eye { animation: olliBlink 5.5s ease-in-out infinite; transform-origin: center; }
+  .scrollarea::-webkit-scrollbar { width: 0; height: 0; }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; background: radial-gradient(1200px 600px at 50% -10%, #EEF3F9, #E3E8EF); padding: 44px 28px 80px; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif; color: #0A2540;">
+
+  <div style="max-width: 720px; margin: 0 auto 30px;">
+    <div style="font-size: 12px; font-weight: 800; letter-spacing: 2.5px; color: #0B6FCE;">GR TECH · NOVO ORÇAMENTO</div>
+    <div style="font-size: 30px; font-weight: 800; letter-spacing: -0.6px; margin-top: 3px; line-height: 1.12; color: #16202E;">Criar orçamento — igual ao antigo, só que melhor</div>
+    <div style="font-size: 14.5px; color: #5A6575; margin-top: 8px; max-width: 640px; line-height: 1.6;">O fluxo de 4 etapas que você já conhece, mais rápido e bonito. <span style="color:#0B6FCE; font-weight:700;">É interativo:</span> toque nos serviços, avance as etapas e, no fim, o <strong>link e o PDF abrem de verdade</strong>.</div>
+  </div>
+
+  <div style="display: flex; justify-content: center;">
+    <x-import component="IOSDevice" from="./ios-frame.jsx" dark="{{ t }}" hint-size="402px,874px">
+      <div style="height: 100%; display: flex; flex-direction: column; background: #0A1626; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;">
+
+        <!-- header -->
+        <div style="flex-shrink: 0; padding: 56px 18px 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;"><svg width="11" height="18" viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="rgba(226,232,240,0.7)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div style="flex: 1;"><div style="font-size: 18px; font-weight: 800; color: #fff;">Novo orçamento</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.5);">Nº 2982026 · GR TECH</div></div>
+          </div>
+
+          <!-- step tabs -->
+          <div style="display: flex; gap: 6px; margin-top: 16px;">
+            <div onClick="{{ s1 }}" style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: #7FE9F5;"></div><div style="font-size: 11px; font-weight: 700; color: #7FE9F5; margin-top: 7px;">Cliente</div></div>
+            <sc-if value="{{ tab2on }}" hint-placeholder-val="{{ f }}"><div onClick="{{ s2 }}" style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: #7FE9F5;"></div><div style="font-size: 11px; font-weight: 700; color: #7FE9F5; margin-top: 7px;">Itens</div></div></sc-if>
+            <sc-if value="{{ tab2off }}" hint-placeholder-val="{{ t }}"><div onClick="{{ s2 }}" style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12);"></div><div style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.45); margin-top: 7px;">Itens</div></div></sc-if>
+            <sc-if value="{{ tab3on }}" hint-placeholder-val="{{ f }}"><div onClick="{{ s3 }}" style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: #7FE9F5;"></div><div style="font-size: 11px; font-weight: 700; color: #7FE9F5; margin-top: 7px;">Detalhes</div></div></sc-if>
+            <sc-if value="{{ tab3off }}" hint-placeholder-val="{{ t }}"><div style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12);"></div><div style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.45); margin-top: 7px;">Detalhes</div></div></sc-if>
+            <sc-if value="{{ tab4on }}" hint-placeholder-val="{{ f }}"><div style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: #7FE9F5;"></div><div style="font-size: 11px; font-weight: 700; color: #7FE9F5; margin-top: 7px;">Enviar</div></div></sc-if>
+            <sc-if value="{{ tab4off }}" hint-placeholder-val="{{ t }}"><div style="flex: 1; text-align: center;"><div style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12);"></div><div style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.45); margin-top: 7px;">Enviar</div></div></sc-if>
+          </div>
+        </div>
+
+        <div class="scrollarea" style="flex: 1; overflow: auto; padding: 18px 16px;">
+
+          <!-- STEP 1 CLIENTE -->
+          <sc-if value="{{ isStep1 }}" hint-placeholder-val="{{ t }}">
+            <div>
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 1px; color: rgba(226,232,240,0.4);">CLIENTE SELECIONADO</div>
+              <div style="margin-top: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(127,233,245,0.25); border-radius: 16px; padding: 15px; display: flex; align-items: center; gap: 13px;">
+                <div style="width: 48px; height: 48px; border-radius: 24px; background: #0B6FCE; color: #fff; font-weight: 800; font-size: 18px; display: flex; align-items: center; justify-content: center;">G</div>
+                <div style="flex: 1;"><div style="font-size: 15.5px; font-weight: 700; color: #fff;">Gaspar Engenharia</div><div style="font-size: 12.5px; color: rgba(226,232,240,0.55); margin-top: 2px;">(11) 98691-2171</div><div style="font-size: 12px; color: rgba(226,232,240,0.45);">Rua Henrique Perdigão · São Paulo/SP</div></div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+              </div>
+              <div style="display: flex; gap: 9px; margin-top: 12px;">
+                <button style="flex: 1; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; font-family: inherit; font-size: 13px; font-weight: 700; color: #fff;">Trocar cliente</button>
+                <button style="flex: 1; border: 1px dashed rgba(127,233,245,0.4); background: transparent; border-radius: 12px; padding: 12px; font-family: inherit; font-size: 13px; font-weight: 700; color: #7FE9F5; display: flex; align-items: center; justify-content: center; gap: 6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2.2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Novo cliente</button>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 11px; margin-top: 18px; background: rgba(127,233,245,0.07); border: 1px solid rgba(127,233,245,0.2); border-radius: 14px; padding: 13px;">
+                <div style="width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(140deg,#0B6FCE,#34C6D9); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="22" height="22" viewBox="0 0 48 48" fill="none"><rect x="8" y="11" width="32" height="28" rx="11" fill="#0A1626"/><circle class="olli-eye" cx="19.5" cy="25" r="3.2" fill="#7FE9F5"/><circle class="olli-eye" cx="29.5" cy="25" r="3.2" fill="#7FE9F5"/></svg></div>
+                <div style="font-size: 12.5px; color: rgba(226,232,240,0.85); line-height: 1.45;">Dica: toque no microfone que eu monto o orçamento inteiro por voz. <span style="color:#7FE9F5; font-weight:700;">Bem mais rápido.</span></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- STEP 2 ITENS -->
+          <sc-if value="{{ isStep2 }}" hint-placeholder-val="{{ f }}">
+            <div>
+              <div style="display: flex; align-items: center; gap: 9px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 13px; padding: 11px 13px;">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.5)" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+                <span style="font-size: 13.5px; color: rgba(226,232,240,0.5);">Buscar serviço ou peça</span>
+              </div>
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 1px; color: rgba(226,232,240,0.4); margin: 16px 0 9px;">SERVIÇOS</div>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+
+                <div onClick="{{ toggleManut }}" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 13px;">
+                  <div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Manutenção preventiva — até 12k</div><div style="font-size: 13px; color: #7FE9F5; font-weight: 700; margin-top: 2px;">R$ 280,00</div></div>
+                  <sc-if value="{{ selManut }}" hint-placeholder-val="{{ t }}"><span style="width: 26px; height: 26px; border-radius: 8px; background: #2BD787; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+                  <sc-if value="{{ notManut }}" hint-placeholder-val="{{ f }}"><span style="width: 26px; height: 26px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.22);"></span></sc-if>
+                </div>
+
+                <div onClick="{{ toggleCarga }}" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 13px;">
+                  <div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Carga de gás 410a</div><div style="font-size: 13px; color: #7FE9F5; font-weight: 700; margin-top: 2px;">R$ 400,00</div></div>
+                  <sc-if value="{{ selCarga }}" hint-placeholder-val="{{ t }}"><span style="width: 26px; height: 26px; border-radius: 8px; background: #2BD787; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+                  <sc-if value="{{ notCarga }}" hint-placeholder-val="{{ f }}"><span style="width: 26px; height: 26px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.22);"></span></sc-if>
+                </div>
+
+                <div onClick="{{ toggleBomba }}" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 13px;">
+                  <div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Bomba de dreno</div><div style="font-size: 13px; color: #7FE9F5; font-weight: 700; margin-top: 2px;">R$ 895,00</div></div>
+                  <sc-if value="{{ selBomba }}" hint-placeholder-val="{{ f }}"><span style="width: 26px; height: 26px; border-radius: 8px; background: #2BD787; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+                  <sc-if value="{{ notBomba }}" hint-placeholder-val="{{ t }}"><span style="width: 26px; height: 26px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.22);"></span></sc-if>
+                </div>
+
+                <div onClick="{{ toggleHigien }}" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 13px;">
+                  <div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Higienização completa</div><div style="font-size: 13px; color: #7FE9F5; font-weight: 700; margin-top: 2px;">R$ 150,00</div></div>
+                  <sc-if value="{{ selHigien }}" hint-placeholder-val="{{ f }}"><span style="width: 26px; height: 26px; border-radius: 8px; background: #2BD787; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></sc-if>
+                  <sc-if value="{{ notHigien }}" hint-placeholder-val="{{ t }}"><span style="width: 26px; height: 26px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.22);"></span></sc-if>
+                </div>
+
+              </div>
+              <div style="font-size: 12px; color: rgba(226,232,240,0.45); margin-top: 14px; text-align: center;">{{ count }} itens selecionados · toque para incluir/remover</div>
+            </div>
+          </sc-if>
+
+          <!-- STEP 3 DETALHES -->
+          <sc-if value="{{ isStep3 }}" hint-placeholder-val="{{ f }}">
+            <div style="display: flex; flex-direction: column; gap: 9px;">
+              <div style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M20 12V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h7" stroke-linecap="round"/><path d="M3 10h18"/></svg><div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Formas de pagamento</div><div style="font-size: 12px; color: rgba(226,232,240,0.55);">50% na aprovação + 50% na entrega</div></div><svg width="8" height="14" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="rgba(226,232,240,0.4)" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+              <div style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M9 11l3 3 8-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" stroke-linecap="round"/></svg><div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Garantia</div><div style="font-size: 12px; color: rgba(226,232,240,0.55);">90 dias sobre serviço e peças</div></div><svg width="8" height="14" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="rgba(226,232,240,0.4)" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+              <div style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg><div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Validade</div><div style="font-size: 12px; color: rgba(226,232,240,0.55);">15 dias</div></div><svg width="8" height="14" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="rgba(226,232,240,0.4)" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+              <div style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4" stroke-linejoin="round"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" stroke-linejoin="round"/><path d="M9 13h6M9 17h4"/></svg><div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Laudo técnico</div><div style="font-size: 12px; color: rgba(226,232,240,0.55);">Descreva o problema encontrado</div></div><svg width="8" height="14" viewBox="0 0 8 14"><path d="M1 1l6 6-6 6" stroke="rgba(226,232,240,0.4)" stroke-width="2" fill="none" stroke-linecap="round"/></svg></div>
+              <div style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 13px; padding: 14px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg><div style="flex: 1;"><div style="font-size: 14px; font-weight: 700; color: #fff;">Aprovação online</div><div style="font-size: 12px; color: #2BD787;">Cliente pode aprovar pelo link</div></div><span style="width: 40px; height: 24px; border-radius: 12px; background: #2BD787; display: flex; align-items: center; padding: 0 3px; justify-content: flex-end;"><span style="width: 18px; height: 18px; border-radius: 9px; background: #fff;"></span></span></div>
+            </div>
+          </sc-if>
+
+          <!-- STEP 4 ENVIAR -->
+          <sc-if value="{{ isStep4 }}" hint-placeholder-val="{{ f }}">
+            <div style="text-align: center; padding: 8px 0;">
+              <div style="width: 72px; height: 72px; border-radius: 36px; background: linear-gradient(140deg,#0B6FCE,#34C6D9); margin: 6px auto 0; display: flex; align-items: center; justify-content: center; animation: olliPop 0.5s ease both;"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div style="font-family: 'Spectral', serif; font-size: 23px; font-weight: 700; color: #fff; margin-top: 16px;">Orçamento criado!</div>
+              <div style="font-size: 13.5px; color: rgba(226,232,240,0.6); margin-top: 6px;">Envie pro Gaspar Engenharia agora mesmo.</div>
+
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px 13px; text-align: left;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2" style="flex-shrink:0;"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="flex: 1; font-size: 12.5px; color: rgba(226,232,240,0.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">grtech.olli.app/o/2982026</span>
+                <button onClick="{{ copy }}" style="border: none; background: rgba(127,233,245,0.16); border-radius: 8px; padding: 6px 10px; font-family: inherit; font-size: 11.5px; font-weight: 800; color: #7FE9F5;">{{ copyLabel }}</button>
+              </div>
+
+              <button style="width: 100%; margin-top: 12px; border: none; background: #25D366; border-radius: 13px; padding: 14px; font-family: inherit; font-size: 14.5px; font-weight: 800; color: #fff; display: flex; align-items: center; justify-content: center; gap: 9px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2z"/></svg>Enviar link no WhatsApp</button>
+
+              <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <a href="./OLLI Link Cliente.dc.html" target="_blank" style="flex: 1; text-decoration: none; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); border-radius: 13px; padding: 13px; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: center; gap: 7px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>Abrir link</a>
+                <a href="../OLLI Orçamento.dc.html" target="_blank" style="flex: 1; text-decoration: none; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); border-radius: 13px; padding: 13px; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: center; gap: 7px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FF8B8B" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4" stroke-linejoin="round"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" stroke-linejoin="round"/></svg>Ver PDF</a>
+              </div>
+              <button style="width: 100%; margin-top: 10px; border: 1px dashed rgba(127,233,245,0.35); background: transparent; border-radius: 13px; padding: 12px; font-family: inherit; font-size: 13px; font-weight: 700; color: #7FE9F5;">Salvar como modelo</button>
+            </div>
+          </sc-if>
+
+        </div>
+
+        <!-- bottom bar -->
+        <sc-if value="{{ not4 }}" hint-placeholder-val="{{ t }}">
+          <div style="flex-shrink: 0; background: #0C1B2E; border-top: 1px solid rgba(255,255,255,0.08); padding: 13px 16px 26px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px;">
+              <span style="font-size: 13px; color: rgba(226,232,240,0.6);">Valor total</span>
+              <span style="font-family: 'Spectral', serif; font-size: 22px; font-weight: 700; color: #fff;">{{ total }}</span>
+            </div>
+            <button onClick="{{ next }}" style="width: 100%; border: none; background: linear-gradient(135deg,#0B6FCE,#34C6D9); border-radius: 13px; padding: 14px; font-family: inherit; font-size: 14.5px; font-weight: 800; color: #fff;">{{ nextLabel }}</button>
+          </div>
+        </sc-if>
+
+      </div>
+    </x-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { step: 1, sel: { manut: true, carga: true, bomba: false, higien: false }, copied: false };
+  prices = { manut: 280, carga: 400, bomba: 895, higien: 150 };
+  toggle(id) { this.setState((s) => ({ sel: { ...s.sel, [id]: !s.sel[id] } })); }
+  go(n) { this.setState({ step: n }); }
+  next() { this.setState((s) => ({ step: Math.min(s.step + 1, 4) })); }
+  copy() { this.setState({ copied: true }); }
+  fmt(n) { return 'R$ ' + n.toLocaleString('pt-BR') + ',00'; }
+  renderVals() {
+    const { step, sel, copied } = this.state;
+    const total = Object.keys(sel).reduce((t, k) => t + (sel[k] ? this.prices[k] : 0), 0);
+    const count = Object.values(sel).filter(Boolean).length;
+    return {
+      step,
+      isStep1: step === 1, isStep2: step === 2, isStep3: step === 3, isStep4: step === 4,
+      tab2on: step >= 2, tab2off: step < 2,
+      tab3on: step >= 3, tab3off: step < 3,
+      tab4on: step >= 4, tab4off: step < 4,
+      not4: step !== 4,
+      selManut: sel.manut, notManut: !sel.manut,
+      selCarga: sel.carga, notCarga: !sel.carga,
+      selBomba: sel.bomba, notBomba: !sel.bomba,
+      selHigien: sel.higien, notHigien: !sel.higien,
+      total: this.fmt(total), count,
+      nextLabel: step === 3 ? 'Revisar e enviar' : 'Próximo',
+      copyLabel: copied ? 'Copiado!' : 'Copiar',
+      s1: () => this.go(1), s2: () => this.go(2), s3: () => this.go(3),
+      next: () => this.next(),
+      toggleManut: () => this.toggle('manut'),
+      toggleCarga: () => this.toggle('carga'),
+      toggleBomba: () => this.toggle('bomba'),
+      toggleHigien: () => this.toggle('higien'),
+      copy: () => this.copy(),
+      t: true, f: false,
+    };
+  }
+}
+</script>
+</body>
+</html>
