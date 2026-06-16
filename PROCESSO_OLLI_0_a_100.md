@@ -5,19 +5,19 @@
 ---
 
 ## 🔒 ETAPA 0 — Travas e fundação *(antes de construir feature)*
-- [ ] `0.1` **Núcleo genérico:** adicionar campo `segmento` no cadastro da empresa (ar-condicionado, elétrica, hidráulica, pintura, outro). Nada amarrado a HVAC no código do orçamento/cliente/agenda.
-- [ ] `0.2` **Git + checkpoints:** inicializar repositório, commit a cada passo concluído (rollback fácil — trava do "assistente é gargalo").
-- [ ] `0.3` **Cache de IA (arquitetura dia 1):** tabela `cache_ia(chave, resposta, criado_em)` — diagnóstico por `código+marca` é cacheado; IA só é chamada se não houver cache.
-- [ ] `0.4` **Eventos:** função `track(evento, props)` gravando em tabela `eventos` (signup, quote_created, quote_sent, quote_approved, error_code_searched, ai_used…). Mesmo simples, desde já.
+- [x] `0.1` **Núcleo genérico:** adicionar campo `segmento` no cadastro da empresa (ar-condicionado, elétrica, hidráulica, pintura, outro). Nada amarrado a HVAC no código do orçamento/cliente/agenda.
+- [x] `0.2` **Git + checkpoints:** inicializar repositório, commit a cada passo concluído (rollback fácil — trava do "assistente é gargalo").
+- [x] `0.3` **Cache de IA (arquitetura dia 1):** tabela `cache_ia(chave, resposta, criado_em)` — diagnóstico por `código+marca` é cacheado; IA só é chamada se não houver cache.
+- [x] `0.4` **Eventos:** função `track(evento, props)` gravando em tabela `eventos` (signup, quote_created, quote_sent, quote_approved, error_code_searched, ai_used…). Mesmo simples, desde já.
 > **Pronto quando:** app abre, segmento existe no cadastro, git commitando, cache e eventos gravando.
 
 ## 🎣 ETAPA 1 — O ANZOL: Códigos de erro *(SEM IA ainda — lançável e único no BR)*
-- [ ] `1.1` Tabela `codigos_erro` (schema da planilha) no SQLite + Supabase.
-- [ ] `1.2` Importar os **602 códigos** (`assets/codigos_erro.json`) na primeira abertura.
-- [ ] `1.3` **Tela de busca:** marca → modelo/família → código (ou "LED piscando") → **resultado**: falha, causa provável, ação inicial, severidade, **nível de confiança**, fonte (link auditável).
-- [ ] `1.4` Filtro por marca (chips) + busca livre por código/sintoma.
-- [ ] `1.5` **Regra de ouro** visível: pede modelo, mostra confiança, bloco "⚠️ não faça ainda / antes de trocar placa".
-- [ ] `1.6` Botão "não achei meu erro" → salva o caso (marca/modelo/código/sintoma) p/ enriquecer a base.
+- [x] `1.1` Tabela `codigos_erro` (schema da planilha) no SQLite + Supabase.
+- [x] `1.2` Importar os **602 códigos** (`assets/codigos_erro.json`) na primeira abertura.
+- [x] `1.3` **Tela de busca:** marca → modelo/família → código (ou "LED piscando") → **resultado**: falha, causa provável, ação inicial, severidade, **nível de confiança**, fonte (link auditável).
+- [x] `1.4` Filtro por marca (chips) + busca livre por código/sintoma.
+- [x] `1.5` **Regra de ouro** visível: pede modelo, mostra confiança, bloco "⚠️ não faça ainda / antes de trocar placa".
+- [x] `1.6` Botão "não achei meu erro" → salva o caso (marca/modelo/código/sintoma) p/ enriquecer a base.
 > **Pronto quando:** técnico digita "Midea E4" e recebe diagnóstico estruturado em <90s, offline.
 
 ## 🤖 ETAPA 2 — Diagnóstico por IA *(a OLLI Técnica)*
