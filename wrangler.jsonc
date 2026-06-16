@@ -10,6 +10,7 @@
     { "binding": "CACHE", "id": "193f53aa847447598e3f5b6b716ebdad" }
   ],
   "vars": {
-    "GEMINI_MODEL": "gemini-3.5-flash"
+    "GEMINI_MODEL": "gemini-3.5-flash",
+    "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co"
   }
 }
