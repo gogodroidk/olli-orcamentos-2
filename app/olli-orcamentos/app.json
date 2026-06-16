@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "OLLI Orçamentos",
+    "slug": "olli-orcamentos",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.grtech.olliorcamentos"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A2540",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.grtech.olliorcamentos",
+      "versionCode": 2,
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O app precisa de acesso às fotos para adicionar imagens aos orçamentos.",
+          "cameraPermission": "O app precisa de acesso à câmera para fotografar os serviços."
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#0A2540",
+          "imageWidth": 180
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "olli-orcamentos"
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+# Dependencies (any level)
+**/node_modules/
+
+# Build / cache
+**/.expo/
+**/dist/
+**/web-build/
+**/.metro-health-check*
+**/*.tsbuildinfo
+
+# Local env
+**/.env
+**/.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+**/npm-debug.*
+**/yarn-debug.*
+**/yarn-error.*

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #E9EDF2; }
+  * { box-sizing: border-box; }
+  @keyframes olliPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.6); } }
+  @keyframes olliBlink { 0%,93%,100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
+  @keyframes olliFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes enterUp { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
+  @keyframes sheen { 0% { transform: translateX(-130%); } 26%, 100% { transform: translateX(130%); } }
+  @keyframes ringGlow { 0%,100% { box-shadow: 0 0 0 rgba(127,233,245,0); } 50% { box-shadow: 0 0 22px rgba(127,233,245,.42); } }
+  @keyframes barFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .olli-eye { animation: olliBlink 5.5s ease-in-out infinite; transform-origin: center; }
+  .scrollarea::-webkit-scrollbar { width: 0; height: 0; }
+  .scrollarea > div { opacity: 0; animation: enterUp .62s cubic-bezier(.22,1,.36,1) both; }
+  .scrollarea > div:nth-child(1){animation-delay:.02s}
+  .scrollarea > div:nth-child(2){animation-delay:.10s}
+  .scrollarea > div:nth-child(3){animation-delay:.18s}
+  .scrollarea > div:nth-child(4){animation-delay:.26s}
+  .scrollarea > div:nth-child(5){animation-delay:.33s}
+  .scrollarea > div:nth-child(6){animation-delay:.39s}
+  .scrollarea > div:nth-child(7){animation-delay:.45s}
+  .scrollarea > div:nth-child(8){animation-delay:.51s}
+  .scrollarea > div:nth-child(9){animation-delay:.57s}
+  .scrollarea > div:nth-child(n+10){animation-delay:.62s}
+  .barfill { transform-origin: left; animation: barFill 1.15s cubic-bezier(.22,1,.36,1) .55s both; }
+  button { transition: transform .12s ease, filter .12s ease; cursor: pointer; }
+  button:active { transform: scale(.94); }
+  .tap { transition: transform .14s cubic-bezier(.22,1,.36,1); cursor: pointer; }
+  .tap:active { transform: scale(.93); }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; background: radial-gradient(1200px 600px at 50% -10%, #EEF3F9, #E3E8EF); padding: 44px 28px 90px; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif; color: #0A2540;">
+
+  <div style="max-width: 720px; margin: 0 auto 40px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <svg width="50" height="50" viewBox="0 0 48 48" fill="none" style="animation: olliFloat 4s ease-in-out infinite;">
+        <line x1="24" y1="11" x2="24" y2="5.5" stroke="#34C6D9" stroke-width="2.6" stroke-linecap="round"/>
+        <circle cx="24" cy="4.5" r="2.7" fill="#34C6D9"/>
+        <rect x="7" y="11" width="34" height="29" rx="11" fill="#0B6FCE"/>
+        <rect x="11.5" y="16" width="25" height="18" rx="9" fill="#0A2540"/>
+        <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+        <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+      </svg>
+      <div>
+        <div style="font-size: 12px; font-weight: 800; letter-spacing: 2.5px; color: #0B6FCE;">OLLI · HOME COMPLETA</div>
+        <div style="font-size: 30px; font-weight: 800; letter-spacing: -0.6px; margin-top: 3px; line-height: 1.12;">A versão final, com tudo que você curtiu</div>
+      </div>
+    </div>
+    <p style="font-size: 15px; line-height: 1.65; color: #475569; max-width: 640px; margin: 16px 0 0; text-wrap: pretty;">
+      Base no <strong style="color:#0A2540;">Cockpit (V2)</strong> com o melhor da V1 e V3: <strong style="color:#0A2540;">AO VIVO · próxima parada</strong> no topo, <strong style="color:#0A2540;">equipe ao vivo no mapa</strong>, <strong style="color:#0A2540;">resto do dia</strong>, <strong style="color:#0A2540;">ações rápidas</strong> e o lembrete de orçamentos parados. Tirei o hero antigo de faturamento, ticket médio, "3 técnicos" e o estoque baixo.
+    </p>
+  </div>
+
+  <div style="display: flex; justify-content: center;">
+    <x-import component="IOSDevice" from="./ios-frame.jsx" dark="{{ t }}" hint-size="402px,874px">
+      <div style="height: 100%; display: flex; flex-direction: column; background: #0A1626; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;">
+        <div class="scrollarea" style="flex: 1; overflow: auto;">
+
+          <!-- top bar -->
+          <div style="padding: 58px 18px 0; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 13px; color: rgba(226,232,240,0.6); font-weight: 500;">Boa tarde,</div>
+              <div style="font-size: 21px; font-weight: 800; color: #fff;">Marcos <span style="font-size: 13px; font-weight: 600; color: rgba(226,232,240,0.5);">· Polar</span></div>
+            </div>
+            <div style="position: relative;">
+              <div style="width: 48px; height: 48px; border-radius: 15px; background: rgba(127,233,245,0.12); border: 1px solid rgba(127,233,245,0.3); display: flex; align-items: center; justify-content: center;">
+                <svg width="34" height="34" viewBox="0 0 48 48" fill="none">
+                  <line x1="24" y1="11" x2="24" y2="5.5" stroke="#7FE9F5" stroke-width="2.6" stroke-linecap="round"/>
+                  <circle cx="24" cy="4.5" r="2.7" fill="#7FE9F5"/>
+                  <rect x="7" y="11" width="34" height="29" rx="11" fill="#34C6D9"/>
+                  <rect x="11.5" y="16" width="25" height="18" rx="9" fill="#0A1626"/>
+                  <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+                  <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+                </svg>
+              </div>
+              <div style="position: absolute; top: -3px; right: -3px; width: 17px; height: 17px; border-radius: 9px; background: #FF6B6B; border: 2px solid #0A1626; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 800; color: #fff;">3</div>
+            </div>
+          </div>
+
+          <!-- AO VIVO hero -->
+          <div style="margin: 16px; background: linear-gradient(150deg, rgba(11,111,206,0.38), rgba(52,198,217,0.08)); border: 1px solid rgba(127,233,245,0.28); border-radius: 22px; padding: 16px; box-shadow: 0 14px 34px rgba(0,0,0,0.35); position: relative; overflow: hidden;">
+            <div style="position: absolute; inset: 0; background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,0.08) 50%, transparent 62%); transform: translateX(-130%); animation: sheen 6.5s ease-in-out infinite 1.2s; pointer-events: none; z-index: 3;"></div>
+            <div style="display: flex; align-items: center; justify-content: space-between; position: relative;">
+              <div style="display: flex; align-items: center; gap: 7px;">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #2BD787; animation: olliPulse 1.4s ease-in-out infinite;"></span>
+                <span style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #7FE9F5;">AO VIVO · PRÓXIMA PARADA</span>
+              </div>
+              <span style="font-size: 18px; font-weight: 800; color: #fff;">14:30</span>
+            </div>
+
+            <div style="margin-top: 13px;">
+              <div style="font-size: 18px; font-weight: 800; color: #fff;">D. Helena Souza</div>
+              <div style="font-size: 13px; color: rgba(226,232,240,0.65); margin-top: 1px;">Manutenção · Split 12.000 BTUs</div>
+              <div style="display: flex; align-items: center; gap: 5px; margin-top: 7px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2.2"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z" stroke-linejoin="round"/><circle cx="12" cy="10" r="2.4"/></svg>
+                <span style="font-size: 12.5px; color: rgba(226,232,240,0.8);">R. Augusta, 1200 · 8,2 km</span>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; margin-top: 15px;">
+              <div style="width: 70px; height: 70px; border-radius: 50%; background: conic-gradient(#7FE9F5 295deg, rgba(255,255,255,0.1) 0); display: flex; align-items: center; justify-content: center; flex-shrink: 0; animation: ringGlow 2.9s ease-in-out infinite;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: #0A1626; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                  <span style="font-size: 15px; font-weight: 800; color: #7FE9F5; font-variant-numeric: tabular-nums; line-height: 1;">{{ saiaEm }}</span>
+                  <span style="font-size: 9px; color: rgba(226,232,240,0.55); margin-top: 2px;">p/ sair</span>
+                </div>
+              </div>
+              <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="width: 6px; height: 6px; border-radius: 3px; background: #FF6B6B;"></span>
+                  <span style="font-size: 12px; color: #FFB4B4; font-weight: 700;">Trânsito intenso · saia às 14:02</span>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 9px;">
+                  <button style="flex: 1; border: none; font-family: inherit; font-size: 13.5px; font-weight: 800; color: #0A1626; background: #7FE9F5; border-radius: 12px; padding: 11px;">Iniciar rota</button>
+                  <button style="border: 1px solid rgba(127,233,245,0.4); background: rgba(127,233,245,0.1); border-radius: 12px; padding: 11px 13px; display: flex; align-items: center; justify-content: center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8.1 9.6a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2z"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPI strip -->
+          <div style="display: flex; gap: 8px; padding: 0 16px;">
+            <div style="flex: 1.3; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 13px;">
+              <div style="font-size: 11px; color: rgba(226,232,240,0.55); font-weight: 600;">Faturamento · Jun</div>
+              <div style="font-size: 19px; font-weight: 800; color: #fff; margin-top: 3px;">{{ fatNum }}</div>
+              <div style="font-size: 11px; color: #2BD787; font-weight: 700; margin-top: 2px;">↑ 14% vs maio</div>
+            </div>
+            <div style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 13px;">
+              <div style="font-size: 11px; color: rgba(226,232,240,0.55); font-weight: 600;">Conversão</div>
+              <div style="font-size: 19px; font-weight: 800; color: #fff; margin-top: 3px;">{{ convNum }}%</div>
+              <div style="font-size: 11px; color: rgba(226,232,240,0.5); font-weight: 700; margin-top: 2px;">17/25</div>
+            </div>
+            <div style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 13px;">
+              <div style="font-size: 11px; color: rgba(226,232,240,0.55); font-weight: 600;">Em aberto</div>
+              <div style="font-size: 19px; font-weight: 800; color: #fff; margin-top: 3px;">{{ abertoNum }}</div>
+              <div style="font-size: 11px; color: #F7B23B; font-weight: 700; margin-top: 2px;">3 parados</div>
+            </div>
+          </div>
+
+          <!-- OLLI lembrete -->
+          <div style="margin: 14px 16px 0; display: flex; align-items: center; gap: 11px; background: rgba(127,233,245,0.08); border: 1px solid rgba(127,233,245,0.22); border-radius: 16px; padding: 13px;">
+            <div style="flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(140deg, #0B6FCE, #34C6D9); display: flex; align-items: center; justify-content: center;">
+              <svg width="26" height="26" viewBox="0 0 48 48" fill="none">
+                <line x1="24" y1="11" x2="24" y2="6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="24" cy="5" r="2.7" fill="#fff"/>
+                <rect x="8" y="11" width="32" height="28" rx="11" fill="#0A1626"/>
+                <circle class="olli-eye" cx="19.5" cy="25" r="3.2" fill="#7FE9F5"/>
+                <circle class="olli-eye" cx="29.5" cy="25" r="3.2" fill="#7FE9F5"/>
+              </svg>
+            </div>
+            <div style="flex: 1;">
+              <div style="font-size: 13.5px; font-weight: 700; color: #fff;">3 orçamentos parados há +5 dias</div>
+              <div style="font-size: 11.5px; color: rgba(226,232,240,0.6);">R$ 6.1k em jogo · quer que eu cobre?</div>
+            </div>
+            <button style="border: none; font-family: inherit; font-size: 12px; font-weight: 800; color: #0A1626; background: #7FE9F5; border-radius: 10px; padding: 8px 12px;">Cobrar</button>
+          </div>
+
+          <!-- ANTES DE SAIR (processos) -->
+          <div style="padding: 18px 18px 0;"><span style="font-size: 16px; font-weight: 800; color: #fff;">Antes de sair</span></div>
+          <div style="margin: 11px 16px 0; background: linear-gradient(150deg, rgba(11,111,206,0.26), rgba(52,198,217,0.05)); border: 1px solid rgba(127,233,245,0.24); border-radius: 18px; padding: 15px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(140deg,#0B6FCE,#34C6D9); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="22" height="22" viewBox="0 0 48 48" fill="none"><rect x="8" y="11" width="32" height="28" rx="11" fill="#0A1626"/><circle class="olli-eye" cx="19.5" cy="25" r="3.2" fill="#7FE9F5"/><circle class="olli-eye" cx="29.5" cy="25" r="3.2" fill="#7FE9F5"/></svg></div>
+              <div style="flex: 1;"><div style="font-size: 14px; font-weight: 800; color: #fff;">A mala de hoje</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.6);">o que levar pros 3 serviços</div></div>
+              <span style="font-size: 12px; font-weight: 800; color: #7FE9F5;">4/6</span>
+            </div>
+            <div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); margin-top: 11px; overflow: hidden;"><div class="barfill" style="width: 66%; height: 100%; background: linear-gradient(90deg,#0B6FCE,#7FE9F5);"></div></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px;">
+              <span style="font-size: 11.5px; font-weight: 700; color: rgba(226,232,240,0.5); background: rgba(255,255,255,0.05); border-radius: 999px; padding: 5px 11px; text-decoration: line-through;">Vácuo + manifold</span>
+              <span style="font-size: 11.5px; font-weight: 700; color: rgba(226,232,240,0.5); background: rgba(255,255,255,0.05); border-radius: 999px; padding: 5px 11px; text-decoration: line-through;">Gás R-410A</span>
+              <span style="font-size: 11.5px; font-weight: 700; color: #fff; background: rgba(127,233,245,0.14); border: 1px solid rgba(127,233,245,0.3); border-radius: 999px; padding: 5px 11px;">＋ Capacitor 35µF</span>
+              <span style="font-size: 11.5px; font-weight: 700; color: #fff; background: rgba(127,233,245,0.14); border: 1px solid rgba(127,233,245,0.3); border-radius: 999px; padding: 5px 11px;">＋ Escada</span>
+            </div>
+          </div>
+
+          <!-- EQUIPE AO VIVO (map) -->
+          <div style="padding: 18px 18px 0; display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 16px; font-weight: 800; color: #fff;">Equipe ao vivo</span>
+            <span style="font-size: 12.5px; font-weight: 700; color: #7FE9F5;">Abrir mapa</span>
+          </div>
+          <div style="margin: 11px 16px 0; border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); position: relative; height: 158px; background: repeating-linear-gradient(45deg, #0D2034, #0D2034 10px, #102740 10px, #102740 20px);">
+            <span style="position: absolute; left: 12px; top: 10px; font-family: ui-monospace, monospace; font-size: 10px; color: rgba(127,233,245,0.7);">mapa · posição da equipe em tempo real</span>
+            <div style="position: absolute; left: 28%; top: 46%; width: 28px; height: 28px; border-radius: 14px; background: #F7B23B; border: 2px solid #0A1626; color: #0A1626; font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center;">J</div>
+            <div style="position: absolute; left: 62%; top: 30%; width: 28px; height: 28px; border-radius: 14px; background: #2BD787; border: 2px solid #0A1626; color: #0A1626; font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center;">A</div>
+            <div style="position: absolute; left: 46%; top: 66%; width: 24px; height: 24px; border-radius: 12px; background: #94A3B8; border: 2px solid #0A1626; color: #0A1626; font-weight: 800; font-size: 11px; display: flex; align-items: center; justify-content: center;">C</div>
+            <div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 12px; background: linear-gradient(0deg, rgba(10,22,38,0.92), transparent); display: flex; gap: 12px;">
+              <span style="font-size: 11px; color: #F7B23B; font-weight: 700;">● João · em rota</span>
+              <span style="font-size: 11px; color: #2BD787; font-weight: 700;">● Ana · atendendo</span>
+              <span style="font-size: 11px; color: #94A3B8; font-weight: 700;">● Carlos · livre</span>
+            </div>
+          </div>
+
+          <!-- RESTO DO DIA -->
+          <div style="padding: 18px 18px 0;">
+            <span style="font-size: 16px; font-weight: 800; color: #fff;">Resto do dia</span>
+          </div>
+          <div style="margin: 11px 16px 0; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 4px;">
+            <div style="display: flex; align-items: center; gap: 13px; padding: 13px;">
+              <div style="text-align: center; width: 44px;"><div style="font-size: 14px; font-weight: 800; color: #fff;">16:00</div></div>
+              <div style="width: 3px; align-self: stretch; border-radius: 2px; background: #34C6D9;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700; color: #fff;">Cond. Vista Verde</div>
+                <div style="font-size: 12px; color: rgba(226,232,240,0.55);">Instalação · Split 18k BTUs</div>
+              </div>
+              <span style="font-size: 11px; font-weight: 700; color: #7FE9F5; background: rgba(127,233,245,0.12); border-radius: 6px; padding: 3px 8px;">João</span>
+            </div>
+            <div style="height: 1px; background: rgba(255,255,255,0.07); margin: 0 13px;"></div>
+            <div style="display: flex; align-items: center; gap: 13px; padding: 13px;">
+              <div style="text-align: center; width: 44px;"><div style="font-size: 14px; font-weight: 800; color: #fff;">17:30</div></div>
+              <div style="width: 3px; align-self: stretch; border-radius: 2px; background: #2BD787;"></div>
+              <div style="flex: 1;">
+                <div style="font-size: 14px; font-weight: 700; color: #fff;">Padaria Real</div>
+                <div style="font-size: 12px; color: rgba(226,232,240,0.55);">Limpeza de dutos · Câmara fria</div>
+              </div>
+              <span style="font-size: 11px; font-weight: 700; color: #2BD787; background: rgba(43,215,135,0.14); border-radius: 6px; padding: 3px 8px;">Ana</span>
+            </div>
+          </div>
+
+          <!-- AÇÕES RÁPIDAS -->
+          <div style="padding: 18px 18px 0;">
+            <span style="font-size: 16px; font-weight: 800; color: #fff;">Ações rápidas</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; padding: 12px 12px 18px;">
+            <div style="width: 25%; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 4px;">
+              <div style="width: 54px; height: 54px; border-radius: 18px; background: rgba(127,233,245,0.12); border: 1px solid rgba(127,233,245,0.18); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></div>
+              <span style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.85); text-align: center;">Novo<br>orçamento</span>
+            </div>
+            <div style="width: 25%; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 4px;">
+              <div style="width: 54px; height: 54px; border-radius: 18px; background: rgba(43,215,135,0.12); border: 1px solid rgba(43,215,135,0.18); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="2"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" stroke-linejoin="round"/><path d="M9 8h6M9 12h6"/></svg></div>
+              <span style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.85); text-align: center;">Emitir<br>recibo</span>
+            </div>
+            <div style="width: 25%; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 4px;">
+              <div style="width: 54px; height: 54px; border-radius: 18px; background: rgba(123,151,237,0.16); border: 1px solid rgba(123,151,237,0.22); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#A4B6F5" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4M12 13v4M10 15h4" stroke-linecap="round"/></svg></div>
+              <span style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.85); text-align: center;">Agendar<br>visita</span>
+            </div>
+            <div style="width: 25%; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 4px;">
+              <div style="width: 54px; height: 54px; border-radius: 18px; background: rgba(255,107,107,0.14); border: 1px solid rgba(255,107,107,0.2); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF8B8B" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M11 8v3M11 14h.01M20 20l-3.5-3.5" stroke-linecap="round"/></svg></div>
+              <span style="font-size: 11px; font-weight: 600; color: rgba(226,232,240,0.85); text-align: center;">Código<br>de erro</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- TAB BAR dark -->
+        <div style="flex-shrink: 0; background: #0C1B2E; border-top: 1px solid rgba(255,255,255,0.07); padding: 9px 16px 24px; display: flex; align-items: flex-end; justify-content: space-between;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2.1"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" stroke-linejoin="round"/></svg>
+            <span style="font-size: 10px; font-weight: 700; color: #7FE9F5;">Início</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.45)" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+            <span style="font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.45);">Agenda</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px;">
+            <div style="width: 50px; height: 50px; border-radius: 25px; margin-top: -22px; background: linear-gradient(140deg, #0B6FCE, #34C6D9); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(52,198,217,0.45);">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" stroke-linejoin="round"/><path d="M14 3v5h5M12 12v5M9.5 14.5h5" stroke-linecap="round"/></svg>
+            </div>
+            <span style="font-size: 10px; font-weight: 700; color: #7FE9F5; margin-top: -2px;">Orçamento</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.45)" stroke-width="2"><path d="M3 8l9-5 9 5v8l-9 5-9-5z" stroke-linejoin="round"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+            <span style="font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.45);">Estoque</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.45)" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0" stroke-linecap="round"/></svg>
+            <span style="font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.45);">Conta</span>
+          </div>
+        </div>
+
+      </div>
+    </x-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { cd: 26 * 60 + 48 };
+  componentDidMount() {
+    this._t = setInterval(() => {
+      this.setState((s) => ({ cd: s.cd > 0 ? s.cd - 1 : 0 }));
+    }, 1000);
+  }
+  componentWillUnmount() {
+    if (this._t) clearInterval(this._t);
+  }
+  renderVals() {
+    const cd = this.state.cd;
+    const m = Math.floor(cd / 60);
+    const s = cd % 60;
+    const saiaEm = m + ':' + String(s).padStart(2, '0');
+    return { saiaEm, t: true, f: false };
+  }
+}
+</script>
+</body>
+</html>

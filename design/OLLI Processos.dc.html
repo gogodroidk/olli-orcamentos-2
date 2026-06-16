@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #E9EDF2; }
+  * { box-sizing: border-box; }
+  @keyframes olliBlink { 0%,93%,100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
+  @keyframes olliFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  @keyframes olliPulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .olli-eye { animation: olliBlink 5.5s ease-in-out infinite; transform-origin: center; }
+  .scrollarea::-webkit-scrollbar { width: 0; height: 0; }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; background: radial-gradient(1200px 600px at 50% -10%, #EEF3F9, #E3E8EF); padding: 44px 28px 90px; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif; color: #0A2540;">
+
+  <div style="max-width: 920px; margin: 0 auto 44px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <svg width="50" height="50" viewBox="0 0 48 48" fill="none" style="animation: olliFloat 4s ease-in-out infinite;">
+        <line x1="24" y1="11" x2="24" y2="5.5" stroke="#34C6D9" stroke-width="2.6" stroke-linecap="round"/>
+        <circle cx="24" cy="4.5" r="2.7" fill="#34C6D9"/>
+        <rect x="7" y="11" width="34" height="29" rx="11" fill="#0B6FCE"/>
+        <rect x="11.5" y="16" width="25" height="18" rx="9" fill="#0A2540"/>
+        <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+        <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+      </svg>
+      <div>
+        <div style="font-size: 12px; font-weight: 800; letter-spacing: 2.5px; color: #0B6FCE;">OLLI · CÉREBRO EXTERNO</div>
+        <div style="font-size: 30px; font-weight: 800; letter-spacing: -0.6px; margin-top: 3px; line-height: 1.12;">Processos & lembretes — não esquecer nada</div>
+      </div>
+    </div>
+    <p style="font-size: 15px; line-height: 1.65; color: #475569; max-width: 720px; margin: 16px 0 0; text-wrap: pretty;">
+      A dor real: cabeça cheia, mil detalhes, fácil esquecer. Aqui o app vira <strong style="color:#0A2540;">checklist que guia o serviço do começo ao fim</strong> e <strong style="color:#0A2540;">lembra o que levar e o que fazer</strong> — pra você e pros funcionários seguirem o mesmo padrão. A OLLI cutuca quando algo escapou. <strong style="color:#0B6FCE;">Botão central agora é Orçamento.</strong>
+    </p>
+  </div>
+
+  <div style="display: flex; gap: 48px; flex-wrap: wrap; justify-content: center; align-items: flex-start;">
+
+    <!-- ============ MEU DIA ============ -->
+    <div style="display: flex; flex-direction: column; gap: 16px; width: 402px;">
+      <div style="background: #fff; border-radius: 16px; padding: 15px 17px; box-shadow: 0 4px 14px rgba(10,37,64,0.07); border: 1px solid #E2E8F0;">
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <span style="font-size: 12px; font-weight: 800; color: #fff; background: #0A2540; border-radius: 7px; padding: 4px 9px;">A</span>
+          <span style="font-size: 16px; font-weight: 700;">Meu dia — o que levar e lembrar</span>
+        </div>
+        <div style="font-size: 13px; color: #64748B; margin-top: 7px; line-height: 1.5;">A OLLI monta a lista do que pôr na mala pros serviços de hoje e os lembretes que não podem passar.</div>
+      </div>
+
+      <x-import component="IOSDevice" from="./ios-frame.jsx" dark="{{ t }}" hint-size="402px,874px">
+        <div style="height: 100%; display: flex; flex-direction: column; background: #0A1626; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;">
+          <div class="scrollarea" style="flex: 1; overflow: auto;">
+            <div style="padding: 56px 18px 0; display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <div style="font-size: 13px; color: rgba(226,232,240,0.55);">Sábado, 14 de junho</div>
+                <div style="font-size: 23px; font-weight: 800; color: #fff;">Meu dia</div>
+              </div>
+              <div style="position: relative; width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.75)" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span style="position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 4px; background: #FF6B6B; border: 1.5px solid #0A1626;"></span>
+              </div>
+            </div>
+
+            <!-- ANTES DE SAIR -->
+            <div style="margin: 18px 16px 0; background: linear-gradient(150deg, rgba(11,111,206,0.3), rgba(52,198,217,0.06)); border: 1px solid rgba(127,233,245,0.26); border-radius: 18px; padding: 15px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(140deg,#0B6FCE,#34C6D9); display: flex; align-items: center; justify-content: center;"><svg width="22" height="22" viewBox="0 0 48 48" fill="none"><rect x="8" y="11" width="32" height="28" rx="11" fill="#0A1626"/><circle class="olli-eye" cx="19.5" cy="25" r="3.2" fill="#7FE9F5"/><circle class="olli-eye" cx="29.5" cy="25" r="3.2" fill="#7FE9F5"/></svg></div>
+                <div style="flex: 1;"><div style="font-size: 15px; font-weight: 800; color: #fff;">Antes de sair</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.6);">Pros 3 serviços de hoje</div></div>
+                <span style="font-size: 12px; font-weight: 800; color: #7FE9F5;">4/6</span>
+              </div>
+              <div style="height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); margin-top: 12px; overflow: hidden;"><div style="width: 66%; height: 100%; background: linear-gradient(90deg,#0B6FCE,#7FE9F5);"></div></div>
+
+              <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 12px;">
+                <div style="display: flex; align-items: center; gap: 11px; padding: 7px 0;"><span style="width: 22px; height: 22px; border-radius: 7px; background: #2BD787; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size: 14px; color: rgba(226,232,240,0.55); text-decoration: line-through;">Bomba de vácuo + manifold</span></div>
+                <div style="display: flex; align-items: center; gap: 11px; padding: 7px 0;"><span style="width: 22px; height: 22px; border-radius: 7px; background: #2BD787; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size: 14px; color: rgba(226,232,240,0.55); text-decoration: line-through;">Furadeira + brocas</span></div>
+                <div style="display: flex; align-items: center; gap: 11px; padding: 7px 0;"><span style="width: 22px; height: 22px; border-radius: 7px; background: #2BD787; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size: 14px; color: rgba(226,232,240,0.55); text-decoration: line-through;">2 cilindros gás R-410A</span></div>
+                <div style="display: flex; align-items: center; gap: 11px; padding: 7px 0;"><span style="width: 22px; height: 22px; border-radius: 7px; background: #2BD787; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size: 14px; color: rgba(226,232,240,0.55); text-decoration: line-through;">Suporte 18k (Vista Verde)</span></div>
+                <div style="display: flex; align-items: center; gap: 11px; padding: 7px 0;"><span style="width: 22px; height: 22px; border-radius: 7px; border: 2px solid rgba(255,255,255,0.25); flex-shrink: 0;"></span><span style="font-size: 14px; color: #fff; font-weight: 600;">Capacitor 35µF (D. Helena)</span></div>
+                <div style="display: flex; align-items: center; gap: 11px; padding: 7px 0;"><span style="width: 22px; height: 22px; border-radius: 7px; border: 2px solid rgba(255,255,255,0.25); flex-shrink: 0;"></span><span style="font-size: 14px; color: #fff; font-weight: 600;">Escada</span></div>
+              </div>
+            </div>
+
+            <!-- LEMBRETES -->
+            <div style="padding: 18px 18px 0;"><span style="font-size: 16px; font-weight: 800; color: #fff;">Lembretes</span></div>
+            <div style="padding: 11px 16px 0; display: flex; flex-direction: column; gap: 9px;">
+              <div style="display: flex; align-items: center; gap: 11px; background: rgba(255,107,107,0.09); border: 1px solid rgba(255,107,107,0.22); border-radius: 14px; padding: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(255,107,107,0.16); display: flex; align-items: center; justify-content: center;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#FF8B8B" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 3v4M17 3v4"/></svg></div>
+                <div style="flex: 1;"><div style="font-size: 13.5px; font-weight: 700; color: #fff;">Renovar seguro da van</div><div style="font-size: 11.5px; color: #FF9B9B;">vence em 3 dias</div></div>
+                <span style="font-size: 11px; font-weight: 700; color: rgba(226,232,240,0.6); background: rgba(255,255,255,0.06); border-radius: 8px; padding: 5px 9px;">Adiar</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 11px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(127,233,245,0.14); display: flex; align-items: center; justify-content: center;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8.1 9.6a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2z"/></svg></div>
+                <div style="flex: 1;"><div style="font-size: 13.5px; font-weight: 700; color: #fff;">Confirmar visita das 16h</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.55);">Cond. Vista Verde · 14:00</div></div>
+                <span style="font-size: 11px; font-weight: 800; color: #0A1626; background: #7FE9F5; border-radius: 8px; padding: 5px 9px;">Ligar</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 11px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(43,215,135,0.16); display: flex; align-items: center; justify-content: center;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6FE3AC" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 1 1 7-12.9" stroke-linecap="round"/><path d="M9 11l3 3 8-8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div style="flex: 1;"><div style="font-size: 13.5px; font-weight: 700; color: #fff;">Pós-venda Sr. Antônio</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.55);">7 dias da instalação · perguntar se está ok</div></div>
+              </div>
+            </div>
+
+            <!-- ROTINAS -->
+            <div style="padding: 18px 18px 0;"><span style="font-size: 16px; font-weight: 800; color: #fff;">Processos prontos</span></div>
+            <div style="display: flex; gap: 9px; padding: 11px 16px 18px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 150px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 13px;"><div style="font-size: 13.5px; font-weight: 700; color: #fff;">Instalação split</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.5); margin-top: 2px;">12 passos · ~2h</div></div>
+              <div style="flex: 1; min-width: 150px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 13px;"><div style="font-size: 13.5px; font-weight: 700; color: #fff;">Manutenção preventiva</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.5); margin-top: 2px;">8 passos · ~45min</div></div>
+              <div style="flex: 1; min-width: 150px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 13px;"><div style="font-size: 13.5px; font-weight: 700; color: #fff;">Limpeza câmara fria</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.5); margin-top: 2px;">6 passos · ~30min</div></div>
+              <div style="flex: 1; min-width: 150px; background: rgba(127,233,245,0.08); border: 1px dashed rgba(127,233,245,0.35); border-radius: 14px; padding: 13px; display: flex; align-items: center; gap: 7px; color: #7FE9F5;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2.2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg><span style="font-size: 13px; font-weight: 700;">Criar processo</span></div>
+            </div>
+          </div>
+
+          <div style="flex-shrink: 0; background: #0C1B2E; border-top: 1px solid rgba(255,255,255,0.07); padding: 9px 16px 24px; display: flex; align-items: flex-end; justify-content: space-between;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2.1"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" stroke-linejoin="round"/></svg><span style="font-size: 10px; font-weight: 700; color: #7FE9F5;">Início</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.45)" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg><span style="font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.45);">Agenda</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px;"><div style="width: 50px; height: 50px; border-radius: 25px; margin-top: -22px; background: linear-gradient(140deg, #0B6FCE, #34C6D9); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(52,198,217,0.45);"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" stroke-linejoin="round"/><path d="M14 3v5h5M12 12v5M9.5 14.5h5" stroke-linecap="round"/></svg></div><span style="font-size: 10px; font-weight: 700; color: #7FE9F5; margin-top: -2px;">Orçamento</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.45)" stroke-width="2"><path d="M3 8l9-5 9 5v8l-9 5-9-5z" stroke-linejoin="round"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span style="font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.45);">Estoque</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 56px;"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.45)" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0" stroke-linecap="round"/></svg><span style="font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.45);">Conta</span></div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+    <!-- ============ OS GUIADA ============ -->
+    <div style="display: flex; flex-direction: column; gap: 16px; width: 402px;">
+      <div style="background: #fff; border-radius: 16px; padding: 15px 17px; box-shadow: 0 4px 14px rgba(10,37,64,0.07); border: 1px solid #E2E8F0;">
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <span style="font-size: 12px; font-weight: 800; color: #fff; background: #0A2540; border-radius: 7px; padding: 4px 9px;">B</span>
+          <span style="font-size: 16px; font-weight: 700;">Serviço guiado (passo a passo)</span>
+        </div>
+        <div style="font-size: 13px; color: #64748B; margin-top: 7px; line-height: 1.5;">No serviço, o app conduz por etapas. Marca o que fez, registra foto e a OLLI não deixa fechar sem o essencial.</div>
+      </div>
+
+      <x-import component="IOSDevice" from="./ios-frame.jsx" dark="{{ t }}" hint-size="402px,874px">
+        <div style="height: 100%; display: flex; flex-direction: column; background: #0A1626; font-family: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;">
+          <div class="scrollarea" style="flex: 1; overflow: auto;">
+            <div style="padding: 56px 18px 0; display: flex; align-items: center; gap: 12px;">
+              <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;"><svg width="11" height="18" viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="rgba(226,232,240,0.7)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div style="flex: 1;"><div style="font-size: 19px; font-weight: 800; color: #fff;">Ordem de Serviço</div><div style="font-size: 11.5px; color: rgba(226,232,240,0.5);">OS 0142 · D. Helena Souza</div></div>
+              <span style="font-size: 11px; font-weight: 800; color: #F7B23B; background: rgba(247,178,59,0.15); border-radius: 8px; padding: 5px 10px;">Em andamento</span>
+            </div>
+
+            <!-- progress -->
+            <div style="margin: 16px 16px 0; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 14px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;"><span style="font-size: 13px; font-weight: 700; color: #fff;">Progresso do serviço</span><span style="font-size: 13px; font-weight: 800; color: #7FE9F5;">3 de 6</span></div>
+              <div style="height: 7px; border-radius: 4px; background: rgba(255,255,255,0.1); margin-top: 10px; overflow: hidden;"><div style="width: 50%; height: 100%; background: linear-gradient(90deg,#0B6FCE,#7FE9F5);"></div></div>
+            </div>
+
+            <!-- steps -->
+            <div style="padding: 16px 16px 0;">
+              <!-- done -->
+              <div style="display: flex; gap: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0;"><span style="width: 26px; height: 26px; border-radius: 13px; background: #2BD787; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div style="width: 2px; flex: 1; background: rgba(43,215,135,0.4); margin: 4px 0;"></div></div>
+                <div style="flex: 1; padding-bottom: 14px;"><div style="font-size: 14.5px; font-weight: 700; color: rgba(226,232,240,0.6);">1 · Chegada registrada</div><div style="font-size: 12px; color: rgba(226,232,240,0.4); margin-top: 2px;">14:32 · foto da fachada anexada</div></div>
+              </div>
+              <!-- done -->
+              <div style="display: flex; gap: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0;"><span style="width: 26px; height: 26px; border-radius: 13px; background: #2BD787; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div style="width: 2px; flex: 1; background: rgba(43,215,135,0.4); margin: 4px 0;"></div></div>
+                <div style="flex: 1; padding-bottom: 14px;"><div style="font-size: 14.5px; font-weight: 700; color: rgba(226,232,240,0.6);">2 · Diagnóstico</div><div style="font-size: 12px; color: rgba(226,232,240,0.4); margin-top: 2px;">Capacitor queimado · tensão 218V ok</div></div>
+              </div>
+              <!-- CURRENT -->
+              <div style="display: flex; gap: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0;"><span style="width: 26px; height: 26px; border-radius: 13px; background: #7FE9F5; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px rgba(127,233,245,0.18);"><span style="width: 9px; height: 9px; border-radius: 5px; background: #0A1626;"></span></span><div style="width: 2px; flex: 1; background: rgba(255,255,255,0.1); margin: 4px 0;"></div></div>
+                <div style="flex: 1; padding-bottom: 14px;">
+                  <div style="background: linear-gradient(150deg, rgba(11,111,206,0.3), rgba(52,198,217,0.06)); border: 1px solid rgba(127,233,245,0.28); border-radius: 16px; padding: 13px;">
+                    <div style="font-size: 14.5px; font-weight: 800; color: #fff;">3 · Execução</div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 9px;">
+                      <div style="display: flex; align-items: center; gap: 10px; padding: 5px 0;"><span style="width: 20px; height: 20px; border-radius: 6px; background: #2BD787; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size: 13px; color: rgba(226,232,240,0.55); text-decoration: line-through;">Trocar capacitor 35µF</span></div>
+                      <div style="display: flex; align-items: center; gap: 10px; padding: 5px 0;"><span style="width: 20px; height: 20px; border-radius: 6px; background: #2BD787; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0A1626" stroke-width="3.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span style="font-size: 13px; color: rgba(226,232,240,0.55); text-decoration: line-through;">Higienizar serpentina e filtros</span></div>
+                      <div style="display: flex; align-items: center; gap: 10px; padding: 5px 0;"><span style="width: 20px; height: 20px; border-radius: 6px; border: 2px solid #7FE9F5; flex-shrink: 0;"></span><span style="font-size: 13px; color: #fff; font-weight: 600;">Recarga de gás R-410A</span></div>
+                      <div style="display: flex; align-items: center; gap: 10px; padding: 5px 0;"><span style="width: 20px; height: 20px; border-radius: 6px; border: 2px solid rgba(255,255,255,0.25); flex-shrink: 0;"></span><span style="font-size: 13px; color: #fff; font-weight: 600;">Vácuo 20 min</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- pending -->
+              <div style="display: flex; gap: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0;"><span style="width: 26px; height: 26px; border-radius: 13px; border: 2px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: rgba(226,232,240,0.5); font-size: 12px; font-weight: 800;">4</span><div style="width: 2px; flex: 1; background: rgba(255,255,255,0.1); margin: 4px 0;"></div></div>
+                <div style="flex: 1; padding-bottom: 14px;"><div style="font-size: 14.5px; font-weight: 700; color: #fff;">Teste de funcionamento</div><div style="font-size: 12px; color: rgba(226,232,240,0.45); margin-top: 2px;">Ligar · medir temperatura de saída</div></div>
+              </div>
+              <!-- pending photo -->
+              <div style="display: flex; gap: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0;"><span style="width: 26px; height: 26px; border-radius: 13px; border: 2px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: rgba(226,232,240,0.5); font-size: 12px; font-weight: 800;">5</span><div style="width: 2px; flex: 1; background: rgba(255,255,255,0.1); margin: 4px 0;"></div></div>
+                <div style="flex: 1; padding-bottom: 14px;"><div style="font-size: 14.5px; font-weight: 700; color: #fff;">Fotos antes / depois</div><div style="font-size: 12px; color: rgba(226,232,240,0.45); margin-top: 2px;">Obrigatório p/ fechar</div></div>
+              </div>
+              <!-- pending signature -->
+              <div style="display: flex; gap: 12px;">
+                <div style="display: flex; flex-direction: column; align-items: center; flex-shrink: 0;"><span style="width: 26px; height: 26px; border-radius: 13px; border: 2px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: rgba(226,232,240,0.5); font-size: 12px; font-weight: 800;">6</span></div>
+                <div style="flex: 1; padding-bottom: 8px;"><div style="font-size: 14.5px; font-weight: 700; color: #fff;">Assinatura do cliente</div><div style="font-size: 12px; color: rgba(226,232,240,0.45); margin-top: 2px;">Gera o recibo automático</div></div>
+              </div>
+            </div>
+
+            <!-- OLLI nudge -->
+            <div style="margin: 4px 16px 18px; display: flex; align-items: center; gap: 11px; background: rgba(247,178,59,0.1); border: 1px solid rgba(247,178,59,0.26); border-radius: 14px; padding: 12px;">
+              <div style="width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(140deg,#0B6FCE,#34C6D9); display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="22" height="22" viewBox="0 0 48 48" fill="none"><rect x="8" y="11" width="32" height="28" rx="11" fill="#0A1626"/><circle class="olli-eye" cx="19.5" cy="25" r="3.2" fill="#7FE9F5"/><circle class="olli-eye" cx="29.5" cy="25" r="3.2" fill="#7FE9F5"/></svg></div>
+              <div style="font-size: 12.5px; color: rgba(226,232,240,0.9); line-height: 1.45;">Lembra: sem a <strong style="color:#fff;">foto do "depois"</strong> e a <strong style="color:#fff;">assinatura</strong> eu não fecho a OS. Falta pouco!</div>
+            </div>
+          </div>
+
+          <!-- bottom action -->
+          <div style="flex-shrink: 0; padding: 12px 16px; background: linear-gradient(0deg, #0A1626 70%, transparent); display: flex; gap: 10px;">
+            <button style="border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); border-radius: 13px; padding: 13px 16px; font-family: inherit; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 7px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2.5h5L16 6"/></svg>Foto</button>
+            <button style="flex: 1; border: none; background: linear-gradient(135deg,#0B6FCE,#34C6D9); border-radius: 13px; padding: 13px; font-family: inherit; font-size: 14px; font-weight: 800; color: #fff; opacity: 0.55;">Concluir OS (faltam 3)</button>
+          </div>
+        </div>
+      </x-import>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { t: true, f: false };
+  }
+}
+</script>
+</body>
+</html>
