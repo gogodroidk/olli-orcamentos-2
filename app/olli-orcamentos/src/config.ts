@@ -23,7 +23,7 @@ export const SUPABASE_ANON_KEY: string = process.env.EXPO_PUBLIC_SUPABASE_ANON_K
  * Ex.: https://app.seudominio.com.br  → o link vira `${LINK_BASE_URL}/o/<token>`.
  * Vazio = recurso desligado (o app avisa para configurar o domínio).
  */
-export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? '').replace(/\/+$/, '');
+export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? 'https://olli-diagnostico.igoreluisa.workers.dev').replace(/\/+$/, '');
 
 /**
  * URL do Worker de diagnóstico no Cloudflare (Etapa 2). A chave da IA
