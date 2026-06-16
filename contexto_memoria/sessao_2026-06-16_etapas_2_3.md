@@ -39,6 +39,21 @@ Nenhuma chave secreta entra no bundle/APK.
 `npm run typecheck` (app) **0 erros** após cada etapa. Stripe (Etapa 6) **adiado pelo Conselho**
 (pós-validação) — não construído de propósito.
 
-## Checklist do Igor para ativar
-- [ ] Etapa 2: `ANTHROPIC_API_KEY` (deploy da Edge Function `diagnostico`).
-- [ ] Etapa 3: aplicar migration `0003`; secrets do Worker; `wrangler deploy`; domínio + `EXPO_PUBLIC_LINK_BASE_URL`.
+## Atualização (mesmo dia) — Gemini + TUDO no Cloudflare
+Igor vai usar **Gemini** (já tem faturamento lá) e quer tudo rodando no Cloudflare.
+- **Diagnóstico migrou de Supabase Edge Function → Cloudflare Worker** `cloudflare/diagnostico`:
+  **multi-provedor** (Gemini padrão `gemini-3.5-flash` / Claude opcional), cache em **KV**.
+  A Edge Function do Supabase foi **removida** (sem duplicar implementação). O app agora chama o
+  Worker por `EXPO_PUBLIC_DIAGNOSTICO_URL` (`olliIA.ts` via fetch). `config.DIAGNOSTICO_URL`.
+- **Já feito por ferramenta (não precisa Igor):** KV `olli-diagnostico-cache`
+  (id `193f53aa847447598e3f5b6b716ebdad`) criado; migration `0003` (`orcamentos_publicos`)
+  **aplicada** no projeto `yiaeplqinnnnniyvwtls`.
+- **Chaves (todas em Worker, nunca no app):** `GEMINI_API_KEY` → Worker `olli-diagnostico`;
+  `SUPABASE_SERVICE_ROLE_KEY` → Worker `olli-orcamento-link`.
+
+## Checklist do Igor para ativar (só isto)
+- [ ] **IA:** publicar o Worker `olli-diagnostico` (painel ou `wrangler deploy`) + secret
+      `GEMINI_API_KEY` (de aistudio.google.com) + setar `EXPO_PUBLIC_DIAGNOSTICO_URL` no app.
+- [ ] **Link:** publicar o Worker `olli-orcamento-link` + secrets `SUPABASE_URL` /
+      `SUPABASE_SERVICE_ROLE_KEY` + setar `EXPO_PUBLIC_LINK_BASE_URL` (workers.dev agora, domínio depois).
+- [ ] Rebuild do app pra pegar as duas URLs (vars `EXPO_PUBLIC_*` são embutidas no build).
