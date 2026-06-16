@@ -11,6 +11,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const CATALOG_ITEMS = [
+  { screen: 'Diagnostico', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico por marca e código', color: Colors.accent },
   { screen: 'Clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Gerencie seus clientes', color: '#7C3AED' },
   { screen: 'Servicos', icon: 'wrench-outline', label: 'Serviços', desc: 'Catálogo de serviços', color: Colors.primary },
   { screen: 'Produtos', icon: 'package-variant-closed', label: 'Produtos', desc: 'Peças e materiais', color: '#0891B2' },

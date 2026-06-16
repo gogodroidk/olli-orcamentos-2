@@ -129,6 +129,29 @@ export default function HomeScreen() {
           </View>
         </AnimatedEntrance>
 
+        {/* ANZOL — Diagnóstico por código de erro (offline, único no BR) */}
+        <AnimatedEntrance index={2}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Diagnostico' }); }}
+          >
+            <LinearGradient
+              colors={['rgba(11,111,206,0.30)', 'rgba(52,198,217,0.10)']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={styles.anzol}
+            >
+              <View style={styles.anzolIcon}>
+                <MaterialCommunityIcons name="card-search-outline" size={26} color={Colors.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.anzolTitle}>Diagnóstico de erro</Text>
+                <Text style={styles.anzolSub}>602 códigos de ar-condicionado · ache a falha em segundos, offline</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </AnimatedEntrance>
+
         {/* LEMBRETE DA OLLI — orçamentos parados */}
         {parados.length > 0 && (
           <AnimatedEntrance index={2}>
@@ -240,6 +263,11 @@ const styles = StyleSheet.create({
   kpiValue: { fontSize: 17, fontWeight: '800', color: '#fff' },
   kpiLabel: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 3, fontWeight: '500' },
   kpiDivider: { width: 1, backgroundColor: Colors.outline, marginVertical: 4 },
+
+  anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)' },
+  anzolIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  anzolTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
+  anzolSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
   lembrete: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.lg, padding: Spacing.md, marginHorizontal: Spacing.base, marginTop: 12 },
   lembreteTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },

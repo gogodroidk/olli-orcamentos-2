@@ -10,6 +10,7 @@ import HomeScreen from '../screens/HomeScreen';
 import OrcamentosScreen from '../screens/OrcamentosScreen';
 import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
 import CatalogoScreen from '../screens/CatalogoScreen';
+import CodigosErroScreen from '../screens/CodigosErroScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
 import ClientesScreen from '../screens/ClientesScreen';
@@ -33,6 +34,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
+  Diagnostico: undefined;
   Orcamentos: undefined;
   Catalogo: undefined;
 };
@@ -67,6 +69,16 @@ function TabNavigator() {
           tabBarLabel: 'Início',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="home-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Diagnostico"
+        component={CodigosErroScreen}
+        options={{
+          tabBarLabel: 'Diagnóstico',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="card-search-outline" color={color} size={size} />
           ),
         }}
       />
