@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro } from '../types';
+import codigosErroSeed from '../../assets/codigos_erro.json';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -91,7 +92,57 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       chave TEXT PRIMARY KEY,
       valor INTEGER NOT NULL
     );
+
+    -- Etapa 0.3 — cache de diagnóstico IA por (código+marca). A IA só é chamada
+    -- quando não há cache; protege a margem e serve de fallback.
+    CREATE TABLE IF NOT EXISTS cache_ia (
+      chave TEXT PRIMARY KEY,
+      resposta TEXT NOT NULL,
+      criado_em TEXT NOT NULL
+    );
+
+    -- Etapa 0.4 — instrumentação de eventos desde o dia 1 (funil/uso/IA).
+    CREATE TABLE IF NOT EXISTS eventos (
+      id TEXT PRIMARY KEY,
+      evento TEXT NOT NULL,
+      props TEXT,
+      criado_em TEXT NOT NULL
+    );
+
+    -- Etapa 1.1 — base de 602 códigos de erro (importada de assets na 1ª abertura).
+    CREATE TABLE IF NOT EXISTS codigos_erro (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      marca TEXT NOT NULL,
+      familia TEXT,
+      tipo TEXT,
+      codigo TEXT,
+      exibicao TEXT,
+      falha TEXT,
+      cat_bruta TEXT,
+      cat_app TEXT,
+      severidade TEXT,
+      causa TEXT,
+      acao TEXT,
+      confianca TEXT,
+      fonte_id TEXT,
+      url TEXT,
+      obs TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_codigos_marca ON codigos_erro (marca);
+    CREATE INDEX IF NOT EXISTS idx_codigos_codigo ON codigos_erro (codigo);
+
+    -- Etapa 1.6 — casos "não achei meu erro" para enriquecer a base.
+    CREATE TABLE IF NOT EXISTS casos_erro (
+      id TEXT PRIMARY KEY,
+      marca TEXT,
+      modelo TEXT,
+      codigo TEXT,
+      sintoma TEXT,
+      criado_em TEXT NOT NULL
+    );
   `);
+
+  await seedCodigosErro(database);
 
   // Insert default empresa data if not exists
   const empresaRow = await database.getFirstAsync<{ id: string }>('SELECT id FROM empresa LIMIT 1');
@@ -99,6 +150,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
     const defaultEmpresa: Empresa = {
       id: 'empresa_1',
       nome: 'GR TECH Refrigeração',
+      segmento: 'ar-condicionado',
       especialidade: 'Assistência técnica de Ar condicionado',
       slogan: 'Soluções em Climatização Comercial e Residencial',
       cnpj: '44.301.204/0001-38',
@@ -131,6 +183,30 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       );
     }
   }
+}
+
+/**
+ * Etapa 1.2 — importa os 602 códigos de erro do asset na primeira abertura.
+ * Idempotente: só insere se a tabela estiver vazia. Tudo em uma transação.
+ */
+async function seedCodigosErro(database: SQLite.SQLiteDatabase) {
+  const row = await database.getFirstAsync<{ c: number }>('SELECT COUNT(*) as c FROM codigos_erro');
+  if ((row?.c ?? 0) > 0) return;
+  const seed = codigosErroSeed as any[];
+  if (!Array.isArray(seed) || seed.length === 0) return;
+  await database.withTransactionAsync(async () => {
+    for (const c of seed) {
+      await database.runAsync(
+        `INSERT INTO codigos_erro
+           (marca, familia, tipo, codigo, exibicao, falha, cat_bruta, cat_app, severidade, causa, acao, confianca, fonte_id, url, obs)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [c.marca ?? '', c.familia ?? '', c.tipo ?? '', c.codigo ?? '',
+         c.exibicao ?? '', c.falha ?? '', c.catBruta ?? '', c.catApp ?? '',
+         c.severidade ?? '', c.causa ?? '', c.acao ?? '', c.confianca ?? '',
+         c.fonteId ?? '', c.url ?? '', c.obs ?? '']
+      );
+    }
+  });
 }
 
 // ─── EMPRESA ─────────────────────────────────────────────
@@ -384,6 +460,114 @@ export async function saveDepoimento(d: Depoimento): Promise<void> {
 export async function deleteDepoimento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM depoimentos WHERE id = ?', [id]);
+}
+
+// ─── CACHE DE IA (Etapa 0.3) ─────────────────────────────
+/** Lê a resposta cacheada para uma chave (ex.: `diag:Midea:E4`), ou null. */
+export async function getCacheIA(chave: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ resposta: string }>(
+    'SELECT resposta FROM cache_ia WHERE chave = ?', [chave]
+  );
+  return row?.resposta ?? null;
+}
+
+/** Grava/atualiza a resposta de IA no cache. */
+export async function setCacheIA(chave: string, resposta: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR REPLACE INTO cache_ia (chave, resposta, criado_em) VALUES (?,?,?)',
+    [chave, resposta, new Date().toISOString()]
+  );
+}
+
+// ─── EVENTOS / ANALYTICS (Etapa 0.4) ─────────────────────
+/**
+ * Grava um evento de uso (funil/IA/diagnóstico). Nunca lança: instrumentação
+ * jamais deve quebrar a UX. Use via `track()` em services/analytics.ts.
+ */
+export async function insertEvento(id: string, evento: string, props?: Record<string, unknown>): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.runAsync(
+      'INSERT INTO eventos (id, evento, props, criado_em) VALUES (?,?,?,?)',
+      [id, evento, props ? JSON.stringify(props) : null, new Date().toISOString()]
+    );
+  } catch {
+    // silencioso de propósito
+  }
+}
+
+/** Lê os eventos mais recentes (para o futuro painel master / depuração). */
+export async function getEventos(limit = 200): Promise<{ id: string; evento: string; props: any; criadoEm: string }[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM eventos ORDER BY criado_em DESC LIMIT ?', [limit]);
+  return rows.map(r => ({ id: r.id, evento: r.evento, props: r.props ? JSON.parse(r.props) : null, criadoEm: r.criado_em }));
+}
+
+// ─── CÓDIGOS DE ERRO (Etapa 1) ───────────────────────────
+function rowToCodigoErro(r: any): CodigoErro {
+  return {
+    id: r.id, marca: r.marca, familia: r.familia ?? '', tipo: r.tipo ?? '',
+    codigo: r.codigo ?? '', exibicao: r.exibicao ?? '', falha: r.falha ?? '',
+    catBruta: r.cat_bruta ?? '', catApp: r.cat_app ?? '', severidade: r.severidade ?? '',
+    causa: r.causa ?? '', acao: r.acao ?? '', confianca: r.confianca ?? '',
+    fonteId: r.fonte_id ?? '', url: r.url ?? '', obs: r.obs ?? '',
+  };
+}
+
+/** Lista as marcas distintas (para os chips de filtro), em ordem alfabética. */
+export async function getMarcasErro(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ marca: string }>('SELECT DISTINCT marca FROM codigos_erro ORDER BY marca ASC');
+  return rows.map(r => r.marca);
+}
+
+export async function countCodigosErro(): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ c: number }>('SELECT COUNT(*) as c FROM codigos_erro');
+  return row?.c ?? 0;
+}
+
+/**
+ * Busca códigos de erro com filtro opcional por marca e por texto livre
+ * (código, falha, sintoma/causa, ação ou exibição "LED piscando").
+ */
+export async function searchCodigosErro(opts: { marca?: string | null; q?: string }): Promise<CodigoErro[]> {
+  const db = await getDb();
+  const where: string[] = [];
+  const params: any[] = [];
+  if (opts.marca) { where.push('marca = ?'); params.push(opts.marca); }
+  const q = opts.q?.trim();
+  if (q) {
+    where.push('(codigo LIKE ? OR falha LIKE ? OR causa LIKE ? OR acao LIKE ? OR exibicao LIKE ? OR cat_app LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like, like, like, like, like);
+  }
+  const sql =
+    'SELECT * FROM codigos_erro' +
+    (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
+    ' ORDER BY marca ASC, codigo ASC LIMIT 200';
+  const rows = await db.getAllAsync<any>(sql, params);
+  return rows.map(rowToCodigoErro);
+}
+
+// ─── CASOS "NÃO ACHEI MEU ERRO" (Etapa 1.6) ──────────────
+export async function saveCasoErro(caso: CasoErro): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR REPLACE INTO casos_erro (id, marca, modelo, codigo, sintoma, criado_em) VALUES (?,?,?,?,?,?)',
+    [caso.id, caso.marca ?? null, caso.modelo ?? null, caso.codigo ?? null, caso.sintoma ?? null, caso.criadoEm]
+  );
+}
+
+export async function getCasosErro(): Promise<CasoErro[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM casos_erro ORDER BY criado_em DESC');
+  return rows.map(r => ({
+    id: r.id, marca: r.marca ?? undefined, modelo: r.modelo ?? undefined,
+    codigo: r.codigo ?? undefined, sintoma: r.sintoma ?? undefined, criadoEm: r.criado_em,
+  }));
 }
 
 // ─── EXPORT / IMPORT (backup) ─────────────────────────────

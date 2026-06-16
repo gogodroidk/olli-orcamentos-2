@@ -24,9 +24,30 @@ export const STATUS_COLORS: Record<StatusOrcamento, string> = {
   cancelado: '#6B7280',
 };
 
+/**
+ * Segmento do negócio. O núcleo do OLLI (orçamento/cliente/agenda/OS/link/cobrança)
+ * é genérico para qualquer prestador — o lançamento é vertical (ar-condicionado),
+ * mas nada no código do orçamento fica amarrado a HVAC. Etapa 0.1 do PROCESSO.
+ */
+export type Segmento =
+  | 'ar-condicionado'
+  | 'eletrica'
+  | 'hidraulica'
+  | 'pintura'
+  | 'outro';
+
+export const SEGMENTOS: { id: Segmento; label: string; icon: string }[] = [
+  { id: 'ar-condicionado', label: 'Ar-condicionado', icon: 'air-conditioner' },
+  { id: 'eletrica', label: 'Elétrica', icon: 'flash' },
+  { id: 'hidraulica', label: 'Hidráulica', icon: 'water-pump' },
+  { id: 'pintura', label: 'Pintura', icon: 'format-paint' },
+  { id: 'outro', label: 'Outro', icon: 'dots-horizontal' },
+];
+
 export interface Empresa {
   id: string;
   nome: string;
+  segmento?: Segmento;
   especialidade: string;
   slogan: string;
   cnpj: string;
@@ -210,3 +231,41 @@ export const FORMAS_PAGAMENTO_LABELS = {
   dinheiro: 'Dinheiro',
   pix: 'PIX',
 };
+
+// ─── CÓDIGOS DE ERRO (Etapa 1 — o anzol) ─────────────────────
+/**
+ * Um código de falha de ar-condicionado. Espelha o schema da planilha do Igor
+ * (aba MODELO_DADOS_APP) e do asset `assets/codigos_erro.json` (602 registros).
+ * `severidade`: Info | Média | Alta. `confianca`: Alta | Média | Média/Alta | Baixa.
+ */
+export interface CodigoErro {
+  id: number;
+  marca: string;
+  familia: string;
+  tipo: string;
+  codigo: string;
+  exibicao: string;
+  falha: string;
+  catBruta: string;
+  catApp: string;
+  severidade: string;
+  causa: string;
+  acao: string;
+  confianca: string;
+  fonteId: string;
+  url: string;
+  obs: string;
+}
+
+/**
+ * Caso reportado pelo técnico quando "não achei meu erro" — alimenta o
+ * enriquecimento da base. Etapa 1.6 do PROCESSO.
+ */
+export interface CasoErro {
+  id: string;
+  marca?: string;
+  modelo?: string;
+  codigo?: string;
+  sintoma?: string;
+  criadoEm: string;
+}

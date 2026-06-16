@@ -12,9 +12,10 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { getEmpresa, saveEmpresa, getDepoimentos, saveDepoimento, deleteDepoimento } from '../database/database';
-import { Empresa, Depoimento } from '../types';
+import { Empresa, Depoimento, SEGMENTOS, Segmento } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
+import { track, Eventos } from '../services/analytics';
 
 export default function MeuNegocioScreen() {
   const nav = useNavigation<any>();
@@ -36,6 +37,13 @@ export default function MeuNegocioScreen() {
   function set(field: keyof Empresa, value: string) {
     setEmpresa(p => p ? { ...p, [field]: value } : p);
     setDirty(true);
+  }
+
+  function chooseSegmento(id: Segmento) {
+    setEmpresa(p => (p ? { ...p, segmento: id } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.segmentoChanged, { segmento: id });
   }
 
   async function handleSave() {
@@ -105,6 +113,21 @@ export default function MeuNegocioScreen() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Dados da empresa</Text>
           <OlliInput label="Nome da empresa" value={empresa.nome} onChangeText={v => set('nome', v)} leftIcon="store" />
+
+          <Text style={styles.segLabel}>Segmento do negócio</Text>
+          <Text style={styles.segHint}>O OLLI atende qualquer prestador. O segmento ajusta exemplos e a base técnica.</Text>
+          <View style={styles.segRow}>
+            {SEGMENTOS.map(s => {
+              const active = empresa.segmento === s.id;
+              return (
+                <TouchableOpacity key={s.id} style={[styles.segChip, active && styles.segChipActive]} onPress={() => chooseSegmento(s.id)} activeOpacity={0.85}>
+                  <MaterialCommunityIcons name={s.icon as any} size={16} color={active ? '#0A1626' : Colors.onSurfaceVariant} />
+                  <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{s.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           <OlliInput label="Especialidade" value={empresa.especialidade} onChangeText={v => set('especialidade', v)} placeholder="Ex: Assistência técnica de ar condicionado" />
           <OlliInput label="Slogan" value={empresa.slogan} onChangeText={v => set('slogan', v)} placeholder="Frase da sua marca" />
           <OlliInput label="Nome do prestador" value={empresa.nomePrestador} onChangeText={v => set('nomePrestador', v)} leftIcon="account" />
@@ -203,6 +226,13 @@ const styles = StyleSheet.create({
   imageHint: { fontSize: 11, color: Colors.primary, fontWeight: '600', marginTop: 2 },
   brandLabel: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
   rowFields: { flexDirection: 'row' },
+  segLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 2 },
+  segHint: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginBottom: 10 },
+  segRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
+  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },
+  segChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
+  segChipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  segChipTextActive: { color: '#0A1626' },
   depHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   addDep: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   addDepText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
