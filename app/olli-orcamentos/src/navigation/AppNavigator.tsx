@@ -11,6 +11,7 @@ import OrcamentosScreen from '../screens/OrcamentosScreen';
 import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
 import CatalogoScreen from '../screens/CatalogoScreen';
 import CodigosErroScreen from '../screens/CodigosErroScreen';
+import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
 import ClientesScreen from '../screens/ClientesScreen';
@@ -30,6 +31,7 @@ export type RootStackParamList = {
   EmitirRecibo: { orcamentoId?: string };
   Conta: undefined;
   MeuNegocio: undefined;
+  DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
 };
 
 export type TabParamList = {
@@ -125,6 +127,7 @@ export function AppNavigator() {
       <Stack.Screen name="EmitirRecibo" component={EmitirReciboScreen} />
       <Stack.Screen name="Conta" component={ContaScreen} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioScreen} />
+      <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIAScreen} />
     </Stack.Navigator>
   );
 }

@@ -1,0 +1,12 @@
+name = "olli-orcamento-link"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Secrets (NÃO commitar) — defina com `wrangler secret put <NOME>`:
+#   SUPABASE_URL                = https://yiaeplqinnnnniyvwtls.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY   = (service_role do projeto — chave de servidor)
+#
+# Domínio: configure uma rota/Custom Domain no painel da Cloudflare (ou via
+# `routes` abaixo) e use a mesma base em EXPO_PUBLIC_LINK_BASE_URL no app.
+# Ex.:
+# routes = [{ pattern = "app.seudominio.com.br", custom_domain = true }]

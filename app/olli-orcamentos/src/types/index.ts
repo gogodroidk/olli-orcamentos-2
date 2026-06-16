@@ -269,3 +269,34 @@ export interface CasoErro {
   sintoma?: string;
   criadoEm: string;
 }
+
+// ─── DIAGNÓSTICO POR IA (Etapa 2 — a OLLI Técnica) ───────────
+export interface DiagnosticoInput {
+  marca?: string;
+  modelo?: string;
+  codigo?: string;
+  sintoma?: string;
+}
+
+/** Resposta estruturada da OLLI Técnica (formato do briefing do Igor). */
+export interface DiagnosticoIA {
+  resumo: string;
+  significadoProvavel: string;
+  causasComuns: string[];
+  testesEmOrdem: string[];
+  pecasSuspeitas: string[];
+  naoFacaAinda: string[];
+  nivelConfianca: string; // Alta | Média | Baixa
+  confiancaJustificativa?: string;
+  mensagemCliente: string;
+  sugestaoOrcamento: string;
+  fontes: string[];
+}
+
+/** De onde veio o diagnóstico: cache local/nuvem, IA ao vivo, ou a base offline. */
+export interface DiagnosticoResultado {
+  fonte: 'ia' | 'cache' | 'base';
+  modelo?: string;
+  diagnostico: DiagnosticoIA;
+  aviso?: string;
+}

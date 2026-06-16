@@ -15,6 +15,7 @@ import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDate, formatDateTime, nowISO } from '../utils/date';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
+import { gerarLinkOrcamento, linkConfigurado } from '../services/clienteLink';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -38,6 +39,7 @@ export default function VisualizarOrcamentoScreen() {
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [sharing, setSharing] = useState(false);
+  const [linking, setLinking] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
   useFocusEffect(useCallback(() => {
@@ -67,6 +69,29 @@ export default function VisualizarOrcamentoScreen() {
     await abrirWhatsApp(orc.clienteTelefone, msg);
   }
 
+  async function handleLinkCliente() {
+    if (!orc) return;
+    if (!linkConfigurado()) {
+      Alert.alert(
+        'Link do cliente',
+        'Para enviar um link onde o cliente aprova com 1 toque, ative o backup na nuvem (tela Conta) e configure o domínio do app. Por enquanto, use o WhatsApp ou o PDF.',
+      );
+      return;
+    }
+    setLinking(true);
+    try {
+      const url = await gerarLinkOrcamento(orc, empresa);
+      if (orc.status === 'rascunho') await updateStatus('enviado');
+      await Share.share({
+        message: `Olá ${orc.clienteNome}! Segue seu orçamento nº ${orc.numero} (${formatCurrency(orc.valorTotal)}). É só abrir e aprovar:\n${url}`,
+      });
+    } catch (e: any) {
+      Alert.alert('Não consegui gerar o link', e?.message ?? 'Tente novamente.');
+    } finally {
+      setLinking(false);
+    }
+  }
+
   async function updateStatus(s: StatusOrcamento) {
     if (!orc) return;
     const updated = { ...orc, status: s, atualizadoEm: nowISO() };
@@ -90,6 +115,7 @@ export default function VisualizarOrcamentoScreen() {
       <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => nav.goBack()} compact>
         <View style={styles.actionBar}>
           <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
+          <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />

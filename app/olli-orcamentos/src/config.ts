@@ -2,6 +2,7 @@ declare const process: {
   env: {
     EXPO_PUBLIC_SUPABASE_URL?: string;
     EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
+    EXPO_PUBLIC_LINK_BASE_URL?: string;
   };
 };
 
@@ -15,3 +16,16 @@ declare const process: {
  */
 export const SUPABASE_URL: string = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 export const SUPABASE_ANON_KEY: string = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+/**
+ * Base do link público do cliente (Cloudflare Worker — Etapa 3).
+ * Ex.: https://app.seudominio.com.br  → o link vira `${LINK_BASE_URL}/o/<token>`.
+ * Vazio = recurso desligado (o app avisa para configurar o domínio).
+ */
+export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? '').replace(/\/+$/, '');
+
+/** O diagnóstico por IA (Etapa 2) usa a Edge Function `diagnostico` da Supabase;
+ *  a chave da Anthropic é um SECRET do servidor, nunca uma var EXPO_PUBLIC. */
+export function isDiagnosticoIADisponivel(): boolean {
+  return !!SUPABASE_URL && SUPABASE_URL.startsWith('http');
+}
