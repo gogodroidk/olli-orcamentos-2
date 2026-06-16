@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { DIAGNOSTICO_URL } from '../config';
 import { getCacheIA, setCacheIA, searchCodigosErro } from '../database/database';
 import { track, Eventos } from './analytics';
 import { DiagnosticoInput, DiagnosticoIA, DiagnosticoResultado, CodigoErro } from '../types';
@@ -27,25 +27,30 @@ export async function diagnosticarCaso(input: DiagnosticoInput): Promise<Diagnos
     if (diag) return { fonte: 'cache', diagnostico: diag };
   }
 
-  // 2) IA via Edge Function (só se a nuvem estiver configurada)
-  if (supabase && isSupabaseConfigured()) {
+  // 2) IA via Cloudflare Worker (Gemini por padrão; Claude opcional) — só se configurado
+  if (DIAGNOSTICO_URL) {
     try {
       const contextoBase = await contextoDaBase(input);
-      const { data, error } = await supabase.functions.invoke('diagnostico', {
-        body: { ...input, contextoBase },
+      const r = await fetch(DIAGNOSTICO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, contextoBase }),
       });
-      if (!error && data?.ok && data.diagnostico) {
-        await setCacheIA(key, JSON.stringify(data.diagnostico));
-        track(Eventos.aiUsed, { fonte: data.fonte, modelo: data.modelo });
-        return {
-          fonte: data.fonte === 'cache' ? 'cache' : 'ia',
-          modelo: data.modelo,
-          diagnostico: data.diagnostico,
-        };
+      if (r.ok) {
+        const data: any = await r.json();
+        if (data?.ok && data.diagnostico) {
+          await setCacheIA(key, JSON.stringify(data.diagnostico));
+          track(Eventos.aiUsed, { fonte: data.fonte, modelo: data.modelo });
+          return {
+            fonte: data.fonte === 'cache' ? 'cache' : 'ia',
+            modelo: data.modelo,
+            diagnostico: data.diagnostico,
+          };
+        }
+        // data.motivo === 'ia_nao_configurada' → segue para o fallback
       }
-      // data.motivo === 'ia_nao_configurada' (etc.) → segue para o fallback
     } catch {
-      // rede/edge indisponível → fallback
+      // worker indisponível/offline → fallback
     }
   }
 
@@ -78,9 +83,9 @@ async function contextoDaBase(input: DiagnosticoInput): Promise<string | undefin
 
 /** Monta um diagnóstico estruturado a partir da base local (sem IA). */
 async function fallbackBase(input: DiagnosticoInput): Promise<DiagnosticoResultado> {
-  const aviso = isSupabaseConfigured()
+  const aviso = DIAGNOSTICO_URL
     ? 'A IA não respondeu agora — mostrando o que a base de códigos tem.'
-    : 'Diagnóstico por IA ainda não ligado — mostrando a base de códigos. Ligue a OLLI Técnica para análise guiada.';
+    : 'Diagnóstico por IA ainda não ligado — mostrando a base de códigos. Configure o Worker de diagnóstico para análise guiada.';
 
   const m = await melhorMatch(input);
   if (!m) {

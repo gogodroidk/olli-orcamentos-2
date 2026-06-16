@@ -21,6 +21,7 @@ pesquisa/                     Pesquisa de campo + base de 602 códigos de erro (
 design/                       Design handoff (HTML hi-fi das 12 telas)
 app/olli-orcamentos/          O app (Expo / React Native / TypeScript) — base do produto
 backend/                      Migrations Supabase (schema + RLS)
+cloudflare/                   Workers: diagnóstico por IA + link do cliente
 web/                          Painel web (esqueleto PWA)
 OLLI_HANDOFF.zip              Pacote de handoff original (preservado)
 ```
@@ -53,10 +54,10 @@ Implementado neste branch (Etapas 0 a 3 do `PROCESSO`):
   → diagnóstico estruturado: falha, causa, ação inicial, severidade, confiança e fonte
   auditável); filtro por marca em chips; **Regra de Ouro** visível; botão **"não achei meu
   erro"** que salva o caso (`casos_erro`).
-- **Etapa 2 — Diagnóstico por IA (OLLI Técnica):** Edge Function `supabase/functions/diagnostico`
-  (chave Anthropic **server-side**, cache global + prompt caching); serviço `olliIA` com cache
-  local → IA → **fallback pra base de códigos**; tela "Me ajuda com esse caso". Falta só o Igor
-  ligar a `ANTHROPIC_API_KEY` (deploy da função). *2.5 limite no plano grátis fica para a Etapa 6.*
+- **Etapa 2 — Diagnóstico por IA (OLLI Técnica):** **Cloudflare Worker** `cloudflare/diagnostico`
+  (multi-provedor — **Gemini** por padrão, Claude opcional; chave **server-side**; cache em KV);
+  serviço `olliIA` com cache local → Worker → **fallback pra base de códigos**; tela "Me ajuda com
+  esse caso". Falta o Igor ligar a `GEMINI_API_KEY` no Worker. *2.5 limite no grátis fica para a Etapa 6.*
 - **Etapa 3 — Link do cliente (3.2):** Cloudflare Worker (`cloudflare/orcamento-link`) com página
   pública **Aprovar/Recusar/WhatsApp** + migration `orcamentos_publicos`; botão "Link" no app.
   Falta o Igor aplicar a migration, configurar o Worker (`service_role`) e apontar o domínio.
@@ -69,8 +70,9 @@ Ver `PROCESSO_OLLI_0_a_100.md`.
 ## Backend (Supabase)
 
 Projeto **OLLI ORCAMENTOS** (`yiaeplqinnnnniyvwtls`). Schema e RLS em `backend/migrations/`:
-`0001` (núcleo), `0002` (`cache_ia`, `eventos`, `codigos_erro`, `casos_erro`) e `0003`
-(`orcamentos_publicos`, para o link do cliente). As migrations novas estão prontas para aplicar
-quando for ligar o sync/IA/link na nuvem — o app já funciona 100% offline com SQLite local. A
-chave da Anthropic vive na Edge Function `supabase/functions/diagnostico`; o `service_role` vive
-no Cloudflare Worker. Nenhuma chave secreta entra no app (só a anon key pública).
+`0001` (núcleo, aplicado) e `0003` (`orcamentos_publicos`, para o link — **já aplicado**). A
+`0002` (`cache_ia`/`eventos`/`codigos_erro`/`casos_erro`) fica para quando o sync/painel master
+forem ligados — o app já funciona 100% offline com SQLite local. **As chaves secretas vivem nos
+Cloudflare Workers**, nunca no app: `GEMINI_API_KEY` (ou `ANTHROPIC_API_KEY`) no Worker
+`olli-diagnostico`; `SUPABASE_SERVICE_ROLE_KEY` no Worker `olli-orcamento-link`. O app só carrega
+a anon key pública do Supabase.

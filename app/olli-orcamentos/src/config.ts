@@ -3,6 +3,7 @@ declare const process: {
     EXPO_PUBLIC_SUPABASE_URL?: string;
     EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
     EXPO_PUBLIC_LINK_BASE_URL?: string;
+    EXPO_PUBLIC_DIAGNOSTICO_URL?: string;
   };
 };
 
@@ -24,8 +25,13 @@ export const SUPABASE_ANON_KEY: string = process.env.EXPO_PUBLIC_SUPABASE_ANON_K
  */
 export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? '').replace(/\/+$/, '');
 
-/** O diagnóstico por IA (Etapa 2) usa a Edge Function `diagnostico` da Supabase;
- *  a chave da Anthropic é um SECRET do servidor, nunca uma var EXPO_PUBLIC. */
+/**
+ * URL do Worker de diagnóstico no Cloudflare (Etapa 2). A chave da IA
+ * (Gemini ou Claude) é SECRET do Worker — nunca uma var EXPO_PUBLIC do app.
+ * Ex.: https://olli-diagnostico.SEU-USUARIO.workers.dev
+ */
+export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? '').replace(/\/+$/, '');
+
 export function isDiagnosticoIADisponivel(): boolean {
-  return !!SUPABASE_URL && SUPABASE_URL.startsWith('http');
+  return !!DIAGNOSTICO_URL;
 }
