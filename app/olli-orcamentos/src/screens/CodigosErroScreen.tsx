@@ -3,7 +3,8 @@ import {
   View, Text, FlatList, StyleSheet, TextInput, ScrollView,
   TouchableOpacity, Modal, Linking, Alert,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
@@ -19,6 +20,9 @@ import { CodigoErro, CasoErro } from '../types';
 import { track, Eventos } from '../services/analytics';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
+import { RootStackParamList } from '../navigation/AppNavigator';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** Cor da severidade da falha. */
 function sevColor(s: string): string {
@@ -37,6 +41,7 @@ function confColor(c: string): string {
 }
 
 export default function CodigosErroScreen() {
+  const nav = useNavigation<Nav>();
   const [marcas, setMarcas] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [marca, setMarca] = useState<string | null>(null);
@@ -82,6 +87,12 @@ export default function CodigosErroScreen() {
     setNaoAchei({ marca: marca ?? undefined, codigo: query.trim() || undefined });
   }
 
+  function pedirDiagnostico(prefill?: { marca?: string; codigo?: string; sintoma?: string }) {
+    Haptics.selectionAsync().catch(() => {});
+    setSelected(null);
+    nav.navigate('DiagnosticoIA', prefill ?? { marca: marca ?? undefined, codigo: query.trim() || undefined });
+  }
+
   async function salvarCaso() {
     const caso: CasoErro = {
       id: generateId(),
@@ -102,7 +113,16 @@ export default function CodigosErroScreen() {
 
   return (
     <View style={styles.container}>
-      <GradientHeader title="Diagnóstico" subtitle={total ? `${total} códigos de erro · ${marcas.length} marcas` : 'Códigos de erro'}>
+      <GradientHeader
+        title="Diagnóstico"
+        subtitle={total ? `${total} códigos de erro · ${marcas.length} marcas` : 'Códigos de erro'}
+        right={
+          <TouchableOpacity style={styles.olliHeaderBtn} onPress={() => pedirDiagnostico({})} activeOpacity={0.85}>
+            <MaterialCommunityIcons name="robot-happy-outline" size={16} color={Colors.accentLight} />
+            <Text style={styles.olliHeaderText}>OLLI</Text>
+          </TouchableOpacity>
+        }
+      >
         <View style={styles.searchBar}>
           <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
           <TextInput
@@ -275,11 +295,18 @@ export default function CodigosErroScreen() {
                 </TouchableOpacity>
               )}
 
-              {/* gancho da Etapa 2 (IA) — preparado, sem chave ainda */}
-              <View style={styles.olliBox}>
-                <MaterialCommunityIcons name="robot-happy-outline" size={20} color={Colors.accentLight} />
-                <Text style={styles.olliText}>Em breve: <Text style={styles.ouroBold}>“Perguntar à OLLI”</Text> — diagnóstico guiado por IA, com cache por código+marca.</Text>
-              </View>
+              {/* Etapa 2 — diagnóstico guiado por IA (cache + fallback pra base) */}
+              <TouchableOpacity
+                style={styles.olliBox}
+                activeOpacity={0.85}
+                onPress={() => pedirDiagnostico({ marca: selected.marca, codigo: selected.codigo, sintoma: selected.falha })}
+              >
+                <MaterialCommunityIcons name="robot-happy-outline" size={22} color={Colors.accentLight} />
+                <Text style={styles.olliText}>
+                  <Text style={styles.ouroBold}>Perguntar à OLLI</Text> — diagnóstico guiado: testes em ordem, o que não fazer ainda e mensagem pro cliente.
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
+              </TouchableOpacity>
             </ScrollView>
           </View>
         )}
@@ -337,6 +364,8 @@ function Meta({ icon, label, value }: { icon: any; label: string; value: string 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  olliHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 7 },
+  olliHeaderText: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
 
