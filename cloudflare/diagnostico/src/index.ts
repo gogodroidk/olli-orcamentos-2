@@ -1,19 +1,14 @@
-// OLLI — Diagnóstico por IA (Etapa 2), agora rodando no Cloudflare.
+// OLLI — Diagnóstico por IA (Etapa 2), rodando no Cloudflare.
 //
 // Worker que recebe um caso de campo e devolve um diagnóstico estruturado da
 // "OLLI Técnica". A chave da IA fica AQUI, como secret do Worker — nunca no app.
 //
-// Provedor automático pela chave que estiver configurada:
-//   • GEMINI_API_KEY   → Google Gemini (padrão; modelo gemini-3.5-flash)
-//   • ANTHROPIC_API_KEY → Claude (alternativa; modelo claude-opus-4-8)
-// Cache opcional em KV (binding CACHE) cortando ~80% das chamadas por código+marca.
+// Provedor automático pela chave configurada (aceita vários nomes comuns):
+//   • Gemini   → GEMINI_API_KEY | GOOGLE_API_KEY | GEMINI_KEY | GOOGLE_GENERATIVE_AI_API_KEY
+//   • Claude   → ANTHROPIC_API_KEY | CLAUDE_API_KEY
+// Cache opcional em KV (binding CACHE).
 //
-// Deploy (escolha um):
-//   A) Painel: Workers & Pages → Create Worker → cole este arquivo → Deploy.
-//      Settings → Variables and Secrets: GEMINI_API_KEY (Secret).
-//      (Opcional) KV Namespace Bindings: CACHE → olli-diagnostico-cache.
-//   B) wrangler:  npm i && npx wrangler secret put GEMINI_API_KEY && npx wrangler deploy
-//
+// GET /status → diz quais chaves estão configuradas (só os NOMES, nunca o valor).
 // Responde sempre HTTP 200 com { ok, ... } para o app decidir o fallback.
 
 export interface Env {
@@ -24,10 +19,13 @@ export interface Env {
   CACHE?: KVNamespace;
 }
 
+const GEMINI_NAMES = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_AI_API_KEY'];
+const ANTHROPIC_NAMES = ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'];
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 
 const SYSTEM_PROMPT = `Você é a OLLI Técnica, um assistente de diagnóstico para técnicos de campo de ar-condicionado no Brasil.
@@ -61,6 +59,15 @@ FORMATO DE SAÍDA — responda APENAS com um objeto JSON válido (sem markdown, 
 }
 Use português do Brasil. Listas com no máximo 5 itens. Seja conciso.`;
 
+function pickKey(env: Env, names: string[]): string | undefined {
+  const e = env as unknown as Record<string, unknown>;
+  for (const n of names) {
+    const v = e[n];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
 function norm(s?: string): string {
   return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -93,13 +100,12 @@ function userText(b: { marca?: string; modelo?: string; codigo?: string; sintoma
   );
 }
 
-async function callGemini(env: Env, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
-  const modelo = env.GEMINI_MODEL || 'gemini-3.5-flash';
+async function callGemini(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
   let resp: Response;
   try {
-    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY! },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: 'user', parts: [{ text }] }],
@@ -113,18 +119,17 @@ async function callGemini(env: Env, text: string): Promise<{ diag: any; modelo: 
   const data: any = await resp.json();
   const txt: string = (data?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
   const diag = extractJson(txt);
-  return diag ? { diag, modelo } : { erro: 'resposta_invalida' };
+  return diag ? { diag, modelo: model } : { erro: 'resposta_invalida' };
 }
 
-async function callAnthropic(env: Env, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
-  const modelo = env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+async function callAnthropic(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
   let resp: Response;
   try {
     resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'x-api-key': env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: modelo,
+        model,
         max_tokens: 2048,
         system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: text }],
@@ -137,7 +142,7 @@ async function callAnthropic(env: Env, text: string): Promise<{ diag: any; model
   const data: any = await resp.json();
   const txt: string = (data?.content ?? []).filter((c: any) => c?.type === 'text').map((c: any) => c.text).join('\n');
   const diag = extractJson(txt);
-  return diag ? { diag, modelo: data?.model ?? modelo } : { erro: 'resposta_invalida' };
+  return diag ? { diag, modelo: data?.model ?? model } : { erro: 'resposta_invalida' };
 }
 
 export default {
@@ -147,8 +152,24 @@ export default {
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
+    const url = new URL(req.url);
+    const gKey = pickKey(env, GEMINI_NAMES);
+    const aKey = pickKey(env, ANTHROPIC_NAMES);
+
+    // Diagnóstico de configuração (só NOMES de variáveis, nunca valores).
+    if (req.method === 'GET' && url.pathname === '/status') {
+      return json({
+        ok: true,
+        tem_gemini: !!gKey,
+        tem_anthropic: !!aKey,
+        tem_cache: !!env.CACHE,
+        provedor: gKey ? 'gemini' : aKey ? 'anthropic' : 'nenhum',
+        env_keys: Object.keys(env as object).sort(),
+      });
+    }
+
     if (req.method !== 'POST') {
-      return new Response('OLLI — Worker de diagnóstico. Envie um POST com { marca, modelo, codigo, sintoma }.', {
+      return new Response('OLLI — Worker de diagnóstico. Envie um POST com { marca, modelo, codigo, sintoma }. (GET /status mostra a configuração.)', {
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
     }
@@ -173,11 +194,13 @@ export default {
     }
 
     // 2) sem chave → o app cai para a base de códigos
-    if (!env.GEMINI_API_KEY && !env.ANTHROPIC_API_KEY) return json({ ok: false, motivo: 'ia_nao_configurada' });
+    if (!gKey && !aKey) return json({ ok: false, motivo: 'ia_nao_configurada' });
 
     // 3) chama a IA (Gemini por padrão; Claude se for a chave configurada)
     const text = userText(body);
-    const r = env.GEMINI_API_KEY ? await callGemini(env, text) : await callAnthropic(env, text);
+    const r = gKey
+      ? await callGemini(gKey, env.GEMINI_MODEL || 'gemini-3.5-flash', text)
+      : await callAnthropic(aKey!, env.ANTHROPIC_MODEL || 'claude-opus-4-8', text);
     if ('erro' in r) return json({ ok: false, motivo: 'erro_ia', detalhe: r.erro });
 
     if (env.CACHE) {
