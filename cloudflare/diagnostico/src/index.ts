@@ -106,15 +106,20 @@ async function callGemini(key: string, model: string, text: string): Promise<{ d
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: 'user', parts: [{ text }] }],
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 4096 },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 8192,
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
       }),
     });
   } catch (e) { return { erro: `rede: ${String(e)}` }; }
   if (!resp.ok) return { erro: `gemini ${resp.status}: ${(await resp.text().catch(() => '')).slice(0, 300)}` };
   const data: any = await resp.json();
-  const txt: string = (data?.candidates?.[0]?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
+  const cand: any = data?.candidates?.[0];
+  const txt: string = (cand?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
   const diag = extractJson(txt);
-  return diag ? { diag, modelo: model } : { erro: 'resposta_invalida' };
+  return diag ? { diag, modelo: model } : { erro: `resposta_invalida (finish=${cand?.finishReason ?? '?'}): ${txt.slice(0, 200)}` };
 }
 async function callAnthropic(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
   let resp: Response;
