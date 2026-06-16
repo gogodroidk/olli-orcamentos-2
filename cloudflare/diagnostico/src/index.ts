@@ -117,9 +117,13 @@ async function callGemini(key: string, model: string, text: string): Promise<{ d
   if (!resp.ok) return { erro: `gemini ${resp.status}: ${(await resp.text().catch(() => '')).slice(0, 300)}` };
   const data: any = await resp.json();
   const cand: any = data?.candidates?.[0];
-  const txt: string = (cand?.content?.parts ?? []).map((p: any) => p?.text ?? '').join('');
-  const diag = extractJson(txt);
-  return diag ? { diag, modelo: model } : { erro: `resposta_invalida (finish=${cand?.finishReason ?? '?'}): ${txt.slice(0, 200)}` };
+  const parts: any[] = cand?.content?.parts ?? [];
+  const textos: string[] = parts.filter((p: any) => p && typeof p.text === 'string' && !p.thought).map((p: any) => p.text);
+  let diag: any = null;
+  for (const t of textos) { diag = extractJson(t); if (diag) break; }
+  if (!diag) diag = extractJson(textos.join('\n'));
+  if (diag) return { diag, modelo: model };
+  return { erro: `resposta_invalida (finish=${cand?.finishReason ?? '?'} parts=${parts.length} txtlen=${textos.join('').length})` };
 }
 async function callAnthropic(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
   let resp: Response;
