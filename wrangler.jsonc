@@ -1,14 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "olli-diagnostico",
+  "main": "cloudflare/diagnostico/src/index.ts",
   "compatibility_date": "2026-06-16",
   "observability": {
     "enabled": true
   },
-  "assets": {
-    "directory": "web"
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ]
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "193f53aa847447598e3f5b6b716ebdad" }
+  ],
+  "vars": {
+    "GEMINI_MODEL": "gemini-3.5-flash"
+  }
 }
