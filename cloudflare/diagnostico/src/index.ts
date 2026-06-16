@@ -97,7 +97,20 @@ function userText(b: { marca?: string; modelo?: string; codigo?: string; sintoma
     `\nDiagnostique seguindo as regras. Responda apenas com o JSON.`
   );
 }
-async function callGemini(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
+const STR = { type: 'STRING' };
+const ARR = { type: 'ARRAY', items: { type: 'STRING' } };
+const RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    resumo: STR, significadoProvavel: STR, causasComuns: ARR, testesEmOrdem: ARR,
+    pecasSuspeitas: ARR, naoFacaAinda: ARR, nivelConfianca: STR, confiancaJustificativa: STR,
+    mensagemCliente: STR, sugestaoOrcamento: STR, fontes: ARR,
+  },
+  required: ['resumo', 'significadoProvavel', 'causasComuns', 'testesEmOrdem', 'pecasSuspeitas', 'naoFacaAinda', 'nivelConfianca', 'mensagemCliente', 'sugestaoOrcamento', 'fontes'],
+  propertyOrdering: ['resumo', 'significadoProvavel', 'causasComuns', 'testesEmOrdem', 'pecasSuspeitas', 'naoFacaAinda', 'nivelConfianca', 'confiancaJustificativa', 'mensagemCliente', 'sugestaoOrcamento', 'fontes'],
+};
+
+async function geminiOnce(key: string, model: string, text: string): Promise<{ diag: any } | { erro: string }> {
   let resp: Response;
   try {
     resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -108,6 +121,7 @@ async function callGemini(key: string, model: string, text: string): Promise<{ d
         contents: [{ role: 'user', parts: [{ text }] }],
         generationConfig: {
           responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
           maxOutputTokens: 8192,
           thinkingConfig: { thinkingLevel: 'low' },
         },
@@ -122,8 +136,14 @@ async function callGemini(key: string, model: string, text: string): Promise<{ d
   let diag: any = null;
   for (const t of textos) { diag = extractJson(t); if (diag) break; }
   if (!diag) diag = extractJson(textos.join('\n'));
-  if (diag) return { diag, modelo: model };
+  if (diag) return { diag };
   return { erro: `resposta_invalida (finish=${cand?.finishReason ?? '?'} parts=${parts.length} txtlen=${textos.join('').length})` };
+}
+
+async function callGemini(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
+  let r = await geminiOnce(key, model, text);
+  if ('erro' in r && r.erro.startsWith('resposta_invalida')) r = await geminiOnce(key, model, text); // 1 retry
+  return 'diag' in r ? { diag: r.diag, modelo: model } : r;
 }
 async function callAnthropic(key: string, model: string, text: string): Promise<{ diag: any; modelo: string } | { erro: string }> {
   let resp: Response;
