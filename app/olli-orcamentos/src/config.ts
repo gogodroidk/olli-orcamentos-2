@@ -30,7 +30,7 @@ export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? '
  * (Gemini ou Claude) é SECRET do Worker — nunca uma var EXPO_PUBLIC do app.
  * Ex.: https://olli-diagnostico.SEU-USUARIO.workers.dev
  */
-export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? '').replace(/\/+$/, '');
+export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? 'https://olli-diagnostico.igoreluisa.workers.dev').replace(/\/+$/, '');
 
 export function isDiagnosticoIADisponivel(): boolean {
   return !!DIAGNOSTICO_URL;
