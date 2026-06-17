@@ -43,6 +43,8 @@ const FERRAMENTAS: {
   route?: keyof RootStackParamList;
   soon?: boolean;
 }[] = [
+  { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: Colors.accent, route: 'OlliVoz' },
+  { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: Colors.primaryLight, route: 'OlliChat' },
   { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: Colors.primary, route: 'Servicos' },
   { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: '#0891B2', route: 'Produtos' },
   { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
@@ -243,10 +245,10 @@ export default function ContaScreen() {
               <View style={styles.soonPill}><Text style={styles.soonPillText}>em breve</Text></View>
             </View>
             <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
-            <Text style={styles.proSub}>Equipe ao vivo, relatórios avançados e a OLLI montando orçamentos por voz. Em breve, com plano para autônomo e empresa.</Text>
+            <Text style={styles.proSub}>Equipe ao vivo, relatórios avançados e a OLLI montando orçamentos por voz. Conheça os planos para autônomo e empresa.</Text>
             <TouchableOpacity
               style={styles.proBtn}
-              onPress={() => Alert.alert('OLLI PRO', 'Os planos PRO chegam em breve. Continue usando tudo gratuitamente por enquanto.')}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
               activeOpacity={0.85}
             >
               <Text style={styles.proBtnText}>Quero saber mais</Text>

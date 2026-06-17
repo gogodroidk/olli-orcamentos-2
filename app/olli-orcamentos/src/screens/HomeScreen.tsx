@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert, Modal, Pressable } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -36,6 +36,7 @@ export default function HomeScreen() {
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [olliMenu, setOlliMenu] = useState(false);
 
   const load = useCallback(async () => {
     const [all, emp] = await Promise.all([getOrcamentos(), getEmpresa()]);
@@ -57,7 +58,13 @@ export default function HomeScreen() {
 
   const abrirOlli = () => {
     Haptics.selectionAsync().catch(() => {});
-    Alert.alert('Oi, eu sou a OLLI 🤖', 'Em breve eu monto seus orçamentos por voz, resumo seu dia e cobro clientes parados pra você. Por enquanto, toque em "Novo orçamento" pra começar.');
+    setOlliMenu(true);
+  };
+
+  const irPara = (rota: 'OlliVoz' | 'OlliChat') => {
+    setOlliMenu(false);
+    Haptics.selectionAsync().catch(() => {});
+    nav.navigate(rota);
   };
 
   return (
@@ -213,6 +220,19 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
+      {/* FAB "Falar com a OLLI" — descoberta do chat conversacional */}
+      <TouchableOpacity
+        style={[styles.olliFab, { bottom: 90 }]}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); nav.navigate('OlliChat'); }}
+        activeOpacity={0.88}
+        accessibilityLabel="Falar com a OLLI"
+      >
+        <View style={styles.olliFabInner}>
+          <OlliMascot size={26} onDark float={false} />
+        </View>
+        <Text style={styles.olliFabText}>Falar com a OLLI</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={[styles.fab, { bottom: 18 }]}
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); nav.navigate('NovoOrcamento', {}); }}
@@ -222,6 +242,44 @@ export default function HomeScreen() {
           <MaterialCommunityIcons name="plus" size={28} color="#fff" />
         </LinearGradient>
       </TouchableOpacity>
+
+      {/* MENU RÁPIDO DA OLLI (robô no topo) */}
+      <Modal visible={olliMenu} transparent animationType="fade" onRequestClose={() => setOlliMenu(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setOlliMenu(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHead}>
+              <View style={styles.sheetMascot}><OlliMascot size={34} onDark float={false} /></View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.sheetTitle}>Oi, eu sou a OLLI</Text>
+                <Text style={styles.sheetSub}>Como posso te ajudar agora?</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.sheetItem} onPress={() => irPara('OlliVoz')} activeOpacity={0.8}>
+              <View style={[styles.sheetIcon, { backgroundColor: 'rgba(52,198,217,0.14)', borderColor: 'rgba(52,198,217,0.34)' }]}>
+                <MaterialCommunityIcons name="microphone" size={22} color={Colors.accent} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.sheetItemTitle}>Montar orçamento por voz</Text>
+                <Text style={styles.sheetItemDesc}>Fale o serviço e eu monto pra você</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sheetItem} onPress={() => irPara('OlliChat')} activeOpacity={0.8}>
+              <View style={[styles.sheetIcon, { backgroundColor: 'rgba(11,111,206,0.18)', borderColor: 'rgba(11,111,206,0.36)' }]}>
+                <MaterialCommunityIcons name="chat-processing-outline" size={22} color={Colors.primaryLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.sheetItemTitle}>Conversar com a OLLI</Text>
+                <Text style={styles.sheetItemDesc}>Tire dúvidas técnicas, preços e diagnóstico</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -297,4 +355,20 @@ const styles = StyleSheet.create({
 
   fab: { position: 'absolute', right: 18, width: 60, height: 60, borderRadius: 30, ...Shadow.lg },
   fabGrad: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
+
+  olliFab: { position: 'absolute', right: 18, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(16,31,51,0.96)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.35)', borderRadius: BorderRadius.full, paddingLeft: 6, paddingRight: 14, paddingVertical: 6, ...Shadow.md },
+  olliFabInner: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(127,233,245,0.12)', justifyContent: 'center', alignItems: 'center' },
+  olliFabText: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
+
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark, marginBottom: Spacing.base },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
+  sheetMascot: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
+  sheetSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, marginBottom: 10 },
+  sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  sheetItemDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
 });
