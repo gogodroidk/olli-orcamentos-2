@@ -657,7 +657,7 @@ export default {
       if (!gKey) return json({ ok: false, erro: 'ia_nao_configurada' });
 
       const r = await callGeminiChat(gKey, env.GEMINI_MODEL || 'gemini-3.5-flash', CHAT_SYSTEM, contents, 2048);
-      if ('erro' in r) { console.error(`[chat] erro_ia: ${r.erro}`); return json({ ok: false, erro: 'erro_ia', _debug: String(r.erro).slice(0, 300) }, 502); }
+      if ('erro' in r) { console.error(`[chat] erro_ia: ${r.erro}`); return json({ ok: false, erro: 'erro_ia' }, 502); }
       return json({ ok: true, resposta: r.texto });
     }
 
