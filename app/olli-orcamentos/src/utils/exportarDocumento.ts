@@ -59,7 +59,12 @@ function imprimirHtmlWeb(html: string, opcoes?: OpcoesCompartilhar): Promise<voi
       iframe.style.pointerEvents = 'none';
 
       let done = false;
+      let safetyTimer: ReturnType<typeof setTimeout> | undefined;
       const cleanup = () => {
+        if (safetyTimer !== undefined) {
+          clearTimeout(safetyTimer);
+          safetyTimer = undefined;
+        }
         try {
           if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
         } catch {
@@ -71,9 +76,25 @@ function imprimirHtmlWeb(html: string, opcoes?: OpcoesCompartilhar): Promise<voi
         done = true;
         // Remove o iframe um pouco depois — em alguns navegadores o print()
         // é assíncrono e remover cedo demais cancela o diálogo.
+        if (safetyTimer !== undefined) {
+          clearTimeout(safetyTimer);
+          safetyTimer = undefined;
+        }
         setTimeout(cleanup, 1500);
         resolve();
       };
+
+      // Rede de segurança: se o onload do iframe NUNCA disparar (e o conteúdo
+      // não estava 'complete' no instante do check), o iframe ficaria órfão e o
+      // "Gerando…" travaria pra sempre. Após ~10s, limpamos e resolvemos mesmo
+      // assim — o iframe SEMPRE sai do DOM e a Promise SEMPRE resolve.
+      safetyTimer = setTimeout(() => {
+        safetyTimer = undefined;
+        if (done) return;
+        done = true;
+        cleanup();
+        resolve();
+      }, 10000);
 
       const onLoad = () => {
         try {

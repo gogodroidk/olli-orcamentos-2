@@ -45,7 +45,13 @@ export function maskCEP(value: string): string {
   return d.replace(/(\d{5})(\d{1,3})$/, '$1-$2');
 }
 
-/** DD/MM/AAAA com validação suave de limites de dia/mês */
+/** Confere se (d/m/y) é uma data de calendário real (rejeita 31/02, 31/04…). */
+function diaValidoNoMes(dia: number, mes: number, ano: number): boolean {
+  const dt = new Date(ano, mes - 1, dia);
+  return dt.getDate() === dia && dt.getMonth() === mes - 1 && dt.getFullYear() === ano;
+}
+
+/** DD/MM/AAAA com validação de limites e de data real (recusa dígito inválido). */
 export function maskDate(value: string): string {
   let d = onlyDigits(value).slice(0, 8);
   if (d.length >= 1) {
@@ -64,6 +70,21 @@ export function maskDate(value: string): string {
       d = d.slice(0, 2) + String(mm).padStart(2, '0') + d.slice(4);
     }
   }
+
+  // Recusa o último dígito quando ele forma um dia inexistente para o mês:
+  //  - com dia+mês (>=4 díg): valida usando ano bissexto (2000) para ser
+  //    permissivo com 29/02 enquanto o ano não foi digitado;
+  //  - com a data completa (8 díg): valida o dia no ano realmente informado.
+  if (d.length >= 4) {
+    const dia = parseInt(d.slice(0, 2), 10);
+    const mes = parseInt(d.slice(2, 4), 10);
+    const anoRef = d.length === 8 ? parseInt(d.slice(4, 8), 10) : 2000;
+    if (!diaValidoNoMes(dia, mes, anoRef)) {
+      // descarta o dígito recém-digitado (o último) e remascara o resto.
+      return maskDate(d.slice(0, -1));
+    }
+  }
+
   if (d.length <= 2) return d;
   if (d.length <= 4) return d.replace(/(\d{2})(\d{1,2})/, '$1/$2');
   return d.replace(/(\d{2})(\d{2})(\d{1,4})/, '$1/$2/$3');
@@ -117,10 +138,18 @@ export function isoToBR(iso?: string): string {
   return `${d}/${m}/${y}`;
 }
 
-/** DD/MM/AAAA -> ISO (AAAA-MM-DD). Retorna '' se incompleto. */
+/** DD/MM/AAAA -> ISO (AAAA-MM-DD). Retorna '' se incompleto ou inválido. */
 export function brToISO(br?: string): string {
   if (!br) return '';
   const d = onlyDigits(br);
   if (d.length !== 8) return '';
+  const dia = parseInt(d.slice(0, 2), 10);
+  const mes = parseInt(d.slice(2, 4), 10);
+  const ano = parseInt(d.slice(4, 8), 10);
+  // Rejeita datas de calendário inexistentes (31/02, 30/02, 31/04…).
+  const dt = new Date(ano, mes - 1, dia);
+  if (dt.getDate() !== dia || dt.getMonth() !== mes - 1 || dt.getFullYear() !== ano) {
+    return '';
+  }
   return `${d.slice(4, 8)}-${d.slice(2, 4)}-${d.slice(0, 2)}`;
 }

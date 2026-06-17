@@ -16,6 +16,7 @@ import { getClientes, saveCliente, deleteCliente } from '../database/database';
 import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
+import { isValidCPF } from '../utils/masks';
 
 export default function ClientesScreen() {
   const nav = useNavigation();
@@ -24,6 +25,7 @@ export default function ClientesScreen() {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<Cliente> | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string }>({});
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -36,7 +38,11 @@ export default function ClientesScreen() {
   function applyFilter(data: Cliente[], q: string) {
     if (!q.trim()) { setFiltered(data); return; }
     const lower = q.toLowerCase();
-    setFiltered(data.filter(c => c.nome.toLowerCase().includes(lower) || c.telefone.includes(q)));
+    const qDigits = q.replace(/\D/g, '');
+    setFiltered(data.filter(c =>
+      c.nome.toLowerCase().includes(lower) ||
+      (qDigits.length > 0 && c.telefone.replace(/\D/g, '').includes(qDigits))
+    ));
   }
 
   function handleSearch(q: string) {
@@ -46,6 +52,23 @@ export default function ClientesScreen() {
 
   async function handleSave() {
     if (!editing?.nome?.trim()) return;
+
+    const nextErrors: { cpf?: string; cnpj?: string } = {};
+    const cpfDigits = (editing.cpf ?? '').replace(/\D/g, '');
+    const cnpjDigits = (editing.cnpj ?? '').replace(/\D/g, '');
+    if (cpfDigits.length > 0 && !isValidCPF(editing.cpf!)) {
+      nextErrors.cpf = 'CPF inválido';
+    }
+    if (cnpjDigits.length > 0 && cnpjDigits.length !== 14) {
+      nextErrors.cnpj = 'CNPJ deve ter 14 dígitos';
+    }
+    if (nextErrors.cpf || nextErrors.cnpj) {
+      setErrors(nextErrors);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      return;
+    }
+    setErrors({});
+
     const c: Cliente = {
       id: editing.id ?? generateId(),
       nome: editing.nome!,
@@ -92,7 +115,7 @@ export default function ClientesScreen() {
                 {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -102,27 +125,27 @@ export default function ClientesScreen() {
             </View>
           </AnimatedEntrance>
         )}
-        ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); }} />}
+        ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); }} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
 
-      <Modal visible={!!editing} animationType="slide" onRequestClose={() => setEditing(null)}>
+      <Modal visible={!!editing} animationType="slide" onRequestClose={() => { setEditing(null); setErrors({}); }}>
         {editing && (
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{isNew ? 'Novo Cliente' : 'Editar Cliente'}</Text>
-              <TouchableOpacity onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => { setEditing(null); setErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <OlliInput label="Nome completo" required value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
               <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => setEditing(p => p ? { ...p, telefone: v } : p)} placeholder="(11) 99999-9999" leftIcon="phone" />
-              <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => setEditing(p => p ? { ...p, cpf: v } : p)} placeholder="000.000.000-00" leftIcon="card-account-details" />
-              <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => setEditing(p => p ? { ...p, cnpj: v } : p)} placeholder="00.000.000/0001-00" leftIcon="domain" />
+              <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
+              <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
               <OlliInput label="Endereço" value={editing.endereco ?? ''} onChangeText={v => setEditing(p => p ? { ...p, endereco: v } : p)} placeholder="Rua, número" leftIcon="map-marker" />
               <OlliInput label="Complemento" value={editing.complemento ?? ''} onChangeText={v => setEditing(p => p ? { ...p, complemento: v } : p)} placeholder="Apto, bloco, referência" />
               <View style={styles.rowFields}>

@@ -61,6 +61,9 @@ export type TabParamList = {
 const Tab = createBottomTabNavigator<TabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+/** Tela stub para a aba central "Orcar", que nunca é exibida (tabPress.preventDefault). */
+const EmptyTab = () => null;
+
 /** Botão central elevado (＋ Orçamento). Não é uma tela — abre o stack NovoOrcamento. */
 function CenterButton(_props: BottomTabBarButtonProps) {
   const nav = useNavigation<any>();
@@ -133,7 +136,9 @@ function TabNavigator() {
       />
       <Tab.Screen
         name="Orcar"
-        component={HomeScreen}
+        // Stub vazio: esta aba nunca é exibida (tabPress faz preventDefault e o
+        // botão central abre o stack NovoOrcamento). Evita montar a HomeScreen 2x.
+        component={EmptyTab}
         options={{
           tabBarLabel: '',
           tabBarIcon: () => null,

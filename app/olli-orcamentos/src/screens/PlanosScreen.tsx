@@ -19,12 +19,27 @@ interface Plano {
   nome: string;
   preco: string;
   periodo?: string;
+  /** Preço mensal em reais (planos pagos). Usado para calcular o anual real (mensal*12*0.8). */
+  precoMensal?: number;
   tagline: string;
   icon: string;
   destaque?: boolean;
   atual?: boolean;
   beneficios: string[];
   cta: string;
+}
+
+// Formata um valor inteiro em reais como "R$ N" (sem centavos, pt-BR).
+function reais(n: number): string {
+  return `R$ ${Math.round(n).toLocaleString('pt-BR')}`;
+}
+
+// Preço/período a exibir conforme o toggle. No anual, mostra o total com -20% ("/ano").
+function precoExibido(plano: Plano, anual: boolean): { preco: string; periodo?: string } {
+  if (anual && plano.precoMensal) {
+    return { preco: reais(plano.precoMensal * 12 * 0.8), periodo: '/ano' };
+  }
+  return { preco: plano.preco, periodo: plano.periodo };
 }
 
 const PLANOS: Plano[] = [
@@ -49,6 +64,7 @@ const PLANOS: Plano[] = [
     nome: 'Pro',
     preco: 'R$ 39',
     periodo: '/mês',
+    precoMensal: 39,
     tagline: 'Para o autônomo que quer vender mais e ganhar tempo.',
     icon: 'crown-outline',
     destaque: true,
@@ -67,6 +83,7 @@ const PLANOS: Plano[] = [
     nome: 'Empresa',
     preco: 'R$ 99',
     periodo: '/mês',
+    precoMensal: 99,
     tagline: 'Para equipes que atendem em campo todos os dias.',
     icon: 'office-building-outline',
     cta: 'Falar com a OLLI',
@@ -104,7 +121,7 @@ export default function PlanosScreen() {
           </View>
         </AnimatedEntrance>
 
-        {/* TOGGLE MENSAL / ANUAL (apenas visual) */}
+        {/* TOGGLE MENSAL / ANUAL — no anual exibe o total real com -20% */}
         <AnimatedEntrance index={1}>
           <View style={styles.toggle}>
             <TouchableOpacity
@@ -139,6 +156,7 @@ export default function PlanosScreen() {
 }
 
 function PlanoCard({ plano, periodoAnual, onPress }: { plano: Plano; periodoAnual: boolean; onPress: () => void }) {
+  const exibido = precoExibido(plano, periodoAnual);
   const body = (
     <View style={styles.cardBody}>
       <View style={styles.cardHead}>
@@ -161,8 +179,11 @@ function PlanoCard({ plano, periodoAnual, onPress }: { plano: Plano; periodoAnua
 
       {/* PREÇO */}
       <View style={styles.priceRow}>
-        <Text style={[styles.price, plano.destaque && styles.priceDestaque]}>{plano.preco}</Text>
-        {plano.periodo ? <Text style={styles.pricePeriod}>{periodoAnual ? '/ano (-20%)' : plano.periodo}</Text> : null}
+        <Text style={[styles.price, plano.destaque && styles.priceDestaque]}>{exibido.preco}</Text>
+        {exibido.periodo ? <Text style={styles.pricePeriod}>{exibido.periodo}</Text> : null}
+        {periodoAnual && plano.precoMensal ? (
+          <View style={styles.priceSaveBadge}><Text style={styles.priceSaveBadgeText}>-20%</Text></View>
+        ) : null}
       </View>
 
       {/* BENEFÍCIOS */}
@@ -259,6 +280,8 @@ const styles = StyleSheet.create({
   price: { ...Typography.valueLarge, color: '#fff' },
   priceDestaque: { color: Colors.accentLight },
   pricePeriod: { fontSize: 13.5, color: Colors.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 6 },
+  priceSaveBadge: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, marginBottom: 7 },
+  priceSaveBadgeText: { fontSize: 10.5, fontWeight: '800', color: Colors.success },
 
   beneficios: { marginTop: Spacing.base, gap: 10 },
   beneficioRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },

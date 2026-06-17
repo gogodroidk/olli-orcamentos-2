@@ -108,7 +108,7 @@ export default function HomeScreen() {
               <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={Colors.accent} />
               <Text style={styles.heroEmptyTitle}>Nenhuma visita agendada</Text>
               <Text style={styles.heroEmptySub}>Agende seus serviços e a OLLI te avisa a hora de sair, com o trânsito de SP.</Text>
-              <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Agenda'); }} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
                 <MaterialCommunityIcons name="calendar-plus" size={18} color="#0A1626" />
                 <Text style={styles.heroBtnText}>Abrir agenda</Text>
               </TouchableOpacity>

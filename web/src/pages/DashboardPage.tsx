@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { orcamentosApi } from '../lib/api';
 import { useAsync } from '../hooks/useAsync';
@@ -199,6 +199,11 @@ export function DashboardPage() {
   const { data, loading, error } = useAsync(orcamentosApi.list);
   const rows = useMemo(() => data ?? [], [data]);
 
+  // Data is fetched at mount; show the load time instead of a fake "agora".
+  const loadedAt = useRef(
+    new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+  );
+
   const m = useMemo(() => computeDashboard(rows), [rows]);
   const buckets = useMemo(() => revenueByMonth(rows, 6), [rows]);
   const alerts = useMemo(() => computeAlerts(rows), [rows]);
@@ -209,7 +214,7 @@ export function DashboardPage() {
       <header className="page-head">
         <div>
           <h1 className="page-title tight">Visão geral</h1>
-          <div className="page-sub">{todayLabel()} · atualizado agora</div>
+          <div className="page-sub">{todayLabel()} · carregado às {loadedAt.current}</div>
         </div>
         <div className="head-actions">
           <span className="pill-muted" title="Filtro por período em breve">
@@ -230,9 +235,13 @@ export function DashboardPage() {
         {/* KPI row — all values computed from real rows */}
         <div className="kpi-row">
           <Kpi
-            label="Faturamento (aprovados)"
+            label="Em contratos (aprovados)"
             value={formatBRL(m.faturamento)}
-            sub={m.approvedCount > 0 ? `${m.approvedCount} aprovados` : 'nenhum ainda'}
+            sub={
+              m.approvedCount > 0
+                ? `${m.approvedCount} aprovados · valor aprovado, não recebido`
+                : 'nenhum aprovado ainda'
+            }
             accent={m.faturamento > 0 ? 'var(--success)' : undefined}
           />
           <Kpi

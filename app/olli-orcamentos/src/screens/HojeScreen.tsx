@@ -42,6 +42,14 @@ function diasAtras(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+// Formata um ISO em 'HH:mm', protegendo contra datas inválidas/nulas vindas da nuvem.
+function hhmm(iso?: string | null): string {
+  if (!iso) return '--:--';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '--:--';
+  return format(d, 'HH:mm');
+}
+
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -205,8 +213,8 @@ export default function HojeScreen() {
                     activeOpacity={0.85}
                   >
                     <View style={styles.agendaTime}>
-                      <Text style={styles.agendaHour}>{format(new Date(a.inicio), 'HH:mm')}</Text>
-                      {a.fim ? <Text style={styles.agendaHourEnd}>{format(new Date(a.fim), 'HH:mm')}</Text> : null}
+                      <Text style={styles.agendaHour}>{hhmm(a.inicio)}</Text>
+                      {a.fim ? <Text style={styles.agendaHourEnd}>{hhmm(a.fim)}</Text> : null}
                     </View>
                     <View style={[styles.agendaBar, { backgroundColor: cor }]} />
                     <View style={{ flex: 1 }}>

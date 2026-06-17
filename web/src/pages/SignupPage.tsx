@@ -22,14 +22,17 @@ export function SignupPage() {
     setMessage(null);
     setSubmitting(true);
     try {
-      await signUp(email, password, nome.trim() || undefined);
-      // If email confirmation is on, there is no session yet — tell the user.
-      // If it is off, the auth listener will set a session and the guard above
-      // redirects on the next render.
-      setMessage(
-        'Conta criada! Se a confirmação por e-mail estiver ativa, verifique sua caixa de entrada antes de entrar.',
-      );
-      navigate('/', { replace: true });
+      const data = await signUp(email, password, nome.trim() || undefined);
+      if (data.session) {
+        // Email confirmation is off — we're signed in. Go to the app.
+        navigate('/', { replace: true });
+      } else {
+        // Email confirmation is pending: there is no session yet, so navigating
+        // to "/" would just bounce back to login. Stay here and tell the user.
+        setMessage(
+          `Conta criada! Enviamos um link de confirmação para ${email.trim()}. Confirme e depois faça login.`,
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar conta.');
     } finally {

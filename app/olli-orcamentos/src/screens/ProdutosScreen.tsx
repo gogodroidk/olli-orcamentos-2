@@ -42,7 +42,14 @@ export default function ProdutosScreen() {
   }
 
   function applyFilter(data: ProdutoItem[], q: string) {
-    setFiltered(!q.trim() ? data : data.filter(p => p.nome.toLowerCase().includes(q.toLowerCase())));
+    if (!q.trim()) { setFiltered(data); return; }
+    const lower = q.toLowerCase();
+    setFiltered(data.filter(p =>
+      p.nome.toLowerCase().includes(lower) ||
+      (p.descricao ?? '').toLowerCase().includes(lower) ||
+      (p.marca ?? '').toLowerCase().includes(lower) ||
+      (p.modelo ?? '').toLowerCase().includes(lower)
+    ));
   }
 
   async function handleSave() {

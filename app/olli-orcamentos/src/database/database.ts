@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
-import { pushRow, removeRow } from '../services/cloudSync';
+import { pushRow, removeRow, pushTombstone, pushAllLocal } from '../services/cloudSync';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -20,6 +20,36 @@ function mirrorPush(table: Parameters<typeof pushRow>[0], obj: unknown): void {
 function mirrorRemove(table: Parameters<typeof removeRow>[0], id: string): void {
   try {
     void removeRow(table, id).catch(() => {});
+  } catch {
+    // idem
+  }
+}
+
+/**
+ * Registra um TOMBSTONE de exclusão: grava localmente em `exclusoes` (para o
+ * pullAll não ressuscitar o id) e empurra para a nuvem (fire-and-forget) para a
+ * exclusão convergir entre aparelhos e o painel. Local-first: roda em background
+ * e NUNCA lança — offline / deslogado apenas mantém o tombstone local (que sobe
+ * no próximo login via syncOnLogin).
+ */
+function registrarExclusao(table: string, id: string): void {
+  try {
+    void (async () => {
+      try {
+        const database = await getDb();
+        await database.runAsync(
+          'INSERT OR REPLACE INTO exclusoes (tabela, item_id, excluido_em) VALUES (?,?,?)',
+          [table, id, new Date().toISOString()],
+        );
+      } catch {
+        // o tombstone local é best-effort; jamais quebra o delete local
+      }
+      try {
+        await pushTombstone(table, id);
+      } catch {
+        // espelho em background: nunca afeta o app local
+      }
+    })().catch(() => {});
   } catch {
     // idem
   }
@@ -114,6 +144,17 @@ async function initDb(database: SQLite.SQLiteDatabase) {
     CREATE TABLE IF NOT EXISTS contadores (
       chave TEXT PRIMARY KEY,
       valor INTEGER NOT NULL
+    );
+
+    -- Tombstones de exclusão: registram o que foi apagado localmente para a
+    -- exclusão CONVERGIR entre aparelhos e o painel (pullAll é só aditivo; sem
+    -- isto, um registro deletado reaparece ao baixar da nuvem). Sincronizada
+    -- com a tabela nuvem public.exclusoes (migration 0005).
+    CREATE TABLE IF NOT EXISTS exclusoes (
+      tabela TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      excluido_em TEXT NOT NULL,
+      PRIMARY KEY (tabela, item_id)
     );
 
     -- Etapa 0.3 — cache de diagnóstico IA por (código+marca). A IA só é chamada
@@ -264,6 +305,7 @@ export async function deleteCliente(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM clientes WHERE id = ?', [id]);
   mirrorRemove('clientes', id);
+  registrarExclusao('clientes', id);
 }
 
 function rowToCliente(r: any): Cliente {
@@ -307,6 +349,7 @@ export async function deleteServico(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM servicos WHERE id = ?', [id]);
   mirrorRemove('servicos', id);
+  registrarExclusao('servicos', id);
 }
 
 function rowToServico(r: any): ServicoItem {
@@ -349,6 +392,7 @@ export async function deleteProduto(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM produtos WHERE id = ?', [id]);
   mirrorRemove('produtos', id);
+  registrarExclusao('produtos', id);
 }
 
 function rowToProduto(r: any): ProdutoItem {
@@ -363,7 +407,14 @@ function rowToProduto(r: any): ProdutoItem {
 // ─── ORÇAMENTOS ─────────────────────────────────────────────
 export async function getOrcamentos(): Promise<Orcamento[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM orcamentos ORDER BY id DESC');
+  // Ordena pela DATA DE CRIAÇÃO (mais novo primeiro). O `id` é UUID (ordem
+  // aleatória); a data real mora no blob JSON (`data.$.criadoEm`), pois a tabela
+  // local guarda só (id, numero, data). `json_extract` (JSON1, embutido no
+  // SQLite do Expo) lê a chave; o tiebreaker por `numero` cobre linhas legadas
+  // sem `criadoEm`.
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM orcamentos ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
+  );
   return rows.map(r => JSON.parse(r.data));
 }
 
@@ -386,6 +437,7 @@ export async function deleteOrcamento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM orcamentos WHERE id = ?', [id]);
   mirrorRemove('orcamentos', id);
+  registrarExclusao('orcamentos', id);
 }
 
 /**
@@ -418,7 +470,11 @@ export async function getNextOrcamentoNumber(): Promise<string> {
 // ─── RECIBOS ─────────────────────────────────────────────
 export async function getRecibos(): Promise<Recibo[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM recibos ORDER BY id DESC');
+  // Mesma lógica de getOrcamentos: ordena por data de criação (mais novo
+  // primeiro), extraída do blob JSON, com fallback por `numero`.
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM recibos ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
+  );
   return rows.map(r => JSON.parse(r.data));
 }
 
@@ -457,6 +513,7 @@ export async function deleteModelo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM modelos WHERE id = ?', [id]);
   mirrorRemove('modelos', id);
+  registrarExclusao('modelos', id);
 }
 
 // ─── DEPOIMENTOS ─────────────────────────────────────────────
@@ -479,6 +536,7 @@ export async function deleteDepoimento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM depoimentos WHERE id = ?', [id]);
   mirrorRemove('depoimentos', id);
+  registrarExclusao('depoimentos', id);
 }
 
 // ─── CACHE DE IA (Etapa 0.3) ─────────────────────────────
@@ -606,18 +664,6 @@ async function getAgendamentosForBackup(): Promise<Agendamento[]> {
   return rows.map(rowToAgendamentoLocal);
 }
 
-async function saveAgendamentoForBackup(a: Agendamento): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(
-    `INSERT OR REPLACE INTO agendamentos
-       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
-     a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
-     a.observacao ?? null, a.criadoEm, a.atualizadoEm]
-  );
-}
-
 // ─── EXPORT / IMPORT (backup) ─────────────────────────────
 export interface BackupSnapshot {
   version: number;
@@ -665,22 +711,80 @@ export async function importAllData(data: Partial<BackupSnapshot>): Promise<void
   const agendamentos = asArray<Agendamento>(data.agendamentos);
 
   const db = await getDb();
+  // Dentro da transação usamos upserts LOCAIS SILENCIOSOS (runAsync direto, SEM
+  // mirrorPush) para não disparar uma tempestade de rede no meio da restauração.
+  // UM ÚNICO pushAllLocal() é disparado DEPOIS do commit (fire-and-forget).
   await db.withTransactionAsync(async () => {
     await db.execAsync(`
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
       DELETE FROM agendamentos;
     `);
-    if (data.empresa) await saveEmpresa(data.empresa);
-    for (const c of clientes) await saveCliente(c);
-    for (const s of servicos) await saveServico(s);
-    for (const p of produtos) await saveProduto(p);
-    for (const o of orcamentos) await saveOrcamento(o);
-    for (const r of recibos) await saveRecibo(r);
-    for (const m of modelos) await saveModelo(m);
-    for (const d of depoimentos) await saveDepoimento(d);
-    for (const a of agendamentos) await saveAgendamentoForBackup(a);
+    if (data.empresa) {
+      await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
+        data.empresa.id, JSON.stringify(data.empresa),
+      ]);
+    }
+    for (const c of clientes) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO clientes
+         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [c.id, c.nome, c.telefone, c.cpf ?? null, c.cnpj ?? null, c.endereco ?? null,
+         c.complemento ?? null, c.estado ?? null, c.cidade ?? null, c.cep ?? null, c.criadoEm],
+      );
+    }
+    for (const s of servicos) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [s.id, s.nome, s.descricao ?? null, s.preco, s.custo ?? null, s.unidade, s.fotoUri ?? null, s.criadoEm],
+      );
+    }
+    for (const p of produtos) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO produtos
+         (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [p.id, p.nome, p.descricao ?? null, p.preco, p.custo ?? null, p.marca ?? null,
+         p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm],
+      );
+    }
+    for (const o of orcamentos) {
+      await db.runAsync('INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
+        [o.id, o.numero, JSON.stringify(o)]);
+    }
+    for (const r of recibos) {
+      await db.runAsync('INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)',
+        [r.id, r.numero, JSON.stringify(r)]);
+    }
+    for (const m of modelos) {
+      await db.runAsync('INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em) VALUES (?,?,?,?,?)',
+        [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm]);
+    }
+    for (const d of depoimentos) {
+      await db.runAsync('INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em) VALUES (?,?,?,?,?)',
+        [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm]);
+    }
+    for (const a of agendamentos) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO agendamentos
+           (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
+         a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
+         a.observacao ?? null, a.criadoEm, a.atualizadoEm],
+      );
+    }
   });
+
+  // Um ÚNICO push em lote DEPOIS do commit. Fire-and-forget: o espelho na nuvem
+  // jamais pode fazer a restauração local falhar (offline / deslogado = no-op).
+  try {
+    void pushAllLocal().catch(() => {});
+  } catch {
+    // idem
+  }
 }
 
 // ─── STATS ─────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { formatCurrency, formatNumber } from './currency';
 import { formatDate, formatDateBR } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
+import { escapeHtml, safeHexColor } from './html';
 
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
 export { abrirWhatsApp } from './exportarDocumento';
@@ -64,7 +65,9 @@ function mixWhite(hex: string, pct: number): string {
 }
 
 function renderStars(n: number): string {
-  return '★'.repeat(n) + '☆'.repeat(5 - n);
+  // Clampa entre 0 e 5: '★'.repeat(n) lança RangeError para n<0 ou n>5.
+  const k = Math.max(0, Math.min(5, Math.round(n || 0)));
+  return '★'.repeat(k) + '☆'.repeat(5 - k);
 }
 
 /** Monograma OLLI (marca d'água / selo) na cor do accent. */
@@ -101,8 +104,8 @@ function renderItensTabela(itens: ItemOrcamento[]): string {
       <div class="item-main">
         ${img(item.fotoUri) ? `<img src="${img(item.fotoUri)}" class="item-thumb" />` : ''}
         <div class="item-text">
-          <div class="item-name">${item.nome}${badge}</div>
-          ${item.descricao ? `<div class="item-desc">${item.descricao}</div>` : ''}
+          <div class="item-name">${escapeHtml(item.nome)}${badge}</div>
+          ${item.descricao ? `<div class="item-desc">${escapeHtml(item.descricao)}</div>` : ''}
         </div>
       </div>
       <div class="col-qtd">${formatNumber(item.quantidade, item.quantidade % 1 === 0 ? 0 : 1)}</div>
@@ -124,9 +127,13 @@ function renderItensTabela(itens: ItemOrcamento[]): string {
   `;
 }
 
-/** Texto das condições de pagamento a partir dos dados do orçamento. */
+/**
+ * Texto das condições de pagamento a partir dos dados do orçamento.
+ * Retorna HTML já seguro: o texto livre do usuário (condicoesPagamento) é
+ * escapado aqui; o `<br/>` do ramo do sinal é marcação fixa controlada.
+ */
 function pagamentoTexto(o: Orcamento): string {
-  if (o.condicoesPagamento) return o.condicoesPagamento;
+  if (o.condicoesPagamento) return escapeHtml(o.condicoesPagamento);
   const formas: string[] = [];
   if (o.formasPagamento?.pix) formas.push('Pix');
   if (o.formasPagamento?.credito) formas.push('Crédito');
@@ -140,14 +147,15 @@ function pagamentoTexto(o: Orcamento): string {
 
 /** 3 colunas de condições: Pagamento · Garantia · Prazo (omite vazias). */
 function renderCondicoes(o: Orcamento): string {
+  // `pagamento` já vem como HTML seguro de pagamentoTexto (texto livre escapado lá).
   const pagamento = pagamentoTexto(o);
   const garantia = o.garantia ?? '';
   const prazo = o.agendamentoServico || o.dataPrestacaoServico || o.informacoesAdicionais || '';
 
   const cols: string[] = [];
   if (pagamento) cols.push(`<div class="cond-col"><div class="cond-label">Pagamento</div><div class="cond-val">${pagamento}</div></div>`);
-  if (garantia) cols.push(`<div class="cond-col"><div class="cond-label">Garantia</div><div class="cond-val">${garantia}</div></div>`);
-  if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${prazo}</div></div>`);
+  if (garantia) cols.push(`<div class="cond-col"><div class="cond-label">Garantia</div><div class="cond-val">${escapeHtml(garantia)}</div></div>`);
+  if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${escapeHtml(prazo)}</div></div>`);
   if (cols.length === 0) return '';
   return `<div class="conditions">${cols.join('')}</div>`;
 }
@@ -156,8 +164,11 @@ export function gerarHtmlOrcamento(
   o: Orcamento,
   empresa: Empresa,
   depoimentos: Depoimento[],
-  accent: string = DEFAULT_ACCENT,
+  accentRaw: string = DEFAULT_ACCENT,
 ): string {
+  // Cor de marca configurável: valida como hex antes de interpolar em <style>/SVG.
+  const accent = safeHexColor(accentRaw, DEFAULT_ACCENT);
+
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
 
@@ -170,25 +181,29 @@ export function gerarHtmlOrcamento(
   const emitidoEm = o.dataEmissao ? formatDateBR(o.dataEmissao) : formatDate(o.criadoEm);
   const tagline = empresa.especialidade || empresa.slogan || '';
 
+  // Valor monetário real do desconto (independe de descontoTipo valor/percentual).
+  const descontoValor = o.subtotal - o.valorTotal;
+
   const enderecoEmpresa = [
     empresa.endereco,
     [empresa.cidade, empresa.estado].filter(Boolean).join('/'),
   ].filter(Boolean).join(' · ');
   const contatoEmpresa = [empresa.telefone, empresa.email].filter(Boolean).join(' · ');
 
+  // Escapa CADA parte antes de juntar com o <br/> (marcação fixa controlada).
   const clienteLinhas = [
     o.clienteEndereco,
     o.clienteCpfCnpj ? `CPF/CNPJ ${o.clienteCpfCnpj}` : '',
     o.clienteTelefone,
-  ].filter(Boolean).join('<br/>');
+  ].filter(Boolean).map(escapeHtml).join('<br/>');
 
   const depoimentosHtml = depoimentos.length > 0 ? `
     <div class="block">
       <div class="eyebrow">Depoimentos</div>
       ${depoimentos.map(d => `
         <div class="depoimento">
-          <div class="depo-head"><strong>${d.nomeCliente}</strong> <span class="stars">${renderStars(d.estrelas)}</span></div>
-          ${d.texto ? `<p class="depo-text">${d.texto}</p>` : ''}
+          <div class="depo-head"><strong>${escapeHtml(d.nomeCliente)}</strong> <span class="stars">${renderStars(d.estrelas)}</span></div>
+          ${d.texto ? `<p class="depo-text">${escapeHtml(d.texto)}</p>` : ''}
         </div>
       `).join('')}
     </div>
@@ -307,8 +322,8 @@ export function gerarHtmlOrcamento(
     <div class="header">
       <div class="header-left">
         ${img(empresa.logoUri) ? `<img src="${img(empresa.logoUri)}" class="brand-logo" />` : ''}
-        <div class="brand-name">${empresa.nome}</div>
-        ${tagline ? `<div class="brand-tagline">${tagline}</div>` : ''}
+        <div class="brand-name">${escapeHtml(empresa.nome)}</div>
+        ${tagline ? `<div class="brand-tagline">${escapeHtml(tagline)}</div>` : ''}
       </div>
       <div class="header-right">
         <div class="doc-title">Orçamento</div>
@@ -324,17 +339,17 @@ export function gerarHtmlOrcamento(
     <div class="parties">
       <div class="party">
         <div class="eyebrow">Prestador</div>
-        <div class="party-name">${empresa.nome}</div>
+        <div class="party-name">${escapeHtml(empresa.nome)}</div>
         <div class="party-info">
-          ${empresa.cnpj ? `CNPJ ${empresa.cnpj}<br/>` : ''}
-          ${enderecoEmpresa ? `${enderecoEmpresa}<br/>` : ''}
-          ${contatoEmpresa}
+          ${empresa.cnpj ? `CNPJ ${escapeHtml(empresa.cnpj)}<br/>` : ''}
+          ${enderecoEmpresa ? `${escapeHtml(enderecoEmpresa)}<br/>` : ''}
+          ${escapeHtml(contatoEmpresa)}
         </div>
       </div>
       <div class="party-divider"></div>
       <div class="party">
         <div class="eyebrow">Cliente</div>
-        <div class="party-name">${o.clienteNome}</div>
+        <div class="party-name">${escapeHtml(o.clienteNome)}</div>
         <div class="party-info">${clienteLinhas}</div>
       </div>
     </div>
@@ -346,7 +361,7 @@ export function gerarHtmlOrcamento(
     <div class="totals">
       <div class="totals-inner">
         <div class="total-line"><span>Subtotal</span><span>${formatCurrency(o.subtotal)}</span></div>
-        <div class="total-line discount"><span>Desconto</span><span>${o.desconto > 0 ? `- ${formatCurrency(o.desconto)}` : '—'}</span></div>
+        <div class="total-line discount"><span>Desconto</span><span>${descontoValor > 0 ? `- ${formatCurrency(descontoValor)}` : '—'}</span></div>
         <div class="total-box">
           <span class="total-box-label">TOTAL</span>
           <span class="total-box-value">${formatCurrency(o.valorTotal)}</span>
@@ -361,7 +376,7 @@ export function gerarHtmlOrcamento(
     ${o.condicoesContratuais ? `
       <div class="text-block">
         <div class="eyebrow">Condições contratuais</div>
-        <div class="body">${o.condicoesContratuais}</div>
+        <div class="body">${escapeHtml(o.condicoesContratuais)}</div>
       </div>
     ` : ''}
 
@@ -378,20 +393,20 @@ export function gerarHtmlOrcamento(
           ${o.solicitarAssinaturaCliente && img(o.assinaturaClienteUri) ? `<img src="${img(o.assinaturaClienteUri)}" class="sign-img" />` : ''}
           <div class="sign-line"></div>
           <div class="sign-caption">Aprovação do cliente · data</div>
-          <div class="sign-caption sign-name">${o.clienteNome}</div>
+          <div class="sign-caption sign-name">${escapeHtml(o.clienteNome)}</div>
         </div>
         <div class="sign-col">
           ${img(o.assinaturaPrestadorUri) || img(empresa.assinaturaUri) ? `<img src="${img(o.assinaturaPrestadorUri) || img(empresa.assinaturaUri)}" class="sign-img" />` : ''}
           <div class="sign-line"></div>
-          <div class="sign-caption">${empresa.nome}</div>
-          <div class="sign-caption sign-name">${empresa.nomePrestador || ''}</div>
+          <div class="sign-caption">${escapeHtml(empresa.nome)}</div>
+          <div class="sign-caption sign-name">${escapeHtml(empresa.nomePrestador || '')}</div>
         </div>
       </div>
     ` : ''}
 
     <!-- FOOTER -->
     <div class="footer">
-      <span class="footer-contact">${contatoEmpresa || empresa.nome}</span>
+      <span class="footer-contact">${escapeHtml(contatoEmpresa || empresa.nome)}</span>
       <span class="footer-seal">
         ${monogramSvg('#C7CDD6', 14, 1)}
         gerado com OLLI

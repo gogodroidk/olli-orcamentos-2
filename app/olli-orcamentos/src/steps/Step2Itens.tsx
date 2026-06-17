@@ -22,6 +22,12 @@ interface Props {
 
 type Tab = 'servico' | 'produto';
 
+/** Parser numérico simples para QUANTIDADE (contagem, não moeda): aceita dígitos e vírgula/ponto decimal. */
+function parseQty(v: string): number {
+  const n = Number(String(v).replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -162,13 +168,13 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
             <View style={styles.descontoToggle}>
               <TouchableOpacity
                 style={[styles.descontoType, orc.descontoTipo === 'valor' && styles.descontoTypeActive]}
-                onPress={() => onChangeOrc({ descontoTipo: 'valor' })}
+                onPress={() => onChangeOrc({ descontoTipo: 'valor', desconto: 0 })}
               >
                 <Text style={[styles.descontoTypeLabel, orc.descontoTipo === 'valor' && styles.descontoTypeLabelActive]}>R$</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.descontoType, orc.descontoTipo === 'percentual' && styles.descontoTypeActive]}
-                onPress={() => onChangeOrc({ descontoTipo: 'percentual' })}
+                onPress={() => onChangeOrc({ descontoTipo: 'percentual', desconto: 0 })}
               >
                 <Text style={[styles.descontoTypeLabel, orc.descontoTipo === 'percentual' && styles.descontoTypeLabelActive]}>%</Text>
               </TouchableOpacity>
@@ -176,7 +182,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
             {orc.descontoTipo === 'valor' ? (
               <OlliMoneyInput
                 value={orc.desconto}
-                onChangeValue={v => onChangeOrc({ desconto: v })}
+                onChangeValue={v => onChangeOrc({ desconto: Math.max(0, Math.min(orc.subtotal, v)) })}
                 containerStyle={{ flex: 1, marginBottom: 0 }}
               />
             ) : (
@@ -184,7 +190,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
                 <TextInput
                   style={styles.percentInput}
                   value={orc.desconto ? String(orc.desconto) : ''}
-                  onChangeText={v => onChangeOrc({ desconto: Math.min(100, parseNumber(v)) })}
+                  onChangeText={v => onChangeOrc({ desconto: Math.max(0, Math.min(100, parseNumber(v))) })}
                   keyboardType="numeric"
                   placeholder="0"
                   placeholderTextColor={Colors.onSurfaceMuted}
@@ -277,7 +283,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
               <OlliInput label="Descrição" value={editingItem.descricao ?? ''} onChangeText={v => setEditingItem(p => p ? { ...p, descricao: v } : p)} placeholder="Detalhe opcional" multiline />
               <View style={styles.rowFields}>
                 <OlliMoneyInput label="Preço unitário" value={editingItem.preco} onChangeValue={v => setEditingItem(p => p ? { ...p, preco: v } : p)} containerStyle={{ flex: 1, marginRight: 10 }} />
-                <OlliInput label="Quantidade" value={editingItem.quantidade ? String(editingItem.quantidade) : ''} onChangeText={v => setEditingItem(p => p ? { ...p, quantidade: parseNumber(v) || 1 } : p)} keyboardType="numeric" placeholder="1" containerStyle={{ flex: 1 }} />
+                <OlliInput label="Quantidade" value={editingItem.quantidade ? String(editingItem.quantidade) : ''} onChangeText={v => setEditingItem(p => p ? { ...p, quantidade: parseQty(v) } : p)} keyboardType="numeric" placeholder="1" containerStyle={{ flex: 1 }} />
               </View>
               <Text style={styles.unidadeLabel}>Unidade</Text>
               <View style={styles.unidadesRow}>

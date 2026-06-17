@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import type { AuthResponse, Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextValue {
@@ -15,7 +15,12 @@ interface AuthContextValue {
   /** True until the initial session has been resolved from storage. */
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, nome?: string) => Promise<void>;
+  /**
+   * Creates an account. Returns the sign-up `data` so callers can tell whether
+   * a session was issued immediately (email confirmation off → `data.session`
+   * is set) or the user must confirm by e-mail first (`data.session` is null).
+   */
+  signUp: (email: string, password: string, nome?: string) => Promise<AuthResponse['data']>;
   signOut: () => Promise<void>;
 }
 
@@ -53,12 +58,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
       },
       async signUp(email, password, nome) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: nome ? { data: { full_name: nome } } : undefined,
         });
         if (error) throw error;
+        return data;
       },
       async signOut() {
         await supabase.auth.signOut();

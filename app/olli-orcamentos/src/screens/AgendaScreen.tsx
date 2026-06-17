@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -118,8 +118,17 @@ export default function AgendaScreen() {
     });
   }
 
+  // Para campos do form: 'HH:mm' válido, ou '' (vazio) quando inválido/ausente.
+  function hhmmRaw(iso?: string | null): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : format(d, 'HH:mm');
+  }
+
   function abrirEdicao(a: Agendamento) {
-    const ini = new Date(a.inicio);
+    const iniRaw = new Date(a.inicio);
+    // Se o início vier inválido/nulo da nuvem, cai para hoje (evita RangeError no format).
+    const ini = isNaN(iniRaw.getTime()) ? new Date() : iniRaw;
     setEditing({
       id: a.id,
       clienteId: a.clienteId,
@@ -128,7 +137,7 @@ export default function AgendaScreen() {
       tipo: a.tipo,
       data: ini,
       horaInicio: format(ini, 'HH:mm'),
-      horaFim: a.fim ? format(new Date(a.fim), 'HH:mm') : '',
+      horaFim: hhmmRaw(a.fim),
       endereco: a.endereco ?? '',
       observacao: a.observacao ?? '',
       status: a.status,
@@ -139,6 +148,11 @@ export default function AgendaScreen() {
   async function salvar(e: EditState) {
     const ini = combinarDataHora(e.data, e.horaInicio);
     const fimDt = e.horaFim ? combinarDataHora(e.data, e.horaFim) : undefined;
+    // Valida só quando ambos os horários existem: o fim precisa ser depois do início.
+    if (fimDt && fimDt <= ini) {
+      Alert.alert('Horário inválido', 'O horário de fim deve ser depois do horário de início.');
+      return;
+    }
     const a: Agendamento = {
       id: e.id ?? generateId(),
       clienteId: e.clienteId,
@@ -278,18 +292,26 @@ export default function AgendaScreen() {
   );
 }
 
+// Formata um ISO em 'HH:mm', protegendo contra datas inválidas/nulas vindas da nuvem.
+function hhmm(iso?: string | null): string {
+  if (!iso) return '--:--';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '--:--';
+  return format(d, 'HH:mm');
+}
+
 // ─── ITEM DA LISTA ──────────────────────────────────────────
 function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void }) {
   const cor = TIPO_AGENDAMENTO_COLORS[item.tipo];
-  const ini = new Date(item.inicio);
-  const fimTxt = item.fim ? ` – ${format(new Date(item.fim), 'HH:mm')}` : '';
+  const iniTxt = hhmm(item.inicio);
+  const fimTxt = item.fim ? hhmm(item.fim) : '';
   const cancelado = item.status === 'cancelado';
   return (
     <TouchableOpacity style={styles.item} onPress={onPress} activeOpacity={0.85}>
       <View style={[styles.itemBar, { backgroundColor: cor }]} />
       <View style={styles.itemTime}>
-        <Text style={styles.itemHour}>{format(ini, 'HH:mm')}</Text>
-        <Text style={styles.itemHourEnd}>{fimTxt.replace(' – ', '')}</Text>
+        <Text style={styles.itemHour}>{iniTxt}</Text>
+        <Text style={styles.itemHourEnd}>{fimTxt}</Text>
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.itemTitle, cancelado && styles.strike]} numberOfLines={1}>{item.titulo}</Text>
