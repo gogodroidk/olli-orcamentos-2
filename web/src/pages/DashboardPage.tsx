@@ -1,64 +1,295 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { orcamentosApi } from '../lib/api';
 import { useAsync } from '../hooks/useAsync';
 import { DataState } from '../components/DataState';
 import { StatusBadge } from '../components/StatusBadge';
-import { formatBRL } from '../lib/format';
-import { STATUS_ORCAMENTO, type OrcamentoRow, type StatusOrcamento } from '../lib/types';
+import { formatBRL, formatBRLCompact, formatDate, formatRelative } from '../lib/format';
+import {
+  computeAlerts,
+  computeDashboard,
+  orcamentoDate,
+  revenueByMonth,
+  staleValue,
+  type MonthBucket,
+  type OlliAlert,
+} from '../lib/metrics';
+import type { OrcamentoRow } from '../lib/types';
 
-interface Stats {
-  total: number;
-  porStatus: Record<StatusOrcamento, number>;
-  faturamento: number;
+/** Today, e.g. "Quarta-feira, 17 de junho". Capitalised weekday. */
+function todayLabel(): string {
+  const s = new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function computeStats(rows: OrcamentoRow[]): Stats {
-  const porStatus = Object.fromEntries(
-    STATUS_ORCAMENTO.map((s) => [s, 0]),
-  ) as Record<StatusOrcamento, number>;
+/** One KPI card. `accent` colours the subtitle (e.g. success green). */
+function Kpi({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  accent?: string;
+}) {
+  return (
+    <div className="kpi-card">
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value value">{value}</div>
+      <div className="kpi-sub" style={accent ? { color: accent } : undefined}>
+        {sub}
+      </div>
+    </div>
+  );
+}
 
-  let faturamento = 0;
-  for (const o of rows) {
-    if (porStatus[o.status] !== undefined) porStatus[o.status] += 1;
-    if (o.status === 'aprovado') faturamento += o.valor_total ?? 0;
-  }
+/** Six-month revenue bars. Heights are relative to the max month (real data). */
+function RevenueChart({ buckets }: { buckets: MonthBucket[] }) {
+  const max = Math.max(0, ...buckets.map((b) => b.total));
+  const hasAny = max > 0;
 
-  return { total: rows.length, porStatus, faturamento };
+  return (
+    <div className="panel chart-panel">
+      <div className="panel-head">
+        <span className="panel-title">Faturamento — 6 meses</span>
+        <span className="panel-aside">aprovados</span>
+      </div>
+      {hasAny ? (
+        <div className="bars">
+          {buckets.map((b) => {
+            const pct = max > 0 ? Math.round((b.total / max) * 100) : 0;
+            // keep a sliver visible for non-zero months
+            const h = b.total > 0 ? Math.max(6, pct) : 0;
+            return (
+              <div key={`${b.year}-${b.month}`} className="bar-col">
+                <div className="bar-track">
+                  <div
+                    className={b.isCurrent ? 'bar bar-current' : 'bar'}
+                    style={{ height: `${h}%` }}
+                    title={formatBRL(b.total)}
+                  />
+                </div>
+                <span className={b.isCurrent ? 'bar-label bar-label-current' : 'bar-label'}>
+                  {b.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-block">
+          <span className="empty-emoji">📊</span>
+          <span>Sem faturamento ainda</span>
+          <span className="muted small">Orçamentos aprovados aparecem aqui por mês.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Recent orçamentos table (most recent first). */
+function RecentTable({ rows }: { rows: OrcamentoRow[] }) {
+  const recent = useMemo(
+    () =>
+      [...rows]
+        .sort((a, b) => (orcamentoDate(b) ?? '').localeCompare(orcamentoDate(a) ?? ''))
+        .slice(0, 6),
+    [rows],
+  );
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <span className="panel-title">Orçamentos recentes</span>
+        <Link to="/orcamentos" className="panel-link">
+          Ver todos
+        </Link>
+      </div>
+      {recent.length === 0 ? (
+        <div className="empty-block">
+          <span className="empty-emoji">🧾</span>
+          <span>Nenhum orçamento ainda</span>
+          <span className="muted small">Crie o primeiro no app para vê-lo aqui.</span>
+        </div>
+      ) : (
+        <div className="mini-table">
+          <div className="mini-row mini-head">
+            <span className="mini-cli">Cliente</span>
+            <span className="mini-date">Data</span>
+            <span className="mini-val num">Valor</span>
+            <span className="mini-status">Status</span>
+          </div>
+          {recent.map((o) => (
+            <div key={o.id} className="mini-row">
+              <span className="mini-cli">
+                <span className="mini-num">{o.numero ?? '—'}</span>
+                {o.cliente_nome ?? '—'}
+              </span>
+              <span className="mini-date">{formatDate(orcamentoDate(o))}</span>
+              <span className="mini-val num value">{formatBRL(o.valor_total)}</span>
+              <span className="mini-status">
+                <StatusBadge status={o.status} />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** OLLI mascot used in the alerts card header. */
+function OlliHead() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <rect x="8" y="11" width="32" height="28" rx="11" fill="url(#olliG)" />
+      <defs>
+        <linearGradient id="olliG" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#0B6FCE" />
+          <stop offset="1" stopColor="#34C6D9" />
+        </linearGradient>
+      </defs>
+      <circle cx="19.5" cy="25" r="3.2" fill="#7FE9F5" />
+      <circle cx="29.5" cy="25" r="3.2" fill="#7FE9F5" />
+    </svg>
+  );
+}
+
+/** Alerts card — real alerts, or a clean "tudo em dia" state. */
+function AlertsCard({ alerts, stale }: { alerts: OlliAlert[]; stale: number }) {
+  return (
+    <div className="panel alerts-panel">
+      <div className="panel-head">
+        <span className="panel-title with-icon">
+          <OlliHead /> Alertas da OLLI
+        </span>
+      </div>
+      {alerts.length === 0 ? (
+        <div className="all-clear">
+          <span className="all-clear-check">✓</span>
+          <div>
+            <div className="all-clear-title">Tudo em dia</div>
+            <div className="muted small">Nenhum alerta no momento.</div>
+          </div>
+        </div>
+      ) : (
+        <ul className="alert-list">
+          {alerts.map((a) => (
+            <li key={a.id} className="alert-row">
+              <span className={`alert-dot alert-${a.tone}`} />
+              <span className="alert-text">{a.text}</span>
+              {a.id === 'stale' && stale > 0 && (
+                <span className="alert-tag">{formatBRLCompact(stale)}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function DashboardPage() {
   const { data, loading, error } = useAsync(orcamentosApi.list);
-  const stats = useMemo(() => computeStats(data ?? []), [data]);
+  const rows = useMemo(() => data ?? [], [data]);
+
+  const m = useMemo(() => computeDashboard(rows), [rows]);
+  const buckets = useMemo(() => revenueByMonth(rows, 6), [rows]);
+  const alerts = useMemo(() => computeAlerts(rows), [rows]);
+  const stale = useMemo(() => staleValue(rows), [rows]);
 
   return (
     <section>
-      <h1 className="page-title">Painel</h1>
+      <header className="page-head">
+        <div>
+          <h1 className="page-title tight">Visão geral</h1>
+          <div className="page-sub">{todayLabel()} · atualizado agora</div>
+        </div>
+        <div className="head-actions">
+          <span className="pill-muted" title="Filtro por período em breve">
+            Tudo
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled
+            title="Crie orçamentos pelo app OLLI"
+          >
+            ＋ Novo orçamento
+          </button>
+        </div>
+      </header>
 
-      <DataState
-        loading={loading}
-        error={error}
-        isEmpty={false}
-        emptyLabel="Nenhum orçamento ainda."
-      >
-        <div className="cards">
-          <div className="card stat">
-            <span className="stat-label">Total de orçamentos</span>
-            <span className="stat-value">{stats.total}</span>
-          </div>
-          <div className="card stat">
-            <span className="stat-label">Faturamento (aprovados)</span>
-            <span className="stat-value">{formatBRL(stats.faturamento)}</span>
-          </div>
+      <DataState loading={loading} error={error} isEmpty={false}>
+        {/* KPI row — all values computed from real rows */}
+        <div className="kpi-row">
+          <Kpi
+            label="Faturamento (aprovados)"
+            value={formatBRL(m.faturamento)}
+            sub={m.approvedCount > 0 ? `${m.approvedCount} aprovados` : 'nenhum ainda'}
+            accent={m.faturamento > 0 ? 'var(--success)' : undefined}
+          />
+          <Kpi
+            label="Orçamentos concluídos"
+            value={`${m.approvedCount} / ${m.totalCount}`}
+            sub={m.totalCount > 0 ? `${m.totalCount} no total` : 'nenhum ainda'}
+          />
+          <Kpi
+            label="Conversão"
+            value={`${m.conversao}%`}
+            sub={m.sentPlusCount > 0 ? `${m.approvedCount} de ${m.sentPlusCount} enviados` : 'nenhum enviado'}
+            accent={m.conversao > 0 ? 'var(--frost)' : undefined}
+          />
+          <Kpi
+            label="Em aberto"
+            value={`${m.emAbertoCount}`}
+            sub={m.emAbertoCount > 0 ? `${formatBRLCompact(m.emAbertoValor)} aguardando` : 'nada aguardando'}
+            accent={m.emAbertoCount > 0 ? 'var(--warning)' : undefined}
+          />
         </div>
 
-        <h2 className="section-title">Por status</h2>
-        <div className="cards">
-          {STATUS_ORCAMENTO.map((status) => (
-            <div key={status} className="card stat">
-              <StatusBadge status={status} />
-              <span className="stat-value">{stats.porStatus[status]}</span>
+        {/* Main grid: chart + recent table (left), alerts (right) */}
+        <div className="cockpit-grid">
+          <div className="cockpit-main">
+            <RevenueChart buckets={buckets} />
+            <RecentTable rows={rows} />
+          </div>
+          <div className="cockpit-side">
+            <AlertsCard alerts={alerts} stale={stale} />
+            <div className="panel hint-panel">
+              <div className="panel-title">Resumo</div>
+              <ul className="kv-list">
+                <li>
+                  <span className="muted">Enviados (aguardando)</span>
+                  <span className="value">{m.emAbertoCount}</span>
+                </li>
+                <li>
+                  <span className="muted">Rascunhos</span>
+                  <span className="value">{m.rascunhoCount}</span>
+                </li>
+                <li>
+                  <span className="muted">Recência</span>
+                  <span className="value">
+                    {rows.length > 0
+                      ? formatRelative(
+                          [...rows]
+                            .map(orcamentoDate)
+                            .filter(Boolean)
+                            .sort()
+                            .at(-1) ?? null,
+                        )
+                      : '—'}
+                  </span>
+                </li>
+              </ul>
             </div>
-          ))}
+          </div>
         </div>
       </DataState>
     </section>

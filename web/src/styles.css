@@ -436,10 +436,553 @@ a {
   margin: 0;
 }
 
+/* ── Nav: disabled "em breve" item ───────────────────────────── */
+.nav-soon {
+  cursor: default;
+  opacity: 0.5;
+}
+.nav-soon:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+.soon-tag {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--frost);
+  background: rgba(127, 233, 245, 0.12);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+/* ── Page header (title + date + actions) ────────────────────── */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.page-title.tight {
+  margin: 0;
+}
+.page-sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pill-muted {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  padding: 9px 13px;
+}
+.small {
+  font-size: 12px;
+}
+
+/* ── KPI cards ───────────────────────────────────────────────── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 16px;
+  padding: 16px;
+}
+.kpi-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.kpi-value {
+  font-size: 26px;
+  color: var(--text);
+  margin-top: 5px;
+  line-height: 1.1;
+}
+.kpi-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* ── Cockpit two-column grid ─────────────────────────────────── */
+.cockpit-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+.cockpit-main,
+.cockpit-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ── Generic panel (cards on the dashboard) ──────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 16px;
+  padding: 18px;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.panel-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+.panel-title.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-aside {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.panel-link {
+  font-size: 12px;
+  color: var(--frost);
+  text-decoration: none;
+  font-weight: 700;
+}
+.panel-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Empty-state block inside panels ─────────────────────────── */
+.empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 30px 12px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.empty-emoji {
+  font-size: 26px;
+  opacity: 0.8;
+}
+
+/* ── Revenue bar chart ───────────────────────────────────────── */
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  height: 160px;
+  margin-top: 16px;
+  padding: 0 4px;
+}
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+}
+.bar-track {
+  width: 100%;
+  max-width: 46px;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+.bar {
+  width: 100%;
+  border-radius: 7px 7px 0 0;
+  background: rgba(127, 233, 245, 0.3);
+  min-height: 2px;
+  transition: height 0.3s ease;
+}
+.bar-current {
+  background: linear-gradient(180deg, #34c6d9, #0b6fce);
+}
+.bar-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.bar-label-current {
+  color: var(--frost);
+  font-weight: 800;
+}
+
+/* ── Mini table (recent orçamentos on dashboard) ─────────────── */
+.mini-table {
+  margin-top: 8px;
+}
+.mini-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.mini-row:last-child {
+  border-bottom: none;
+}
+.mini-head {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.4);
+  padding: 8px 0;
+}
+.mini-cli {
+  flex: 1.8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 0;
+}
+.mini-cli .mini-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.mini-head .mini-cli {
+  font-weight: 800;
+  color: rgba(226, 232, 240, 0.4);
+}
+.mini-date {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.mini-val {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.mini-status {
+  flex: 1.1;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* ── Alerts card ─────────────────────────────────────────────── */
+.alert-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.alert-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.alert-row:last-child {
+  border-bottom: none;
+}
+.alert-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.alert-danger {
+  background: var(--danger);
+}
+.alert-warning {
+  background: var(--warning);
+}
+.alert-info {
+  background: var(--frost);
+}
+.alert-text {
+  flex: 1;
+  font-size: 12.5px;
+  color: rgba(226, 232, 240, 0.85);
+}
+.alert-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--danger);
+  background: rgba(255, 107, 107, 0.12);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.all-clear {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 2px;
+}
+.all-clear-check {
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
+  background: rgba(43, 215, 135, 0.16);
+  color: var(--success);
+  font-weight: 900;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.all-clear-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* ── Key/value summary list ──────────────────────────────────── */
+.kv-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.kv-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+}
+.kv-list li:last-child {
+  border-bottom: none;
+}
+.kv-list .value {
+  font-size: 15px;
+  color: var(--text);
+}
+
+/* ── Toolbar: search + chips ─────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.search-box {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  padding: 9px 13px;
+  color: var(--text-muted);
+}
+.search-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(52, 198, 217, 0.25);
+}
+.search-box svg {
+  flex-shrink: 0;
+}
+.search-box input {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+}
+.search-box input::placeholder {
+  color: rgba(226, 232, 240, 0.5);
+}
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 9px;
+  padding: 9px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.chip:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.chip-active {
+  color: #0a1626;
+  background: var(--frost);
+  border-color: transparent;
+  font-weight: 800;
+}
+.chip-active:hover {
+  color: #0a1626;
+  background: var(--frost);
+}
+.pad-top {
+  padding-top: 8px;
+}
+
+/* ── CRM table (clientes) ────────────────────────────────────── */
+.crm-table {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.crm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.crm-row:first-child {
+  border-top: none;
+}
+.crm-head {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.4);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 13px 18px;
+}
+.crm-row:not(.crm-head):hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.crm-cli {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.crm-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  color: #fff;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.crm-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crm-head .crm-cli {
+  font: inherit;
+}
+.crm-contact {
+  flex: 1.4;
+  font-size: 12.5px;
+  color: rgba(226, 232, 240, 0.65);
+}
+.crm-count {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.crm-head .crm-count {
+  text-align: center;
+}
+.crm-fat {
+  flex: 1;
+  font-size: 13px;
+  color: var(--success);
+}
+.crm-head .crm-fat {
+  color: rgba(226, 232, 240, 0.4);
+  font-weight: 800;
+}
+.crm-last {
+  flex: 1;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.55);
+}
+.crm-head .crm-last {
+  color: rgba(226, 232, 240, 0.4);
+  font-weight: 800;
+}
+
+/* ── Responsive: collapse cockpit grids on medium screens ─────── */
+@media (max-width: 1080px) {
+  .cockpit-grid {
+    grid-template-columns: 1fr;
+  }
+  .kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* ── Responsive: stack sidebar on top for narrow screens ──────── */
 @media (max-width: 640px) {
   .app-shell {
     flex-direction: column;
+  }
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
+  .crm-contact {
+    display: none;
+  }
+  .mini-date {
+    display: none;
   }
   .sidebar {
     width: 100%;
