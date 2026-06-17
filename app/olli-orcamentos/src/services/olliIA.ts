@@ -1,7 +1,19 @@
 import { DIAGNOSTICO_URL } from '../config';
 import { getCacheIA, setCacheIA, searchCodigosErro } from '../database/database';
 import { track, Eventos } from './analytics';
+import { supabase } from './supabase';
 import { DiagnosticoInput, DiagnosticoIA, DiagnosticoResultado, CodigoErro } from '../types';
+
+/** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
+async function accessTokenAtual(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function norm(s?: string): string {
   return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -27,30 +39,36 @@ export async function diagnosticarCaso(input: DiagnosticoInput): Promise<Diagnos
     if (diag) return { fonte: 'cache', diagnostico: diag };
   }
 
-  // 2) IA via Cloudflare Worker (Gemini por padrão; Claude opcional) — só se configurado
+  // 2) IA via Cloudflare Worker (Gemini por padrão; Claude opcional) — só se
+  //    configurado E com sessão logada (o Worker exige JWT do Supabase).
+  //    Sem token (deslogado) → pula direto para o fallback offline (602 códigos).
   if (DIAGNOSTICO_URL) {
-    try {
-      const contextoBase = await contextoDaBase(input);
-      const r = await fetch(DIAGNOSTICO_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, contextoBase }),
-      });
-      if (r.ok) {
-        const data: any = await r.json();
-        if (data?.ok && data.diagnostico) {
-          await setCacheIA(key, JSON.stringify(data.diagnostico));
-          track(Eventos.aiUsed, { fonte: data.fonte, modelo: data.modelo });
-          return {
-            fonte: data.fonte === 'cache' ? 'cache' : 'ia',
-            modelo: data.modelo,
-            diagnostico: data.diagnostico,
-          };
+    const token = await accessTokenAtual();
+    if (token) {
+      try {
+        const contextoBase = await contextoDaBase(input);
+        const r = await fetch(DIAGNOSTICO_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ ...input, contextoBase }),
+        });
+        if (r.ok) {
+          const data: any = await r.json();
+          if (data?.ok && data.diagnostico) {
+            await setCacheIA(key, JSON.stringify(data.diagnostico));
+            track(Eventos.aiUsed, { fonte: data.fonte, modelo: data.modelo });
+            return {
+              fonte: data.fonte === 'cache' ? 'cache' : 'ia',
+              modelo: data.modelo,
+              diagnostico: data.diagnostico,
+            };
+          }
+          // data.motivo === 'ia_nao_configurada' → segue para o fallback
         }
-        // data.motivo === 'ia_nao_configurada' → segue para o fallback
+        // 401 (nao_autorizado) / 429 (muitas_requisicoes) / outro erro → fallback offline
+      } catch {
+        // worker indisponível/offline → fallback
       }
-    } catch {
-      // worker indisponível/offline → fallback
     }
   }
 
