@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -140,6 +140,24 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       sintoma TEXT,
       criado_em TEXT NOT NULL
     );
+
+    -- Fase 2 — agenda do prestador (visitas, instalações, manutenções…).
+    CREATE TABLE IF NOT EXISTS agendamentos (
+      id TEXT PRIMARY KEY,
+      cliente_id TEXT,
+      cliente_nome TEXT NOT NULL,
+      titulo TEXT NOT NULL,
+      tipo TEXT NOT NULL,
+      inicio TEXT NOT NULL,
+      fim TEXT,
+      endereco TEXT,
+      status TEXT NOT NULL DEFAULT 'agendado',
+      orcamento_id TEXT,
+      observacao TEXT,
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
   `);
 
   await seedCodigosErro(database);
@@ -570,6 +588,35 @@ export async function getCasosErro(): Promise<CasoErro[]> {
   }));
 }
 
+// ─── AGENDAMENTOS (Fase 2 — usados no backup; CRoUD em services/agenda.ts) ─
+function rowToAgendamentoLocal(r: any): Agendamento {
+  return {
+    id: r.id, clienteId: r.cliente_id ?? undefined, clienteNome: r.cliente_nome,
+    titulo: r.titulo, tipo: r.tipo, inicio: r.inicio, fim: r.fim ?? undefined,
+    endereco: r.endereco ?? undefined, status: r.status,
+    orcamentoId: r.orcamento_id ?? undefined, observacao: r.observacao ?? undefined,
+    criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
+  };
+}
+
+async function getAgendamentosForBackup(): Promise<Agendamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM agendamentos ORDER BY inicio ASC');
+  return rows.map(rowToAgendamentoLocal);
+}
+
+async function saveAgendamentoForBackup(a: Agendamento): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO agendamentos
+       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
+     a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
+     a.observacao ?? null, a.criadoEm, a.atualizadoEm]
+  );
+}
+
 // ─── EXPORT / IMPORT (backup) ─────────────────────────────
 export interface BackupSnapshot {
   version: number;
@@ -582,16 +629,17 @@ export interface BackupSnapshot {
   recibos: Recibo[];
   modelos: ModeloOrcamento[];
   depoimentos: Depoimento[];
+  agendamentos: Agendamento[];
 }
 
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
-    getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(),
+    getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(),
   ]);
   return {
     version: 1, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos,
   };
 }
 
@@ -613,12 +661,14 @@ export async function importAllData(data: Partial<BackupSnapshot>): Promise<void
   const recibos = asArray<Recibo>(data.recibos);
   const modelos = asArray<ModeloOrcamento>(data.modelos);
   const depoimentos = asArray<Depoimento>(data.depoimentos);
+  const agendamentos = asArray<Agendamento>(data.agendamentos);
 
   const db = await getDb();
   await db.withTransactionAsync(async () => {
     await db.execAsync(`
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
+      DELETE FROM agendamentos;
     `);
     if (data.empresa) await saveEmpresa(data.empresa);
     for (const c of clientes) await saveCliente(c);
@@ -628,6 +678,7 @@ export async function importAllData(data: Partial<BackupSnapshot>): Promise<void
     for (const r of recibos) await saveRecibo(r);
     for (const m of modelos) await saveModelo(m);
     for (const d of depoimentos) await saveDepoimento(d);
+    for (const a of agendamentos) await saveAgendamentoForBackup(a);
   });
 }
 
