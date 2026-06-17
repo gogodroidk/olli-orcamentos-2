@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 13, fontWeight: '600', color: Colors.onSurface, maxWidth: '60%', textAlign: 'right' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8 },
   totalLabel: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  totalValue: { fontSize: 20, fontWeight: '800', color: Colors.primary },
+  totalValue: { ...Typography.valueLarge, color: Colors.accentLight },
 
   textBlock: { paddingTop: 8 },
   textBlockContent: { fontSize: 13, color: Colors.onSurface, lineHeight: 20, marginTop: 4 },

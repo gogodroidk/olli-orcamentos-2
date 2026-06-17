@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Switch, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   summaryVal: { fontSize: 13, fontWeight: '600', color: Colors.onSurface },
   summaryTotal: { borderBottomWidth: 0, marginTop: 4 },
   summaryTotalKey: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  summaryTotalVal: { fontSize: 18, fontWeight: '800', color: Colors.primary },
+  summaryTotalVal: { ...Typography.value, color: Colors.accentLight },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginTop: Spacing.lg, marginBottom: Spacing.sm },
   sectionHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginBottom: Spacing.sm },

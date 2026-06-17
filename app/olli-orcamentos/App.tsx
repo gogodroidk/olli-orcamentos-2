@@ -14,6 +14,10 @@ import {
   PlusJakartaSans_700Bold,
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import {
+  Spectral_600SemiBold,
+  Spectral_700Bold,
+} from '@expo-google-fonts/spectral';
 import { AppTheme, Colors } from './src/theme';
 import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
@@ -54,6 +58,8 @@ export default function App() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
+    Spectral_600SemiBold,
+    Spectral_700Bold,
   });
 
   useEffect(() => {

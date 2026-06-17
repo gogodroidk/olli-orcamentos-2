@@ -7,6 +7,9 @@ export const Fonts = {
   semiBold: 'PlusJakartaSans_600SemiBold',
   bold: 'PlusJakartaSans_700Bold',
   extraBold: 'PlusJakartaSans_800ExtraBold',
+  // Serifada (Spectral) — valores R$ e títulos de destaque
+  serifSemiBold: 'Spectral_600SemiBold',
+  serifBold: 'Spectral_700Bold',
 };
 
 const WEIGHT_TO_FAMILY: Record<string, string> = {

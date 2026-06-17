@@ -59,7 +59,7 @@ export function OlliButton({
           colors={Gradients.primaryDiagonal}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.base, styles.gradientShadow, { paddingVertical: padV, paddingHorizontal: padH }]}
+          style={[styles.base, Shadow.glowCyan, { paddingVertical: padV, paddingHorizontal: padH }]}
         >
           {content}
         </LinearGradient>
@@ -88,7 +88,8 @@ export function OlliButton({
         styles.base,
         { backgroundColor: bg, paddingVertical: padV, paddingHorizontal: padH },
         border,
-        variant !== 'outline' && variant !== 'ghost' && Shadow.sm,
+        variant === 'primary' && !disabled && !loading && Shadow.glowBlue,
+        variant !== 'primary' && variant !== 'outline' && variant !== 'ghost' && Shadow.sm,
         fullWidth && styles.fullWidth,
         (disabled || loading) && styles.disabled,
         style,
@@ -107,13 +108,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
   },
   contentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  gradientShadow: {
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
   fullWidth: { alignSelf: 'stretch' },
   label: { fontWeight: '700', letterSpacing: 0.2 },
   disabled: { opacity: 0.45 },

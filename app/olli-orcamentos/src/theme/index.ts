@@ -48,6 +48,12 @@ export const Colors = {
   tabInactive: 'rgba(226,232,240,0.45)',
   tabActive: '#34C6D9',
 
+  // Acessórias da marca
+  whatsapp: '#25D366',
+  plan: '#7C3AED',
+  avatarLilac: '#A4B6F5',
+  inkLight: '#16202E',
+
   // PDF / documento (tema CLARO — usado só no PDF/link, não no app)
   pdfSectionBg: '#0A2540',
   pdfColumnHeaderBg: '#13385F',
@@ -60,11 +66,13 @@ export const Colors = {
 
 // Gradientes da marca
 export const Gradients = {
-  primary: ['#1486E6', '#0B6FCE', '#0A2540'] as const,
+  primary: ['#0B6FCE', '#0A2540'] as const,
   primaryDiagonal: ['#0B6FCE', '#34C6D9'] as const,
   brand: ['#0B6FCE', '#34C6D9'] as const,
   frost: ['#34C6D9', '#7FE9F5'] as const,
   success: ['#2BD787', '#15B66E'] as const,
+  progress: ['#0B6FCE', '#7FE9F5'] as const,
+  liveCard: ['rgba(11,111,206,0.34)', 'rgba(52,198,217,0.07)'] as const,
   header: ['#0E2742', '#0A1626'] as const,
   card: ['#13243C', '#0C1B2E'] as const,
   dark: ['#0E2742', '#0A1626'] as const,
@@ -112,14 +120,18 @@ export const BorderRadius = {
 
 export const Typography = {
   h1: { fontSize: 28, fontFamily: Fonts.extraBold, letterSpacing: -0.5 },
-  h2: { fontSize: 22, fontFamily: Fonts.bold, letterSpacing: -0.3 },
-  h3: { fontSize: 18, fontFamily: Fonts.semiBold },
+  h2: { fontSize: 22, fontFamily: Fonts.extraBold, letterSpacing: -0.3 },
+  h3: { fontSize: 18, fontFamily: Fonts.extraBold },
   h4: { fontSize: 16, fontFamily: Fonts.semiBold },
   body: { fontSize: 14, fontFamily: Fonts.regular },
   bodySmall: { fontSize: 13, fontFamily: Fonts.regular },
   caption: { fontSize: 12, fontFamily: Fonts.regular },
   label: { fontSize: 11, fontFamily: Fonts.extraBold, letterSpacing: 1.2 },
-  button: { fontSize: 15, fontFamily: Fonts.bold },
+  button: { fontSize: 15, fontFamily: Fonts.extraBold },
+  // Valores em dinheiro / destaque (serifada Spectral)
+  value: { fontFamily: Fonts.serifBold, fontSize: 24 },
+  valueLarge: { fontFamily: Fonts.serifBold, fontSize: 30 },
+  displaySerif: { fontFamily: Fonts.serifBold, fontSize: 26 },
 };
 
 // Sombras escuras (cockpit)
@@ -127,4 +139,8 @@ export const Shadow = {
   sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 },
   md: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.32, shadowRadius: 16, elevation: 6 },
   lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.38, shadowRadius: 28, elevation: 10 },
+  // Brilhos premium da marca
+  glowCyan: { shadowColor: '#34C6D9', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 20, elevation: 8 },
+  glowBlue: { shadowColor: '#0B6FCE', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 20, elevation: 8 },
+  focusRing: { shadowColor: '#7FE9F5', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
 };
