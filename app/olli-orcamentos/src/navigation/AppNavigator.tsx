@@ -25,6 +25,9 @@ import EmitirReciboScreen from '../screens/EmitirReciboScreen';
 import ContaScreen from '../screens/ContaScreen';
 import AgendaScreen from '../screens/AgendaScreen';
 import HojeScreen from '../screens/HojeScreen';
+import OlliVozScreen from '../screens/OlliVozScreen';
+import OlliChatScreen from '../screens/OlliChatScreen';
+import PlanosScreen from '../screens/PlanosScreen';
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -41,6 +44,10 @@ export type RootStackParamList = {
   MeuNegocio: undefined;
   Diagnostico: undefined;
   DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
+  // Fase 3 — OLLI conversacional + planos
+  OlliVoz: undefined;
+  OlliChat: undefined;
+  Planos: undefined;
 };
 
 export type TabParamList = {
@@ -187,6 +194,10 @@ export function AppNavigator() {
       <Stack.Screen name="Conta" component={ContaScreen} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioScreen} />
       <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIAScreen} />
+      {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
+      <Stack.Screen name="OlliVoz" component={OlliVozScreen} />
+      <Stack.Screen name="OlliChat" component={OlliChatScreen} />
+      <Stack.Screen name="Planos" component={PlanosScreen} />
     </Stack.Navigator>
   );
 }
