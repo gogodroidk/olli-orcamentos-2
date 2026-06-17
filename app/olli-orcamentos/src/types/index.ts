@@ -211,6 +211,70 @@ export interface Depoimento {
   criadoEm: string;
 }
 
+// ─── AGENDA (Fase 2 — agendamentos/visitas) ──────────────────
+export type TipoAgendamento =
+  | 'orcamento'
+  | 'limpeza'
+  | 'instalacao'
+  | 'manutencao'
+  | 'visita'
+  | 'outro';
+
+export type StatusAgendamento = 'agendado' | 'concluido' | 'cancelado';
+
+/**
+ * Um compromisso na agenda do prestador (visita, instalação, manutenção…).
+ * Offline-first: gravado no SQLite local e espelhado no backup Supabase.
+ */
+export interface Agendamento {
+  id: string;
+  clienteId?: string;
+  clienteNome: string;
+  titulo: string;
+  tipo: TipoAgendamento;
+  inicio: string; // ISO datetime
+  fim?: string;   // ISO datetime
+  endereco?: string;
+  status: StatusAgendamento;
+  orcamentoId?: string;
+  observacao?: string;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+export const TIPOS_AGENDAMENTO: { id: TipoAgendamento; label: string; icon: string; color: string }[] = [
+  { id: 'orcamento', label: 'Orçamento', icon: 'file-document-outline', color: '#34C6D9' },
+  { id: 'limpeza', label: 'Limpeza', icon: 'spray-bottle', color: '#2BD787' },
+  { id: 'instalacao', label: 'Instalação', icon: 'tools', color: '#0B6FCE' },
+  { id: 'manutencao', label: 'Manutenção', icon: 'wrench-outline', color: '#F7B23B' },
+  { id: 'visita', label: 'Visita', icon: 'map-marker-radius-outline', color: '#A78BFA' },
+  { id: 'outro', label: 'Outro', icon: 'calendar-blank-outline', color: 'rgba(226,232,240,0.62)' },
+];
+
+export const TIPO_AGENDAMENTO_LABELS: Record<TipoAgendamento, string> = {
+  orcamento: 'Orçamento',
+  limpeza: 'Limpeza',
+  instalacao: 'Instalação',
+  manutencao: 'Manutenção',
+  visita: 'Visita',
+  outro: 'Outro',
+};
+
+export const TIPO_AGENDAMENTO_COLORS: Record<TipoAgendamento, string> = {
+  orcamento: '#34C6D9',
+  limpeza: '#2BD787',
+  instalacao: '#0B6FCE',
+  manutencao: '#F7B23B',
+  visita: '#A78BFA',
+  outro: 'rgba(226,232,240,0.62)',
+};
+
+export const STATUS_AGENDAMENTO_LABELS: Record<StatusAgendamento, string> = {
+  agendado: 'Agendado',
+  concluido: 'Concluído',
+  cancelado: 'Cancelado',
+};
+
 export type UnidadeMedida =
   | 'un'
   | 'm'

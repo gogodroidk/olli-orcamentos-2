@@ -133,7 +133,7 @@ export default function HomeScreen() {
         <AnimatedEntrance index={2}>
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Diagnostico' }); }}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Diagnostico'); }}
           >
             <LinearGradient
               colors={['rgba(11,111,206,0.30)', 'rgba(52,198,217,0.10)']}
@@ -161,7 +161,7 @@ export default function HomeScreen() {
                 <Text style={styles.lembreteTitle}>{parados.length} orçamento{parados.length > 1 ? 's' : ''} parado{parados.length > 1 ? 's' : ''} há +5 dias</Text>
                 <Text style={styles.lembreteSub}>Que tal dar um toque no cliente?</Text>
               </View>
-              <TouchableOpacity style={styles.cobrarBtn} onPress={() => (nav as any).navigate('Tabs', { screen: 'Orcamentos' })} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.cobrarBtn} onPress={() => nav.navigate('Orcamentos')} activeOpacity={0.85}>
                 <Text style={styles.cobrarText}>Cobrar</Text>
               </TouchableOpacity>
             </View>
@@ -182,7 +182,7 @@ export default function HomeScreen() {
         {/* RESTO DO DIA / ATIVIDADE RECENTE */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Orçamentos recentes</Text>
-          <TouchableOpacity onPress={() => (nav as any).navigate('Tabs', { screen: 'Orcamentos' })}>
+          <TouchableOpacity onPress={() => nav.navigate('Orcamentos')}>
             <Text style={styles.seeAll}>ver todos</Text>
           </TouchableOpacity>
         </View>
