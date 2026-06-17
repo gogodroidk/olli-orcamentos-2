@@ -39,12 +39,12 @@ export const STATUS_LABELS: Record<StatusOrcamento, string> = {
 };
 
 export const STATUS_COLORS: Record<StatusOrcamento, string> = {
-  rascunho: '#9CA3AF',
-  enviado: '#3B82F6',
-  aguardando_assinatura: '#F59E0B',
-  aprovado: '#10B981',
-  recusado: '#EF4444',
-  cancelado: '#6B7280',
+  rascunho: '#64748B',
+  enviado: '#0B6FCE',
+  aguardando_assinatura: '#F7B23B',
+  aprovado: '#2BD787',
+  recusado: '#FF6B6B',
+  cancelado: '#475569',
 };
 
 // ─── Shared domain pieces (live inside `dados` jsonb) ────────────────────────
