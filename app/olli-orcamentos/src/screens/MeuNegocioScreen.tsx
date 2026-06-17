@@ -17,6 +17,34 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { track, Eventos } from '../services/analytics';
 
+/**
+ * Empresa EM BRANCO para instalações novas (não há seed: getEmpresa() retorna
+ * null no primeiro acesso). Sem isto a tela ficava em branco para sempre e o
+ * usuário nunca conseguia cadastrar nome/logo/PIX/assinatura — e todo PDF saía
+ * sem cabeçalho. Todos os campos obrigatórios do tipo Empresa recebem default
+ * válido ('' para string, id fixo) para o objeto nunca conter `undefined`.
+ */
+function empresaEmBranco(): Empresa {
+  return {
+    id: 'empresa_1',
+    nome: '',
+    especialidade: '',
+    slogan: '',
+    cnpj: '',
+    cpf: '',
+    endereco: '',
+    cidade: '',
+    estado: '',
+    telefone: '',
+    whatsapp: '',
+    site: '',
+    email: '',
+    chavePix: '',
+    normas: '',
+    nomePrestador: '',
+  };
+}
+
 export default function MeuNegocioScreen() {
   const nav = useNavigation<any>();
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -29,7 +57,9 @@ export default function MeuNegocioScreen() {
 
   async function load() {
     const [emp, deps] = await Promise.all([getEmpresa(), getDepoimentos()]);
-    setEmpresa(emp);
+    // Instalação nova ainda sem empresa: inicializa um registro em branco para
+    // o formulário aparecer e poder SALVAR (saveEmpresa cria o registro de fato).
+    setEmpresa(emp ?? empresaEmBranco());
     setDepoimentos(deps);
     setDirty(false);
   }

@@ -56,15 +56,18 @@ function emptyOrcamento(numero: string): Orcamento {
   };
 }
 
+const round2 = (x: number) => Math.round(x * 100) / 100;
+
 function calcTotais(o: Orcamento): Orcamento {
-  const servicos = o.itens.filter(i => i.tipo === 'servico').reduce((s, i) => s + i.subtotal, 0);
-  const produtos = o.itens.filter(i => i.tipo === 'produto').reduce((s, i) => s + i.subtotal, 0);
-  const subtotal = servicos + produtos;
+  const servicos = round2(o.itens.filter(i => i.tipo === 'servico').reduce((s, i) => s + i.subtotal, 0));
+  const produtos = round2(o.itens.filter(i => i.tipo === 'produto').reduce((s, i) => s + i.subtotal, 0));
+  const subtotal = round2(servicos + produtos);
   let desconto = o.desconto;
   if (o.descontoTipo === 'percentual') {
     desconto = subtotal * (o.desconto / 100);
   }
-  const valorTotal = Math.max(0, subtotal - desconto);
+  desconto = round2(desconto);
+  const valorTotal = round2(Math.max(0, subtotal - desconto));
   return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, valorTotal };
 }
 
@@ -115,7 +118,7 @@ export default function NovoOrcamentoScreen() {
   }
 
   function updateItens(itens: ItemOrcamento[]) {
-    const newItens = itens.map(i => ({ ...i, subtotal: i.preco * i.quantidade }));
+    const newItens = itens.map(i => ({ ...i, subtotal: round2(i.preco * i.quantidade) }));
     update({ itens: newItens });
   }
 
@@ -132,7 +135,6 @@ export default function NovoOrcamentoScreen() {
     const toSave: Orcamento = {
       ...orc,
       ...(finalOrc ?? {}),
-      status: orc.status === 'rascunho' ? 'enviado' : orc.status,
       atualizadoEm: nowISO(),
     };
     await saveOrcamento(calcTotais(toSave));

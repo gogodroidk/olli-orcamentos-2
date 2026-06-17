@@ -40,7 +40,12 @@ export default function ServicosScreen() {
   }
 
   function applyFilter(data: ServicoItem[], q: string) {
-    setFiltered(!q.trim() ? data : data.filter(s => s.nome.toLowerCase().includes(q.toLowerCase())));
+    if (!q.trim()) { setFiltered(data); return; }
+    const lower = q.toLowerCase();
+    setFiltered(data.filter(s =>
+      s.nome.toLowerCase().includes(lower) ||
+      (s.descricao ?? '').toLowerCase().includes(lower)
+    ));
   }
 
   async function handleSave() {

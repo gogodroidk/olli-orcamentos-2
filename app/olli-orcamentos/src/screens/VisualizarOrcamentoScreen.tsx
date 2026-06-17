@@ -57,6 +57,7 @@ export default function VisualizarOrcamentoScreen() {
     setSharing(true);
     try {
       await compartilharPdfOrcamento(orc, empresa, depoimentos);
+      if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e) {
       Alert.alert('Erro', 'Não foi possível gerar o PDF.');
     } finally {
@@ -67,10 +68,15 @@ export default function VisualizarOrcamentoScreen() {
 
   async function handleWhatsApp() {
     if (!orc) return;
+    if (!orc.clienteTelefone?.trim()) {
+      Alert.alert('WhatsApp', 'Cliente sem telefone cadastrado.');
+      return;
+    }
     const contato = empresa?.telefone ? ` ${empresa.telefone}` : '';
     const msg = `Olá ${orc.clienteNome}! Segue o orçamento nº ${orc.numero} no valor de ${formatCurrency(orc.valorTotal)}.${contato}`;
     try {
       await abrirWhatsApp(orc.clienteTelefone, msg);
+      if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e) {
       Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
     }
@@ -189,7 +195,7 @@ export default function VisualizarOrcamentoScreen() {
           <Text style={styles.cardTitle}>Resumo financeiro</Text>
           {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
           {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
-          {orc.desconto > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.desconto)}`} />}
+          {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>{formatCurrency(orc.valorTotal)}</Text>

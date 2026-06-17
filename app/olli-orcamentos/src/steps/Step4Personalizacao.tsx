@@ -59,7 +59,7 @@ export default function Step4Personalizacao({ orc, onChange }: Props) {
       <View style={styles.summaryRow}><Text style={styles.summaryKey}>Itens</Text><Text style={styles.summaryVal}>{orc.itens.length} item(s)</Text></View>
       {orc.subtotalServicos > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Serviços</Text><Text style={styles.summaryVal}>{formatCurrency(orc.subtotalServicos)}</Text></View>}
       {orc.subtotalProdutos > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Produtos</Text><Text style={styles.summaryVal}>{formatCurrency(orc.subtotalProdutos)}</Text></View>}
-      {orc.desconto > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Desconto</Text><Text style={[styles.summaryVal, { color: Colors.danger }]}>-{formatCurrency(orc.desconto)}</Text></View>}
+      {orc.subtotal - orc.valorTotal > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Desconto</Text><Text style={[styles.summaryVal, { color: Colors.danger }]}>-{formatCurrency(orc.subtotal - orc.valorTotal)}</Text></View>}
       <View style={[styles.summaryRow, styles.summaryTotal]}>
         <Text style={styles.summaryTotalKey}>Total</Text>
         <Text style={styles.summaryTotalVal}>{formatCurrency(orc.valorTotal)}</Text>

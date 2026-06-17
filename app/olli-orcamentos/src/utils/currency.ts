@@ -2,7 +2,7 @@ export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(value || 0);
+  }).format(Number.isFinite(value) ? value : 0);
 }
 
 /**
@@ -16,7 +16,8 @@ export function parseCurrency(value: string | number): number {
   let cleaned = value.replace(/[R$\s]/g, '');
 
   const hasComma = cleaned.includes(',');
-  const hasDot = cleaned.includes('.');
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  const hasDot = dotCount > 0;
 
   if (hasComma && hasDot) {
     // formato BR: ponto é milhar, vírgula é decimal -> 1.234,56
@@ -24,8 +25,14 @@ export function parseCurrency(value: string | number): number {
   } else if (hasComma) {
     // só vírgula -> decimal: 12,50
     cleaned = cleaned.replace(',', '.');
+  } else if (hasDot) {
+    // só ponto(s), sem vírgula. Distinguir milhar de decimal:
+    //  - "1.500" / "1.234.567" (grupos de 3) ou MAIS DE UM ponto -> milhar
+    //    (remove os pontos): 1.500 -> 1500
+    //  - "12.50" / "0.5" (decimal padrão) -> mantém como está
+    const milhar = /^\d{1,3}(\.\d{3})+$/.test(cleaned) || dotCount > 1;
+    if (milhar) cleaned = cleaned.replace(/\./g, '');
   }
-  // só ponto: assume decimal padrão (12.50) — deixa como está
 
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? 0 : parsed;
@@ -40,7 +47,7 @@ export function formatNumber(value: number, decimals = 2): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(value || 0);
+  }).format(Number.isFinite(value) ? value : 0);
 }
 
 /** Quantidade: mostra inteiro sem casas, fracionário com até 2 casas. */

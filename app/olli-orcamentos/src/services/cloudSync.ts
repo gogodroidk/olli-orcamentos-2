@@ -343,6 +343,27 @@ export async function removeRow(table: SyncTable, id: string): Promise<void> {
   }
 }
 
+// ─── TOMBSTONES de exclusão (nuvem) ──────────────────────────────────────────
+/**
+ * Empurra UM tombstone de exclusão para a nuvem (`public.exclusoes`). Idempotente
+ * (upsert por (user_id,tabela,item_id)). Fire-and-forget: só com sessão; NUNCA
+ * lança. Offline / deslogado = no-op (o tombstone local sobe no próximo login).
+ */
+export async function pushTombstone(tabela: string, itemId: string): Promise<void> {
+  try {
+    if (!tabela || !itemId) return;
+    if (!(await hasSession()) || !supabase) return;
+    await supabase
+      .from('exclusoes')
+      .upsert(
+        { tabela, item_id: itemId, excluido_em: new Date().toISOString() },
+        { onConflict: 'user_id,tabela,item_id' },
+      );
+  } catch {
+    // espelho em background: nunca afeta o app local
+  }
+}
+
 // ─── Escrita SILENCIOSA no SQLite (sem re-disparar push) ─────────────────────
 // Estes upserts gravam direto na tabela local, espelhando a forma dos `save*`
 // de database.ts, MAS sem chamar pushRow — é assim que pullAll evita o loop.
@@ -434,14 +455,162 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   );
 }
 
+// ─── EXCLUSÕES (tombstones) — reconciliação nuvem ⇄ local ────────────────────
+// Conjunto FIXO de tabelas que aceitam exclusão por id (todas as locais com PK
+// `id` que sincronizam). Restringe os deletes locais a nomes conhecidos (jamais
+// interpolamos um nome de tabela arbitrário vindo da nuvem em SQL).
+const DELETABLE_TABLES = new Set<string>([
+  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos', 'depoimentos', 'agendamentos',
+]);
+
+/** Apaga uma linha local por id, só para tabelas conhecidas. NUNCA lança. */
+async function localDeleteById(tabela: string, itemId: string): Promise<void> {
+  try {
+    if (!DELETABLE_TABLES.has(tabela) || !itemId) return;
+    const db = await getDb();
+    // `tabela` é validada contra a allow-list acima antes de entrar no SQL.
+    await db.runAsync(`DELETE FROM ${tabela} WHERE id = ?`, [itemId]);
+  } catch {
+    // best-effort
+  }
+}
+
+/** Grava um tombstone no SQLite local (idempotente). NUNCA lança. */
+async function localRecordTombstone(tabela: string, itemId: string, excluidoEm: string): Promise<void> {
+  try {
+    if (!tabela || !itemId) return;
+    const db = await getDb();
+    await db.runAsync(
+      'INSERT OR REPLACE INTO exclusoes (tabela, item_id, excluido_em) VALUES (?,?,?)',
+      [tabela, itemId, excluidoEm || new Date().toISOString()],
+    );
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * (a) Baixa os tombstones da nuvem e APAGA localmente esses ids (registrando o
+ * tombstone local p/ o pull aditivo não re-subir a linha). Também limpa a linha
+ * na nuvem (`removeRow`) por garantia — auto-cura caso o aparelho de origem não
+ * tenha conseguido apagar, evitando que o pull seguinte ressuscite. NUNCA lança.
+ */
+async function applyCloudTombstones(): Promise<void> {
+  try {
+    if (!supabase) return;
+    const { data, error } = await supabase.from('exclusoes').select('tabela, item_id, excluido_em');
+    if (error || !Array.isArray(data)) return;
+    for (const row of data) {
+      try {
+        const tabela = (row as any)?.tabela as string;
+        const itemId = (row as any)?.item_id as string;
+        if (!tabela || !itemId) continue;
+        await localRecordTombstone(tabela, itemId, (row as any)?.excluido_em);
+        await localDeleteById(tabela, itemId);
+        if (DELETABLE_TABLES.has(tabela)) {
+          await removeRow(tabela as SyncTable, itemId);
+        }
+      } catch {
+        // pula tombstone problemático
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * (b) Sobe os tombstones LOCAIS para a nuvem e APAGA na nuvem os ids
+ * correspondentes (`removeRow`). Cobre exclusões feitas offline neste aparelho.
+ * NUNCA lança.
+ */
+async function pushLocalTombstones(): Promise<void> {
+  try {
+    if (!supabase) return;
+    const db = await getDb();
+    const rows = await db.getAllAsync<any>('SELECT tabela, item_id FROM exclusoes');
+    for (const r of rows) {
+      try {
+        const tabela = r?.tabela as string;
+        const itemId = r?.item_id as string;
+        if (!tabela || !itemId) continue;
+        await pushTombstone(tabela, itemId);
+        if (DELETABLE_TABLES.has(tabela)) {
+          await removeRow(tabela as SyncTable, itemId);
+        }
+      } catch {
+        // pula tombstone problemático
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+// ─── CONTADORES (numeração) — merge monotônico (nunca regride) ────────────────
+/**
+ * Funde os contadores locais com os da nuvem tomando SEMPRE o MAIOR valor por
+ * chave (`Math.max`) e grava o máximo nos DOIS lados (local + nuvem, upsert por
+ * `user_id,chave`). Garante numeração não-colidente entre aparelhos do mesmo
+ * dono SEM nunca regredir um contador. NUNCA lança.
+ */
+async function syncContadores(): Promise<void> {
+  try {
+    if (!supabase) return;
+    const db = await getDb();
+
+    const locais = await db.getAllAsync<{ chave: string; valor: number }>(
+      'SELECT chave, valor FROM contadores',
+    );
+    const max = new Map<string, number>();
+    for (const l of locais) {
+      if (l?.chave == null) continue;
+      max.set(l.chave, Math.max(max.get(l.chave) ?? 0, Number(l.valor) || 0));
+    }
+
+    const { data, error } = await supabase.from('contadores').select('chave, valor');
+    if (!error && Array.isArray(data)) {
+      for (const row of data) {
+        const chave = (row as any)?.chave as string;
+        if (chave == null) continue;
+        const valor = Number((row as any)?.valor) || 0;
+        max.set(chave, Math.max(max.get(chave) ?? 0, valor));
+      }
+    }
+
+    // Escreve o máximo de cada chave nos dois lados.
+    for (const [chave, valor] of max) {
+      try {
+        await db.runAsync('INSERT OR REPLACE INTO contadores (chave, valor) VALUES (?, ?)', [chave, valor]);
+      } catch {
+        // best-effort local
+      }
+      try {
+        await supabase.from('contadores').upsert({ chave, valor }, { onConflict: 'user_id,chave' });
+      } catch {
+        // best-effort nuvem
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
 // ─── PULL ALL (nuvem → SQLite local, caminho silencioso) ─────────────────────
 /**
  * Lê todas as tabelas da nuvem e grava no SQLite SEM re-disparar push.
  * Aparelho novo logando: traz os dados de volta. NUNCA lança.
+ *
+ * Antes do pull ADITIVO de linhas, aplica os tombstones da nuvem (apaga local +
+ * registra tombstone) para um registro deletado NÃO reaparecer. Também funde os
+ * contadores (numeração) tomando o maior valor.
  */
 export async function pullAll(): Promise<void> {
   try {
     if (!(await hasSession()) || !supabase) return;
+
+    // 1) Exclusões primeiro: garante que o pull aditivo abaixo não ressuscite ids.
+    await applyCloudTombstones();
 
     // empresa (uma linha por usuário)
     try {
@@ -458,6 +627,9 @@ export async function pullAll(): Promise<void> {
     await pullTable<ModeloOrcamento>('modelos', rowToModelo, localUpsertModelo);
     await pullTable<Depoimento>('depoimentos', rowToDepoimento, localUpsertDepoimento);
     await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento);
+
+    // Numeração: funde contadores (maior valor vence) entre local e nuvem.
+    await syncContadores();
   } catch {
     // pull é best-effort; falha não afeta o app local
   }
@@ -513,6 +685,9 @@ export async function pushAllLocal(): Promise<void> {
     } as ModeloOrcamento));
     await pushTable('depoimentos', 'SELECT * FROM depoimentos', rowToDepoimentoLocal);
     await pushTable('agendamentos', 'SELECT * FROM agendamentos', rowToAgendamentoLocal);
+
+    // Numeração: funde contadores (maior valor vence) entre local e nuvem.
+    await syncContadores();
   } catch {
     // best-effort
   }
@@ -588,19 +763,25 @@ function rowToAgendamentoLocal(r: any): Agendamento {
 let syncing = false;
 
 /**
- * No login: empurra o que já existe local (popula o painel imediatamente) e
- * depois puxa o que houver na nuvem (aparelho novo). Upserts idempotentes; em
- * conflito vence o último a escrever (pushAllLocal antes, pullAll depois, então
- * a nuvem prevalece para o dispositivo recém-logado). NÃO bloqueia a UI:
- * roda em background e NUNCA lança. Reentrância protegida por flag.
+ * No login (ordem importa):
+ *  1) pullAll()           — aplica exclusões da nuvem, traz o estado da nuvem e
+ *                           funde contadores. Vem ANTES para o aparelho recém-
+ *                           logado NÃO sobrescrever a nuvem com dado velho.
+ *  2) pushLocalTombstones() — propaga p/ a nuvem as exclusões feitas offline
+ *                           neste aparelho (apaga as linhas correspondentes lá).
+ *  3) pushAllLocal()      — sobe as linhas locais sobreviventes (e funde de novo
+ *                           os contadores). Como os ids excluídos já saíram do
+ *                           SQLite, nada é ressuscitado.
+ * NÃO bloqueia a UI: roda em background e NUNCA lança. Reentrância por flag.
  */
 export async function syncOnLogin(): Promise<void> {
   if (syncing) return;
   syncing = true;
   try {
     if (!(await hasSession())) return;
-    await pushAllLocal();
     await pullAll();
+    await pushLocalTombstones();
+    await pushAllLocal();
   } catch {
     // sync de fundo: nunca quebra a sessão / UX
   } finally {

@@ -65,24 +65,21 @@ export default function App() {
   });
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-    const start = Date.now();
+    // Abre o banco e marca pronto assim que terminar — sem piso artificial de tempo.
     getDb()
-      .then(() => {
-        const wait = Math.max(0, 1000 - (Date.now() - start));
-        setTimeout(() => setDbReady(true), wait);
-      })
+      .then(() => setDbReady(true))
       .catch(console.error);
   }, []);
 
   // Sincronização per-row (painel web) ao logar. Listener global central: cobre
   // o login feito em qualquer tela (inclusive ContaScreen). Ao entrar uma sessão
   // (SIGNED_IN ou INITIAL_SESSION já autenticado), dispara o sync em background.
-  // syncOnLogin é fire-and-forget e nunca lança (offline/deslogado = no-op).
+  // NÃO inclui TOKEN_REFRESHED: a renovação de token (~1h) não deve forçar um
+  // sync completo. syncOnLogin é fire-and-forget e nunca lança (offline/deslogado = no-op).
   useEffect(() => {
     if (!supabase) return;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')) {
+      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
         void syncOnLogin();
       }
     });
@@ -93,6 +90,12 @@ export default function App() {
   if (fontsLoaded) applyFontPatch();
 
   const ready = dbReady && fontsLoaded;
+
+  // Esconde a splash nativa só quando tudo (fontes + banco) estiver pronto,
+  // para a UI não aparecer antes da hora.
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
