@@ -1,5 +1,6 @@
 import { getDb } from '../database/database';
 import { Agendamento } from '../types';
+import { pushRow, removeRow } from './cloudSync';
 
 /**
  * CRUD da Agenda (Fase 2). Mesmo padrão do database.ts: SQLite local,
@@ -69,9 +70,12 @@ export async function saveAgendamento(a: Agendamento): Promise<void> {
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
      a.observacao ?? null, a.criadoEm, a.atualizadoEm]
   );
+  // Espelha na nuvem em background (fire-and-forget; no-op se offline/deslogado).
+  try { void pushRow('agendamentos', a).catch(() => {}); } catch {}
 }
 
 export async function deleteAgendamento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM agendamentos WHERE id = ?', [id]);
+  try { void removeRow('agendamentos', id).catch(() => {}); } catch {}
 }

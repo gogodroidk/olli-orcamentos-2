@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert, Modal, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -108,9 +108,9 @@ export default function HomeScreen() {
               <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={Colors.accent} />
               <Text style={styles.heroEmptyTitle}>Nenhuma visita agendada</Text>
               <Text style={styles.heroEmptySub}>Agende seus serviços e a OLLI te avisa a hora de sair, com o trânsito de SP.</Text>
-              <TouchableOpacity style={styles.heroBtn} onPress={() => Alert.alert('Agenda', 'A agenda inteligente chega na próxima fase — com horários, rota e alerta de trânsito.')} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Agenda'); }} activeOpacity={0.85}>
                 <MaterialCommunityIcons name="calendar-plus" size={18} color="#0A1626" />
-                <Text style={styles.heroBtnText}>Agendar visita</Text>
+                <Text style={styles.heroBtnText}>Abrir agenda</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>

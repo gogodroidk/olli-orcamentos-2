@@ -1,30 +1,23 @@
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
 import { Orcamento, Empresa, Depoimento, ItemOrcamento } from '../types';
 import { formatCurrency, formatNumber } from './currency';
 import { formatDate, formatDateBR } from './date';
+import { imagemParaDataUri } from './imagemDataUri';
+import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 
-/* ─── Cache de imagens em base64 ──────────────────────────────────
- * URIs locais (file://) NÃO renderizam no expo-print do Android.
- * Convertemos cada imagem para data URI base64 antes de montar o HTML.
+// Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
+export { abrirWhatsApp } from './exportarDocumento';
+
+/* ─── Cache de imagens em data URI ────────────────────────────────
+ * URIs locais (file://) NÃO renderizam no expo-print do Android e, na web,
+ * `blob:`/`http` não embutem direto no PDF. Convertemos cada imagem para
+ * data URI (base64) ANTES de montar o HTML, de forma multiplataforma
+ * (ver utils/imagemDataUri). A geração do HTML em si continua pura.
  */
 let IMG_CACHE: Record<string, string> = {};
 
 function img(uri?: string): string {
   if (!uri) return '';
   return IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : '');
-}
-
-async function toDataUri(uri?: string): Promise<string | null> {
-  if (!uri) return null;
-  if (uri.startsWith('data:')) return uri;
-  try {
-    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-    return `data:image/jpeg;base64,${b64}`;
-  } catch {
-    return null;
-  }
 }
 
 async function populateImages(o: Orcamento, empresa: Empresa): Promise<void> {
@@ -35,17 +28,10 @@ async function populateImages(o: Orcamento, empresa: Empresa): Promise<void> {
   o.itens.forEach(i => i.fotoUri && uris.add(i.fotoUri));
   (o.fotosServico ?? []).forEach(f => f && uris.add(f));
   await Promise.all([...uris].map(async u => {
-    const d = await toDataUri(u);
+    // Se a conversão falhar (retorna null), seguimos sem a imagem — o PDF não quebra.
+    const d = await imagemParaDataUri(u);
     if (d) IMG_CACHE[u] = d;
   }));
-}
-
-/** Remove caracteres inválidos para nome de arquivo. */
-function safeFileName(s: string): string {
-  return s.normalize('NFD')
-    .replace(/[^a-zA-Z0-9-_]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '') || 'cliente';
 }
 
 /* ─── Cor da marca (accent) ───────────────────────────────────────
@@ -418,40 +404,35 @@ export function gerarHtmlOrcamento(
 </html>`;
 }
 
-export async function gerarPdfOrcamento(
+/**
+ * Monta o HTML do orçamento já com as imagens convertidas para data URI.
+ * Continua "puro" no sentido de retornar a string final do documento;
+ * a entrega (imprimir/compartilhar) é responsabilidade do helper de saída.
+ */
+export async function montarHtmlOrcamentoCompleto(
   o: Orcamento,
   empresa: Empresa,
   depoimentos: Depoimento[],
-  accent: string = DEFAULT_ACCENT
+  accent: string = DEFAULT_ACCENT,
 ): Promise<string> {
   await populateImages(o, empresa);
-  const html = gerarHtmlOrcamento(o, empresa, depoimentos, accent);
-  const { uri } = await Print.printToFileAsync({ html, base64: false });
-  return uri;
+  return gerarHtmlOrcamento(o, empresa, depoimentos, accent);
 }
 
+/**
+ * Gera e entrega o PDF do orçamento (web: imprime/salva como PDF; nativo:
+ * expo-print + compartilhamento). Toda a parte nativo-only fica isolada no
+ * helper exportarHtmlComoPdf, então nada disso é avaliado na web.
+ */
 export async function compartilharPdfOrcamento(
   o: Orcamento,
   empresa: Empresa,
   depoimentos: Depoimento[],
-  accent: string = DEFAULT_ACCENT
+  accent: string = DEFAULT_ACCENT,
 ): Promise<void> {
-  const uri = await gerarPdfOrcamento(o, empresa, depoimentos, accent);
-  const fileName = `Orcamento-${safeFileName(o.clienteNome)}-${o.numero}.pdf`;
-  const dest = FileSystem.documentDirectory + fileName;
-  await FileSystem.copyAsync({ from: uri, to: dest });
-  await Sharing.shareAsync(dest, {
-    mimeType: 'application/pdf',
+  const html = await montarHtmlOrcamentoCompleto(o, empresa, depoimentos, accent);
+  const fileName = `Orcamento-${safeFileName(o.clienteNome)}-${o.numero}`;
+  await exportarHtmlComoPdf(html, fileName, {
     dialogTitle: `Orçamento ${o.numero} - ${o.clienteNome}`,
   });
-}
-
-export async function abrirWhatsApp(telefone: string, mensagem: string): Promise<void> {
-  const { Linking } = require('react-native');
-  const numero = telefone.replace(/\D/g, '');
-  const url = `whatsapp://send?phone=55${numero}&text=${encodeURIComponent(mensagem)}`;
-  const canOpen = await Linking.canOpenURL(url);
-  if (canOpen) {
-    await Linking.openURL(url);
-  }
 }

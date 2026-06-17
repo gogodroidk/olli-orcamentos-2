@@ -1,6 +1,29 @@
 import * as SQLite from 'expo-sqlite';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
+import { pushRow, removeRow } from '../services/cloudSync';
+
+/**
+ * Espelha uma mutação local na nuvem (painel web) em background.
+ * Fire-and-forget: o SQLite é a fonte da verdade; este espelho NUNCA pode
+ * afetar o save local. `pushRow`/`removeRow` já engolem erros internamente,
+ * mas envolvemos em try/catch + `.catch` por garantia (offline/deslogado = no-op).
+ */
+function mirrorPush(table: Parameters<typeof pushRow>[0], obj: unknown): void {
+  try {
+    void pushRow(table, obj).catch(() => {});
+  } catch {
+    // espelho em background nunca quebra o app local
+  }
+}
+
+function mirrorRemove(table: Parameters<typeof removeRow>[0], id: string): void {
+  try {
+    void removeRow(table, id).catch(() => {});
+  } catch {
+    // idem
+  }
+}
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -162,45 +185,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 
   await seedCodigosErro(database);
 
-  // Insert default empresa data if not exists
-  const empresaRow = await database.getFirstAsync<{ id: string }>('SELECT id FROM empresa LIMIT 1');
-  if (!empresaRow) {
-    const defaultEmpresa: Empresa = {
-      id: 'empresa_1',
-      nome: 'GR TECH Refrigeração',
-      segmento: 'ar-condicionado',
-      especialidade: 'Assistência técnica de Ar condicionado',
-      slogan: 'Soluções em Climatização Comercial e Residencial',
-      cnpj: '44.301.204/0001-38',
-      cpf: '441.415.238-01',
-      endereco: 'Rua Henrique Perdigão',
-      cidade: 'São Paulo',
-      estado: 'SP',
-      telefone: '(11) 95875-8030',
-      whatsapp: '11958758030',
-      site: 'www.grtechrefrigeracao.com.br',
-      email: 'contato@grtechrefrigeracao.com.br',
-      chavePix: '44301204000138',
-      normas: 'Execução conforme normas ABNT NBR 16401, SMACNA e ANVISA',
-      nomePrestador: 'Igor De Souza',
-    };
-    await database.runAsync(
-      'INSERT INTO empresa (id, data) VALUES (?, ?)',
-      ['empresa_1', JSON.stringify(defaultEmpresa)]
-    );
-
-    // Insert default depoimentos
-    const depoimentos: Depoimento[] = [
-      { id: 'dep_1', nomeCliente: 'Wanessa Costa Broklin', estrelas: 5, criadoEm: new Date().toISOString() },
-      { id: 'dep_2', nomeCliente: 'Tania Manente de Carvalho', estrelas: 5, criadoEm: new Date().toISOString() },
-    ];
-    for (const d of depoimentos) {
-      await database.runAsync(
-        'INSERT INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em) VALUES (?,?,?,?,?)',
-        [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm]
-      );
-    }
-  }
+  // Sem dados-semente falsos: instalações novas começam SEM empresa e SEM
+  // depoimentos. O usuário cadastra a própria empresa em "Meu Negócio" (as telas
+  // que usam empresa toleram null). O único seed real é o de `codigos_erro` acima.
 }
 
 /**
@@ -240,6 +227,7 @@ export async function saveEmpresa(empresa: Empresa): Promise<void> {
     'INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)',
     [empresa.id, JSON.stringify(empresa)]
   );
+  mirrorPush('empresa', empresa);
 }
 
 // ─── CLIENTES ─────────────────────────────────────────────
@@ -269,11 +257,13 @@ export async function saveCliente(cliente: Cliente): Promise<void> {
      cliente.estado ?? null, cliente.cidade ?? null, cliente.cep ?? null,
      cliente.criadoEm]
   );
+  mirrorPush('clientes', cliente);
 }
 
 export async function deleteCliente(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM clientes WHERE id = ?', [id]);
+  mirrorRemove('clientes', id);
 }
 
 function rowToCliente(r: any): Cliente {
@@ -310,11 +300,13 @@ export async function saveServico(s: ServicoItem): Promise<void> {
     [s.id, s.nome, s.descricao ?? null, s.preco, s.custo ?? null,
      s.unidade, s.fotoUri ?? null, s.criadoEm]
   );
+  mirrorPush('servicos', s);
 }
 
 export async function deleteServico(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM servicos WHERE id = ?', [id]);
+  mirrorRemove('servicos', id);
 }
 
 function rowToServico(r: any): ServicoItem {
@@ -350,11 +342,13 @@ export async function saveProduto(p: ProdutoItem): Promise<void> {
     [p.id, p.nome, p.descricao ?? null, p.preco, p.custo ?? null,
      p.marca ?? null, p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm]
   );
+  mirrorPush('produtos', p);
 }
 
 export async function deleteProduto(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM produtos WHERE id = ?', [id]);
+  mirrorRemove('produtos', id);
 }
 
 function rowToProduto(r: any): ProdutoItem {
@@ -385,11 +379,13 @@ export async function saveOrcamento(o: Orcamento): Promise<void> {
     'INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
     [o.id, o.numero, JSON.stringify(o)]
   );
+  mirrorPush('orcamentos', o);
 }
 
 export async function deleteOrcamento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM orcamentos WHERE id = ?', [id]);
+  mirrorRemove('orcamentos', id);
 }
 
 /**
@@ -432,6 +428,7 @@ export async function saveRecibo(r: Recibo): Promise<void> {
     'INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)',
     [r.id, r.numero, JSON.stringify(r)]
   );
+  mirrorPush('recibos', r);
 }
 
 export async function getNextReciboNumber(): Promise<string> {
@@ -453,11 +450,13 @@ export async function saveModelo(m: ModeloOrcamento): Promise<void> {
     'INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em) VALUES (?,?,?,?,?)',
     [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm]
   );
+  mirrorPush('modelos', m);
 }
 
 export async function deleteModelo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM modelos WHERE id = ?', [id]);
+  mirrorRemove('modelos', id);
 }
 
 // ─── DEPOIMENTOS ─────────────────────────────────────────────
@@ -473,11 +472,13 @@ export async function saveDepoimento(d: Depoimento): Promise<void> {
     'INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em) VALUES (?,?,?,?,?)',
     [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm]
   );
+  mirrorPush('depoimentos', d);
 }
 
 export async function deleteDepoimento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM depoimentos WHERE id = ?', [id]);
+  mirrorRemove('depoimentos', id);
 }
 
 // ─── CACHE DE IA (Etapa 0.3) ─────────────────────────────

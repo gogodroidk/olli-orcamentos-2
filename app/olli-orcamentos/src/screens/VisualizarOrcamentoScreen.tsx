@@ -59,14 +59,21 @@ export default function VisualizarOrcamentoScreen() {
       await compartilharPdfOrcamento(orc, empresa, depoimentos);
     } catch (e) {
       Alert.alert('Erro', 'Não foi possível gerar o PDF.');
+    } finally {
+      // SEMPRE volta o loading — inclusive na web, onde a impressão é assíncrona.
+      setSharing(false);
     }
-    setSharing(false);
   }
 
   async function handleWhatsApp() {
     if (!orc) return;
-    const msg = `Olá ${orc.clienteNome}! Segue o orçamento nº ${orc.numero} no valor de ${formatCurrency(orc.valorTotal)}. Em breve envio o PDF. ${empresa?.telefone ?? ''}`;
-    await abrirWhatsApp(orc.clienteTelefone, msg);
+    const contato = empresa?.telefone ? ` ${empresa.telefone}` : '';
+    const msg = `Olá ${orc.clienteNome}! Segue o orçamento nº ${orc.numero} no valor de ${formatCurrency(orc.valorTotal)}.${contato}`;
+    try {
+      await abrirWhatsApp(orc.clienteTelefone, msg);
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
   }
 
   async function handleLinkCliente() {
