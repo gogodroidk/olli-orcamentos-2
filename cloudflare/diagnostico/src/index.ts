@@ -165,6 +165,113 @@ async function callAnthropic(key: string, model: string, text: string): Promise<
   return diag ? { diag, modelo: data?.model ?? model } : { erro: 'resposta_invalida' };
 }
 
+// ─── VOZ → ITENS DE ORÇAMENTO (Etapa 4) ──────────────────────────
+const VOZ_SYSTEM = `Você é a OLLI, assistente de um prestador de refrigeração/ar-condicionado no Brasil. A partir da fala do prestador, extraia os itens do orçamento. Use o catálogo fornecido para casar nomes e preços quando possível. Para o que não souber o preço, deixe valorUnitario nulo (não invente). Responda só no schema.`;
+
+const NUM_OR_NULL = { type: 'NUMBER', nullable: true };
+const VOZ_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    titulo: STR,
+    clienteNome: STR,
+    itens: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          descricao: STR,
+          quantidade: { type: 'NUMBER' },
+          valorUnitario: NUM_OR_NULL,
+          tipo: { type: 'STRING', enum: ['servico', 'peca'] },
+        },
+        required: ['descricao', 'quantidade', 'valorUnitario', 'tipo'],
+        propertyOrdering: ['descricao', 'quantidade', 'valorUnitario', 'tipo'],
+      },
+    },
+    observacao: STR,
+  },
+  required: ['itens'],
+  propertyOrdering: ['titulo', 'clienteNome', 'itens', 'observacao'],
+};
+
+function vozUserText(transcript: string, catalogo?: { nome: string; preco?: number }[]): string {
+  const cat = Array.isArray(catalogo) ? catalogo.filter(c => c && c.nome) : [];
+  const catTxt = cat.length
+    ? `Catálogo do prestador (nome → preço de referência):\n` +
+      cat.map(c => `- ${c.nome}${typeof c.preco === 'number' ? `: ${c.preco}` : ': (sem preço)'}`).join('\n') + `\n\n`
+    : '';
+  return (
+    catTxt +
+    `Fala do prestador (transcrição):\n${transcript}\n\n` +
+    `Extraia os itens do orçamento seguindo as regras. Responda apenas com o JSON.`
+  );
+}
+
+// Chamada genérica ao Gemini com JSON estrito (reusa o padrão de geminiOnce).
+async function geminiJsonOnce(key: string, model: string, system: string, text: string, schema: any, maxOutputTokens: number): Promise<{ json: any } | { erro: string }> {
+  let resp: Response;
+  try {
+    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+          maxOutputTokens,
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
+      }),
+    });
+  } catch (e) { return { erro: `rede: ${String(e)}` }; }
+  if (!resp.ok) return { erro: `gemini ${resp.status}: ${(await resp.text().catch(() => '')).slice(0, 300)}` };
+  const data: any = await resp.json();
+  const cand: any = data?.candidates?.[0];
+  const parts: any[] = cand?.content?.parts ?? [];
+  const textos: string[] = parts.filter((p: any) => p && typeof p.text === 'string' && !p.thought).map((p: any) => p.text);
+  let out: any = null;
+  for (const t of textos) { out = extractJson(t); if (out) break; }
+  if (!out) out = extractJson(textos.join('\n'));
+  if (out) return { json: out };
+  return { erro: `resposta_invalida (finish=${cand?.finishReason ?? '?'} parts=${parts.length} txtlen=${textos.join('').length})` };
+}
+
+async function callGeminiJson(key: string, model: string, system: string, text: string, schema: any, maxOutputTokens: number): Promise<{ json: any; modelo: string } | { erro: string }> {
+  let r = await geminiJsonOnce(key, model, system, text, schema, maxOutputTokens);
+  if ('erro' in r && r.erro.startsWith('resposta_invalida')) r = await geminiJsonOnce(key, model, system, text, schema, maxOutputTokens); // 1 retry
+  return 'json' in r ? { json: r.json, modelo: model } : r;
+}
+
+// ─── CHAT COM A OLLI (Etapa 4) ───────────────────────────────────
+const CHAT_SYSTEM = `Você é a OLLI, copiloto de um prestador de refrigeração/ar-condicionado no Brasil (HVAC). Ajuda com diagnóstico de falhas, identificação de peças, faixas de preço de mercado, dicas de orçamento e de atendimento ao cliente. Seja objetiva, prática e em português do Brasil. Quando sugerir preços, deixe claro que são estimativas e variam por região. Não invente dados técnicos; se não souber, diga.`;
+
+async function callGeminiChat(key: string, model: string, system: string, contents: any[], maxOutputTokens: number): Promise<{ texto: string; modelo: string } | { erro: string }> {
+  let resp: Response;
+  try {
+    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: system }] },
+        contents,
+        generationConfig: {
+          maxOutputTokens,
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
+      }),
+    });
+  } catch (e) { return { erro: `rede: ${String(e)}` }; }
+  if (!resp.ok) return { erro: `gemini ${resp.status}: ${(await resp.text().catch(() => '')).slice(0, 300)}` };
+  const data: any = await resp.json();
+  const cand: any = data?.candidates?.[0];
+  const parts: any[] = cand?.content?.parts ?? [];
+  const texto: string = parts.filter((p: any) => p && typeof p.text === 'string' && !p.thought).map((p: any) => p.text).join('').trim();
+  if (texto) return { texto, modelo: model };
+  return { erro: `resposta_invalida (finish=${cand?.finishReason ?? '?'} parts=${parts.length})` };
+}
+
 // ─── LINK DO CLIENTE (Etapa 3) ───────────────────────────────────
 const BRL = (n: number) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -423,6 +530,49 @@ export default {
 
     const gKey = pickKey(env, GEMINI_NAMES);
     const aKey = pickKey(env, ANTHROPIC_NAMES);
+
+    // Voz → itens de orçamento (dinâmico, sem cache)
+    if (req.method === 'POST' && url.pathname === '/voz') {
+      let body: { transcript?: string; catalogo?: { nome: string; preco?: number }[] };
+      try { body = await req.json(); } catch { return json({ ok: false, erro: 'body_invalido' }, 400); }
+      if (!body.transcript || !String(body.transcript).trim()) return json({ ok: false, erro: 'sem_transcript' }, 400);
+      if (!gKey) return json({ ok: false, erro: 'ia_nao_configurada' });
+
+      const text = vozUserText(String(body.transcript), body.catalogo);
+      const r = await callGeminiJson(gKey, env.GEMINI_MODEL || 'gemini-3.5-flash', VOZ_SYSTEM, text, VOZ_SCHEMA, 2048);
+      if ('erro' in r) return json({ ok: false, erro: r.erro });
+
+      const j = r.json ?? {};
+      const itens = (Array.isArray(j.itens) ? j.itens : []).map((it: any) => ({
+        descricao: String(it?.descricao ?? ''),
+        quantidade: typeof it?.quantidade === 'number' && it.quantidade > 0 ? it.quantidade : 1,
+        valorUnitario: typeof it?.valorUnitario === 'number' ? it.valorUnitario : null,
+        tipo: it?.tipo === 'peca' ? 'peca' : 'servico',
+      }));
+      return json({
+        ok: true,
+        ...(j.titulo ? { titulo: String(j.titulo) } : {}),
+        ...(j.clienteNome ? { clienteNome: String(j.clienteNome) } : {}),
+        itens,
+        ...(j.observacao ? { observacao: String(j.observacao) } : {}),
+      });
+    }
+
+    // Conversa com a OLLI (dinâmico, sem cache)
+    if (req.method === 'POST' && url.pathname === '/chat') {
+      let body: { mensagens?: { role?: string; texto?: string }[] };
+      try { body = await req.json(); } catch { return json({ ok: false, erro: 'body_invalido' }, 400); }
+      const msgs = Array.isArray(body.mensagens) ? body.mensagens : [];
+      const contents = msgs
+        .filter(m => m && typeof m.texto === 'string' && m.texto.trim())
+        .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.texto) }] }));
+      if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' }, 400);
+      if (!gKey) return json({ ok: false, erro: 'ia_nao_configurada' });
+
+      const r = await callGeminiChat(gKey, env.GEMINI_MODEL || 'gemini-3.5-flash', CHAT_SYSTEM, contents, 1024);
+      if ('erro' in r) return json({ ok: false, erro: r.erro });
+      return json({ ok: true, resposta: r.texto });
+    }
 
     if (req.method === 'GET' && url.pathname === '/status') {
       return json({
