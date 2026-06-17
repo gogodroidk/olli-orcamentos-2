@@ -1,6 +1,18 @@
 import { DIAGNOSTICO_URL } from '../config';
 import { getServicos } from '../database/database';
 import { track, Eventos } from './analytics';
+import { supabase } from './supabase';
+
+/** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
+async function accessTokenAtual(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Fase 3 — a OLLI conversacional (voz + chat). Os dois endpoints vivem no MESMO
@@ -40,6 +52,10 @@ const FALHOU =
   'Não consegui falar com a OLLI agora. Confira a internet e tente de novo — ou crie o orçamento na mão.';
 const SOBRECARGA =
   'A OLLI está muito requisitada agora. Tente de novo em alguns segundos.';
+const PRECISA_LOGIN =
+  'Entre na sua conta para usar a OLLI.';
+const MUITAS_REQUISICOES =
+  'Você usou a OLLI demais agora, aguarde um minutinho.';
 
 /**
  * Traduz o erro técnico do Worker/IA em mensagem amigável. Nunca mostra JSON
@@ -47,7 +63,9 @@ const SOBRECARGA =
  */
 function mensagemErroIA(erro: unknown, fallback: string): string {
   const s = typeof erro === 'string' ? erro : '';
-  if (/503|overload|high demand|unavailable|sobrecarreg|exhausted|quota|rate|429/i.test(s)) {
+  if (/nao_autorizado|n[ãa]o_autorizado|401/i.test(s)) return PRECISA_LOGIN;
+  if (/muitas_requisicoes|429/i.test(s)) return MUITAS_REQUISICOES;
+  if (/503|overload|high demand|unavailable|sobrecarreg|exhausted|quota|rate/i.test(s)) {
     return SOBRECARGA;
   }
   if (!s || /[{}]|gemini|anthropic|http|json|token|api/i.test(s)) return fallback;
@@ -71,6 +89,10 @@ export async function interpretarVoz(transcript: string): Promise<VozResultado> 
   if (!texto) return { ok: false, erro: 'Não entendi o que você falou. Tente de novo, com calma.' };
   if (!DIAGNOSTICO_URL) return { ok: false, erro: SEM_IA };
 
+  // O Worker exige login (JWT do Supabase). Sem sessão → mensagem amigável.
+  const token = await accessTokenAtual();
+  if (!token) return { ok: false, erro: PRECISA_LOGIN };
+
   let catalogo: { nome: string; preco?: number }[] | undefined;
   try {
     const servicos = await getServicos();
@@ -82,9 +104,11 @@ export async function interpretarVoz(transcript: string): Promise<VozResultado> 
   try {
     const r = await fetch(`${DIAGNOSTICO_URL}/voz`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(catalogo ? { transcript: texto, catalogo } : { transcript: texto }),
     });
+    if (r.status === 401) return { ok: false, erro: PRECISA_LOGIN };
+    if (r.status === 429) return { ok: false, erro: MUITAS_REQUISICOES };
     if (!r.ok) return { ok: false, erro: FALHOU };
     const data: any = await r.json();
     if (data?.ok && Array.isArray(data.itens)) {
@@ -140,12 +164,19 @@ const CHAT_FALHOU =
  */
 export async function enviarChat(mensagens: ChatMensagem[]): Promise<ChatResultado> {
   if (!DIAGNOSTICO_URL) return { ok: false, resposta: CHAT_SEM_IA };
+
+  // O Worker exige login (JWT do Supabase). Sem sessão → mensagem amigável.
+  const token = await accessTokenAtual();
+  if (!token) return { ok: false, resposta: PRECISA_LOGIN };
+
   try {
     const r = await fetch(`${DIAGNOSTICO_URL}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ mensagens }),
     });
+    if (r.status === 401) return { ok: false, resposta: PRECISA_LOGIN };
+    if (r.status === 429) return { ok: false, resposta: MUITAS_REQUISICOES };
     if (!r.ok) return { ok: false, resposta: CHAT_FALHOU };
     const data: any = await r.json();
     if (data?.ok && typeof data.resposta === 'string') {
