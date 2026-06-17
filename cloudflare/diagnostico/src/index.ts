@@ -168,6 +168,21 @@ async function callAnthropic(key: string, model: string, text: string): Promise<
 // ─── LINK DO CLIENTE (Etapa 3) ───────────────────────────────────
 const BRL = (n: number) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** Formata data para o cliente. Aceita ISO, "AAAA-MM-DD" ou já-BR ("DD/MM/AAAA"). */
+function formatDataBR(v: string): string {
+  if (!v) return '';
+  if (v.includes('/')) return v; // já está em BR
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (m) {
+    const dia = Number(m[3]);
+    const mes = MESES_PT[Number(m[2]) - 1] ?? '';
+    return mes ? `${dia} de ${mes} de ${m[1]}` : `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  return v;
+}
+
 async function sbReq(env: Env, path: string, init?: RequestInit): Promise<Response | null> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
   return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
@@ -195,61 +210,178 @@ const naoEncontrado = () =>
   htmlResp(`<!doctype html><meta charset="utf-8"><div style="font-family:sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#0A2540">
     <h1>Link não encontrado</h1><p>Este orçamento não existe ou foi removido. Peça um novo link ao prestador.</p></div>`, 404);
 
+// Monograma OLLI (SVG inline). cor do traço e do ponto configuráveis.
+function monograma(stroke: string, dot: string, size: number): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 96 96" fill="none"><circle cx="48" cy="48" r="22" fill="none" stroke="${stroke}" stroke-width="9" stroke-linecap="round" stroke-dasharray="112 32" transform="rotate(-58 48 48)"/><circle cx="65" cy="33" r="4.5" fill="${dot}"/></svg>`;
+}
+
+const ICON_CHECK = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_WPP = `<svg width="17" height="17" viewBox="0 0 24 24" fill="#128C7E"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.1 14.9l-.3-.2-2.8.8.8-2.8-.2-.3A8 8 0 0 1 12 4z"/></svg>`;
+const ICON_LOCK = `<svg width="14" height="14" viewBox="0 0 48 48" fill="none"><rect x="8" y="11" width="32" height="28" rx="11" fill="#C7CDD6"/><circle cx="19.5" cy="25" r="3.2" fill="#fff"/><circle cx="29.5" cy="25" r="3.2" fill="#fff"/></svg>`;
+
+const PAGE_HEAD = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@400;500;600;700&display=swap" rel="stylesheet">`;
+
+function shellCss(): string {
+  return `
+  *{box-sizing:border-box}
+  body{margin:0;background:#F4F6F9;font-family:'Plus Jakarta Sans',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1A2230}
+  .topband{background:linear-gradient(135deg,#0B6FCE,#0A2540);padding:30px 24px 64px}
+  .topband .inner{max-width:560px;margin:0 auto;display:flex;align-items:center;gap:12px}
+  .mono{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center}
+  .co-name{font-family:'Spectral',Georgia,serif;font-size:19px;font-weight:600;color:#fff}
+  .co-tag{font-size:12px;color:rgba(255,255,255,0.7)}
+  .stage{max-width:560px;margin:-44px auto 0;padding:0 24px 44px}
+  .card{background:#fff;border-radius:20px;box-shadow:0 20px 50px rgba(15,23,42,0.12);overflow:hidden}
+  .card-head{padding:26px 28px 22px;border-bottom:1px solid #EDEFF2}
+  .hi{font-size:13px;color:#6B7686}.hi b{color:#16202E}
+  .title{font-size:19px;font-weight:700;color:#16202E;margin-top:6px;line-height:1.35}
+  .metarow{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
+  .metarow .n{font-size:12px;font-weight:700;color:#6B7686}
+  .dot{width:4px;height:4px;border-radius:2px;background:#C7CDD6}
+  .metarow .date{font-size:12px;color:#8A93A2}
+  .pill{margin-left:auto;font-size:11px;font-weight:700;color:#0B6FCE;background:#EAF2FC;border-radius:999px;padding:4px 11px}
+  .card-body{padding:20px 28px}
+  .item{display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid #F1F3F6;gap:12px}
+  .item:last-of-type{border-bottom:none}
+  .item .nm{font-size:13.5px;font-weight:600;color:#1A2230}
+  .item .ds{font-size:11.5px;color:#8A93A2;margin-top:2px}
+  .item .vl{font-size:13.5px;font-weight:700;color:#1A2230;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .badge{font-size:10px;font-weight:700;color:#0B6FCE;background:#EAF2FC;border-radius:5px;padding:1px 6px;margin-left:4px}
+  .totalbox{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:15px 18px;border-radius:14px;background:#F0F6FD;border:1px solid #DCEAFA}
+  .totalbox .lbl{font-size:13px;font-weight:700;color:#1A2230;letter-spacing:0.3px}
+  .totalbox .amt{font-family:'Spectral',Georgia,serif;font-size:26px;font-weight:700;color:#0B6FCE;font-variant-numeric:tabular-nums}
+  .minis{display:flex;gap:8px;margin-top:16px}
+  .mini{flex:1;text-align:center;background:#F7F8FA;border-radius:11px;padding:10px 6px}
+  .mini .k{font-size:10px;font-weight:800;letter-spacing:0.8px;color:#9AA3B2}
+  .mini .v{font-size:11.5px;color:#3C4756;margin-top:4px;font-weight:600}
+  .cta{width:100%;margin-top:16px;border:none;background:linear-gradient(135deg,#15B66E,#0E8F55);border-radius:14px;padding:16px;font-family:inherit;font-size:15.5px;font-weight:800;color:#fff;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 10px 24px rgba(21,182,110,0.3);cursor:pointer}
+  .row2{display:flex;gap:10px;margin-top:10px}
+  .btn-sec{flex:1;border:1px solid #DDE2E9;background:#fff;border-radius:13px;padding:13px;font-family:inherit;font-size:13.5px;font-weight:700;color:#5A6575;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:7px}
+  .btn-wpp{flex:1.6;color:#128C7E}
+  form.inline{margin:0;display:contents}
+  .seal{text-align:center;font-size:11.5px;color:#9AA3B2;margin-top:22px;display:flex;align-items:center;justify-content:center;gap:6px}
+  /* success / refused full screen */
+  @keyframes pop{0%{transform:scale(0.6);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+  .done{background:#fff;border-radius:20px;box-shadow:0 20px 50px rgba(15,23,42,0.12);padding:44px 34px;text-align:center;margin-top:10px}
+  .done .circ{width:86px;height:86px;border-radius:43px;margin:0 auto;display:flex;align-items:center;justify-content:center;animation:pop 0.5s ease both}
+  .done .circ.ok{background:linear-gradient(140deg,#15B66E,#0E8F55);box-shadow:0 14px 30px rgba(21,182,110,0.35)}
+  .done .circ.no{background:linear-gradient(140deg,#F25555,#C0392B);box-shadow:0 14px 30px rgba(242,85,85,0.32)}
+  .done .h{font-family:'Spectral',Georgia,serif;font-size:27px;font-weight:700;color:#16202E;margin-top:22px}
+  .done .p{font-size:14.5px;color:#5A6575;margin-top:10px;line-height:1.6}.done .p b{color:#16202E}
+  .done .tag{display:inline-flex;align-items:center;gap:10px;margin-top:22px;background:#F0F6FD;border:1px solid #DCEAFA;border-radius:12px;padding:12px 18px}
+  .done .tag .k{font-size:13px;font-weight:700;color:#1A2230}
+  .done .tag .v{font-family:'Spectral',Georgia,serif;font-size:20px;font-weight:700;color:#0B6FCE;font-variant-numeric:tabular-nums}
+  .done .again{display:block;margin:26px auto 0;border:none;background:transparent;font-family:inherit;font-size:13px;font-weight:700;color:#8A93A2;text-decoration:underline;cursor:pointer}
+  `;
+}
+
+/** Cabeçalho com faixa de gradiente + monograma + nome/tagline da empresa. */
+function bandHtml(o: any, tagline: string): string {
+  return `<div class="topband"><div class="inner">
+    <div class="mono">${monograma('#fff', '#7FE9F5', 30)}</div>
+    <div><div class="co-name">${esc(o.prestador_nome || 'OLLI')}</div>${tagline ? `<div class="co-tag">${esc(tagline)}</div>` : ''}</div>
+  </div></div>`;
+}
+
+/** Estado de sucesso/recusa em tela cheia (com a animação pop). */
+function paginaResposta(o: any): string {
+  const d = o.dados ?? {};
+  const tagline = d.prestador?.tagline ?? '';
+  const aprovado = o.status === 'aprovado';
+  const titulo = aprovado ? 'Orçamento aprovado!' : 'Orçamento recusado';
+  const corpo = aprovado
+    ? `A <b>${esc(o.prestador_nome || 'empresa')}</b> já foi avisada e vai entrar em contato pra agendar.`
+    : `Você recusou este orçamento. A <b>${esc(o.prestador_nome || 'empresa')}</b> foi avisada. Se mudou de ideia, fale com o prestador.`;
+  const tagLabel = aprovado ? 'Total aprovado' : 'Total';
+  return `<!doctype html><html lang="pt-BR"><head>${PAGE_HEAD}
+<title>Orçamento nº ${esc(o.numero ?? '')} — ${esc(o.prestador_nome ?? 'OLLI')}</title>
+<style>${shellCss()}</style></head><body>
+${bandHtml(o, tagline)}
+<div class="stage">
+  <div class="done">
+    <div class="circ ${aprovado ? 'ok' : 'no'}">${aprovado
+      ? `<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="M5 12l5 5L20 6" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      : `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>`}</div>
+    <div class="h">${titulo}</div>
+    <div class="p">${corpo}</div>
+    <div class="tag"><span class="k">${tagLabel}</span><span class="v">${BRL(o.valor_total)}</span></div>
+    <a class="again" href="/o/${esc(o.token ?? '')}?ver=1">Ver orçamento novamente</a>
+  </div>
+  <div class="seal">${ICON_LOCK} Enviado com segurança via OLLI</div>
+</div>
+</body></html>`;
+}
+
 function paginaCliente(o: any): string {
   const d = o.dados ?? {};
   const itens: any[] = Array.isArray(d.itens) ? d.itens : [];
   const respondido = o.status === 'aprovado' || o.status === 'recusado';
+
+  // Quando já respondido, mostra a tela cheia de sucesso/recusa
+  // (a não ser que o cliente peça "ver=1" para rever o orçamento).
+  const querVer = o.__verNovamente === true;
+  if (respondido && !querVer) return paginaResposta(o);
+
+  const tagline = d.prestador?.tagline ?? '';
   const wpp = (o.prestador_whatsapp || '').replace(/\D/g, '');
   const wppMsg = encodeURIComponent(`Olá! Tenho uma dúvida sobre o orçamento nº ${o.numero ?? ''}.`);
-  const banner = respondido
-    ? `<div class="banner ${esc(o.status)}">${o.status === 'aprovado' ? '✓ Você aprovou este orçamento. O prestador foi avisado.' : '✗ Você recusou este orçamento.'}</div>`
-    : '';
-  const acoes = respondido ? '' :
-    `<form method="POST" class="acoes">
-       <button name="acao" value="aprovar" class="btn aprovar">Aprovar orçamento</button>
-       <button name="acao" value="recusar" class="btn recusar">Recusar</button>
-     </form>`;
-  const whatsapp = wpp ? `<a class="btn whats" href="https://wa.me/55${wpp}?text=${wppMsg}">Dúvida no WhatsApp</a>` : '';
-  const linhas = itens.map(it => `
-    <tr><td>${esc(it.nome)}<span class="qtd">${esc(it.quantidade)} ${esc(it.unidade ?? '')} × ${BRL(it.preco)}</span></td>
-    <td class="val">${BRL(it.subtotal)}</td></tr>`).join('');
-  return `<!doctype html><html lang="pt-BR"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  const dataEmissao = d.dataEmissao ? esc(formatDataBR(d.dataEmissao)) : '';
+
+  const primeiroNome = esc((o.cliente_nome || '').split(/\s+/)[0] || 'cliente');
+
+  const linhas = itens.map(it => {
+    const badge = it.isPeca ? `<span class="badge">PEÇA</span>` : '';
+    return `<div class="item">
+      <div><div class="nm">${esc(it.nome)}${badge}</div>${it.descricao ? `<div class="ds">${esc(it.descricao)}</div>` : ''}</div>
+      <div class="vl">${BRL(it.subtotal)}</div>
+    </div>`;
+  }).join('');
+
+  // mini-cards (omite os vazios, mas tenta sempre mostrar os três)
+  const pgto = esc(d.condicoesPagamento || '—');
+  const gar = esc(d.garantia || '—');
+  const prazo = esc(d.prazo || (d.validade ? `até ${formatDataBR(d.validade)}` : '—'));
+
+  const acoes = respondido ? '' : `
+    <form method="POST" class="inline">
+      <button name="acao" value="aprovar" class="cta">${ICON_CHECK} Aprovar orçamento</button>
+      <div class="row2">
+        <button name="acao" value="recusar" class="btn-sec">Recusar</button>
+        ${wpp ? `<a class="btn-sec btn-wpp" href="https://wa.me/55${wpp}?text=${wppMsg}">${ICON_WPP} Tirar dúvida</a>` : ''}
+      </div>
+    </form>`;
+
+  return `<!doctype html><html lang="pt-BR"><head>${PAGE_HEAD}
 <title>Orçamento nº ${esc(o.numero ?? '')} — ${esc(o.prestador_nome ?? 'OLLI')}</title>
-<style>
-  :root{--ink:#0A2540;--frost:#0B6FCE;--bg:#F4F7FB;--line:#E2E8F0;--ok:#15B66E;--no:#F25555;--mut:#64748B}
-  *{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink)}
-  .wrap{max-width:560px;margin:0 auto;padding:20px 16px 48px}
-  .head{display:flex;align-items:center;gap:10px;margin:8px 0 18px}
-  .logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#0B6FCE,#34C6D9);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:18px}
-  .brand{font-weight:800}.brand small{display:block;color:var(--mut);font-weight:600;font-size:12px}
-  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 6px 20px rgba(10,37,64,.05)}
-  .num{font-size:13px;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-  .total{font-size:34px;font-weight:800;margin:2px 0 0}
-  h2{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px}
-  table{width:100%;border-collapse:collapse}td{padding:9px 0;border-bottom:1px solid var(--line);vertical-align:top;font-size:15px}
-  .qtd{display:block;color:var(--mut);font-size:12px;margin-top:2px}.val{text-align:right;font-weight:700;white-space:nowrap}
-  .meta{display:flex;justify-content:space-between;font-size:14px;padding:6px 0;color:var(--mut)}.meta b{color:var(--ink)}
-  .acoes{display:flex;gap:10px;margin-top:6px}
-  .btn{flex:1;display:block;text-align:center;text-decoration:none;border:0;cursor:pointer;padding:15px;border-radius:13px;font-size:16px;font-weight:800}
-  .aprovar{background:var(--ok);color:#fff}.recusar{flex:.6;background:#fff;color:var(--no);border:1.5px solid var(--no)}
-  .whats{background:#25D366;color:#fff;margin-top:10px}
-  .banner{padding:14px;border-radius:13px;font-weight:700;margin-bottom:14px}
-  .banner.aprovado{background:#E7F8F0;color:#0d7a4c}.banner.recusado{background:#FDECEC;color:#b3261e}
-  .foot{text-align:center;color:var(--mut);font-size:12px;margin-top:20px}.foot b{color:var(--frost)}
-</style></head><body><div class="wrap">
-  <div class="head"><div class="logo">O</div><div class="brand">${esc(o.prestador_nome || 'OLLI')}<small>Orçamento nº ${esc(o.numero ?? '')}</small></div></div>
-  ${banner}
-  <div class="card"><div class="num">Olá ${esc(o.cliente_nome || '')}, este é o seu orçamento</div><div class="total">${BRL(o.valor_total)}</div></div>
-  ${itens.length ? `<div class="card"><h2>Itens</h2><table>${linhas}</table></div>` : ''}
+<style>${shellCss()}</style></head><body>
+${bandHtml(o, tagline)}
+<div class="stage">
   <div class="card">
-    ${d.validade ? `<div class="meta">Válido até <b>${esc(d.validade)}</b></div>` : ''}
-    ${d.garantia ? `<div class="meta">Garantia <b>${esc(d.garantia)}</b></div>` : ''}
-    ${d.condicoesPagamento ? `<div class="meta">Pagamento <b>${esc(d.condicoesPagamento)}</b></div>` : ''}
-    ${acoes}${whatsapp}
+    <div class="card-head">
+      <div class="hi">Olá, <b>${primeiroNome}</b></div>
+      <div class="title">Você recebeu um orçamento da ${esc(o.prestador_nome || 'empresa')}</div>
+      <div class="metarow">
+        <span class="n">Nº ${esc(o.numero ?? '')}</span>
+        ${dataEmissao ? `<span class="dot"></span><span class="date">${dataEmissao}</span>` : ''}
+        <span class="pill">${d.validade ? `Válido até ${esc(formatDataBR(d.validade))}` : 'Válido por 15 dias'}</span>
+      </div>
+    </div>
+    <div class="card-body">
+      ${linhas}
+      <div class="totalbox"><span class="lbl">TOTAL</span><span class="amt">${BRL(o.valor_total)}</span></div>
+      <div class="minis">
+        <div class="mini"><div class="k">PAGAMENTO</div><div class="v">${pgto}</div></div>
+        <div class="mini"><div class="k">GARANTIA</div><div class="v">${gar}</div></div>
+        <div class="mini"><div class="k">PRAZO</div><div class="v">${prazo}</div></div>
+      </div>
+    </div>
   </div>
-  <div class="foot">Feito com <b>OLLI</b> · orçamentos que fecham negócio</div>
-</div></body></html>`;
+  ${acoes}
+  <div class="seal">${ICON_LOCK} Enviado com segurança via OLLI</div>
+</div>
+</body></html>`;
 }
 
 async function handleLink(req: Request, env: Env, token: string): Promise<Response> {
@@ -271,6 +403,8 @@ async function handleLink(req: Request, env: Env, token: string): Promise<Respon
   }
   const o = await carregarOrcamento(env, token);
   if (!o) return naoEncontrado();
+  o.token = token;
+  o.__verNovamente = new URL(req.url).searchParams.get('ver') === '1';
   return htmlResp(paginaCliente(o));
 }
 

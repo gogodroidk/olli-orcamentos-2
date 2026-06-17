@@ -76,7 +76,7 @@ export default function DiagnosticoIAScreen() {
 
         {loading && (
           <View style={styles.loadingBox}>
-            <OlliMascot size={44} />
+            <OlliMascot size={44} onDark />
             <ActivityIndicator color={Colors.accent} style={{ marginTop: 10 }} />
             <Text style={styles.loadingText}>A OLLI está cruzando código, marca e a base…</Text>
           </View>

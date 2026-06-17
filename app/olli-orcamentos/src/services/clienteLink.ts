@@ -20,13 +20,31 @@ function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
     numero: orc.numero,
     clienteNome: orc.clienteNome,
     valorTotal: orc.valorTotal,
-    prestador: { nome: empresa?.nome ?? '', whatsapp: empresa?.whatsapp ?? '', telefone: empresa?.telefone ?? '' },
+    subtotal: orc.subtotal,
+    desconto: orc.desconto ?? 0,
+    dataEmissao: orc.dataEmissao ?? orc.criadoEm ?? '',
+    prestador: {
+      nome: empresa?.nome ?? '',
+      whatsapp: empresa?.whatsapp ?? '',
+      telefone: empresa?.telefone ?? '',
+      // Tagline/especialidade que aparece sob o nome no cabeçalho do Link.
+      tagline: empresa?.especialidade ?? empresa?.slogan ?? '',
+    },
     itens: orc.itens.map(i => ({
-      nome: i.nome, quantidade: i.quantidade, unidade: i.unidade, preco: i.preco, subtotal: i.subtotal,
+      nome: i.nome,
+      descricao: i.descricao ?? '',
+      quantidade: i.quantidade,
+      unidade: i.unidade,
+      preco: i.preco,
+      subtotal: i.subtotal,
+      // Marca itens de produto/peça para o badge "PEÇA".
+      isPeca: i.tipo === 'produto',
     })),
     validade: orc.validadeOrcamento ?? '',
     garantia: orc.garantia ?? '',
     condicoesPagamento: orc.condicoesPagamento ?? '',
+    // "Prazo" para o mini-card (agendamento / prestação do serviço, se houver).
+    prazo: orc.agendamentoServico ?? orc.dataPrestacaoServico ?? '',
   };
 }
 

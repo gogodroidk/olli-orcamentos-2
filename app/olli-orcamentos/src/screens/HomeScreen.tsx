@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { getOrcamentos, getEmpresa } from '../database/database';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
@@ -77,7 +77,7 @@ export default function HomeScreen() {
             </Text>
           </View>
           <TouchableOpacity style={styles.olliBtn} onPress={abrirOlli} activeOpacity={0.8}>
-            <OlliMascot size={34} />
+            <OlliMascot size={34} onDark />
             {parados.length > 0 && (
               <View style={styles.olliBadge}><Text style={styles.olliBadgeText}>{parados.length}</Text></View>
             )}
@@ -156,7 +156,7 @@ export default function HomeScreen() {
         {parados.length > 0 && (
           <AnimatedEntrance index={2}>
             <View style={styles.lembrete}>
-              <OlliMascot size={40} float={false} />
+              <OlliMascot size={40} float={false} onDark />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.lembreteTitle}>{parados.length} orçamento{parados.length > 1 ? 's' : ''} parado{parados.length > 1 ? 's' : ''} há +5 dias</Text>
                 <Text style={styles.lembreteSub}>Que tal dar um toque no cliente?</Text>
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
 
   kpis: { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, paddingVertical: 14 },
   kpi: { flex: 1, alignItems: 'center' },
-  kpiValue: { fontSize: 17, fontWeight: '800', color: '#fff' },
+  kpiValue: { ...Typography.value, fontSize: 19, color: '#fff' },
   kpiLabel: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 3, fontWeight: '500' },
   kpiDivider: { width: 1, backgroundColor: Colors.outline, marginVertical: 4 },
 

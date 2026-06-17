@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { Orcamento, ItemOrcamento, ServicoItem, ProdutoItem, UNIDADES } from '../types';
 import { searchServicos, searchProdutos } from '../database/database';
 import { formatCurrency, formatQty, parseNumber } from '../utils/currency';
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   grandTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: Spacing.base, ...Shadow.md },
   grandTotalLabel: { fontSize: 13, color: 'rgba(255,255,255,0.82)', fontWeight: '600' },
   grandTotalDiscount: { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
-  grandTotalValue: { fontSize: 26, fontWeight: '900', color: '#fff' },
+  grandTotalValue: { ...Typography.displaySerif, color: '#fff' },
 
   modal: { flex: 1, backgroundColor: Colors.background },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
