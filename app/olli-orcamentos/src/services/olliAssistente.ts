@@ -38,6 +38,21 @@ const SEM_IA =
   'A OLLI por voz ainda não está ligada aqui. Você pode escrever os itens normalmente que eu monto o orçamento pra você.';
 const FALHOU =
   'Não consegui falar com a OLLI agora. Confira a internet e tente de novo — ou crie o orçamento na mão.';
+const SOBRECARGA =
+  'A OLLI está muito requisitada agora. Tente de novo em alguns segundos.';
+
+/**
+ * Traduz o erro técnico do Worker/IA em mensagem amigável. Nunca mostra JSON
+ * cru, código HTTP ou nome do provedor para o usuário.
+ */
+function mensagemErroIA(erro: unknown, fallback: string): string {
+  const s = typeof erro === 'string' ? erro : '';
+  if (/503|overload|high demand|unavailable|sobrecarreg|exhausted|quota|rate|429/i.test(s)) {
+    return SOBRECARGA;
+  }
+  if (!s || /[{}]|gemini|anthropic|http|json|token|api/i.test(s)) return fallback;
+  return s;
+}
 
 function catalogoLeve(servicos: { nome: string; preco: number }[]): { nome: string; preco?: number }[] {
   // Mantém o payload enxuto: só os nomes (e preço quando houver), no máx. 60 itens.
@@ -82,7 +97,7 @@ export async function interpretarVoz(transcript: string): Promise<VozResultado> 
         observacao: typeof data.observacao === 'string' ? data.observacao : undefined,
       };
     }
-    return { ok: false, erro: typeof data?.erro === 'string' ? data.erro : SEM_IA };
+    return { ok: false, erro: mensagemErroIA(data?.erro, SEM_IA) };
   } catch {
     return { ok: false, erro: FALHOU };
   }
@@ -137,7 +152,7 @@ export async function enviarChat(mensagens: ChatMensagem[]): Promise<ChatResulta
       track(Eventos.aiUsed, { fonte: 'chat' });
       return { ok: true, resposta: data.resposta };
     }
-    return { ok: false, resposta: typeof data?.erro === 'string' ? data.erro : CHAT_SEM_IA };
+    return { ok: false, resposta: mensagemErroIA(data?.erro, CHAT_SEM_IA) };
   } catch {
     return { ok: false, resposta: CHAT_FALHOU };
   }

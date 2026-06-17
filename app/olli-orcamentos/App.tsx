@@ -23,6 +23,8 @@ import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { getDb } from './src/database/database';
+import { supabase } from './src/services/supabase';
+import { syncOnLogin } from './src/services/cloudSync';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -71,6 +73,20 @@ export default function App() {
         setTimeout(() => setDbReady(true), wait);
       })
       .catch(console.error);
+  }, []);
+
+  // Sincronização per-row (painel web) ao logar. Listener global central: cobre
+  // o login feito em qualquer tela (inclusive ContaScreen). Ao entrar uma sessão
+  // (SIGNED_IN ou INITIAL_SESSION já autenticado), dispara o sync em background.
+  // syncOnLogin é fire-and-forget e nunca lança (offline/deslogado = no-op).
+  useEffect(() => {
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')) {
+        void syncOnLogin();
+      }
+    });
+    return () => data.subscription.unsubscribe();
   }, []);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar

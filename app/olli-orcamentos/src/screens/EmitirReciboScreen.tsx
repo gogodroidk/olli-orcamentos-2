@@ -5,9 +5,6 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
@@ -18,6 +15,7 @@ import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
 import { generateId } from '../utils/id';
+import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Route = RouteProp<RootStackParamList, 'EmitirRecibo'>;
@@ -159,13 +157,19 @@ export default function EmitirReciboScreen() {
       exibirAssinatura: true,
       criadoEm: nowISO(),
     };
-    await saveRecibo(recibo);
-    const html = buildHtml(recibo);
-    const { uri } = await Print.printToFileAsync({ html });
-    const dest = FileSystem.documentDirectory + `Recibo-${numero}.pdf`;
-    await FileSystem.copyAsync({ from: uri, to: dest });
-    await Sharing.shareAsync(dest, { mimeType: 'application/pdf', dialogTitle: `Recibo ${numero}` });
-    setSharing(false);
+    try {
+      // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
+      // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
+      await saveRecibo(recibo);
+      const html = buildHtml(recibo);
+      // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
+      await exportarHtmlComoPdf(html, `Recibo-${numero}`, { dialogTitle: `Recibo ${numero}` });
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível gerar o PDF do recibo. O recibo foi salvo.');
+    } finally {
+      // SEMPRE volta o loading — inclusive na web (impressão assíncrona).
+      setSharing(false);
+    }
   }
 
   return (

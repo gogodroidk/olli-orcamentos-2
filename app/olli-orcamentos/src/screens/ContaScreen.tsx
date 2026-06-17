@@ -1,11 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
@@ -17,31 +15,20 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa } from '../database/database';
 
-function GoogleG() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 48 48">
-      <Path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z" />
-      <Path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 5.1 29.6 3 24 3 16 3 9.1 7.6 6.3 14.7z" />
-      <Path fill="#4CAF50" d="M24 45c5.2 0 9.9-2 13.5-5.2l-6.2-5.3C29.3 35.9 26.8 37 24 37c-5.3 0-9.7-2.6-11.3-7l-6.5 5C9 40.4 15.9 45 24 45z" />
-      <Path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.2 5.3C39.9 35.7 45 30.5 45 24c0-1.2-.1-2.3-.4-3.5z" />
-    </Svg>
-  );
-}
-import { isSupabaseConfigured, signIn, signUp, signOut, getCurrentUser } from '../services/supabase';
+import { isSupabaseConfigured, signIn, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
 import { backupNow, restoreFromCloud, getCloudBackupDate } from '../services/backup';
 import { formatDateTime } from '../utils/date';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-// Ferramentas que JÁ existem no app (todas no stack). "em breve" = desabilitado.
+// Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
 const FERRAMENTAS: {
   key: string;
   icon: string;
   label: string;
   desc: string;
   color: string;
-  route?: keyof RootStackParamList;
-  soon?: boolean;
+  route: keyof RootStackParamList;
 }[] = [
   { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: Colors.accent, route: 'OlliVoz' },
   { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: Colors.primaryLight, route: 'OlliChat' },
@@ -51,18 +38,6 @@ const FERRAMENTAS: {
   { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: Colors.accent, route: 'Diagnostico' },
   { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: Colors.success, route: 'EmitirRecibo' },
   { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio' },
-  { key: 'equipe', icon: 'account-multiple-outline', label: 'Equipe', desc: 'Em breve', color: Colors.onSurfaceVariant, soon: true },
-  { key: 'modelos', icon: 'file-replace-outline', label: 'Modelos', desc: 'Em breve', color: Colors.onSurfaceVariant, soon: true },
-];
-
-const NOTIF_KEY = 'olli.notificacoes';
-const NOTIF_DEFAULTS = { agenda: true, cobranca: true, novidades: false };
-type NotifPrefs = typeof NOTIF_DEFAULTS;
-
-const NOTIF_ITEMS: { key: keyof NotifPrefs; icon: string; label: string; desc: string }[] = [
-  { key: 'agenda', icon: 'calendar-clock', label: 'Lembretes de agenda', desc: 'Avisos das próximas visitas' },
-  { key: 'cobranca', icon: 'bell-ring-outline', label: 'Cobrança de orçamentos', desc: 'Orçamentos parados ou aguardando' },
-  { key: 'novidades', icon: 'star-outline', label: 'Novidades da OLLI', desc: 'Recursos novos e dicas' },
 ];
 
 export default function ContaScreen() {
@@ -79,15 +54,12 @@ export default function ContaScreen() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
-  const [notif, setNotif] = useState<NotifPrefs>(NOTIF_DEFAULTS);
   const [showAuth, setShowAuth] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [emp, rawNotif] = await Promise.all([getEmpresa(), AsyncStorage.getItem(NOTIF_KEY)]);
+    const emp = await getEmpresa();
     setEmpresa(emp);
-    if (rawNotif) {
-      try { setNotif({ ...NOTIF_DEFAULTS, ...JSON.parse(rawNotif) }); } catch { /* mantém default */ }
-    }
     if (configured) {
       const u = await getCurrentUser();
       setUser(u ? { email: u.email } : null);
@@ -96,13 +68,6 @@ export default function ContaScreen() {
   }, [configured]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  async function setNotifPref(key: keyof NotifPrefs, value: boolean) {
-    Haptics.selectionAsync().catch(() => {});
-    const next = { ...notif, [key]: value };
-    setNotif(next);
-    await AsyncStorage.setItem(NOTIF_KEY, JSON.stringify(next));
-  }
 
   async function handleAuth() {
     if (mode === 'signup' && !nome.trim()) {
@@ -117,32 +82,68 @@ export default function ContaScreen() {
       Alert.alert('Senhas diferentes', 'A senha e a confirmação não são iguais.');
       return;
     }
+    const emailLimpo = email.trim();
     setBusy(true);
     try {
       if (mode === 'signup') {
-        await signUp(email, senha, nome.trim());
+        const data = await signUp(emailLimpo, senha, nome.trim());
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        Alert.alert('Conta criada!', 'Tudo certo. Bem-vindo ao OLLI!');
-        setShowAuth(false);
-        await load();
+        if (data.session) {
+          // Confirmação de e-mail desligada: já entrou de verdade.
+          Alert.alert('Conta criada!', 'Tudo certo. Bem-vindo ao OLLI!');
+          setSenha('');
+          setConfirmar('');
+          setShowAuth(false);
+          await load();
+        } else {
+          // Confirmação de e-mail pendente: NÃO há sessão. Seja honesto.
+          setSenha('');
+          setConfirmar('');
+          setPendingEmail(emailLimpo);
+          setMode('login');
+          Alert.alert(
+            'Confirme seu e-mail',
+            `Conta criada! Enviamos um link de confirmação para ${emailLimpo}. Confirme no seu e-mail e depois faça login aqui.`,
+          );
+        }
       } else {
-        await signIn(email, senha);
+        await signIn(emailLimpo, senha);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setSenha('');
+        setPendingEmail(null);
         setShowAuth(false);
         await load();
       }
     } catch (e: any) {
-      Alert.alert('Ops', e?.message ?? 'Não foi possível autenticar.');
+      const msg: string = e?.message ?? '';
+      let titulo = 'Ops';
+      let texto = msg || 'Não foi possível autenticar.';
+      if (/already registered|already exists|User already/i.test(msg)) {
+        titulo = 'E-mail já cadastrado';
+        texto = 'Esse e-mail já tem conta. Tente entrar (ou use "Esqueci a senha" no seu provedor).';
+      } else if (/invalid.*email|email.*invalid/i.test(msg)) {
+        titulo = 'E-mail inválido';
+        texto = 'Confira o e-mail digitado e tente de novo.';
+      } else if (/invalid login credentials|invalid credentials/i.test(msg)) {
+        titulo = 'E-mail ou senha incorretos';
+        texto = 'Confira os dados. Se acabou de criar a conta, confirme o e-mail antes de entrar.';
+      }
+      Alert.alert(titulo, texto);
     }
     setBusy(false);
   }
 
-  function handleGoogle() {
-    Alert.alert(
-      'Login com Google',
-      'O login com Google entra na próxima atualização. Por enquanto, crie sua conta com e-mail e senha — é rapidinho.',
-    );
+  async function handleResend() {
+    if (!supabase || !pendingEmail) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: pendingEmail });
+      if (error) throw error;
+      Alert.alert('E-mail reenviado', `Mandamos um novo link de confirmação para ${pendingEmail}.`);
+    } catch (e: any) {
+      Alert.alert('Ops', e?.message ?? 'Não foi possível reenviar o e-mail agora.');
+    }
+    setBusy(false);
   }
 
   async function handleBackup() {
@@ -189,15 +190,9 @@ export default function ContaScreen() {
   }
 
   function abrirFerramenta(f: typeof FERRAMENTAS[number]) {
-    if (f.soon) {
-      Alert.alert(f.label, 'Esse recurso chega em uma próxima atualização. Já está no nosso radar!');
-      return;
-    }
     Haptics.selectionAsync().catch(() => {});
-    if (f.route) {
-      if (f.route === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
-      else (nav as any).navigate(f.route);
-    }
+    if (f.route === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
+    else (nav as any).navigate(f.route);
   }
 
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
@@ -263,9 +258,9 @@ export default function ContaScreen() {
           {FERRAMENTAS.map((f, i) => (
             <TouchableOpacity
               key={f.key}
-              style={[styles.toolRow, i < FERRAMENTAS.length - 1 && styles.toolDivider, f.soon && styles.toolSoon]}
+              style={[styles.toolRow, i < FERRAMENTAS.length - 1 && styles.toolDivider]}
               onPress={() => abrirFerramenta(f)}
-              activeOpacity={f.soon ? 1 : 0.7}
+              activeOpacity={0.7}
             >
               <View style={[styles.toolIcon, { backgroundColor: f.color + '1E', borderColor: f.color + '3A' }]}>
                 <MaterialCommunityIcons name={f.icon as any} size={20} color={f.color} />
@@ -274,32 +269,8 @@ export default function ContaScreen() {
                 <Text style={styles.toolLabel}>{f.label}</Text>
                 <Text style={styles.toolDesc}>{f.desc}</Text>
               </View>
-              {f.soon ? (
-                <View style={styles.soonPillSm}><Text style={styles.soonPillSmText}>em breve</Text></View>
-              ) : (
-                <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
-              )}
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
             </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* NOTIFICAÇÕES */}
-        <Text style={styles.sectionTitle}>Notificações</Text>
-        <View style={styles.toolsCard}>
-          {NOTIF_ITEMS.map((n, i) => (
-            <View key={n.key} style={[styles.notifRow, i < NOTIF_ITEMS.length - 1 && styles.toolDivider]}>
-              <MaterialCommunityIcons name={n.icon as any} size={20} color={Colors.onSurfaceVariant} />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>{n.label}</Text>
-                <Text style={styles.toolDesc}>{n.desc}</Text>
-              </View>
-              <Switch
-                value={notif[n.key]}
-                onValueChange={v => setNotifPref(n.key, v)}
-                trackColor={{ false: 'rgba(255,255,255,0.12)', true: 'rgba(52,198,217,0.5)' }}
-                thumbColor={notif[n.key] ? Colors.accent : '#f4f3f4'}
-              />
-            </View>
           ))}
         </View>
 
@@ -345,16 +316,21 @@ export default function ContaScreen() {
               <>
                 <Text style={styles.cardTitle}>{mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}</Text>
                 <View style={{ height: 12 }} />
-                <TouchableOpacity style={styles.googleBtn} onPress={handleGoogle} activeOpacity={0.85}>
-                  <GoogleG />
-                  <Text style={styles.googleLabel}>Continuar com Google</Text>
-                </TouchableOpacity>
 
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>ou com e-mail</Text>
-                  <View style={styles.dividerLine} />
-                </View>
+                {pendingEmail && mode === 'login' && (
+                  <View style={styles.confirmBox}>
+                    <MaterialCommunityIcons name="email-check-outline" size={20} color={Colors.accent} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.confirmTitle}>Confirme seu e-mail</Text>
+                      <Text style={styles.confirmText}>
+                        Enviamos um link para {pendingEmail}. Confirme por lá e depois entre aqui.
+                      </Text>
+                      <TouchableOpacity onPress={handleResend} disabled={busy} style={{ paddingVertical: 6 }}>
+                        <Text style={styles.confirmResend}>Reenviar e-mail</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
 
                 {mode === 'signup' && (
                   <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
@@ -452,11 +428,6 @@ const styles = StyleSheet.create({
   toolIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   toolLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
   toolDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 1 },
-  soonPillSm: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  soonPillSmText: { fontSize: 10.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-
-  notifRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
-
   card: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginHorizontal: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.outline, ...Shadow.sm },
   iconHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.base },
   cardTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface },
@@ -468,11 +439,10 @@ const styles = StyleSheet.create({
   switchMode: { textAlign: 'center', color: Colors.onSurfaceVariant, fontSize: 14 },
 
   loginHero: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
-  googleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 1.5, borderColor: Colors.outline, borderRadius: BorderRadius.md, paddingVertical: 13, marginBottom: 4 },
-  googleLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.outline },
-  dividerText: { fontSize: 12, color: Colors.onSurfaceMuted },
+  confirmBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: 14 },
+  confirmTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
+  confirmText: { fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
+  confirmResend: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
 
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
   avatarSm: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
