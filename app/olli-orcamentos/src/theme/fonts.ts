@@ -44,8 +44,16 @@ function patch(Comp: any) {
     const flat = StyleSheet.flatten((el.props as any).style) || {};
     const weight = flat.fontWeight != null ? String(flat.fontWeight) : '400';
     const family = flat.fontFamily || WEIGHT_TO_FAMILY[weight] || Fonts.regular;
-    return React.cloneElement(el as any, {
-      style: [(el.props as any).style, { fontFamily: family, fontWeight: undefined }],
-    });
+    // IMPORTANTE (web): em react-native-web o elemento já vem com o `style`
+    // resolvido para um objeto CSS plano num nó DOM (div/span/input). Passar um
+    // ARRAY de styles para um nó DOM faz o react-dom tentar `node.style[0] = ...`
+    // -> "Failed to set an indexed property [0] on 'CSSStyleDeclaration'" (tela
+    // branca). Por isso achatamos para um único objeto plano, que é seguro tanto
+    // na web (objeto CSS) quanto no nativo (RN também achata arrays internamente).
+    const merged = StyleSheet.flatten([
+      (el.props as any).style,
+      { fontFamily: family, fontWeight: undefined },
+    ]);
+    return React.cloneElement(el as any, { style: merged });
   };
 }
