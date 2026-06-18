@@ -1,6 +1,7 @@
 # Cloudflare Pages — redirects
-# Atalhos para o app (login / cadastro) a partir da landing.
-/app      https://olli-app.pages.dev   302
-/entrar   https://olli-app.pages.dev   302
-/login    https://olli-app.pages.dev   302
-/painel   https://olli-app.pages.dev   302
+# Atalhos a partir da landing (olliorcamentos.online).
+/app      https://app.olliorcamentos.online      302
+/entrar   https://app.olliorcamentos.online      302
+/login    https://app.olliorcamentos.online      302
+/cadastro https://app.olliorcamentos.online      302
+/painel   https://painel.olliorcamentos.online   302
