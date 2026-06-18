@@ -26,14 +26,14 @@ export const SUPABASE_ANON_KEY: string =
  * Ex.: https://app.seudominio.com.br  → o link vira `${LINK_BASE_URL}/o/<token>`.
  * Vazio = recurso desligado (o app avisa para configurar o domínio).
  */
-export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? 'https://olli-diagnostico.igoreluisa.workers.dev').replace(/\/+$/, '');
+export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? 'https://link.olliorcamentos.online').replace(/\/+$/, '');
 
 /**
  * URL do Worker de diagnóstico no Cloudflare (Etapa 2). A chave da IA
  * (Gemini ou Claude) é SECRET do Worker — nunca uma var EXPO_PUBLIC do app.
  * Ex.: https://olli-diagnostico.SEU-USUARIO.workers.dev
  */
-export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? 'https://olli-diagnostico.igoreluisa.workers.dev').replace(/\/+$/, '');
+export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? 'https://link.olliorcamentos.online').replace(/\/+$/, '');
 
 export function isDiagnosticoIADisponivel(): boolean {
   return !!DIAGNOSTICO_URL;
