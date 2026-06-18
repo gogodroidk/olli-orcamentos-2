@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, ViewStyle, TextStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Colors, BorderRadius, Spacing, Gradients, Shadow } from '../theme';
+import { Colors, BorderRadius, Gradients, Shadow } from '../theme';
 
 interface Props {
   label: string;

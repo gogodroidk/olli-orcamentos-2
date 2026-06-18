@@ -5,7 +5,7 @@ import { Colors, Spacing } from '../theme';
 import { OlliButton } from './OlliButton';
 
 interface Props {
-  icon?: string;
+  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
   title: string;
   subtitle?: string;
   actionLabel?: string;
@@ -15,7 +15,7 @@ interface Props {
 export function EmptyState({ icon = 'file-document-outline', title, subtitle, actionLabel, onAction }: Props) {
   return (
     <View style={styles.container}>
-      <MaterialCommunityIcons name={icon as any} size={64} color={Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name={icon} size={64} color={Colors.onSurfaceMuted} />
       <Text style={styles.title}>{title}</Text>
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       {actionLabel && onAction && (

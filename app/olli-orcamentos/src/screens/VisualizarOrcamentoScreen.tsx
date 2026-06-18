@@ -13,7 +13,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
-import { formatDate, formatDateTime, nowISO } from '../utils/date';
+import { formatDateTime, nowISO } from '../utils/date';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { gerarLinkOrcamento, linkConfigurado } from '../services/clienteLink';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -256,7 +256,7 @@ export default function VisualizarOrcamentoScreen() {
   );
 }
 
-function ActionBtn({ icon, label, onPress, loading }: { icon: any; label: string; onPress: () => void; loading?: boolean }) {
+function ActionBtn({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
   return (
     <TouchableOpacity style={styles.actionBarBtn} onPress={onPress} disabled={loading} activeOpacity={0.8}>
       {loading ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name={icon} size={22} color="#fff" />}

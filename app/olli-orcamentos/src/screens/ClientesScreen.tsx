@@ -241,7 +241,7 @@ export default function ClientesScreen() {
   );
 }
 
-function SheetAction({ icon, color, label, desc, onPress }: { icon: any; color: string; label: string; desc: string; onPress: () => void }) {
+function SheetAction({ icon, color, label, desc, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; label: string; desc: string; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.sheetItem} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.sheetIcon, { backgroundColor: color + '1E', borderColor: color + '3A' }]}>

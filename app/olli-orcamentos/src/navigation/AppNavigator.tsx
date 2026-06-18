@@ -13,7 +13,6 @@ import { Colors } from '../theme';
 import HomeScreen from '../screens/HomeScreen';
 import OrcamentosScreen from '../screens/OrcamentosScreen';
 import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
-import CatalogoScreen from '../screens/CatalogoScreen';
 import CodigosErroScreen from '../screens/CodigosErroScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
@@ -50,7 +49,6 @@ export type RootStackParamList = {
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
   Orcamentos: { clienteId?: string; clienteNome?: string } | undefined;
-  Catalogo: undefined;
   Clientes: undefined;
   Servicos: undefined;
   Produtos: undefined;
@@ -204,10 +202,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="NovoOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="EditarOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="VisualizarOrcamento" component={VisualizarOrcamentoScreen} />
-      {/* Lista de orçamentos e o antigo "Catálogo": mantidos no stack e alcançáveis
-          pela Home ("ver todos") e pela Conta → Ferramentas. */}
+      {/* Lista de orçamentos — alcançável pela Home ("ver todos") e pela Conta. */}
       <Stack.Screen name="Orcamentos" component={OrcamentosScreen} />
-      <Stack.Screen name="Catalogo" component={CatalogoScreen} />
       {/* Diagnóstico (OLLI Técnica) — chegável pela Home e pela Conta → Ferramentas. */}
       <Stack.Screen name="Diagnostico" component={CodigosErroScreen} />
       <Stack.Screen name="Clientes" component={ClientesScreen} />

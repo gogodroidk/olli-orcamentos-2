@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
-  TouchableOpacity, FlatList, Modal, Alert, Image,
+  TouchableOpacity, FlatList, Modal, Image,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -305,7 +305,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
   );
 }
 
-function TabButton({ label, count, icon, active, onPress }: { label: string; count: number; icon: any; active: boolean; onPress: () => void }) {
+function TabButton({ label, count, icon, active, onPress }: { label: string; count: number; icon: keyof typeof MaterialCommunityIcons.glyphMap; active: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity style={[styles.tab, active && styles.tabActive]} onPress={onPress} activeOpacity={0.7}>
       <MaterialCommunityIcons name={icon} size={18} color={active ? Colors.primary : Colors.onSurfaceMuted} />
