@@ -5,3 +5,5 @@
 /login    https://app.olliorcamentos.online      302
 /cadastro https://app.olliorcamentos.online      302
 /painel   https://painel.olliorcamentos.online   302
+# URL limpa da política de privacidade (exigida pela Play Store)
+/privacidade  /privacidade.html  200
