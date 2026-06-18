@@ -21,8 +21,6 @@ interface NavItem {
   label: string;
   end: boolean;
   icon: ReactNode;
-  /** Renders a non-clickable "em breve" item (feature not built yet). */
-  soon?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -86,7 +84,6 @@ const NAV: NavItem[] = [
     to: '/financeiro',
     label: 'Financeiro',
     end: false,
-    soon: true,
     icon: (
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M3 3v18h18" strokeLinecap="round" />
@@ -124,30 +121,17 @@ export function Layout() {
         </div>
 
         <nav className="nav">
-          {NAV.map((item) =>
-            item.soon ? (
-              <div
-                key={item.to}
-                className="nav-link nav-soon"
-                aria-disabled="true"
-                title="Em breve"
-              >
-                {item.icon}
-                <span>{item.label}</span>
-                <span className="soon-tag">em breve</span>
-              </div>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </NavLink>
-            ),
-          )}
+          {NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
         </nav>
 
         <div className="sidebar-footer">

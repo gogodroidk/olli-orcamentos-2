@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { orcamentosApi } from '../lib/api';
 import { useAsync } from '../hooks/useAsync';
 import { DataState } from '../components/DataState';
@@ -93,8 +93,9 @@ function RevenueChart({ buckets }: { buckets: MonthBucket[] }) {
   );
 }
 
-/** Recent orçamentos table (most recent first). */
+/** Recent orçamentos table (most recent first). Rows link to the detail. */
 function RecentTable({ rows }: { rows: OrcamentoRow[] }) {
+  const navigate = useNavigate();
   const recent = useMemo(
     () =>
       [...rows]
@@ -126,7 +127,11 @@ function RecentTable({ rows }: { rows: OrcamentoRow[] }) {
             <span className="mini-status">Status</span>
           </div>
           {recent.map((o) => (
-            <div key={o.id} className="mini-row">
+            <div
+              key={o.id}
+              className="mini-row row-clickable"
+              onClick={() => navigate(`/orcamentos/${o.id}`)}
+            >
               <span className="mini-cli">
                 <span className="mini-num">{o.numero ?? '—'}</span>
                 {o.cliente_nome ?? '—'}
@@ -161,7 +166,19 @@ function OlliHead() {
   );
 }
 
-/** Alerts card — real alerts, or a clean "tudo em dia" state. */
+/** Where each alert id deep-links inside Orçamentos (correct chip pre-selected). */
+function alertTarget(id: string): string {
+  switch (id) {
+    case 'stale':
+    case 'sign':
+      return '/orcamentos?filtro=enviados';
+    default:
+      // Drafts (and anything else) → the full list.
+      return '/orcamentos';
+  }
+}
+
+/** Alerts card — real alerts (each links to its section), or a clean state. */
 function AlertsCard({ alerts, stale }: { alerts: OlliAlert[]; stale: number }) {
   return (
     <div className="panel alerts-panel">
@@ -182,11 +199,13 @@ function AlertsCard({ alerts, stale }: { alerts: OlliAlert[]; stale: number }) {
         <ul className="alert-list">
           {alerts.map((a) => (
             <li key={a.id} className="alert-row">
-              <span className={`alert-dot alert-${a.tone}`} />
-              <span className="alert-text">{a.text}</span>
-              {a.id === 'stale' && stale > 0 && (
-                <span className="alert-tag">{formatBRLCompact(stale)}</span>
-              )}
+              <Link to={alertTarget(a.id)} className="alert-link">
+                <span className={`alert-dot alert-${a.tone}`} />
+                <span className="alert-text">{a.text}</span>
+                {a.id === 'stale' && stale > 0 && (
+                  <span className="alert-tag">{formatBRLCompact(stale)}</span>
+                )}
+              </Link>
             </li>
           ))}
         </ul>
@@ -217,17 +236,12 @@ export function DashboardPage() {
           <div className="page-sub">{todayLabel()} · carregado às {loadedAt.current}</div>
         </div>
         <div className="head-actions">
-          <span className="pill-muted" title="Filtro por período em breve">
-            Tudo
+          <Link to="/financeiro" className="btn">
+            Ver financeiro
+          </Link>
+          <span className="pill-muted" title="A criação de orçamentos é feita no app OLLI">
+            ＋ Novo orçamento: crie pelo app
           </span>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled
-            title="Crie orçamentos pelo app OLLI"
-          >
-            ＋ Novo orçamento
-          </button>
         </div>
       </header>
 

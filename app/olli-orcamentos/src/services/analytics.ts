@@ -19,6 +19,11 @@ export const Eventos = {
   errorCodeNotFound: 'error_code_not_found',
   aiUsed: 'ai_used',
   segmentoChanged: 'segmento_changed',
+  // Ativação do usuário novo (onboarding) + cadastros do essencial.
+  onboardingCompleted: 'onboarding_completed',
+  onboardingSkipped: 'onboarding_skipped',
+  empresaSaved: 'empresa_saved',
+  servicoCreated: 'servico_created',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

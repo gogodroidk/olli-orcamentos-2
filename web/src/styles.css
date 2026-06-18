@@ -436,27 +436,6 @@ a {
   margin: 0;
 }
 
-/* ── Nav: disabled "em breve" item ───────────────────────────── */
-.nav-soon {
-  cursor: default;
-  opacity: 0.5;
-}
-.nav-soon:hover {
-  background: transparent;
-  color: var(--text-muted);
-}
-.soon-tag {
-  margin-left: auto;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-  color: var(--frost);
-  background: rgba(127, 233, 245, 0.12);
-  border-radius: 6px;
-  padding: 2px 6px;
-}
-
 /* ── Page header (title + date + actions) ────────────────────── */
 .page-head {
   display: flex;
@@ -960,12 +939,138 @@ a {
   font-weight: 800;
 }
 
+/* ── Clickable rows (drill-down into detail pages) ───────────── */
+.row-clickable {
+  cursor: pointer;
+}
+tr.row-clickable:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.mini-row.row-clickable:hover,
+.crm-row.row-clickable:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Back link above a detail-page title. */
+.back-link {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--frost);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+.back-link:hover {
+  text-decoration: underline;
+}
+
+/* Alert rows become links to the relevant filtered section. */
+.alert-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  color: inherit;
+  width: 100%;
+}
+.alert-link:hover .alert-text {
+  color: #fff;
+}
+
+/* Finance "como ler" note block. */
+.note-block {
+  margin: 12px 0 0;
+  line-height: 1.5;
+}
+.note-block strong {
+  color: var(--text);
+  font-weight: 800;
+}
+
+/* ── Detail pages (orçamento / cliente) ──────────────────────── */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.detail-main,
+.detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.detail-items th,
+.detail-items td {
+  font-size: 13px;
+}
+.item-name {
+  font-weight: 700;
+  color: var(--text);
+}
+.total-value {
+  font-size: 18px;
+  color: var(--success);
+}
+.detail-client-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.detail-client {
+  margin-bottom: 12px;
+}
+.detail-btn {
+  display: inline-block;
+  text-decoration: none;
+  font-size: 12.5px;
+}
+.detail-note {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.85);
+  margin: 10px 0 0;
+  line-height: 1.45;
+}
+.detail-note span {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Client detail header card + trio KPI row. */
+.client-head-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.client-head-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+.crm-avatar.lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  font-size: 20px;
+}
+.kpi-row.trio {
+  grid-template-columns: repeat(3, 1fr);
+}
+.section-gap {
+  margin-top: 16px;
+}
+
 /* ── Responsive: collapse cockpit grids on medium screens ─────── */
 @media (max-width: 1080px) {
-  .cockpit-grid {
+  .cockpit-grid,
+  .detail-grid {
     grid-template-columns: 1fr;
   }
-  .kpi-row {
+  .kpi-row,
+  .kpi-row.trio {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -975,7 +1080,8 @@ a {
   .app-shell {
     flex-direction: column;
   }
-  .kpi-row {
+  .kpi-row,
+  .kpi-row.trio {
     grid-template-columns: 1fr;
   }
   .crm-contact {

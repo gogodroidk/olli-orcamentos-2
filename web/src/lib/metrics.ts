@@ -12,7 +12,7 @@
  *  - "rascunho"  → not yet sent.
  *  - "recusado" / "cancelado" → lost / closed.
  */
-import type { OrcamentoRow, StatusOrcamento } from './types';
+import type { OrcamentoRow, ReciboRow, StatusOrcamento } from './types';
 import { daysSince } from './format';
 
 /** The date that best represents when an orçamento happened. */
@@ -258,4 +258,128 @@ export function clientAgg(
 
 function normName(name: string | null | undefined): string {
   return (name ?? '').trim().toLowerCase();
+}
+
+// ─── Financeiro (caixa recebido + pipeline) ──────────────────────────────────
+//
+// Two distinct ideas, kept honestly separate so labels never mislead:
+//
+//  • "Recebido" (caixa)  — money that actually arrived: Σ recibos.valor_recebido.
+//  • "Pipeline"          — orçamentos that are won but not necessarily paid yet
+//                          ("aprovado") plus those still open ("enviado"/
+//                          "aguardando_assinatura"). This is potential, not cash.
+
+/** The date that best represents when a recibo's money came in. */
+export function reciboDate(r: ReciboRow): string | null {
+  return r.data_recebimento ?? r.criado_em ?? null;
+}
+
+export interface FinanceMetrics {
+  /** Σ valor_recebido of all recibos — cash that actually arrived (all-time). */
+  recebidoTotal: number;
+  /** Σ valor_recebido of recibos in the current calendar month. */
+  recebidoMes: number;
+  /** Number of recibos (cash entries). */
+  recibosCount: number;
+  /** Σ valor_total of "aprovado" orçamentos — won, awaiting/while being paid. */
+  pipelineAprovado: number;
+  aprovadoCount: number;
+  /** Σ valor_total of open orçamentos (enviado / aguardando) — still in play. */
+  pipelineAberto: number;
+  abertoCount: number;
+}
+
+/**
+ * Cash + pipeline figures from the real rows. Empty account ⇒ all zeros, so the
+ * UI shows honest empty-states rather than invented numbers.
+ */
+export function computeFinance(
+  recibos: ReciboRow[],
+  orcamentos: OrcamentoRow[],
+  now = new Date(),
+): FinanceMetrics {
+  let recebidoTotal = 0;
+  let recebidoMes = 0;
+  const curY = now.getFullYear();
+  const curM = now.getMonth();
+
+  for (const r of recibos) {
+    const valor = r.valor_recebido ?? 0;
+    recebidoTotal += valor;
+    const iso = reciboDate(r);
+    if (iso) {
+      const d = new Date(iso);
+      if (!Number.isNaN(d.getTime()) && d.getFullYear() === curY && d.getMonth() === curM) {
+        recebidoMes += valor;
+      }
+    }
+  }
+
+  let pipelineAprovado = 0;
+  let aprovadoCount = 0;
+  let pipelineAberto = 0;
+  let abertoCount = 0;
+  for (const o of orcamentos) {
+    const valor = o.valor_total ?? 0;
+    if (o.status === 'aprovado') {
+      pipelineAprovado += valor;
+      aprovadoCount += 1;
+    }
+    if (OPEN_STATUSES.includes(o.status)) {
+      pipelineAberto += valor;
+      abertoCount += 1;
+    }
+  }
+
+  return {
+    recebidoTotal,
+    recebidoMes,
+    recibosCount: recibos.length,
+    pipelineAprovado,
+    aprovadoCount,
+    pipelineAberto,
+    abertoCount,
+  };
+}
+
+/**
+ * Cash received bucketed into the last `count` calendar months (oldest → newest,
+ * ending with the current month), using each recibo's recebimento date. Mirrors
+ * revenueByMonth but sums real recibos.valor_recebido instead of approvals.
+ */
+export function receivedByMonth(
+  recibos: ReciboRow[],
+  count = 6,
+  now = new Date(),
+): MonthBucket[] {
+  const buckets: MonthBucket[] = [];
+  const baseY = now.getFullYear();
+  const baseM = now.getMonth();
+  const keyOf = (y: number, m: number) => y * 12 + m;
+  const index = new Map<number, number>();
+
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(baseY, baseM - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    index.set(keyOf(y, m), buckets.length);
+    buckets.push({
+      label: MONTHS[m],
+      year: y,
+      month: m,
+      total: 0,
+      isCurrent: i === 0,
+    });
+  }
+
+  for (const r of recibos) {
+    const iso = reciboDate(r);
+    if (!iso) continue;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) continue;
+    const idx = index.get(keyOf(d.getFullYear(), d.getMonth()));
+    if (idx !== undefined) buckets[idx].total += r.valor_recebido ?? 0;
+  }
+
+  return buckets;
 }

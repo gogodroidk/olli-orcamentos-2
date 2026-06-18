@@ -3,7 +3,7 @@ import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, RefreshControl,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
@@ -19,6 +19,7 @@ import { Orcamento, StatusOrcamento } from '../types';
 import { generateId } from '../utils/id';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
 
 const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> = [
   { key: 'todos', label: 'Todos' },
@@ -30,6 +31,10 @@ const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> =
 
 export default function OrcamentosScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<Route>();
+  // Filtro por cliente (CRM): quando aberto a partir de um cliente.
+  const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
+  const clienteNome = route.params?.clienteNome;
   const [all, setAll] = useState<Orcamento[]>([]);
   const [filtered, setFiltered] = useState<Orcamento[]>([]);
   const [query, setQuery] = useState('');
@@ -39,13 +44,14 @@ export default function OrcamentosScreen() {
   const load = useCallback(async () => {
     const data = await getOrcamentos();
     setAll(data);
-    applyFilters(data, query, statusFilter);
-  }, []);
+    applyFilters(data, query, statusFilter, clienteId);
+  }, [clienteId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  function applyFilters(data: Orcamento[], q: string, s: typeof statusFilter) {
+  function applyFilters(data: Orcamento[], q: string, s: typeof statusFilter, cliId?: string) {
     let r = data;
+    if (cliId) r = r.filter(o => o.clienteId === cliId);
     if (s !== 'todos') r = r.filter(o => o.status === s);
     if (q.trim()) {
       const lower = q.toLowerCase();
@@ -57,14 +63,19 @@ export default function OrcamentosScreen() {
     setFiltered(r);
   }
 
+  function limparFiltroCliente() {
+    setClienteId(undefined);
+    applyFilters(all, query, statusFilter, undefined);
+  }
+
   function handleSearch(q: string) {
     setQuery(q);
-    applyFilters(all, q, statusFilter);
+    applyFilters(all, q, statusFilter, clienteId);
   }
 
   function handleStatusFilter(s: typeof statusFilter) {
     setStatusFilter(s);
-    applyFilters(all, query, s);
+    applyFilters(all, query, s, clienteId);
   }
 
   async function handleDelete(o: Orcamento) {
@@ -151,9 +162,9 @@ export default function OrcamentosScreen() {
     <View style={styles.container}>
       <GradientHeader
         title="Orçamentos"
-        subtitle={`${all.length} no total`}
+        subtitle={clienteId && clienteNome ? `de ${clienteNome}` : `${all.length} no total`}
         right={
-          <TouchableOpacity style={styles.newBtn} onPress={() => nav.navigate('NovoOrcamento', {})} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.newBtn} onPress={() => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})} activeOpacity={0.85}>
             <MaterialCommunityIcons name="plus" size={20} color="#fff" />
             <Text style={styles.newBtnLabel}>Novo</Text>
           </TouchableOpacity>
@@ -197,6 +208,19 @@ export default function OrcamentosScreen() {
         />
       </View>
 
+      {/* BANNER DE FILTRO POR CLIENTE (CRM) */}
+      {clienteId && (
+        <View style={styles.clienteBanner}>
+          <MaterialCommunityIcons name="account-filter-outline" size={18} color={Colors.accentLight} />
+          <Text style={styles.clienteBannerText} numberOfLines={1}>
+            Mostrando orçamentos de {clienteNome || 'um cliente'}
+          </Text>
+          <TouchableOpacity onPress={limparFiltroCliente} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.clienteBannerClear}>Limpar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* LIST */}
       <FlatList
         data={filtered}
@@ -208,9 +232,13 @@ export default function OrcamentosScreen() {
           <EmptyState
             icon="file-document-outline"
             title="Nenhum orçamento"
-            subtitle={query ? 'Nenhum resultado para sua busca.' : 'Crie seu primeiro orçamento!'}
+            subtitle={
+              query ? 'Nenhum resultado para sua busca.'
+                : clienteId ? `${clienteNome || 'Este cliente'} ainda não tem orçamentos. Crie o primeiro!`
+                : 'Crie seu primeiro orçamento!'
+            }
             actionLabel={!query ? 'Criar orçamento' : undefined}
-            onAction={!query ? () => nav.navigate('NovoOrcamento', {}) : undefined}
+            onAction={!query ? () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {}) : undefined}
           />
         }
       />
@@ -246,6 +274,15 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   chipLabel: { fontSize: 12, fontWeight: '600', color: Colors.onSurfaceVariant },
   chipLabelActive: { color: '#fff' },
+
+  clienteBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.28)',
+    borderRadius: BorderRadius.md, marginHorizontal: Spacing.base, marginBottom: 4,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
+  clienteBannerText: { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.accentLight },
+  clienteBannerClear: { fontSize: 13, fontWeight: '800', color: Colors.accent },
 
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   itemNome: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },

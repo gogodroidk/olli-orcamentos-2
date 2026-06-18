@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { orcamentosApi } from '../lib/api';
 import { useAsync } from '../hooks/useAsync';
 import { DataState } from '../components/DataState';
@@ -21,12 +22,22 @@ const FILTERS: { key: FilterKey; label: string; match: (s: StatusOrcamento) => b
   { key: 'recusados', label: 'Recusados', match: (s) => s === 'recusado' || s === 'cancelado' },
 ];
 
+const FILTER_KEYS: FilterKey[] = FILTERS.map((f) => f.key);
+
+/** Coerce an arbitrary ?filtro= value to a valid chip, defaulting to "todos". */
+function parseFilter(value: string | null): FilterKey {
+  return FILTER_KEYS.find((k) => k === value) ?? 'todos';
+}
+
 export function OrcamentosPage() {
   const { data, loading, error } = useAsync(orcamentosApi.list);
   const rows = useMemo(() => data ?? [], [data]);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('todos');
+  // Seed the active chip from ?filtro= so dashboard alerts deep-link correctly.
+  const [filter, setFilter] = useState<FilterKey>(() => parseFilter(searchParams.get('filtro')));
 
   // Real per-chip counts, computed over all rows (independent of the query).
   const counts = useMemo(() => {
@@ -53,9 +64,9 @@ export function OrcamentosPage() {
     <section>
       <header className="page-head">
         <h1 className="page-title tight">Orçamentos</h1>
-        <button type="button" className="btn btn-primary" disabled title="Crie orçamentos pelo app OLLI">
-          ＋ Novo orçamento
-        </button>
+        <span className="pill-muted" title="A criação de orçamentos é feita no app OLLI">
+          ＋ Novo orçamento: crie pelo app
+        </span>
       </header>
 
       <div className="toolbar">
@@ -106,7 +117,11 @@ export function OrcamentosPage() {
             </thead>
             <tbody>
               {visible.map((o: OrcamentoRow) => (
-                <tr key={o.id}>
+                <tr
+                  key={o.id}
+                  className="row-clickable"
+                  onClick={() => navigate(`/orcamentos/${o.id}`)}
+                >
                   <td>{o.numero ?? '—'}</td>
                   <td>{o.cliente_nome ?? '—'}</td>
                   <td>{formatDate(orcamentoDate(o))}</td>

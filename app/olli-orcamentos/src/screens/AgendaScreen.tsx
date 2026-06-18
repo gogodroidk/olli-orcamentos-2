@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,11 +25,12 @@ import {
   Agendamento, Cliente, TipoAgendamento, TIPOS_AGENDAMENTO,
   TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS,
 } from '../types';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type AgendaRoute = RouteProp<TabParamList, 'Agenda'>;
 type Modo = 'dia' | 'semana' | 'mes';
 
 const MODOS: { id: Modo; label: string }[] = [
@@ -62,6 +63,7 @@ function rotuloPeriodo(modo: Modo, ref: Date): string {
 
 export default function AgendaScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<AgendaRoute>();
   const insets = useSafeAreaInsets();
 
   const [modo, setModo] = useState<Modo>('dia');
@@ -100,7 +102,7 @@ export default function AgendaScreen() {
     setModo(m);
   }
 
-  function abrirNovo() {
+  function abrirNovo(prefill?: Partial<EditState>) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const base = modo === 'dia' ? ref : new Date();
     const inicioPadrao = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 9, 0, 0, 0);
@@ -115,8 +117,33 @@ export default function AgendaScreen() {
       horaFim: '',
       endereco: '',
       observacao: '',
+      ...prefill,
     });
   }
+
+  // Abertura via params (CRM): "agendar visita" a partir de cliente/orçamento.
+  // Consome os params UMA vez (limpa depois) para não reabrir o form ao voltar.
+  useFocusEffect(useCallback(() => {
+    const p = route.params;
+    if (p && (p.novoParaClienteId || p.novoParaOrcamentoId || p.novoParaClienteNome)) {
+      abrirNovo({
+        clienteId: p.novoParaClienteId,
+        clienteNome: p.novoParaClienteNome ?? '',
+        endereco: p.novoEndereco ?? '',
+        titulo: p.novoTitulo ?? '',
+        tipo: p.novoParaOrcamentoId ? 'orcamento' : 'visita',
+        orcamentoId: p.novoParaOrcamentoId,
+      });
+      nav.setParams({
+        novoParaClienteId: undefined,
+        novoParaClienteNome: undefined,
+        novoParaOrcamentoId: undefined,
+        novoEndereco: undefined,
+        novoTitulo: undefined,
+      } as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params]));
 
   // Para campos do form: 'HH:mm' válido, ou '' (vazio) quando inválido/ausente.
   function hhmmRaw(iso?: string | null): string {
@@ -141,6 +168,7 @@ export default function AgendaScreen() {
       endereco: a.endereco ?? '',
       observacao: a.observacao ?? '',
       status: a.status,
+      orcamentoId: a.orcamentoId,
       criadoEm: a.criadoEm,
     });
   }
@@ -163,6 +191,7 @@ export default function AgendaScreen() {
       fim: fimDt?.toISOString(),
       endereco: e.endereco.trim() || undefined,
       status: e.status ?? 'agendado',
+      orcamentoId: e.orcamentoId,
       observacao: e.observacao.trim() || undefined,
       criadoEm: e.criadoEm ?? nowISO(),
       atualizadoEm: nowISO(),
@@ -235,7 +264,7 @@ export default function AgendaScreen() {
             title="Nenhuma visita agendada"
             subtitle="Agende suas visitas e serviços para organizar o seu dia."
             actionLabel="Agendar visita"
-            onAction={abrirNovo}
+            onAction={() => abrirNovo()}
           />
         </View>
       ) : (
@@ -270,7 +299,7 @@ export default function AgendaScreen() {
       )}
 
       {/* FAB Agendar visita */}
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={abrirNovo} activeOpacity={0.9}>
+      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} activeOpacity={0.9}>
         <MaterialCommunityIcons name="calendar-plus" size={20} color="#0A1626" />
         <Text style={styles.fabText}>Agendar visita</Text>
       </TouchableOpacity>
@@ -285,6 +314,8 @@ export default function AgendaScreen() {
             onClose={() => setEditing(null)}
             onSave={salvar}
             onDelete={editing.id ? () => remover(editing.id!) : undefined}
+            onAbrirOrcamento={editing.orcamentoId ? () => { const id = editing.orcamentoId!; setEditing(null); nav.navigate('VisualizarOrcamento', { orcamentoId: id }); } : undefined}
+            onVerCliente={editing.clienteId ? () => { const c = { id: editing.clienteId!, nome: editing.clienteNome }; setEditing(null); nav.navigate('Orcamentos', { clienteId: c.id, clienteNome: c.nome }); } : undefined}
           />
         )}
       </Modal>
@@ -351,6 +382,7 @@ interface EditState {
   endereco: string;
   observacao: string;
   status?: Agendamento['status'];
+  orcamentoId?: string;
   criadoEm?: string;
 }
 
@@ -368,7 +400,7 @@ function maskHora(raw: string): string {
 }
 
 function AgendamentoForm({
-  state, clientes, onChange, onClose, onSave, onDelete,
+  state, clientes, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
 }: {
   state: EditState;
   clientes: Cliente[];
@@ -376,6 +408,8 @@ function AgendamentoForm({
   onClose: () => void;
   onSave: (s: EditState) => void;
   onDelete?: () => void;
+  onAbrirOrcamento?: () => void;
+  onVerCliente?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const [showClientes, setShowClientes] = useState(false);
@@ -397,6 +431,24 @@ function AgendamentoForm({
       </View>
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+        {/* REGISTROS VINCULADOS (CRM) — abre o orçamento / os orçamentos do cliente */}
+        {(onAbrirOrcamento || onVerCliente) && (
+          <View style={styles.linkRow}>
+            {onAbrirOrcamento && (
+              <TouchableOpacity style={styles.linkBtn} onPress={onAbrirOrcamento} activeOpacity={0.85}>
+                <MaterialCommunityIcons name="file-document-outline" size={18} color={Colors.accentLight} />
+                <Text style={styles.linkBtnText}>Ver orçamento</Text>
+              </TouchableOpacity>
+            )}
+            {onVerCliente && (
+              <TouchableOpacity style={styles.linkBtn} onPress={onVerCliente} activeOpacity={0.85}>
+                <MaterialCommunityIcons name="account-search-outline" size={18} color={Colors.accentLight} />
+                <Text style={styles.linkBtnText}>Orçamentos do cliente</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* TIPO */}
         <Text style={styles.fieldLabel}>Tipo</Text>
         <View style={styles.tipoGrid}>
@@ -628,6 +680,10 @@ const styles = StyleSheet.create({
   formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: Spacing.base, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
   formTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
+
+  linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 10 },
+  linkBtnText: { fontSize: 13, fontWeight: '700', color: Colors.accentLight },
 
   tipoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },

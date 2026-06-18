@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
@@ -15,9 +16,10 @@ import { DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Route = RouteProp<RootStackParamList, 'DiagnosticoIA'>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function DiagnosticoIAScreen() {
-  const nav = useNavigation();
+  const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const p = route.params ?? {};
 
@@ -49,6 +51,24 @@ export default function DiagnosticoIAScreen() {
   }
 
   const d = res?.diagnostico;
+
+  // Cria um novo orçamento já com um item-serviço descrevendo o reparo do caso.
+  // O técnico só ajusta preço/quantidade no fluxo do orçamento.
+  function criarOrcamento() {
+    if (!d) return;
+    Haptics.selectionAsync().catch(() => {});
+    const partes = [marca.trim(), modelo.trim()].filter(Boolean).join(' ');
+    const ref = codigo.trim() ? `código ${codigo.trim()}` : sintoma.trim();
+    const nome = [
+      'Diagnóstico e reparo',
+      partes ? `— ${partes}` : '',
+      ref ? `(${ref})` : '',
+    ].filter(Boolean).join(' ').trim() || 'Serviço de diagnóstico e reparo';
+    const descricao = d.sugestaoOrcamento?.trim() || d.significadoProvavel?.trim() || d.resumo?.trim();
+    nav.navigate('NovoOrcamento', {
+      prefillItem: { tipo: 'servico', nome, descricao },
+    });
+  }
 
   return (
     <View style={styles.container}>
@@ -135,6 +155,17 @@ export default function DiagnosticoIAScreen() {
             {d.fontes?.length > 0 && (
               <ListSection icon="link-variant" title="Fontes" items={d.fontes} />
             )}
+
+            {/* CTA — vira orçamento com 1 toque (ciclo do dinheiro) */}
+            <OlliButton
+              label="Criar orçamento com este serviço"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              onPress={criarOrcamento}
+              icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />}
+              style={{ marginTop: 16 }}
+            />
           </View>
         )}
       </ScrollView>

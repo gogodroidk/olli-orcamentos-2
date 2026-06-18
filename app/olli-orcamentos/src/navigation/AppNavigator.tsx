@@ -28,13 +28,28 @@ import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
 import PlanosScreen from '../screens/PlanosScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
+
+/**
+ * Item pré-carregado num novo orçamento (vindo de um diagnóstico/código de erro).
+ * Só descrição/nome — o usuário ajusta preço e quantidade no fluxo do orçamento.
+ */
+export type PrefillItem = {
+  tipo: 'servico' | 'produto';
+  nome: string;
+  descricao?: string;
+};
 
 export type RootStackParamList = {
-  Tabs: undefined;
-  NovoOrcamento: { modeloId?: string };
+  Tabs: { screen?: keyof TabParamList; params?: object } | undefined;
+  Onboarding: undefined;
+  // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
+  // (origem: diagnóstico / código de erro). Tudo opcional — sem isto cai no fluxo normal.
+  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
-  Orcamentos: undefined;
+  // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
+  Orcamentos: { clienteId?: string; clienteNome?: string } | undefined;
   Catalogo: undefined;
   Clientes: undefined;
   Servicos: undefined;
@@ -52,7 +67,8 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
-  Agenda: undefined;
+  // Agenda pode abrir já criando um agendamento para um cliente/orçamento (CRM).
+  Agenda: { novoParaClienteId?: string; novoParaClienteNome?: string; novoParaOrcamentoId?: string; novoEndereco?: string; novoTitulo?: string } | undefined;
   Orcar: undefined;     // botão central elevado → abre NovoOrcamento (stack)
   Hoje: undefined;
   Conta: undefined;
@@ -173,9 +189,10 @@ function TabNavigator() {
   );
 }
 
-export function AppNavigator() {
+export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof RootStackParamList } = {}) {
   return (
     <Stack.Navigator
+      initialRouteName={initialRouteName ?? 'Tabs'}
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
@@ -183,6 +200,7 @@ export function AppNavigator() {
       }}
     >
       <Stack.Screen name="Tabs" component={TabNavigator} />
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="NovoOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="EditarOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="VisualizarOrcamento" component={VisualizarOrcamentoScreen} />

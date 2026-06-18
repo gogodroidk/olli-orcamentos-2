@@ -93,6 +93,22 @@ export default function CodigosErroScreen() {
     nav.navigate('DiagnosticoIA', prefill ?? { marca: marca ?? undefined, codigo: query.trim() || undefined });
   }
 
+  // Cria um orçamento já com um item-serviço descrevendo o reparo do código aberto.
+  function criarOrcamentoDoCodigo(c: CodigoErro) {
+    Haptics.selectionAsync().catch(() => {});
+    setSelected(null);
+    const ctx = [c.marca, c.familia].filter(Boolean).join(' ');
+    const nome = [
+      'Diagnóstico e reparo',
+      ctx ? `— ${ctx}` : '',
+      c.codigo ? `(código ${c.codigo})` : '',
+    ].filter(Boolean).join(' ').trim() || 'Serviço de diagnóstico e reparo';
+    const descricao = [c.falha, c.acao].filter(Boolean).join('. ') || undefined;
+    nav.navigate('NovoOrcamento', {
+      prefillItem: { tipo: 'servico', nome, descricao },
+    });
+  }
+
   async function salvarCaso() {
     const caso: CasoErro = {
       id: generateId(),
@@ -307,6 +323,17 @@ export default function CodigosErroScreen() {
                 </Text>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
               </TouchableOpacity>
+
+              {/* CTA — transforma o diagnóstico em orçamento (ciclo do dinheiro) */}
+              <OlliButton
+                label="Criar orçamento com este reparo"
+                variant="gradient"
+                size="lg"
+                fullWidth
+                onPress={() => criarOrcamentoDoCodigo(selected)}
+                icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />}
+                style={{ marginTop: 14 }}
+              />
             </ScrollView>
           </View>
         )}
