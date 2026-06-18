@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0A1626" />
+
+  <title>OLLI — Do diagnóstico ao dinheiro, em minutos | Orçamentos para refrigeração e ar-condicionado</title>
+  <meta name="description" content="OLLI é o copiloto de campo do técnico de refrigeração e ar-condicionado: orçamento profissional em PDF, diagnóstico de 602 códigos de erro offline, OLLI por voz, link do cliente para aprovar pelo celular e recibos. Comece grátis." />
+  <meta name="author" content="OLLI" />
+  <link rel="canonical" href="https://olli-app.pages.dev/" />
+
+  <!-- Open Graph / social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="OLLI" />
+  <meta property="og:title" content="OLLI — Do diagnóstico ao dinheiro, em minutos" />
+  <meta property="og:description" content="Orçamento profissional, diagnóstico de 602 códigos de erro offline, OLLI por voz e link do cliente para aprovar pelo celular. Feito para o técnico de HVAC brasileiro." />
+  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:url" content="https://olli-app.pages.dev/" />
+  <meta property="og:image" content="https://olli-app.pages.dev/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="OLLI — Do diagnóstico ao dinheiro, em minutos" />
+  <meta name="twitter:description" content="O copiloto de campo do técnico de refrigeração e ar-condicionado. Orçamentos, diagnóstico offline e cobrança por link." />
+
+  <!-- Fonts: Plus Jakarta Sans (UI) + Spectral (números/títulos) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='12' fill='%230A1626'/%3E%3Cline x1='24' y1='12' x2='24' y2='7' stroke='%2334C6D9' stroke-width='2.6' stroke-linecap='round'/%3E%3Ccircle cx='24' cy='5.5' r='2.6' fill='%2334C6D9'/%3E%3Crect x='9' y='12' width='30' height='26' rx='10' fill='%230B6FCE'/%3E%3Crect x='13' y='16' width='22' height='16' rx='8' fill='%230A1626'/%3E%3Ccircle cx='20' cy='24' r='3' fill='%237FE9F5'/%3E%3Ccircle cx='28' cy='24' r='3' fill='%237FE9F5'/%3E%3C/svg%3E" />
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Structured data: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "OLLI",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Android, iOS, Web",
+    "description": "Copiloto de campo para técnicos de refrigeração e ar-condicionado: orçamentos profissionais, diagnóstico de 602 códigos de erro offline, OLLI por voz, link do cliente para aprovação e recibos.",
+    "inLanguage": "pt-BR",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "BRL"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#features">Pular para o conteúdo</a>
+
+  <!-- ===================== NAV ===================== -->
+  <header class="nav" id="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="OLLI — página inicial">
+        <svg width="38" height="38" viewBox="0 0 48 48" fill="none" class="olli-float" role="img" aria-label="Mascote OLLI">
+          <line x1="24" y1="11" x2="24" y2="5.5" stroke="#34C6D9" stroke-width="2.6" stroke-linecap="round"/>
+          <circle cx="24" cy="4.5" r="2.7" fill="#34C6D9"/>
+          <rect x="7" y="11" width="34" height="29" rx="11" fill="#0B6FCE"/>
+          <rect x="11.5" y="16" width="25" height="18" rx="9" fill="#0A2540"/>
+          <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+          <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+        </svg>
+        <span class="wordmark">OLLI</span>
+      </a>
+
+      <nav class="nav-links" aria-label="Navegação principal">
+        <ul class="nav-menu">
+          <li><a href="#features">Recursos</a></li>
+          <li><a href="#how">Como funciona</a></li>
+          <li><a href="#pricing">Planos</a></li>
+          <li><a href="#faq">Dúvidas</a></li>
+        </ul>
+        <div class="nav-cta">
+          <a class="btn btn-ghost btn-sm" href="https://olli-app.pages.dev">Entrar</a>
+          <a class="btn btn-primary btn-sm" href="https://olli-app.pages.dev">Começar grátis</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ===================== HERO ===================== -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <span class="pill"><span class="dot" aria-hidden="true"></span> Funciona offline, na laje ou na garagem</span>
+          <h1>Do diagnóstico ao <span class="grad-text">dinheiro</span>, em minutos.</h1>
+          <p class="hero-sub">
+            O OLLI é o copiloto de campo do técnico de refrigeração e ar-condicionado.
+            Você fala o serviço, ele monta o orçamento profissional, o cliente aprova pelo
+            link e você emite o recibo — tudo do celular.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary btn-lg" href="https://olli-app.pages.dev">
+              Começar grátis
+              <svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+            <a class="btn btn-ghost btn-lg" href="#how">Ver como funciona</a>
+          </div>
+          <div class="hero-trust">
+            <span><span class="tick" aria-hidden="true">✓</span> Sem cartão de crédito</span>
+            <span><span class="tick" aria-hidden="true">✓</span> 602 códigos de erro</span>
+            <span><span class="tick" aria-hidden="true">✓</span> Seus dados são seus</span>
+          </div>
+        </div>
+
+        <!-- Cockpit stage: quote card + floating mascot + voice chip -->
+        <div class="hero-stage">
+          <span class="stage-glow" aria-hidden="true"></span>
+
+          <div class="quote-card" role="img" aria-label="Exemplo de orçamento profissional gerado pelo OLLI, com itens, total de R$ 1.180 e status aprovado">
+            <span class="sheen" aria-hidden="true"></span>
+            <div class="qc-top">
+              <div class="qc-brand">
+                <span class="qc-logo" aria-hidden="true">
+                  <svg width="26" height="26" viewBox="0 0 48 48" fill="none">
+                    <line x1="24" y1="11" x2="24" y2="5.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+                    <circle cx="24" cy="4.5" r="2.7" fill="#fff"/>
+                    <rect x="7" y="11" width="34" height="29" rx="11" fill="#0A1626"/>
+                    <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+                    <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+                  </svg>
+                </span>
+                <span class="qc-name">Orçamento <small>nº 0428 · gerado pela OLLI</small></span>
+              </div>
+              <span class="qc-badge">Aprovado</span>
+            </div>
+
+            <div class="qc-title num">Limpeza + recarga de gás</div>
+            <div class="qc-client">Cliente: Dona Marta · Split 12.000 BTUs</div>
+
+            <div class="qc-line">
+              <span class="qc-ico" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="lbl">Higienização completa<small>Serviço de mão de obra</small></span>
+              <span class="val">R$&nbsp;320</span>
+            </div>
+            <div class="qc-line">
+              <span class="qc-ico" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M20 12a8 8 0 1 1-3-6.2" stroke-linecap="round"/><path d="M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="lbl">Recarga de gás R-410A<small>Material + carga</small></span>
+              <span class="val">R$&nbsp;540</span>
+            </div>
+            <div class="qc-line">
+              <span class="qc-ico" aria-hidden="true">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M3 11l9-7 9 7v8a1 1 0 0 1-1 1h-5v-5h-6v5H4a1 1 0 0 1-1-1z" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="lbl">Deslocamento<small>Zona sul</small></span>
+              <span class="val">R$&nbsp;320</span>
+            </div>
+
+            <div class="qc-total">
+              <span class="k">Total</span>
+              <span class="v">R$&nbsp;1.180</span>
+            </div>
+
+            <div class="qc-cta">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Enviado por <b>link</b> — aprovado pelo celular em 3 min
+            </div>
+          </div>
+
+          <div class="hero-mascot" aria-hidden="true">
+            <span class="ball">
+              <svg width="26" height="26" viewBox="0 0 48 48" fill="none">
+                <line x1="24" y1="11" x2="24" y2="5.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+                <circle cx="24" cy="4.5" r="2.7" fill="#fff"/>
+                <rect x="7" y="11" width="34" height="29" rx="11" fill="#0A1626"/>
+                <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+                <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+              </svg>
+            </span>
+            <span class="say">Montei pra você<small>3 itens · R$ 1.180</small></span>
+          </div>
+
+          <div class="hero-voice" aria-hidden="true">
+            <span class="mic">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke-linecap="round"/></svg>
+            </span>
+            <span class="wavebars"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            <span class="vtxt">"Limpeza e recarga…"</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STATS ===================== -->
+    <section class="section-pad" aria-label="Números do OLLI" style="padding-top:0">
+      <div class="wrap">
+        <div class="stats">
+          <div class="stat">
+            <div class="big num">602</div>
+            <div class="lbl">códigos de erro<br/>na ponta dos dedos</div>
+          </div>
+          <div class="stat">
+            <div class="big num">23</div>
+            <div class="lbl">marcas de<br/>ar-condicionado</div>
+          </div>
+          <div class="stat">
+            <div class="big num">100%</div>
+            <div class="lbl">offline<br/>onde tiver sinal ou não</div>
+          </div>
+          <div class="stat">
+            <div class="big num">R$&nbsp;0</div>
+            <div class="lbl">para começar<br/>sem cartão</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FEATURES ===================== -->
+    <section class="section-pad" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Tudo num app só</span>
+          <h2 class="section-title">O cockpit completo do seu serviço</h2>
+          <p class="section-sub">Do primeiro diagnóstico ao recibo na mão do cliente. Sem planilha, sem caderninho, sem perder orçamento parado.</p>
+        </div>
+
+        <div class="feature-grid">
+          <!-- Orçamento PDF -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h4" stroke-linecap="round"/></svg>
+            </span>
+            <h3>Orçamento profissional em PDF</h3>
+            <p>Documento limpo com seus dados, sua logo e seus itens. Bonito de mandar no WhatsApp e profissional na frente do cliente.</p>
+          </article>
+
+          <!-- OLLI por voz -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" stroke-linecap="round"/></svg>
+            </span>
+            <h3>OLLI por voz</h3>
+            <p>Aperte, fale o serviço e a OLLI monta o orçamento sozinha — itens, preços do seu catálogo e total. Você só revisa e envia.</p>
+            <span class="tag">Mãos na obra</span>
+          </article>
+
+          <!-- Diagnóstico offline -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M11 7v4M11 14h.01M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+            </span>
+            <h3>Diagnóstico offline</h3>
+            <p>602 códigos de erro de 23 marcas: a falha, a causa provável e a primeira ação. Funciona sem internet, na hora do aperto.</p>
+            <span class="tag">Sem sinal? Funciona</span>
+          </article>
+
+          <!-- Chat técnico -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.4 7.2L4 21l1.8-5.6A8 8 0 1 1 21 12z" stroke-linejoin="round"/><path d="M9 11h.01M12 11h.01M15 11h.01" stroke-linecap="round"/></svg>
+            </span>
+            <h3>Chat técnico com a IA</h3>
+            <p>Travou num caso difícil? Conte pra OLLI o que está acontecendo e receba um caminho de diagnóstico em linguagem de quem é da área.</p>
+          </article>
+
+          <!-- Agenda -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4M8 14h3" stroke-linecap="round"/></svg>
+            </span>
+            <h3>Agenda do dia</h3>
+            <p>Suas visitas organizadas, na ordem certa. Saiba o que vem agora e o que ainda falta atender, sem confusão de horário.</p>
+          </article>
+
+          <!-- Link do cliente -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h3>Link do cliente</h3>
+            <p>O cliente abre o link e aprova ou recusa pelo próprio celular — sem instalar nada. Você recebe a resposta na hora.</p>
+            <span class="tag">Aprova pelo celular</span>
+          </article>
+
+          <!-- Recibos -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" stroke-linejoin="round"/><path d="M9 8h6M9 12h6" stroke-linecap="round"/></svg>
+            </span>
+            <h3>Recibos</h3>
+            <p>Serviço fechado, recibo emitido. Tudo registrado e pronto para enviar — sem retrabalho nem caderno de anotação.</p>
+          </article>
+
+          <!-- Painel web -->
+          <article class="card">
+            <span class="ficon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7FE9F5" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 9l2.5 2.5L7 14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <h3>Painel web</h3>
+            <p>No fim do dia, abra o painel no computador e veja seus orçamentos, clientes e recibos. O celular e a web andam juntos.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== HOW IT WORKS ===================== -->
+    <section class="section-pad" id="how">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Como funciona</span>
+          <h2 class="section-title">Quatro passos. Do problema ao pagamento.</h2>
+          <p class="section-sub">Sem manual de 30 páginas. Você cadastra, monta, manda e fecha — no mesmo dia da visita.</p>
+        </div>
+
+        <ol class="steps" style="list-style:none;margin:0;padding:0">
+          <li class="step">
+            <div class="n" aria-hidden="true"></div>
+            <h3>Cadastre seu negócio</h3>
+            <p>Coloque o nome, o logo e seus serviços com preço. Leva poucos minutos e fica salvo para sempre.</p>
+          </li>
+          <li class="step">
+            <div class="n" aria-hidden="true"></div>
+            <h3>Monte o orçamento</h3>
+            <p>Fale com a OLLI por voz ou monte na mão pelos seus itens. O total sai certinho, na hora.</p>
+          </li>
+          <li class="step">
+            <div class="n" aria-hidden="true"></div>
+            <h3>Cliente aprova pelo link</h3>
+            <p>Mande o link no WhatsApp. O cliente vê o orçamento bonito e aprova pelo celular dele.</p>
+          </li>
+          <li class="step">
+            <div class="n" aria-hidden="true"></div>
+            <h3>Você emite o recibo</h3>
+            <p>Serviço feito, recibo emitido e guardado. Tudo organizado, pronto pro próximo cliente.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== PRICING ===================== -->
+    <section class="section-pad" id="pricing">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Planos</span>
+          <h2 class="section-title">Comece de graça. Cresça quando fizer sentido.</h2>
+          <p class="section-sub">Sem cartão para começar e sem pegadinha. A cobrança dos planos pagos chega <b>em breve</b> — por enquanto, você usa e testa à vontade.</p>
+        </div>
+
+        <div class="plans">
+          <!-- Grátis -->
+          <div class="plan">
+            <div class="plan-name">Grátis</div>
+            <div class="plan-desc">Pra quem está começando e quer testar de verdade.</div>
+            <div class="plan-price">
+              <span class="amount num">R$&nbsp;0</span>
+              <span class="per">/ pra sempre</span>
+            </div>
+            <div class="plan-billnote">Sem cartão de crédito.</div>
+            <ul class="plan-feats">
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Orçamentos em PDF</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> 602 códigos de erro offline</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Link do cliente para aprovar</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Clientes e recibos</li>
+              <li class="muted"><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.5)" stroke-width="3"><path d="M5 12h14" stroke-linecap="round"/></svg></span> OLLI por voz e chat com a IA</li>
+            </ul>
+            <a class="btn btn-ghost btn-block" href="https://olli-app.pages.dev">Começar grátis</a>
+          </div>
+
+          <!-- Pro (destaque) -->
+          <div class="plan featured">
+            <span class="plan-flag">Mais escolhido</span>
+            <div class="plan-name">Pro</div>
+            <div class="plan-desc">Pro técnico que vive de serviço e quer ganhar tempo.</div>
+            <div class="plan-price">
+              <span class="amount num">R$&nbsp;39</span>
+              <span class="per">/ mês</span>
+            </div>
+            <div class="plan-billnote">Cobrança em breve — use grátis até lá.</div>
+            <ul class="plan-feats">
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Tudo do plano Grátis</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> <b>OLLI por voz</b> sem limite</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> <b>Chat técnico</b> com a IA</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Agenda e painel web</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Modelos de orçamento salvos</li>
+            </ul>
+            <a class="btn btn-primary btn-block" href="https://olli-app.pages.dev">Começar grátis</a>
+          </div>
+
+          <!-- Empresa -->
+          <div class="plan">
+            <div class="plan-name">Empresa</div>
+            <div class="plan-desc">Pra equipe e quem toca mais de um técnico na rua.</div>
+            <div class="plan-price">
+              <span class="amount num">R$&nbsp;99</span>
+              <span class="per">/ mês</span>
+            </div>
+            <div class="plan-billnote">Cobrança em breve — use grátis até lá.</div>
+            <ul class="plan-feats">
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Tudo do plano Pro</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Vários técnicos na equipe</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Painel com visão de toda a operação</li>
+              <li><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2BD787" stroke-width="3"><path d="M5 13l4 4 10-11" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Catálogo compartilhado</li>
+              <li class="muted"><span class="ck" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(226,232,240,0.5)" stroke-width="3"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></span> Domínio próprio (em breve)</li>
+            </ul>
+            <a class="btn btn-ghost btn-block" href="https://olli-app.pages.dev">Começar grátis</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FAQ ===================== -->
+    <section class="section-pad" id="faq">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Dúvidas</span>
+          <h2 class="section-title">O que todo técnico pergunta</h2>
+          <p class="section-sub">Respostas diretas e honestas. Sem letra miúda.</p>
+        </div>
+
+        <div class="faq-grid">
+          <details class="faq-item">
+            <summary>Funciona offline mesmo? <span class="plus" aria-hidden="true">+</span></summary>
+            <div class="ans">Funciona. O OLLI guarda os 602 códigos de erro e seus dados no próprio celular, então você consulta a falha e monta orçamento mesmo sem sinal — no porão, na laje ou na garagem. Quando a internet voltar, ele sincroniza com seu painel. (OLLI por voz e chat com a IA precisam de conexão, porque conversam com a inteligência na nuvem.)</div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Preciso de cartão de crédito? <span class="plus" aria-hidden="true">+</span></summary>
+            <div class="ans">Não. Você começa de graça, sem cadastrar cartão. A cobrança dos planos Pro e Empresa entra <b>em breve</b> — até lá, você usa o app à vontade para decidir se vale a pena.</div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Meus dados são meus? <span class="plus" aria-hidden="true">+</span></summary>
+            <div class="ans">São seus. Seus clientes, orçamentos e preços ficam no seu celular e no seu painel, vinculados à sua conta. A gente não vende sua carteira de clientes nem repassa seus dados para terceiros.</div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Serve pra qualquer marca de ar-condicionado? <span class="plus" aria-hidden="true">+</span></summary>
+            <div class="ans">A base de diagnóstico cobre 602 códigos de erro de 23 marcas comuns no Brasil. Não achou o seu código? Você registra o caso e pede ajuda pra OLLI no chat técnico — e a base continua crescendo.</div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Como o cliente aprova o orçamento? <span class="plus" aria-hidden="true">+</span></summary>
+            <div class="ans">Você gera um link e manda no WhatsApp. O cliente abre no celular dele, vê o orçamento profissional e toca em aprovar ou recusar — sem instalar nada e sem criar conta. A resposta cai pra você.</div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Funciona no iPhone e no Android? <span class="plus" aria-hidden="true">+</span></summary>
+            <div class="ans">Sim. Você usa no Android, no iPhone e também pelo navegador no computador, com o painel web. O que você faz no celular aparece no painel e vice-versa.</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FINAL CTA ===================== -->
+    <section class="wrap" aria-label="Comece agora">
+      <div class="cta-band">
+        <h2>Hoje você visita. Hoje você fecha.</h2>
+        <p>Cadastre seu negócio agora e mande seu primeiro orçamento profissional ainda nesta semana. Grátis, sem cartão.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="https://olli-app.pages.dev">
+            Começar grátis
+            <svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <a class="btn btn-ghost btn-lg" href="https://olli-app.pages.dev">Entrar na minha conta</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a class="brand" href="#top" aria-label="OLLI — página inicial">
+            <svg width="34" height="34" viewBox="0 0 48 48" fill="none" role="img" aria-label="Mascote OLLI">
+              <line x1="24" y1="11" x2="24" y2="5.5" stroke="#34C6D9" stroke-width="2.6" stroke-linecap="round"/>
+              <circle cx="24" cy="4.5" r="2.7" fill="#34C6D9"/>
+              <rect x="7" y="11" width="34" height="29" rx="11" fill="#0B6FCE"/>
+              <rect x="11.5" y="16" width="25" height="18" rx="9" fill="#0A2540"/>
+              <circle class="olli-eye" cx="19.5" cy="25" r="3.4" fill="#7FE9F5"/>
+              <circle class="olli-eye" cx="29.5" cy="25" r="3.4" fill="#7FE9F5"/>
+            </svg>
+            <span class="wordmark">OLLI</span>
+          </a>
+          <p>O copiloto de campo do técnico de refrigeração e ar-condicionado. Do diagnóstico ao dinheiro, sem complicação.</p>
+        </div>
+
+        <div class="footer-col">
+          <h4>Produto</h4>
+          <ul>
+            <li><a href="#features">Recursos</a></li>
+            <li><a href="#how">Como funciona</a></li>
+            <li><a href="#pricing">Planos</a></li>
+            <li><a href="#faq">Dúvidas</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Acesso</h4>
+          <ul>
+            <li><a href="https://olli-app.pages.dev">Abrir o app</a></li>
+            <li><a href="https://olli-app.pages.dev">Painel web</a></li>
+            <li><a href="https://olli-app.pages.dev">Entrar</a></li>
+            <li><a href="https://olli-app.pages.dev">Começar grátis</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Contato</h4>
+          <ul>
+            <li><a href="mailto:contato@olli.app">contato@olli.app</a></li>
+            <li><a href="https://wa.me/5511958758030">WhatsApp</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <span class="made">
+          <svg width="18" height="18" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <circle cx="24" cy="5" r="2.4" fill="#34C6D9"/>
+            <rect x="9" y="11" width="30" height="26" rx="10" fill="#0B6FCE"/>
+            <circle class="olli-eye" cx="19" cy="24" r="3" fill="#7FE9F5"/>
+            <circle class="olli-eye" cx="29" cy="24" r="3" fill="#7FE9F5"/>
+          </svg>
+          Feito para o <b>técnico brasileiro</b>.
+        </span>
+        <span>© <span id="year">2026</span> OLLI. Todos os direitos reservados.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Nav background on scroll
+    (function () {
+      var nav = document.getElementById('nav');
+      var onScroll = function () {
+        if (window.scrollY > 12) nav.classList.add('scrolled');
+        else nav.classList.remove('scrolled');
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+      // Current year
+      document.getElementById('year').textContent = new Date().getFullYear();
+    })();
+  </script>
+</body>
+</html>

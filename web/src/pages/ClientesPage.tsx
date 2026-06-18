@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { clientesApi, orcamentosApi } from '../lib/api';
 import { useAsync } from '../hooks/useAsync';
 import { DataState } from '../components/DataState';
@@ -21,6 +22,7 @@ export function ClientesPage() {
   // Stable loader reference so useAsync doesn't refetch in a loop.
   const loader = useCallback(loadBundle, []);
   const { data, loading, error } = useAsync(loader);
+  const navigate = useNavigate();
 
   const clientes = useMemo(() => data?.clientes ?? [], [data]);
   const orcamentos = useMemo(() => data?.orcamentos ?? [], [data]);
@@ -53,9 +55,9 @@ export function ClientesPage() {
             {clientes.length} {clientes.length === 1 ? 'cadastrado' : 'cadastrados'}
           </div>
         </div>
-        <button type="button" className="btn btn-primary" disabled title="Cadastre clientes pelo app OLLI">
-          ＋ Novo cliente
-        </button>
+        <span className="pill-muted" title="O cadastro de clientes é feito no app OLLI">
+          ＋ Novo cliente: cadastre pelo app
+        </span>
       </header>
 
       <div className="toolbar">
@@ -91,7 +93,11 @@ export function ClientesPage() {
               <span className="crm-last num">Último</span>
             </div>
             {visible.map(({ c, agg }) => (
-              <div key={c.id} className="crm-row">
+              <div
+                key={c.id}
+                className="crm-row row-clickable"
+                onClick={() => navigate(`/clientes/${c.id}`)}
+              >
                 <span className="crm-cli">
                   <span className="crm-avatar" style={{ background: avatarColor(c.nome) }}>
                     {initial(c.nome)}

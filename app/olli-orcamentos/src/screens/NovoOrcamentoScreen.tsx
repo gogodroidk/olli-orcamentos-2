@@ -10,8 +10,8 @@ import { Colors, Spacing } from '../theme';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
-import { getOrcamento, getNextOrcamentoNumber, saveOrcamento } from '../database/database';
-import { Orcamento, ItemOrcamento, FormaPagamento } from '../types';
+import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes } from '../database/database';
+import { Orcamento, ItemOrcamento, FormaPagamento, Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO, todayISO } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -56,6 +56,19 @@ function emptyOrcamento(numero: string): Orcamento {
   };
 }
 
+/** Mapeia um Cliente para os campos de cliente do orçamento (igual ao Step1Cliente). */
+function clienteParaOrc(c: Cliente): Partial<Orcamento> {
+  return {
+    clienteId: c.id,
+    clienteNome: c.nome,
+    clienteTelefone: c.telefone,
+    clienteCpfCnpj: c.cpf ?? c.cnpj,
+    clienteEndereco: c.endereco
+      ? [c.endereco, c.complemento, c.cidade, c.estado].filter(Boolean).join(', ')
+      : undefined,
+  };
+}
+
 const round2 = (x: number) => Math.round(x * 100) / 100;
 
 function calcTotais(o: Orcamento): Orcamento {
@@ -76,6 +89,13 @@ export default function NovoOrcamentoScreen() {
   const route = useRoute<Route>();
   const isEdit = (route.name as string) === 'EditarOrcamento';
   const orcamentoId = (route.params as any)?.orcamentoId;
+
+  // Params de pré-carga (CRM): cliente pré-selecionado e/ou 1 item vindo de um
+  // diagnóstico / código de erro. Lidos só na criação (não no modo edição).
+  const prefillClienteId = (route.params as any)?.clienteId as string | undefined;
+  const prefillItem = (route.params as any)?.prefillItem as
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string }
+    | undefined;
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -104,7 +124,31 @@ export default function NovoOrcamentoScreen() {
         }
       }
       const numero = await getNextOrcamentoNumber();
-      setOrc(emptyOrcamento(numero));
+      let base = emptyOrcamento(numero);
+
+      // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
+      if (prefillClienteId) {
+        const cliente = (await getClientes()).find(c => c.id === prefillClienteId);
+        if (cliente) base = { ...base, ...clienteParaOrc(cliente) };
+      }
+
+      // Pré-carrega 1 item (descrição de diagnóstico/código) para o usuário só ajustar preço.
+      if (prefillItem?.nome?.trim()) {
+        const item: ItemOrcamento = {
+          id: generateId(),
+          tipo: prefillItem.tipo,
+          catalogoId: '',
+          nome: prefillItem.nome.trim(),
+          descricao: prefillItem.descricao?.trim() || undefined,
+          preco: 0,
+          quantidade: 1,
+          unidade: 'un',
+          subtotal: 0,
+        };
+        base = calcTotais({ ...base, itens: [item] });
+      }
+
+      setOrc(base);
     }
     init();
   }, []);

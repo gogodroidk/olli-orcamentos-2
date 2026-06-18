@@ -18,13 +18,16 @@ import {
   Spectral_600SemiBold,
   Spectral_700Bold,
 } from '@expo-google-fonts/spectral';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppTheme, Colors } from './src/theme';
 import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { getDb } from './src/database/database';
+import { getDb, getEmpresa } from './src/database/database';
+import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { supabase } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
+import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -54,6 +57,7 @@ function BrandSplash() {
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
+  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Tabs');
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -65,10 +69,26 @@ export default function App() {
   });
 
   useEffect(() => {
-    // Abre o banco e marca pronto assim que terminar — sem piso artificial de tempo.
-    getDb()
-      .then(() => setDbReady(true))
-      .catch(console.error);
+    // Abre o banco e, ANTES de liberar a UI, decide a rota inicial:
+    // 1º uso (sem empresa e nunca onboardado) → fluxo de boas-vindas (Onboarding).
+    // Quem já tem empresa ou já passou pelo onboarding entra direto nas abas.
+    (async () => {
+      try {
+        await getDb();
+        const [empresa, onboarded] = await Promise.all([
+          getEmpresa(),
+          AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
+        ]);
+        if (empresa === null && onboarded !== '1') {
+          setInitialRoute('Onboarding');
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        // Mesmo se a checagem falhar, libera o app (cai no default 'Tabs').
+        setDbReady(true);
+      }
+    })();
   }, []);
 
   // Sincronização per-row (painel web) ao logar. Listener global central: cobre
@@ -105,7 +125,7 @@ export default function App() {
           <View style={[styles.appFrame, Platform.OS === 'web' && styles.webFrame]}>
             {ready ? (
               <NavigationContainer>
-                <AppNavigator />
+                <AppNavigator initialRouteName={initialRoute} />
               </NavigationContainer>
             ) : (
               <BrandSplash />

@@ -5,9 +5,12 @@ import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { OrcamentosPage } from './pages/OrcamentosPage';
+import { OrcamentoDetalhePage } from './pages/OrcamentoDetalhePage';
 import { ClientesPage } from './pages/ClientesPage';
+import { ClienteDetalhePage } from './pages/ClienteDetalhePage';
 import { ServicosPage } from './pages/ServicosPage';
 import { ProdutosPage } from './pages/ProdutosPage';
+import { FinanceiroPage } from './pages/FinanceiroPage';
 
 export function App() {
   return (
@@ -26,9 +29,12 @@ export function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="orcamentos" element={<OrcamentosPage />} />
+        <Route path="orcamentos/:id" element={<OrcamentoDetalhePage />} />
         <Route path="clientes" element={<ClientesPage />} />
+        <Route path="clientes/:id" element={<ClienteDetalhePage />} />
         <Route path="servicos" element={<ServicosPage />} />
         <Route path="produtos" element={<ProdutosPage />} />
+        <Route path="financeiro" element={<FinanceiroPage />} />
       </Route>
 
       {/* Fallback */}

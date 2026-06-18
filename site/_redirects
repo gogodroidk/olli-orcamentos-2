@@ -1,0 +1,6 @@
+# Cloudflare Pages — redirects
+# Atalhos para o app (login / cadastro) a partir da landing.
+/app      https://olli-app.pages.dev   302
+/entrar   https://olli-app.pages.dev   302
+/login    https://olli-app.pages.dev   302
+/painel   https://olli-app.pages.dev   302

@@ -113,6 +113,31 @@ export default function VisualizarOrcamentoScreen() {
     setShowStatusMenu(false);
   }
 
+  // Abre a Agenda já criando um agendamento ligado a este orçamento/cliente.
+  function agendarVisita() {
+    if (!orc) return;
+    nav.navigate('Tabs', {
+      screen: 'Agenda',
+      params: {
+        novoParaClienteId: orc.clienteId || undefined,
+        novoParaClienteNome: orc.clienteNome,
+        novoParaOrcamentoId: orc.id,
+        novoEndereco: orc.clienteEndereco || undefined,
+        novoTitulo: `Orçamento nº ${orc.numero}`,
+      },
+    });
+  }
+
+  // Abre os orçamentos deste cliente (CRM). Sem clienteId (orçamento avulso) só avisa.
+  function verCliente() {
+    if (!orc) return;
+    if (!orc.clienteId) {
+      Alert.alert('Cliente', 'Este orçamento não está vinculado a um cliente cadastrado.');
+      return;
+    }
+    nav.navigate('Orcamentos', { clienteId: orc.clienteId, clienteNome: orc.clienteNome });
+  }
+
   if (!orc) return <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={Colors.primary} /></View>;
 
   const Row = ({ label, value }: { label: string; value?: string }) =>
@@ -132,6 +157,7 @@ export default function VisualizarOrcamentoScreen() {
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+          <ActionBtn icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
         </View>
       </GradientHeader>
 
@@ -165,9 +191,17 @@ export default function VisualizarOrcamentoScreen() {
           </OlliCard>
         )}
 
-        {/* CLIENTE */}
-        <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-          <Text style={styles.cardTitle}>Cliente</Text>
+        {/* CLIENTE — toque para ver os orçamentos deste cliente (CRM) */}
+        <OlliCard onPress={verCliente} style={{ padding: Spacing.base, marginBottom: 12 }}>
+          <View style={styles.clientHeader}>
+            <Text style={styles.cardTitle}>Cliente</Text>
+            {orc.clienteId ? (
+              <View style={styles.clientLink}>
+                <Text style={styles.clientLinkText}>ver orçamentos</Text>
+                <MaterialCommunityIcons name="chevron-right" size={16} color={Colors.accent} />
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.clientName}>{orc.clienteNome}</Text>
           <Text style={styles.clientInfo}>{orc.clienteTelefone}</Text>
           {orc.clienteCpfCnpj && <Text style={styles.clientInfo}>CPF/CNPJ: {orc.clienteCpfCnpj}</Text>}
@@ -258,6 +292,9 @@ const styles = StyleSheet.create({
   menuLabel: { flex: 1, fontSize: 14, color: Colors.onSurface },
 
   cardTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  clientHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  clientLink: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  clientLinkText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
   clientName: { fontSize: 16, fontWeight: '700', color: Colors.onSurface },
   clientInfo: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 3 },
 

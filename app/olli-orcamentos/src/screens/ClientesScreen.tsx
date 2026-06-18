@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, Modal, ScrollView,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
@@ -17,15 +18,21 @@ import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF } from '../utils/masks';
+import { abrirWhatsApp } from '../utils/pdfGenerator';
+import { RootStackParamList } from '../navigation/AppNavigator';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ClientesScreen() {
-  const nav = useNavigation();
+  const nav = useNavigation<Nav>();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filtered, setFiltered] = useState<Cliente[]>([]);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<Cliente> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string }>({});
+  // Cliente "aberto" no menu de ações (CRM: ver orçamentos, novo orçamento, etc.).
+  const [acoes, setAcoes] = useState<Cliente | null>(null);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -91,6 +98,46 @@ export default function ClientesScreen() {
     ]);
   }
 
+  // ─── AÇÕES DE CRM (a partir do menu do cliente) ───────────────
+  function verOrcamentos(c: Cliente) {
+    setAcoes(null);
+    nav.navigate('Orcamentos', { clienteId: c.id, clienteNome: c.nome });
+  }
+
+  function novoOrcamento(c: Cliente) {
+    setAcoes(null);
+    nav.navigate('NovoOrcamento', { clienteId: c.id });
+  }
+
+  function agendarVisita(c: Cliente) {
+    setAcoes(null);
+    const endereco = [c.endereco, c.complemento, c.cidade, c.estado].filter(Boolean).join(', ');
+    nav.navigate('Tabs', {
+      screen: 'Agenda',
+      params: { novoParaClienteId: c.id, novoParaClienteNome: c.nome, novoEndereco: endereco || undefined },
+    });
+  }
+
+  async function chamarWhatsApp(c: Cliente) {
+    if (!c.telefone?.trim()) {
+      Alert.alert('WhatsApp', 'Este cliente não tem telefone cadastrado.');
+      return;
+    }
+    setAcoes(null);
+    try {
+      await abrirWhatsApp(c.telefone, `Olá ${c.nome}!`);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
+  }
+
+  function editarCliente(c: Cliente) {
+    setAcoes(null);
+    setEditing({ ...c });
+    setIsNew(false);
+    setErrors({});
+  }
+
   return (
     <View style={styles.container}>
       <GradientHeader title="Clientes" subtitle={`${clientes.length} cadastrado${clientes.length === 1 ? '' : 's'}`} onBack={() => nav.goBack()}>
@@ -107,7 +154,11 @@ export default function ClientesScreen() {
         contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
         renderItem={({ item: c, index }) => (
           <AnimatedEntrance index={index}>
-            <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.85}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setAcoes(c); }}
+            >
               <View style={styles.avatar}><Text style={styles.avatarText}>{c.nome.charAt(0).toUpperCase()}</Text></View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.name}>{c.nome}</Text>
@@ -122,7 +173,7 @@ export default function ClientesScreen() {
                   <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           </AnimatedEntrance>
         )}
         ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
@@ -160,7 +211,48 @@ export default function ClientesScreen() {
           </View>
         )}
       </Modal>
+
+      {/* MENU DE AÇÕES DO CLIENTE (CRM) */}
+      <Modal visible={!!acoes} transparent animationType="fade" onRequestClose={() => setAcoes(null)}>
+        <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setAcoes(null)}>
+          <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            {acoes && (
+              <>
+                <View style={styles.sheetHead}>
+                  <View style={styles.avatar}><Text style={styles.avatarText}>{acoes.nome.charAt(0).toUpperCase()}</Text></View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.sheetName} numberOfLines={1}>{acoes.nome}</Text>
+                    {acoes.telefone ? <Text style={styles.sheetSub}>{acoes.telefone}</Text> : null}
+                  </View>
+                </View>
+
+                <SheetAction icon="file-document-multiple-outline" color={Colors.primaryLight} label="Ver orçamentos" desc="Histórico deste cliente" onPress={() => verOrcamentos(acoes)} />
+                <SheetAction icon="file-plus-outline" color={Colors.accent} label="Novo orçamento" desc="Já com este cliente" onPress={() => novoOrcamento(acoes)} />
+                <SheetAction icon="calendar-plus" color="#A78BFA" label="Agendar visita" desc="Adicionar à agenda" onPress={() => agendarVisita(acoes)} />
+                <SheetAction icon="whatsapp" color={Colors.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
+                <SheetAction icon="pencil-outline" color={Colors.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
+  );
+}
+
+function SheetAction({ icon, color, label, desc, onPress }: { icon: any; color: string; label: string; desc: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.sheetItem} onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.sheetIcon, { backgroundColor: color + '1E', borderColor: color + '3A' }]}>
+        <MaterialCommunityIcons name={icon} size={20} color={color} />
+      </View>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={styles.sheetItemTitle}>{label}</Text>
+        <Text style={styles.sheetItemDesc}>{desc}</Text>
+      </View>
+      <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+    </TouchableOpacity>
   );
 }
 
@@ -181,4 +273,15 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
   rowFields: { flexDirection: 'row' },
+
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark, marginBottom: Spacing.base },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base, paddingHorizontal: 2 },
+  sheetName: { fontSize: 17, fontWeight: '800', color: Colors.onSurface },
+  sheetSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, marginBottom: 10 },
+  sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: Colors.onSurface },
+  sheetItemDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
 });
