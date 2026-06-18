@@ -45,11 +45,6 @@ export default function CatalogoScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    backgroundColor: Colors.primary, paddingTop: 48, paddingBottom: 20,
-    paddingHorizontal: Spacing.base,
-  },
-  title: { fontSize: 22, fontWeight: '800', color: Colors.onSurface },
   card: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
     padding: Spacing.base, flexDirection: 'row', alignItems: 'center',

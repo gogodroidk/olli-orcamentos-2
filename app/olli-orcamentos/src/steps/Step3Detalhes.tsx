@@ -11,14 +11,14 @@ interface Props {
   onChange: (partial: Partial<Orcamento>) => void;
 }
 
-const PAYMENT_OPTIONS: Array<{ key: keyof FormaPagamento; label: string; icon: any }> = [
+const PAYMENT_OPTIONS: Array<{ key: keyof FormaPagamento; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
   { key: 'pix', label: 'PIX', icon: 'qrcode' },
   { key: 'credito', label: 'Crédito', icon: 'credit-card' },
   { key: 'debito', label: 'Débito', icon: 'credit-card-outline' },
   { key: 'dinheiro', label: 'Dinheiro', icon: 'cash' },
 ];
 
-function SectionTitle({ icon, children }: { icon: any; children: string }) {
+function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; children: string }) {
   return (
     <View style={styles.sectionTitleRow}>
       <View style={styles.sectionIconBg}>

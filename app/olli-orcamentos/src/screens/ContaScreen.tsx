@@ -424,7 +424,6 @@ const styles = StyleSheet.create({
   toolsCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, paddingHorizontal: Spacing.base, ...Shadow.sm },
   toolRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   toolDivider: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  toolSoon: { opacity: 0.55 },
   toolIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   toolLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
   toolDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 1 },

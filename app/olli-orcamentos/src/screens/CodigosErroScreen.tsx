@@ -365,7 +365,7 @@ export default function CodigosErroScreen() {
   );
 }
 
-function Section({ icon, title, text, accent }: { icon: any; title: string; text: string; accent?: boolean }) {
+function Section({ icon, title, text, accent }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; text: string; accent?: boolean }) {
   return (
     <View style={[styles.section, accent && styles.sectionAccent]}>
       <View style={styles.sectionHead}>
@@ -377,7 +377,7 @@ function Section({ icon, title, text, accent }: { icon: any; title: string; text
   );
 }
 
-function Meta({ icon, label, value }: { icon: any; label: string; value: string }) {
+function Meta({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
   return (
     <View style={styles.meta}>
       <MaterialCommunityIcons name={icon} size={14} color={Colors.onSurfaceMuted} />

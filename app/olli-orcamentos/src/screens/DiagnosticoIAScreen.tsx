@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -180,7 +180,7 @@ function confColor(c: string): string {
   return Colors.success;
 }
 
-function ListSection({ icon, title, items, accent }: { icon: any; title: string; items: string[]; accent?: boolean }) {
+function ListSection({ icon, title, items, accent }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; items: string[]; accent?: boolean }) {
   if (!items || items.length === 0) return null;
   return (
     <View style={[styles.section, accent && styles.sectionAccent]}>
@@ -193,7 +193,7 @@ function ListSection({ icon, title, items, accent }: { icon: any; title: string;
   );
 }
 
-function Block({ icon, title, text }: { icon: any; title: string; text: string }) {
+function Block({ icon, title, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; text: string }) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusOrcamento, STATUS_LABELS, STATUS_COLORS } from '../types';
-import { BorderRadius, Spacing } from '../theme';
+import { BorderRadius } from '../theme';
 
 interface Props {
   status: StatusOrcamento;

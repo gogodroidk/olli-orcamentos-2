@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, Switch, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -29,8 +29,6 @@ const SwitchRow = ({ label, hint, value, onValueChange }: {
 );
 
 export default function Step4Personalizacao({ orc, onChange }: Props) {
-  const [sigMode, setSigMode] = useState<'draw' | null>(null);
-
   async function pickFoto() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {

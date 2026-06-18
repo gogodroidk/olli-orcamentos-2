@@ -284,7 +284,7 @@ export default function HomeScreen() {
   );
 }
 
-function Action({ icon, label, color, onPress }: { icon: any; label: string; color: string; onPress: () => void }) {
+function Action({ icon, label, color, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; color: string; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.action} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }} activeOpacity={0.8}>
       <View style={[styles.actionIcon, { backgroundColor: color + '22', borderColor: color + '44' }]}>

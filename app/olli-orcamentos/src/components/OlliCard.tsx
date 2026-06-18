@@ -18,7 +18,7 @@ export function OlliCard({ children, onPress, style, padding = Spacing.base }: P
 
   if (onPress) {
     return (
-      <TouchableOpacity activeOpacity={0.8} onPress={onPress}>
+      <TouchableOpacity activeOpacity={0.8} onPress={onPress} accessibilityRole="button">
         {inner}
       </TouchableOpacity>
     );

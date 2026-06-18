@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Animated,
-  TextInputProps, ViewStyle, Pressable,
+  TextInputProps, ViewStyle,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, Spacing } from '../theme';
