@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "olli-diagnostico",
+  "main": "src/index.js",
+  "compatibility_date": "2025-06-01",
+  "observability": { "enabled": true },
+  // Variáveis PÚBLICAS (não-secretas). A chave da IA é secret:
+  //   npx wrangler secret put GEMINI_API_KEY
+  "vars": {
+    "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpYWVwbHFpbm5ubm5peXZ3dGxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU5NzAsImV4cCI6MjA5NjY5MTk3MH0.P_EF248NN0y7XJ47FmUuqwW00N2gvjq_aNJBqan2COk",
+    "GEMINI_MODEL": "gemini-2.5-flash"
+  },
+  // Rate limiting nativo da Cloudflare. Protege a cota paga da IA (por usuário) e
+  // o link público contra abuso/brute-force (por IP). period: 10 ou 60 (segundos).
+  "ratelimits": [
+    { "name": "IA_RL", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "LINK_RL", "namespace_id": "1002", "simple": { "limit": 12, "period": 60 } }
+  ]
+}

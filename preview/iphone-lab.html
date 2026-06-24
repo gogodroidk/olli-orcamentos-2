@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OLLI iPhone Lab</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #060b13;
+        --panel: rgba(14, 28, 48, 0.82);
+        --panel-strong: rgba(17, 34, 58, 0.96);
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f7fbff;
+        --muted: rgba(226, 232, 240, 0.68);
+        --cyan: #34c6d9;
+        --cyan-2: #7fe9f5;
+        --blue: #0b6fce;
+        --phone-w: 393px;
+        --phone-h: 852px;
+        --scale: 0.84;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 18% 12%, rgba(52, 198, 217, 0.2), transparent 28%),
+          radial-gradient(circle at 82% 0%, rgba(11, 111, 206, 0.32), transparent 34%),
+          linear-gradient(135deg, #060b13 0%, #0a1626 54%, #06101c 100%);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      button,
+      select,
+      input {
+        font: inherit;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 318px minmax(0, 1fr);
+        height: 100vh;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: rgba(6, 13, 24, 0.72);
+        backdrop-filter: blur(22px);
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-width: 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        box-shadow: 0 16px 38px rgba(52, 198, 217, 0.28);
+      }
+
+      h1 {
+        font-size: 18px;
+        line-height: 1.1;
+        margin: 0;
+      }
+
+      .subtitle {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 14px;
+      }
+
+      .label {
+        display: block;
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      select,
+      .field,
+      input[type="range"] {
+        width: 100%;
+      }
+
+      select,
+      .field {
+        min-height: 42px;
+        border: 1px solid rgba(127, 233, 245, 0.26);
+        border-radius: 12px;
+        background: rgba(5, 14, 28, 0.82);
+        color: var(--text);
+        padding: 0 12px;
+        outline: none;
+      }
+
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .btn {
+        min-height: 40px;
+        border: 1px solid rgba(127, 233, 245, 0.28);
+        border-radius: 12px;
+        padding: 0 12px;
+        color: var(--text);
+        background: rgba(127, 233, 245, 0.1);
+        cursor: pointer;
+        transition: 160ms ease;
+        flex: 1;
+      }
+
+      .btn:hover {
+        border-color: rgba(127, 233, 245, 0.62);
+        transform: translateY(-1px);
+      }
+
+      .btn.primary {
+        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        border-color: transparent;
+        color: white;
+        font-weight: 800;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #f7b23b;
+        box-shadow: 0 0 18px rgba(247, 178, 59, 0.7);
+        flex: 0 0 auto;
+      }
+
+      .dot.ready {
+        background: #2bd787;
+        box-shadow: 0 0 18px rgba(43, 215, 135, 0.7);
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .stage {
+        min-width: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        position: relative;
+      }
+
+      .ambient-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 42px 42px;
+        mask-image: radial-gradient(circle at center, black, transparent 68%);
+        pointer-events: none;
+      }
+
+      .phone-shell {
+        position: relative;
+        width: calc(var(--phone-w) + 28px);
+        height: calc(var(--phone-h) + 28px);
+        border-radius: 62px;
+        padding: 14px;
+        background:
+          linear-gradient(145deg, #2d3748 0%, #080b10 42%, #242a36 100%);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.14) inset,
+          0 34px 95px rgba(0, 0, 0, 0.62),
+          0 0 80px rgba(52, 198, 217, 0.18);
+        transform: scale(var(--scale));
+        transform-origin: center;
+      }
+
+      .phone-shell.landscape {
+        width: calc(var(--phone-h) + 28px);
+        height: calc(var(--phone-w) + 28px);
+      }
+
+      .screen {
+        position: relative;
+        width: var(--phone-w);
+        height: var(--phone-h);
+        overflow: hidden;
+        border-radius: 48px;
+        background: #0a1626;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+      }
+
+      .landscape .screen {
+        width: var(--phone-h);
+        height: var(--phone-w);
+      }
+
+      iframe {
+        position: absolute;
+        left: 0;
+        top: 34px;
+        width: 100%;
+        height: calc(100% - 44px);
+        border: 0;
+        background: #0a1626;
+      }
+
+      .landscape iframe {
+        top: 0;
+        left: 34px;
+        width: calc(100% - 44px);
+        height: 100%;
+      }
+
+      .island {
+        position: absolute;
+        top: 24px;
+        left: 50%;
+        z-index: 4;
+        width: 118px;
+        height: 34px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: #05070b;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+        pointer-events: none;
+      }
+
+      .landscape .island {
+        top: 50%;
+        left: 24px;
+        width: 34px;
+        height: 118px;
+        transform: translateY(-50%);
+      }
+
+      .home-indicator {
+        position: absolute;
+        z-index: 4;
+        left: 50%;
+        bottom: 11px;
+        width: 132px;
+        height: 5px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        pointer-events: none;
+      }
+
+      .landscape .home-indicator {
+        left: auto;
+        right: 11px;
+        bottom: 50%;
+        width: 5px;
+        height: 132px;
+        transform: translateY(50%);
+      }
+
+      .side-button {
+        position: absolute;
+        background: linear-gradient(180deg, #303847, #111720);
+        border-radius: 999px;
+      }
+
+      .side-button.left-top {
+        left: -3px;
+        top: 116px;
+        width: 4px;
+        height: 64px;
+      }
+
+      .side-button.left-bottom {
+        left: -3px;
+        top: 196px;
+        width: 4px;
+        height: 92px;
+      }
+
+      .side-button.right {
+        right: -3px;
+        top: 164px;
+        width: 4px;
+        height: 112px;
+      }
+
+      .landscape .side-button {
+        display: none;
+      }
+
+      .device-caption {
+        position: absolute;
+        bottom: 22px;
+        right: 28px;
+        color: rgba(226, 232, 240, 0.56);
+        font-size: 12px;
+      }
+
+      @media (max-width: 860px) {
+        body {
+          overflow: auto;
+        }
+
+        .app {
+          grid-template-columns: 1fr;
+          min-height: 100vh;
+          height: auto;
+        }
+
+        .sidebar {
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .stage {
+          min-height: 820px;
+          height: auto;
+          overflow: hidden;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">OL</div>
+          <div>
+            <h1>OLLI iPhone Lab</h1>
+            <p class="subtitle">Preview interativo do app</p>
+          </div>
+        </div>
+
+        <section class="section">
+          <label class="label" for="device">Escolha o iPhone</label>
+          <select id="device"></select>
+          <div class="row">
+            <button class="btn" id="portrait" type="button">Retrato</button>
+            <button class="btn" id="landscape" type="button">Paisagem</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <label class="label" for="scale">Zoom do simulador</label>
+          <input id="scale" type="range" min="45" max="110" value="84" />
+          <div class="row">
+            <button class="btn" id="fit" type="button">Ajustar</button>
+            <button class="btn" id="actual" type="button">100%</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <label class="label">App dentro do iPhone</label>
+          <div class="status">
+            <span class="dot" id="dot"></span>
+            <span id="status">Conectando ao Expo Web...</span>
+          </div>
+          <div class="row">
+            <button class="btn primary" id="reload" type="button">Atualizar app</button>
+            <button class="btn" id="home" type="button">Home</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <p class="small">
+            Isto simula o iPhone visualmente dentro do Codex. O iOS Simulator nativo da Apple
+            precisa de macOS/Xcode, mas aqui voce consegue navegar, clicar e acompanhar as
+            alteracoes do app enquanto o Expo Web roda localmente.
+          </p>
+        </section>
+      </aside>
+
+      <section class="stage">
+        <div class="ambient-grid"></div>
+        <div class="phone-shell" id="shell">
+          <span class="side-button left-top"></span>
+          <span class="side-button left-bottom"></span>
+          <span class="side-button right"></span>
+          <div class="screen">
+            <div class="island"></div>
+            <iframe id="phoneFrame" title="OLLI app preview" src="__APP_URL__"></iframe>
+            <div class="home-indicator"></div>
+          </div>
+        </div>
+        <div class="device-caption" id="caption"></div>
+      </section>
+    </main>
+
+    <script>
+      const APP_URL = "__APP_URL__";
+      const devices = [
+        { name: "iPhone SE 3", width: 375, height: 667 },
+        { name: "iPhone 13 mini", width: 375, height: 812 },
+        { name: "iPhone 15", width: 393, height: 852 },
+        { name: "iPhone 15 Pro", width: 393, height: 852 },
+        { name: "iPhone 15 Pro Max", width: 430, height: 932 },
+        { name: "iPhone 16", width: 393, height: 852 },
+        { name: "iPhone 16 Pro", width: 402, height: 874 },
+        { name: "iPhone 16 Pro Max", width: 440, height: 956 }
+      ];
+
+      const root = document.documentElement;
+      const select = document.querySelector("#device");
+      const shell = document.querySelector("#shell");
+      const frame = document.querySelector("#phoneFrame");
+      const caption = document.querySelector("#caption");
+      const scale = document.querySelector("#scale");
+      const statusText = document.querySelector("#status");
+      const dot = document.querySelector("#dot");
+      let orientation = localStorage.getItem("olli.lab.orientation") || "portrait";
+      let frameLoaded = false;
+
+      for (const [index, device] of devices.entries()) {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${device.name} - ${device.width}x${device.height}`;
+        select.appendChild(option);
+      }
+
+      select.value = localStorage.getItem("olli.lab.device") || "2";
+      scale.value = localStorage.getItem("olli.lab.scale") || "84";
+
+      function selectedDevice() {
+        return devices[Number(select.value)] || devices[2];
+      }
+
+      function applyDevice() {
+        const device = selectedDevice();
+        root.style.setProperty("--phone-w", `${device.width}px`);
+        root.style.setProperty("--phone-h", `${device.height}px`);
+        root.style.setProperty("--scale", `${Number(scale.value) / 100}`);
+        shell.classList.toggle("landscape", orientation === "landscape");
+        caption.textContent = `${device.name} / ${orientation === "landscape" ? "paisagem" : "retrato"}`;
+        localStorage.setItem("olli.lab.device", select.value);
+        localStorage.setItem("olli.lab.scale", scale.value);
+        localStorage.setItem("olli.lab.orientation", orientation);
+      }
+
+      function fitToStage() {
+        const device = selectedDevice();
+        const availableWidth = Math.max(320, window.innerWidth - (window.innerWidth > 860 ? 380 : 48));
+        const availableHeight = Math.max(520, window.innerHeight - 68);
+        const shellWidth = (orientation === "landscape" ? device.height : device.width) + 28;
+        const shellHeight = (orientation === "landscape" ? device.width : device.height) + 28;
+        const nextScale = Math.min(1.08, Math.max(0.45, Math.min(availableWidth / shellWidth, availableHeight / shellHeight)));
+        scale.value = String(Math.round(nextScale * 100));
+        applyDevice();
+      }
+
+      function markAppReady() {
+        statusText.textContent = "Expo Web conectado. Pode mexer no app.";
+        dot.classList.add("ready");
+      }
+
+      async function pingApp() {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        try {
+          await fetch(APP_URL, { mode: "no-cors", signal: controller.signal });
+          markAppReady();
+        } catch {
+          if (frameLoaded) {
+            markAppReady();
+          } else {
+            statusText.textContent = "Esperando o Expo Web iniciar...";
+            dot.classList.remove("ready");
+          }
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      frame.addEventListener("load", () => {
+        frameLoaded = true;
+        markAppReady();
+      });
+      select.addEventListener("change", fitToStage);
+      scale.addEventListener("input", applyDevice);
+      window.addEventListener("resize", fitToStage);
+      document.querySelector("#portrait").addEventListener("click", () => {
+        orientation = "portrait";
+        fitToStage();
+      });
+      document.querySelector("#landscape").addEventListener("click", () => {
+        orientation = "landscape";
+        fitToStage();
+      });
+      document.querySelector("#fit").addEventListener("click", fitToStage);
+      document.querySelector("#actual").addEventListener("click", () => {
+        scale.value = "100";
+        applyDevice();
+      });
+      document.querySelector("#reload").addEventListener("click", () => {
+        frameLoaded = false;
+        statusText.textContent = "Recarregando app...";
+        dot.classList.remove("ready");
+        frame.src = "about:blank";
+        setTimeout(() => {
+          frame.src = APP_URL;
+        }, 80);
+        setTimeout(pingApp, 500);
+      });
+      document.querySelector("#home").addEventListener("click", () => {
+        frame.src = APP_URL;
+      });
+
+      applyDevice();
+      fitToStage();
+      pingApp();
+      setInterval(pingApp, 4000);
+    </script>
+  </body>
+</html>

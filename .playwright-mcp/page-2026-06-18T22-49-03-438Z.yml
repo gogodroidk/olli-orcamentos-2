@@ -1,0 +1,113 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]: OLLI · PROTÓTIPO FUNCIONAL · GR TECH
+    - generic [ref=e7]: O app inteiro, navegável
+    - generic [ref=e8]:
+      - text: "Abas: Início · Agenda ·"
+      - strong [ref=e9]: ＋
+      - text: Orçamento · Hoje · Conta. O robô OLLI abre o assistente de voz. Tudo funciona.
+  - generic [ref=e12]:
+    - generic [ref=e15]:
+      - generic [ref=e17]: 9:41
+      - generic [ref=e18]:
+        - img [ref=e19]
+        - img [ref=e24]
+        - img [ref=e28]
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: Boa tarde,
+            - generic [ref=e39]: Igor · GR TECH
+          - generic [ref=e40] [cursor=pointer]:
+            - img [ref=e42]
+            - generic [ref=e48]: "3"
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - generic [ref=e53]: AO VIVO · PRÓXIMA PARADA
+            - generic [ref=e54]: 14:30
+          - generic [ref=e55]:
+            - generic [ref=e56]: D. Helena Souza
+            - generic [ref=e57]: Manutenção · Split 12.000 BTUs
+            - generic [ref=e58]:
+              - img [ref=e59]
+              - generic [ref=e62]: R. Augusta, 1200 · 8,2 km
+          - generic [ref=e63]:
+            - generic [ref=e65]:
+              - generic [ref=e66]: 26:48
+              - generic [ref=e67]: p/ sair
+            - generic [ref=e68]:
+              - generic [ref=e71]: Trânsito intenso · saia às 14:02
+              - generic [ref=e72]:
+                - button "Iniciar rota" [ref=e73] [cursor=pointer]
+                - button [ref=e74] [cursor=pointer]:
+                  - img [ref=e75]
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - generic [ref=e79]: Faturamento · Jun
+            - generic [ref=e80]: R$ 34.722
+            - generic [ref=e81]: ↑ 14% vs maio
+          - generic [ref=e82]:
+            - generic [ref=e83]: Conversão
+            - generic [ref=e84]: 49%
+            - generic [ref=e85]: 17/25
+          - generic [ref=e86]:
+            - generic [ref=e87]: Em aberto
+            - generic [ref=e88]: "5"
+            - generic [ref=e89]: 3 parados
+        - generic [ref=e90]:
+          - img [ref=e92]
+          - generic [ref=e96]:
+            - generic [ref=e97]: 3 orçamentos parados há +5 dias
+            - generic [ref=e98]: R$ 6.1k em jogo · quer que eu cobre?
+          - button "Cobrar" [ref=e99] [cursor=pointer]
+        - generic [ref=e100]:
+          - generic [ref=e101]: Equipe ao vivo
+          - generic [ref=e102]: Abrir mapa
+        - generic [ref=e103]:
+          - generic [ref=e104]: mapa · equipe em tempo real
+          - generic [ref=e105]: J
+          - generic [ref=e106]: A
+          - generic [ref=e107]: C
+          - generic [ref=e108]:
+            - generic [ref=e109]: ● João
+            - generic [ref=e110]: ● Ana
+            - generic [ref=e111]: ● Carlos
+        - generic [ref=e112]: Ações rápidas
+        - generic [ref=e113]:
+          - generic [ref=e114] [cursor=pointer]:
+            - img [ref=e116]
+            - generic [ref=e118]:
+              - text: Novo
+              - text: orçamento
+          - generic [ref=e119] [cursor=pointer]:
+            - img [ref=e121]
+            - generic [ref=e124]:
+              - text: Emitir
+              - text: recibo
+          - generic [ref=e125] [cursor=pointer]:
+            - img [ref=e127]
+            - generic [ref=e130]:
+              - text: Agendar
+              - text: visita
+          - generic [ref=e131] [cursor=pointer]:
+            - img [ref=e133]
+            - generic [ref=e136]:
+              - text: Código
+              - text: de erro
+      - generic [ref=e137]:
+        - generic [ref=e138] [cursor=pointer]:
+          - img [ref=e139]
+          - generic [ref=e141]: Início
+        - generic [ref=e142] [cursor=pointer]:
+          - img [ref=e143]
+          - generic [ref=e146]: Agenda
+        - generic [ref=e147] [cursor=pointer]:
+          - img [ref=e149]
+          - generic [ref=e152]: Orçamento
+        - generic [ref=e153] [cursor=pointer]:
+          - img [ref=e154]
+          - generic [ref=e157]: Hoje
+        - generic [ref=e158] [cursor=pointer]:
+          - img [ref=e159]
+          - generic [ref=e162]: Conta

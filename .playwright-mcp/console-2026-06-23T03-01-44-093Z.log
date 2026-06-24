@@ -1,0 +1,2 @@
+[     230ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://olli-diagnostico.igoreluisa.workers.dev/admin:0
+[     266ms] [ERROR] Failed to load resource: the server responded with a status of 405 () @ https://olli-diagnostico.igoreluisa.workers.dev/favicon.ico:0

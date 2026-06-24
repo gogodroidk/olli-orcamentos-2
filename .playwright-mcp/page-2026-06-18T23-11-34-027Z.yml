@@ -1,0 +1,78 @@
+- generic [ref=e19]:
+  - generic [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - img [ref=e24]
+        - generic [ref=e30]:
+          - generic [ref=e31]: Bem-vindo ao OLLI
+          - generic [ref=e32]: Vamos montar o seu cadastro completo
+      - generic "Pular configuração" [ref=e33] [cursor=pointer]:
+        - generic [ref=e34]: Pular
+    - generic [ref=e35]:
+      - generic [ref=e36]:
+        - generic [ref=e38]: "1"
+        - generic [ref=e39]: Empresa
+      - generic [ref=e40]:
+        - generic [ref=e42]: "2"
+        - generic [ref=e43]: Você
+      - generic [ref=e44]:
+        - generic [ref=e46]: "3"
+        - generic [ref=e47]: Endereço
+      - generic [ref=e48]:
+        - generic [ref=e50]: "4"
+        - generic [ref=e51]: PIX
+      - generic [ref=e52]:
+        - generic [ref=e54]: "5"
+        - generic [ref=e55]: Visual
+      - generic [ref=e56]:
+        - generic [ref=e58]: "6"
+        - generic [ref=e59]: Serviço
+  - generic [ref=e62]:
+    - generic [ref=e63]: Sua empresa
+    - generic [ref=e64]: Isso aparece no cabeçalho dos seus orçamentos, recibos e no link do cliente.
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - generic [ref=e67]: Nome do negócio *
+        - generic [ref=e68]:
+          - generic [ref=e69]: 󰓜
+          - 'textbox "Ex: Clima Frio Refrigeração" [ref=e70]': GR TECH Refrigeração
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - generic [ref=e73]: CNPJ
+          - textbox "00.000.000/0001-00" [ref=e75]
+        - generic [ref=e76]:
+          - generic [ref=e77]: CPF
+          - textbox "000.000.000-00" [ref=e79]
+      - generic [ref=e80]: Qual o seu segmento?
+      - generic [ref=e81]:
+        - generic [active] [ref=e82] [cursor=pointer]:
+          - generic [ref=e83]: 󰀛
+          - generic [ref=e84]: Ar-condicionado
+        - generic [ref=e85] [cursor=pointer]:
+          - generic [ref=e86]: 󰉁
+          - generic [ref=e87]: Elétrica
+        - generic [ref=e88] [cursor=pointer]:
+          - generic [ref=e89]: 󰖏
+          - generic [ref=e90]: Hidráulica
+        - generic [ref=e91] [cursor=pointer]:
+          - generic [ref=e92]: 󰉼
+          - generic [ref=e93]: Pintura
+        - generic [ref=e94] [cursor=pointer]:
+          - generic [ref=e95]: 󰇘
+          - generic [ref=e96]: Outro
+      - generic [ref=e97]:
+        - generic [ref=e98]: Especialidade
+        - generic [ref=e99]:
+          - generic [ref=e100]: 󰓒
+          - 'textbox "Ex: Assistência técnica de ar condicionado" [ref=e101]': Assistência técnica em ar-condicionado
+      - generic [ref=e102]:
+        - generic [ref=e103]: Slogan
+        - generic [ref=e104]:
+          - generic [ref=e105]: 󰉾
+          - textbox "Frase da sua marca" [ref=e106]: Conforto que dura o ano todo
+    - generic [ref=e107]:
+      - generic [ref=e108]: 󰍁
+      - generic [ref=e109]: Seus dados ficam no seu aparelho. Quanto mais completo, mais profissional fica o seu PDF.
+  - generic [ref=e113] [cursor=pointer]:
+    - generic [ref=e114]: 󰁔
+    - generic [ref=e115]: Continuar

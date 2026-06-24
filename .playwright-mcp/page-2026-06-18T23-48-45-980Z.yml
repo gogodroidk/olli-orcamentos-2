@@ -1,0 +1,73 @@
+- generic [ref=e144]:
+  - generic [ref=e145]:
+    - generic [ref=e146]:
+      - button "Voltar" [ref=e147] [cursor=pointer]:
+        - generic [ref=e148]: 󰅁
+      - generic [ref=e149]:
+        - generic [ref=e150]: Novo orçamento
+        - generic [ref=e151]: Nº 00126 · Passo 4 de 4
+    - generic [ref=e152]:
+      - generic [ref=e153]:
+        - generic [ref=e273]: 󰄬
+        - generic [ref=e156]: Cliente
+      - generic [ref=e158]:
+        - generic [ref=e403]: 󰄬
+        - generic [ref=e161]: Itens
+      - generic [ref=e163]:
+        - generic [ref=e485]: 󰄬
+        - generic [ref=e166]: Detalhes
+      - generic [ref=e168]:
+        - generic [ref=e170]: "4"
+        - generic [ref=e171]: Personalizar
+  - generic [ref=e487]:
+    - generic [ref=e488]:
+      - generic [ref=e489]: Resumo do orçamento
+      - generic [ref=e490]:
+        - generic [ref=e491]: Cliente
+        - generic [ref=e492]: Dona Helena Souza
+      - generic [ref=e493]:
+        - generic [ref=e494]: Itens
+        - generic [ref=e495]: 1 item(s)
+      - generic [ref=e496]:
+        - generic [ref=e497]: Serviços
+        - generic [ref=e498]: R$ 280,00
+      - generic [ref=e499]:
+        - generic [ref=e500]: Total
+        - generic [ref=e501]: R$ 280,00
+    - generic [ref=e502]: Assinatura digital
+    - generic [ref=e503]:
+      - generic [ref=e504]:
+        - generic [ref=e505]: Exibir assinatura do prestador
+        - generic [ref=e506]: Sua assinatura aparecerá no PDF
+      - switch [checked] [ref=e510] [cursor=pointer]
+    - generic [ref=e511]:
+      - generic [ref=e512]:
+        - generic [ref=e513]: Solicitar assinatura do cliente
+        - generic [ref=e514]: Cliente assina o orçamento no PDF
+      - switch [ref=e518] [cursor=pointer]
+    - generic [ref=e519]: Aprovação
+    - generic [ref=e520]:
+      - generic [ref=e521]:
+        - generic [ref=e522]: Botão de aprovar orçamento
+        - generic [ref=e523]: Cliente pode aprovar pelo PDF
+      - switch [checked] [ref=e527] [cursor=pointer]
+    - generic [ref=e528]:
+      - generic [ref=e529]:
+        - generic [ref=e530]: Botão de recusar orçamento
+        - generic [ref=e531]: Cliente pode recusar pelo PDF
+      - switch [checked] [ref=e535] [cursor=pointer]
+    - generic [ref=e536]: Fotos do serviço
+    - generic [ref=e537]: Adicione fotos do local ou equipamento para documentar.
+    - generic [ref=e539] [cursor=pointer]:
+      - generic [ref=e540]: 󰻜
+      - generic [ref=e541]: Adicionar
+    - generic [ref=e542]:
+      - generic [ref=e543]: 󰋽
+      - generic [ref=e544]: Toque em "Gerar Orçamento" para criar o PDF profissional com todas as informações preenchidas.
+  - generic [ref=e183]:
+    - generic [ref=e184] [cursor=pointer]:
+      - generic [ref=e185]: 󰅁
+      - generic [ref=e186]: Voltar
+    - generic [ref=e546] [cursor=pointer]:
+      - generic [ref=e547]: 󰗠
+      - generic [ref=e548]: Gerar orçamento

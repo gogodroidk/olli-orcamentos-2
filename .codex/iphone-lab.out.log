@@ -1,0 +1,700 @@
+
+> olli-orcamentos@1.0.0 preview:iphone
+> node scripts/iphone-lab.mjs
+
+[iphone-lab] Starting Expo Web at http://localhost:8082
+[iphone-lab] Open http://127.0.0.1:8099
+[iphone-lab] iPhone frame points to http://localhost:8082
+[expo] env: load .env.local
+[expo] env: export EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_SUPABASE_URL
+[expo] Starting project at C:\Users\ADMIN\Desktop\olli-orcamentos
+[expo] Starting Metro Bundler
+
+[expo] Waiting on http://localhost:8082
+[expo] Logs for your project will appear below.
+[expo] Web Bundled 9112ms index.ts (2022 modules)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 529ms node_modules\expo-sqlite\web\worker.ts (16 modules)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 98ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 6ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 85ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 81ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 96ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web Bundled 101ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 59ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 2ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 98ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 133ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 94ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web  ERROR  [Error: NoModificationAllowedError: Failed to execute 'createSyncAccessHandle' on 'FileSystemFileHandle': Access Handles cannot be created if there is another open Access Handle or Writable stream associated with the same file.] 
+
+Code: WorkerChannel.ts
+[0m [90m 62 |[39m     [36mif[39m (deferred) {
+ [90m 63 |[39m       [36mif[39m (error) {
+[31m[1m>[22m[39m[90m 64 |[39m         deferred[33m.[39mreject([36mnew[39m [33mError[39m(error))[33m;[39m
+ [90m    |[39m                         [31m[1m^[22m[39m
+ [90m 65 |[39m       } [36melse[39m {
+ [90m 66 |[39m         deferred[33m.[39mresolve(result)[33m;[39m
+ [90m 67 |[39m       }[0m
+Call Stack
+  workerMessageHandler (node_modules\expo-sqlite\web\WorkerChannel.ts:64:25)
+  worker.addEventListener$argument_1 (node_modules\expo-sqlite\web\SQLiteModule.ts:30:27)
+[expo] Web  ERROR  [Error: Error: Invalid VFS state] 
+
+Code: WorkerChannel.ts
+[0m [90m 62 |[39m     [36mif[39m (deferred) {
+ [90m 63 |[39m       [36mif[39m (error) {
+[31m[1m>[22m[39m[90m 64 |[39m         deferred[33m.[39mreject([36mnew[39m [33mError[39m(error))[33m;[39m
+ [90m    |[39m                         [31m[1m^[22m[39m
+ [90m 65 |[39m       } [36melse[39m {
+ [90m 66 |[39m         deferred[33m.[39mresolve(result)[33m;[39m
+ [90m 67 |[39m       }[0m
+Call Stack
+  workerMessageHandler (node_modules\expo-sqlite\web\WorkerChannel.ts:64:25)
+  worker.addEventListener$argument_1 (node_modules\expo-sqlite\web\SQLiteModule.ts:30:27)
+[expo] Web Bundled 93ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 88ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 100ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 56ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 22ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 61ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 83ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 2ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 72ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 91ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 84ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 75ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 89ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 74ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 73ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 65ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 76ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 89ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 24ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 70ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 2ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 71ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+Web Bundled 2ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 85ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 87ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 73ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 81ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 82ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 67ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 70ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 91ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 35ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 85ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 2422ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 1050ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 2093ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 33ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 165ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 86ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 194ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 6ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web  WARN  Cannot record touch end without a touch start.
+ Touch End: {"identifier":0,"pageX":432,"pageY":235,"timestamp":10045.599999964237}
+ Touch Bank: []
+[expo] Web Bundled 206ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 97ms index.ts (1 module)
+[expo] Web Bundled 80ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 29ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 80ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 3ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 69ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 82ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 5ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 90ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 92ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 2ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 82ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 4ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 73ms index.ts (1 module)
+[expo] Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+[expo] Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 2ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 44ms index.ts (1 module)
+[expo] Web Bundled 83ms index.ts (1 module)
+[expo] Web Bundled 62ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+[expo] Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 2359ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web  WARN  Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md
+[expo] Web Bundled 50ms index.ts (1 module)
+[expo] Web Bundled 42ms index.ts (1 module)
+[expo] Web  WARN  Require cycle: src/database/database.ts -> src/services/cloudSync.ts -> src/database/database.ts
+
+Require cycles are allowed, but can result in uninitialized values. Consider refactoring to remove the need for a cycle.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+[expo] Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+[expo] Web Bundled 7277ms node_modules\expo-sqlite\web\worker.ts (1 module)
+[expo] Web Bundled 8463ms index.ts (1 module)
+[iphone-lab] Expo Web exited with code 4294967295

@@ -1,0 +1,8 @@
+[mcp_servers.gcloud]
+command = "cmd"
+args = [
+    "/c",
+    "npx",
+    "-y",
+    "@google-cloud/gcloud-mcp",
+]

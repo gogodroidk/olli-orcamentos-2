@@ -1,0 +1,9 @@
+- generic [ref=e3]:
+  - img [ref=e5]
+  - heading "Painel Admin OLLI" [level=1] [ref=e12]
+  - paragraph [ref=e13]: Acesso restrito ao super-admin.
+  - text: E-mail
+  - textbox "voce@email.com" [ref=e14]
+  - text: Senha
+  - textbox "sua senha" [ref=e15]
+  - button "Entrar" [ref=e16] [cursor=pointer]

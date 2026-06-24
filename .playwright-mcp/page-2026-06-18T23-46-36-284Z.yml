@@ -1,0 +1,39 @@
+- generic [ref=e144]:
+  - generic [ref=e145]:
+    - generic [ref=e146]:
+      - button "Voltar" [ref=e147] [cursor=pointer]:
+        - generic [ref=e148]: 󰅁
+      - generic [ref=e149]:
+        - generic [ref=e150]: Novo orçamento
+        - generic [ref=e151]: Nº 00126 · Passo 1 de 4
+    - generic [ref=e152]:
+      - generic [ref=e153]:
+        - generic [ref=e155]: "1"
+        - generic [ref=e156]: Cliente
+      - generic [ref=e158]:
+        - generic [ref=e160]: "2"
+        - generic [ref=e161]: Itens
+      - generic [ref=e163]:
+        - generic [ref=e165]: "3"
+        - generic [ref=e166]: Detalhes
+      - generic [ref=e168]:
+        - generic [ref=e170]: "4"
+        - generic [ref=e171]: Personalizar
+  - generic [ref=e174]:
+    - generic [ref=e175]: Para quem é o orçamento?
+    - generic [ref=e176]: Busque um cliente cadastrado ou crie um novo.
+    - generic [ref=e177]:
+      - generic [ref=e178]: 󰍉
+      - textbox "Buscar cliente pelo nome..." [ref=e179]
+    - generic [ref=e180] [cursor=pointer]:
+      - generic [ref=e181]: 󰀔
+      - generic [ref=e182]: Cadastrar novo cliente
+  - generic [ref=e183]:
+    - generic [ref=e184] [cursor=pointer]:
+      - generic [ref=e185]: 󰅁
+      - generic [ref=e186]: Cancelar
+    - generic [ref=e187]:
+      - generic [ref=e190] [cursor=pointer]: Rascunho
+      - generic [ref=e191]:
+        - generic [ref=e192]: 󰁔
+        - generic [ref=e193]: Avançar

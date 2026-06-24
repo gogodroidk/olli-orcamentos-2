@@ -1,0 +1,129 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - img [ref=e3]
+    - generic [ref=e9]: OLLI
+    - generic [ref=e10]: Orçamentos que fecham negócio
+    - generic [ref=e11]: PROTÓTIPO DE TELAS · GR TECH
+    - generic [ref=e12]: Todas as telas do app e do painel web, num lugar só. Clique em qualquer uma para abrir o protótipo navegável — tudo funciona de verdade.
+    - generic [ref=e13]: 12 telas · rodando neste computador
+  - main [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: 📱 App Mobile
+        - generic [ref=e19]: o que o prestador usa no dia a dia
+      - generic [ref=e20]:
+        - 'link "COMECE POR AQUI O app inteiro, navegável Protótipo funcional completo: Início, Agenda, ＋Orçamento, Hoje e Conta. O robô OLLI abre o assistente de voz que monta o orçamento sozinho, e o fluxo de novo orçamento tem 4 etapas. Tudo clicável. Abrir protótipo →" [ref=e21] [cursor=pointer]':
+          - /url: 01%20App%20Mobile.dc.html
+          - img [ref=e23]
+          - generic [ref=e27]:
+            - generic [ref=e28]: COMECE POR AQUI
+            - heading "O app inteiro, navegável" [level=2] [ref=e29]
+            - paragraph [ref=e30]: "Protótipo funcional completo: Início, Agenda, ＋Orçamento, Hoje e Conta. O robô OLLI abre o assistente de voz que monta o orçamento sozinho, e o fluxo de novo orçamento tem 4 etapas. Tudo clicável."
+          - generic [ref=e31]: Abrir protótipo →
+        - link "03 Mobile Entrar Login com Face ID, Google, Apple e e-mail — na identidade OLLI. Abrir →" [ref=e32] [cursor=pointer]:
+          - /url: 03%20Entrar.dc.html
+          - generic [ref=e33]:
+            - generic [ref=e34]: "03"
+            - generic [ref=e35]: Mobile
+          - heading "Entrar" [level=3] [ref=e36]
+          - paragraph [ref=e37]: Login com Face ID, Google, Apple e e-mail — na identidade OLLI.
+          - generic [ref=e38]: Abrir →
+        - link "04 6 telas Onboarding & Cliente Onboarding · Recuperar senha · Detalhe do cliente (CRM) · Detalhe do orçamento · Financeiro · Notificações. Abrir →" [ref=e39] [cursor=pointer]:
+          - /url: 04%20Telas%20Mobile%202.dc.html
+          - generic [ref=e40]:
+            - generic [ref=e41]: "04"
+            - generic [ref=e42]: 6 telas
+          - heading "Onboarding & Cliente" [level=3] [ref=e43]
+          - paragraph [ref=e44]: Onboarding · Recuperar senha · Detalhe do cliente (CRM) · Detalhe do orçamento · Financeiro · Notificações.
+          - generic [ref=e45]: Abrir →
+        - link "05 6 telas Técnico & Operação Detalhe do técnico · Editar item · Personalizar empresa · Planos · Detalhe do serviço · Rota do dia. Abrir →" [ref=e46] [cursor=pointer]:
+          - /url: 05%20Telas%20Mobile%203.dc.html
+          - generic [ref=e47]:
+            - generic [ref=e48]: "05"
+            - generic [ref=e49]: 6 telas
+          - heading "Técnico & Operação" [level=3] [ref=e50]
+          - paragraph [ref=e51]: Detalhe do técnico · Editar item · Personalizar empresa · Planos · Detalhe do serviço · Rota do dia.
+          - generic [ref=e52]: Abrir →
+        - link "06 6 telas OLLI & Configurações Chat com a OLLI · Relatórios · Avaliação do cliente · Primeiro uso · Assinatura ativada · Configurações. Abrir →" [ref=e53] [cursor=pointer]:
+          - /url: 06%20Telas%20Mobile%204.dc.html
+          - generic [ref=e54]:
+            - generic [ref=e55]: "06"
+            - generic [ref=e56]: 6 telas
+          - heading "OLLI & Configurações" [level=3] [ref=e57]
+          - paragraph [ref=e58]: Chat com a OLLI · Relatórios · Avaliação do cliente · Primeiro uso · Assinatura ativada · Configurações.
+          - generic [ref=e59]: Abrir →
+        - link "07 6 telas Cadastros & Campo Novo cliente · Agendar visita · Capturar assinatura · Adicionar despesa · Pagamento · Modo offline. Abrir →" [ref=e60] [cursor=pointer]:
+          - /url: 07%20Telas%20Mobile%205.dc.html
+          - generic [ref=e61]:
+            - generic [ref=e62]: "07"
+            - generic [ref=e63]: 6 telas
+          - heading "Cadastros & Campo" [level=3] [ref=e64]
+          - paragraph [ref=e65]: Novo cliente · Agendar visita · Capturar assinatura · Adicionar despesa · Pagamento · Modo offline.
+          - generic [ref=e66]: Abrir →
+    - generic [ref=e67]:
+      - generic [ref=e68]:
+        - generic [ref=e69]: 🖥️ Painel Web
+        - generic [ref=e70]: o patrão acompanha tudo pelo computador
+      - generic [ref=e71]:
+        - link "08 Web Acesso (Web) Login (split + redes sociais) e criar conta em 3 passos. Abrir →" [ref=e72] [cursor=pointer]:
+          - /url: 08%20Web%20Auth.dc.html
+          - generic [ref=e73]:
+            - generic [ref=e74]: "08"
+            - generic [ref=e75]: Web
+          - heading "Acesso (Web)" [level=3] [ref=e76]
+          - paragraph [ref=e77]: Login (split + redes sociais) e criar conta em 3 passos.
+          - generic [ref=e78]: Abrir →
+        - link "09 Web Painel · Visão geral Dashboard · Orçamentos (tabela + filtros) · Agenda da semana. Abrir →" [ref=e79] [cursor=pointer]:
+          - /url: 09%20Web%20Painel.dc.html
+          - generic [ref=e80]:
+            - generic [ref=e81]: "09"
+            - generic [ref=e82]: Web
+          - heading "Painel · Visão geral" [level=3] [ref=e83]
+          - paragraph [ref=e84]: Dashboard · Orçamentos (tabela + filtros) · Agenda da semana.
+          - generic [ref=e85]: Abrir →
+        - link "10 Web Painel · Gestão Clientes (CRM) · Equipe (mapa ao vivo) · Financeiro. Abrir →" [ref=e86] [cursor=pointer]:
+          - /url: 10%20Web%20Painel%202.dc.html
+          - generic [ref=e87]:
+            - generic [ref=e88]: "10"
+            - generic [ref=e89]: Web
+          - heading "Painel · Gestão" [level=3] [ref=e90]
+          - paragraph [ref=e91]: Clientes (CRM) · Equipe (mapa ao vivo) · Financeiro.
+          - generic [ref=e92]: Abrir →
+    - generic [ref=e93]:
+      - generic [ref=e94]:
+        - generic [ref=e95]: 📄 Documentos do cliente
+        - generic [ref=e96]: o que o cliente final recebe
+      - generic [ref=e97]:
+        - link "11 Web Link do cliente Página responsiva onde o cliente abre o orçamento no navegador e aprova ou recusa — sem instalar nada. Abrir →" [ref=e98] [cursor=pointer]:
+          - /url: 11%20Link%20Cliente.dc.html
+          - generic [ref=e99]:
+            - generic [ref=e100]: "11"
+            - generic [ref=e101]: Web
+          - heading "Link do cliente" [level=3] [ref=e102]
+          - paragraph [ref=e103]: Página responsiva onde o cliente abre o orçamento no navegador e aprova ou recusa — sem instalar nada.
+          - generic [ref=e104]: Abrir →
+        - 'link "12 PDF Orçamento em PDF Documento A4 elegante e personalizável: logo, dados da empresa e cor da marca. Abrir →" [ref=e105] [cursor=pointer]':
+          - /url: 12%20Orcamento%20PDF.dc.html
+          - generic [ref=e106]:
+            - generic [ref=e107]: "12"
+            - generic [ref=e108]: PDF
+          - heading "Orçamento em PDF" [level=3] [ref=e109]
+          - paragraph [ref=e110]: "Documento A4 elegante e personalizável: logo, dados da empresa e cor da marca."
+          - generic [ref=e111]: Abrir →
+    - generic [ref=e112]:
+      - generic [ref=e113]:
+        - generic [ref=e114]: 🎨 Marca
+        - generic [ref=e115]: a identidade visual da OLLI
+      - link "02 Marca Identidade da marca Logo, lockups, ícone do app, favicons, paleta de cores e usos em fundo claro/escuro. Abrir →" [ref=e117] [cursor=pointer]:
+        - /url: 02%20Marca.dc.html
+        - generic [ref=e118]:
+          - generic [ref=e119]: "02"
+          - generic [ref=e120]: Marca
+        - heading "Identidade da marca" [level=3] [ref=e121]
+        - paragraph [ref=e122]: Logo, lockups, ícone do app, favicons, paleta de cores e usos em fundo claro/escuro.
+        - generic [ref=e123]: Abrir →
+  - contentinfo [ref=e124]:
+    - generic [ref=e125]: OLLI · GR TECH Refrigeração — protótipo de telas (Igor)
+    - generic [ref=e126]:
+      - img [ref=e127]
+      - text: gerado com OLLI

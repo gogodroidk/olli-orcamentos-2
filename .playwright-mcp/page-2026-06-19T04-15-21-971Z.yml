@@ -1,0 +1,136 @@
+- generic [ref=e19]:
+  - generic [ref=e20]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Boa noite,
+                      - generic:
+                        - text: Igor
+                        - generic: · GR TECH Refrigeração
+                    - generic:
+                      - generic:
+                        - img
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: AO VIVO · PRÓXIMA PARADA
+                      - generic:
+                        - generic: 󰭦
+                        - generic: Nenhuma visita agendada
+                        - generic: Agende seus serviços e a OLLI te avisa a hora de sair, com o trânsito de SP.
+                        - generic:
+                          - generic: 󰃳
+                          - generic: Abrir agenda
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: R$ 0,00
+                        - generic: faturamento
+                      - generic:
+                        - generic: 0%
+                        - generic: conversão
+                      - generic:
+                        - generic: "1"
+                        - generic: em aberto
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: 󱁵
+                        - generic:
+                          - generic: Diagnóstico de erro
+                          - generic: 602 códigos de ar-condicionado · ache a falha em segundos, offline
+                        - generic: 󰅂
+                  - generic: Ações rápidas
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: 󰝒
+                        - generic: Orçar
+                      - generic:
+                        - generic:
+                          - generic: 󰠤
+                        - generic: Recibo
+                      - generic:
+                        - generic:
+                          - generic: 󰡉
+                        - generic: Clientes
+                      - generic:
+                        - generic:
+                          - generic: 󰖷
+                        - generic: Serviços
+                  - generic:
+                    - generic: Orçamentos recentes
+                    - generic:
+                      - generic: ver todos
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: D
+                        - generic:
+                          - generic: Dona Helena Souza
+                          - generic: Nº 00126 · 18/06/2026
+                          - generic:
+                            - generic:
+                              - generic: Enviado
+                        - generic: R$ 280,00
+    - generic [ref=e154]:
+      - generic [ref=e155]:
+        - generic [ref=e156]:
+          - generic [ref=e157]: MEU DIA
+          - generic [ref=e158]: Bom dia
+          - generic [ref=e159]: Sexta-feira, 19 de junho
+        - img [ref=e161]
+      - generic [ref=e167]:
+        - generic [ref=e168]: Agenda de hoje
+        - generic [ref=e170] [cursor=pointer]: ver agenda
+      - generic [ref=e171]:
+        - generic [ref=e172]: 󰱄
+        - generic [ref=e173]: Nada agendado para hoje
+        - generic [ref=e174]: Aproveite para organizar a semana ou cadastrar novos orçamentos.
+        - generic [ref=e175] [cursor=pointer]:
+          - generic [ref=e176]: 󰃳
+          - generic [ref=e177]: Abrir agenda
+      - generic [ref=e179]: Checklist do dia
+      - generic [ref=e180]:
+        - generic [ref=e181]:
+          - generic [ref=e182]: 󰐙
+          - textbox "Adicionar tarefa…" [ref=e183]
+        - generic [ref=e184]: Sem tarefas. Anote o que precisa fazer hoje.
+      - generic [ref=e186]:
+        - img [ref=e188]
+        - generic [ref=e194]: Tudo em dia!
+        - generic [ref=e195]: Nenhuma pendência por agora. A OLLI te avisa quando algo precisar de atenção.
+  - tablist [ref=e111]:
+    - tab "󰚡 󰚡 Início" [ref=e113] [cursor=pointer]:
+      - generic [ref=e114]:
+        - generic [ref=e116]: 󰚡
+        - generic [ref=e118]: 󰚡
+      - generic [ref=e119]: Início
+    - tab "󰸘 󰸘 Agenda" [ref=e121] [cursor=pointer]:
+      - generic [ref=e122]:
+        - generic [ref=e124]: 󰸘
+        - generic [ref=e126]: 󰸘
+      - generic [ref=e127]: Agenda
+    - button "Novo orçamento" [ref=e129] [cursor=pointer]:
+      - generic [ref=e131]: 󰐕
+      - generic [ref=e132]: Orçamento
+    - tab "󰖨 󰖨 Hoje" [active] [selected] [ref=e134] [cursor=pointer]:
+      - generic [ref=e135]:
+        - generic [ref=e137]: 󰖨
+        - generic [ref=e139]: 󰖨
+      - generic [ref=e140]: Hoje
+    - tab "󰭕 󰭕 Conta" [ref=e142] [cursor=pointer]:
+      - generic [ref=e143]:
+        - generic [ref=e145]: 󰭕
+        - generic [ref=e147]: 󰭕
+      - generic [ref=e148]: Conta

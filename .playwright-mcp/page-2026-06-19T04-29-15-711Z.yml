@@ -1,0 +1,132 @@
+- generic [ref=e19]:
+  - generic [ref=e20]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e29]: Bom dia,
+          - generic [ref=e30]:
+            - text: Igor
+            - generic [ref=e31]: · GR TECH Refrigeração
+        - img [ref=e34] [cursor=pointer]
+      - generic [ref=e41]:
+        - generic [ref=e45]: AO VIVO · PRÓXIMA PARADA
+        - generic [ref=e46]:
+          - generic [ref=e290]: Amanhã · 09:00
+          - generic [ref=e48]: Dona Helena Souza
+          - generic [ref=e49]: Manutenção · Manutenção Split 12.000 BTUs
+          - generic [ref=e291]:
+            - generic [ref=e292]: 󰍎
+            - generic [ref=e293]: Rua Augusta, 1200, São Paulo
+          - generic [ref=e294]:
+            - generic [ref=e295] [cursor=pointer]:
+              - generic [ref=e296]: 󱣰
+              - generic [ref=e297]: Ver no mapa
+            - generic [ref=e299] [cursor=pointer]: Ver agenda
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - generic [ref=e56]: R$ 0,00
+          - generic [ref=e57]: faturamento
+        - generic [ref=e59]:
+          - generic [ref=e60]: 0%
+          - generic [ref=e61]: conversão
+        - generic [ref=e63]:
+          - generic [ref=e64]: "1"
+          - generic [ref=e65]: em aberto
+      - generic [ref=e68] [cursor=pointer]:
+        - generic [ref=e70]: 󱁵
+        - generic [ref=e71]:
+          - generic [ref=e72]: Diagnóstico de erro
+          - generic [ref=e73]: 602 códigos de ar-condicionado · ache a falha em segundos, offline
+        - generic [ref=e74]: 󰅂
+      - generic [ref=e75]: Ações rápidas
+      - generic [ref=e77]:
+        - generic [ref=e78] [cursor=pointer]:
+          - generic [ref=e80]: 󰝒
+          - generic [ref=e81]: Orçar
+        - generic [ref=e82] [cursor=pointer]:
+          - generic [ref=e84]: 󰠤
+          - generic [ref=e85]: Recibo
+        - generic [ref=e86] [cursor=pointer]:
+          - generic [ref=e88]: 󰡉
+          - generic [ref=e89]: Clientes
+        - generic [ref=e90] [cursor=pointer]:
+          - generic [ref=e92]: 󰖷
+          - generic [ref=e93]: Serviços
+      - generic [ref=e94]:
+        - generic [ref=e95]: Orçamentos recentes
+        - generic [ref=e97] [cursor=pointer]: ver todos
+      - generic [ref=e100] [cursor=pointer]:
+        - generic [ref=e102]: D
+        - generic [ref=e103]:
+          - generic [ref=e104]: Dona Helena Souza
+          - generic [ref=e105]: Nº 00126 · 18/06/2026
+          - generic [ref=e108]: Enviado
+        - generic [ref=e109]: R$ 280,00
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic: Agenda
+                  - generic: 1 compromisso no período
+                - generic:
+                  - generic: Hoje
+              - generic:
+                - generic:
+                  - generic: Dia
+                - generic:
+                  - generic: Semana
+                - generic:
+                  - generic: Mês
+              - generic:
+                - generic:
+                  - generic: 󰅁
+                - generic: Sábado, 20 de junho
+                - generic:
+                  - generic: 󰅂
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: 09:00
+                      - generic:
+                        - generic: Manutenção Split 12.000 BTUs
+                        - generic: Dona Helena Souza
+                        - generic:
+                          - generic:
+                            - generic: Manutenção
+                          - generic:
+                            - generic: 󰟙
+                            - generic: Rua Augusta, 1200, São Paulo
+                      - generic: 󰅂
+            - generic:
+              - generic: 󰃳
+              - generic: Agendar visita
+  - tablist [ref=e111]:
+    - tab "󰚡 󰚡 Início" [active] [selected] [ref=e113] [cursor=pointer]:
+      - generic [ref=e114]:
+        - generic [ref=e116]: 󰚡
+        - generic [ref=e118]: 󰚡
+      - generic [ref=e119]: Início
+    - tab "󰸘 󰸘 Agenda" [ref=e121] [cursor=pointer]:
+      - generic [ref=e122]:
+        - generic [ref=e124]: 󰸘
+        - generic [ref=e126]: 󰸘
+      - generic [ref=e127]: Agenda
+    - button "Novo orçamento" [ref=e129] [cursor=pointer]:
+      - generic [ref=e131]: 󰐕
+      - generic [ref=e132]: Orçamento
+    - tab "󰖨 󰖨 Hoje" [ref=e134] [cursor=pointer]:
+      - generic [ref=e135]:
+        - generic [ref=e137]: 󰖨
+        - generic [ref=e139]: 󰖨
+      - generic [ref=e140]: Hoje
+    - tab "󰭕 󰭕 Conta" [ref=e142] [cursor=pointer]:
+      - generic [ref=e143]:
+        - generic [ref=e145]: 󰭕
+        - generic [ref=e147]: 󰭕
+      - generic [ref=e148]: Conta
