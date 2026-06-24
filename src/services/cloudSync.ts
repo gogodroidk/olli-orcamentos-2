@@ -364,12 +364,51 @@ export async function pushTombstone(tabela: string, itemId: string): Promise<voi
   }
 }
 
+/**
+ * Remove da NUVEM (public.exclusoes) os tombstones de uma lista de ids. Usado pelo
+ * RESTORE: itens que o snapshot recupera precisam ter seu tombstone apagado, senão
+ * o applyCloudTombstones do próximo sync os re-excluiria. Agrupa por tabela (1 delete
+ * por tabela via `.in`). Só com sessão; NUNCA lança (offline = no-op).
+ */
+export async function limparTombstonesNuvem(ids: { tabela: string; itemId: string }[]): Promise<void> {
+  try {
+    if (!ids.length || !supabase || !(await hasSession())) return;
+    const porTabela = new Map<string, string[]>();
+    for (const { tabela, itemId } of ids) {
+      if (!tabela || !itemId) continue;
+      const lista = porTabela.get(tabela) ?? [];
+      lista.push(itemId);
+      porTabela.set(tabela, lista);
+    }
+    for (const [tabela, lista] of porTabela) {
+      try {
+        await supabase.from('exclusoes').delete().eq('tabela', tabela).in('item_id', lista);
+      } catch {
+        // best-effort por tabela
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
 // ─── Guarda de timestamp do PULL (anti-perda de edição local) ────────────────
 // Antes de sobrescrever um registro local com a versão da nuvem, checa se o LOCAL
 // é mais novo (edição offline recente). Se for, o pull NÃO sobrescreve — assim,
 // editar o mesmo orçamento/agendamento em dois aparelhos não apaga a versão mais
-// recente. Timestamps ISO-8601 UTC (toISOString) comparam corretamente por string.
-// Na dúvida (sem timestamp local) retorna false → upsert acontece (padrão antigo).
+// recente. Na dúvida (sem timestamp) retorna false → upsert acontece (padrão antigo).
+//
+// IMPORTANTE: comparamos via Date.parse (epoch ms), NÃO por string. O timestamptz
+// do Postgres pode chegar com offset (+00:00) ou precisão diferente do toISOString()
+// do app — comparação lexicográfica quebraria silenciosamente; o parse é robusto.
+function tsMaisNovo(localTs?: string | null, recebidoEm?: string): boolean {
+  if (!localTs || !recebidoEm) return false;
+  const a = Date.parse(localTs);
+  const b = Date.parse(recebidoEm);
+  if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  return a > b;
+}
+
 async function localMaisNovoOrcamento(id: string, recebidoEm?: string): Promise<boolean> {
   if (!recebidoEm) return false;
   try {
@@ -377,7 +416,7 @@ async function localMaisNovoOrcamento(id: string, recebidoEm?: string): Promise<
     const row = await db.getFirstAsync<{ ts: string | null }>(
       "SELECT json_extract(data, '$.atualizadoEm') AS ts FROM orcamentos WHERE id = ?", [id],
     );
-    return !!row?.ts && row.ts > recebidoEm;
+    return tsMaisNovo(row?.ts, recebidoEm);
   } catch {
     return false;
   }
@@ -390,7 +429,7 @@ async function localMaisNovoAgendamento(id: string, recebidoEm?: string): Promis
     const row = await db.getFirstAsync<{ ts: string | null }>(
       'SELECT atualizado_em AS ts FROM agendamentos WHERE id = ?', [id],
     );
-    return !!row?.ts && row.ts > recebidoEm;
+    return tsMaisNovo(row?.ts, recebidoEm);
   } catch {
     return false;
   }
@@ -698,6 +737,13 @@ async function pullTable<T>(
 /**
  * Lê tudo do SQLite e faz upsert de cada item na nuvem. Para aparelhos que já
  * têm dados locais (ex.: o do dono) popularem o painel. NUNCA lança.
+ *
+ * NOTA (assimetria consciente): o PUSH é last-writer-wins (upsert incondicional),
+ * enquanto o PULL tem guarda de timestamp. No syncOnLogin o pullAll roda ANTES, então
+ * o local já recebeu a versão mais nova da nuvem antes deste push — o caminho comum é
+ * seguro. Resta uma janela estreita (outro aparelho gravando ENTRE o pull e o push
+ * deste login) onde o painel fica last-writer-wins. Fix definitivo = upsert condicional
+ * server-side (RPC/trigger por atualizado_em); fora do escopo atual (1 prestador/aparelho).
  */
 export async function pushAllLocal(): Promise<void> {
   try {

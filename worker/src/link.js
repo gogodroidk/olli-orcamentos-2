@@ -139,14 +139,14 @@ export async function responderLink(token, request, env) {
   if (!validToken(token)) return json({ ok: false, erro: 'token_invalido' }, 400);
   // Rate limit por IP: endpoint público sem login — barra abuso/brute-force.
   if (env.LINK_RL) {
-    const ip = request.headers.get('CF-Connecting-IP') || '';
-    if (ip) {
-      try {
-        const { success } = await env.LINK_RL.limit({ key: ip });
-        if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-      } catch {
-        // binding ausente: não bloqueia
-      }
+    // Em produção a Cloudflare sempre injeta CF-Connecting-IP; o fallback garante
+    // que mesmo sem o header o endpoint NUNCA fica 100% sem limite (degrada seguro).
+    const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+    try {
+      const { success } = await env.LINK_RL.limit({ key: ip });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch {
+      // binding ausente: não bloqueia
     }
   }
   // Rejeita payload grande ANTES de parsear (endpoint público sem login).

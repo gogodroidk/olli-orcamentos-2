@@ -227,6 +227,12 @@ export default {
     const user = await getUser(request, env);
     if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
 
+    // Rota de IA válida? 404 ANTES do rate limit — uma rota inexistente não deve
+    // consumir 1 dos 20 tokens/min do usuário (o limite é só para chamadas de IA).
+    if (url.pathname !== '/' && url.pathname !== '/voz' && url.pathname !== '/chat') {
+      return json({ ok: false, erro: 'nao_encontrado' }, 404);
+    }
+
     // Rate limit por usuário: protege a cota paga da Gemini contra abuso (qualquer
     // conta grátis poderia, sem isto, disparar chamadas ilimitadas). 20/min/usuário.
     if (env.IA_RL) {

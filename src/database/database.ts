@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
-import { pushRow, removeRow, pushTombstone, pushAllLocal } from '../services/cloudSync';
+import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -747,6 +747,19 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const depoimentos = asArray<Depoimento>(data.depoimentos);
   const agendamentos = asArray<Agendamento>(data.agendamentos);
 
+  // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
+  // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
+  const idsRestaurados: { tabela: string; itemId: string }[] = [
+    ...clientes.map((c) => ({ tabela: 'clientes', itemId: c.id })),
+    ...servicos.map((s) => ({ tabela: 'servicos', itemId: s.id })),
+    ...produtos.map((p) => ({ tabela: 'produtos', itemId: p.id })),
+    ...orcamentos.map((o) => ({ tabela: 'orcamentos', itemId: o.id })),
+    ...recibos.map((r) => ({ tabela: 'recibos', itemId: r.id })),
+    ...modelos.map((m) => ({ tabela: 'modelos', itemId: m.id })),
+    ...depoimentos.map((d) => ({ tabela: 'depoimentos', itemId: d.id })),
+    ...agendamentos.map((a) => ({ tabela: 'agendamentos', itemId: a.id })),
+  ];
+
   const db = await getDb();
   // Dentro da transação usamos upserts LOCAIS SILENCIOSOS (runAsync direto, SEM
   // mirrorPush) para não disparar uma tempestade de rede no meio da restauração.
@@ -822,6 +835,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     const cRec = Math.max(Number(contadores['recibo']) || 0, recibos.length);
     await db.runAsync('INSERT OR REPLACE INTO contadores (chave, valor) VALUES (?, ?)', ['orcamento', cOrc]);
     await db.runAsync('INSERT OR REPLACE INTO contadores (chave, valor) VALUES (?, ?)', ['recibo', cRec]);
+
+    // Restore RECUPERA itens: remove os tombstones LOCAIS desses ids para o
+    // pushLocalTombstones não os re-excluir. (Os da nuvem são limpos após o commit.)
+    for (const { tabela, itemId } of idsRestaurados) {
+      await db.runAsync('DELETE FROM exclusoes WHERE tabela = ? AND item_id = ?', [tabela, itemId]);
+    }
   });
 
   // Espelho na nuvem só quando EXPLICITAMENTE pedido (ex.: importar arquivo local).
@@ -831,6 +850,17 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   if (opts.pushToCloud) {
     try {
       void pushAllLocal().catch(() => {});
+    } catch {
+      // idem
+    }
+  }
+
+  // Limpa na NUVEM os tombstones dos ids restaurados — senão o próximo syncOnLogin
+  // (applyCloudTombstones) re-excluiria o que o restore acabou de recuperar. O botão
+  // "Restaurar" passa a recuperar de verdade. Fire-and-forget: offline = no-op.
+  if (idsRestaurados.length) {
+    try {
+      void limparTombstonesNuvem(idsRestaurados).catch(() => {});
     } catch {
       // idem
     }
