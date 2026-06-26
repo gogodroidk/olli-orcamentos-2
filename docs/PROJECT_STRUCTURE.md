@@ -12,6 +12,9 @@ Este app está organizado por camada funcional:
 - `src/utils`: funções puras e utilitários de PDF, moeda, data, máscara e ID.
 - `supabase/migrations`: histórico SQL para reproduzir o estado do backend.
 - `docs`: notas operacionais para GitHub, deploy e manutenção.
+- `docs/archive`: evidencias historicas, logs e capturas preservados fora da raiz.
+- `qa-artifacts`: saidas locais ignoradas de QA visual.
+- `preview`: templates ativos de preview, como o iPhone Lab.
 
 ## Convenções
 
@@ -20,3 +23,5 @@ Este app está organizado por camada funcional:
 - Funções que tocam SQLite ficam em `src/database/database.ts`.
 - Integrações externas não devem ser chamadas direto das telas quando puderem ficar em `src/services`.
 - Chaves públicas de runtime ficam em `.env.local`; o repositório deve versionar somente `.env.example`.
+- Arquivos gerados por ferramentas devem ficar ignorados ou arquivados com README/manifesto.
+- Nao mova `assets`, `preview`, `scripts`, `worker/src` ou `supabase/migrations` sem atualizar referencias de build/import no mesmo commit.

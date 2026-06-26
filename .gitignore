@@ -27,6 +27,12 @@ yarn-debug.*
 yarn-error.*
 qa-artifacts/
 
+# local tool outputs
+.playwright-mcp/
+.codex/*.log
+worker/.wrangler/
+supabase/.temp/
+
 # macOS
 .DS_Store
 *.pem

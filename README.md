@@ -59,6 +59,13 @@ docs/
   SUPABASE.md   Estado do backend, policies e checklist
 ```
 
+Para navegar o projeto com mais detalhe, comece por:
+
+- `docs/README.md`: indice da documentacao.
+- `docs/ORGANIZATION.md`: regra de organizacao, arquivos ativos, arquivos ignorados e arquivo historico.
+- `docs/CODE_MAP.md`: mapa de codigo por dominio.
+- `docs/QA_ARTIFACTS.md`: como ler as evidencias visuais locais.
+
 ## Preflight atual
 
 Em 2026-06-15:

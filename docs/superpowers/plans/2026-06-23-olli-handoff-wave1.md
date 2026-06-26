@@ -1,5 +1,7 @@
 # OLLI Handoff Wave 1 Implementation Plan
 
+> **Historical note (2026-06-26):** this plan is preserved as execution context. The repository is now a Git repository and active organization docs live in `docs/README.md`, `docs/ORGANIZATION.md`, and `docs/CODE_MAP.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Bring the strongest parts of `C:\Users\ADMIN\Desktop\OLLI\OLLI Handoff` into the current OLLI Orçamentos app without requiring new backend infrastructure.
@@ -124,4 +126,4 @@ Open `http://127.0.0.1:8099`, select iPhone 16 Pro Max, capture Home and Novo Or
 - Spec coverage: Home, wizard, PDF/link, identity, and QA are covered.
 - Scope control: team live map, real traffic, automatic WhatsApp cobrança, and dashboard web are intentionally left for later waves because they require backend/integration work.
 - Placeholder scan: no implementation placeholders are required to execute this wave.
-- Repository note: this directory is not currently a git repository, so commit steps are replaced by explicit command verification and file summaries.
+- Repository note: this line is historical. The directory is now a Git repository; use the current branch/status before making changes.

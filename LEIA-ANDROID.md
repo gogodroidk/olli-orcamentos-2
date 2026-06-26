@@ -4,7 +4,7 @@ App **Expo / React Native** (SDK 56). Esta pasta já tem a **parte nativa Androi
 
 - **Nome:** OLLI Orçamentos
 - **Pacote (applicationId):** `com.grtech.olliorcamentos`
-- **Versão:** 1.0.0 (versionCode 2)
+- **Versão:** 1.0.0 (versionCode 4)
 - **Política de privacidade (a Play Store exige):** https://olliorcamentos.online/privacidade
 - **Site / app:** https://olliorcamentos.online · https://app.olliorcamentos.online
 
@@ -59,7 +59,7 @@ No fim ele te dá um link pra **baixar o `.aab`** (a Expo cuida da assinatura). 
 ---
 
 ## Atualizar versão (nas próximas publicações)
-No arquivo **`app.json`**, aumente `version` (ex.: 1.0.1) e `android.versionCode` (ex.: 3), depois recompile.
+No arquivo **`app.json`**, aumente `version` (ex.: 1.0.1) e `android.versionCode` (ex.: 5), depois recompile.
 
 ## Observações técnicas
 - Os dados públicos do Supabase (URL + chave anônima) já vêm embutidos (`.env.local`). A chave da IA fica só no servidor (Worker), nunca no app.
