@@ -17,6 +17,7 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.apk
 
 # Metro
 .metro-health-check*
@@ -30,6 +31,7 @@ qa-artifacts/
 # local tool outputs
 .playwright-mcp/
 .codex/*.log
+.wrangler/
 worker/.wrangler/
 supabase/.temp/
 

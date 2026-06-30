@@ -2,6 +2,7 @@
   "expo": {
     "name": "OLLI Orçamentos",
     "slug": "olli-orcamentos",
+    "scheme": "olliorcamentos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -44,7 +45,8 @@
           "backgroundColor": "#0A2547",
           "imageWidth": 180
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

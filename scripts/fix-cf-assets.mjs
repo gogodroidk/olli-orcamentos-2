@@ -12,6 +12,7 @@ const dist = path.resolve('dist');
 const assetsDir = path.join(dist, 'assets');
 const fromDir = path.join(dist, 'assets', 'node_modules');
 const toDir = path.join(dist, 'assets', 'nm');
+const redirectsFile = path.join(dist, '_redirects');
 
 async function exists(p) { try { await fs.access(p); return true; } catch { return false; } }
 function assertInsideAssets(p) {
@@ -47,6 +48,10 @@ async function moveAssetsDir(from, to) {
 if (!(await exists(dist))) {
   console.log('fix-cf-assets: dist não existe — rode o expo export antes.');
   process.exit(0);
+}
+if (await exists(redirectsFile)) {
+  await fs.rm(redirectsFile, { force: true });
+  console.log('fix-cf-assets: _redirects removido do dist; o SPA fallback fica no wrangler.jsonc.');
 }
 if (await exists(fromDir)) {
   await moveAssetsDir(fromDir, toDir);

@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +15,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa } from '../database/database';
 
-import { isSupabaseConfigured, signIn, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
+import { isSupabaseConfigured, signIn, signInWithGoogle, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
 import { backupNow, restoreFromCloud, getCloudBackupDate } from '../services/backup';
 import { formatDateTime } from '../utils/date';
 
@@ -133,6 +133,27 @@ export default function ContaScreen() {
     setBusy(false);
   }
 
+  async function handleGoogleAuth() {
+    if (!configured) {
+      Alert.alert('Backup na nuvem não configurado', 'Configure o Supabase para entrar com Google e sincronizar seus dados.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const session = await signInWithGoogle();
+      if (session) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setPendingEmail(null);
+        setShowAuth(false);
+        await load();
+      }
+    } catch (e: any) {
+      Alert.alert('Google indisponível', e?.message ?? 'Não foi possível entrar com Google agora.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleResend() {
     if (!supabase || !pendingEmail) return;
     setBusy(true);
@@ -187,6 +208,7 @@ export default function ContaScreen() {
     await signOut();
     setUser(null);
     setLastBackup(null);
+    nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Landing' }] }));
   }
 
   function abrirFerramenta(f: typeof FERRAMENTAS[number]) {
@@ -316,6 +338,13 @@ export default function ContaScreen() {
               <>
                 <Text style={styles.cardTitle}>{mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}</Text>
                 <View style={{ height: 12 }} />
+
+                <OlliButton
+                  label="Continuar com Google"
+                  variant="outline" size="lg" fullWidth loading={busy} onPress={handleGoogleAuth}
+                  icon={<MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />}
+                  style={{ marginBottom: 12 }}
+                />
 
                 {pendingEmail && mode === 'login' && (
                   <View style={styles.confirmBox}>

@@ -1,6 +1,7 @@
 declare const process: {
   env: {
     EXPO_PUBLIC_SUPABASE_URL?: string;
+    EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
     EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
     EXPO_PUBLIC_LINK_BASE_URL?: string;
     EXPO_PUBLIC_DIAGNOSTICO_URL?: string;
@@ -18,6 +19,7 @@ declare const process: {
 export const SUPABASE_URL: string =
   process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://yiaeplqinnnnniyvwtls.supabase.co';
 export const SUPABASE_ANON_KEY: string =
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpYWVwbHFpbm5ubm5peXZ3dGxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU5NzAsImV4cCI6MjA5NjY5MTk3MH0.P_EF248NN0y7XJ47FmUuqwW00N2gvjq_aNJBqan2COk';
 

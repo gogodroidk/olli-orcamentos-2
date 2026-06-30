@@ -27,6 +27,9 @@ import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
 import PlanosScreen from '../screens/PlanosScreen';
+import LandingScreen from '../screens/LandingScreen';
+import AjudaScreen from '../screens/AjudaScreen';
+import InstalarScreen from '../screens/InstalarScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 
@@ -41,9 +44,12 @@ export type PrefillItem = {
 };
 
 export type RootStackParamList = {
+  Landing: undefined;
+  Ajuda: undefined;
+  Instalar: { device?: 'iphone' | 'android' | 'desktop' | 'mobile' } | undefined;
   Tabs: { screen?: keyof TabParamList; params?: object } | undefined;
   Onboarding: undefined;
-  Entrar: undefined;
+  Entrar: { mode?: 'login' | 'signup' } | undefined;
   // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
   // (origem: diagnóstico / código de erro). Tudo opcional — sem isto cai no fluxo normal.
   NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem };
@@ -201,6 +207,9 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
         contentStyle: { backgroundColor: Colors.background },
       }}
     >
+      <Stack.Screen name="Landing" component={LandingScreen} />
+      <Stack.Screen name="Ajuda" component={AjudaScreen} />
+      <Stack.Screen name="Instalar" component={InstalarScreen} />
       <Stack.Screen name="Tabs" component={TabNavigator} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Entrar" component={EntrarScreen} />

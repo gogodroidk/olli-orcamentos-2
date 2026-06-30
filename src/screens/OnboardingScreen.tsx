@@ -270,7 +270,6 @@ export default function OnboardingScreen() {
       <BoasVindas
         insets={insets}
         onStart={() => { Haptics.selectionAsync().catch(() => {}); setWelcomed(true); }}
-        onLogin={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Entrar'); }}
       />
     );
   }
@@ -287,9 +286,10 @@ export default function OnboardingScreen() {
               <Text style={styles.brandSub} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={pular} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Pular configuração">
-            <Text style={styles.skip}>Pular</Text>
-          </TouchableOpacity>
+          <View style={styles.requiredChip}>
+            <MaterialCommunityIcons name="shield-check-outline" size={14} color={Colors.accentLight} />
+            <Text style={styles.requiredChipText}>Cadastro obrigatório</Text>
+          </View>
         </View>
         <StepIndicator steps={STEPS} current={step} />
       </LinearGradient>
@@ -506,7 +506,7 @@ function Assure({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyp
 /** Tela de boas-vindas (protótipo 04): a OLLI se apresenta antes do cadastro. */
 function BoasVindas({ onStart, onLogin, insets }: {
   onStart: () => void;
-  onLogin: () => void;
+  onLogin?: () => void;
   insets: { top: number; bottom: number };
 }) {
   return (
@@ -527,9 +527,11 @@ function BoasVindas({ onStart, onLogin, insets }: {
           <Text style={styles.wcStartText}>Começar</Text>
           <MaterialCommunityIcons name="arrow-right" size={20} color={Colors.primaryDark} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={onLogin} style={styles.wcLoginWrap} accessibilityRole="button">
-          <Text style={styles.wcLogin}>Já tenho conta · <Text style={styles.wcLoginLink}>Entrar</Text></Text>
-        </TouchableOpacity>
+        {onLogin ? (
+          <TouchableOpacity onPress={onLogin} style={styles.wcLoginWrap} accessibilityRole="button">
+            <Text style={styles.wcLogin}>Já tenho conta · <Text style={styles.wcLoginLink}>Entrar</Text></Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </LinearGradient>
   );
@@ -569,7 +571,8 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
   brand: { fontSize: 18, fontWeight: '800', color: '#fff' },
   brandSub: { fontSize: 12.5, color: 'rgba(255,255,255,0.78)', marginTop: 2 },
-  skip: { fontSize: 14, fontWeight: '700', color: Colors.accentLight },
+  requiredChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(127,233,245,0.35)', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 6 },
+  requiredChipText: { fontSize: 12, fontWeight: '800', color: Colors.accentLight },
 
   title: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: 0, marginTop: Spacing.sm },
   hint: { fontSize: 13.5, color: Colors.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.lg, lineHeight: 19 },

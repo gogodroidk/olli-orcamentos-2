@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useNavigation, CommonActions } from '@react-navigation/native';
+import { useNavigation, CommonActions, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,10 +14,13 @@ import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
-import { isSupabaseConfigured, signIn, signUp, supabase } from '../services/supabase';
+import { isSupabaseConfigured, resetPassword, signIn, signInWithGoogle, signUp } from '../services/supabase';
+import { syncOnLogin } from '../services/cloudSync';
+import { getEmpresa } from '../database/database';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Entrar'>;
+type Route = RouteProp<RootStackParamList, 'Entrar'>;
 type Modo = 'login' | 'signup';
 
 /**
@@ -27,10 +30,11 @@ type Modo = 'login' | 'signup';
  */
 export default function EntrarScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
   const configured = isSupabaseConfigured();
 
-  const [modo, setModo] = useState<Modo>('login');
+  const [modo, setModo] = useState<Modo>(route.params?.mode ?? 'login');
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -38,13 +42,15 @@ export default function EntrarScreen() {
   const [verSenha, setVerSenha] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  function entrarNoApp() {
-    nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Tabs' }] }));
+  async function entrarNoApp() {
+    await syncOnLogin();
+    const empresa = await getEmpresa().catch(() => null);
+    nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: empresa ? 'Tabs' : 'Onboarding' }] }));
   }
 
   async function handleAuth() {
     if (!configured) {
-      Alert.alert('Backup na nuvem não configurado', 'Você já pode usar o OLLI offline. Ative a nuvem em Conta quando quiser.');
+      Alert.alert('Login na nuvem não configurado', 'Configure o Supabase para liberar cadastro, login e sincronização.');
       return;
     }
     if (modo === 'signup' && !nome.trim()) {
@@ -66,7 +72,7 @@ export default function EntrarScreen() {
         const data = await signUp(emailLimpo, senha, nome.trim());
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         if (data.session) {
-          entrarNoApp();
+          await entrarNoApp();
         } else {
           setModo('login');
           setSenha(''); setConfirmar('');
@@ -75,7 +81,7 @@ export default function EntrarScreen() {
       } else {
         await signIn(emailLimpo, senha);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        entrarNoApp();
+        await entrarNoApp();
       }
     } catch (e: any) {
       const msg: string = e?.message ?? '';
@@ -96,6 +102,25 @@ export default function EntrarScreen() {
     setBusy(false);
   }
 
+  async function handleGoogleAuth() {
+    if (!configured) {
+      Alert.alert('Backup na nuvem não configurado', 'Configure o Supabase para entrar com Google e sincronizar seus dados.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const session = await signInWithGoogle();
+      if (session) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        await entrarNoApp();
+      }
+    } catch (e: any) {
+      Alert.alert('Google indisponível', e?.message ?? 'Não foi possível entrar com Google agora.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function emBreve(rotulo: string) {
     Haptics.selectionAsync().catch(() => {});
     Alert.alert(rotulo, 'Esse acesso rápido chega em breve. Por enquanto, entre com e-mail e senha.');
@@ -106,9 +131,8 @@ export default function EntrarScreen() {
     Haptics.selectionAsync().catch(() => {});
     const e = email.trim();
     if (!e) { Alert.alert('Recuperar senha', 'Digite seu e-mail no campo acima primeiro.'); return; }
-    if (!supabase) { Alert.alert('Indisponível', 'O backup na nuvem não está configurado.'); return; }
     try {
-      await supabase.auth.resetPasswordForEmail(e);
+      await resetPassword(e);
       Alert.alert('Verifique seu e-mail', `Se existir uma conta para ${e}, enviamos um link para redefinir a senha.`);
     } catch {
       Alert.alert('Ops', 'Não consegui enviar agora. Tente de novo em instantes.');
@@ -166,9 +190,9 @@ export default function EntrarScreen() {
             <View style={styles.divLine} />
           </View>
           <View style={styles.socialRow}>
-            <SocialBtn icon="face-recognition" label="Biometria" onPress={() => emBreve('Entrar com biometria')} />
-            <SocialBtn icon="google" label="Google" onPress={() => emBreve('Entrar com Google')} />
-            <SocialBtn icon="apple" label="Apple" onPress={() => emBreve('Entrar com Apple')} />
+            <SocialBtn icon="face-recognition" label="Biometria" onPress={() => emBreve('Entrar com biometria')} disabled={busy} />
+            <SocialBtn icon="google" label="Google" onPress={handleGoogleAuth} disabled={busy} />
+            <SocialBtn icon="apple" label="Apple" onPress={() => emBreve('Entrar com Apple')} disabled={busy} />
           </View>
 
           {/* ALTERNA LOGIN/SIGNUP */}
@@ -179,20 +203,19 @@ export default function EntrarScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* OFFLINE-FIRST: usar sem conta */}
-          <TouchableOpacity onPress={() => { Haptics.selectionAsync().catch(() => {}); entrarNoApp(); }} style={styles.skipWrap} accessibilityRole="button">
-            <MaterialCommunityIcons name="cloud-off-outline" size={16} color={Colors.onSurfaceVariant} />
-            <Text style={styles.skip}>Usar sem conta (offline)</Text>
-          </TouchableOpacity>
+          <View style={styles.requiredBox}>
+            <MaterialCommunityIcons name="shield-check-outline" size={16} color={Colors.accentLight} />
+            <Text style={styles.requiredText}>Cadastro obrigatório para sincronizar painel web, app mobile e backup.</Text>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function SocialBtn({ icon, label, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void }) {
+function SocialBtn({ icon, label, onPress, disabled }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <TouchableOpacity style={styles.social} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={[styles.social, disabled && { opacity: 0.55 }]} onPress={onPress} activeOpacity={0.85} disabled={disabled}>
       <MaterialCommunityIcons name={icon} size={24} color={Colors.accentLight} />
       <Text style={styles.socialLabel}>{label}</Text>
     </TouchableOpacity>
@@ -225,6 +248,6 @@ const styles = StyleSheet.create({
   switchText: { fontSize: 14, color: Colors.onSurfaceVariant },
   switchLink: { color: Colors.accentLight, fontWeight: '800' },
 
-  skipWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 8 },
-  skip: { fontSize: 13.5, fontWeight: '600', color: Colors.onSurfaceVariant },
+  requiredBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 10 },
+  requiredText: { flex: 1, fontSize: 13.5, fontWeight: '600', color: Colors.onSurfaceVariant, textAlign: 'center' },
 });

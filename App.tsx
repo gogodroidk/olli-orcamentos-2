@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
+import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
@@ -25,13 +26,54 @@ import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
-import { supabase } from './src/services/supabase';
+import { getCurrentUser, handleAuthRedirectUrl, supabase } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const useNativeAnimations = Platform.OS !== 'web';
+
+const linking = {
+  prefixes: [
+    Linking.createURL('/'),
+    'https://olliorcamentos.online',
+    'https://www.olliorcamentos.online',
+    'olliorcamentos://',
+  ],
+  config: {
+    screens: {
+      Landing: '',
+      Ajuda: 'ajuda',
+      Instalar: 'instalar',
+      Entrar: 'entrar',
+      Onboarding: 'onboarding',
+      Tabs: {
+        path: 'app',
+        screens: {
+          Home: '',
+          Agenda: 'agenda',
+          Hoje: 'hoje',
+          Conta: 'conta',
+        },
+      },
+      NovoOrcamento: 'orcamentos/novo',
+      EditarOrcamento: 'orcamentos/:orcamentoId/editar',
+      VisualizarOrcamento: 'orcamentos/:orcamentoId',
+      Orcamentos: 'orcamentos',
+      Clientes: 'clientes',
+      Servicos: 'servicos',
+      Produtos: 'produtos',
+      EmitirRecibo: 'recibos/emitir',
+      MeuNegocio: 'empresa',
+      Diagnostico: 'diagnostico',
+      DiagnosticoIA: 'diagnostico/ia',
+      OlliVoz: 'olli/voz',
+      OlliChat: 'olli/chat',
+      Planos: 'planos',
+    },
+  },
+};
 
 function BrandSplash() {
   const scale = useRef(new Animated.Value(0.7)).current;
@@ -56,8 +98,9 @@ function BrandSplash() {
 }
 
 export default function App() {
+  const { width } = useWindowDimensions();
   const [dbReady, setDbReady] = useState(false);
-  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Tabs');
+  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Landing');
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -75,12 +118,18 @@ export default function App() {
     (async () => {
       try {
         await getDb();
-        const [empresa, onboarded] = await Promise.all([
+        const [empresa, onboarded, user] = await Promise.all([
           getEmpresa(),
           AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
+          getCurrentUser().catch(() => null),
         ]);
-        if (empresa === null && onboarded !== '1') {
+
+        if (!user) {
+          setInitialRoute('Landing');
+        } else if (empresa === null && onboarded !== '1') {
           setInitialRoute('Onboarding');
+        } else {
+          setInitialRoute('Tabs');
         }
       } catch (e) {
         console.error(e);
@@ -106,6 +155,27 @@ export default function App() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!supabase) return;
+    let mounted = true;
+    const handled = new Set<string>();
+    const handleUrl = (url?: string | null) => {
+      if (!mounted || !url || handled.has(url)) return;
+      handled.add(url);
+      void handleAuthRedirectUrl(url).catch((error) => {
+        console.warn('Falha ao concluir link de autenticacao', error);
+      });
+    };
+
+    Linking.getInitialURL().then(handleUrl).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar
   if (fontsLoaded) applyFontPatch();
 
@@ -122,9 +192,9 @@ export default function App() {
       <SafeAreaProvider>
         <PaperProvider theme={AppTheme}>
           <StatusBar backgroundColor="transparent" translucent barStyle="light-content" />
-          <View style={[styles.appFrame, Platform.OS === 'web' && styles.webFrame]}>
+          <View style={[styles.appFrame, Platform.OS === 'web' && (width >= 768 ? styles.webDesktopFrame : styles.webMobileFrame)]}>
             {ready ? (
-              <NavigationContainer>
+              <NavigationContainer linking={linking}>
                 <AppNavigator initialRouteName={initialRoute} />
               </NavigationContainer>
             ) : (
@@ -139,7 +209,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   appFrame: { flex: 1, backgroundColor: Colors.background },
-  webFrame: { width: '100%', maxWidth: 430, alignSelf: 'center', overflow: 'hidden' },
+  webMobileFrame: { width: '100%', maxWidth: 430, alignSelf: 'center', overflow: 'hidden' },
+  webDesktopFrame: { width: '100%', alignSelf: 'stretch', overflow: 'hidden' },
   splash: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primaryDark },
   brand: { fontSize: 42, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 5, marginTop: 22 },
   tagline: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.accent, letterSpacing: 1, marginTop: 4 },

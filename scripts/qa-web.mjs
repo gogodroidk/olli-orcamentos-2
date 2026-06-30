@@ -2,26 +2,25 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 
-const url = process.env.QA_WEB_URL ?? 'http://localhost:8082';
+const url = process.env.QA_WEB_URL ?? process.env.QA_BASE_URL ?? 'http://localhost:8082';
 const outDir = resolve('qa-artifacts');
 mkdirSync(outDir, { recursive: true });
 
 const RX = {
-  start: /Come\u00e7ar|Comecar/i,
-  skip: /Pular/i,
-  quickActions: /A\u00e7\u00f5es r\u00e1pidas|Acoes rapidas/i,
-  newBudget: /Or\u00e7ar|Orcar|Novo or\u00e7amento|Novo orcamento/i,
-  clientStep: /Cliente|Dados do Cliente|Passo 1 de 4/i,
+  landing: /Orçamento, agenda, cliente|Orcamento, agenda, cliente/i,
+  desktopNotice: /computador.*dashboard web|Painel web para empresa/i,
+  mobileNotice: /celular|App mobile|Instale/i,
+  iphoneNotice: /iPhone|Adicionar à Tela de Início|Adicionar a Tela de Inicio/i,
+  androidNotice: /Android|Baixar APK/i,
+  help: /Central de ajuda|Mapa das telas/i,
+  install: /Instalação inteligente|Instalacao inteligente/i,
+  loginHeading: /Que bom te ver de novo/i,
+  signupHeading: /Vamos criar a sua conta/i,
+  createAccount: /Criar conta grátis|Criar conta gratis/i,
+  enter: /^Entrar$/i,
+  offline: /Usar sem conta/i,
+  required: /Cadastro obrigatório|Cadastro obrigatorio/i,
 };
-
-async function visible(locator, timeout = 800) {
-  try {
-    await locator.first().waitFor({ state: 'visible', timeout });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function clickIfVisible(locator, timeout = 800) {
   try {
@@ -34,37 +33,8 @@ async function clickIfVisible(locator, timeout = 800) {
   }
 }
 
-async function reachHome(page) {
-  const deadline = Date.now() + 120000;
-
-  while (Date.now() < deadline) {
-    if (await visible(page.getByText(RX.quickActions), 1000)) return;
-    if (await clickIfVisible(page.getByText(RX.start), 1500)) {
-      await page.waitForTimeout(800);
-      continue;
-    }
-    if (await clickIfVisible(page.getByText(RX.skip), 1500)) {
-      await page.waitForTimeout(1500);
-      continue;
-    }
-    await page.waitForTimeout(500);
-  }
-
-  const bodyText = await page.locator('body').innerText().catch(() => '');
-  throw new Error(`Home nao apareceu. Texto atual:\n${bodyText.slice(0, 1200)}`);
-}
-
-async function openNewBudget(page) {
-  const byLabel = page.getByLabel(RX.newBudget);
-  if (await clickIfVisible(byLabel, 2500)) return true;
-
-  const byText = page.getByText(RX.newBudget);
-  return clickIfVisible(byText, 2500);
-}
-
-async function runViewport(name, viewport) {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport });
+async function newPage(browser, viewport, userAgent) {
+  const context = await browser.newContext({ viewport, ...(userAgent ? { userAgent } : {}) });
   const page = await context.newPage();
   const logs = [];
 
@@ -77,46 +47,87 @@ async function runViewport(name, viewport) {
     logs.push({ type: 'pageerror', text: error.message });
   });
 
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  return { page, context, logs };
+}
+
+async function gotoAndText(page, path = '') {
+  await page.goto(new URL(path, url).toString(), { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForLoadState('networkidle', { timeout: 120000 }).catch(() => {});
-  await reachHome(page);
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(800);
+  return page.locator('body').innerText();
+}
 
-  const bodyText = await page.locator('body').innerText();
-  const homeShot = resolve(outDir, `qa-${name}-home.png`);
-  await page.screenshot({ path: homeShot, fullPage: false });
+async function runViewport(name, viewport, userAgent) {
+  const browser = await chromium.launch({ headless: true });
+  const { page, context, logs } = await newPage(browser, viewport, userAgent);
 
-  let flowText = '';
-  let flowShot = '';
-  const opened = await openNewBudget(page);
+  const landingText = await gotoAndText(page);
+  await page.getByText(RX.landing).first().waitFor({ state: 'visible', timeout: 120000 });
+  const landingShot = resolve(outDir, `qa-${name}-landing.png`);
+  await page.screenshot({ path: landingShot, fullPage: false });
 
-  if (opened) {
-    await page.waitForTimeout(1200);
-    flowText = await page.locator('body').innerText();
-    flowShot = resolve(outDir, `qa-${name}-novo-orcamento.png`);
-    await page.screenshot({ path: flowShot, fullPage: false });
-  }
+  await clickIfVisible(page.getByText(RX.enter), 3000);
+  await page.getByText(RX.loginHeading).first().waitFor({ state: 'visible', timeout: 15000 });
+  const loginText = await page.locator('body').innerText();
+  const loginShot = resolve(outDir, `qa-${name}-login.png`);
+  await page.screenshot({ path: loginShot, fullPage: false });
 
+  await gotoAndText(page);
+  await clickIfVisible(page.getByText(RX.createAccount), 3000);
+  await page.getByText(RX.signupHeading).first().waitFor({ state: 'visible', timeout: 15000 });
+  const signupText = await page.locator('body').innerText();
+  const signupShot = resolve(outDir, `qa-${name}-signup.png`);
+  await page.screenshot({ path: signupShot, fullPage: false });
+
+  const helpText = await gotoAndText(page, '/ajuda');
+  const helpShot = resolve(outDir, `qa-${name}-ajuda.png`);
+  await page.screenshot({ path: helpShot, fullPage: false });
+
+  const installText = await gotoAndText(page, '/instalar');
+  const installShot = resolve(outDir, `qa-${name}-instalar.png`);
+  await page.screenshot({ path: installShot, fullPage: false });
+
+  await context.close();
   await browser.close();
+
+  const expectedDevice = name === 'desktop'
+    ? RX.desktopNotice
+    : name === 'iphone'
+      ? RX.iphoneNotice
+      : name === 'android'
+        ? RX.androidNotice
+        : RX.mobileNotice;
+
   return {
     name,
     viewport,
-    homeShot,
-    flowShot,
-    homeHasQuickActions: RX.quickActions.test(bodyText),
-    homeHasNewBudget: RX.newBudget.test(bodyText) || opened,
-    flowReachedClientStep: RX.clientStep.test(flowText),
+    landingShot,
+    loginShot,
+    signupShot,
+    helpShot,
+    installShot,
+    landingOk: RX.landing.test(landingText),
+    deviceNoticeOk: expectedDevice.test(landingText) || expectedDevice.test(installText),
+    loginOk: RX.loginHeading.test(loginText) && RX.required.test(loginText) && !RX.offline.test(loginText),
+    signupOk: RX.signupHeading.test(signupText) && RX.required.test(signupText) && !RX.offline.test(signupText),
+    helpOk: RX.help.test(helpText),
+    installOk: RX.install.test(installText),
     consoleIssues: logs,
   };
 }
 
+const iphoneUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const androidUA = 'Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';
+
 const results = [
   await runViewport('desktop', { width: 1280, height: 720 }),
   await runViewport('mobile', { width: 390, height: 844 }),
+  await runViewport('iphone', { width: 390, height: 844 }, iphoneUA),
+  await runViewport('android', { width: 412, height: 915 }, androidUA),
 ];
 
 console.log(JSON.stringify(results, null, 2));
 
-if (results.some((result) => !result.homeHasQuickActions || !result.homeHasNewBudget || !result.flowReachedClientStep)) {
+if (results.some((result) => !result.landingOk || !result.deviceNoticeOk || !result.loginOk || !result.signupOk || !result.helpOk || !result.installOk)) {
   process.exitCode = 1;
 }
