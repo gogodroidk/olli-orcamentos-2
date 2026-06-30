@@ -26,7 +26,7 @@ import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
-import { getCurrentUser, handleAuthRedirectUrl, supabase } from './src/services/supabase';
+import { AUTH_REDIRECT_PATH, getCurrentUser, handleAuthRedirectUrl, isAuthRedirectUrl, supabase } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
@@ -46,6 +46,7 @@ const linking = {
       Landing: '',
       Ajuda: 'ajuda',
       Instalar: 'instalar',
+      AuthCallback: AUTH_REDIRECT_PATH,
       Entrar: 'entrar',
       Onboarding: 'onboarding',
       Tabs: {
@@ -161,9 +162,12 @@ export default function App() {
     const handled = new Set<string>();
     const handleUrl = (url?: string | null) => {
       if (!mounted || !url || handled.has(url)) return;
+      if (!isAuthRedirectUrl(url)) return;
       handled.add(url);
       void handleAuthRedirectUrl(url).catch((error) => {
-        console.warn('Falha ao concluir link de autenticacao', error);
+        if (!url.includes(AUTH_REDIRECT_PATH)) {
+          console.warn('Falha ao concluir link de autenticacao', error);
+        }
       });
     };
 

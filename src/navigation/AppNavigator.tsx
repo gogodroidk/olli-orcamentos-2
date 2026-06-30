@@ -30,6 +30,7 @@ import PlanosScreen from '../screens/PlanosScreen';
 import LandingScreen from '../screens/LandingScreen';
 import AjudaScreen from '../screens/AjudaScreen';
 import InstalarScreen from '../screens/InstalarScreen';
+import AuthCallbackScreen from '../screens/AuthCallbackScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 
@@ -47,6 +48,7 @@ export type RootStackParamList = {
   Landing: undefined;
   Ajuda: undefined;
   Instalar: { device?: 'iphone' | 'android' | 'desktop' | 'mobile' } | undefined;
+  AuthCallback: undefined;
   Tabs: { screen?: keyof TabParamList; params?: object } | undefined;
   Onboarding: undefined;
   Entrar: { mode?: 'login' | 'signup' } | undefined;
@@ -210,6 +212,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Landing" component={LandingScreen} />
       <Stack.Screen name="Ajuda" component={AjudaScreen} />
       <Stack.Screen name="Instalar" component={InstalarScreen} />
+      <Stack.Screen name="AuthCallback" component={AuthCallbackScreen} />
       <Stack.Screen name="Tabs" component={TabNavigator} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Entrar" component={EntrarScreen} />

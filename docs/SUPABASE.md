@@ -85,6 +85,8 @@ No Supabase Dashboard do projeto `OLLI ORCAMENTOS` (`yiaeplqinnnnniyvwtls`), con
      - `olliorcamentos://auth/callback`
      - `https://olliorcamentos.online`
      - `https://olliorcamentos.online/auth/callback`
+     - `https://www.olliorcamentos.online`
+     - `https://www.olliorcamentos.online/auth/callback`
      - `https://app.olliorcamentos.online`
      - `https://app.olliorcamentos.online/auth/callback`
      - `http://localhost:8081`
@@ -133,3 +135,12 @@ Teste manual no Android:
 3. Toque em `Continuar com Google`.
 4. Escolha a conta Google.
 5. O app deve voltar pelo link `olliorcamentos://auth/callback`, mostrar a conta conectada e disparar `syncOnLogin()` em background.
+
+Teste manual na web:
+
+1. Acesse `https://olliorcamentos.online/entrar`.
+2. Toque em `Google`.
+3. Depois de escolher a conta, o Google deve voltar para `https://olliorcamentos.online/auth/callback`.
+4. A tela `AuthCallback` deve concluir a troca do codigo por sessao e redirecionar para o dashboard ou onboarding.
+
+Observacao: se o usuario entrar por `www.olliorcamentos.online`, o app ainda usa `https://olliorcamentos.online/auth/callback` como retorno canonico em producao para evitar conflito entre dominios no OAuth.

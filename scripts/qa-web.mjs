@@ -16,6 +16,7 @@ const RX = {
   install: /Instalação inteligente|Instalacao inteligente/i,
   loginHeading: /Que bom te ver de novo/i,
   signupHeading: /Vamos criar a sua conta/i,
+  authCallback: /Login nao concluido|Login não concluído|Concluindo login|retorno do Google/i,
   createAccount: /Criar conta grátis|Criar conta gratis/i,
   enter: /^Entrar$/i,
   offline: /Usar sem conta/i,
@@ -87,6 +88,10 @@ async function runViewport(name, viewport, userAgent) {
   const installShot = resolve(outDir, `qa-${name}-instalar.png`);
   await page.screenshot({ path: installShot, fullPage: false });
 
+  const callbackText = await gotoAndText(page, '/auth/callback?error_description=Teste%20controlado');
+  const callbackShot = resolve(outDir, `qa-${name}-auth-callback.png`);
+  await page.screenshot({ path: callbackShot, fullPage: false });
+
   await context.close();
   await browser.close();
 
@@ -106,12 +111,14 @@ async function runViewport(name, viewport, userAgent) {
     signupShot,
     helpShot,
     installShot,
+    callbackShot,
     landingOk: RX.landing.test(landingText),
     deviceNoticeOk: expectedDevice.test(landingText) || expectedDevice.test(installText),
     loginOk: RX.loginHeading.test(loginText) && RX.required.test(loginText) && !RX.offline.test(loginText),
     signupOk: RX.signupHeading.test(signupText) && RX.required.test(signupText) && !RX.offline.test(signupText),
     helpOk: RX.help.test(helpText),
     installOk: RX.install.test(installText),
+    authCallbackOk: RX.authCallback.test(callbackText),
     consoleIssues: logs,
   };
 }
@@ -128,6 +135,6 @@ const results = [
 
 console.log(JSON.stringify(results, null, 2));
 
-if (results.some((result) => !result.landingOk || !result.deviceNoticeOk || !result.loginOk || !result.signupOk || !result.helpOk || !result.installOk)) {
+if (results.some((result) => !result.landingOk || !result.deviceNoticeOk || !result.loginOk || !result.signupOk || !result.helpOk || !result.installOk || !result.authCallbackOk)) {
   process.exitCode = 1;
 }

@@ -3,13 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform } from 'react-native';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import * as WebBrowser from 'expo-web-browser';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, Session, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export const AUTH_REDIRECT_PATH = 'auth/callback';
 export const AUTH_SCHEME = 'olliorcamentos';
+const handledAuthRedirects = new Map<string, Promise<Session | null>>();
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -39,14 +40,45 @@ if (supabase && Platform.OS !== 'web') {
 
 export function getAuthRedirectUrl(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    const hostname = window.location.hostname;
+    if (hostname === 'olliorcamentos.online' || hostname === 'www.olliorcamentos.online') {
+      return `https://olliorcamentos.online/${AUTH_REDIRECT_PATH}`;
+    }
     return `${window.location.origin}/${AUTH_REDIRECT_PATH}`;
   }
   return `${AUTH_SCHEME}://${AUTH_REDIRECT_PATH}`;
 }
 
+export function isAuthRedirectUrl(url: string): boolean {
+  if (!url) return false;
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+  if (errorCode || params.code || params.access_token || params.error || params.error_description) return true;
+  try {
+    const parsed = new URL(url);
+    const target = `${parsed.hostname}${parsed.pathname}`.replace(/^\/+/, '');
+    return target.includes(AUTH_REDIRECT_PATH);
+  } catch {
+    return url.includes(AUTH_REDIRECT_PATH);
+  }
+}
+
 export async function handleAuthRedirectUrl(url: string) {
   if (!supabase || !url) return null;
+  if (!isAuthRedirectUrl(url)) return null;
 
+  const key = url.split('#')[0] + (url.includes('#') ? `#${url.split('#').slice(1).join('#')}` : '');
+  const existing = handledAuthRedirects.get(key);
+  if (existing) return existing;
+
+  const promise = completeAuthRedirectUrl(url).finally(() => {
+    setTimeout(() => handledAuthRedirects.delete(key), 30000);
+  });
+  handledAuthRedirects.set(key, promise);
+  return promise;
+}
+
+async function completeAuthRedirectUrl(url: string) {
+  if (!supabase || !url) return null;
   const { params, errorCode } = QueryParams.getQueryParams(url);
   if (errorCode) throw new Error(errorCode);
   if (params.error_description || params.error) {
@@ -110,6 +142,11 @@ export async function signInWithGoogle() {
   });
   if (error) throw error;
   if (!data?.url) throw new Error('Nao foi possivel abrir o login do Google.');
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.location.assign(data.url);
+    return null;
+  }
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
   if (result.type !== 'success') return null;
