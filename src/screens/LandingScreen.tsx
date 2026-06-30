@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Linking,
   Platform,
@@ -17,12 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, Colors, Gradients, Shadow, Spacing } from '../theme';
 import { Fonts } from '../theme/fonts';
-import { OlliLogo } from '../components/OlliLogo';
 import { OlliMascot } from '../components/OlliMascot';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Landing'>;
-type DeviceKind = 'iphone' | 'android' | 'desktop' | 'mobile';
+type DeviceKind = 'desktop' | 'iphone' | 'android' | 'mobile';
 
 const APK_URL = 'https://pub-e3eb9ad4478b42eaa761a70a85917088.r2.dev/OLLI-Orcamentos-android-release.apk';
 
@@ -34,258 +33,287 @@ function detectDevice(width: number): DeviceKind {
   return width >= 768 ? 'desktop' : 'mobile';
 }
 
+const DEVICE_COPY: Record<DeviceKind, {
+  label: string;
+  title: string;
+  text: string;
+  action: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+}> = {
+  desktop: {
+    label: 'Computador',
+    title: 'Painel web para empresa',
+    text: 'Você está no computador: o OLLI abre primeiro o dashboard web da empresa, com tudo sincronizado.',
+    action: 'Abrir dashboard web',
+    icon: 'monitor-dashboard',
+  },
+  iphone: {
+    label: 'iPhone',
+    title: 'Instale no iPhone pela web',
+    text: 'Você está no iPhone: use o Safari e adicione o OLLI à Tela de Início como app web.',
+    action: 'Ver instalação iPhone',
+    icon: 'apple-ios',
+  },
+  android: {
+    label: 'Android',
+    title: 'Instale no Android',
+    text: 'Você está no Android: baixe o APK ou continue usando a versão web pelo navegador.',
+    action: 'Baixar APK',
+    icon: 'android',
+  },
+  mobile: {
+    label: 'Celular',
+    title: 'App mobile e web',
+    text: 'Você está no celular: pode instalar, entrar no app ou abrir a dashboard web quando quiser.',
+    action: 'Como instalar',
+    icon: 'cellphone-check',
+  },
+};
+
 export default function LandingScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const desktop = Platform.OS === 'web' && width >= 768;
-  const device = useMemo(() => detectDevice(width), [width]);
+  const detectedDevice = useMemo(() => detectDevice(width), [width]);
+  const [device, setDevice] = useState<DeviceKind>(detectedDevice);
+  const desktop = Platform.OS === 'web' && width >= 840;
+  const copy = DEVICE_COPY[device];
 
-  const goAuth = (mode: 'login' | 'signup') => {
+  useEffect(() => {
+    setDevice(detectedDevice);
+  }, [detectedDevice]);
+
+  function tap() {
     Haptics.selectionAsync().catch(() => {});
+  }
+
+  function goAuth(mode: 'login' | 'signup') {
+    tap();
     nav.navigate('Entrar', { mode });
-  };
+  }
 
-  const openApk = () => {
-    Haptics.selectionAsync().catch(() => {});
-    Linking.openURL(APK_URL).catch(() => nav.navigate('Instalar', { device: 'android' }));
-  };
-
-  const primaryDeviceAction = () => {
-    if (device === 'android') return openApk();
-    if (device === 'iphone' || device === 'mobile') return nav.navigate('Instalar', { device });
-    return goAuth('login');
-  };
-
-  const deviceTitle = device === 'desktop'
-    ? 'Painel web para empresa'
-    : device === 'iphone'
-      ? 'Instale no iPhone pela web'
-      : device === 'android'
-        ? 'Instale no Android'
-        : 'App mobile e painel web';
-
-  const deviceText = device === 'desktop'
-    ? 'Você está no computador: entre para abrir o dashboard web da empresa.'
-    : device === 'iphone'
-      ? 'Você está no iPhone: instale como app pela opção Compartilhar > Adicionar à Tela de Início.'
-      : device === 'android'
-        ? 'Você está no Android: baixe o APK ou use a versão web pelo navegador.'
-        : 'Você está no celular: pode instalar, entrar pelo app ou abrir o painel web.';
+  function openDeviceAction() {
+    tap();
+    if (device === 'android') {
+      Linking.openURL(APK_URL).catch(() => nav.navigate('Instalar', { device: 'android' }));
+      return;
+    }
+    if (device === 'desktop') {
+      goAuth('login');
+      return;
+    }
+    nav.navigate('Instalar', { device });
+  }
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + (desktop ? 28 : 16), paddingBottom: insets.bottom + 36 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={[styles.shell, desktop && styles.shellDesktop]}>
-        <View style={styles.topbar}>
-          <TouchableOpacity style={styles.brandRow} onPress={() => nav.navigate('Landing')} activeOpacity={0.85}>
-            <OlliLogo size={desktop ? 46 : 38} />
-            <View>
-              <Text style={styles.brand}>OLLI</Text>
-              <Text style={styles.brandSub}>Orçamentos que fecham negócio</Text>
+    <LinearGradient colors={Gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradient}>
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + (desktop ? 30 : 14), paddingBottom: insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.shell, desktop && styles.shellDesktop]}>
+          <View style={styles.topbar}>
+            <View style={styles.brandLockup}>
+              <OlliMascot size={42} onDark float={false} />
+              <View>
+                <Text style={styles.brand}>OLLI</Text>
+                <Text style={styles.brandSub}>orçamentos que fecham negócio</Text>
+              </View>
             </View>
-          </TouchableOpacity>
-
-          <View style={styles.navRow}>
-            {desktop ? (
-              <>
-                <TopLink label="Ajuda" onPress={() => nav.navigate('Ajuda')} />
-                <TopLink label="Instalar" onPress={() => nav.navigate('Instalar', { device })} />
-              </>
-            ) : null}
-            <TouchableOpacity style={styles.loginTop} onPress={() => goAuth('login')} activeOpacity={0.85}>
-              <Text style={styles.loginTopText}>Entrar</Text>
-            </TouchableOpacity>
+            <View style={styles.topActions}>
+              <HeaderLink label="Ajuda" onPress={() => nav.navigate('Ajuda')} />
+              <TouchableOpacity style={styles.topLogin} onPress={() => goAuth('login')} activeOpacity={0.86}>
+                <Text style={styles.topLoginText}>Entrar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
 
-        <View style={[styles.heroGrid, desktop && styles.heroGridDesktop]}>
-          <View style={[styles.heroCopy, desktop && styles.heroCopyDesktop]}>
-            <View style={styles.kicker}>
-              <MaterialCommunityIcons name={device === 'desktop' ? 'monitor-dashboard' : 'cellphone-check'} size={15} color={Colors.accentLight} />
-              <Text style={styles.kickerText}>{deviceTitle}</Text>
-            </View>
+          <View style={[styles.hero, desktop && styles.heroDesktop]}>
+            <View style={[styles.welcomePanel, desktop && styles.welcomePanelDesktop]}>
+              <View style={styles.glowOne} />
+              <View style={styles.glowTwo} />
+              <OlliMascot size={desktop ? 116 : 100} onDark />
+              <Text style={styles.hi}>Olá! Eu sou a OLLI</Text>
+              <Text style={styles.subtitle}>
+                Sua assistente de orçamentos. Primeiro você cria sua conta, depois o OLLI abre o caminho certo:
+                computador, celular, iPhone ou Android.
+              </Text>
 
-            <Text style={[styles.title, desktop && styles.titleDesktop]}>
-              Orçamento, agenda, cliente, recibo e empresa sincronizados em um só lugar.
-            </Text>
-            <Text style={[styles.subtitle, desktop && styles.subtitleDesktop]}>
-              O OLLI começa pelo cadastro seguro, sincroniza com Supabase e libera o painel web no computador ou a experiência mobile no celular.
-            </Text>
+              <View style={styles.featureList}>
+                <FeatureRow icon="file-document-outline" text="Orçamento, agenda, cliente e recibo no mesmo fluxo." />
+                <FeatureRow icon="shield-check-outline" text="Cadastro obrigatório antes de entrar no app." />
+                <FeatureRow icon="cloud-sync-outline" text="Supabase preparado para sincronizar app e dashboard web." />
+              </View>
 
-            <View style={[styles.actions, desktop && styles.actionsDesktop]}>
               <TouchableOpacity style={styles.primaryBtn} onPress={() => goAuth('signup')} activeOpacity={0.9}>
                 <Text style={styles.primaryText}>Criar conta grátis</Text>
-                <MaterialCommunityIcons name="arrow-right" size={20} color="#07111F" />
+                <MaterialCommunityIcons name="arrow-right" size={20} color={Colors.primaryDark} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={primaryDeviceAction} activeOpacity={0.85}>
-                <Text style={styles.secondaryText}>
-                  {device === 'android' ? 'Baixar APK' : device === 'desktop' ? 'Abrir dashboard' : 'Como instalar'}
-                </Text>
+
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => goAuth('login')} activeOpacity={0.86}>
+                <Text style={styles.secondaryText}>Já tenho conta</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.deviceNotice}>
-              <MaterialCommunityIcons name={device === 'desktop' ? 'laptop' : device === 'iphone' ? 'apple-ios' : 'cellphone'} size={18} color={Colors.accentLight} />
-              <Text style={styles.deviceText}>{deviceText}</Text>
-            </View>
+            <View style={[styles.devicePanel, desktop && styles.devicePanelDesktop]}>
+              <View style={styles.detectedRow}>
+                <MaterialCommunityIcons name={copy.icon} size={21} color={Colors.accentLight} />
+                <View style={styles.detectedTextWrap}>
+                  <Text style={styles.detectedLabel}>Modo detectado</Text>
+                  <Text style={styles.detectedTitle}>{copy.title}</Text>
+                </View>
+              </View>
+              <Text style={styles.deviceText}>{copy.text}</Text>
 
-            <View style={styles.mobileLinks}>
-              <InlineAction icon="web" label="Usar versão web" onPress={() => goAuth('login')} />
-              <InlineAction icon="help-circle-outline" label="Ver ajuda" onPress={() => nav.navigate('Ajuda')} />
-              <InlineAction icon="download-outline" label="Instalação" onPress={() => nav.navigate('Instalar', { device })} />
+              <View style={styles.deviceSelector}>
+                {(Object.keys(DEVICE_COPY) as DeviceKind[]).map((item) => {
+                  const active = item === device;
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[styles.deviceChip, active && styles.deviceChipActive]}
+                      onPress={() => { tap(); setDevice(item); }}
+                      activeOpacity={0.86}
+                    >
+                      <MaterialCommunityIcons
+                        name={DEVICE_COPY[item].icon}
+                        size={16}
+                        color={active ? Colors.primaryDark : Colors.accentLight}
+                      />
+                      <Text style={[styles.deviceChipText, active && styles.deviceChipTextActive]}>{DEVICE_COPY[item].label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity style={styles.deviceAction} onPress={openDeviceAction} activeOpacity={0.9}>
+                <Text style={styles.deviceActionText}>{copy.action}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.linkGrid}>
+                <MiniLink icon="web" title="Usar web" text="Entrar pelo navegador" onPress={() => goAuth('login')} />
+                <MiniLink icon="download-outline" title="Instalar" text="iPhone, Android ou web" onPress={() => nav.navigate('Instalar', { device })} />
+                <MiniLink icon="help-circle-outline" title="Ajuda" text="Entenda as telas" onPress={() => nav.navigate('Ajuda')} />
+              </View>
             </View>
           </View>
 
-          <LinearGradient
-            colors={desktop ? ['rgba(11,111,206,0.42)', 'rgba(52,198,217,0.10)'] : Gradients.primary}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.preview, desktop && styles.previewDesktop]}
-          >
-            <View style={styles.previewGlow} />
-            <OlliMascot size={desktop ? 92 : 76} onDark />
-            <Text style={styles.previewTitle}>Fluxo obrigatório e conectado</Text>
-            <View style={styles.steps}>
-              <Step n="1" icon="account-plus-outline" text="Crie sua conta" />
-              <Step n="2" icon="email-check-outline" text="Confirme seu e-mail" />
-              <Step n="3" icon="storefront-outline" text="Cadastre sua empresa" />
-              <Step n="4" icon="chart-box-outline" text="Use app e dashboard web" />
-            </View>
-          </LinearGradient>
-        </View>
-
-        <View style={[styles.cards, desktop && styles.cardsDesktop]}>
-          <Feature icon="file-document-check-outline" title="Orçamentos completos" text="PDF, modelos, cores, fotos, assinatura, aprovação e link do cliente." />
-          <Feature icon="storefront-outline" title="Marca da empresa" text="Logo, assinatura, PIX, normas, depoimentos e dados comerciais." />
-          <Feature icon="cloud-sync-outline" title="Supabase sincronizado" text="Clientes, serviços, produtos, agenda, recibos e orçamentos por usuário." />
-        </View>
-
-        <View style={styles.sectionBand}>
-          <Text style={styles.sectionEyebrow}>Como tudo se conecta</Text>
-          <Text style={styles.sectionTitle}>Cada tela leva para o próximo passo certo.</Text>
-          <View style={[styles.flowGrid, desktop && styles.flowGridDesktop]}>
-            <FlowItem icon="login" title="Entrar" text="Login ou cadastro obrigatório antes do app." />
-            <FlowItem icon="clipboard-list-outline" title="Onboarding" text="Empresa, prestador, endereço, PIX, visual e primeiro serviço." />
-            <FlowItem icon="view-dashboard-outline" title="Dashboard" text="Resumo do dia, atalhos e indicadores para a empresa." />
-            <FlowItem icon="file-pdf-box" title="Orçamento" text="Cliente, itens, detalhes e personalização do PDF." />
+          <View style={[styles.flowBar, desktop && styles.flowBarDesktop]}>
+            <FlowStep n="1" title="Conta" />
+            <FlowStep n="2" title="Empresa" />
+            <FlowStep n="3" title="Dashboard" />
+            <FlowStep n="4" title="Orcamento" />
           </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
-function TopLink({ label, onPress }: { label: string; onPress: () => void }) {
+function HeaderLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <TouchableOpacity onPress={onPress} style={styles.topLink} activeOpacity={0.85}>
-      <Text style={styles.topLinkText}>{label}</Text>
+    <TouchableOpacity style={styles.headerLink} onPress={onPress} activeOpacity={0.86}>
+      <Text style={styles.headerLinkText}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-function InlineAction({ icon, label, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void }) {
+function FeatureRow({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }) {
   return (
-    <TouchableOpacity onPress={onPress} style={styles.inlineAction} activeOpacity={0.86}>
-      <MaterialCommunityIcons name={icon} size={16} color={Colors.accentLight} />
-      <Text style={styles.inlineActionText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function Step({ n, icon, text }: { n: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }) {
-  return (
-    <View style={styles.step}>
-      <Text style={styles.stepN}>{n}</Text>
-      <MaterialCommunityIcons name={icon} size={18} color={Colors.accentLight} />
-      <Text style={styles.stepText}>{text}</Text>
-    </View>
-  );
-}
-
-function Feature({ icon, title, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; text: string }) {
-  return (
-    <View style={styles.feature}>
+    <View style={styles.featureRow}>
       <View style={styles.featureIcon}>
-        <MaterialCommunityIcons name={icon} size={22} color={Colors.accentLight} />
+        <MaterialCommunityIcons name={icon} size={18} color={Colors.accentLight} />
       </View>
-      <Text style={styles.featureTitle}>{title}</Text>
       <Text style={styles.featureText}>{text}</Text>
     </View>
   );
 }
 
-function FlowItem({ icon, title, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; text: string }) {
+function MiniLink({
+  icon,
+  title,
+  text,
+  onPress,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  title: string;
+  text: string;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.flowItem}>
-      <MaterialCommunityIcons name={icon} size={22} color={Colors.accentLight} />
+    <TouchableOpacity style={styles.miniLink} onPress={onPress} activeOpacity={0.86}>
+      <MaterialCommunityIcons name={icon} size={19} color={Colors.accentLight} />
+      <Text style={styles.miniTitle}>{title}</Text>
+      <Text style={styles.miniText}>{text}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function FlowStep({ n, title }: { n: string; title: string }) {
+  return (
+    <View style={styles.flowStep}>
+      <Text style={styles.flowN}>{n}</Text>
       <Text style={styles.flowTitle}>{title}</Text>
-      <Text style={styles.flowText}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
+  gradient: { flex: 1 },
+  root: { flex: 1, backgroundColor: 'transparent' },
   content: { minHeight: '100%', paddingHorizontal: Spacing.base },
   shell: { width: '100%', maxWidth: 1180, alignSelf: 'center' },
   shellDesktop: { paddingHorizontal: Spacing.lg },
-  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.xl },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  brand: { fontSize: 24, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 0 },
-  brandSub: { fontSize: 12.5, fontFamily: Fonts.semiBold, color: Colors.onSurfaceVariant, marginTop: 1 },
-  navRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  topLink: { paddingHorizontal: 13, paddingVertical: 9, borderRadius: BorderRadius.full },
-  topLinkText: { fontSize: 13.5, fontFamily: Fonts.bold, color: Colors.onSurfaceVariant },
-  loginTop: { borderWidth: 1, borderColor: Colors.strokeGlow, borderRadius: BorderRadius.full, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: Colors.surfacePressed },
-  loginTopText: { fontSize: 13.5, fontFamily: Fonts.bold, color: Colors.accentLight },
-  heroGrid: { gap: Spacing.lg },
-  heroGridDesktop: { flexDirection: 'row', alignItems: 'stretch', gap: 28 },
-  heroCopy: { flex: 1 },
-  heroCopyDesktop: { justifyContent: 'center', minHeight: 520 },
-  kicker: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(127,233,245,0.10)', borderColor: 'rgba(127,233,245,0.30)', borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 7 },
-  kickerText: { color: Colors.accentLight, fontSize: 12.5, fontFamily: Fonts.bold },
-  title: { fontSize: 33, lineHeight: 39, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 0, marginTop: 18 },
-  titleDesktop: { fontSize: 56, lineHeight: 62, maxWidth: 720 },
-  subtitle: { fontSize: 15, lineHeight: 22, color: Colors.onSurfaceVariant, marginTop: 14 },
-  subtitleDesktop: { fontSize: 18, lineHeight: 28, maxWidth: 660 },
-  actions: { gap: 10, marginTop: 24 },
-  actionsDesktop: { flexDirection: 'row', alignItems: 'center' },
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 22, paddingVertical: 15, ...Shadow.glowCyan },
-  primaryText: { fontSize: 15.5, fontFamily: Fonts.extraBold, color: '#07111F' },
-  secondaryBtn: { alignItems: 'center', justifyContent: 'center', borderColor: Colors.strokeGlow, borderWidth: 1, borderRadius: BorderRadius.full, backgroundColor: Colors.surfacePressed, paddingHorizontal: 22, paddingVertical: 15 },
-  secondaryText: { fontSize: 15, fontFamily: Fonts.bold, color: Colors.accentLight },
-  deviceNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, backgroundColor: Colors.surfaceGlass, padding: 12, marginTop: 18 },
-  deviceText: { flex: 1, fontSize: 13, lineHeight: 18, color: Colors.onSurfaceVariant, fontFamily: Fonts.semiBold },
-  mobileLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 13 },
-  inlineAction: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: Colors.surfaceGlass },
-  inlineActionText: { fontSize: 12.5, color: Colors.accentLight, fontFamily: Fonts.bold },
-  preview: { borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.lg, overflow: 'hidden', ...Shadow.md },
-  previewDesktop: { width: 390, justifyContent: 'center' },
-  previewGlow: { position: 'absolute', right: -60, top: -60, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(127,233,245,0.14)' },
-  previewTitle: { fontSize: 18, color: '#fff', fontFamily: Fonts.extraBold, marginTop: 18, marginBottom: 12 },
-  steps: { gap: 10 },
-  step: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.22)', borderRadius: BorderRadius.md, padding: 11 },
-  stepN: { width: 22, height: 22, borderRadius: 11, overflow: 'hidden', backgroundColor: Colors.accentLight, color: '#07111F', textAlign: 'center', lineHeight: 22, fontSize: 12, fontFamily: Fonts.extraBold },
-  stepText: { flex: 1, color: '#fff', fontSize: 13.5, fontFamily: Fonts.bold },
-  cards: { gap: 12, marginTop: 24 },
-  cardsDesktop: { flexDirection: 'row', marginTop: 28 },
-  feature: { flex: 1, backgroundColor: Colors.surfaceGlass, borderWidth: 1, borderColor: Colors.outlineDark, borderRadius: BorderRadius.lg, padding: Spacing.base },
-  featureIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(127,233,245,0.10)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.24)', justifyContent: 'center', alignItems: 'center' },
-  featureTitle: { fontSize: 15.5, color: '#fff', fontFamily: Fonts.extraBold, marginTop: 12 },
-  featureText: { fontSize: 12.8, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 4 },
-  sectionBand: { marginTop: 30, borderTopWidth: 1, borderTopColor: Colors.outline, paddingTop: 24 },
-  sectionEyebrow: { fontSize: 12, fontFamily: Fonts.extraBold, color: Colors.accentLight, textTransform: 'uppercase' },
-  sectionTitle: { fontSize: 24, lineHeight: 30, fontFamily: Fonts.extraBold, color: '#fff', marginTop: 7, marginBottom: 16 },
-  flowGrid: { gap: 10 },
-  flowGridDesktop: { flexDirection: 'row' },
-  flowItem: { flex: 1, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline, borderRadius: BorderRadius.lg, padding: Spacing.base },
-  flowTitle: { color: '#fff', fontSize: 15, fontFamily: Fonts.extraBold, marginTop: 10 },
-  flowText: { color: Colors.onSurfaceVariant, fontSize: 12.6, lineHeight: 18, marginTop: 4 },
+  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.base },
+  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  brand: { color: '#fff', fontFamily: Fonts.extraBold, fontSize: 24, letterSpacing: 0 },
+  brandSub: { color: 'rgba(255,255,255,0.68)', fontFamily: Fonts.semiBold, fontSize: 11.5, marginTop: -1 },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLink: { paddingHorizontal: 11, paddingVertical: 9, borderRadius: BorderRadius.full },
+  headerLinkText: { color: 'rgba(255,255,255,0.78)', fontFamily: Fonts.bold, fontSize: 13 },
+  topLogin: { borderRadius: BorderRadius.full, borderWidth: 1, borderColor: 'rgba(127,233,245,0.34)', paddingHorizontal: 16, paddingVertical: 9, backgroundColor: 'rgba(7,17,31,0.22)' },
+  topLoginText: { color: Colors.accentLight, fontFamily: Fonts.extraBold, fontSize: 13 },
+  hero: { gap: Spacing.base },
+  heroDesktop: { flexDirection: 'row', alignItems: 'stretch', gap: 20, minHeight: 560 },
+  welcomePanel: { alignItems: 'center', justifyContent: 'center', borderRadius: 30, overflow: 'hidden', paddingHorizontal: Spacing.lg, paddingVertical: 30, backgroundColor: 'rgba(7,17,31,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  welcomePanelDesktop: { flex: 1.08, minHeight: 540, paddingHorizontal: 54 },
+  glowOne: { position: 'absolute', top: -70, right: -45, width: 210, height: 210, borderRadius: 105, backgroundColor: 'rgba(127,233,245,0.16)' },
+  glowTwo: { position: 'absolute', bottom: -80, left: -60, width: 210, height: 210, borderRadius: 105, backgroundColor: 'rgba(52,198,217,0.12)' },
+  hi: { color: '#fff', fontFamily: Fonts.extraBold, fontSize: 28, lineHeight: 34, textAlign: 'center', marginTop: 20, letterSpacing: 0 },
+  subtitle: { color: 'rgba(255,255,255,0.82)', fontFamily: Fonts.semiBold, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 10, maxWidth: 610 },
+  featureList: { alignSelf: 'stretch', gap: 10, marginTop: 24 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.23)', borderRadius: BorderRadius.md, padding: 12 },
+  featureIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(127,233,245,0.12)' },
+  featureText: { flex: 1, color: '#fff', fontFamily: Fonts.semiBold, fontSize: 13.5, lineHeight: 19 },
+  primaryBtn: { alignSelf: 'stretch', marginTop: 24, borderRadius: 18, backgroundColor: Colors.accentLight, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, ...Shadow.glowCyan },
+  primaryText: { color: Colors.primaryDark, fontFamily: Fonts.extraBold, fontSize: 16 },
+  secondaryBtn: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 15, marginTop: 10, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(127,233,245,0.34)', backgroundColor: 'rgba(7,17,31,0.22)' },
+  secondaryText: { color: Colors.accentLight, fontFamily: Fonts.extraBold, fontSize: 15 },
+  devicePanel: { borderRadius: 30, padding: Spacing.base, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.strokeGlow, ...Shadow.md },
+  devicePanelDesktop: { width: 390, padding: Spacing.lg, justifyContent: 'center' },
+  detectedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  detectedTextWrap: { flex: 1 },
+  detectedLabel: { color: Colors.onSurfaceMuted, fontFamily: Fonts.extraBold, fontSize: 11, textTransform: 'uppercase' },
+  detectedTitle: { color: '#fff', fontFamily: Fonts.extraBold, fontSize: 20, marginTop: 2 },
+  deviceText: { color: Colors.onSurfaceVariant, fontFamily: Fonts.semiBold, fontSize: 13.5, lineHeight: 20, marginTop: 14 },
+  deviceSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 },
+  deviceChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: Colors.surfaceVariant },
+  deviceChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
+  deviceChipText: { color: Colors.accentLight, fontFamily: Fonts.bold, fontSize: 12.5 },
+  deviceChipTextActive: { color: Colors.primaryDark },
+  deviceAction: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 14, marginTop: 18 },
+  deviceActionText: { color: '#fff', fontFamily: Fonts.extraBold, fontSize: 15 },
+  linkGrid: { gap: 10, marginTop: 18 },
+  miniLink: { borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, padding: 12 },
+  miniTitle: { color: '#fff', fontFamily: Fonts.extraBold, fontSize: 14, marginTop: 8 },
+  miniText: { color: Colors.onSurfaceVariant, fontFamily: Fonts.semiBold, fontSize: 12.5, marginTop: 2 },
+  flowBar: { flexDirection: 'row', gap: 8, marginTop: Spacing.base, paddingBottom: 2 },
+  flowBarDesktop: { maxWidth: 720 },
+  flowStep: { flex: 1, alignItems: 'center', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(127,233,245,0.20)', backgroundColor: 'rgba(7,17,31,0.24)', paddingVertical: 10 },
+  flowN: { color: Colors.primaryDark, backgroundColor: Colors.accentLight, overflow: 'hidden', width: 22, height: 22, borderRadius: 11, lineHeight: 22, textAlign: 'center', fontFamily: Fonts.extraBold, fontSize: 12 },
+  flowTitle: { color: '#fff', fontFamily: Fonts.bold, fontSize: 12.5, marginTop: 6 },
 });
