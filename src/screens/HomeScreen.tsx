@@ -294,6 +294,7 @@ export default function HomeScreen() {
             <Action icon="receipt" label="Recibo" color={Colors.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
             <Action icon="account-group" label="Clientes" color="#A78BFA" onPress={() => nav.navigate('Clientes')} />
             <Action icon="wrench" label="Serviços" color={Colors.primaryLight} onPress={() => nav.navigate('Servicos')} />
+            <Action icon="palette-outline" label="Personalizar" color="#F7B23B" onPress={() => nav.navigate('MeuNegocio')} />
           </View>
         </AnimatedEntrance>
 
@@ -511,8 +512,8 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: Spacing.base },
   seeAll: { fontSize: 12.5, color: Colors.accent, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.sm },
 
-  actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.base },
-  action: { alignItems: 'center', flex: 1 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: Spacing.base },
+  action: { alignItems: 'center', minWidth: 68, flexGrow: 1, flexBasis: '18%' },
   actionIcon: { width: 58, height: 58, borderRadius: BorderRadius.lg, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   actionLabel: { fontSize: 11.5, color: Colors.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
 

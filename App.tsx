@@ -28,6 +28,7 @@ import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { AUTH_REDIRECT_PATH, getCurrentUser, handleAuthRedirectUrl, isAuthRedirectUrl, supabase } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
+import { startAutoBackup, stopAutoBackup } from './src/services/backup';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -151,9 +152,16 @@ export default function App() {
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
         void syncOnLogin();
+        startAutoBackup();
+      }
+      if (event === 'SIGNED_OUT') {
+        stopAutoBackup();
       }
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      stopAutoBackup();
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

@@ -85,11 +85,19 @@ export default function AgendaScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Dias do período que efetivamente têm agendamentos (para o modo semana/mês).
-  const dias = useMemo(() => {
-    if (modo === 'dia') return [startOfDay(ref)];
-    const todos = eachDayOfInterval({ start: inicio, end: fim });
-    return todos.filter(d => itens.some(a => isSameDay(new Date(a.inicio), d)));
+  // A faixa mostra os dias do periodo; a lista abaixo fica focada nos dias relevantes.
+  const diasCalendario = useMemo(() => {
+    if (modo === 'dia') {
+      const inicioSemana = startOfWeek(ref, { weekStartsOn: 0 });
+      return eachDayOfInterval({ start: inicioSemana, end: endOfWeek(ref, { weekStartsOn: 0 }) });
+    }
+    return eachDayOfInterval({ start: inicio, end: fim });
+  }, [modo, ref, inicio.getTime(), fim.getTime()]);
+
+  const diasLista = useMemo(() => {
+    if (modo === 'dia' || itens.length === 0) return [startOfDay(ref)];
+    return eachDayOfInterval({ start: inicio, end: fim })
+      .filter(d => itens.some(a => isSameDay(new Date(a.inicio), d)));
   }, [modo, ref, inicio.getTime(), fim.getTime(), itens]);
 
   function passo(delta: number) {
@@ -254,6 +262,31 @@ export default function AgendaScreen() {
             <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
           </TouchableOpacity>
         </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.calendarStrip}>
+          {diasCalendario.map((dia) => {
+            const count = itens.filter(a => isSameDay(new Date(a.inicio), dia)).length;
+            const active = isSameDay(dia, ref);
+            return (
+              <TouchableOpacity
+                key={dia.toISOString()}
+                style={[styles.dayPill, active && styles.dayPillActive, isToday(dia) && styles.dayPillToday]}
+                activeOpacity={0.86}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setRef(dia);
+                  if (modo !== 'dia') setModo('dia');
+                }}
+              >
+                <Text style={[styles.dayPillWeek, active && styles.dayPillTextActive]}>
+                  {format(dia, 'EEE', { locale: ptBR }).replace('.', '')}
+                </Text>
+                <Text style={[styles.dayPillNumber, active && styles.dayPillTextActive]}>{format(dia, 'd')}</Text>
+                <View style={[styles.dayPillDot, count > 0 && styles.dayPillDotFilled]} />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* LISTA */}
@@ -261,10 +294,8 @@ export default function AgendaScreen() {
         <View style={{ flex: 1 }}>
           <EmptyState
             icon="calendar-blank-outline"
-            title="Nenhuma visita agendada"
-            subtitle="Agende suas visitas e serviços para organizar o seu dia."
-            actionLabel="Agendar visita"
-            onAction={() => abrirNovo()}
+            title="Nenhum agendamento no periodo"
+            subtitle="Use o botao Novo agendamento para marcar visitas, servicos, reunioes ou entregas."
           />
         </View>
       ) : (
@@ -272,7 +303,7 @@ export default function AgendaScreen() {
           contentContainerStyle={{ padding: Spacing.base, paddingBottom: insets.bottom + 110 }}
           showsVerticalScrollIndicator={false}
         >
-          {dias.map((dia, di) => {
+          {diasLista.map((dia, di) => {
             const doDia = itens
               .filter(a => isSameDay(new Date(a.inicio), dia))
               .sort((a, b) => a.inicio.localeCompare(b.inicio));
@@ -301,7 +332,7 @@ export default function AgendaScreen() {
       {/* FAB Agendar visita */}
       <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} activeOpacity={0.9}>
         <MaterialCommunityIcons name="calendar-plus" size={20} color="#0A1626" />
-        <Text style={styles.fabText}>Agendar visita</Text>
+        <Text style={styles.fabText}>Novo agendamento</Text>
       </TouchableOpacity>
 
       {/* FORM MODAL */}
@@ -424,7 +455,7 @@ function AgendamentoForm({
   return (
     <View style={styles.formContainer}>
       <View style={[styles.formHeader, { paddingTop: insets.top + 10 }]}>
-        <Text style={styles.formTitle}>{state.id ? 'Editar agendamento' : 'Agendar visita'}</Text>
+        <Text style={styles.formTitle}>{state.id ? 'Editar agendamento' : 'Novo agendamento'}</Text>
         <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
         </TouchableOpacity>
@@ -513,7 +544,7 @@ function AgendamentoForm({
           label="Título"
           value={state.titulo}
           onChangeText={v => set({ titulo: v })}
-          placeholder="Ex: Manutenção Split 12.000 BTUs"
+          placeholder="Ex: Avaliação, instalação, entrega ou manutenção"
           leftIcon="text"
         />
 
@@ -652,6 +683,15 @@ const styles = StyleSheet.create({
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.base },
   navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.outline },
   navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: '#fff' },
+  calendarStrip: { gap: 8, paddingTop: Spacing.base, paddingBottom: 2 },
+  dayPill: { width: 58, alignItems: 'center', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surfacePressed, paddingVertical: 9 },
+  dayPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  dayPillToday: { borderColor: Colors.accentLight },
+  dayPillWeek: { fontSize: 11, fontWeight: '800', color: Colors.onSurfaceMuted, textTransform: 'uppercase' },
+  dayPillNumber: { fontSize: 18, fontWeight: '900', color: Colors.onSurface, marginTop: 2 },
+  dayPillTextActive: { color: '#0A1626' },
+  dayPillDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'transparent', marginTop: 5 },
+  dayPillDotFilled: { backgroundColor: Colors.accentLight },
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   dayHeaderTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },

@@ -17,6 +17,9 @@ const RX = {
   loginHeading: /Que bom te ver de novo/i,
   signupHeading: /Vamos criar a sua conta/i,
   authCallback: /Login nao concluido|Login não concluído|Concluindo login|retorno do Google/i,
+  webDashboard: /OLLI Web|Dashboard da empresa/i,
+  agendaCalendar: /Novo agendamento|Nenhum agendamento no periodo|Nenhum agendamento no período/i,
+  personalizeBudget: /Personalizar orçamento/i,
   createAccount: /Criar conta grátis|Criar conta gratis/i,
   enter: /^Entrar$/i,
   offline: /Usar sem conta/i,
@@ -92,6 +95,19 @@ async function runViewport(name, viewport, userAgent) {
   const callbackShot = resolve(outDir, `qa-${name}-auth-callback.png`);
   await page.screenshot({ path: callbackShot, fullPage: false });
 
+  const dashboardText = await gotoAndText(page, '/app');
+  const dashboardShot = resolve(outDir, `qa-${name}-dashboard.png`);
+  await page.screenshot({ path: dashboardShot, fullPage: false });
+
+  const agendaText = await gotoAndText(page, '/app/agenda');
+  const agendaCtaCount = await page.getByText('Novo agendamento', { exact: true }).count();
+  const agendaShot = resolve(outDir, `qa-${name}-agenda.png`);
+  await page.screenshot({ path: agendaShot, fullPage: false });
+
+  const contaText = await gotoAndText(page, '/app/conta');
+  const contaShot = resolve(outDir, `qa-${name}-conta.png`);
+  await page.screenshot({ path: contaShot, fullPage: false });
+
   await context.close();
   await browser.close();
 
@@ -112,6 +128,9 @@ async function runViewport(name, viewport, userAgent) {
     helpShot,
     installShot,
     callbackShot,
+    dashboardShot,
+    agendaShot,
+    contaShot,
     landingOk: RX.landing.test(landingText),
     deviceNoticeOk: expectedDevice.test(landingText) || expectedDevice.test(installText),
     loginOk: RX.loginHeading.test(loginText) && RX.required.test(loginText) && !RX.offline.test(loginText),
@@ -119,6 +138,9 @@ async function runViewport(name, viewport, userAgent) {
     helpOk: RX.help.test(helpText),
     installOk: RX.install.test(installText),
     authCallbackOk: RX.authCallback.test(callbackText),
+    webDashboardOk: name !== 'desktop' || RX.webDashboard.test(dashboardText),
+    agendaCalendarOk: RX.agendaCalendar.test(agendaText) && agendaCtaCount === 1,
+    contaPersonalizacaoOk: RX.personalizeBudget.test(contaText) && !/Fazer backup agora/i.test(contaText),
     consoleIssues: logs,
   };
 }
@@ -135,6 +157,6 @@ const results = [
 
 console.log(JSON.stringify(results, null, 2));
 
-if (results.some((result) => !result.landingOk || !result.deviceNoticeOk || !result.loginOk || !result.signupOk || !result.helpOk || !result.installOk || !result.authCallbackOk)) {
+if (results.some((result) => !result.landingOk || !result.deviceNoticeOk || !result.loginOk || !result.signupOk || !result.helpOk || !result.installOk || !result.authCallbackOk || !result.webDashboardOk || !result.agendaCalendarOk || !result.contaPersonalizacaoOk)) {
   process.exitCode = 1;
 }

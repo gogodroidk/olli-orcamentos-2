@@ -2,6 +2,9 @@ import { supabase, getCurrentUser } from './supabase';
 import { exportAllData, importAllData } from '../database/database';
 
 const TABLE = 'backups';
+const AUTO_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
+let autoBackupTimer: ReturnType<typeof setInterval> | null = null;
+let autoBackupInFlight = false;
 
 /** Envia um snapshot completo dos dados locais para a nuvem. Retorna a data. */
 export async function backupNow(): Promise<string> {
@@ -15,6 +18,32 @@ export async function backupNow(): Promise<string> {
     .upsert({ user_id: user.id, data: snapshot, updated_at: new Date().toISOString() });
   if (error) throw error;
   return snapshot.exportedAt;
+}
+
+export async function runAutoBackupNow(): Promise<string | null> {
+  if (autoBackupInFlight) return null;
+  autoBackupInFlight = true;
+  try {
+    return await backupNow();
+  } catch {
+    return null;
+  } finally {
+    autoBackupInFlight = false;
+  }
+}
+
+export function startAutoBackup(): void {
+  if (autoBackupTimer) return;
+  void runAutoBackupNow();
+  autoBackupTimer = setInterval(() => {
+    void runAutoBackupNow();
+  }, AUTO_BACKUP_INTERVAL_MS);
+}
+
+export function stopAutoBackup(): void {
+  if (!autoBackupTimer) return;
+  clearInterval(autoBackupTimer);
+  autoBackupTimer = null;
 }
 
 /** Baixa o último backup da nuvem e SUBSTITUI os dados locais. Retorna a data. */

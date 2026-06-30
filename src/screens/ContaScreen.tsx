@@ -16,7 +16,7 @@ import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa } from '../database/database';
 
 import { isSupabaseConfigured, signIn, signInWithGoogle, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
-import { backupNow, restoreFromCloud, getCloudBackupDate } from '../services/backup';
+import { restoreFromCloud, getCloudBackupDate } from '../services/backup';
 import { formatDateTime } from '../utils/date';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -37,7 +37,7 @@ const FERRAMENTAS: {
   { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
   { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: Colors.accent, route: 'Diagnostico' },
   { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: Colors.success, route: 'EmitirRecibo' },
-  { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio' },
+  { key: 'negocio', icon: 'palette-outline', label: 'Personalizar orçamento', desc: 'Logo, marca e dados do PDF', color: '#F7B23B', route: 'MeuNegocio' },
 ];
 
 export default function ContaScreen() {
@@ -163,19 +163,6 @@ export default function ContaScreen() {
       Alert.alert('E-mail reenviado', `Mandamos um novo link de confirmação para ${pendingEmail}.`);
     } catch (e: any) {
       Alert.alert('Ops', e?.message ?? 'Não foi possível reenviar o e-mail agora.');
-    }
-    setBusy(false);
-  }
-
-  async function handleBackup() {
-    setBusy(true);
-    try {
-      const when = await backupNow();
-      setLastBackup(when);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert('Backup feito!', 'Seus dados estão seguros na nuvem.');
-    } catch (e: any) {
-      Alert.alert('Erro', e?.message ?? 'Falha ao fazer backup.');
     }
     setBusy(false);
   }
@@ -404,10 +391,9 @@ export default function ContaScreen() {
               <View style={styles.backupStatus}>
                 <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={20} color={lastBackup ? Colors.success : Colors.warning} />
                 <Text style={styles.backupText}>
-                  {lastBackup ? `Último backup: ${formatDateTime(lastBackup)}` : 'Nenhum backup ainda'}
+                  {lastBackup ? `Backup automatico: ${formatDateTime(lastBackup)}` : 'Backup automatico ativo apos o primeiro sync'}
                 </Text>
               </View>
-              <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
               <OlliButton label="Restaurar da nuvem" variant="outline" size="lg" fullWidth onPress={handleRestore} icon={<MaterialCommunityIcons name="cloud-download" size={20} color={Colors.primary} />} />
             </View>
 

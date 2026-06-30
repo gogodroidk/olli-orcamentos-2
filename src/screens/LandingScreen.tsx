@@ -78,6 +78,8 @@ export default function LandingScreen() {
   const [device, setDevice] = useState<DeviceKind>(detectedDevice);
   const desktop = Platform.OS === 'web' && width >= 840;
   const copy = DEVICE_COPY[device];
+  const detectedCopy = DEVICE_COPY[detectedDevice];
+  const manualDevice = device !== detectedDevice;
 
   useEffect(() => {
     setDevice(detectedDevice);
@@ -161,14 +163,21 @@ export default function LandingScreen() {
 
             <View style={[styles.devicePanel, desktop && styles.devicePanelDesktop]}>
               <View style={styles.detectedRow}>
-                <MaterialCommunityIcons name={copy.icon} size={21} color={Colors.accentLight} />
+                <MaterialCommunityIcons name={detectedCopy.icon} size={21} color={Colors.accentLight} />
                 <View style={styles.detectedTextWrap}>
-                  <Text style={styles.detectedLabel}>Modo detectado</Text>
-                  <Text style={styles.detectedTitle}>{copy.title}</Text>
+                  <Text style={styles.detectedLabel}>Modo detectado automaticamente</Text>
+                  <Text style={styles.detectedTitle}>{detectedCopy.label}</Text>
                 </View>
               </View>
+              {manualDevice ? (
+                <View style={styles.manualNotice}>
+                  <MaterialCommunityIcons name={copy.icon} size={16} color={Colors.accentLight} />
+                  <Text style={styles.manualNoticeText}>Visualizando alternativa: {copy.title}</Text>
+                </View>
+              ) : null}
               <Text style={styles.deviceText}>{copy.text}</Text>
 
+              <Text style={styles.selectorTitle}>Alternativas</Text>
               <View style={styles.deviceSelector}>
                 {(Object.keys(DEVICE_COPY) as DeviceKind[]).map((item) => {
                   const active = item === device;
@@ -299,7 +308,10 @@ const styles = StyleSheet.create({
   detectedTextWrap: { flex: 1 },
   detectedLabel: { color: Colors.onSurfaceMuted, fontFamily: Fonts.extraBold, fontSize: 11, textTransform: 'uppercase' },
   detectedTitle: { color: '#fff', fontFamily: Fonts.extraBold, fontSize: 20, marginTop: 2 },
+  manualNotice: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 12, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(127,233,245,0.24)', backgroundColor: Colors.surfacePressed, padding: 10 },
+  manualNoticeText: { flex: 1, color: Colors.accentLight, fontFamily: Fonts.bold, fontSize: 12.5 },
   deviceText: { color: Colors.onSurfaceVariant, fontFamily: Fonts.semiBold, fontSize: 13.5, lineHeight: 20, marginTop: 14 },
+  selectorTitle: { color: Colors.onSurfaceMuted, fontFamily: Fonts.extraBold, fontSize: 11, textTransform: 'uppercase', marginTop: 18 },
   deviceSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 },
   deviceChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: Colors.surfaceVariant },
   deviceChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },

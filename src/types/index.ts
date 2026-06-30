@@ -253,21 +253,21 @@ export interface Agendamento {
 }
 
 export const TIPOS_AGENDAMENTO: { id: TipoAgendamento; label: string; icon: string; color: string }[] = [
-  { id: 'orcamento', label: 'Orçamento', icon: 'file-document-outline', color: '#34C6D9' },
-  { id: 'limpeza', label: 'Limpeza', icon: 'spray-bottle', color: '#2BD787' },
-  { id: 'instalacao', label: 'Instalação', icon: 'tools', color: '#0B6FCE' },
-  { id: 'manutencao', label: 'Manutenção', icon: 'wrench-outline', color: '#F7B23B' },
-  { id: 'visita', label: 'Visita', icon: 'map-marker-radius-outline', color: '#A78BFA' },
-  { id: 'outro', label: 'Outro', icon: 'calendar-blank-outline', color: 'rgba(226,232,240,0.62)' },
+  { id: 'orcamento', label: 'Orçamento / avaliação', icon: 'file-document-outline', color: '#34C6D9' },
+  { id: 'limpeza', label: 'Serviço', icon: 'briefcase-check-outline', color: '#2BD787' },
+  { id: 'instalacao', label: 'Instalação / montagem', icon: 'tools', color: '#0B6FCE' },
+  { id: 'manutencao', label: 'Manutenção / reparo', icon: 'wrench-outline', color: '#F7B23B' },
+  { id: 'visita', label: 'Visita técnica', icon: 'map-marker-radius-outline', color: '#A78BFA' },
+  { id: 'outro', label: 'Outro compromisso', icon: 'calendar-blank-outline', color: 'rgba(226,232,240,0.62)' },
 ];
 
 export const TIPO_AGENDAMENTO_LABELS: Record<TipoAgendamento, string> = {
-  orcamento: 'Orçamento',
-  limpeza: 'Limpeza',
-  instalacao: 'Instalação',
-  manutencao: 'Manutenção',
-  visita: 'Visita',
-  outro: 'Outro',
+  orcamento: 'Orçamento / avaliação',
+  limpeza: 'Serviço',
+  instalacao: 'Instalação / montagem',
+  manutencao: 'Manutenção / reparo',
+  visita: 'Visita técnica',
+  outro: 'Outro compromisso',
 };
 
 export const TIPO_AGENDAMENTO_COLORS: Record<TipoAgendamento, string> = {
