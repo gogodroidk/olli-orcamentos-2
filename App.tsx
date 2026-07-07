@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
+import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
@@ -29,9 +29,28 @@ import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
 import { maybeAutoBackup } from './src/services/autoBackup';
+import { criarLinkingConfig } from './src/navigation/linking';
+import { DESKTOP_BREAKPOINT, useEhDesktop } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+/**
+ * Modo desktop RESOLVIDO UMA VEZ no boot (fora do render). O linking precisa de
+ * um mapa de URL fixo — o dual-mapping mobile/desktop de 'orcamentos'/'clientes'
+ * é decidido aqui, no momento de criar o NavigationContainer. Redimensionar a
+ * janela cruzando 1024px troca o LAYOUT na hora (via useEhDesktop nas telas),
+ * mas o MAPA de URL permanece o do boot — limitação aceita e documentada (F5).
+ *
+ * No nativo `Platform.OS !== 'web'` garante `false` (o mapa é o mesmo dos dois
+ * lados exceto pela chave de 'orcamentos'/'clientes', que no APK é irrelevante).
+ */
+const ehDesktopInicial =
+  Platform.OS === 'web' && Dimensions.get('window').width >= DESKTOP_BREAKPOINT;
+
+// Config de linking criada uma única vez (referência estável) — recriar o objeto
+// a cada render remontaria o NavigationContainer e perderia o estado.
+const linkingConfig = criarLinkingConfig(ehDesktopInicial);
 
 /**
  * Ref global de navegação. A sessão Supabase é a única porta do app, então
@@ -67,6 +86,9 @@ function BrandSplash() {
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
+  // Layout desktop REATIVO (v4): controla só o frame externo (aplicar ou não o
+  // webFrame de 430px). No nativo é sempre false → frame mobile inalterado.
+  const ehDesktop = useEhDesktop();
   // Fail-closed: se a checagem de sessão lançar, a UI abre na PORTA (Entrar),
   // nunca dentro do app. Só o caso "sem nuvem configurada" abre direto nas Tabs.
   const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Entrar');
@@ -132,6 +154,15 @@ export default function App() {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
         void syncOnLogin().finally(() => { void maybeAutoBackup(); });
       }
+      // Guard de deep link deslogado (v4): com `linking`, a URL inicial tem
+      // precedência sobre o initialRouteName — abrir /orcamentos "frio" (sem
+      // sessão) montaria o app vazio. Ao boot sem sessão (INITIAL_SESSION &&
+      // !session), reseta para a porta. Fecha o buraco sem tocar no fluxo OAuth:
+      // o retorno ?code= dispara SIGNED_IN (não INITIAL_SESSION), então não cai
+      // aqui. No nativo, onde não há deep link de URL de página, é inócuo.
+      if (event === 'INITIAL_SESSION' && !session && navigationRef.isReady()) {
+        navigationRef.reset({ index: 0, routes: [{ name: 'Entrar' }] });
+      }
       // Sair da conta (em qualquer tela) volta SEMPRE para a porta: reset central
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
       // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
@@ -158,9 +189,31 @@ export default function App() {
       <SafeAreaProvider>
         <PaperProvider theme={AppTheme}>
           <StatusBar backgroundColor="transparent" translucent barStyle="light-content" />
-          <View style={[styles.appFrame, Platform.OS === 'web' && styles.webFrame]}>
+          {/* webFrame (430px centrado) SÓ na web mobile: no desktop o app ocupa
+              a tela toda (o shell da sidebar cuida do layout). No nativo o frame
+              nunca se aplica — comportamento do APK intacto. */}
+          <View style={[styles.appFrame, Platform.OS === 'web' && !ehDesktop && styles.webFrame]}>
             {ready ? (
-              <NavigationContainer ref={navigationRef}>
+              // linking com URLs reais (v4): o mapa é fixado no boot (linkingConfig).
+              <NavigationContainer
+                ref={navigationRef}
+                linking={linkingConfig}
+                // GATE DETERMINÍSTICO (web): com `linking`, a URL inicial tem
+                // precedência sobre initialRouteName — sem isto, um visitante
+                // deslogado abrindo '/' ou '/orcamentos' cairia DENTRO das Tabs
+                // (o guard de INITIAL_SESSION perde a corrida com isReady()).
+                // initialRoute já foi resolvido fail-closed no boot; se a porta
+                // é Entrar/Onboarding e o linking restaurou outra rota, reseta.
+                onReady={() => {
+                  if (
+                    (initialRoute === 'Entrar' || initialRoute === 'Onboarding') &&
+                    navigationRef.isReady() &&
+                    navigationRef.getCurrentRoute()?.name !== initialRoute
+                  ) {
+                    navigationRef.reset({ index: 0, routes: [{ name: initialRoute }] });
+                  }
+                }}
+              >
                 <AppNavigator initialRouteName={initialRoute} />
               </NavigationContainer>
             ) : (
