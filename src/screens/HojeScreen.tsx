@@ -19,6 +19,7 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getAgendamentosDoDia } from '../services/agenda';
 import { getOrcamentos } from '../database/database';
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
+import { abrirRotaGoogleMaps } from '../services/rotas';
 import {
   Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
 } from '../types';
@@ -273,6 +274,17 @@ export default function HojeScreen() {
                         <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
                       </View>
                     </View>
+                    {a.endereco?.trim() ? (
+                      <TouchableOpacity
+                        style={styles.rotaBtn}
+                        onPress={(e) => { e.stopPropagation(); Haptics.selectionAsync().catch(() => {}); abrirRotaGoogleMaps(a.endereco!); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Traçar rota no Google Maps"
+                      >
+                        <MaterialCommunityIcons name="navigation-variant" size={18} color={Colors.accent} />
+                      </TouchableOpacity>
+                    ) : null}
                     {a.status === 'concluido' && <MaterialCommunityIcons name="check-circle" size={20} color={Colors.success} />}
                   </TouchableOpacity>
                 </AnimatedEntrance>
@@ -406,6 +418,7 @@ const styles = StyleSheet.create({
   agendaClient: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },
   tipoChip: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2, marginTop: 6 },
   tipoChipText: { fontSize: 11, fontWeight: '800' },
+  rotaBtn: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.accentContainer, marginLeft: 6 },
 
   checklistCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...Shadow.sm },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: Colors.outline },

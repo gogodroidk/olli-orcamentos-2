@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, LayoutAnimation,
-  RefreshControl, Animated, KeyboardAvoidingView,
+  RefreshControl, Animated, KeyboardAvoidingView, Switch,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -35,6 +35,11 @@ import { generateId } from '../utils/id';
 import { nowISO, capitalizeFirst } from '../utils/date';
 import { onSyncAplicado } from '../services/cloudSync';
 import { NOTIF_EXPLICADO_KEY } from '../services/storageKeys';
+import {
+  googleAgendaDisponivel, estaConectado, conectarGoogleAgenda, desconectarGoogleAgenda,
+  pushAgendamento, deleteEventoGoogle,
+} from '../services/googleAgenda';
+import { abrirRotaGoogleMaps } from '../services/rotas';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type AgendaRoute = RouteProp<TabParamList, 'Agenda'>;
@@ -45,7 +50,7 @@ type Modo = 'dia' | 'semana' | 'mes';
  * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
-function SincronizandoPill({ onDone }: { onDone: () => void }) {
+function SincronizandoPill({ onDone, texto = 'Sincronizando...', icon = 'cloud-sync-outline' }: { onDone: () => void; texto?: string; icon?: keyof typeof MaterialCommunityIcons.glyphMap }) {
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -58,8 +63,8 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
-      <Text style={styles.syncPillText}>Sincronizando...</Text>
+      <MaterialCommunityIcons name={icon} size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>{texto}</Text>
     </Animated.View>
   );
 }
@@ -109,6 +114,10 @@ export default function AgendaScreen() {
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  const [googleSyncPill, setGoogleSyncPill] = useState(false);
+  const [googleConectado, setGoogleConectado] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const googleDisponivel = googleAgendaDisponivel();
 
   const { inicio, fim } = useMemo(() => rangeFor(modo, ref), [modo, ref]);
 
@@ -127,6 +136,45 @@ export default function AgendaScreen() {
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo agendamentos que ainda não existiam localmente).
   useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
+
+  // Estado da conexão com o Google Agenda (só relevante quando o recurso
+  // está disponível — client id configurado). Código inerte quando não está.
+  useEffect(() => {
+    if (!googleDisponivel) return;
+    estaConectado().then(setGoogleConectado).catch(() => {});
+  }, [googleDisponivel]);
+
+  async function alternarGoogleAgenda(ligar: boolean) {
+    setGoogleBusy(true);
+    try {
+      if (ligar) {
+        const ok = await conectarGoogleAgenda();
+        setGoogleConectado(ok);
+        if (!ok) Alert.alert('Não conectou', 'Não foi possível conectar ao Google Agenda agora. Tente de novo.');
+      } else {
+        await desconectarGoogleAgenda();
+        setGoogleConectado(false);
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível atualizar a conexão com o Google Agenda agora.');
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
+
+  /** Espelha o agendamento salvo no Google Agenda, silenciosamente (best-effort). */
+  async function sincronizarComGoogle(a: Agendamento) {
+    if (!googleDisponivel || !googleConectado) return;
+    try {
+      // Só mostra "Sincronizado com Google Agenda" quando o push REALMENTE
+      // deu certo (pushAgendamento retorna false em offline/token expirado) —
+      // senão seria um falso positivo.
+      const ok = await pushAgendamento(a);
+      if (ok) setGoogleSyncPill(true);
+    } catch {
+      // silencioso: sincronização com o Google nunca deve incomodar o usuário
+    }
+  }
 
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
@@ -287,6 +335,8 @@ export default function AgendaScreen() {
       // foca o período no dia do agendamento salvo
       setRef(e.data);
       await load();
+      // Espelha no Google Agenda em segundo plano (silencioso; nunca bloqueia o salvamento).
+      void sincronizarComGoogle(a);
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar o agendamento agora. Tente novamente.');
     } finally {
@@ -295,12 +345,15 @@ export default function AgendaScreen() {
   }
 
   async function remover(id: string) {
+    const alvo = itens.find(it => it.id === id);
     setSalvando(true);
     try {
       await deleteAgendamento(id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       setEditing(null);
       await load();
+      // Remove o espelho no Google Agenda em segundo plano (silencioso).
+      if (alvo && googleDisponivel && googleConectado) void deleteEventoGoogle(alvo).catch(() => {});
     } catch {
       Alert.alert('Erro', 'Não foi possível excluir o agendamento agora. Tente novamente.');
     } finally {
@@ -312,7 +365,17 @@ export default function AgendaScreen() {
 
   return (
     <View style={styles.container}>
-      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
+      {/* No máximo uma pill por vez (mesmo estilo absoluto, senão se sobrepõem):
+          a de sincronização da nuvem tem prioridade sobre a do Google. */}
+      {sincronizando ? (
+        <SincronizandoPill onDone={() => setSincronizando(false)} />
+      ) : googleSyncPill ? (
+        <SincronizandoPill
+          texto="Sincronizado com Google Agenda"
+          icon="google"
+          onDone={() => setGoogleSyncPill(false)}
+        />
+      ) : null}
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
@@ -351,6 +414,30 @@ export default function AgendaScreen() {
           </TouchableOpacity>
         </View>
       </GradientHeader>
+
+      {/* GOOGLE AGENDA — some por completo quando o recurso está desligado
+          (client id não configurado); ver services/googleAgenda.ts */}
+      {googleDisponivel && (
+        <View style={styles.googleCard}>
+          <View style={styles.googleCardRow}>
+            <MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />
+            <View style={{ flex: 1, marginLeft: 10, marginRight: 10 }}>
+              <Text style={styles.googleCardTitle}>Conectar Google Agenda</Text>
+              <Text style={styles.googleCardHint}>Seus agendamentos também no calendário do celular</Text>
+            </View>
+            <Switch
+              value={googleConectado}
+              onValueChange={alternarGoogleAgenda}
+              disabled={googleBusy}
+              trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
+              thumbColor={googleConectado ? Colors.primary : '#fff'}
+            />
+          </View>
+          <Text style={styles.googleCardFooter}>
+            Os lembretes locais do OLLI já avisam {MINUTOS_ANTECEDENCIA_LEMBRETE / 60}h antes mesmo sem Google
+          </Text>
+        </View>
+      )}
 
       {/* LISTA */}
       {carregando ? (
@@ -478,6 +565,18 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
           </Text>
         )}
       </View>
+      {item.endereco ? (
+        <TouchableOpacity
+          style={styles.routeBtn}
+          onPress={(ev) => { ev.stopPropagation(); Haptics.selectionAsync().catch(() => {}); abrirRotaGoogleMaps(item.endereco!); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Traçar rota"
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name="navigation-variant" size={18} color={Colors.accentLight} />
+        </TouchableOpacity>
+      ) : null}
       <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
     </TouchableOpacity>
   );
@@ -773,6 +872,14 @@ const styles = StyleSheet.create({
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.base },
   navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  googleCard: { margin: Spacing.base, marginBottom: 0, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, ...Shadow.sm },
+  googleCardRow: { flexDirection: 'row', alignItems: 'center' },
+  googleCardTitle: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  googleCardHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  googleCardFooter: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 10 },
+
+  routeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(52,198,217,0.12)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   dayHeaderTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },

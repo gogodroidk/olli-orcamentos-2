@@ -2,10 +2,11 @@
  * OLLI — Worker de IA (Cloudflare) com Google Gemini.
  *
  * Endpoints (o app chama exatamente estes):
- *   POST /      → diagnóstico técnico (OLLI Técnica)
- *   POST /voz   → transcrição → itens de orçamento
- *   POST /chat  → assistente conversacional
- *   GET  /      → health check
+ *   POST /            → diagnóstico técnico (OLLI Técnica)
+ *   POST /voz         → transcrição (texto) → itens de orçamento
+ *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
+ *   POST /chat        → assistente conversacional
+ *   GET  /            → health check
  *
  * Segurança:
  *   - GEMINI_API_KEY é SECRET do Worker (nunca vai pro app/APK; vai por header
@@ -55,10 +56,16 @@ function json(obj, status = 200) {
 // (voz falada, chat, diagnóstico) e barato de validar antes do parse.
 const MAX_BODY_BYTES = 65536;
 
-/** true se o body excede o limite (checa content-length; nunca lê o stream). */
-function bodyMuitoGrande(request) {
+// /transcrever recebe áudio em base64 (~33% maior que o binário original) —
+// precisa de um teto bem maior que o das rotas de texto. 4MB cobre alguns
+// minutos de fala num codec compacto (aac/ogg) com folga.
+const MAX_AUDIO_BODY_BYTES = 4_194_304;
+
+/** true se o body excede o limite da rota (checa content-length; nunca lê o stream). */
+function bodyMuitoGrande(request, pathname) {
+  const max = pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
   const len = Number(request.headers.get('content-length') || 0);
-  return len > MAX_BODY_BYTES;
+  return len > max;
 }
 
 // Cache em memória do worker (por isolate) da validação de token → user. Evita
@@ -95,8 +102,14 @@ async function getUser(request, env) {
   }
 }
 
-/** Chama o Gemini. `user` pode ser string (1 turno) ou array de `contents` (chat). */
-async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }) {
+/**
+ * Chama o Gemini. `user` pode ser string (1 turno) ou array de `contents` (chat).
+ * `userParts`, se vier, tem prioridade sobre `user`: array de parts cru (ex.:
+ * texto + inline_data de áudio) montado como um único turno `{role:'user'}` —
+ * usado por /transcrever para anexar o áudio junto do prompt de texto.
+ * `timeoutMs` permite alongar o prazo para chamadas mais pesadas (ex.: áudio).
+ */
+async function gemini(env, { system, user, userParts, wantJson = false, temperature = 0.4, timeoutMs = 25_000 }) {
   const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
   // A key vai em header (x-goog-api-key), NUNCA na query string: URLs de
   // request costumam ser logadas por proxies/CDNs no caminho — na query a
@@ -104,7 +117,11 @@ async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }
   // pela API do Gemini) exatamente para evitar isso.
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const body = {
-    contents: Array.isArray(user) ? user : [{ role: 'user', parts: [{ text: user }] }],
+    contents: Array.isArray(userParts)
+      ? [{ role: 'user', parts: userParts }]
+      : Array.isArray(user)
+        ? user
+        : [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: {
       temperature,
       ...(wantJson ? { responseMimeType: 'application/json' } : {}),
@@ -114,10 +131,10 @@ async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }
 
   // AbortController: sem timeout, uma chamada presa ao Gemini segura o worker
   // até o limite da própria plataforma (CPU/wall time), degradando todo mundo
-  // atrás na fila. 25s é generoso para geração de JSON curto e ainda cabe
-  // dentro do limite de request do Workers.
+  // atrás na fila. 25s é generoso para geração de JSON curto (mais para áudio,
+  // via timeoutMs) e ainda cabe dentro do limite de request do Workers.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25_000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   let r;
   try {
     r = await fetch(url, {
@@ -150,7 +167,7 @@ async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/chat']);
+const IA_ROUTES = new Set(['/', '/voz', '/chat', '/transcrever']);
 
 /** Parser de JSON tolerante (remove cercas ```json e lixo em volta). */
 function parseJsonLoose(s) {
@@ -358,14 +375,20 @@ async function handleDiag(request, env) {
 // ─── VOZ → ITENS ─────────────────────────────────────────────
 const VOZ_SYSTEM = `Você é a OLLI, assistente de um prestador de serviços (ar-condicionado e afins) no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
 
-function vozPrompt(transcript, catalogo) {
+// `linhaFala` permite trocar a 1ª linha do prompt: por padrão cita o
+// transcript em texto (rota /voz); /transcrever (modo orcamento) passa o
+// áudio como anexo em vez de transcript, então usa uma linha própria e exige
+// o campo extra "texto" (a transcrição) no JSON de saída.
+function vozPrompt(transcript, catalogo, { linhaFala, exigirTexto = false } = {}) {
   const cat = Array.isArray(catalogo) && catalogo.length
     ? `\nCatálogo do prestador (use o preço quando o item casar):\n${catalogo.map((c) => `- ${c.nome}${c.preco ? ` = R$ ${c.preco}` : ''}`).join('\n')}`
     : '';
-  return `Fala do técnico: "${transcript}"${cat}
+  const fala = linhaFala || `Fala do técnico: "${transcript}"`;
+  const campoTexto = exigirTexto ? '\n  "texto": "transcrição fiel da fala do técnico em português do Brasil",' : '';
+  return `${fala}${cat}
 
 Monte os itens no JSON EXATO:
-{
+{${campoTexto}
   "titulo": "título curto do serviço (opcional)",
   "clienteNome": "nome do cliente, se ele falou (opcional)",
   "itens": [
@@ -399,6 +422,93 @@ async function handleVoz(request, env) {
   }
   return json({
     ok: true,
+    titulo: typeof parsed.titulo === 'string' ? parsed.titulo : undefined,
+    clienteNome: typeof parsed.clienteNome === 'string' ? parsed.clienteNome : undefined,
+    itens: parsed.itens,
+    observacao: typeof parsed.observacao === 'string' ? parsed.observacao : undefined,
+  });
+}
+
+// ─── TRANSCREVER (voz na nuvem) ─────────────────────────────
+// Recebe o áudio gravado no app (base64) e ou (a) só transcreve, ou (b) já
+// devolve os itens de orçamento — superset do /voz acima, mas partindo de
+// áudio em vez de transcript pronto (o app manda o áudio direto, sem depender
+// de reconhecimento de voz local no aparelho).
+
+// Whitelist de mime types aceitos pelo Gemini para áudio inline (ver
+// generateContent /docs/audio): fora daqui a API rejeita ou o custo de teste
+// não vale a pena. Mantido enxuto — cobre os formatos reais de gravação do
+// app (expo-audio produz aac/mp4 no Android/iOS; ogg/wav/mpeg por robustez).
+const TRANSCREVER_MIME_OK = new Set(['audio/mp4', 'audio/aac', 'audio/wav', 'audio/ogg', 'audio/mpeg']);
+
+// Só caracteres válidos de base64 — barato de checar antes de gastar CPU/rede
+// tentando decodificar ou mandar pro Gemini algo que não é áudio de verdade.
+const BASE64_RE = /^[A-Za-z0-9+/=]+$/;
+
+const TRANSCREVER_SYSTEM = 'Você transcreve áudio em português do Brasil com fidelidade. Responda SOMENTE com JSON válido.';
+
+function transcreverPromptSimples() {
+  return 'Transcreva fielmente o áudio em português do Brasil. Responda SOMENTE com JSON {"texto":"..."}';
+}
+
+async function handleTranscrever(request, env) {
+  const raw = await request.json().catch(() => ({}));
+
+  const audioBase64 = typeof (raw && raw.audioBase64) === 'string' ? raw.audioBase64.trim() : '';
+  if (!audioBase64 || !BASE64_RE.test(audioBase64)) return json({ ok: false, erro: 'sem_audio' });
+
+  const mimeType = typeof (raw && raw.mimeType) === 'string' ? raw.mimeType.trim().toLowerCase() : '';
+  if (!TRANSCREVER_MIME_OK.has(mimeType)) return json({ ok: false, erro: 'mime_invalido' });
+
+  const modo = raw && raw.modo === 'orcamento' ? 'orcamento' : 'transcrever';
+
+  const catalogo = Array.isArray(raw && raw.catalogo)
+    ? raw.catalogo.slice(0, VOZ_MAX.catalogoItens).map((c) => ({
+        nome: cortar(c && c.nome, VOZ_MAX.nome),
+        preco: c && typeof c.preco === 'number' ? c.preco : undefined,
+      }))
+    : undefined;
+
+  const audioPart = { inline_data: { mime_type: mimeType, data: audioBase64 } };
+
+  if (modo === 'transcrever') {
+    const text = await gemini(env, {
+      system: TRANSCREVER_SYSTEM,
+      userParts: [audioPart, { text: transcreverPromptSimples() }],
+      wantJson: true,
+      temperature: 0.3,
+      timeoutMs: 45_000,
+    });
+    const parsed = parseJsonLoose(text);
+    if (!parsed || typeof parsed.texto !== 'string') {
+      console.error('[olli-transcrever] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
+      return json({ ok: false, erro: 'resposta_invalida' });
+    }
+    return json({ ok: true, texto: parsed.texto });
+  }
+
+  // modo 'orcamento': mesmo prompt do /voz, trocando a linha da fala pelo
+  // aviso de que o áudio está anexado, e exigindo a transcrição de volta no
+  // campo "texto" (o app precisa exibir o que foi entendido).
+  const prompt = vozPrompt(undefined, catalogo, {
+    linhaFala: 'A fala do técnico está no ÁUDIO em anexo.',
+    exigirTexto: true,
+  });
+  const text = await gemini(env, {
+    system: VOZ_SYSTEM,
+    userParts: [audioPart, { text: prompt }],
+    wantJson: true,
+    temperature: 0.3,
+    timeoutMs: 45_000,
+  });
+  const parsed = parseJsonLoose(text);
+  if (!parsed || typeof parsed.texto !== 'string' || !Array.isArray(parsed.itens)) {
+    console.error('[olli-transcrever] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
+    return json({ ok: false, erro: 'resposta_invalida' });
+  }
+  return json({
+    ok: true,
+    texto: parsed.texto,
     titulo: typeof parsed.titulo === 'string' ? parsed.titulo : undefined,
     clienteNome: typeof parsed.clienteNome === 'string' ? parsed.clienteNome : undefined,
     itens: parsed.itens,
@@ -467,8 +577,9 @@ export default {
 
     // Rejeita payload grande ANTES de tocar auth/rate-limit/parse — barato de
     // checar (só content-length) e evita gastar 1 validação de token ou 1 dos
-    // 20 tokens/min do usuário com um body que nem vamos processar.
-    if (bodyMuitoGrande(request)) return json({ ok: false, erro: 'payload_grande' }, 413);
+    // 20 tokens/min do usuário com um body que nem vamos processar. Limite
+    // depende da rota: /transcrever aceita áudio em base64 (bem maior).
+    if (bodyMuitoGrande(request, url.pathname)) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
     if (!env.GEMINI_API_KEY) return json({ ok: false, motivo: 'ia_nao_configurada' });
@@ -498,6 +609,7 @@ export default {
     try {
       if (url.pathname === '/') return await handleDiag(request, env);
       if (url.pathname === '/voz') return await handleVoz(request, env);
+      if (url.pathname === '/transcrever') return await handleTranscrever(request, env);
       if (url.pathname === '/chat') return await handleChat(request, env);
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {

@@ -5,6 +5,7 @@ declare const process: {
     EXPO_PUBLIC_LINK_BASE_URL?: string;
     EXPO_PUBLIC_DIAGNOSTICO_URL?: string;
     EXPO_PUBLIC_WHATSAPP_SUPORTE?: string;
+    EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID?: string;
   };
 };
 
@@ -60,3 +61,12 @@ export const PAGAMENTOS_URL: string = DIAGNOSTICO_URL;
  * Usado no CTA "Falar com a gente" da tela de Planos. Vazio = CTA oculto.
  */
 export const WHATSAPP_SUPORTE: string = (process.env.EXPO_PUBLIC_WHATSAPP_SUPORTE ?? '').replace(/\D/g, '');
+
+/**
+ * ID do cliente OAuth ANDROID do Google (Google Cloud Console → Credenciais),
+ * usado pela sincronização com o Google Agenda. Vazio = recurso desligado:
+ * `googleAgendaDisponivel()` (em services/googleAgenda.ts) retorna false e o
+ * bloco "Conectar Google Agenda" nem aparece na tela de Agenda — sem isso não
+ * há client_id para autorizar, então mostrar o botão seria um beco sem saída.
+ */
+export const GOOGLE_AGENDA_CLIENT_ID: string = process.env.EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID ?? '';

@@ -28,10 +28,14 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 /** Cor da severidade da falha. */
 function sevColor(s: string): string {
   const v = (s || '').toLowerCase();
+  if (v.startsWith('crít') || v.startsWith('crit')) return Colors.danger;
   if (v.startsWith('alta')) return Colors.danger;
   if (v.startsWith('méd') || v.startsWith('med')) return Colors.warning;
   return Colors.primaryLight; // Info / desconhecido
 }
+
+/** Chips de severidade — valores exatamente como gravados na base (SQL casa por igualdade). */
+const SEVERIDADES = ['Crítica', 'Alta', 'Média', 'Info'] as const;
 
 /** Cor do nível de confiança da fonte. */
 function confColor(c: string): string {
@@ -46,36 +50,59 @@ export default function CodigosErroScreen() {
   const [marcas, setMarcas] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [marca, setMarca] = useState<string | null>(null);
+  const [severidade, setSeveridade] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CodigoErro[]>([]);
   const [selected, setSelected] = useState<CodigoErro | null>(null);
   const [naoAchei, setNaoAchei] = useState<Partial<CasoErro> | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erroBusca, setErroBusca] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(useCallback(() => {
     (async () => {
-      const [ms, t] = await Promise.all([getMarcasErro(), countCodigosErro()]);
-      setMarcas(ms);
-      setTotal(t);
+      try {
+        const [ms, t] = await Promise.all([getMarcasErro(), countCodigosErro()]);
+        setMarcas(ms);
+        setTotal(t);
+      } catch {
+        // contadores do cabeçalho são cosméticos — falha silenciosa
+      }
     })();
   }, []));
 
-  // busca reativa (marca imediata, texto com debounce)
+  const executarBusca = useCallback(async () => {
+    const q = query.trim();
+    if (!marca && !severidade && q.length === 0) { setResults([]); setErroBusca(false); return; }
+    setCarregando(true);
+    setErroBusca(false);
+    try {
+      const r = await searchCodigosErro({ marca, q, severidade });
+      setResults(r);
+      if (q.length >= 2) track(Eventos.errorCodeSearched, { q, marca, severidade, resultados: r.length });
+    } catch {
+      setErroBusca(true);
+    } finally {
+      setCarregando(false);
+    }
+  }, [marca, severidade, query]);
+
+  // busca reativa (marca/severidade imediatas, texto com debounce)
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
     const q = query.trim();
-    if (!marca && q.length === 0) { setResults([]); return; }
-    debounce.current = setTimeout(async () => {
-      const r = await searchCodigosErro({ marca, q });
-      setResults(r);
-      if (q.length >= 2) track(Eventos.errorCodeSearched, { q, marca, resultados: r.length });
-    }, q ? 250 : 0);
+    debounce.current = setTimeout(() => { executarBusca(); }, q ? 250 : 0);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [marca, query]);
+  }, [marca, severidade, query, executarBusca]);
 
   function pickMarca(m: string | null) {
     Haptics.selectionAsync().catch(() => {});
     setMarca(prev => (prev === m ? null : m));
+  }
+
+  function pickSeveridade(s: string) {
+    Haptics.selectionAsync().catch(() => {});
+    setSeveridade(prev => (prev === s ? null : s));
   }
 
   function openDetail(c: CodigoErro) {
@@ -126,7 +153,7 @@ export default function CodigosErroScreen() {
     Alert.alert('Anotado! 🙏', 'Registramos seu caso pra enriquecer a base. Quando a OLLI Técnica (IA) chegar, ela ajuda com casos como esse.');
   }
 
-  const buscando = !!marca || query.trim().length > 0;
+  const buscando = !!marca || !!severidade || query.trim().length > 0;
 
   return (
     <View style={styles.container}>
@@ -186,6 +213,30 @@ export default function CodigosErroScreen() {
         </ScrollView>
       </View>
 
+      {/* CHIPS DE SEVERIDADE */}
+      <View style={styles.chipsWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+          {SEVERIDADES.map(s => {
+            const active = severidade === s;
+            const cor = sevColor(s);
+            return (
+              <TouchableOpacity
+                key={s}
+                style={[
+                  styles.sevChip,
+                  { borderColor: active ? cor : Colors.outline, backgroundColor: active ? cor + '22' : Colors.surface },
+                ]}
+                onPress={() => pickSeveridade(s)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.sevDot, { backgroundColor: cor }]} />
+                <Text style={[styles.chipText, { color: active ? cor : Colors.onSurfaceVariant }]}>{s}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       <FlatList
         data={results}
         keyExtractor={c => String(c.id)}
@@ -214,18 +265,45 @@ export default function CodigosErroScreen() {
                     </View>
                   )}
                 </View>
+                {!!c.acao && (
+                  <View style={styles.acaoRow}>
+                    <MaterialCommunityIcons name="hand-pointing-right" size={13} color={Colors.accentLight} />
+                    <Text style={styles.acaoText} numberOfLines={1}>{c.acao}</Text>
+                  </View>
+                )}
               </View>
               <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
             </TouchableOpacity>
           </AnimatedEntrance>
         )}
         ListEmptyComponent={
-          buscando ? (
+          carregando ? (
+            <View style={{ gap: 10 }}>
+              {[0, 1, 2].map(i => <View key={i} style={styles.skeletonCard} />)}
+            </View>
+          ) : erroBusca ? (
+            <View style={styles.noResult}>
+              <MaterialCommunityIcons name="database-alert-outline" size={44} color={Colors.danger} />
+              <Text style={styles.noResultTitle}>Não consegui buscar agora</Text>
+              <Text style={styles.noResultSub}>Deu um erro lendo a base local. Tente de novo.</Text>
+              <OlliButton label="Tentar de novo" variant="outline" size="md" onPress={executarBusca} icon={<MaterialCommunityIcons name="refresh" size={18} color={Colors.primary} />} style={{ marginTop: 14 }} />
+            </View>
+          ) : buscando ? (
             <View style={styles.noResult}>
               <MaterialCommunityIcons name="magnify-close" size={44} color={Colors.onSurfaceMuted} />
               <Text style={styles.noResultTitle}>Nenhum código encontrado</Text>
               <Text style={styles.noResultSub}>Tente outra marca, o código exato ou descreva o sintoma.</Text>
               <OlliButton label="Não achei meu erro" variant="outline" size="md" onPress={abrirNaoAchei} icon={<MaterialCommunityIcons name="help-circle-outline" size={18} color={Colors.primary} />} style={{ marginTop: 14 }} />
+              {query.trim().length > 0 && (
+                <OlliButton
+                  label="Perguntar pra OLLI mesmo assim"
+                  variant="gradient"
+                  size="md"
+                  onPress={() => pedirDiagnostico({ marca: marca ?? undefined, sintoma: query.trim() })}
+                  icon={<MaterialCommunityIcons name="robot-happy-outline" size={18} color="#fff" />}
+                  style={{ marginTop: 10 }}
+                />
+              )}
             </View>
           ) : (
             <EmptyState
@@ -326,9 +404,10 @@ export default function CodigosErroScreen() {
                 onPress={() => pedirDiagnostico({ marca: selected.marca, codigo: selected.codigo, sintoma: selected.falha })}
               >
                 <MaterialCommunityIcons name="robot-happy-outline" size={22} color={Colors.accentLight} />
-                <Text style={styles.olliText}>
-                  <Text style={styles.ouroBold}>Perguntar à OLLI</Text> — diagnóstico guiado: testes em ordem, o que não fazer ainda e mensagem pro cliente.
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.olliTitle}>Perguntar pra OLLI</Text>
+                  <Text style={styles.olliText}>resposta com citação de manual e página — testes em ordem, o que não fazer ainda e mensagem pro cliente.</Text>
+                </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
               </TouchableOpacity>
 
@@ -414,6 +493,8 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
   chipTextActive: { color: '#fff' },
+  sevChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5 },
+  sevDot: { width: 7, height: 7, borderRadius: 4 },
 
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.outline, ...Shadow.sm },
   codeBox: { minWidth: 58, maxWidth: 96, paddingHorizontal: 10, paddingVertical: 10, borderRadius: BorderRadius.md, backgroundColor: 'rgba(11,111,206,0.18)', alignItems: 'center', justifyContent: 'center' },
@@ -423,6 +504,10 @@ const styles = StyleSheet.create({
   badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
   badgeText: { fontSize: 11, fontWeight: '800' },
+  acaoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  acaoText: { flex: 1, fontSize: 12, color: Colors.accentLight, fontWeight: '600' },
+
+  skeletonCard: { height: 78, borderRadius: BorderRadius.lg, backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline, opacity: 0.6 },
 
   noResult: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 24 },
   noResultTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginTop: 10 },
@@ -460,7 +545,8 @@ const styles = StyleSheet.create({
   fonteText: { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.accent },
 
   olliBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(127,233,245,0.08)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(127,233,245,0.22)', padding: Spacing.base, marginTop: 16 },
-  olliText: { flex: 1, fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18 },
+  olliTitle: { fontSize: 14.5, fontWeight: '800', color: Colors.onSurface, marginBottom: 2 },
+  olliText: { fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18 },
 
   // sheet "não achei"
   rowFields: { flexDirection: 'row' },

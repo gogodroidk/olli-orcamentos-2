@@ -665,25 +665,33 @@ export async function countCodigosErro(): Promise<number> {
 }
 
 /**
- * Busca códigos de erro com filtro opcional por marca e por texto livre
- * (código, falha, sintoma/causa, ação ou exibição "LED piscando").
+ * Busca códigos de erro com filtro opcional por marca, por severidade e por
+ * texto livre (código, falha, sintoma/causa, ação ou exibição "LED piscando").
+ * Prioriza o MATCH EXATO de código (ex.: digitou "E4" e existe um código "E4")
+ * no topo dos resultados — depois, ordem alfabética por marca/código.
  */
-export async function searchCodigosErro(opts: { marca?: string | null; q?: string }): Promise<CodigoErro[]> {
+export async function searchCodigosErro(opts: { marca?: string | null; q?: string; severidade?: string | null }): Promise<CodigoErro[]> {
   const db = await getDb();
   const where: string[] = [];
   const params: any[] = [];
   if (opts.marca) { where.push('marca = ?'); params.push(opts.marca); }
+  if (opts.severidade) { where.push('severidade = ?'); params.push(opts.severidade); }
   const q = opts.q?.trim();
+  const orderParams: any[] = [];
   if (q) {
     where.push('(codigo LIKE ? OR falha LIKE ? OR causa LIKE ? OR acao LIKE ? OR exibicao LIKE ? OR cat_app LIKE ?)');
     const like = `%${q}%`;
     params.push(like, like, like, like, like, like);
+    orderParams.push(q);
   }
+  const orderBy = q
+    ? '(CASE WHEN UPPER(codigo) = UPPER(?) THEN 0 ELSE 1 END) ASC, marca ASC, codigo ASC'
+    : 'marca ASC, codigo ASC';
   const sql =
     'SELECT * FROM codigos_erro' +
     (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
-    ' ORDER BY marca ASC, codigo ASC LIMIT 200';
-  const rows = await db.getAllAsync<any>(sql, params);
+    ` ORDER BY ${orderBy} LIMIT 200`;
+  const rows = await db.getAllAsync<any>(sql, [...params, ...orderParams]);
   return rows.map(rowToCodigoErro);
 }
 

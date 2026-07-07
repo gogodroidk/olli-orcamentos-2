@@ -40,7 +40,14 @@ const DELAY_AUTO_RESTART_MS = 250;
 export interface UseReconhecimentoVozOpts {
   onParcial: (texto: string) => void;
   onFinal: (texto: string) => void;
-  onErro: (mensagemAmigavel: string, opts?: { permissaoNegadaPermanente?: boolean }) => void;
+  /**
+   * `sugerirNuvem: true` quando o erro é de um tipo que indica que o
+   * reconhecimento de voz NO APARELHO não vai funcionar de jeito nenhum
+   * (serviço ausente/recusado, idioma não suportado, sem microfone) — quem
+   * chama pode usar isso para oferecer a transcrição na nuvem em vez de
+   * insistir no motor local.
+   */
+  onErro: (mensagemAmigavel: string, opts?: { permissaoNegadaPermanente?: boolean; sugerirNuvem?: boolean }) => void;
   onFimEscuta: () => void;
 }
 
@@ -58,7 +65,12 @@ export interface UseReconhecimentoVozResultado {
   abrirConfiguracoes: () => void;
 }
 
-function mensagemPermissaoNegada(permanente: boolean): string {
+/**
+ * Exportado para `vozNuvem.ts` reaproveitar o mesmo texto de negação de
+ * permissão de microfone (fluxo de gravação na nuvem via `expo-audio`, sem
+ * nenhuma dependência do serviço de reconhecimento de voz do Google).
+ */
+export function mensagemPermissaoNegada(permanente: boolean): string {
   if (isWeb) {
     return 'Preciso da permissão do microfone para te ouvir. Libere nas configurações do navegador — ou escreva o que precisa abaixo.';
   }
@@ -67,7 +79,7 @@ function mensagemPermissaoNegada(permanente: boolean): string {
     : 'Preciso da permissão do microfone para te ouvir. Toque no microfone de novo e permita — ou escreva o que precisa abaixo.';
 }
 
-function mapearErro(code: ExpoSpeechRecognitionErrorCode | string): { msg: string; permanente?: boolean } | null {
+function mapearErro(code: ExpoSpeechRecognitionErrorCode | string): { msg: string; permanente?: boolean; sugerirNuvem?: boolean } | null {
   // 'no-speech' (silêncio) e 'aborted' (usuário/app cancelou de propósito)
   // não são fatais — quem decide o que fazer é o controle de auto-restart
   // ou o próprio fluxo de parar(), não uma mensagem de erro para o usuário.
@@ -78,11 +90,12 @@ function mapearErro(code: ExpoSpeechRecognitionErrorCode | string): { msg: strin
       msg: isAndroid
         ? 'O serviço de reconhecimento de voz do aparelho recusou o pedido. Confira se o "Reconhecimento e Síntese de Fala do Google" está instalado e habilitado, ou escreva abaixo.'
         : 'O reconhecimento de fala está desabilitado neste aparelho. Ative Siri e Ditado em Ajustes, ou escreva abaixo.',
+      sugerirNuvem: true,
     };
   }
   if (code === 'network') return { msg: 'A transcrição precisa de internet. Confira a conexão ou escreva abaixo.' };
-  if (code === 'audio-capture') return { msg: 'Não encontrei um microfone neste aparelho. Use o campo de texto abaixo.' };
-  if (code === 'language-not-supported') return { msg: 'O português não está disponível no reconhecimento de voz deste aparelho. Use o campo de texto abaixo.' };
+  if (code === 'audio-capture') return { msg: 'Não encontrei um microfone neste aparelho. Use o campo de texto abaixo.', sugerirNuvem: true };
+  if (code === 'language-not-supported') return { msg: 'O português não está disponível no reconhecimento de voz deste aparelho. Use o campo de texto abaixo.', sugerirNuvem: true };
   if (code === 'busy') return { msg: 'O microfone está ocupado com outro app agora. Feche o outro app e tente de novo, ou escreva abaixo.' };
   if (code === 'interrupted') return { msg: 'A escuta foi interrompida (chamada, alarme ou outro app). Toque no microfone para tentar de novo.' };
   if (code === 'speech-timeout') return null; // Android: equivalente a silêncio — tratado pelo auto-restart.
@@ -265,7 +278,7 @@ export function useReconhecimentoVoz(opts: UseReconhecimentoVozOpts): UseReconhe
     aindaOuvindoRef.current = false;
     limparTimerRestart();
     setOuvindo(false);
-    onErroRef.current(mapeado.msg, { permissaoNegadaPermanente: mapeado.permanente });
+    onErroRef.current(mapeado.msg, { permissaoNegadaPermanente: mapeado.permanente, sugerirNuvem: mapeado.sugerirNuvem });
   });
 
   useSpeechRecognitionEvent('end', () => {

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
-  Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView, Linking,
+  Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,8 +17,9 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { interpretarVoz, VozResultadoOk, VozItem } from '../services/olliAssistente';
 import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/reconhecimentoVoz';
+import { useGravadorNuvem } from '../services/vozNuvem';
 import {
-  getNextOrcamentoNumber, saveOrcamento,
+  getNextOrcamentoNumber, saveOrcamento, getServicos,
 } from '../database/database';
 import { Orcamento, ItemOrcamento, FormaPagamento } from '../types';
 import { generateId } from '../utils/id';
@@ -30,11 +31,13 @@ import { goBackOrHome } from '../navigation/safeBack';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const isWeb = Platform.OS === 'web';
-const isAndroid = Platform.OS === 'android';
 const useNativeAnimations = !isWeb;
 
 /** Depois de quantos segundos de "enviando" o botão "Cancelar" aparece. */
 const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 5;
+
+/** Gradiente do microfone durante a gravação em nuvem (pulso vermelho, gravando). */
+const GRADIENT_GRAVANDO = ['#FF6B6B', '#C0392B'] as const;
 
 /** Reexportado para telas que já importavam este helper (ex.: HomeScreen). */
 export function isVozDisponivel(): boolean {
@@ -148,6 +151,13 @@ export default function OlliVozScreen() {
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 'dispositivo' = reconhecimento de fala nativo (grátis, sem internet depois
+  // de ouvir); 'nuvem' = grava o áudio com expo-audio e manda pro Worker
+  // transcrever com o Gemini — funciona em QUALQUER aparelho com microfone,
+  // mesmo sem o serviço de voz do Google instalado/habilitado.
+  const [modoVoz, setModoVoz] = useState<'dispositivo' | 'nuvem'>('dispositivo');
+  const [catalogoVoz, setCatalogoVoz] = useState<{ nome: string; preco?: number }[] | undefined>(undefined);
+
   // revisão
   const [titulo, setTitulo] = useState('');
   const [clienteNome, setClienteNome] = useState('');
@@ -192,6 +202,15 @@ export default function OlliVozScreen() {
       setParcial('');
     },
     onErro: (m, opts) => {
+      // Erros do tipo "esse aparelho não tem/aceita o motor local" sugerem a
+      // nuvem em vez de insistir num microfone que nunca vai responder.
+      if (opts?.sugerirNuvem) {
+        setModoVoz('nuvem');
+        setErro(null);
+        setParcial('');
+        setFase('inicial');
+        return;
+      }
       setErro(m);
       setPermissaoNegadaPermanente(!!opts?.permissaoNegadaPermanente);
       setParcial('');
@@ -208,8 +227,63 @@ export default function OlliVozScreen() {
   // tratamos como indisponível para não mostrar um microfone que não responde.
   const vozOk = voz.disponivel && !voz.checandoDisponibilidade;
 
+  // Assim que a checagem de disponibilidade do motor local termina, decide o
+  // modo inicial: se o aparelho tem reconhecimento nativo, usamos ele
+  // (funciona sem gastar dados depois de ouvir); senão caímos direto na
+  // nuvem — nunca sobra um "beco sem saída" sem microfone algum.
+  useEffect(() => {
+    if (voz.checandoDisponibilidade) return;
+    if (!voz.disponivel) setModoVoz('nuvem');
+  }, [voz.checandoDisponibilidade, voz.disponivel]);
+
+  // Catálogo de serviços (nome + preço) pro Gemini casar descrições com
+  // preços já cadastrados no modo nuvem/orçamento — mesmo padrão do /voz.
+  useEffect(() => {
+    let cancelado = false;
+    getServicos()
+      .then(servicos => {
+        if (cancelado || servicos.length === 0) return;
+        setCatalogoVoz(
+          servicos.slice(0, 60).map(s => (s.preco > 0 ? { nome: s.nome, preco: s.preco } : { nome: s.nome }))
+        );
+      })
+      .catch(() => {
+        // sem catálogo não tem problema — a IA segue só com o áudio
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const nuvem = useGravadorNuvem({
+    modo: 'orcamento',
+    catalogo: catalogoVoz,
+    onTexto: (t) => {
+      setTranscript(t);
+    },
+    onOrcamento: (ok) => {
+      if (!ok.itens || ok.itens.length === 0) {
+        setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setFase('erro');
+        return;
+      }
+      setTitulo(ok.titulo ?? '');
+      setClienteNome(ok.clienteNome ?? '');
+      setItens(ok.itens.map(vozItemParaEditavel));
+      setObservacao(ok.observacao ?? '');
+      setFase('revisao');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    },
+    onErro: (m, opts) => {
+      setErro(m);
+      setPermissaoNegadaPermanente(!!opts?.permissaoNegadaPermanente);
+      setFase('erro');
+    },
+  });
+
   // limpa chamadas de IA pendentes ao sair da tela (a limpeza do
-  // reconhecimento de voz já é feita internamente pelo hook)
+  // reconhecimento de voz e do gravador em nuvem já é feita internamente
+  // por cada hook — `useGravadorNuvem` já cancela timer/upload no unmount)
   useEffect(() => {
     return () => {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
@@ -221,7 +295,7 @@ export default function OlliVozScreen() {
     voz.parar();
   }, [voz]);
 
-  const onMicPress = useCallback(() => {
+  const onMicPressDispositivo = useCallback(() => {
     if (!vozOk) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setErro(null);
@@ -235,6 +309,40 @@ export default function OlliVozScreen() {
       setFase('ouvindo');
     }
   }, [vozOk, voz]);
+
+  // Modo nuvem: 1º toque inicia a gravação (pede a permissão do microfone
+  // direto pelo expo-audio, sem depender do serviço de voz do Google); 2º
+  // toque para, envia o áudio pro Worker e já volta com o orçamento pronto
+  // (uma única requisição — não passa por `enviar()`/`interpretarVoz`).
+  const onMicPressNuvem = useCallback(async () => {
+    // Guarda contra segundo toque durante o upload (inclusive após o auto-stop
+    // de 2min, quando a fase ainda pode estar 'ouvindo'): sem isso, um toque
+    // iniciaria uma 2ª gravação concorrente com o envio em voo.
+    if (nuvem.enviando) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setErro(null);
+    setPermissaoNegadaPermanente(false);
+    if (nuvem.gravando) {
+      setFase('enviando');
+      // Mostra o botão Cancelar após alguns segundos de upload (mesmo padrão do
+      // fluxo on-device em enviar()): o envio na nuvem pode levar até 60s.
+      setPodeCancelar(false);
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+      try {
+        await nuvem.pararEEnviar();
+      } finally {
+        if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+        setPodeCancelar(false);
+      }
+    } else {
+      setTranscript('');
+      setFase('ouvindo');
+      await nuvem.iniciarGravacao();
+    }
+  }, [nuvem]);
+
+  const onMicPress = modoVoz === 'nuvem' ? onMicPressNuvem : onMicPressDispositivo;
 
   const enviar = useCallback(async () => {
     const texto = transcript.trim();
@@ -278,7 +386,8 @@ export default function OlliVozScreen() {
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     abortRef.current?.abort();
-  }, []);
+    nuvem.cancelar();
+  }, [nuvem]);
 
   const refazer = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -328,6 +437,11 @@ export default function OlliVozScreen() {
   const enviando = fase === 'enviando';
   const podeEnviar = transcript.trim().length > 0 && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro');
 
+  const gravandoNuvem = modoVoz === 'nuvem' && nuvem.gravando;
+  const enviandoNuvem = modoVoz === 'nuvem' && nuvem.enviando;
+  const minutos = String(Math.floor(nuvem.segundos / 60)).padStart(2, '0');
+  const segs = String(nuvem.segundos % 60).padStart(2, '0');
+
   const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
   const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
   const pulseScaleOuter = pulseOuter.interpolate({ inputRange: [0, 1], outputRange: [1, 1.34] });
@@ -373,83 +487,90 @@ export default function OlliVozScreen() {
           <AnimatedEntrance index={0}>
             <View style={styles.hero}>
               <Text style={styles.heroKicker}>
-                {fase === 'ouvindo' ? 'OUVINDO…' : fase === 'enviando' ? 'MONTANDO…' : vozOk ? 'TOQUE E FALE' : 'ESCREVA PRA OLLI'}
+                {enviandoNuvem
+                  ? 'A OLLI ESTÁ OUVINDO…'
+                  : fase === 'ouvindo'
+                  ? 'OUVINDO…'
+                  : fase === 'enviando'
+                  ? 'MONTANDO…'
+                  : 'TOQUE E FALE'}
               </Text>
 
               <View style={styles.micWrap}>
-                {fase === 'ouvindo' && (
+                {(fase === 'ouvindo' || gravandoNuvem) && (
                   <>
                     <Animated.View
-                      style={[styles.micPulse, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]}
+                      style={[
+                        styles.micPulse,
+                        { backgroundColor: gravandoNuvem ? Colors.danger : Colors.accent },
+                        { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+                      ]}
                       pointerEvents="none"
                     />
                     <Animated.View
-                      style={[styles.micPulseOuter, { transform: [{ scale: pulseScaleOuter }], opacity: pulseOpacityOuter }]}
+                      style={[
+                        styles.micPulseOuter,
+                        { backgroundColor: gravandoNuvem ? Colors.danger : Colors.accent },
+                        { transform: [{ scale: pulseScaleOuter }], opacity: pulseOpacityOuter },
+                      ]}
                       pointerEvents="none"
                     />
                   </>
                 )}
-                {vozOk ? (
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={fase === 'enviando' ? undefined : onMicPress}
-                    disabled={fase === 'enviando'}
-                    accessibilityRole="button"
-                    accessibilityLabel={fase === 'ouvindo' ? 'Parar de ouvir' : 'Tocar e falar'}
-                    style={styles.micTouch}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={fase === 'enviando' || enviandoNuvem ? undefined : onMicPress}
+                  disabled={fase === 'enviando' || enviandoNuvem}
+                  accessibilityRole="button"
+                  accessibilityLabel={fase === 'ouvindo' || gravandoNuvem ? 'Parar de ouvir' : 'Tocar e falar'}
+                  style={styles.micTouch}
+                >
+                  <LinearGradient
+                    colors={gravandoNuvem ? GRADIENT_GRAVANDO : fase === 'ouvindo' ? Gradients.frost : Gradients.primaryDiagonal}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.micGrad, fase === 'ouvindo' || gravandoNuvem ? Shadow.glowCyan : Shadow.glowBlue]}
                   >
-                    <LinearGradient
-                      colors={fase === 'ouvindo' ? Gradients.frost : Gradients.primaryDiagonal}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.micGrad, fase === 'ouvindo' ? Shadow.glowCyan : Shadow.glowBlue]}
-                    >
-                      {fase === 'enviando' ? (
-                        <ActivityIndicator size="large" color="#fff" />
-                      ) : (
-                        <MaterialCommunityIcons
-                          name={fase === 'ouvindo' ? 'microphone' : 'microphone-outline'}
-                          size={52}
-                          color="#fff"
-                        />
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                ) : (
-                  // Nativo sem reconhecimento de voz: em vez de um microfone GIGANTE
-                  // desabilitado (que confundia), mostramos um ícone "escrever" — o
-                  // caminho principal aqui é digitar no campo logo abaixo.
-                  <View style={styles.micTouch} pointerEvents="none">
-                    <LinearGradient
-                      colors={Gradients.primaryDiagonal}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.micGrad, Shadow.glowBlue]}
-                    >
-                      <MaterialCommunityIcons name="text-box-edit-outline" size={50} color="#fff" />
-                    </LinearGradient>
-                  </View>
-                )}
+                    {enviandoNuvem || fase === 'enviando' ? (
+                      <ActivityIndicator size="large" color="#fff" />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name={fase === 'ouvindo' || gravandoNuvem ? 'microphone' : 'microphone-outline'}
+                        size={52}
+                        color="#fff"
+                      />
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
 
-              <Text style={styles.heroHint}>
-                {fase === 'enviando'
-                  ? 'OLLI está montando seu orçamento…'
-                  : fase === 'ouvindo'
-                  ? 'Pode falar por partes — toque de novo quando terminar.'
-                  : vozOk
-                  ? 'Toque no microfone e descreva o serviço. Ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena".'
-                  : 'Escreva abaixo o que você precisa — ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena" — que a OLLI monta o orçamento.'}
-              </Text>
-
-              {!vozOk && (
-                <View style={styles.infoPill}>
-                  <MaterialCommunityIcons name="pencil-outline" size={14} color={Colors.accentLight} />
-                  <Text style={styles.infoPillText}>Escreva abaixo — a OLLI monta o orçamento pra você</Text>
+              {gravandoNuvem && (
+                <View style={styles.contadorPill}>
+                  <View style={styles.contadorDot} />
+                  <Text style={styles.contadorText}>{minutos}:{segs}</Text>
                 </View>
               )}
 
-              {fase === 'enviando' && podeCancelar && (
+              <Text style={styles.heroHint}>
+                {enviandoNuvem
+                  ? 'A OLLI está ouvindo e montando seu orçamento…'
+                  : fase === 'enviando'
+                  ? 'OLLI está montando seu orçamento…'
+                  : gravandoNuvem
+                  ? 'Pode falar por partes — toque de novo quando terminar.'
+                  : fase === 'ouvindo'
+                  ? 'Pode falar por partes — toque de novo quando terminar.'
+                  : 'Toque no microfone e descreva o serviço. Ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena".'}
+              </Text>
+
+              {modoVoz === 'nuvem' && fase !== 'ouvindo' && !enviandoNuvem && fase !== 'enviando' && (
+                <View style={styles.infoPill}>
+                  <MaterialCommunityIcons name="cloud-outline" size={14} color={Colors.accentLight} />
+                  <Text style={styles.infoPillText}>Transcrição pela nuvem (usa internet)</Text>
+                </View>
+              )}
+
+              {(fase === 'enviando' && podeCancelar) && (
                 <OlliButton
                   label="Cancelar"
                   variant="outline"
@@ -460,30 +581,6 @@ export default function OlliVozScreen() {
               )}
             </View>
           </AnimatedEntrance>
-          )}
-
-          {/* MICROFONE INDISPONÍVEL NESTE APARELHO — mostra exatamente o que falta e uma ação */}
-          {!voz.checandoDisponibilidade && !voz.disponivel && voz.motivoIndisponivel && (
-            <AnimatedEntrance index={1}>
-              <View style={styles.faltandoCard}>
-                <MaterialCommunityIcons name="microphone-off" size={20} color={Colors.warning} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.faltandoTitulo}>Reconhecimento de voz indisponível</Text>
-                  <Text style={styles.faltandoTexto}>{voz.motivoIndisponivel}</Text>
-                  {isAndroid && (
-                    <OlliButton
-                      label="Abrir Play Store"
-                      variant="outline"
-                      size="sm"
-                      onPress={() => Linking.openURL('market://details?id=com.google.android.tts').catch(() => Linking.openURL('https://play.google.com/store/apps/details?id=com.google.android.tts').catch(() => {}))}
-                      haptic={false}
-                      icon={<MaterialCommunityIcons name="google-play" size={15} color={Colors.accentLight} />}
-                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
-                    />
-                  )}
-                </View>
-              </View>
-            </AnimatedEntrance>
           )}
 
           {/* TRANSCRIÇÃO AO VIVO / EM EDIÇÃO */}
@@ -552,9 +649,7 @@ export default function OlliVozScreen() {
           {/* FALLBACK DE TEXTO — sempre presente, em todas as plataformas */}
           <AnimatedEntrance index={2}>
             <View style={styles.escreverCard}>
-              <Text style={styles.escreverLabel}>
-                {vozOk ? 'ou escreva o que precisa' : 'escreva o que precisa'}
-              </Text>
+              <Text style={styles.escreverLabel}>ou escreva o que precisa</Text>
               <TextInput
                 style={styles.escreverInput}
                 value={transcript}
@@ -781,11 +876,11 @@ const styles = StyleSheet.create({
   infoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: 'rgba(127,233,245,0.10)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
   infoPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
 
-  checandoWrap: { alignItems: 'center', paddingVertical: Spacing.lg },
+  contadorPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 14, backgroundColor: Colors.dangerLight, borderWidth: 1, borderColor: 'rgba(255,107,107,0.35)', borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 7 },
+  contadorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.danger },
+  contadorText: { fontSize: 14, fontWeight: '800', color: Colors.danger, fontVariant: ['tabular-nums'] },
 
-  faltandoCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: Colors.warningLight, borderWidth: 1, borderColor: 'rgba(247,178,59,0.35)', borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.sm },
-  faltandoTitulo: { fontSize: 14, fontWeight: '800', color: Colors.onSurface, marginBottom: 4 },
-  faltandoTexto: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19 },
+  checandoWrap: { alignItems: 'center', paddingVertical: Spacing.lg },
 
   transcriptCard: { backgroundColor: 'rgba(52,198,217,0.06)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', padding: Spacing.base, marginTop: Spacing.sm },
   transcriptLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight, textTransform: 'uppercase', marginBottom: 6 },

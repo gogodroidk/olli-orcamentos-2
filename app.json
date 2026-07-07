@@ -67,7 +67,14 @@
           ]
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente."
+        }
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
