@@ -12,7 +12,70 @@
  * de sugestões escondendo a seção, sem popup de erro.
  */
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { decode } from 'fast-png';
+
+/**
+ * fast-png é carregado PREGUIÇOSAMENTE (require dentro da função) e atrás de
+ * um shim: no escopo de módulo ele cria `new TextDecoder('latin1')`, e o
+ * Hermes (Android) só implementa TextDecoder utf-8 — um import de topo
+ * derrubava o app INTEIRO no boot com "RangeError: Unknown encoding: latin1"
+ * (bug real capturado no emulador no APK v6). Latin1 é trivial: byte == charCode.
+ */
+type FastPng = typeof import('fast-png');
+let fastPngCache: FastPng | null = null;
+
+function instalarShimLatin1(): void {
+  try {
+    // Ambiente já suporta latin1 (web/iOS JSC)? Nada a fazer.
+    new TextDecoder('latin1');
+    return;
+  } catch {
+    /* Hermes: instala o shim abaixo. */
+  }
+  const Original = globalThis.TextDecoder;
+  const LATIN1 = /^(latin1|iso-8859-1|windows-1252)$/i;
+
+  class TextDecoderComLatin1 {
+    private latin1: boolean;
+    private delegado: TextDecoder | null;
+    readonly encoding: string;
+
+    constructor(label = 'utf-8', options?: TextDecoderOptions) {
+      this.latin1 = LATIN1.test(String(label));
+      this.delegado = this.latin1 ? null : new Original(label, options);
+      this.encoding = this.latin1 ? 'latin1' : (this.delegado as TextDecoder).encoding;
+    }
+
+    decode(input?: ArrayBuffer | ArrayBufferView): string {
+      if (!this.latin1) return (this.delegado as TextDecoder).decode(input as ArrayBuffer);
+      if (input == null) return '';
+      const bytes = input instanceof Uint8Array
+        ? input
+        : ArrayBuffer.isView(input)
+          ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+          : new Uint8Array(input);
+      let out = '';
+      // Em blocos: String.fromCharCode(...bytes) estoura o limite de argumentos.
+      for (let i = 0; i < bytes.length; i += 8192) {
+        out += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+      return out;
+    }
+  }
+
+  (globalThis as { TextDecoder: unknown }).TextDecoder = TextDecoderComLatin1;
+}
+
+function carregarFastPng(): FastPng | null {
+  if (fastPngCache) return fastPngCache;
+  try {
+    instalarShimLatin1();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    fastPngCache = require('fast-png') as FastPng;
+    return fastPngCache;
+  } catch {
+    return null; // decoder indisponível → contrato do módulo: falha silenciosa
+  }
+}
 
 const TAMANHO_AMOSTRA = 48;
 const MAX_CORES = 3;
@@ -73,7 +136,9 @@ export async function extrairCoresLogo(uri: string): Promise<string[]> {
     if (!resultado.base64) return [];
 
     const bytes = base64ParaBytes(resultado.base64);
-    const png = decode(bytes);
+    const fastPng = carregarFastPng();
+    if (!fastPng) return [];
+    const png = fastPng.decode(bytes);
 
     const { width, height, data, channels, depth } = png;
     if (!width || !height || !data || !channels) return [];
