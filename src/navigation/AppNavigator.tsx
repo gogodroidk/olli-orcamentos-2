@@ -197,13 +197,18 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       initialRouteName={initialRouteName ?? 'Tabs'}
       screenOptions={{
         headerShown: false,
+        // Design de movimento (v3): transição padrão do stack — deslize lateral
+        // suave. As "capas" (Entrar/Onboarding) usam fade (abaixo).
         animation: 'slide_from_right',
+        animationDuration: 260,
         contentStyle: { backgroundColor: Colors.background },
       }}
     >
       <Stack.Screen name="Tabs" component={TabNavigator} />
-      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-      <Stack.Screen name="Entrar" component={EntrarScreen} />
+      {/* Onboarding é pós-login: entra com fade (não é uma "próxima página"). */}
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade', animationDuration: 320 }} />
+      {/* Entrar é a CAPA/porta: fade e sem gesto de voltar (não há para onde). */}
+      <Stack.Screen name="Entrar" component={EntrarScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
       <Stack.Screen name="NovoOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="EditarOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="VisualizarOrcamento" component={VisualizarOrcamentoScreen} />

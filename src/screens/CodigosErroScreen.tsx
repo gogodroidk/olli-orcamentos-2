@@ -278,16 +278,22 @@ export default function CodigosErroScreen() {
               </View>
 
               {!!selected.causa && (
-                <Section icon="magnify" title="Causa provável" text={selected.causa} />
+                <AnimatedEntrance index={0}>
+                  <Section icon="magnify" title="Causa provável" text={selected.causa} />
+                </AnimatedEntrance>
               )}
               {!!selected.acao && (
-                <Section icon="hand-pointing-right" title="Ação inicial segura" text={selected.acao} accent />
+                <AnimatedEntrance index={1}>
+                  <Section icon="hand-pointing-right" title="Ação inicial segura" text={selected.acao} accent />
+                </AnimatedEntrance>
               )}
               {(!!selected.exibicao || !!selected.catApp) && (
-                <View style={styles.metaRow}>
-                  {!!selected.exibicao && <Meta icon="monitor" label="Onde aparece" value={selected.exibicao} />}
-                  {!!selected.catApp && <Meta icon="shape-outline" label="Categoria" value={selected.catApp} />}
-                </View>
+                <AnimatedEntrance index={2}>
+                  <View style={styles.metaRow}>
+                    {!!selected.exibicao && <Meta icon="monitor" label="Onde aparece" value={selected.exibicao} />}
+                    {!!selected.catApp && <Meta icon="shape-outline" label="Categoria" value={selected.catApp} />}
+                  </View>
+                </AnimatedEntrance>
               )}
 
               {/* Regra de ouro / "não faça ainda" */}

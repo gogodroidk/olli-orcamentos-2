@@ -11,9 +11,11 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getEmpresa, saveEmpresa, getDepoimentos, saveDepoimento, deleteDepoimento } from '../database/database';
 import { Empresa, Depoimento, SEGMENTOS, Segmento } from '../types';
-import { CORES_MARCA } from '../utils/coresMarca';
+import { CORES_MARCA, contrasteTextoSobre } from '../utils/coresMarca';
+import { extrairCoresLogo } from '../utils/extrairCoresLogo';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { track, Eventos } from '../services/analytics';
@@ -69,12 +71,16 @@ const GARANTIAS_PADRAO: { dias: number; label: string; texto: string }[] = [
 
 export default function MeuNegocioScreen() {
   const nav = useNavigation<any>();
-  const [empresa, setEmpresa] = useState<Empresa | null>(null);
+    // Evita re-extrair a paleta a cada focus (closure de coresSugeridas fica stale).
+  const extraiuCoresRef = React.useRef(false);
+const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [dirty, setDirty] = useState(false);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [showDep, setShowDep] = useState(false);
   const [newDep, setNewDep] = useState<Partial<Depoimento>>({ estrelas: 5 });
   const [salvando, setSalvando] = useState(false);
+  const [coresSugeridas, setCoresSugeridas] = useState<string[]>([]);
+  const [extraindo, setExtraindo] = useState(false);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -82,9 +88,19 @@ export default function MeuNegocioScreen() {
     const [emp, deps] = await Promise.all([getEmpresa(), getDepoimentos()]);
     // Instalação nova ainda sem empresa: inicializa um registro em branco para
     // o formulário aparecer e poder SALVAR (saveEmpresa cria o registro de fato).
-    setEmpresa(emp ?? empresaEmBranco());
+    const empresaCarregada = emp ?? empresaEmBranco();
+    setEmpresa(empresaCarregada);
     setDepoimentos(deps);
     setDirty(false);
+    // Logo já cadastrada em instalações antigas nunca teve suas cores
+    // extraídas — roda uma vez ao focar a tela, sem bloquear a UI.
+    if (empresaCarregada.logoUri && !extraiuCoresRef.current) {
+      extraiuCoresRef.current = true;
+      setExtraindo(true);
+      extrairCoresLogo(empresaCarregada.logoUri)
+        .then(setCoresSugeridas)
+        .finally(() => setExtraindo(false));
+    }
   }
 
   function set(field: keyof Empresa, value: string) {
@@ -136,7 +152,18 @@ export default function MeuNegocioScreen() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permissão', 'Permita o acesso às fotos.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.9 });
-    if (!r.canceled && empresa) { setEmpresa({ ...empresa, [field]: r.assets[0].uri }); setDirty(true); }
+    if (!r.canceled && empresa) {
+      const uri = r.assets[0].uri;
+      setEmpresa({ ...empresa, [field]: uri });
+      setDirty(true);
+      if (field === 'logoUri') {
+        setExtraindo(true);
+        setCoresSugeridas([]);
+        extrairCoresLogo(uri)
+          .then(setCoresSugeridas)
+          .finally(() => setExtraindo(false));
+      }
+    }
   }
 
   async function handleSaveDep() {
@@ -185,6 +212,74 @@ export default function MeuNegocioScreen() {
               <Text style={styles.brandLabel}>Assinatura</Text>
             </View>
           </View>
+
+          {/* COR DA MARCA — sugestões automáticas da logo + paleta OLLI */}
+          <Text style={[styles.segLabel, { marginTop: Spacing.base }]}>Cor da marca</Text>
+
+          {extraindo ? (
+            <View style={[styles.colorRow, { marginBottom: 4 }]}>
+              <OlliSkeleton width={34} height={34} radius={17} />
+              <OlliSkeleton width={34} height={34} radius={17} />
+              <OlliSkeleton width={34} height={34} radius={17} />
+            </View>
+          ) : coresSugeridas.length > 0 ? (
+            <>
+              <Text style={styles.segHint}>Da sua logo</Text>
+              <View style={[styles.colorRow, { marginBottom: Spacing.sm }]}>
+                {coresSugeridas.map(hex => {
+                  const active = (empresa.corMarca ?? '').toLowerCase() === hex.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={hex}
+                      style={styles.swatchCircleWrap}
+                      onPress={() => chooseCorMarca(hex)}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Usar cor sugerida ${hex}`}
+                    >
+                      <View style={[styles.swatchCircle, { width: 34, height: 34, borderRadius: 17, backgroundColor: hex }]}>
+                        {active && (
+                          <MaterialCommunityIcons name="check-bold" size={16} color={contrasteTextoSobre(hex)} />
+                        )}
+                      </View>
+                      <MaterialCommunityIcons
+                        name="auto-fix"
+                        size={12}
+                        color={Colors.onSurfaceMuted}
+                        style={styles.autoFixBadge}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <Text style={styles.segHint}>Paleta OLLI</Text>
+          <View style={styles.colorRow}>
+            {CORES_MARCA.map(swatch => {
+              const active = (empresa.corMarca ?? '').toLowerCase() === swatch.value.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={swatch.value}
+                  style={styles.swatchCircleWrap}
+                  onPress={() => chooseCorMarca(swatch.value)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cor ${swatch.label}`}
+                >
+                  <View style={[styles.swatchCircle, { width: 28, height: 28, borderRadius: 14, backgroundColor: swatch.value }]}>
+                    {active && (
+                      <MaterialCommunityIcons name="check-bold" size={14} color={contrasteTextoSobre(swatch.value)} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[styles.segHint, { marginBottom: 0, marginTop: 6 }]}>
+            Essa cor vira o padrão dos seus PDFs. Você ainda pode trocar por orçamento no passo 4.
+          </Text>
         </View>
 
         {/* DADOS */}
@@ -233,28 +328,7 @@ export default function MeuNegocioScreen() {
             Esses padrões pré-preenchem todo orçamento novo. Você ainda pode ajustar cada um por orçamento.
           </Text>
 
-          <Text style={styles.segLabel}>Cor da marca</Text>
-          <Text style={styles.segHint}>Aparece no PDF, no total e no link enviado ao cliente.</Text>
-          <View style={styles.colorRow}>
-            {CORES_MARCA.map(swatch => {
-              const active = (empresa.corMarca ?? '').toLowerCase() === swatch.value.toLowerCase();
-              return (
-                <TouchableOpacity
-                  key={swatch.value}
-                  style={[styles.colorPick, active && styles.colorPickActive]}
-                  onPress={() => chooseCorMarca(swatch.value)}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Cor ${swatch.label}`}
-                >
-                  <View style={[styles.colorDot, { backgroundColor: swatch.value }]} />
-                  <Text style={[styles.colorLabel, active && styles.colorLabelActive]}>{swatch.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={[styles.segLabel, { marginTop: Spacing.base }]}>Validade padrão do orçamento</Text>
+          <Text style={styles.segLabel}>Validade padrão do orçamento</Text>
           <View style={styles.validadeRow}>
             {VALIDADES_PADRAO.map(dias => {
               const active = (empresa.validadeDiasPadrao ?? 15) === dias;
@@ -399,12 +473,10 @@ const styles = StyleSheet.create({
   segChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
   segChipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
   segChipTextActive: { color: '#0A1626' },
-  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  colorPick: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 8 },
-  colorPickActive: { borderColor: Colors.accentLight, backgroundColor: Colors.surfacePressed },
-  colorDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)' },
-  colorLabel: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  colorLabelActive: { color: Colors.accentLight },
+  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: Spacing.sm },
+  swatchCircleWrap: { alignItems: 'center', justifyContent: 'center' },
+  swatchCircle: { alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', ...Shadow.sm },
+  autoFixBadge: { position: 'absolute', right: -2, bottom: -2, backgroundColor: Colors.surface, borderRadius: 8, padding: 1 },
   validadeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   validadeChip: { alignItems: 'center', borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 10 },
   validadeChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },

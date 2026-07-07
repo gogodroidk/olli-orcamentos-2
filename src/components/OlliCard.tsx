@@ -1,6 +1,7 @@
 import React from 'react';
-import { TouchableOpacity, View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, BorderRadius, Shadow, Spacing } from '../theme';
+import { OlliPressable } from './OlliPressable';
 
 interface Props {
   children: React.ReactNode;
@@ -25,9 +26,9 @@ export function OlliCard({ children, onPress, style, padding = Spacing.base, var
 
   if (onPress) {
     return (
-      <TouchableOpacity activeOpacity={0.86} onPress={onPress} accessibilityRole="button">
+      <OlliPressable onPress={onPress} scaleTo={0.98} haptic="selection">
         {inner}
-      </TouchableOpacity>
+      </OlliPressable>
     );
   }
   return inner;

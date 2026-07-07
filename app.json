@@ -2,6 +2,7 @@
   "expo": {
     "name": "OLLI Orçamentos",
     "slug": "olli-orcamentos",
+    "scheme": "olliorcamentos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,7 +19,7 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "package": "com.grtech.olliorcamentos",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES"
@@ -52,7 +53,18 @@
           "backgroundColor": "#0A2547",
           "imageWidth": 180
         }
-      ]
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "O OLLI usa o microfone para você ditar orçamentos por voz.",
+          "speechRecognitionPermission": "O OLLI usa o reconhecimento de fala para montar orçamentos ditados.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

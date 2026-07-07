@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, ViewStyle, Easing, Platform } from 'react-native';
+import { Animated, ViewStyle, Platform } from 'react-native';
+import { Motion } from '../theme/motion';
 
 interface Props {
   children: React.ReactNode;
@@ -22,8 +23,8 @@ export function AnimatedEntrance({ children, index = 0, style, delay = 0, from =
     Animated.timing(progress, {
       toValue: 1,
       duration: 380,
-      delay: delay + Math.min(index, 12) * 55,
-      easing: Easing.out(Easing.cubic),
+      delay: delay + Math.min(index, Motion.maxStagger) * Motion.stagger,
+      easing: Motion.easing.standard,
       useNativeDriver: useNativeAnimations,
     }).start();
   }, []);

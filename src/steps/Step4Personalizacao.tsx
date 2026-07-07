@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Switch, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
-import { ModeloPdfId, Orcamento, Empresa } from '../types';
+import { ModeloPdfId, Orcamento, Empresa, Depoimento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { CORES_MARCA } from '../utils/coresMarca';
+import { OlliButton } from '../components/OlliButton';
+import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { getDepoimentos } from '../database/database';
 
 interface Props {
   orc: Orcamento;
@@ -32,6 +35,7 @@ const SwitchRow = ({ label, hint, value, onValueChange }: {
 
 const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
   { id: 'editorial', nome: 'Editorial', desc: 'premium com marca d\'agua', color: '#0B6FCE', icon: 'file-document-edit-outline' },
+  { id: 'premium_capa', nome: 'Premium com capa', desc: 'capa + pagina de detalhes', color: '#0A2547', icon: 'book-open-page-variant-outline' },
   { id: 'minimalista', nome: 'Minimalista', desc: 'limpo e direto', color: '#64748B', icon: 'file-document-outline' },
   { id: 'bold', nome: 'Bold', desc: 'cabecalho forte', color: '#19D3E6', icon: 'view-dashboard-outline' },
   { id: 'classico', nome: 'Classico', desc: 'formal e serifado', color: '#8B5E34', icon: 'script-text-outline' },
@@ -40,6 +44,81 @@ const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: st
 ];
 
 const COLOR_SWATCHES = CORES_MARCA;
+
+/**
+ * Miniatura honesta por modelo (sem imagem, sem lib) — cada uma imita a
+ * estrutura real do PDF daquele modelo, não um mock genérico repetido.
+ */
+function renderMiniatura(id: ModeloPdfId, cor: string) {
+  switch (id) {
+    case 'premium_capa':
+      return (
+        <View style={[styles.modelPaper, styles.miniCapaWrap, { backgroundColor: cor }]}>
+          <View style={styles.miniCapaDot} />
+          <View style={styles.miniCapaLine} />
+        </View>
+      );
+    case 'bold':
+      return (
+        <View style={styles.modelPaper}>
+          <View style={[styles.miniBoldHeader, { backgroundColor: cor }]} />
+          <View style={styles.modelLine} />
+          <View style={[styles.modelLine, { width: '64%' }]} />
+          <View style={styles.modelTotal} />
+        </View>
+      );
+    case 'classico':
+      return (
+        <View style={[styles.modelPaper, styles.miniClassicoBorder]}>
+          <View style={[styles.modelLineStrong, styles.miniCentered]} />
+          <View style={[styles.modelLine, styles.miniCentered, { width: '70%' }]} />
+          <View style={[styles.modelLine, styles.miniCentered, { width: '50%' }]} />
+          <View style={[styles.modelTotal, { alignSelf: 'center' }]} />
+        </View>
+      );
+    case 'faixa_lateral':
+      return (
+        <View style={[styles.modelPaper, styles.miniFaixaWrap]}>
+          <View style={[styles.miniFaixaBar, { backgroundColor: cor }]} />
+          <View style={styles.miniFaixaContent}>
+            <View style={styles.modelLineStrong} />
+            <View style={styles.modelLine} />
+            <View style={styles.modelTotal} />
+          </View>
+        </View>
+      );
+    case 'minimalista':
+      return (
+        <View style={styles.modelPaper}>
+          <View style={styles.modelLineStrong} />
+          <View style={styles.modelLine} />
+          <View style={[styles.modelLine, { width: '64%' }]} />
+          <View style={[styles.modelLine, { width: '40%' }]} />
+        </View>
+      );
+    case 'recibo_compacto':
+      return (
+        <View style={[styles.modelPaper, styles.miniRecibo]}>
+          <View style={[styles.modelAccent, { backgroundColor: cor }]} />
+          <View style={styles.modelLineStrong} />
+          <View style={styles.modelTotal} />
+        </View>
+      );
+    case 'editorial':
+    default:
+      return (
+        <View style={styles.modelPaper}>
+          <View style={styles.miniEditorialSpine} />
+          <View style={[styles.modelAccent, { backgroundColor: cor }]} />
+          <View style={styles.modelLineStrong} />
+          <View style={styles.modelLine} />
+          <View style={[styles.modelLine, { width: '64%' }]} />
+          <View style={styles.modelTotal} />
+          <View style={styles.miniEditorialWatermark} />
+        </View>
+      );
+  }
+}
 
 function validadeEmDias(days: number): string {
   const d = new Date();
@@ -53,6 +132,18 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
   // Negócio", senão a cor do tema — o usuário ainda pode trocar livremente
   // pelos swatches abaixo (isso só decide o valor inicial sugerido).
   const corAtual = orc.corMarca ?? empresa?.corMarca ?? Colors.primary;
+
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
+
+  async function abrirPreview() {
+    try {
+      setDepoimentos(await getDepoimentos());
+    } catch {
+      setDepoimentos([]);
+    }
+    setPreviewVisible(true);
+  }
 
   function escolherModelo(model: (typeof PDF_MODELS)[number]) {
     onChange({
@@ -115,13 +206,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               onPress={() => escolherModelo(model)}
               activeOpacity={0.85}
             >
-              <View style={styles.modelPaper}>
-                <View style={[styles.modelAccent, { backgroundColor: model.color }]} />
-                <View style={styles.modelLineStrong} />
-                <View style={styles.modelLine} />
-                <View style={[styles.modelLine, { width: '64%' }]} />
-                <View style={styles.modelTotal} />
-              </View>
+              {renderMiniatura(model.id, model.color)}
               <View style={styles.modelLabelRow}>
                 <MaterialCommunityIcons name={model.icon} size={14} color={active ? Colors.accentLight : Colors.onSurfaceVariant} />
                 <Text style={[styles.modelName, active && styles.modelNameActive]} numberOfLines={1}>{model.nome}</Text>
@@ -131,6 +216,15 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
           );
         })}
       </ScrollView>
+
+      <OlliButton
+        label="Pré-visualizar"
+        variant="outline"
+        size="sm"
+        onPress={abrirPreview}
+        icon={<MaterialCommunityIcons name="eye-outline" size={16} color={Colors.accentLight} />}
+        style={styles.previewBtn}
+      />
 
       <Text style={styles.sectionTitle}>Cor da marca</Text>
       <Text style={styles.sectionHint}>Esta cor entra no PDF, no total e nos detalhes de aprovação.</Text>
@@ -218,6 +312,14 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
           Toque em "Gerar Orçamento" para criar o PDF profissional com todas as informações preenchidas.
         </Text>
       </View>
+
+      <PdfPreviewModal
+        visible={previewVisible}
+        onClose={() => setPreviewVisible(false)}
+        orcamento={orc}
+        empresa={empresa ?? null}
+        depoimentos={depoimentos}
+      />
     </ScrollView>
   );
 }
@@ -251,6 +353,22 @@ const styles = StyleSheet.create({
   modelName: { flex: 1, fontSize: 12.5, fontWeight: '800', color: Colors.onSurface },
   modelNameActive: { color: Colors.accentLight },
   modelDesc: { fontSize: 10.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+
+  previewBtn: { alignSelf: 'flex-start', marginTop: 4, marginBottom: Spacing.sm },
+
+  // Miniaturas honestas por modelo (Step4 — sem imagem, sem lib)
+  miniCapaWrap: { alignItems: 'center', justifyContent: 'center', gap: 8 },
+  miniCapaDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.85)' },
+  miniCapaLine: { width: '55%', height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' },
+  miniBoldHeader: { width: '100%', height: 28, borderRadius: 4, marginBottom: 13 },
+  miniClassicoBorder: { borderWidth: 2, borderColor: '#16202E', alignItems: 'center' },
+  miniCentered: { alignSelf: 'center' },
+  miniFaixaWrap: { flexDirection: 'row', padding: 0 },
+  miniFaixaBar: { width: 12, height: '100%' },
+  miniFaixaContent: { flex: 1, padding: 10, justifyContent: 'center' },
+  miniRecibo: { justifyContent: 'center' },
+  miniEditorialSpine: { position: 'absolute', top: 0, left: 0, bottom: 0, width: 3, backgroundColor: Colors.primary, opacity: 0.5 },
+  miniEditorialWatermark: { position: 'absolute', bottom: -10, right: -10, width: 40, height: 40, borderRadius: 20, borderWidth: 6, borderColor: 'rgba(11,111,206,0.08)' },
 
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   colorPick: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 8 },

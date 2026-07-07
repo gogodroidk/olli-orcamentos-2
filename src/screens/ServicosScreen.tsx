@@ -13,6 +13,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getServicos, saveServico, deleteServico } from '../database/database';
 import { ServicoItem, UNIDADES } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -32,6 +33,7 @@ export default function ServicosScreen() {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<ServicoItem> | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -39,6 +41,7 @@ export default function ServicosScreen() {
     const all = await getServicos();
     setItems(all);
     applyFilter(all, query);
+    setCarregando(false);
   }
 
   function applyFilter(data: ServicoItem[], q: string) {
@@ -105,6 +108,19 @@ export default function ServicosScreen() {
         </View>
       </GradientHeader>
 
+      {carregando ? (
+        <View style={{ padding: Spacing.base, gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={styles.card}>
+              <OlliSkeleton width={52} height={52} radius={BorderRadius.md} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="60%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
       <FlatList
         data={filtered}
         keyExtractor={s => s.id}
@@ -136,6 +152,7 @@ export default function ServicosScreen() {
         )}
         ListEmptyComponent={<EmptyState icon="wrench-outline" title="Nenhum serviço" subtitle="Cadastre seus serviços para montar orçamentos em segundos." actionLabel="Novo serviço" onAction={() => setEditing({ unidade: 'un', preco: 0 })} />}
       />
+      )}
 
       <TouchableOpacity style={styles.fab} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />

@@ -18,7 +18,7 @@ export function traduzirErroAuth(e: unknown): AuthErrorMensagem {
   if (/already registered|already exists|User already/i.test(msg)) {
     return {
       titulo: 'E-mail já cadastrado',
-      texto: 'Esse e-mail já tem conta. Tente entrar (ou use "Esqueci a senha").',
+      texto: 'Este e-mail já tem conta. Toque em Entrar e use sua senha (ou recupere-a).',
     };
   }
   if (/email not confirmed|email.*not.*confirm/i.test(msg)) {

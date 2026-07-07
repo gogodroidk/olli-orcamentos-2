@@ -18,6 +18,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
+import { OlliSkeleton } from '../components/OlliSkeleton';
+import { CountUp } from '../components/CountUp';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -186,27 +188,41 @@ export default function HomeScreen() {
         </AnimatedEntrance>
 
         {/* KPIs */}
-        <AnimatedEntrance index={1}>
+        {carregando ? (
           <View style={styles.kpis}>
-            <View style={styles.kpi}>
-              <Text style={styles.kpiValue}>{formatCurrency(faturamento)}</Text>
-              <Text style={styles.kpiLabel}>aprovados</Text>
-              <Text style={styles.kpiHint}>valor fechado</Text>
-            </View>
-            <View style={styles.kpiDivider} />
-            <View style={styles.kpi}>
-              <Text style={styles.kpiValue}>{conversao}%</Text>
-              <Text style={styles.kpiHint}>{conversaoDetalhe}</Text>
-              <Text style={styles.kpiLabel}>conversão</Text>
-            </View>
-            <View style={styles.kpiDivider} />
-            <View style={styles.kpi}>
-              <Text style={styles.kpiValue}>{emAberto.length}</Text>
-              <Text style={styles.kpiLabel}>em aberto</Text>
-              <Text style={[styles.kpiHint, parados.length > 0 && styles.kpiHintWarn]}>{emAbertoDetalhe}</Text>
-            </View>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={[styles.kpi, { height: 96, justifyContent: 'center', gap: 8 }]}>
+                <OlliSkeleton width="70%" height={19} />
+                <OlliSkeleton width="50%" height={11} />
+              </View>
+            ))}
           </View>
-        </AnimatedEntrance>
+        ) : (
+          <AnimatedEntrance index={1}>
+            <View style={styles.kpis}>
+              <View style={styles.kpi}>
+                <CountUp value={faturamento} format="currency" style={[styles.kpiValue, { color: '#fff' }]} />
+                <Text style={styles.kpiLabel}>aprovados</Text>
+                <Text style={styles.kpiHint}>valor fechado</Text>
+              </View>
+              <View style={styles.kpiDivider} />
+              <View style={styles.kpi}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <CountUp value={conversao} format="int" style={[styles.kpiValue, { color: '#fff' }]} duration={600} />
+                  <Text style={[styles.kpiValue, { color: '#fff' }]}>%</Text>
+                </View>
+                <Text style={styles.kpiHint}>{conversaoDetalhe}</Text>
+                <Text style={styles.kpiLabel}>conversão</Text>
+              </View>
+              <View style={styles.kpiDivider} />
+              <View style={styles.kpi}>
+                <CountUp value={emAberto.length} format="int" style={[styles.kpiValue, { color: '#fff' }]} duration={500} />
+                <Text style={styles.kpiLabel}>em aberto</Text>
+                <Text style={[styles.kpiHint, parados.length > 0 && styles.kpiHintWarn]}>{emAbertoDetalhe}</Text>
+              </View>
+            </View>
+          </AnimatedEntrance>
+        )}
 
         {/* ANZOL — Diagnóstico por código de erro (offline, único no BR) */}
         <AnimatedEntrance index={2}>
@@ -311,7 +327,19 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {recentes.length === 0 ? (
+        {carregando ? (
+          <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
+            {[0, 1].map(i => (
+              <View key={i} style={styles.recentCard}>
+                <OlliSkeleton width={42} height={42} radius={21} />
+                <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                  <OlliSkeleton width="55%" height={14} />
+                  <OlliSkeleton width="35%" height={12} />
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : recentes.length === 0 ? (
           <View style={styles.emptyRecent}>
             <EmptyState
               icon="file-document-outline"

@@ -26,7 +26,7 @@ function chave(input: DiagnosticoInput): string {
 /** Timeout do diagnóstico por IA: 30s (campo, conexão instável). */
 const TIMEOUT_DIAGNOSTICO_MS = 30_000;
 
-export type MotivoFalhaIA = 'timeout' | 'offline' | 'servidor' | 'cancelado' | null;
+export type MotivoFalhaIA = 'timeout' | 'offline' | 'servidor' | 'cancelado' | 'auth' | null;
 
 /** Último motivo de falha da chamada de IA (para a UI diferenciar timeout/offline/erro). */
 let ultimoMotivoFalha: MotivoFalhaIA = null;
@@ -63,7 +63,12 @@ export async function diagnosticarCaso(
   //    Sem token (deslogado) → pula direto para o fallback offline (602 códigos).
   if (DIAGNOSTICO_URL) {
     const token = await accessTokenAtual();
-    if (token) {
+    if (!token) {
+      // Com login obrigatório na v3, chegar aqui sem token significa sessão
+      // corrompida/expirada — não é mais o caso "opcional" de antes. Sinaliza
+      // 'auth' para a UI avisar de forma visível (nunca silêncio) e cai na base.
+      ultimoMotivoFalha = 'auth';
+    } else {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_DIAGNOSTICO_MS);
       const onCancelar = () => controller.abort();
@@ -88,12 +93,17 @@ export async function diagnosticarCaso(
             };
           }
           // data.motivo === 'ia_nao_configurada' → segue para o fallback
+        } else if (r.status === 401) {
+          // Sessão expirada/token inválido: hoje caía mudo no fallback. Agora é
+          // motivo VISÍVEL ('auth') — o worker respondeu 401 com um token que
+          // deveria valer, então a sessão precisa ser renovada em Conta.
+          ultimoMotivoFalha = 'auth';
         } else if (r.status === 429 || r.status >= 500) {
           // 429 (muitas_requisicoes) e 5xx (503 sobrecarregado, 502 falha_ia etc.) — o worker
           // realmente retorna esses códigos (ver worker/src/index.js) quando está sobrecarregado.
           ultimoMotivoFalha = 'servidor';
         }
-        // 401 (nao_autorizado) / outro erro → fallback offline
+        // outro erro → fallback offline
       } catch (e: any) {
         if (e?.name === 'AbortError') {
           ultimoMotivoFalha = sinalCancelamento?.aborted ? 'cancelado' : 'timeout';
@@ -140,6 +150,8 @@ function avisoFallback(): string {
     return 'Diagnóstico por IA ainda não ligado — mostrando a base de códigos. Configure o Worker de diagnóstico para análise guiada.';
   }
   switch (ultimoMotivoFalha) {
+    case 'auth':
+      return 'Sua sessão expirou — entre de novo em Conta para usar a OLLI. Mostrando a base de códigos.';
     case 'timeout':
       return 'A IA demorou demais para responder (conexão lenta) — mostrando o que a base de códigos tem.';
     case 'offline':

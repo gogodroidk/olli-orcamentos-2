@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, LayoutAnimation,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,6 +18,7 @@ import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getAgendamentosRange, saveAgendamento, deleteAgendamento,
@@ -80,6 +81,7 @@ export default function AgendaScreen() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
   const { inicio, fim } = useMemo(() => rangeFor(modo, ref), [modo, ref]);
 
@@ -90,6 +92,7 @@ export default function AgendaScreen() {
     ]);
     setItens(data);
     setClientes(cls);
+    setCarregando(false);
   }, [inicio.getTime(), fim.getTime()]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -107,11 +110,13 @@ export default function AgendaScreen() {
 
   function passo(delta: number) {
     Haptics.selectionAsync().catch(() => {});
+    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setRef(prev => modo === 'dia' ? addDays(prev, delta) : modo === 'semana' ? addWeeks(prev, delta) : addMonths(prev, delta));
   }
 
   function trocarModo(m: Modo) {
     Haptics.selectionAsync().catch(() => {});
+    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setModo(m);
   }
 
@@ -318,7 +323,20 @@ export default function AgendaScreen() {
       </GradientHeader>
 
       {/* LISTA */}
-      {vazio ? (
+      {carregando ? (
+        <View style={{ padding: Spacing.base, gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={styles.item}>
+              <OlliSkeleton width={4} height={40} radius={4} style={{ marginRight: 12 }} />
+              <OlliSkeleton width={48} height={30} radius={8} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="60%" height={14} />
+                <OlliSkeleton width="40%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : vazio ? (
         <View style={{ flex: 1 }}>
           <EmptyState
             icon="calendar-blank-outline"

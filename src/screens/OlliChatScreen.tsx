@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, Animated, Easing,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,6 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
+import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { enviarChat, ChatMensagem } from '../services/olliAssistente';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -200,14 +201,15 @@ export default function OlliChatScreen() {
         showsVerticalScrollIndicator={false}
       >
         {bolhas.map(b => (
-          <Balao
-            key={b.id}
-            role={b.role}
-            texto={b.texto}
-            falhou={b.falhou}
-            onTentarDeNovo={() => tentarDeNovo(b.id)}
-            onTransformarEmOrcamento={b.id !== 'olli-hello' ? () => criarOrcamentoDaResposta(b.texto) : undefined}
-          />
+          <AnimatedEntrance key={b.id} from="bottom">
+            <Balao
+              role={b.role}
+              texto={b.texto}
+              falhou={b.falhou}
+              onTentarDeNovo={() => tentarDeNovo(b.id)}
+              onTransformarEmOrcamento={b.id !== 'olli-hello' ? () => criarOrcamentoDaResposta(b.texto) : undefined}
+            />
+          </AnimatedEntrance>
         ))}
 
         {digitando && <Digitando podeCancelar={podeCancelar} onCancelar={cancelarEnvio} />}
@@ -290,25 +292,50 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }
   );
 }
 
+function PontoPulsante({ delay }: { delay: number }) {
+  const t = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(t, { toValue: 1, duration: 350, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(t, { toValue: 0, duration: 350, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(450 - delay >= 0 ? 450 - delay : 0),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [delay, t]);
+
+  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, -4] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+
+  return <Animated.View style={[styles.typingDot, { opacity, transform: [{ translateY }] }]} />;
+}
+
 function Digitando({ podeCancelar, onCancelar }: { podeCancelar: boolean; onCancelar: () => void }) {
   return (
-    <View style={styles.rowOlli}>
-      <View style={styles.olliAvatar}>
-        <OlliMascot size={26} onDark float={false} blink={false} />
-      </View>
-      <View>
-        <View style={[styles.bubble, styles.bubbleOlli, styles.bubbleTyping]}>
-          <ActivityIndicator size="small" color={Colors.accentLight} />
-          <Text style={styles.typingText}>OLLI está digitando…</Text>
+    <AnimatedEntrance from="bottom">
+      <View style={styles.rowOlli}>
+        <View style={styles.olliAvatar}>
+          <OlliMascot size={26} onDark float={false} blink={false} />
         </View>
-        {podeCancelar && (
-          <TouchableOpacity style={styles.tentarDeNovoBtn} onPress={onCancelar} activeOpacity={0.75}>
-            <MaterialCommunityIcons name="close" size={14} color={Colors.onSurfaceVariant} />
-            <Text style={styles.cancelarText}>Cancelar</Text>
-          </TouchableOpacity>
-        )}
+        <View>
+          <View style={[styles.bubble, styles.bubbleOlli, styles.bubbleTyping]}>
+            <PontoPulsante delay={0} />
+            <PontoPulsante delay={150} />
+            <PontoPulsante delay={300} />
+          </View>
+          {podeCancelar && (
+            <TouchableOpacity style={styles.tentarDeNovoBtn} onPress={onCancelar} activeOpacity={0.75}>
+              <MaterialCommunityIcons name="close" size={14} color={Colors.onSurfaceVariant} />
+              <Text style={styles.cancelarText}>Cancelar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
-    </View>
+    </AnimatedEntrance>
   );
 }
 
@@ -325,8 +352,8 @@ const styles = StyleSheet.create({
   bubbleOlli: { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.outline, borderBottomLeftRadius: 5 },
   bubbleOlliText: { fontSize: 14.5, color: Colors.onSurface, lineHeight: 20 },
   bubbleErro: { borderColor: 'rgba(247,178,59,0.4)', backgroundColor: 'rgba(247,178,59,0.08)' },
-  bubbleTyping: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  typingText: { fontSize: 13, color: Colors.onSurfaceVariant, fontStyle: 'italic' },
+  bubbleTyping: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.accentLight },
 
   tentarDeNovoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
   tentarDeNovoText: { fontSize: 12.5, fontWeight: '700', color: Colors.accentLight },

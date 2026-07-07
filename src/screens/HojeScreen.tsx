@@ -15,6 +15,7 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getAgendamentosDoDia } from '../services/agenda';
 import { getOrcamentos } from '../database/database';
 import { onSyncAplicado } from '../services/cloudSync';
@@ -197,7 +198,19 @@ export default function HojeScreen() {
           </TouchableOpacity>
         </View>
 
-        {carregando ? null : itens.length === 0 ? (
+        {carregando ? (
+          <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={styles.agendaCard}>
+                <OlliSkeleton width={46} height={30} radius={8} />
+                <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                  <OlliSkeleton width="70%" height={14} />
+                  <OlliSkeleton width="45%" height={12} />
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : itens.length === 0 ? (
           <View style={styles.emptyDay}>
             <EmptyState
               icon="calendar-check-outline"

@@ -11,6 +11,7 @@ import { Colors, Spacing } from '../theme';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
+import { Celebracao } from '../components/Celebracao';
 import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa } from '../database/database';
 import { Orcamento, ItemOrcamento, FormaPagamento, Cliente, Empresa } from '../types';
 import { generateId } from '../utils/id';
@@ -39,6 +40,7 @@ const PDF_MODEL_LABELS: Record<string, string> = {
   classico: 'Classico',
   faixa_lateral: 'Faixa lateral',
   recibo_compacto: 'Recibo compacto',
+  premium_capa: 'Premium com capa',
 };
 
 /** Data de hoje + N dias, já formatada em DD/MM/AAAA (mesmo padrão do Step4Personalizacao). */
@@ -140,6 +142,10 @@ export default function NovoOrcamentoScreen() {
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  // Celebração ao gerar com sucesso (só na criação — editar não repete a festa).
+  // Navega para VisualizarOrcamento só depois do onDone, para o usuário ver o overlay.
+  const [celebrando, setCelebrando] = useState(false);
+  const pendingNavRef = useRef<string | null>(null);
   // IDs de itens com preço R$ 0,00 que o usuário já confirmou explicitamente
   // como cortesia/brinde (via Alert em Step2Itens). Persiste entre trocas de
   // step porque vive no componente pai, que não desmonta.
@@ -254,7 +260,15 @@ export default function NovoOrcamentoScreen() {
         atualizadoEm: nowISO(),
       };
       await saveOrcamento(calcTotais(toSave));
-      nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
+      // Celebração só na criação (editar um orçamento existente não repete a
+      // festa) — o overlay dispara e a navegação real acontece no onDone dele,
+      // pra dar tempo do usuário ver a animação antes de trocar de tela.
+      if (!isEdit) {
+        pendingNavRef.current = toSave.id;
+        setCelebrando(true);
+      } else {
+        nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
+      }
     } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.alert('Não foi possível salvar o orçamento agora. Tente novamente.');
@@ -307,6 +321,13 @@ export default function NovoOrcamentoScreen() {
     }
     setStep(s => s - 1);
     animateStep(-1);
+  }
+
+  function finalizarCelebracao() {
+    setCelebrando(false);
+    const id = pendingNavRef.current;
+    pendingNavRef.current = null;
+    if (id) nav.replace('VisualizarOrcamento', { orcamentoId: id });
   }
 
   if (!orc) {
@@ -423,6 +444,8 @@ export default function NovoOrcamentoScreen() {
           )}
         </View>
       </View>
+
+      <Celebracao visible={celebrando} tipo="gerado" onDone={finalizarCelebracao} />
     </KeyboardAvoidingView>
   );
 }

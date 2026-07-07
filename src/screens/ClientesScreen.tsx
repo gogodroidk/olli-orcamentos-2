@@ -13,6 +13,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
 import { useCepLookup } from '../services/cep';
@@ -38,6 +39,7 @@ export default function ClientesScreen() {
   const [acoes, setAcoes] = useState<Cliente | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
   const { cepLoading, onCepChange } = useCepLookup(r => {
     setEditing(p => p ? {
       ...p,
@@ -53,6 +55,7 @@ export default function ClientesScreen() {
     const all = await getClientes();
     setClientes(all);
     applyFilter(all, query);
+    setCarregando(false);
   }
 
   function applyFilter(data: Cliente[], q: string) {
@@ -204,6 +207,19 @@ export default function ClientesScreen() {
         </View>
       </GradientHeader>
 
+      {carregando ? (
+        <View style={{ padding: Spacing.base, gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={styles.card}>
+              <OlliSkeleton width={46} height={46} radius={23} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="55%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
@@ -236,6 +252,7 @@ export default function ClientesScreen() {
         )}
         ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
       />
+      )}
 
       <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />

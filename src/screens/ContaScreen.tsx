@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,15 +8,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
-import { OlliInput } from '../components/OlliInput';
-import { OlliLogo } from '../components/OlliLogo';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
 
-import { isSupabaseConfigured, signIn, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
+import { isSupabaseConfigured, signOut, getCurrentUser } from '../services/supabase';
 import {
   backupManualVersionado,
   getUltimoBackupVersionadoData,
@@ -26,8 +25,7 @@ import {
 } from '../services/backup';
 import { abortarSyncEmAndamento } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
-import { traduzirErroAuth } from '../utils/authErrors';
-import { PENDING_EMAIL_KEY, AUTO_BACKUP_TOGGLE_KEY } from '../services/storageKeys';
+import { AUTO_BACKUP_TOGGLE_KEY } from '../services/storageKeys';
 
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
@@ -36,9 +34,23 @@ const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
   manual: 'Manual',
 };
 
-/** Chave do AsyncStorage usada para lembrar o e-mail pendente de confirmação entre sessões do app. */
-
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/** Formata um telefone em dígitos (com DDI 55) para exibição amigável: +55 (11) 99999-9999. */
+function formatarTelefoneExibicao(digits: string): string {
+  const d = (digits ?? '').replace(/\D/g, '');
+  const semDdi = d.startsWith('55') && (d.length === 12 || d.length === 13) ? d.slice(2) : d;
+  if (semDdi.length === 11) return `(${semDdi.slice(0, 2)}) ${semDdi.slice(2, 7)}-${semDdi.slice(7)}`;
+  if (semDdi.length === 10) return `(${semDdi.slice(0, 2)}) ${semDdi.slice(2, 6)}-${semDdi.slice(6)}`;
+  return digits;
+}
+
+/** Dados do usuário logado que a tela exibe (do Supabase Auth / user_metadata). */
+interface PerfilUsuario {
+  email?: string;
+  nome?: string;
+  telefone?: string;
+}
 
 // Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
 const FERRAMENTAS: {
@@ -64,26 +76,18 @@ export default function ContaScreen() {
   const insets = useSafeAreaInsets();
   const configured = isSupabaseConfigured();
 
-  const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [confirmar, setConfirmar] = useState('');
-  const [user, setUser] = useState<{ email?: string } | null>(null);
+  const [user, setUser] = useState<PerfilUsuario | null>(null);
+  // Sessão perdida DENTRO das Tabs (só deveria acontecer com sessão corrompida/
+  // expirada). Dispara o guarda defensivo "Sessão expirada".
+  const [sessaoPerdida, setSessaoPerdida] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
-  const [showAuth, setShowAuth] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
-  // Garante que o modal de e-mail pendente só se auto-abre 1x por montagem da
-  // tela: sem isso, load() (chamado a cada foco via useFocusEffect) reabria o
-  // sheet toda vez que o usuário voltava pra aba Conta, tornando-a inutilizável.
-  const autoAbriu = useRef(false);
 
   const load = useCallback(async () => {
     const emp = await getEmpresa();
@@ -94,118 +98,26 @@ export default function ContaScreen() {
     } catch { /* best-effort: mantém o default (ativo) */ }
     if (configured) {
       const u = await getCurrentUser();
-      setUser(u ? { email: u.email } : null);
       if (u) {
+        const meta = (u.user_metadata ?? {}) as Record<string, any>;
+        setUser({
+          email: u.email,
+          nome: typeof meta.full_name === 'string' ? meta.full_name : undefined,
+          telefone: typeof meta.telefone === 'string' ? meta.telefone : undefined,
+        });
+        setSessaoPerdida(false);
         setLastBackup(await getUltimoBackupVersionadoData());
-        // Já logado: qualquer confirmação pendente de e-mail deixou de fazer sentido.
-        setPendingEmail(null);
-        try { await AsyncStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* best-effort */ }
       } else {
-        try {
-          const saved = await AsyncStorage.getItem(PENDING_EMAIL_KEY);
-          if (saved) {
-            setPendingEmail(saved);
-            // Reabriu o app com confirmação pendente: já cai direto na tela de
-            // login (com o aviso "Confirme seu e-mail" visível), não na de cadastro.
-            // Só na primeira vez — depois o usuário pode fechar o sheet livremente.
-            if (!autoAbriu.current) {
-              autoAbriu.current = true;
-              setMode('login');
-              setShowAuth(true);
-            }
-          }
-        } catch { /* best-effort */ }
+        // Dentro das Tabs SEMPRE há sessão. Se caiu aqui sem usuário, a sessão
+        // expirou/corrompeu — mostra o guarda defensivo em vez de um form de login.
+        setUser(null);
+        setSessaoPerdida(true);
+        setLastBackup(null);
       }
     }
   }, [configured]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  async function handleAuth() {
-    if (mode === 'signup' && !nome.trim()) {
-      Alert.alert('Faltou o nome', 'Informe seu nome completo.');
-      return;
-    }
-    if (!email.trim() || senha.length < 8) {
-      Alert.alert('Atenção', 'Informe um e-mail válido e senha de pelo menos 8 caracteres.');
-      return;
-    }
-    if (mode === 'signup' && senha !== confirmar) {
-      Alert.alert('Senhas diferentes', 'A senha e a confirmação não são iguais.');
-      return;
-    }
-    const emailLimpo = email.trim();
-    setBusy(true);
-    try {
-      if (mode === 'signup') {
-        const data = await signUp(emailLimpo, senha, nome.trim());
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        if (data.session) {
-          // Confirmação de e-mail desligada: já entrou de verdade.
-          Alert.alert('Conta criada!', 'Tudo certo. Bem-vindo ao OLLI!');
-          setSenha('');
-          setConfirmar('');
-          setShowAuth(false);
-          await load();
-        } else {
-          // Confirmação de e-mail pendente: NÃO há sessão. Seja honesto.
-          setSenha('');
-          setConfirmar('');
-          setPendingEmail(emailLimpo);
-          try { await AsyncStorage.setItem(PENDING_EMAIL_KEY, emailLimpo); } catch { /* best-effort */ }
-          setMode('login');
-          Alert.alert(
-            'Confirme seu e-mail',
-            `Conta criada! Enviamos um link de confirmação para ${emailLimpo}. Confirme no seu e-mail e depois faça login aqui.`,
-          );
-        }
-      } else {
-        await signIn(emailLimpo, senha);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        setSenha('');
-        setPendingEmail(null);
-        try { await AsyncStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* best-effort */ }
-        setShowAuth(false);
-        await load();
-      }
-    } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
-    }
-    setBusy(false);
-  }
-
-  /** Recuperar senha: envia o e-mail de redefinição do Supabase (mesma lógica de EntrarScreen). */
-  async function handleRecuperarSenha() {
-    Haptics.selectionAsync().catch(() => {});
-    const e = email.trim();
-    if (!e) { Alert.alert('Recuperar senha', 'Digite seu e-mail no campo acima primeiro.'); return; }
-    if (!supabase) { Alert.alert('Indisponível', 'O backup na nuvem não está configurado.'); return; }
-    setBusy(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(e);
-      if (error) throw error;
-      Alert.alert('Verifique seu e-mail', `Se existir uma conta para ${e}, enviamos um link para redefinir a senha.`);
-    } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
-    }
-    setBusy(false);
-  }
-
-  async function handleResend() {
-    if (!supabase || !pendingEmail) return;
-    setBusy(true);
-    try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: pendingEmail });
-      if (error) throw error;
-      Alert.alert('E-mail reenviado', `Mandamos um novo link de confirmação para ${pendingEmail}.`);
-    } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
-    }
-    setBusy(false);
-  }
 
   async function handleBackup() {
     setBusy(true);
@@ -297,12 +209,12 @@ export default function ContaScreen() {
           onPress: async () => {
             setBusy(true);
             try {
+              // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
+              // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
+              // competir com ele (corrida de navegação).
               await signOut();
-              setUser(null);
-              setLastBackup(null);
             } catch (e: any) {
-              const { titulo, texto } = traduzirErroAuth(e);
-              Alert.alert(titulo, texto);
+              Alert.alert('Erro', e?.message ?? 'Não foi possível sair agora.');
             }
             setBusy(false);
           },
@@ -326,12 +238,13 @@ export default function ContaScreen() {
                       // de volta no SQLite logo depois do wipe, deixando sobras da
                       // conta anterior num aparelho que deveria estar limpo.
                       abortarSyncEmAndamento();
-                      await signOut();
+                      // Wipe ANTES do signOut: o SIGNED_OUT reseta para a Entrar,
+                      // que checa dados locais no mount — com a ordem invertida o
+                      // banner de migracao apareceria para quem acabou de apagar.
                       await clearAllLocalData();
-                      setUser(null);
-                      setLastBackup(null);
+                      await signOut();
                       setEmpresa(null);
-                      Alert.alert('Pronto', 'Você saiu da conta e os dados deste aparelho foram apagados.');
+                      // O reset para 'Entrar' vem do listener global (SIGNED_OUT).
                     } catch (e: any) {
                       Alert.alert('Erro', e?.message ?? 'Não foi possível apagar os dados agora.');
                     }
@@ -352,8 +265,32 @@ export default function ContaScreen() {
     else nav.navigate(f.route as never);
   }
 
-  const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
+  const primeiroNome = user?.nome?.split(' ')[0] || empresa?.nomePrestador?.split(' ')[0] || 'prestador';
+  const nomeExibido = user?.nome || empresa?.nomePrestador || 'Seu nome';
   const segmentoLabel = SEGMENTOS.find(s => s.id === empresa?.segmento)?.label;
+
+  // GUARDA DEFENSIVO: sessão expirada dentro das Tabs → botão para voltar à porta.
+  if (sessaoPerdida) {
+    return (
+      <View style={[styles.container, styles.guardWrap, { paddingTop: insets.top + 40 }]}>
+        <OlliMascot size={64} onDark />
+        <Text style={styles.guardTitle}>Sessão expirada</Text>
+        <Text style={styles.guardText}>
+          Sua sessão terminou. Entre de novo para continuar usando o backup, a nuvem e a OLLI.
+        </Text>
+        <OlliButton
+          label="Entrar de novo"
+          variant="gradient" size="lg" fullWidth
+          onPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            if (navigationRef.isReady()) navigationRef.reset({ index: 0, routes: [{ name: 'Entrar' }] });
+          }}
+          icon={<MaterialCommunityIcons name="login" size={20} color="#fff" />}
+          style={{ marginTop: Spacing.lg, alignSelf: 'stretch' }}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -367,22 +304,30 @@ export default function ContaScreen() {
           <OlliMascot size={34} onDark />
         </View>
 
-        {/* CARD DE PERFIL (dados reais de Empresa) */}
+        {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
         <AnimatedEntrance index={0}>
           <TouchableOpacity style={styles.profileCard} onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.85}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{primeiroNome.charAt(0).toUpperCase()}</Text>
             </View>
             <View style={{ flex: 1, marginLeft: 14 }}>
-              <Text style={styles.profileName} numberOfLines={1}>{empresa?.nomePrestador || 'Seu nome'}</Text>
-              {empresa?.nome ? <Text style={styles.profileCompany} numberOfLines={1}>{empresa.nome}</Text> : null}
+              <Text style={styles.profileName} numberOfLines={1}>{nomeExibido}</Text>
+              {user?.email ? <Text style={styles.profileCompany} numberOfLines={1}>{user.email}</Text> : null}
+              {user?.telefone ? (
+                <Text style={styles.profilePhone} numberOfLines={1}>
+                  {formatarTelefoneExibicao(user.telefone)}
+                </Text>
+              ) : null}
               {segmentoLabel ? (
                 <View style={styles.segChip}>
                   <Text style={styles.segChipText}>{segmentoLabel}</Text>
                 </View>
               ) : null}
             </View>
-            <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.accent} />
+            <View style={styles.editBtn}>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.accent} />
+              <Text style={styles.editBtnText}>editar</Text>
+            </View>
           </TouchableOpacity>
         </AnimatedEntrance>
 
@@ -431,7 +376,7 @@ export default function ContaScreen() {
           ))}
         </View>
 
-        {/* CONTA E BACKUP (preserva login + backup Supabase) */}
+        {/* CONTA E BACKUP */}
         <Text style={styles.sectionTitle}>Conta e backup</Text>
 
         {!configured && (
@@ -450,78 +395,7 @@ export default function ContaScreen() {
           </View>
         )}
 
-        {/* CONFIGURADO, SEM LOGIN */}
-        {configured && !user && (
-          <View style={styles.card}>
-            {!showAuth ? (
-              <>
-                <View style={styles.loginHero}>
-                  <OlliLogo size={48} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.cardTitle}>Ative o backup na nuvem</Text>
-                    <Text style={styles.textSm}>Entre para manter seus orçamentos seguros e em qualquer aparelho.</Text>
-                  </View>
-                </View>
-                <OlliButton
-                  label="Entrar / Criar conta"
-                  variant="gradient" size="lg" fullWidth
-                  onPress={() => setShowAuth(true)}
-                  icon={<MaterialCommunityIcons name="login" size={20} color="#fff" />}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={styles.cardTitle}>{mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}</Text>
-                <View style={{ height: 12 }} />
-
-                {pendingEmail && mode === 'login' && (
-                  <View style={styles.confirmBox}>
-                    <MaterialCommunityIcons name="email-check-outline" size={20} color={Colors.accent} />
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.confirmTitle}>Confirme seu e-mail</Text>
-                      <Text style={styles.confirmText}>
-                        Enviamos um link para {pendingEmail}. Confirme por lá e depois entre aqui.
-                      </Text>
-                      <TouchableOpacity onPress={handleResend} disabled={busy} style={{ paddingVertical: 6 }}>
-                        <Text style={styles.confirmResend}>Reenviar e-mail</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
-                {mode === 'signup' && (
-                  <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
-                )}
-                <OlliInput label="E-mail" value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
-                <OlliInput label="Senha" value={senha} onChangeText={setSenha} placeholder="mínimo 8 caracteres" secureTextEntry leftIcon="lock" />
-                {mode === 'signup' && (
-                  <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry leftIcon="lock-check" />
-                )}
-
-                {mode === 'login' && (
-                  <TouchableOpacity onPress={handleRecuperarSenha} disabled={busy} style={{ alignSelf: 'flex-end', paddingVertical: 4, marginBottom: 8 }}>
-                    <Text style={styles.confirmResend}>Esqueci a senha</Text>
-                  </TouchableOpacity>
-                )}
-
-                <OlliButton
-                  label={mode === 'login' ? 'Entrar' : 'Criar conta'}
-                  variant="gradient" size="lg" fullWidth loading={busy} onPress={handleAuth}
-                  icon={<MaterialCommunityIcons name={mode === 'login' ? 'login' : 'account-plus'} size={20} color="#fff" />}
-                />
-
-                <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'signup' : 'login')} style={{ paddingVertical: 10 }}>
-                  <Text style={styles.switchMode}>
-                    {mode === 'login' ? 'Não tem conta? ' : 'Já tem conta? '}
-                    <Text style={{ color: Colors.primary, fontWeight: '700' }}>{mode === 'login' ? 'Criar agora' : 'Entrar'}</Text>
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        )}
-
-        {/* LOGADO */}
+        {/* LOGADO (dentro das Tabs sempre há sessão) */}
         {configured && user && (
           <>
             <View style={styles.card}>
@@ -561,11 +435,9 @@ export default function ContaScreen() {
               <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={Colors.primary} />} />
             </View>
 
-            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
+            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
           </>
         )}
-
-        {busy && !user && <ActivityIndicator color={Colors.primary} style={{ marginTop: 16 }} />}
 
         <Text style={styles.version}>OLLI · Orçamentos que fecham negócio</Text>
       </ScrollView>
@@ -622,6 +494,10 @@ export default function ContaScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
 
+  guardWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  guardTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: Spacing.lg },
+  guardText: { fontSize: 14, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
+
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
   screenTitle: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: 0 },
 
@@ -630,8 +506,11 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 24, fontWeight: '800', color: Colors.accentLight },
   profileName: { fontSize: 18, fontWeight: '800', color: '#fff' },
   profileCompany: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  profilePhone: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },
   segChip: { alignSelf: 'flex-start', backgroundColor: 'rgba(52,198,217,0.14)', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3, marginTop: 6 },
   segChipText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  editBtn: { alignItems: 'center', gap: 2 },
+  editBtnText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
 
   proCard: { backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...Shadow.sm },
   proHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -656,17 +535,9 @@ const styles = StyleSheet.create({
   iconHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.base },
   cardTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface },
   text: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 21, marginBottom: Spacing.base },
-  textSm: { fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 3 },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   stepNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryContainer, color: Colors.primary, fontWeight: '800', textAlign: 'center', lineHeight: 24, fontSize: 13 },
   stepText: { flex: 1, fontSize: 13, color: Colors.onSurface },
-  switchMode: { textAlign: 'center', color: Colors.onSurfaceVariant, fontSize: 14 },
-
-  loginHero: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
-  confirmBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: 14 },
-  confirmTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
-  confirmText: { fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
-  confirmResend: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
 
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
   avatarSm: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Alert, Share, ActivityIndicator,
@@ -11,6 +11,8 @@ import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
+import { OlliPressable } from '../components/OlliPressable';
+import { Celebracao } from '../components/Celebracao';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -46,6 +48,8 @@ export default function VisualizarOrcamentoScreen() {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [naoEncontrado, setNaoEncontrado] = useState(false);
+  const [celebrando, setCelebrando] = useState(false);
+  const statusAnteriorRef = useRef<StatusOrcamento | null>(null);
 
   useFocusEffect(useCallback(() => {
     async function load() {
@@ -57,6 +61,7 @@ export default function VisualizarOrcamentoScreen() {
         setCarregando(false);
         return;
       }
+      statusAnteriorRef.current = o.status;
       setOrc(o);
       setEmpresa(e);
       setDepoimentos(deps);
@@ -132,6 +137,10 @@ export default function VisualizarOrcamentoScreen() {
     if (!orc) return;
     const updated = { ...orc, status: s, atualizadoEm: nowISO() };
     await saveOrcamento(updated);
+    if (s === 'aprovado' && statusAnteriorRef.current !== 'aprovado') {
+      setCelebrando(true);
+    }
+    statusAnteriorRef.current = s;
     setOrc(updated);
     setShowStatusMenu(false);
   }
@@ -252,10 +261,10 @@ export default function VisualizarOrcamentoScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.closePrimary} onPress={handleWhatsApp} activeOpacity={0.86}>
+          <OlliPressable style={styles.closePrimary} onPress={handleWhatsApp} haptic="light">
             <MaterialCommunityIcons name="whatsapp" size={20} color="#0A1626" />
             <Text style={styles.closePrimaryText}>Enviar no WhatsApp</Text>
-          </TouchableOpacity>
+          </OlliPressable>
 
           <View style={styles.closeActions}>
             <CloseAction icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
@@ -339,25 +348,27 @@ export default function VisualizarOrcamentoScreen() {
           )}
         </OlliCard>
       </ScrollView>
+
+      <Celebracao visible={celebrando} tipo="aprovado" onDone={() => setCelebrando(false)} />
     </View>
   );
 }
 
 function ActionBtn({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
   return (
-    <TouchableOpacity style={styles.actionBarBtn} onPress={onPress} disabled={loading} activeOpacity={0.8}>
+    <OlliPressable style={styles.actionBarBtn} onPress={onPress} disabled={loading}>
       {loading ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name={icon} size={22} color="#fff" />}
       <Text style={styles.actionBarLabel}>{label}</Text>
-    </TouchableOpacity>
+    </OlliPressable>
   );
 }
 
 function CloseAction({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
   return (
-    <TouchableOpacity style={styles.closeActionBtn} onPress={onPress} disabled={loading} activeOpacity={0.84}>
+    <OlliPressable style={styles.closeActionBtn} onPress={onPress} disabled={loading}>
       {loading ? <ActivityIndicator size="small" color={Colors.accentLight} /> : <MaterialCommunityIcons name={icon} size={19} color={Colors.accentLight} />}
       <Text style={styles.closeActionText}>{label}</Text>
-    </TouchableOpacity>
+    </OlliPressable>
   );
 }
 

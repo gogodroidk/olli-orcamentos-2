@@ -60,7 +60,7 @@ const SOBRECARGA =
 const ERRO_SERVIDOR =
   'A OLLI teve um problema para responder agora. Tente de novo em instantes.';
 const PRECISA_LOGIN =
-  'Entre na sua conta para usar a OLLI.';
+  'Sua sessão expirou. Toque em Conta e entre de novo para usar a OLLI.';
 const MUITAS_REQUISICOES =
   'Você usou a OLLI demais agora, aguarde um minutinho.';
 const CANCELADO_VOZ =
