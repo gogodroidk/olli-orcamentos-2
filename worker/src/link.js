@@ -237,6 +237,7 @@ function shell(inner, accentRaw = ACCENT) {
   .cond-l{font-size:9.5px;font-weight:800;letter-spacing:.8px;color:#9AA3B2;text-transform:uppercase}
   .cond-v{font-size:12.5px;color:#3C4756;margin-top:4px;line-height:1.4}
   .actions{margin-top:20px;display:flex;flex-direction:column;gap:10px}
+  .approve-hint{font-size:12px;color:#5A6575;text-align:center;line-height:1.4;padding:0 6px}
   .btn{border:none;border-radius:14px;padding:15px;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
   .btn-aprovar{background:#15B66E;color:#fff;box-shadow:0 8px 20px rgba(21,182,110,.32)}
   .btn-row{display:flex;gap:10px}
@@ -304,7 +305,11 @@ function pageOrcamento(row) {
   if (d.prazo) conds.push(`<div class="cond"><div class="cond-l">Prazo</div><div class="cond-v">${esc(d.prazo)}</div></div>`);
   const condsHtml = conds.length ? `<div class="conds">${conds.join('')}</div>` : '';
 
-  const zapHref = whats ? `https://wa.me/${whats.startsWith('55') ? whats : '55' + whats}?text=${encodeURIComponent(`Olá! Sobre o orçamento ${numero}`)}` : '';
+  // Mensagem de dúvida contextualizada: já chega no WhatsApp do prestador com
+  // número do orçamento, valor e (quando houver) o nome do cliente, para ele
+  // não precisar perguntar "de qual orçamento é" antes de poder ajudar.
+  const duvidaTexto = `Olá! ${cliente ? `Sou ${cliente}, ` : ''}quero falar sobre o orçamento nº ${numero} (${formatBRL(total)}).`;
+  const zapHref = whats ? `https://wa.me/${whats.startsWith('55') ? whats : '55' + whats}?text=${encodeURIComponent(duvidaTexto)}` : '';
 
   let actionsHtml;
   if (respondido) {
@@ -317,6 +322,7 @@ function pageOrcamento(row) {
       ${zapHref ? `<div class="actions"><a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener">💬 Falar no WhatsApp</a></div>` : ''}`;
   } else {
     actionsHtml = `<div class="actions" id="actions">
+        ${allowApprove ? `<div class="approve-hint">Aprovando, ${esc(nomePrestador)} já agenda seu serviço — sem burocracia.</div>` : ''}
         ${allowApprove ? `<button class="btn btn-aprovar" onclick="responder('aprovar')">✓ Aprovar orçamento</button>` : ''}
         <div class="btn-row">
           ${allowReject ? `<button class="btn btn-recusar" onclick="responder('recusar')">Recusar</button>` : ''}
@@ -328,9 +334,11 @@ function pageOrcamento(row) {
     }
   }
 
+  // Só mostra o selo de validade quando o prestador de fato definiu um prazo —
+  // "Válido por 15 dias" fixo criaria uma condição comercial que ele nunca configurou.
   const validadePill = validade
     ? `<span class="pill">Válido até ${esc(validade)}</span>`
-    : `<span class="pill">Válido por 15 dias</span>`;
+    : '';
 
   const inner = `<div class="card">
     <div class="hd">

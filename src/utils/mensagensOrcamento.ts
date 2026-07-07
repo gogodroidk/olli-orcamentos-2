@@ -8,7 +8,8 @@ function primeiroNome(nome?: string): string {
 function resumoItens(orc: Orcamento): string {
   const nomes = orc.itens.slice(0, 3).map(i => i.nome.trim()).filter(Boolean);
   if (nomes.length === 0) return '';
-  const extra = orc.itens.length > nomes.length ? ` + ${orc.itens.length - nomes.length} item(ns)` : '';
+  const restantes = orc.itens.length - nomes.length;
+  const extra = restantes > 0 ? ` + mais ${restantes} ${restantes === 1 ? 'item' : 'itens'}` : '';
   return `${nomes.join(', ')}${extra}`;
 }
 

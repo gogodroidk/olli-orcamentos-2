@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { abrirWhatsApp } from '../utils/exportarDocumento';
+import { WHATSAPP_SUPORTE } from '../config';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type PlanoId = 'gratis' | 'pro' | 'empresa';
@@ -69,14 +71,12 @@ const PLANOS: Plano[] = [
     tagline: 'Para o autônomo que quer vender mais e ganhar tempo.',
     icon: 'crown-outline',
     destaque: true,
-    cta: 'Quero o Pro',
+    cta: 'Falar com a gente',
     beneficios: [
       'Tudo do plano Grátis',
-      'OLLI por voz: monte orçamentos falando',
-      'Chat com a OLLI (técnico e preços)',
-      'Diagnóstico guiado por IA, sem limite',
-      'Backup automático na nuvem',
       'Relatórios de faturamento e conversão',
+      'Metas de vendas e acompanhamento por período',
+      'Suporte prioritário por WhatsApp',
     ],
   },
   {
@@ -87,7 +87,7 @@ const PLANOS: Plano[] = [
     precoMensal: 99,
     tagline: 'Para equipes que atendem em campo todos os dias.',
     icon: 'office-building-outline',
-    cta: 'Falar com a OLLI',
+    cta: 'Falar com a gente',
     beneficios: [
       'Tudo do plano Pro',
       'Equipe ao vivo no mapa',
@@ -105,7 +105,18 @@ export default function PlanosScreen() {
   function escolher(p: Plano) {
     if (p.atual) return;
     Haptics.selectionAsync().catch(() => {});
-    nav.navigate('OlliChat');
+    if (!WHATSAPP_SUPORTE) {
+      // Honesto: sem número configurado, não finge que vai abrir uma conversa.
+      Alert.alert(
+        'Ainda não disponível',
+        'O contato para contratar esse plano ainda não foi configurado. Tente novamente em breve.',
+      );
+      return;
+    }
+    const mensagem = `Olá! Quero saber mais sobre o plano ${p.nome} do OLLI Orçamentos.`;
+    abrirWhatsApp(WHATSAPP_SUPORTE, mensagem).catch(() => {
+      Alert.alert('Ops', 'Não consegui abrir o WhatsApp agora. Tente novamente.');
+    });
   }
 
   return (
@@ -118,7 +129,7 @@ export default function PlanosScreen() {
           <View style={styles.intro}>
             <OlliMascot size={44} onDark />
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
-            <Text style={styles.introSub}>Sem fidelidade e sem surpresa. Você só passa para um plano pago quando fizer sentido pro seu negócio.</Text>
+            <Text style={styles.introSub}>O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Os planos pagos ainda estão sendo abertos aos poucos: toque no botão do plano para falar direto com a gente.</Text>
           </View>
         </AnimatedEntrance>
 
@@ -150,7 +161,7 @@ export default function PlanosScreen() {
           </AnimatedEntrance>
         ))}
 
-        <Text style={styles.rodape}>Os planos pagos chegam em breve. Enquanto isso, aproveite tudo de graça. 💙</Text>
+        <Text style={styles.rodape}>Planos pagos em fase de liberação por convite. Toque em "Falar com a gente" para entrar na fila e saber quando abrir para você. Enquanto isso, o plano Grátis segue completo. 💙</Text>
       </ScrollView>
     </View>
   );
@@ -223,8 +234,8 @@ function PlanoCard({ plano, periodoAnual, onPress }: { plano: Plano; periodoAnua
 
       {!plano.atual && (
         <View style={styles.soonRow}>
-          <MaterialCommunityIcons name="clock-outline" size={13} color={Colors.onSurfaceMuted} />
-          <Text style={styles.soonText}>em breve · a gente te avisa</Text>
+          <MaterialCommunityIcons name="whatsapp" size={13} color={Colors.onSurfaceMuted} />
+          <Text style={styles.soonText}>Lista de espera: abre o WhatsApp para você entrar na fila, sem cobrança agora</Text>
         </View>
       )}
     </View>
@@ -295,8 +306,8 @@ const styles = StyleSheet.create({
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: Colors.successLight, borderWidth: 1, borderColor: 'rgba(43,215,135,0.3)' },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: Colors.success },
 
-  soonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
-  soonText: { fontSize: 11.5, color: Colors.onSurfaceMuted, fontWeight: '600' },
+  soonRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
+  soonText: { flex: 1, fontSize: 11.5, color: Colors.onSurfaceMuted, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
 
   rodape: { fontSize: 12.5, color: Colors.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
 });

@@ -1,6 +1,8 @@
 import { MD3DarkTheme } from 'react-native-paper';
 import { Fonts } from './fonts';
 
+export { Fonts };
+
 /**
  * Tema ESCURO "cockpit" — do design handoff OLLI.
  * O app é escuro; documentos (PDF) e o link do cliente são claros (à parte).
@@ -54,6 +56,7 @@ export const Colors = {
   // Acessórias da marca
   whatsapp: '#25D366',
   plan: '#7C3AED',
+  voice: '#7C3AED',            // Roxo único para recursos de voz/IA (OLLI Voz, Diagnóstico IA, Chat)
   avatarLilac: '#A4B6F5',
   inkLight: '#16202E',
 

@@ -83,7 +83,9 @@ export default function App() {
           setInitialRoute('Onboarding');
         }
       } catch (e) {
-        console.error(e);
+        // Erro técnico só no console de desenvolvimento; em produção (APK) não
+        // vaza stack trace ao usuário. O fallback abaixo já libera o app.
+        if (__DEV__) console.error(e);
       } finally {
         // Mesmo se a checagem falhar, libera o app (cai no default 'Tabs').
         setDbReady(true);

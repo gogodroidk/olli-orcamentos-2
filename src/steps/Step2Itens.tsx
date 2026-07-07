@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
-  TouchableOpacity, FlatList, Modal, Image,
+  TouchableOpacity, FlatList, Modal, Image, Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -18,6 +18,10 @@ interface Props {
   orc: Orcamento;
   onChangeItens: (itens: ItemOrcamento[]) => void;
   onChangeOrc: (partial: Partial<Orcamento>) => void;
+  /** IDs de itens com preço R$ 0,00 já confirmados pelo usuário como cortesia/brinde. */
+  itensZeroConfirmados: Set<string>;
+  /** Marca um item como confirmado (preço zero é intencional). */
+  onConfirmarItemZero: (id: string) => void;
 }
 
 type Tab = 'servico' | 'produto';
@@ -28,13 +32,16 @@ function parseQty(v: string): number {
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
-export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
+export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroConfirmados, onConfirmarItemZero }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState<(ServicoItem | ProdutoItem)[]>([]);
   const [showCatalog, setShowCatalog] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemOrcamento | null>(null);
   const [isNewItem, setIsNewItem] = useState(false);
+  // Texto local do campo de desconto percentual, para preservar a digitação
+  // decimal do usuário (ex: "12,5") sem o React reformatar com ponto no meio.
+  const [descontoPercentText, setDescontoPercentText] = useState<string | null>(null);
 
   const handleCatalogSearch = useCallback(async (q: string) => {
     setCatalogQuery(q);
@@ -45,6 +52,33 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
   function addFromCatalog(item: ServicoItem | ProdutoItem) {
     Haptics.selectionAsync().catch(() => {});
     const exists = orc.itens.find(i => i.catalogoId === item.id && i.tipo === activeTab);
+
+    // Item de catálogo cadastrado com preço 0: mesma trava de cortesia/brinde
+    // do item manual, para não entrar de graça no orçamento sem o técnico notar.
+    if (!exists && item.preco <= 0) {
+      Alert.alert(
+        'Item sem valor — é cortesia?',
+        `"${item.nome}" está cadastrado no catálogo com preço R$ 0,00. Confirme só se for mesmo um item de cortesia/brinde — caso contrário, edite o preço no catálogo antes de adicionar.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'É cortesia, adicionar',
+            onPress: () => {
+              const newId = generateId();
+              onConfirmarItemZero(newId);
+              onChangeItens([...orc.itens, {
+                id: newId, tipo: activeTab, catalogoId: item.id,
+                nome: item.nome, descricao: item.descricao, preco: item.preco,
+                quantidade: 1, unidade: item.unidade, fotoUri: item.fotoUri, subtotal: item.preco,
+              }]);
+              closeCatalog();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
     if (exists) {
       onChangeItens(orc.itens.map(i =>
         i.catalogoId === item.id && i.tipo === activeTab
@@ -85,12 +119,33 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
     onChangeItens(orc.itens.map(i => i.id === id ? { ...i, quantidade: qty, subtotal: i.preco * qty } : i));
   }
 
+  function commitEditingItem(item: ItemOrcamento) {
+    const withSub = { ...item, subtotal: item.preco * item.quantidade };
+    const exists = orc.itens.find(i => i.id === item.id);
+    onChangeItens(exists ? orc.itens.map(i => i.id === item.id ? withSub : i) : [...orc.itens, withSub]);
+    setEditingItem(null);
+  }
+
   function saveEditingItem() {
     if (!editingItem || !editingItem.nome.trim()) return;
-    const withSub = { ...editingItem, subtotal: editingItem.preco * editingItem.quantidade };
-    const exists = orc.itens.find(i => i.id === editingItem.id);
-    onChangeItens(exists ? orc.itens.map(i => i.id === editingItem.id ? withSub : i) : [...orc.itens, withSub]);
-    setEditingItem(null);
+    if (editingItem.preco <= 0 && !itensZeroConfirmados.has(editingItem.id)) {
+      Alert.alert(
+        'Item sem valor — é cortesia?',
+        `"${editingItem.nome.trim()}" está com preço R$ 0,00. Confirme só se for mesmo um item de cortesia/brinde — caso contrário, volte e informe o preço.`,
+        [
+          { text: 'Voltar e ajustar preço', style: 'cancel' },
+          {
+            text: 'É cortesia, confirmar',
+            onPress: () => {
+              onConfirmarItemZero(editingItem.id);
+              commitEditingItem(editingItem);
+            },
+          },
+        ],
+      );
+      return;
+    }
+    commitEditingItem(editingItem);
   }
 
   const tabItens = orc.itens.filter(i => i.tipo === activeTab);
@@ -115,18 +170,26 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
           </View>
         ) : tabItens.map((item, idx) => (
           <AnimatedEntrance key={item.id} index={idx}>
-            <View style={styles.itemCard}>
+            <View style={[styles.itemCard, item.preco <= 0 && styles.itemCardZero]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemName} numberOfLines={1}>{item.nome}</Text>
                 {item.descricao ? <Text style={styles.itemDesc} numberOfLines={1}>{item.descricao}</Text> : null}
-                <Text style={styles.itemPrice}>{formatCurrency(item.preco)} / {item.unidade}</Text>
+                <View style={styles.itemPriceRow}>
+                  <Text style={[styles.itemPrice, item.preco <= 0 && styles.itemPriceZero]}>{formatCurrency(item.preco)} / {item.unidade}</Text>
+                  {item.preco <= 0 && (
+                    <View style={styles.zeroBadge}>
+                      <MaterialCommunityIcons name="alert-circle-outline" size={12} color={Colors.warning} />
+                      <Text style={styles.zeroBadgeText}>cortesia</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.itemBottom}>
                   <View style={styles.qtyRow}>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade - 1)}>
+                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade - 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <MaterialCommunityIcons name="minus" size={16} color={Colors.primary} />
                     </TouchableOpacity>
                     <Text style={styles.qtyValue}>{formatQty(item.quantidade)}</Text>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade + 1)}>
+                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade + 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <MaterialCommunityIcons name="plus" size={16} color={Colors.primary} />
                     </TouchableOpacity>
                   </View>
@@ -174,13 +237,13 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
             <View style={styles.descontoToggle}>
               <TouchableOpacity
                 style={[styles.descontoType, orc.descontoTipo === 'valor' && styles.descontoTypeActive]}
-                onPress={() => onChangeOrc({ descontoTipo: 'valor', desconto: 0 })}
+                onPress={() => { setDescontoPercentText(null); onChangeOrc({ descontoTipo: 'valor', desconto: 0 }); }}
               >
                 <Text style={[styles.descontoTypeLabel, orc.descontoTipo === 'valor' && styles.descontoTypeLabelActive]}>R$</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.descontoType, orc.descontoTipo === 'percentual' && styles.descontoTypeActive]}
-                onPress={() => onChangeOrc({ descontoTipo: 'percentual', desconto: 0 })}
+                onPress={() => { setDescontoPercentText(null); onChangeOrc({ descontoTipo: 'percentual', desconto: 0 }); }}
               >
                 <Text style={[styles.descontoTypeLabel, orc.descontoTipo === 'percentual' && styles.descontoTypeLabelActive]}>%</Text>
               </TouchableOpacity>
@@ -195,8 +258,15 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
               <View style={styles.percentField}>
                 <TextInput
                   style={styles.percentInput}
-                  value={orc.desconto ? String(orc.desconto) : ''}
-                  onChangeText={v => onChangeOrc({ desconto: Math.max(0, Math.min(100, parseNumber(v))) })}
+                  value={descontoPercentText ?? (orc.desconto ? String(orc.desconto).replace('.', ',') : '')}
+                  onChangeText={v => {
+                    // Mantém o texto exatamente como o usuário digitou (com vírgula
+                    // decimal) enquanto ele digita, evitando o React reformatar
+                    // "12,5" para "12.5" a cada tecla.
+                    setDescontoPercentText(v);
+                    onChangeOrc({ desconto: Math.max(0, Math.min(100, parseNumber(v))) });
+                  }}
+                  onBlur={() => setDescontoPercentText(null)}
                   keyboardType="numeric"
                   placeholder="0"
                   placeholderTextColor={Colors.onSurfaceMuted}
@@ -288,8 +358,14 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc }: Props) {
               <OlliInput label="Nome do item" required value={editingItem.nome} onChangeText={v => setEditingItem(p => p ? { ...p, nome: v } : p)} placeholder="Ex: Limpeza de ar condicionado" />
               <OlliInput label="Descrição" value={editingItem.descricao ?? ''} onChangeText={v => setEditingItem(p => p ? { ...p, descricao: v } : p)} placeholder="Detalhe opcional" multiline />
               <View style={styles.rowFields}>
-                <OlliMoneyInput label="Preço unitário" value={editingItem.preco} onChangeValue={v => setEditingItem(p => p ? { ...p, preco: v } : p)} containerStyle={{ flex: 1, marginRight: 10 }} />
-                <OlliInput label="Quantidade" value={editingItem.quantidade ? String(editingItem.quantidade) : ''} onChangeText={v => setEditingItem(p => p ? { ...p, quantidade: parseQty(v) } : p)} keyboardType="numeric" placeholder="1" containerStyle={{ flex: 1 }} />
+                <OlliMoneyInput
+                  label="Preço unitário"
+                  value={editingItem.preco}
+                  onChangeValue={v => setEditingItem(p => p ? { ...p, preco: v } : p)}
+                  error={editingItem.preco <= 0 ? 'Preço R$ 0,00 — só confirme se for cortesia/brinde' : undefined}
+                  containerStyle={{ flex: 1, marginRight: 10 }}
+                />
+                <OlliInput label="Quantidade" value={editingItem.quantidade ? String(editingItem.quantidade) : ''} onChangeText={v => setEditingItem(p => p ? { ...p, quantidade: parseQty(v) } : p)} keyboardType="decimal-pad" placeholder="1" containerStyle={{ flex: 1 }} />
               </View>
               <Text style={styles.unidadeLabel}>Unidade</Text>
               <View style={styles.unidadesRow}>
@@ -342,9 +418,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
     padding: Spacing.base, marginBottom: 10, ...Shadow.sm,
   },
+  itemCardZero: { borderWidth: 1.5, borderColor: Colors.warning, backgroundColor: Colors.warningLight },
   itemName: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
   itemDesc: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  itemPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   itemPrice: { fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' },
+  itemPriceZero: { color: Colors.warning },
+  zeroBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: BorderRadius.full, backgroundColor: Colors.warningLight, borderWidth: 1, borderColor: Colors.warning },
+  zeroBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.warning },
   itemBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },

@@ -9,13 +9,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Gradients } from '../theme';
+import { Colors, Spacing, Gradients } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { isSupabaseConfigured, signIn, signUp, supabase } from '../services/supabase';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { traduzirErroAuth } from '../utils/authErrors';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Entrar'>;
 type Modo = 'login' | 'signup';
@@ -78,27 +79,10 @@ export default function EntrarScreen() {
         entrarNoApp();
       }
     } catch (e: any) {
-      const msg: string = e?.message ?? '';
-      let titulo = 'Ops';
-      let texto = msg || 'Não foi possível autenticar.';
-      if (/already registered|already exists|User already/i.test(msg)) {
-        titulo = 'E-mail já cadastrado';
-        texto = 'Esse e-mail já tem conta. Tente entrar.';
-      } else if (/invalid login credentials|invalid credentials/i.test(msg)) {
-        titulo = 'E-mail ou senha incorretos';
-        texto = 'Confira os dados. Se acabou de criar a conta, confirme o e-mail antes de entrar.';
-      } else if (/invalid.*email|email.*invalid/i.test(msg)) {
-        titulo = 'E-mail inválido';
-        texto = 'Confira o e-mail digitado.';
-      }
+      const { titulo, texto } = traduzirErroAuth(e);
       Alert.alert(titulo, texto);
     }
     setBusy(false);
-  }
-
-  function emBreve(rotulo: string) {
-    Haptics.selectionAsync().catch(() => {});
-    Alert.alert(rotulo, 'Esse acesso rápido chega em breve. Por enquanto, entre com e-mail e senha.');
   }
 
   /** Recuperar senha: envia o e-mail de redefinição do Supabase. */
@@ -108,10 +92,12 @@ export default function EntrarScreen() {
     if (!e) { Alert.alert('Recuperar senha', 'Digite seu e-mail no campo acima primeiro.'); return; }
     if (!supabase) { Alert.alert('Indisponível', 'O backup na nuvem não está configurado.'); return; }
     try {
-      await supabase.auth.resetPasswordForEmail(e);
+      const { error } = await supabase.auth.resetPasswordForEmail(e);
+      if (error) throw error;
       Alert.alert('Verifique seu e-mail', `Se existir uma conta para ${e}, enviamos um link para redefinir a senha.`);
-    } catch {
-      Alert.alert('Ops', 'Não consegui enviar agora. Tente de novo em instantes.');
+    } catch (e: any) {
+      const { titulo, texto } = traduzirErroAuth(e);
+      Alert.alert(titulo, texto);
     }
   }
 
@@ -159,18 +145,6 @@ export default function EntrarScreen() {
             style={{ marginTop: modo === 'login' ? 4 : 8 }}
           />
 
-          {/* ACESSO RÁPIDO */}
-          <View style={styles.dividerRow}>
-            <View style={styles.divLine} />
-            <Text style={styles.divText}>acesso rápido</Text>
-            <View style={styles.divLine} />
-          </View>
-          <View style={styles.socialRow}>
-            <SocialBtn icon="face-recognition" label="Biometria" onPress={() => emBreve('Entrar com biometria')} />
-            <SocialBtn icon="google" label="Google" onPress={() => emBreve('Entrar com Google')} />
-            <SocialBtn icon="apple" label="Apple" onPress={() => emBreve('Entrar com Apple')} />
-          </View>
-
           {/* ALTERNA LOGIN/SIGNUP */}
           <TouchableOpacity onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
             <Text style={styles.switchText}>
@@ -190,15 +164,6 @@ export default function EntrarScreen() {
   );
 }
 
-function SocialBtn({ icon, label, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={styles.social} onPress={onPress} activeOpacity={0.85}>
-      <MaterialCommunityIcons name={icon} size={24} color={Colors.accentLight} />
-      <Text style={styles.socialLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
 
@@ -213,15 +178,7 @@ const styles = StyleSheet.create({
   forgotWrap: { alignSelf: 'flex-end', paddingVertical: 4, marginBottom: 8 },
   forgot: { fontSize: 13, fontWeight: '700', color: Colors.accentLight },
 
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginVertical: 22 },
-  divLine: { flex: 1, height: 1, backgroundColor: Colors.outline },
-  divText: { fontSize: 11.5, color: Colors.onSurfaceMuted },
-
-  socialRow: { flexDirection: 'row', gap: 11 },
-  social: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 13, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, backgroundColor: Colors.surface, ...Shadow.sm },
-  socialLabel: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-  switchWrap: { paddingVertical: 18, alignItems: 'center' },
+  switchWrap: { paddingVertical: 18, alignItems: 'center', marginTop: 8 },
   switchText: { fontSize: 14, color: Colors.onSurfaceVariant },
   switchLink: { color: Colors.accentLight, fontWeight: '800' },
 

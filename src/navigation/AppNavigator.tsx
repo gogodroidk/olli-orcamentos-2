@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { BorderRadius, Colors } from '../theme';
+import { BorderRadius, Colors, Gradients } from '../theme';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
@@ -96,7 +96,7 @@ function CenterButton(_props: BottomTabBarButtonProps) {
         style={styles.centerTouch}
       >
         <LinearGradient
-          colors={['#0B6FCE', '#34C6D9']}
+          colors={Gradients.primaryDiagonal}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.centerGrad}

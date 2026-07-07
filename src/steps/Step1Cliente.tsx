@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
-  TouchableOpacity, Modal,
+  TouchableOpacity, Modal, ActivityIndicator, Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -13,6 +13,7 @@ import { nowISO } from '../utils/date';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { useCepLookup } from '../services/cep';
 
 interface Props {
   orc: Orcamento;
@@ -25,6 +26,15 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   const [showResults, setShowResults] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [nc, setNc] = useState<Partial<Cliente>>({});
+  const [salvandoNovo, setSalvandoNovo] = useState(false);
+  const { cepLoading, onCepChange } = useCepLookup(r => {
+    setNc(p => ({
+      ...p,
+      endereco: p.endereco?.trim() ? p.endereco : r.logradouro,
+      cidade: r.cidade || p.cidade,
+      estado: r.uf || p.estado,
+    }));
+  });
 
   const handleSearch = useCallback(async (q: string) => {
     setQuery(q);
@@ -64,10 +74,18 @@ export default function Step1Cliente({ orc, onChange }: Props) {
       cep: nc.cep,
       criadoEm: nowISO(),
     };
-    await saveCliente(c);
-    selectCliente(c);
-    setShowNew(false);
-    setNc({});
+    setSalvandoNovo(true);
+    try {
+      await saveCliente(c);
+      selectCliente(c);
+      setShowNew(false);
+      setNc({});
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Erro', 'Não foi possível salvar o cliente agora. Tente novamente.');
+    } finally {
+      setSalvandoNovo(false);
+    }
   }
 
   const selected = !!orc.clienteNome;
@@ -161,7 +179,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
             </TouchableOpacity>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
-            <OlliInput label="Nome completo" required value={nc.nome ?? ''} onChangeText={v => setNc(p => ({ ...p, nome: v }))} placeholder="Ex: João da Silva" leftIcon="account" />
+            <OlliInput label="Nome completo" required autoFocus value={nc.nome ?? ''} onChangeText={v => setNc(p => ({ ...p, nome: v }))} placeholder="Ex: João da Silva" leftIcon="account" />
             <OlliInput label="Telefone / WhatsApp" mask="phone" value={nc.telefone ?? ''} onChangeText={v => setNc(p => ({ ...p, telefone: v }))} placeholder="(11) 99999-9999" leftIcon="phone" />
             <OlliInput label="CPF" mask="cpf" value={nc.cpf ?? ''} onChangeText={v => setNc(p => ({ ...p, cpf: v }))} placeholder="000.000.000-00" leftIcon="card-account-details" />
             <OlliInput label="CNPJ" mask="cnpj" value={nc.cnpj ?? ''} onChangeText={v => setNc(p => ({ ...p, cnpj: v }))} placeholder="00.000.000/0001-00" leftIcon="domain" />
@@ -171,10 +189,13 @@ export default function Step1Cliente({ orc, onChange }: Props) {
               <OlliInput label="Cidade" value={nc.cidade ?? ''} onChangeText={v => setNc(p => ({ ...p, cidade: v }))} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10 }} />
               <OlliInput label="UF" value={nc.estado ?? ''} onChangeText={v => setNc(p => ({ ...p, estado: v.toUpperCase().slice(0, 2) }))} placeholder="SP" autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
             </View>
-            <OlliInput label="CEP" mask="cep" value={nc.cep ?? ''} onChangeText={v => setNc(p => ({ ...p, cep: v }))} placeholder="00000-000" leftIcon="mailbox" />
+            <View style={styles.cepRow}>
+              <OlliInput label="CEP" mask="cep" value={nc.cep ?? ''} onChangeText={v => onCepChange(v, masked => setNc(p => ({ ...p, cep: masked })))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
+              {cepLoading && <ActivityIndicator size="small" color={Colors.primary} style={styles.cepSpinner} />}
+            </View>
           </ScrollView>
           <View style={styles.modalFooter}>
-            <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth onPress={saveNewCliente} disabled={!nc.nome?.trim()} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
+            <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth loading={salvandoNovo} onPress={saveNewCliente} disabled={!nc.nome?.trim() || salvandoNovo} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
           </View>
         </View>
       </Modal>
@@ -235,4 +256,6 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
   rowFields: { flexDirection: 'row' },
+  cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  cepSpinner: { marginLeft: 10, marginBottom: 14 },
 });

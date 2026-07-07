@@ -70,14 +70,27 @@ function renderStars(n: number): string {
   return '★'.repeat(k) + '☆'.repeat(5 - k);
 }
 
-/** Monograma OLLI (marca d'água / selo) na cor do accent. */
-function monogramSvg(color: string, size: number, opacity: number): string {
+/**
+ * Monograma OLLI (marca d'água / selo) na cor do accent.
+ * Exportado para reuso em outros documentos gerados pelo app (ex.: recibo),
+ * garantindo a mesma identidade visual do orçamento em toda a família de PDFs.
+ */
+export function monogramSvg(color: string, size: number, opacity: number): string {
   // Símbolo oficial OLLI (rebrand v3) em versão mono — balão-documento + check.
   return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" style="opacity:${opacity};">
     <path d="M22 49 L12 59.5 L30 50 Z" fill="${color}"/>
     <rect x="9" y="8" width="46" height="44" rx="14.5" fill="${color}"/>
     <path d="M18 32 l8 9 l20 -19" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
+}
+
+/**
+ * Rodapé "selo OLLI" (monograma cinza + texto), no mesmo padrão usado no
+ * rodapé do orçamento. Exportado para que outros documentos (ex.: recibo)
+ * repliquem a mesma assinatura visual em vez de reinventar o próprio rodapé.
+ */
+export function footerSeloOlliHtml(): string {
+  return `${monogramSvg('#C7CDD6', 14, 1)} Gerado com OLLI Orçamentos`;
 }
 
 function renderFotos(o: Orcamento): string {

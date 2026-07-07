@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
 } from 'react-native';
@@ -11,10 +11,13 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { OlliMascot } from '../components/OlliMascot';
-import { diagnosticarCaso } from '../services/olliIA';
+import { diagnosticarCaso, motivoFalhaDiagnostico } from '../services/olliIA';
 import { DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+
+/** Depois de quantos segundos de loading o botão "Cancelar" aparece. */
+const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 4;
 
 type Route = RouteProp<RootStackParamList, 'DiagnosticoIA'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -29,26 +32,52 @@ export default function DiagnosticoIAScreen() {
   const [codigo, setCodigo] = useState(p.codigo ?? '');
   const [sintoma, setSintoma] = useState(p.sintoma ?? '');
   const [loading, setLoading] = useState(false);
+  const [podeCancelar, setPodeCancelar] = useState(false);
   const [res, setRes] = useState<DiagnosticoResultado | null>(null);
+  const [falhouIA, setFalhouIA] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // limpa timers/abort pendentes ao desmontar a tela
+  useEffect(() => {
+    return () => {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const podeEnviar = !!codigo.trim() || !!sintoma.trim();
 
   async function pedirDiagnostico() {
     if (!podeEnviar) return;
     Haptics.selectionAsync().catch(() => {});
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
+    setPodeCancelar(false);
     setRes(null);
+    setFalhouIA(false);
+    cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
     try {
       const r = await diagnosticarCaso({
         marca: marca.trim() || undefined,
         modelo: modelo.trim() || undefined,
         codigo: codigo.trim() || undefined,
         sintoma: sintoma.trim() || undefined,
-      });
+      }, controller.signal);
       setRes(r);
+      setFalhouIA(!!motivoFalhaDiagnostico());
     } finally {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
       setLoading(false);
+      setPodeCancelar(false);
+      abortRef.current = null;
     }
+  }
+
+  function cancelarDiagnostico() {
+    Haptics.selectionAsync().catch(() => {});
+    abortRef.current?.abort();
   }
 
   const d = res?.diagnostico;
@@ -100,6 +129,15 @@ export default function DiagnosticoIAScreen() {
             <OlliMascot size={44} onDark />
             <ActivityIndicator color={Colors.accent} style={{ marginTop: 10 }} />
             <Text style={styles.loadingText}>A OLLI está cruzando código, marca e a base…</Text>
+            {podeCancelar && (
+              <OlliButton
+                label="Cancelar"
+                variant="outline"
+                size="sm"
+                onPress={cancelarDiagnostico}
+                style={{ marginTop: 16 }}
+              />
+            )}
           </View>
         )}
 
@@ -125,7 +163,20 @@ export default function DiagnosticoIAScreen() {
             {res!.aviso && (
               <View style={styles.aviso}>
                 <MaterialCommunityIcons name="information-outline" size={15} color={Colors.warning} />
-                <Text style={styles.avisoText}>{res!.aviso}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.avisoText}>{res!.aviso}</Text>
+                  {falhouIA && (
+                    <OlliButton
+                      label="Tentar de novo"
+                      variant="outline"
+                      size="sm"
+                      onPress={pedirDiagnostico}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  )}
+                </View>
               </View>
             )}
 

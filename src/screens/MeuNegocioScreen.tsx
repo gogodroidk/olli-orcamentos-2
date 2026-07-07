@@ -53,6 +53,7 @@ export default function MeuNegocioScreen() {
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [showDep, setShowDep] = useState(false);
   const [newDep, setNewDep] = useState<Partial<Depoimento>>({ estrelas: 5 });
+  const [salvando, setSalvando] = useState(false);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -78,11 +79,18 @@ export default function MeuNegocioScreen() {
   }
 
   async function handleSave() {
-    if (!empresa) return;
-    await saveEmpresa(empresa);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setDirty(false);
-    Alert.alert('Salvo!', 'Dados da empresa atualizados.');
+    if (!empresa || salvando) return;
+    setSalvando(true);
+    try {
+      await saveEmpresa(empresa);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setDirty(false);
+      Alert.alert('Salvo!', 'Dados da empresa atualizados.');
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível salvar os dados agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function pickImage(field: 'logoUri' | 'assinaturaUri') {
@@ -106,7 +114,7 @@ export default function MeuNegocioScreen() {
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         {/* CONTA E BACKUP */}
-        <TouchableOpacity style={styles.backupCard} onPress={() => nav.navigate('Conta')} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.backupCard} onPress={() => nav.navigate('Tabs', { screen: 'Conta' })} activeOpacity={0.85}>
           <View style={styles.backupIcon}>
             <MaterialCommunityIcons name="cloud-lock-outline" size={26} color="#fff" />
           </View>
@@ -208,7 +216,16 @@ export default function MeuNegocioScreen() {
       {/* SAVE BAR */}
       {dirty && (
         <View style={styles.saveBar}>
-          <OlliButton label="Salvar alterações" variant="gradient" size="lg" fullWidth onPress={handleSave} icon={<MaterialCommunityIcons name="content-save" size={20} color="#fff" />} />
+          <OlliButton
+            label="Salvar alterações"
+            variant="gradient"
+            size="lg"
+            fullWidth
+            loading={salvando}
+            disabled={salvando}
+            onPress={handleSave}
+            icon={<MaterialCommunityIcons name="content-save" size={20} color="#fff" />}
+          />
         </View>
       )}
 

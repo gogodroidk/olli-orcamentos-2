@@ -1,3 +1,0 @@
-[     385ms] [INFO] [dc-runtime] x-import: loading ./ios-frame.jsx (jsx) @ http://127.0.0.1:8799/support.js:1012
-[     817ms] [INFO] [dc-runtime] x-import: loaded ./ios-frame.jsx — exports: [] window globals: [IOSDevice, IOSStatusBar, IOSNavBar, IOSGlassPill, IOSList, IOSListRow, IOSKeyboard] @ http://127.0.0.1:8799/support.js:1038
-[     819ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8799/favicon.ico:0

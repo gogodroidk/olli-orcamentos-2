@@ -83,6 +83,13 @@ async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }
   return (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
 }
 
+// Contrato de rotas de IA (POST autenticado + rate limit). É a ÚNICA fonte da
+// verdade sobre quais paths POST caem na IA — o roteador (fetch) valida contra
+// esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
+// o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
+// Manter esta constante alinhada com os handlers no switch do fetch abaixo.
+const IA_ROUTES = new Set(['/', '/voz', '/chat']);
+
 /** Parser de JSON tolerante (remove cercas ```json e lixo em volta). */
 function parseJsonLoose(s) {
   if (!s) return null;
@@ -214,7 +221,8 @@ export default {
       });
     }
 
-    // Health check (abrir no navegador mostra que está online)
+    // Health check público (abrir no navegador mostra que está online). GET '/'
+    // NUNCA exige auth; só o POST '/' (diagnóstico) passa pelo gate de IA abaixo.
     if (request.method === 'GET' && url.pathname === '/') {
       return json({ ok: true, service: 'olli-diagnostico', ia: env.GEMINI_API_KEY ? 'on' : 'off' });
     }
@@ -229,7 +237,8 @@ export default {
 
     // Rota de IA válida? 404 ANTES do rate limit — uma rota inexistente não deve
     // consumir 1 dos 20 tokens/min do usuário (o limite é só para chamadas de IA).
-    if (url.pathname !== '/' && url.pathname !== '/voz' && url.pathname !== '/chat') {
+    // Usa o contrato único IA_ROUTES para não divergir do switch de handlers.
+    if (!IA_ROUTES.has(url.pathname)) {
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     }
 

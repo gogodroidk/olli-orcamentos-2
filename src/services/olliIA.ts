@@ -23,14 +23,33 @@ function chave(input: DiagnosticoInput): string {
   return `diag:v1:${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
 }
 
+/** Timeout do diagnóstico por IA: 30s (campo, conexão instável). */
+const TIMEOUT_DIAGNOSTICO_MS = 30_000;
+
+export type MotivoFalhaIA = 'timeout' | 'offline' | 'servidor' | 'cancelado' | null;
+
+/** Último motivo de falha da chamada de IA (para a UI diferenciar timeout/offline/erro). */
+let ultimoMotivoFalha: MotivoFalhaIA = null;
+export function motivoFalhaDiagnostico(): MotivoFalhaIA {
+  return ultimoMotivoFalha;
+}
+
 /**
  * Etapa 2 — diagnóstico da OLLI Técnica. Camadas (protege a margem):
  *   1. cache local (SQLite) — instantâneo e offline;
  *   2. Edge Function `diagnostico` (chave Anthropic server-side + cache na nuvem);
  *   3. fallback: a base de 602 códigos, para nunca deixar o técnico na mão.
+ *
+ * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
+ * (botão "Cancelar" durante o loading) — o cancelamento cai no mesmo caminho do
+ * timeout/offline e resolve com o fallback da base, nunca trava nem rejeita.
  */
-export async function diagnosticarCaso(input: DiagnosticoInput): Promise<DiagnosticoResultado> {
+export async function diagnosticarCaso(
+  input: DiagnosticoInput,
+  sinalCancelamento?: AbortSignal,
+): Promise<DiagnosticoResultado> {
   const key = chave(input);
+  ultimoMotivoFalha = null;
 
   // 1) cache local
   const cached = await getCacheIA(key);
@@ -45,12 +64,17 @@ export async function diagnosticarCaso(input: DiagnosticoInput): Promise<Diagnos
   if (DIAGNOSTICO_URL) {
     const token = await accessTokenAtual();
     if (token) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_DIAGNOSTICO_MS);
+      const onCancelar = () => controller.abort();
+      sinalCancelamento?.addEventListener('abort', onCancelar);
       try {
         const contextoBase = await contextoDaBase(input);
         const r = await fetch(DIAGNOSTICO_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ ...input, contextoBase }),
+          signal: controller.signal,
         });
         if (r.ok) {
           const data: any = await r.json();
@@ -64,10 +88,21 @@ export async function diagnosticarCaso(input: DiagnosticoInput): Promise<Diagnos
             };
           }
           // data.motivo === 'ia_nao_configurada' → segue para o fallback
+        } else if (r.status === 429 || r.status >= 500) {
+          // 429 (muitas_requisicoes) e 5xx (503 sobrecarregado, 502 falha_ia etc.) — o worker
+          // realmente retorna esses códigos (ver worker/src/index.js) quando está sobrecarregado.
+          ultimoMotivoFalha = 'servidor';
         }
-        // 401 (nao_autorizado) / 429 (muitas_requisicoes) / outro erro → fallback offline
-      } catch {
-        // worker indisponível/offline → fallback
+        // 401 (nao_autorizado) / outro erro → fallback offline
+      } catch (e: any) {
+        if (e?.name === 'AbortError') {
+          ultimoMotivoFalha = sinalCancelamento?.aborted ? 'cancelado' : 'timeout';
+        } else {
+          ultimoMotivoFalha = 'offline';
+        }
+      } finally {
+        clearTimeout(timer);
+        sinalCancelamento?.removeEventListener('abort', onCancelar);
       }
     }
   }
@@ -99,11 +134,28 @@ async function contextoDaBase(input: DiagnosticoInput): Promise<string | undefin
   ].filter(Boolean).join(' · ');
 }
 
+/** Mensagem de aviso amigável conforme o motivo real da falha (timeout/offline/servidor). */
+function avisoFallback(): string {
+  if (!DIAGNOSTICO_URL) {
+    return 'Diagnóstico por IA ainda não ligado — mostrando a base de códigos. Configure o Worker de diagnóstico para análise guiada.';
+  }
+  switch (ultimoMotivoFalha) {
+    case 'timeout':
+      return 'A IA demorou demais para responder (conexão lenta) — mostrando o que a base de códigos tem.';
+    case 'offline':
+      return 'Sem conexão com a internet agora — mostrando o que a base de códigos tem.';
+    case 'servidor':
+      return 'A OLLI está muito requisitada agora — mostrando o que a base de códigos tem. Tente de novo em alguns instantes.';
+    case 'cancelado':
+      return 'Análise cancelada — mostrando o que a base de códigos tem.';
+    default:
+      return 'A IA não respondeu agora — mostrando o que a base de códigos tem.';
+  }
+}
+
 /** Monta um diagnóstico estruturado a partir da base local (sem IA). */
 async function fallbackBase(input: DiagnosticoInput): Promise<DiagnosticoResultado> {
-  const aviso = DIAGNOSTICO_URL
-    ? 'A IA não respondeu agora — mostrando o que a base de códigos tem.'
-    : 'Diagnóstico por IA ainda não ligado — mostrando a base de códigos. Configure o Worker de diagnóstico para análise guiada.';
+  const aviso = avisoFallback();
 
   const m = await melhorMatch(input);
   if (!m) {

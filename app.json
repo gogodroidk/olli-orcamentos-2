@@ -8,7 +8,8 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.grtech.olliorcamentos"
+      "bundleIdentifier": "com.grtech.olliorcamentos",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +18,7 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "package": "com.grtech.olliorcamentos",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES"
@@ -33,10 +34,17 @@
         "expo-image-picker",
         {
           "photosPermission": "O app precisa de acesso às fotos para adicionar imagens aos orçamentos.",
-          "cameraPermission": "O app precisa de acesso à câmera para fotografar os serviços."
+          "cameraPermission": "O app precisa de acesso à câmera para fotografar os serviços.",
+          "microphonePermission": false
         }
       ],
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#0A2547"
+        }
+      ],
       [
         "expo-splash-screen",
         {

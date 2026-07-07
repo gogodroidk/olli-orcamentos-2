@@ -1,7 +1,10 @@
 import * as SQLite from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
+import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
+import { APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -765,7 +768,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   // mirrorPush) para não disparar uma tempestade de rede no meio da restauração.
   // UM ÚNICO pushAllLocal() é disparado DEPOIS do commit (fire-and-forget).
   await db.withTransactionAsync(async () => {
+    // Restore = "SUBSTITUIR os dados atuais": apaga também a `empresa` antiga, para
+    // não deixar o negócio de outra conta/estado persistir (logo/nome/dados que vão
+    // ao PDF e ao link público). Se o snapshot trouxer empresa, ela é reinserida
+    // abaixo; se NÃO trouxer, o restore fica sem empresa (coerente com o snapshot).
     await db.execAsync(`
+      DELETE FROM empresa;
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
       DELETE FROM agendamentos;
@@ -864,6 +872,66 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     } catch {
       // idem
     }
+  }
+
+  // O restore apagou e recriou os agendamentos direto no SQLite, sem tocar nas
+  // notificações locais: reconcilia os lembretes com o estado restaurado (cancela
+  // os órfãos e reagenda os futuros). Fire-and-forget: falha de notificação nunca
+  // pode comprometer o restore dos dados.
+  try {
+    void resincronizarLembretes().catch(() => {});
+  } catch {
+    // idem
+  }
+}
+
+// ─── LIMPEZA TOTAL (logout) ───────────────────────────────
+// As chaves de AsyncStorage que guardam DADOS do usuário e devem ser zeradas no
+// logout ficam centralizadas em services/storageKeys (APP_DATA_STORAGE_KEYS),
+// compartilhadas com os módulos donos de cada chave. A allow-list é explícita
+// (nunca AsyncStorage.clear()) para jamais apagar a sessão de auth, a chave de
+// onboarding ('olli.onboarded' — preferência do aparelho) ou chaves de terceiros.
+
+// Tabelas do SQLite que guardam DADOS do usuário — apagadas no logout. Preserva
+// APENAS `codigos_erro` (seed estático de 602 códigos, igual para todos), que é
+// re-semeado sob demanda mas não precisa ser reimportado a cada logout.
+const USER_DATA_TABLES = [
+  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos',
+  'depoimentos', 'agendamentos', 'empresa', 'exclusoes', 'contadores',
+  'eventos', 'cache_ia', 'casos_erro',
+];
+
+/**
+ * Apaga TODOS os dados locais do usuário (SQLite + chaves de app no AsyncStorage),
+ * preservando a chave de onboarding e o seed estático `codigos_erro`. Usado no
+ * LOGOUT para o próximo login partir de um estado limpo — impede o vazamento de
+ * dados entre contas em aparelho compartilhado (o pushAllLocal do próximo login
+ * não pode subir dados do usuário anterior). Transacional: se qualquer DELETE
+ * falhar, faz ROLLBACK e nada é perdido pela metade.
+ */
+export async function clearAllLocalData(): Promise<void> {
+  const database = await getDb();
+  // 1) SQLite — tudo dentro de UMA transação (all-or-nothing).
+  await database.withTransactionAsync(async () => {
+    for (const tabela of USER_DATA_TABLES) {
+      // Nomes vêm de uma allow-list fixa (nunca de entrada externa) → SQL seguro.
+      await database.runAsync(`DELETE FROM ${tabela}`);
+    }
+  });
+  // 2) Notificações agendadas — cancela os lembretes de agenda da conta anterior
+  // ANTES de apagar o mapa que permite cancelá-los, senão continuariam disparando
+  // no aparelho (com nome/endereço do cliente) após a troca de conta. Best-effort.
+  try {
+    await cancelarTodosLembretes();
+  } catch {
+    // não bloqueia o logout
+  }
+  // 3) AsyncStorage — remove só as chaves de dados do usuário (allow-list).
+  // Best-effort: uma falha aqui não deve impedir o logout (o SQLite já foi limpo).
+  try {
+    await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS);
+  } catch {
+    // não bloqueia o logout
   }
 }
 

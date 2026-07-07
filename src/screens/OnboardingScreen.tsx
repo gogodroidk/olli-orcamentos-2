@@ -211,7 +211,7 @@ export default function OnboardingScreen() {
     } else if (step === 1) {
       if (!emp.nomePrestador.trim()) e.nomePrestador = 'Diga seu nome.';
       const tel = emp.whatsapp.replace(/\D/g, '');
-      if (tel.length < 10) e.whatsapp = 'Informe um WhatsApp válido.';
+      if (tel.length !== 11) e.whatsapp = 'Informe um WhatsApp com DDD + 9 dígitos (ex: 11 99999-9999).';
     }
     setErrors(e);
     return Object.keys(e).length === 0;

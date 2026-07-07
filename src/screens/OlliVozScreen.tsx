@@ -30,6 +30,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const isWeb = Platform.OS === 'web';
 const useNativeAnimations = !isWeb;
 
+/** Depois de quantos segundos de "enviando" o botão "Cancelar" aparece. */
+const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 5;
+
 /* ─── Reconhecimento de voz (só web, acesso defensivo) ─────────────
    webkitSpeechRecognition / SpeechRecognition existem só no navegador.
    Tudo fica atrás de Platform.OS === 'web' + checagem de globalThis para
@@ -134,6 +137,9 @@ export default function OlliVozScreen() {
   const [parcial, setParcial] = useState(''); // resultado interim do reconhecimento
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [podeCancelar, setPodeCancelar] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // revisão
   const [titulo, setTitulo] = useState('');
@@ -158,11 +164,13 @@ export default function OlliVozScreen() {
     return () => loop.stop();
   }, [fase, pulse]);
 
-  // limpa o reconhecimento ao sair da tela
+  // limpa o reconhecimento e chamadas de IA pendentes ao sair da tela
   useEffect(() => {
     return () => {
       try { recRef.current?.stop?.(); } catch { /* noop */ }
       recRef.current = null;
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -257,25 +265,42 @@ export default function OlliVozScreen() {
     Haptics.selectionAsync().catch(() => {});
     setFase('enviando');
     setErro(null);
-    const res = await interpretarVoz(texto);
-    if (!res.ok) {
-      setErro(res.erro);
-      setFase('erro');
-      return;
+    setPodeCancelar(false);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+
+    try {
+      const res = await interpretarVoz(texto, controller.signal);
+      if (!res.ok) {
+        setErro(res.erro);
+        setFase('erro');
+        return;
+      }
+      const ok = res as VozResultadoOk;
+      if (!ok.itens || ok.itens.length === 0) {
+        setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setFase('erro');
+        return;
+      }
+      setTitulo(ok.titulo ?? '');
+      setClienteNome(ok.clienteNome ?? '');
+      setItens(ok.itens.map(vozItemParaEditavel));
+      setObservacao(ok.observacao ?? '');
+      setFase('revisao');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } finally {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      setPodeCancelar(false);
+      abortRef.current = null;
     }
-    const ok = res as VozResultadoOk;
-    if (!ok.itens || ok.itens.length === 0) {
-      setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
-      setFase('erro');
-      return;
-    }
-    setTitulo(ok.titulo ?? '');
-    setClienteNome(ok.clienteNome ?? '');
-    setItens(ok.itens.map(vozItemParaEditavel));
-    setObservacao(ok.observacao ?? '');
-    setFase('revisao');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [transcript, pararReconhecimento]);
+
+  const cancelarEnvio = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    abortRef.current?.abort();
+  }, []);
 
   const refazer = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -431,6 +456,16 @@ export default function OlliVozScreen() {
                   <Text style={styles.infoPillText}>Escreva abaixo — a OLLI monta o orçamento pra você</Text>
                 </View>
               )}
+
+              {fase === 'enviando' && podeCancelar && (
+                <OlliButton
+                  label="Cancelar"
+                  variant="outline"
+                  size="sm"
+                  onPress={cancelarEnvio}
+                  style={{ marginTop: 16 }}
+                />
+              )}
             </View>
           </AnimatedEntrance>
 
@@ -452,7 +487,20 @@ export default function OlliVozScreen() {
             <AnimatedEntrance index={1}>
               <View style={styles.erroCard}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={Colors.warning} />
-                <Text style={styles.erroText}>{erro}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.erroText}>{erro}</Text>
+                  {transcript.trim().length > 0 && (
+                    <OlliButton
+                      label="Tentar de novo"
+                      variant="outline"
+                      size="sm"
+                      onPress={enviar}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  )}
+                </View>
               </View>
             </AnimatedEntrance>
           )}
@@ -591,6 +639,7 @@ function Revisao(props: {
                     <TouchableOpacity
                       style={styles.qtyBtn}
                       onPress={() => props.onUpdateItem(item.id, { quantidade: Math.max(1, item.quantidade - 1) })}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <MaterialCommunityIcons name="minus" size={15} color={Colors.primary} />
                     </TouchableOpacity>
@@ -598,6 +647,7 @@ function Revisao(props: {
                     <TouchableOpacity
                       style={styles.qtyBtn}
                       onPress={() => props.onUpdateItem(item.id, { quantidade: item.quantidade + 1 })}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <MaterialCommunityIcons name="plus" size={15} color={Colors.primary} />
                     </TouchableOpacity>

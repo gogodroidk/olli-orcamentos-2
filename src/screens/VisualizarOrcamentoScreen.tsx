@@ -10,13 +10,14 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
+import { EmptyState } from '../components/EmptyState';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO } from '../utils/date';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
-import { gerarLinkOrcamento, linkConfigurado } from '../services/clienteLink';
+import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks } from '../services/clienteLink';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
@@ -43,15 +44,33 @@ export default function VisualizarOrcamentoScreen() {
   const [sharing, setSharing] = useState(false);
   const [linking, setLinking] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [naoEncontrado, setNaoEncontrado] = useState(false);
 
   useFocusEffect(useCallback(() => {
     async function load() {
+      setCarregando(true);
       const [o, e, deps] = await Promise.all([getOrcamento(orcamentoId), getEmpresa(), getDepoimentos()]);
+      if (!o) {
+        setOrc(null);
+        setNaoEncontrado(true);
+        setCarregando(false);
+        return;
+      }
       setOrc(o);
       setEmpresa(e);
       setDepoimentos(deps);
+      setNaoEncontrado(false);
+      setCarregando(false);
     }
     load();
+    // sincronizarStatusLinks() nunca lança — traz de volta o status que o
+    // cliente deu pelo link público (aprovado/recusado). Não é aguardado: a
+    // tela abre instantaneamente com os dados locais, e só recarrega se algo
+    // realmente mudou, igual ao padrão já usado em OrcamentosScreen.
+    sincronizarStatusLinks().then(alterados => {
+      if (alterados > 0) load();
+    });
   }, [orcamentoId]));
 
   async function handleShare() {
@@ -60,8 +79,11 @@ export default function VisualizarOrcamentoScreen() {
     try {
       await compartilharPdfOrcamento(orc, empresa, depoimentos, orc.corMarca);
       if (orc.status === 'rascunho') await updateStatus('enviado');
-    } catch (e) {
-      Alert.alert('Erro', 'Não foi possível gerar o PDF.');
+    } catch (e: any) {
+      // Quando o compartilhamento não está disponível no dispositivo, a
+      // mensagem já vem específica (e diz onde o PDF foi salvo); nos demais
+      // casos cai no texto genérico.
+      Alert.alert('Erro', e?.message || 'Não foi possível gerar o PDF.');
     } finally {
       // SEMPRE volta o loading — inclusive na web, onde a impressão é assíncrona.
       setSharing(false);
@@ -139,7 +161,22 @@ export default function VisualizarOrcamentoScreen() {
     nav.navigate('Orcamentos', { clienteId: orc.clienteId, clienteNome: orc.clienteNome });
   }
 
-  if (!orc) return <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={Colors.primary} /></View>;
+  if (naoEncontrado) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+        <GradientHeader title="Orçamento" onBack={() => goBackOrHome(nav)} compact />
+        <EmptyState
+          icon="file-remove-outline"
+          title="Orçamento não encontrado"
+          subtitle="Este orçamento não existe mais ou foi removido."
+          actionLabel="Voltar"
+          onAction={() => goBackOrHome(nav)}
+        />
+      </View>
+    );
+  }
+
+  if (!orc || carregando) return <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={Colors.primary} /></View>;
 
   const Row = ({ label, value }: { label: string; value?: string }) =>
     value ? (

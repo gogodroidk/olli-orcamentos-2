@@ -1,9 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
@@ -13,11 +14,16 @@ import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
-import { getEmpresa } from '../database/database';
+import { getEmpresa, clearAllLocalData } from '../database/database';
 
 import { isSupabaseConfigured, signIn, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
 import { backupNow, restoreFromCloud, getCloudBackupDate } from '../services/backup';
+import { abortarSyncEmAndamento } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
+import { traduzirErroAuth } from '../utils/authErrors';
+import { PENDING_EMAIL_KEY } from '../services/storageKeys';
+
+/** Chave do AsyncStorage usada para lembrar o e-mail pendente de confirmação entre sessões do app. */
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -33,7 +39,7 @@ const FERRAMENTAS: {
   { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: Colors.accent, route: 'OlliVoz' },
   { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: Colors.primaryLight, route: 'OlliChat' },
   { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: Colors.primary, route: 'Servicos' },
-  { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: '#0891B2', route: 'Produtos' },
+  { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: Colors.primary, route: 'Produtos' },
   { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
   { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: Colors.accent, route: 'Diagnostico' },
   { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: Colors.success, route: 'EmitirRecibo' },
@@ -56,6 +62,10 @@ export default function ContaScreen() {
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  // Garante que o modal de e-mail pendente só se auto-abre 1x por montagem da
+  // tela: sem isso, load() (chamado a cada foco via useFocusEffect) reabria o
+  // sheet toda vez que o usuário voltava pra aba Conta, tornando-a inutilizável.
+  const autoAbriu = useRef(false);
 
   const load = useCallback(async () => {
     const emp = await getEmpresa();
@@ -63,7 +73,27 @@ export default function ContaScreen() {
     if (configured) {
       const u = await getCurrentUser();
       setUser(u ? { email: u.email } : null);
-      if (u) setLastBackup(await getCloudBackupDate());
+      if (u) {
+        setLastBackup(await getCloudBackupDate());
+        // Já logado: qualquer confirmação pendente de e-mail deixou de fazer sentido.
+        setPendingEmail(null);
+        try { await AsyncStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* best-effort */ }
+      } else {
+        try {
+          const saved = await AsyncStorage.getItem(PENDING_EMAIL_KEY);
+          if (saved) {
+            setPendingEmail(saved);
+            // Reabriu o app com confirmação pendente: já cai direto na tela de
+            // login (com o aviso "Confirme seu e-mail" visível), não na de cadastro.
+            // Só na primeira vez — depois o usuário pode fechar o sheet livremente.
+            if (!autoAbriu.current) {
+              autoAbriu.current = true;
+              setMode('login');
+              setShowAuth(true);
+            }
+          }
+        } catch { /* best-effort */ }
+      }
     }
   }, [configured]);
 
@@ -100,6 +130,7 @@ export default function ContaScreen() {
           setSenha('');
           setConfirmar('');
           setPendingEmail(emailLimpo);
+          try { await AsyncStorage.setItem(PENDING_EMAIL_KEY, emailLimpo); } catch { /* best-effort */ }
           setMode('login');
           Alert.alert(
             'Confirme seu e-mail',
@@ -111,23 +142,30 @@ export default function ContaScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setSenha('');
         setPendingEmail(null);
+        try { await AsyncStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* best-effort */ }
         setShowAuth(false);
         await load();
       }
     } catch (e: any) {
-      const msg: string = e?.message ?? '';
-      let titulo = 'Ops';
-      let texto = msg || 'Não foi possível autenticar.';
-      if (/already registered|already exists|User already/i.test(msg)) {
-        titulo = 'E-mail já cadastrado';
-        texto = 'Esse e-mail já tem conta. Tente entrar (ou use "Esqueci a senha" no seu provedor).';
-      } else if (/invalid.*email|email.*invalid/i.test(msg)) {
-        titulo = 'E-mail inválido';
-        texto = 'Confira o e-mail digitado e tente de novo.';
-      } else if (/invalid login credentials|invalid credentials/i.test(msg)) {
-        titulo = 'E-mail ou senha incorretos';
-        texto = 'Confira os dados. Se acabou de criar a conta, confirme o e-mail antes de entrar.';
-      }
+      const { titulo, texto } = traduzirErroAuth(e);
+      Alert.alert(titulo, texto);
+    }
+    setBusy(false);
+  }
+
+  /** Recuperar senha: envia o e-mail de redefinição do Supabase (mesma lógica de EntrarScreen). */
+  async function handleRecuperarSenha() {
+    Haptics.selectionAsync().catch(() => {});
+    const e = email.trim();
+    if (!e) { Alert.alert('Recuperar senha', 'Digite seu e-mail no campo acima primeiro.'); return; }
+    if (!supabase) { Alert.alert('Indisponível', 'O backup na nuvem não está configurado.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(e);
+      if (error) throw error;
+      Alert.alert('Verifique seu e-mail', `Se existir uma conta para ${e}, enviamos um link para redefinir a senha.`);
+    } catch (e: any) {
+      const { titulo, texto } = traduzirErroAuth(e);
       Alert.alert(titulo, texto);
     }
     setBusy(false);
@@ -141,7 +179,8 @@ export default function ContaScreen() {
       if (error) throw error;
       Alert.alert('E-mail reenviado', `Mandamos um novo link de confirmação para ${pendingEmail}.`);
     } catch (e: any) {
-      Alert.alert('Ops', e?.message ?? 'Não foi possível reenviar o e-mail agora.');
+      const { titulo, texto } = traduzirErroAuth(e);
+      Alert.alert(titulo, texto);
     }
     setBusy(false);
   }
@@ -183,16 +222,71 @@ export default function ContaScreen() {
     );
   }
 
-  async function handleLogout() {
-    await signOut();
-    setUser(null);
-    setLastBackup(null);
+  function handleLogout() {
+    Haptics.selectionAsync().catch(() => {});
+    Alert.alert(
+      'Sair da conta',
+      'O que você quer fazer com os dados salvos neste aparelho?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sair e manter dados neste aparelho',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await signOut();
+              setUser(null);
+              setLastBackup(null);
+            } catch (e: any) {
+              const { titulo, texto } = traduzirErroAuth(e);
+              Alert.alert(titulo, texto);
+            }
+            setBusy(false);
+          },
+        },
+        {
+          text: 'Sair e apagar dados deste aparelho',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Tem certeza?',
+              'Isso vai APAGAR todos os orçamentos, clientes, produtos e serviços salvos neste aparelho. Essa ação não pode ser desfeita. Seus dados na nuvem (se houver backup) não são afetados.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Apagar e sair', style: 'destructive',
+                  onPress: async () => {
+                    setBusy(true);
+                    try {
+                      // Interrompe qualquer sync em segundo plano ANTES de apagar:
+                      // sem isso, um pull que já buscou dados da nuvem pode gravá-los
+                      // de volta no SQLite logo depois do wipe, deixando sobras da
+                      // conta anterior num aparelho que deveria estar limpo.
+                      abortarSyncEmAndamento();
+                      await signOut();
+                      await clearAllLocalData();
+                      setUser(null);
+                      setLastBackup(null);
+                      setEmpresa(null);
+                      Alert.alert('Pronto', 'Você saiu da conta e os dados deste aparelho foram apagados.');
+                    } catch (e: any) {
+                      Alert.alert('Erro', e?.message ?? 'Não foi possível apagar os dados agora.');
+                    }
+                    setBusy(false);
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   }
 
   function abrirFerramenta(f: typeof FERRAMENTAS[number]) {
     Haptics.selectionAsync().catch(() => {});
     if (f.route === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
-    else (nav as any).navigate(f.route);
+    else nav.navigate(f.route as never);
   }
 
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
@@ -339,6 +433,12 @@ export default function ContaScreen() {
                 <OlliInput label="Senha" value={senha} onChangeText={setSenha} placeholder="mínimo 8 caracteres" secureTextEntry leftIcon="lock" />
                 {mode === 'signup' && (
                   <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry leftIcon="lock-check" />
+                )}
+
+                {mode === 'login' && (
+                  <TouchableOpacity onPress={handleRecuperarSenha} disabled={busy} style={{ alignSelf: 'flex-end', paddingVertical: 4, marginBottom: 8 }}>
+                    <Text style={styles.confirmResend}>Esqueci a senha</Text>
+                  </TouchableOpacity>
                 )}
 
                 <OlliButton

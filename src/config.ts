@@ -4,6 +4,7 @@ declare const process: {
     EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
     EXPO_PUBLIC_LINK_BASE_URL?: string;
     EXPO_PUBLIC_DIAGNOSTICO_URL?: string;
+    EXPO_PUBLIC_WHATSAPP_SUPORTE?: string;
   };
 };
 
@@ -32,9 +33,21 @@ export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? '
  * URL do Worker de diagnóstico no Cloudflare (Etapa 2). A chave da IA
  * (Gemini ou Claude) é SECRET do Worker — nunca uma var EXPO_PUBLIC do app.
  * Ex.: https://olli-diagnostico.SEU-USUARIO.workers.dev
+ *
+ * SEM fallback hardcoded: ao contrário de LINK_BASE_URL (link público, seguro
+ * expor um domínio padrão), aqui um valor "chutado" seria PERIGOSO — apontaria
+ * silenciosamente para o worker/domínio errado e o app pareceria "configurado"
+ * sem estar. Se a env var não vier, fica vazio e `isDiagnosticoIADisponivel()`
+ * retorna false, ativando o caminho honesto ("IA ainda não ligada").
  */
-export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? 'https://link.olliorcamentos.online').replace(/\/+$/, '');
+export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? '').replace(/\/+$/, '');
 
 export function isDiagnosticoIADisponivel(): boolean {
   return !!DIAGNOSTICO_URL;
 }
+
+/**
+ * WhatsApp de suporte/vendas (dígitos com DDI, ex.: 5511999999999).
+ * Usado no CTA "Falar com a gente" da tela de Planos. Vazio = CTA oculto.
+ */
+export const WHATSAPP_SUPORTE: string = (process.env.EXPO_PUBLIC_WHATSAPP_SUPORTE ?? '').replace(/\D/g, '');

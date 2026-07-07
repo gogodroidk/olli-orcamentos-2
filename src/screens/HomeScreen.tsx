@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Linking } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { getOrcamentos, getEmpresa } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
+import { onSyncAplicado } from '../services/cloudSync';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -16,6 +17,7 @@ import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS } from '../typ
 import { StatusBadge } from '../components/StatusBadge';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliMascot } from '../components/OlliMascot';
+import { EmptyState } from '../components/EmptyState';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -61,15 +63,22 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [olliMenu, setOlliMenu] = useState(false);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
+  const [carregando, setCarregando] = useState(true);
 
   const load = useCallback(async () => {
     const [all, emp, prox] = await Promise.all([getOrcamentos(), getEmpresa(), getProximoAgendamento()]);
     setOrcamentos(all);
     setEmpresa(emp);
     setProxima(prox);
+    setCarregando(false);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo orçamentos/agendamentos que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(load), [load]);
+
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   // ── métricas reais ──
@@ -132,7 +141,12 @@ export default function HomeScreen() {
                 <Text style={styles.liveLabel}>AO VIVO · PRÓXIMA PARADA</Text>
               </View>
             </View>
-            {proxima ? (
+            {carregando ? (
+              <View style={styles.heroEmpty}>
+                <MaterialCommunityIcons name="dots-horizontal" size={30} color={Colors.accent} />
+                <Text style={styles.heroEmptyTitle}>Carregando…</Text>
+              </View>
+            ) : proxima ? (
               <View style={styles.heroFilled}>
                 <Text style={styles.heroWhen}>{quandoLabel(proxima.inicio)}</Text>
                 <Text style={styles.heroClient} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
@@ -233,35 +247,27 @@ export default function HomeScreen() {
           </AnimatedEntrance>
         )}
 
-        <Text style={styles.sectionTitle}>Equipe e processos</Text>
+        <Text style={styles.sectionTitle}>Mais atalhos</Text>
         <AnimatedEntrance index={3}>
           <View style={styles.processCard}>
-            <View style={styles.processHeader}>
-              <View style={styles.processIcon}>
-                <MaterialCommunityIcons name="account-group-outline" size={24} color={Colors.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.processTitle}>Prévia operacional</Text>
-                <Text style={styles.processSub}>Sem rastreamento real de equipe ainda. A OLLI usa agenda e orçamentos salvos para apontar prioridades.</Text>
-              </View>
-              <View style={styles.previewChip}>
-                <Text style={styles.previewChipText}>em breve</Text>
-              </View>
-            </View>
-
             <View style={styles.processGrid}>
-              <ProcessMetric icon="clipboard-list-outline" label="Fila comercial" value={`${emAberto.length} em aberto`} tone={Colors.accent} />
-              <ProcessMetric
-                icon="clock-alert-outline"
-                label="Follow-up"
-                value={parados.length > 0 ? `${parados.length} parados` : 'em dia'}
-                tone={parados.length > 0 ? Colors.warning : Colors.success}
+              <ShortcutTile
+                icon="format-list-bulleted"
+                label="Todos os orçamentos"
+                tone={Colors.accent}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Orcamentos'); }}
               />
-              <ProcessMetric
-                icon="calendar-clock"
-                label="Agenda"
-                value={proxima ? 'próxima parada ok' : 'sem próxima parada'}
-                tone={proxima ? Colors.success : Colors.onSurfaceMuted}
+              <ShortcutTile
+                icon="cube-outline"
+                label="Produtos"
+                tone={Colors.primaryLight}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Produtos'); }}
+              />
+              <ShortcutTile
+                icon="card-search-outline"
+                label="Diagnóstico IA"
+                tone={Colors.accentLight}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('DiagnosticoIA', {}); }}
               />
             </View>
 
@@ -270,13 +276,13 @@ export default function HomeScreen() {
                 <Text style={styles.processPrimaryText}>Abrir agenda</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.processGhost} onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('MeuNegocio'); }} activeOpacity={0.85}>
-                <Text style={styles.processGhostText}>Configurar</Text>
+                <Text style={styles.processGhostText}>Meu negócio</Text>
               </TouchableOpacity>
             </View>
           </View>
         </AnimatedEntrance>
 
-        {orcamentos.length === 0 && (
+        {!carregando && orcamentos.length === 0 && (
           <AnimatedEntrance index={3}>
             <StarterCard
               onCreate={() => nav.navigate('NovoOrcamento', {})}
@@ -307,10 +313,13 @@ export default function HomeScreen() {
 
         {recentes.length === 0 ? (
           <View style={styles.emptyRecent}>
-            <Text style={styles.emptyText}>Nenhum orçamento ainda.</Text>
-            <TouchableOpacity onPress={() => nav.navigate('NovoOrcamento', {})}>
-              <Text style={styles.emptyLink}>Criar o primeiro</Text>
-            </TouchableOpacity>
+            <EmptyState
+              icon="file-document-outline"
+              title="Nenhum orçamento ainda"
+              subtitle="Crie o primeiro orçamento para começar a acompanhar seus atendimentos."
+              actionLabel="Criar o primeiro"
+              onAction={() => nav.navigate('NovoOrcamento', {})}
+            />
           </View>
         ) : (
           <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
@@ -418,13 +427,12 @@ function MiniStep({ n, text }: { n: string; text: string }) {
   );
 }
 
-function ProcessMetric({ icon, label, value, tone }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string; tone: string }) {
+function ShortcutTile({ icon, label, tone, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; tone: string; onPress: () => void }) {
   return (
-    <View style={styles.processMetric}>
-      <MaterialCommunityIcons name={icon} size={16} color={tone} />
-      <Text style={styles.processMetricLabel}>{label}</Text>
-      <Text style={styles.processMetricValue} numberOfLines={1}>{value}</Text>
-    </View>
+    <TouchableOpacity style={styles.processMetric} onPress={onPress} activeOpacity={0.8}>
+      <MaterialCommunityIcons name={icon} size={20} color={tone} />
+      <Text style={styles.processMetricValue} numberOfLines={2}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -491,16 +499,9 @@ const styles = StyleSheet.create({
   cobrarText: { fontSize: 13, fontWeight: '800', color: '#0A1626' },
 
   processCard: { marginHorizontal: Spacing.base, backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.base, ...Shadow.sm },
-  processHeader: { flexDirection: 'row', alignItems: 'flex-start' },
-  processIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)', justifyContent: 'center', alignItems: 'center' },
-  processTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
-  processSub: { fontSize: 12.2, color: Colors.onSurfaceVariant, lineHeight: 17, marginTop: 3 },
-  previewChip: { borderRadius: BorderRadius.full, borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)', backgroundColor: Colors.surfacePressed, paddingHorizontal: 9, paddingVertical: 5, marginLeft: 8 },
-  previewChipText: { fontSize: 10, fontWeight: '800', color: Colors.accentLight },
-  processGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  processMetric: { flex: 1, minHeight: 82, backgroundColor: Colors.surfacePressed, borderWidth: 1, borderColor: Colors.outline, borderRadius: BorderRadius.md, padding: 10, justifyContent: 'space-between' },
-  processMetricLabel: { fontSize: 10.5, color: Colors.onSurfaceMuted, fontWeight: '700', marginTop: 5 },
-  processMetricValue: { fontSize: 12.2, color: '#fff', fontWeight: '800' },
+  processGrid: { flexDirection: 'row', gap: 8 },
+  processMetric: { flex: 1, minHeight: 74, backgroundColor: Colors.surfacePressed, borderWidth: 1, borderColor: Colors.outline, borderRadius: BorderRadius.md, padding: 10, justifyContent: 'center', alignItems: 'center', gap: 6 },
+  processMetricValue: { fontSize: 11.5, color: '#fff', fontWeight: '800', textAlign: 'center' },
   processActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
   processPrimary: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingVertical: 11 },
   processPrimaryText: { fontSize: 13, fontWeight: '800', color: '#0A1626' },
@@ -542,9 +543,7 @@ const styles = StyleSheet.create({
   starterSetup: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
   starterSetupText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
 
-  emptyRecent: { alignItems: 'center', paddingVertical: 24 },
-  emptyText: { fontSize: 14, color: Colors.onSurfaceVariant },
-  emptyLink: { fontSize: 14, color: Colors.accent, fontWeight: '700', marginTop: 8 },
+  emptyRecent: { paddingHorizontal: Spacing.base, minHeight: 220 },
 
   recentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
   recentAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(11,111,206,0.2)', justifyContent: 'center', alignItems: 'center' },

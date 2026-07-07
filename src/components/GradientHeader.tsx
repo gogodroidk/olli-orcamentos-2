@@ -77,9 +77,9 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', zIndex: 1 },
   backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     marginLeft: -4,
     marginRight: 10,
     alignItems: 'center',

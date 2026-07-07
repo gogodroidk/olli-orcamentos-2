@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, RefreshControl,
@@ -12,6 +12,8 @@ import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { getOrcamentos, deleteOrcamento, saveOrcamento, getNextOrcamentoNumber } from '../database/database';
+import { sincronizarStatusLinks } from '../services/clienteLink';
+import { onSyncAplicado } from '../services/cloudSync';
 import { formatCurrency } from '../utils/currency';
 import { formatDate, nowISO } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -22,12 +24,17 @@ import { generateId } from '../utils/id';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
 
+// Cobre TODOS os status possíveis de StatusOrcamento (src/types/index.ts) —
+// sem isso, orçamentos "Aguardando assinatura" ou "Cancelado" só apareciam
+// misturados no filtro "Todos", sem como isolá-los.
 const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> = [
   { key: 'todos', label: 'Todos' },
   { key: 'rascunho', label: 'Rascunho' },
   { key: 'enviado', label: 'Enviado' },
+  { key: 'aguardando_assinatura', label: 'Aguard. assinatura' },
   { key: 'aprovado', label: 'Aprovado' },
   { key: 'recusado', label: 'Recusado' },
+  { key: 'cancelado', label: 'Cancelado' },
 ];
 
 export default function OrcamentosScreen() {
@@ -48,7 +55,20 @@ export default function OrcamentosScreen() {
     applyFilters(data, query, statusFilter, clienteId);
   }, [clienteId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    // sincronizarStatusLinks() nunca lança — é seguro chamar sem try/catch.
+    // Se algum orçamento mudou de status (cliente aprovou/recusou pelo link),
+    // recarrega a lista para refletir o novo status.
+    sincronizarStatusLinks().then(alterados => {
+      if (alterados > 0) load();
+    });
+  }, [load]));
+
+  // Recarrega a lista quando o sync em segundo plano (login/foreground) traz
+  // dados novos da nuvem — sem isso, um aparelho recém-logado podia mostrar a
+  // lista vazia até o usuário sair e voltar para a tela.
+  useEffect(() => onSyncAplicado(load), [load]);
 
   function applyFilters(data: Orcamento[], q: string, s: typeof statusFilter, cliId?: string) {
     let r = data;
@@ -88,8 +108,12 @@ export default function OrcamentosScreen() {
         {
           text: 'Excluir', style: 'destructive',
           onPress: async () => {
-            await deleteOrcamento(o.id);
-            load();
+            try {
+              await deleteOrcamento(o.id);
+              load();
+            } catch (e) {
+              Alert.alert('Erro', 'Não foi possível excluir o orçamento agora. Tente novamente.');
+            }
           },
         },
       ]
@@ -97,24 +121,28 @@ export default function OrcamentosScreen() {
   }
 
   async function handleClone(o: Orcamento) {
-    const cloneId = generateId();
-    const numero = await getNextOrcamentoNumber();
-    const clone: Orcamento = {
-      ...o,
-      id: cloneId,
-      numero,
-      status: 'rascunho',
-      // não herdar dados específicos do orçamento original
-      assinaturaClienteUri: undefined,
-      dataAssinaturaCliente: undefined,
-      assinaturaPrestadorUri: undefined,
-      criadoDeModeloId: undefined,
-      criadoEm: nowISO(),
-      atualizadoEm: nowISO(),
-    };
-    await saveOrcamento(clone);
-    load();
-    nav.navigate('EditarOrcamento', { orcamentoId: cloneId });
+    try {
+      const cloneId = generateId();
+      const numero = await getNextOrcamentoNumber();
+      const clone: Orcamento = {
+        ...o,
+        id: cloneId,
+        numero,
+        status: 'rascunho',
+        // não herdar dados específicos do orçamento original
+        assinaturaClienteUri: undefined,
+        dataAssinaturaCliente: undefined,
+        assinaturaPrestadorUri: undefined,
+        criadoDeModeloId: undefined,
+        criadoEm: nowISO(),
+        atualizadoEm: nowISO(),
+      };
+      await saveOrcamento(clone);
+      load();
+      nav.navigate('EditarOrcamento', { orcamentoId: cloneId });
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível clonar o orçamento agora. Tente novamente.');
+    }
   }
 
   const refresh = async () => {

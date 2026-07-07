@@ -41,6 +41,13 @@ const PDF_MODEL_LABELS: Record<string, string> = {
   recibo_compacto: 'Recibo compacto',
 };
 
+/** Data de hoje + N dias, já formatada em DD/MM/AAAA (mesmo padrão do Step4Personalizacao). */
+function validadeEmDias(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
 function emptyOrcamento(numero: string): Orcamento {
   return {
     id: generateId(),
@@ -57,6 +64,9 @@ function emptyOrcamento(numero: string): Orcamento {
     valorTotal: 0,
     status: 'rascunho',
     dataEmissao: todayISO(),
+    // Validade padrão de 15 dias — evita orçamento sair sem prazo algum
+    // (o técnico pode ajustar/limpar depois em Step4Personalizacao).
+    validadeOrcamento: validadeEmDias(15),
     formasPagamento: defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
@@ -86,13 +96,18 @@ function calcTotais(o: Orcamento): Orcamento {
   const servicos = round2(o.itens.filter(i => i.tipo === 'servico').reduce((s, i) => s + i.subtotal, 0));
   const produtos = round2(o.itens.filter(i => i.tipo === 'produto').reduce((s, i) => s + i.subtotal, 0));
   const subtotal = round2(servicos + produtos);
-  let desconto = o.desconto;
-  if (o.descontoTipo === 'percentual') {
-    desconto = subtotal * (o.desconto / 100);
-  }
-  desconto = round2(desconto);
+  // Desconto em valor fixo (R$) é reclampado ao subtotal atual sempre que os
+  // itens mudarem, para não ficar "preso" a um valor maior que os itens que
+  // restaram (ex.: desconto de R$100 definido com R$500 em itens, depois o
+  // técnico apaga itens e sobra R$50 — o desconto exibido cai para R$50).
+  const descontoBruto = o.descontoTipo === 'valor'
+    ? round2(Math.max(0, Math.min(subtotal, o.desconto)))
+    : round2(o.desconto);
+  const desconto = o.descontoTipo === 'percentual'
+    ? round2(subtotal * (descontoBruto / 100))
+    : descontoBruto;
   const valorTotal = round2(Math.max(0, subtotal - desconto));
-  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, valorTotal };
+  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, desconto: descontoBruto, valorTotal };
 }
 
 export default function NovoOrcamentoScreen() {
@@ -112,6 +127,10 @@ export default function NovoOrcamentoScreen() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
+  // IDs de itens com preço R$ 0,00 que o usuário já confirmou explicitamente
+  // como cortesia/brinde (via Alert em Step2Itens). Persiste entre trocas de
+  // step porque vive no componente pai, que não desmonta.
+  const [itensZeroConfirmados, setItensZeroConfirmados] = useState<Set<string>>(new Set());
   const slide = useRef(new Animated.Value(0)).current;
 
   const animateStep = useCallback((dir: 1 | -1) => {
@@ -132,6 +151,13 @@ export default function NovoOrcamentoScreen() {
         const existing = await getOrcamento(orcamentoId);
         if (existing) {
           setOrc(existing);
+          // Itens de um orçamento já salvo (fora deste fluxo) com preço 0 são
+          // tratados como já confirmados, para não travar a edição de um
+          // orçamento antigo pedindo reconfirmação de itens que já existiam.
+          const idsZeroExistentes = existing.itens.filter(i => i.preco <= 0).map(i => i.id);
+          if (idsZeroExistentes.length > 0) {
+            setItensZeroConfirmados(new Set(idsZeroExistentes));
+          }
           return;
         }
       }
@@ -176,41 +202,74 @@ export default function NovoOrcamentoScreen() {
   function updateItens(itens: ItemOrcamento[]) {
     const newItens = itens.map(i => ({ ...i, subtotal: round2(i.preco * i.quantidade) }));
     update({ itens: newItens });
+    // Limpa do set de confirmados os ids que não existem mais na lista.
+    const idsAtuais = new Set(newItens.map(i => i.id));
+    setItensZeroConfirmados(prev => {
+      const filtered = new Set([...prev].filter(id => idsAtuais.has(id)));
+      return filtered.size === prev.size ? prev : filtered;
+    });
+  }
+
+  function confirmarItemZero(id: string) {
+    setItensZeroConfirmados(prev => new Set(prev).add(id));
   }
 
   function canAdvance(): boolean {
     if (!orc) return false;
     if (step === 0) return !!orc.clienteNome.trim();
-    if (step === 1) return orc.itens.length > 0;
+    if (step === 1) {
+      if (orc.itens.length === 0) return false;
+      // Item com preço 0 só passa se já foi confirmado como cortesia/brinde.
+      return orc.itens.every(i => i.preco > 0 || itensZeroConfirmados.has(i.id));
+    }
     return true;
   }
 
   async function handleSave(finalOrc?: Partial<Orcamento>) {
     if (!orc) return;
     setSaving(true);
-    const toSave: Orcamento = {
-      ...orc,
-      ...(finalOrc ?? {}),
-      atualizadoEm: nowISO(),
-    };
-    await saveOrcamento(calcTotais(toSave));
-    setSaving(false);
-    nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
+    try {
+      const toSave: Orcamento = {
+        ...orc,
+        ...(finalOrc ?? {}),
+        atualizadoEm: nowISO(),
+      };
+      await saveOrcamento(calcTotais(toSave));
+      nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
+    } catch {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Não foi possível salvar o orçamento agora. Tente novamente.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível salvar o orçamento agora. Tente novamente.');
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleRascunho() {
     if (!orc) return;
     setSaving(true);
-    await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
-    setSaving(false);
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert('Orcamento salvo como rascunho.');
+    try {
+      await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Orcamento salvo como rascunho.');
+        goBackOrHome(nav);
+        return;
+      }
+      // Feedback não bloqueante: haptic de sucesso + volta direto, sem exigir
+      // toque em "OK" para sair (o Alert só entra no caminho de erro abaixo).
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       goBackOrHome(nav);
-      return;
+    } catch {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('Não foi possível salvar o rascunho agora. Tente novamente.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível salvar o rascunho agora. Tente novamente.');
+      }
+    } finally {
+      setSaving(false);
     }
-    Alert.alert('Salvo!', 'Orçamento salvo como rascunho.', [
-      { text: 'OK', onPress: () => goBackOrHome(nav) },
-    ]);
   }
 
   function handleBack() {
@@ -271,7 +330,15 @@ export default function NovoOrcamentoScreen() {
 
       <Animated.View style={[styles.content, { transform: [{ translateX: slide }] }]}>
         {step === 0 && <Step1Cliente orc={orc} onChange={update} />}
-        {step === 1 && <Step2Itens orc={orc} onChangeItens={updateItens} onChangeOrc={update} />}
+        {step === 1 && (
+          <Step2Itens
+            orc={orc}
+            onChangeItens={updateItens}
+            onChangeOrc={update}
+            itensZeroConfirmados={itensZeroConfirmados}
+            onConfirmarItemZero={confirmarItemZero}
+          />
+        )}
         {step === 2 && <Step3Detalhes orc={orc} onChange={update} />}
         {step === 3 && <Step4Personalizacao orc={orc} onChange={update} />}
       </Animated.View>
@@ -395,7 +462,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#7C3AED',
+    backgroundColor: Colors.voice,
     borderRadius: 13,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',

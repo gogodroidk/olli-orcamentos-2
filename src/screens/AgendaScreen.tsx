@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,8 +17,11 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EmptyState } from '../components/EmptyState';
+import { GradientHeader } from '../components/GradientHeader';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getAgendamentosRange, saveAgendamento, deleteAgendamento,
+  pedirPermissaoNotificacao, temPermissaoNotificacao, MINUTOS_ANTECEDENCIA_LEMBRETE,
 } from '../services/agenda';
 import { getClientes } from '../database/database';
 import {
@@ -28,6 +31,8 @@ import {
 import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { nowISO, capitalizeFirst } from '../utils/date';
+import { onSyncAplicado } from '../services/cloudSync';
+import { NOTIF_EXPLICADO_KEY } from '../services/storageKeys';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type AgendaRoute = RouteProp<TabParamList, 'Agenda'>;
@@ -38,6 +43,9 @@ const MODOS: { id: Modo; label: string }[] = [
   { id: 'semana', label: 'Semana' },
   { id: 'mes', label: 'Mês' },
 ];
+
+// Chave para lembrar se já explicamos ao usuário por que pedimos notificação
+// (mostra o aviso amigável só na primeira vez que ele salva um agendamento).
 
 // Limites do período visível, conforme o modo.
 function rangeFor(modo: Modo, ref: Date): { inicio: Date; fim: Date } {
@@ -71,6 +79,7 @@ export default function AgendaScreen() {
   const [itens, setItens] = useState<Agendamento[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [editing, setEditing] = useState<EditState | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
   const { inicio, fim } = useMemo(() => rangeFor(modo, ref), [modo, ref]);
 
@@ -84,6 +93,10 @@ export default function AgendaScreen() {
   }, [inicio.getTime(), fim.getTime()]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo agendamentos que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(load), [load]);
 
   // Dias do período que efetivamente têm agendamentos (para o modo semana/mês).
   const dias = useMemo(() => {
@@ -173,6 +186,41 @@ export default function AgendaScreen() {
     });
   }
 
+  // Pede permissão de notificação com uma explicação amigável ANTES do prompt
+  // do sistema, e só na primeira vez (respeita a decisão do usuário depois).
+  async function garantirPermissaoNotificacaoComAviso() {
+    // Na web não existe notificação push do app nem Alert.alert nativo (é no-op
+    // no react-native-web) — sem isso, a Promise abaixo nunca resolveria e o
+    // salvamento do agendamento travaria para sempre. Não há nada a pedir aqui.
+    if (Platform.OS === 'web') return;
+    try {
+      if (await temPermissaoNotificacao()) return;
+      const jaExplicou = await AsyncStorage.getItem(NOTIF_EXPLICADO_KEY);
+      if (jaExplicou) {
+        // Já mostramos o aviso antes; não insiste toda vez que o usuário negou.
+        return;
+      }
+      const quer = await new Promise<boolean>(resolve => {
+        Alert.alert(
+          'Ativar lembretes de visita?',
+          `Para te avisar ${MINUTOS_ANTECEDENCIA_LEMBRETE / 60}h antes de cada compromisso, mesmo com o app fechado, a OLLI precisa da sua permissão para enviar notificações.`,
+          [
+            { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Ativar', onPress: () => resolve(true) },
+          ],
+        );
+      });
+      // A flag só é gravada DEPOIS da resposta: se o app morrer no meio do
+      // Alert, o aviso volta a aparecer na próxima vez em vez de sumir para sempre.
+      await AsyncStorage.setItem(NOTIF_EXPLICADO_KEY, '1');
+      // Só chama o prompt do sistema se o usuário realmente pediu para ativar —
+      // "Agora não" precisa respeitar a escolha, sem disparar o prompt do SO.
+      if (quer) await pedirPermissaoNotificacao();
+    } catch {
+      // Falha ao pedir permissão nunca deve impedir salvar o agendamento.
+    }
+  }
+
   async function salvar(e: EditState) {
     const ini = combinarDataHora(e.data, e.horaInicio);
     const fimDt = e.horaFim ? combinarDataHora(e.data, e.horaFim) : undefined;
@@ -196,37 +244,50 @@ export default function AgendaScreen() {
       criadoEm: e.criadoEm ?? nowISO(),
       atualizadoEm: nowISO(),
     };
-    await saveAgendamento(a);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setEditing(null);
-    // foca o período no dia do agendamento salvo
-    setRef(e.data);
-    load();
+    setSalvando(true);
+    try {
+      await garantirPermissaoNotificacaoComAviso();
+      await saveAgendamento(a);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setEditing(null);
+      // foca o período no dia do agendamento salvo
+      setRef(e.data);
+      await load();
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar o agendamento agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function remover(id: string) {
-    await deleteAgendamento(id);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-    setEditing(null);
-    load();
+    setSalvando(true);
+    try {
+      await deleteAgendamento(id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      setEditing(null);
+      await load();
+    } catch {
+      Alert.alert('Erro', 'Não foi possível excluir o agendamento agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   const vazio = itens.length === 0;
 
   return (
     <View style={styles.container}>
-      {/* HEADER ESCURO */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Agenda</Text>
-            <Text style={styles.headerSub}>{itens.length} compromisso{itens.length === 1 ? '' : 's'} no período</Text>
-          </View>
+      {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
+      <GradientHeader
+        title="Agenda"
+        subtitle={`${itens.length} compromisso${itens.length === 1 ? '' : 's'} no período`}
+        right={
           <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); }} activeOpacity={0.85}>
             <Text style={styles.todayBtnText}>Hoje</Text>
           </TouchableOpacity>
-        </View>
-
+        }
+      >
         {/* SEGMENTED Dia / Semana / Mês */}
         <View style={styles.segment}>
           {MODOS.map(m => {
@@ -246,15 +307,15 @@ export default function AgendaScreen() {
 
         {/* NAV ‹ período › */}
         <View style={styles.navRow}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => passo(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => passo(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
             <MaterialCommunityIcons name="chevron-left" size={24} color={Colors.accentLight} />
           </TouchableOpacity>
           <Text style={styles.navLabel}>{rotuloPeriodo(modo, ref)}</Text>
-          <TouchableOpacity style={styles.navBtn} onPress={() => passo(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => passo(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
             <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
           </TouchableOpacity>
         </View>
-      </View>
+      </GradientHeader>
 
       {/* LISTA */}
       {vazio ? (
@@ -310,6 +371,7 @@ export default function AgendaScreen() {
           <AgendamentoForm
             state={editing}
             clientes={clientes}
+            salvando={salvando}
             onChange={setEditing}
             onClose={() => setEditing(null)}
             onSave={salvar}
@@ -400,10 +462,11 @@ function maskHora(raw: string): string {
 }
 
 function AgendamentoForm({
-  state, clientes, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
+  state, clientes, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
 }: {
   state: EditState;
   clientes: Cliente[];
+  salvando: boolean;
   onChange: (s: EditState) => void;
   onClose: () => void;
   onSave: (s: EditState) => void;
@@ -602,7 +665,7 @@ function AgendamentoForm({
         )}
 
         {onDelete && (
-          <TouchableOpacity style={styles.deleteBtn} onPress={onDelete} activeOpacity={0.8}>
+          <TouchableOpacity style={[styles.deleteBtn, salvando && { opacity: 0.5 }]} onPress={onDelete} activeOpacity={0.8} disabled={salvando}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
             <Text style={styles.deleteText}>Excluir agendamento</Text>
           </TouchableOpacity>
@@ -614,6 +677,8 @@ function AgendamentoForm({
           label={state.id ? 'Salvar alterações' : 'Confirmar agendamento'}
           variant="gradient" size="lg" fullWidth
           onPress={() => onSave(state)}
+          loading={salvando}
+          disabled={salvando}
           icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />}
         />
       </View>
@@ -636,21 +701,17 @@ function QuickDate({ label, onPress }: { label: string; onPress: () => void }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
 
-  header: { backgroundColor: Colors.surfaceVariant, paddingHorizontal: Spacing.base, paddingBottom: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  headerRow: { flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: 0 },
-  headerSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
-  todayBtn: { backgroundColor: 'rgba(52,198,217,0.14)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.4)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
-  todayBtnText: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
+  todayBtn: { backgroundColor: 'rgba(255,255,255,0.13)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
+  todayBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
 
-  segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: BorderRadius.md, padding: 4, marginTop: Spacing.base, borderWidth: 1, borderColor: Colors.outline },
+  segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: BorderRadius.md, padding: 4, marginTop: Spacing.base, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   segmentItem: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: BorderRadius.sm },
   segmentItemActive: { backgroundColor: Colors.accent },
-  segmentLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurfaceVariant },
+  segmentLabel: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
   segmentLabelActive: { color: '#0A1626' },
 
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.base },
-  navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.outline },
+  navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: '#fff' },
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },

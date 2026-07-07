@@ -31,6 +31,7 @@ export default function ServicosScreen() {
   const [filtered, setFiltered] = useState<ServicoItem[]>([]);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<ServicoItem> | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -58,10 +59,34 @@ export default function ServicosScreen() {
       unidade: editing.unidade ?? 'un', fotoUri: editing.fotoUri,
       criadoEm: editing.criadoEm ?? nowISO(),
     };
-    await saveServico(s);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setEditing(null);
-    load();
+
+    if (s.preco <= 0) {
+      Alert.alert(
+        'Preço zerado',
+        'Este serviço está com preço R$ 0,00. Se for adicionado a um orçamento assim, o cliente não pagará nada por ele. Deseja salvar mesmo assim?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Salvar assim mesmo', style: 'destructive', onPress: () => void persistServico(s) },
+        ]
+      );
+      return;
+    }
+    await persistServico(s);
+  }
+
+  async function persistServico(s: ServicoItem) {
+    setSalvando(true);
+    try {
+      await saveServico(s);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setEditing(null);
+      load();
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Erro', 'Não foi possível salvar o serviço agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function pickFoto() {
@@ -102,7 +127,7 @@ export default function ServicosScreen() {
               </View>
               <View style={styles.cardActions}>
                 <TouchableOpacity onPress={() => setEditing({ ...s })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${s.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { await deleteServico(s.id); load(); } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${s.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteServico(s.id); load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o serviço agora. Tente novamente.'); } } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
                 </TouchableOpacity>
               </View>
@@ -141,6 +166,12 @@ export default function ServicosScreen() {
                   <Text style={styles.margemBannerText}>Margem de {margemPct(editing.preco, editing.custo)} · Lucro {formatCurrency((editing.preco ?? 0) - (editing.custo ?? 0))}</Text>
                 </View>
               )}
+              {!editing.preco && (
+                <View style={styles.avisoBanner}>
+                  <MaterialCommunityIcons name="alert-outline" size={18} color={Colors.danger} />
+                  <Text style={styles.avisoBannerText}>Preço zerado — este serviço entrará de graça em qualquer orçamento.</Text>
+                </View>
+              )}
               <Text style={styles.unidadeLabel}>Unidade de medida</Text>
               <View style={styles.unidadesRow}>
                 {UNIDADES.map(u => (
@@ -151,7 +182,7 @@ export default function ServicosScreen() {
               </View>
             </ScrollView>
             <View style={styles.modalFooter}>
-              <OlliButton label="Salvar serviço" variant="gradient" size="lg" fullWidth onPress={handleSave} disabled={!editing.nome?.trim()} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
+              <OlliButton label="Salvar serviço" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
           </View>
         )}
@@ -184,6 +215,8 @@ const styles = StyleSheet.create({
   fotoBtnLabel: { fontSize: 13, color: Colors.primary, fontWeight: '700', marginTop: 4 },
   margemBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.successLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base },
   margemBannerText: { fontSize: 13, color: Colors.success, fontWeight: '700' },
+  avisoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.danger + '1A', borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.danger + '40' },
+  avisoBannerText: { fontSize: 13, color: Colors.danger, fontWeight: '700', flex: 1 },
   unidadeLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
   unidadesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline },
