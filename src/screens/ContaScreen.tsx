@@ -339,16 +339,16 @@ export default function ContaScreen() {
                 <MaterialCommunityIcons name="crown-outline" size={16} color="#0A1626" />
                 <Text style={styles.proBadgeText}>OLLI PRO</Text>
               </View>
-              <View style={styles.soonPill}><Text style={styles.soonPillText}>em breve</Text></View>
+              <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
             </View>
             <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
-            <Text style={styles.proSub}>Equipe ao vivo, relatórios avançados e a OLLI montando orçamentos por voz. Conheça os planos para autônomo e empresa.</Text>
+            <Text style={styles.proSub}>Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.</Text>
             <TouchableOpacity
               style={styles.proBtn}
               onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
               activeOpacity={0.85}
             >
-              <Text style={styles.proBtnText}>Quero saber mais</Text>
+              <Text style={styles.proBtnText}>Ver planos e assinar</Text>
               <MaterialCommunityIcons name="arrow-right" size={16} color={Colors.accentLight} />
             </TouchableOpacity>
           </View>

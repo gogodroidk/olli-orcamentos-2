@@ -225,6 +225,16 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       atualizado_em TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
+
+    -- Relatório do dia falado — snapshot diário compilado (orçamentos, recibos,
+    -- agendamentos, clientes novos) para reler/ouvir depois. Local-only (não
+    -- sincroniza com a nuvem, igual eventos/cache_ia/casos_erro): é um histórico
+    -- pessoal do aparelho, não um dado relacional do negócio.
+    CREATE TABLE IF NOT EXISTS relatorios_diarios (
+      data TEXT PRIMARY KEY,
+      dados TEXT NOT NULL,
+      criado_em TEXT NOT NULL
+    );
   `);
 
   await runMigrations(database);
@@ -693,6 +703,49 @@ async function getAgendamentosForBackup(): Promise<Agendamento[]> {
   return rows.map(rowToAgendamentoLocal);
 }
 
+// ─── RELATÓRIO DO DIA (falado) ────────────────────────────
+/**
+ * Snapshot compilado de um dia (orçamentos, recibos, agenda, clientes novos).
+ * O shape completo de `dados` é definido por `RelatorioDia` em services/relatorioDia
+ * — aqui a coluna é só um JSON opaco, igual ao padrão de `orcamentos`/`modelos`.
+ */
+export interface RelatorioDiaRow {
+  data: string; // 'YYYY-MM-DD'
+  dados: any;
+  criadoEm: string;
+}
+
+/** Cria ou substitui (upsert) o snapshot do dia — idempotente por `data`. */
+export async function saveRelatorioDia(data: string, dados: unknown): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
+    [data, JSON.stringify(dados), new Date().toISOString()]
+  );
+}
+
+/** Lê o snapshot salvo de um dia específico ('YYYY-MM-DD'), ou null. */
+export async function getRelatorioDia(data: string): Promise<RelatorioDiaRow | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ data: string; dados: string; criado_em: string }>(
+    'SELECT * FROM relatorios_diarios WHERE data = ?', [data]
+  );
+  return row ? { data: row.data, dados: JSON.parse(row.dados), criadoEm: row.criado_em } : null;
+}
+
+/** Histórico de relatórios salvos, do mais recente para o mais antigo. */
+export async function getRelatoriosDias(limit = 30): Promise<RelatorioDiaRow[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ data: string; dados: string; criado_em: string }>(
+    'SELECT * FROM relatorios_diarios ORDER BY data DESC LIMIT ?', [limit]
+  );
+  return rows.map(r => ({ data: r.data, dados: JSON.parse(r.dados), criadoEm: r.criado_em }));
+}
+
+async function getRelatoriosDiasForBackup(): Promise<RelatorioDiaRow[]> {
+  return getRelatoriosDias(3650); // ~10 anos — o backup leva o histórico inteiro
+}
+
 // ─── EXPORT / IMPORT (backup) ─────────────────────────────
 export interface BackupSnapshot {
   version: number;
@@ -708,6 +761,8 @@ export interface BackupSnapshot {
   agendamentos: Agendamento[];
   /** Contadores de numeração (orcamento/recibo). Restaurados p/ a sequência não regredir/colidir. */
   contadores?: Record<string, number>;
+  /** Histórico de relatórios do dia (opcional — snapshots antigos não têm). */
+  relatoriosDiarios?: RelatorioDiaRow[];
 }
 
 /** Lê os contadores de numeração para o backup (chave → valor). */
@@ -720,13 +775,14 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
 }
 
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
+    getRelatoriosDiasForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios,
   };
 }
 
@@ -749,6 +805,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const modelos = asArray<ModeloOrcamento>(data.modelos);
   const depoimentos = asArray<Depoimento>(data.depoimentos);
   const agendamentos = asArray<Agendamento>(data.agendamentos);
+  const relatoriosDiarios = asArray<RelatorioDiaRow>(data.relatoriosDiarios);
 
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
@@ -834,6 +891,13 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          a.observacao ?? null, a.criadoEm, a.atualizadoEm],
       );
     }
+    // Relatórios diários: MERGE (não apaga o histórico local existente) — é um
+    // diário pessoal do aparelho, diferente das tabelas relacionais acima que o
+    // restore SUBSTITUI por completo. O snapshot só adiciona/atualiza os dias que trouxer.
+    for (const rd of relatoriosDiarios) {
+      await db.runAsync('INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
+        [rd.data, JSON.stringify(rd.dados), rd.criadoEm]);
+    }
 
     // Numeração: restaura os contadores do snapshot, com PISO no nº de registros
     // restaurados (Math.max) — a sequência nunca regride nem colide com números já
@@ -898,7 +962,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
 const USER_DATA_TABLES = [
   'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos',
   'depoimentos', 'agendamentos', 'empresa', 'exclusoes', 'contadores',
-  'eventos', 'cache_ia', 'casos_erro',
+  'eventos', 'cache_ia', 'casos_erro', 'relatorios_diarios',
 ];
 
 /**

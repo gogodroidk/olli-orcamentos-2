@@ -303,6 +303,24 @@ export default function HojeScreen() {
           </View>
         </View>
 
+        {/* RELATÓRIO DO DIA FALADO */}
+        <AnimatedEntrance index={2}>
+          <TouchableOpacity
+            style={styles.relatorioCard}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('RelatorioDia'); }}
+            activeOpacity={0.85}
+          >
+            <View style={styles.relatorioIcon}>
+              <MaterialCommunityIcons name="volume-high" size={20} color={Colors.accentLight} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
+              <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+          </TouchableOpacity>
+        </AnimatedEntrance>
+
         {/* ESTADO 100% VAZIO E ELEGANTE */}
         {!carregando && semNada && checklist.length === 0 && (
           <AnimatedEntrance index={1}>
@@ -361,6 +379,19 @@ const styles = StyleSheet.create({
   checkTextDone: { textDecorationLine: 'line-through', color: Colors.onSurfaceMuted },
   checklistNota: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline },
   checklistNotaText: { flex: 1, fontSize: 10.5, color: Colors.onSurfaceMuted },
+
+  relatorioCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.outline,
+    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...Shadow.sm,
+  },
+  relatorioIcon: {
+    width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: Colors.accentContainer,
+  },
+  relatorioTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  relatorioSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
 
   allClear: { alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.lg },
   allClearTitle: { fontSize: 17, fontWeight: '800', color: '#fff', marginTop: 10 },

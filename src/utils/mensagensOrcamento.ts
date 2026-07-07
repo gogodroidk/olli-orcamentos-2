@@ -62,3 +62,18 @@ export function montarMensagemFollowUpOrcamento(orc: Orcamento, empresa?: Empres
   ];
   return linhas.filter(Boolean).join('\n');
 }
+
+/**
+ * Mensagem de WhatsApp para reconquistar um cliente sem contato há muito
+ * tempo (Radar de clientes). Calorosa e profissional — nunca soa a cobrança.
+ * `nomePrestador` é o nome do prestador/empresa (getEmpresa), se disponível.
+ */
+export function montarMensagemReconquista(nome: string, meses: number, nomePrestador?: string | null): string {
+  const quem = (nomePrestador ?? '').trim();
+  const linhas = [
+    `Oi, ${primeiroNome(nome)}! ${quem ? `Aqui é ${quem}.` : 'Como vai?'}`,
+    `Já faz ${meses} ${meses === 1 ? 'mês' : 'meses'} desde a nossa última manutenção e lembrei de você — passando pra saber se está tudo funcionando bem por aí.`,
+    'Se quiser, posso passar para dar uma olhada geral e evitar problema maior lá na frente. Me chama por aqui quando puder!',
+  ];
+  return linhas.filter(Boolean).join('\n');
+}

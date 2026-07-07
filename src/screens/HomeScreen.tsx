@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Linking, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,12 +10,15 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { getOrcamentos, getEmpresa } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
+import { clientesParaReconquistar, mensagemReconquista, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
+import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -66,6 +69,9 @@ export default function HomeScreen() {
   const [olliMenu, setOlliMenu] = useState(false);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [radar, setRadar] = useState<ClienteParaReconquistar[]>([]);
+  const [radarCarregando, setRadarCarregando] = useState(true);
+  const [adiandoId, setAdiandoId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [all, emp, prox] = await Promise.all([getOrcamentos(), getEmpresa(), getProximoAgendamento()]);
@@ -75,13 +81,49 @@ export default function HomeScreen() {
     setCarregando(false);
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const loadRadar = useCallback(async () => {
+    try {
+      const lista = await clientesParaReconquistar();
+      setRadar(lista.slice(0, 3));
+    } catch {
+      setRadar([]);
+    } finally {
+      setRadarCarregando(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadRadar(); }, [load, loadRadar]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(load), [load]);
+  useEffect(() => onSyncAplicado(() => { load(); loadRadar(); }), [load, loadRadar]);
 
-  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar()]); setRefreshing(false); };
+
+  async function chamarNoWhatsApp(item: ClienteParaReconquistar) {
+    if (!item.cliente.telefone?.trim()) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.cliente.nome} em Clientes para chamar por aqui.`);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    const mensagem = mensagemReconquista(item.cliente.nome, item.mesesSemContato);
+    try {
+      await abrirWhatsApp(item.cliente.telefone, mensagem);
+    } catch {
+      // silencioso: mesmo padrão de outras chamadas de WhatsApp no app
+    }
+  }
+
+  async function adiarRadar(item: ClienteParaReconquistar) {
+    Haptics.selectionAsync().catch(() => {});
+    setAdiandoId(item.cliente.id);
+    try {
+      await adiarClienteRadar(item.cliente.id, 30);
+      setRadar(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
+    } finally {
+      setAdiandoId(null);
+    }
+  }
 
   // ── métricas reais ──
   const aprovados = orcamentos.filter(o => o.status === 'aprovado');
@@ -223,6 +265,50 @@ export default function HomeScreen() {
             </View>
           </AnimatedEntrance>
         )}
+
+        {/* RADAR DE CLIENTES — clientes já atendidos que sumiram (>= 5 meses) */}
+        {radarCarregando ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
+            <OlliSkeleton width="45%" height={16} />
+            <View style={styles.radarCard}>
+              <OlliSkeleton width={42} height={42} radius={21} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="55%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          </View>
+        ) : radar.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Radar de clientes</Text>
+            <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
+              {radar.map((item, i) => (
+                <AnimatedEntrance key={item.cliente.id} index={2 + i}>
+                  <View style={styles.radarCard}>
+                    <View style={styles.radarTop}>
+                      <View style={styles.radarAvatar}>
+                        <Text style={styles.radarAvatarText}>{item.cliente.nome.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.radarName} numberOfLines={1}>{item.cliente.nome}</Text>
+                        <Text style={styles.radarMeta}>há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'} sem contato</Text>
+                      </View>
+                    </View>
+                    <View style={styles.radarActions}>
+                      <OlliPressable style={styles.radarBtnPrimary} onPress={() => chamarNoWhatsApp(item)} haptic={false}>
+                        <MaterialCommunityIcons name="whatsapp" size={16} color="#0A1626" />
+                        <Text style={styles.radarBtnPrimaryText}>Chamar no WhatsApp</Text>
+                      </OlliPressable>
+                      <OlliPressable style={styles.radarBtnGhost} onPress={() => adiarRadar(item)} disabled={adiandoId === item.cliente.id} haptic={false}>
+                        <Text style={styles.radarBtnGhostText}>Adiar 30 dias</Text>
+                      </OlliPressable>
+                    </View>
+                  </View>
+                </AnimatedEntrance>
+              ))}
+            </View>
+          </>
+        ) : null}
 
         {/* ANZOL — Diagnóstico por código de erro (offline, único no BR) */}
         <AnimatedEntrance index={2}>
@@ -572,6 +658,18 @@ const styles = StyleSheet.create({
   starterSetupText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
 
   emptyRecent: { paddingHorizontal: Spacing.base, minHeight: 220 },
+
+  radarCard: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
+  radarTop: { flexDirection: 'row', alignItems: 'center' },
+  radarAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(247,178,59,0.16)', justifyContent: 'center', alignItems: 'center' },
+  radarAvatarText: { fontSize: 17, fontWeight: '800', color: Colors.warning },
+  radarName: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  radarMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  radarActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  radarBtnPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: Colors.whatsapp, borderRadius: BorderRadius.full, paddingVertical: 10 },
+  radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' },
+  radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
+  radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
 
   recentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
   recentAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(11,111,206,0.2)', justifyContent: 'center', alignItems: 'center' },

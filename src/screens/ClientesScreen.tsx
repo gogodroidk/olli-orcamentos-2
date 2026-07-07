@@ -16,6 +16,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
+import { clientesParaReconquistar } from '../services/radarClientes';
 import { useCepLookup } from '../services/cep';
 import { Cliente } from '../types';
 import { generateId } from '../utils/id';
@@ -40,6 +41,10 @@ export default function ClientesScreen() {
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // Ids de clientes "sumidos" (radar de reconquista, >= 5 meses sem contato).
+  // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
+  // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
+  const [radarMeses, setRadarMeses] = useState<Map<string, number>>(new Map());
   const { cepLoading, onCepChange } = useCepLookup(r => {
     setEditing(p => p ? {
       ...p,
@@ -49,13 +54,22 @@ export default function ClientesScreen() {
     } : p);
   });
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => { load(); loadRadar(); }, []));
 
   async function load() {
     const all = await getClientes();
     setClientes(all);
     applyFilter(all, query);
     setCarregando(false);
+  }
+
+  async function loadRadar() {
+    try {
+      const lista = await clientesParaReconquistar();
+      setRadarMeses(new Map(lista.map(item => [item.cliente.id, item.mesesSemContato])));
+    } catch {
+      setRadarMeses(new Map());
+    }
   }
 
   function applyFilter(data: Cliente[], q: string) {
@@ -233,7 +247,14 @@ export default function ClientesScreen() {
             >
               <View style={styles.avatar}><Text style={styles.avatarText}>{c.nome.charAt(0).toUpperCase()}</Text></View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.name}>{c.nome}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name} numberOfLines={1}>{c.nome}</Text>
+                  {radarMeses.has(c.id) && (
+                    <View style={styles.radarBadge}>
+                      <Text style={styles.radarBadgeText}>{radarMeses.get(c.id)}+ meses</Text>
+                    </View>
+                  )}
+                </View>
                 {c.telefone ? <Text style={styles.info}>{c.telefone}</Text> : null}
                 {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
               </View>
@@ -341,7 +362,10 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontSize: 18, fontWeight: '800', color: Colors.primary },
-  name: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: Colors.onSurface },
+  radarBadge: { backgroundColor: 'rgba(247,178,59,0.14)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.34)', borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  radarBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.warning },
   info: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
   infoMuted: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 1 },
   cardActions: { flexDirection: 'row', gap: 16 },

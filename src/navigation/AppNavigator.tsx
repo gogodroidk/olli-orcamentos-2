@@ -29,6 +29,7 @@ import OlliChatScreen from '../screens/OlliChatScreen';
 import PlanosScreen from '../screens/PlanosScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
+import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
 
 /**
  * Item pré-carregado num novo orçamento (vindo de um diagnóstico/código de erro).
@@ -63,6 +64,8 @@ export type RootStackParamList = {
   OlliVoz: undefined;
   OlliChat: undefined;
   Planos: undefined;
+  // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
+  RelatorioDia: undefined;
 };
 
 export type TabParamList = {
@@ -227,6 +230,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OlliVoz" component={OlliVozScreen} />
       <Stack.Screen name="OlliChat" component={OlliChatScreen} />
       <Stack.Screen name="Planos" component={PlanosScreen} />
+      {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
+      <Stack.Screen name="RelatorioDia" component={RelatorioDiaScreen} />
     </Stack.Navigator>
   );
 }

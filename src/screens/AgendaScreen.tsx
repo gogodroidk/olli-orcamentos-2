@@ -377,11 +377,14 @@ export default function AgendaScreen() {
         </ScrollView>
       )}
 
-      {/* FAB Agendar visita */}
+      {/* FAB Agendar visita — oculto quando o período está vazio: o EmptyState
+          já mostra o mesmo CTA no centro, e os dois juntos ficam redundantes. */}
+      {itens.length > 0 && (
       <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} activeOpacity={0.9}>
         <MaterialCommunityIcons name="calendar-plus" size={20} color="#0A1626" />
         <Text style={styles.fabText}>Agendar visita</Text>
       </TouchableOpacity>
+      )}
 
       {/* FORM MODAL */}
       <Modal visible={!!editing} animationType="slide" onRequestClose={() => setEditing(null)} transparent={false}>
