@@ -11,8 +11,8 @@ import { Colors, Spacing } from '../theme';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
-import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes } from '../database/database';
-import { Orcamento, ItemOrcamento, FormaPagamento, Cliente } from '../types';
+import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa } from '../database/database';
+import { Orcamento, ItemOrcamento, FormaPagamento, Cliente, Empresa } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO, todayISO } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
@@ -48,7 +48,14 @@ function validadeEmDias(days: number): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-function emptyOrcamento(numero: string): Orcamento {
+/**
+ * Orçamento em branco, já com os padrões de negócio da empresa (quando
+ * cadastrados em "Meu Negócio" > Personalização) para o técnico não precisar
+ * redigitar validade/garantia/condições/observações/PIX em todo orçamento
+ * novo — ele ainda pode sobrescrever qualquer campo nos passos seguintes.
+ */
+function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
+  const validadeDias = empresa?.validadeDiasPadrao ?? 15;
   return {
     id: generateId(),
     numero,
@@ -64,9 +71,14 @@ function emptyOrcamento(numero: string): Orcamento {
     valorTotal: 0,
     status: 'rascunho',
     dataEmissao: todayISO(),
-    // Validade padrão de 15 dias — evita orçamento sair sem prazo algum
-    // (o técnico pode ajustar/limpar depois em Step4Personalizacao).
-    validadeOrcamento: validadeEmDias(15),
+    // Validade padrão vem da empresa (ou 15 dias) — evita orçamento sair sem
+    // prazo algum (o técnico pode ajustar/limpar depois em Step4Personalizacao).
+    validadeOrcamento: validadeEmDias(validadeDias),
+    garantia: empresa?.garantiaPadrao || undefined,
+    condicoesPagamento: empresa?.condicoesPagamentoPadrao || undefined,
+    informacoesAdicionais: empresa?.observacoesPadrao || undefined,
+    chavePix: empresa?.chavePix || undefined,
+    corMarca: empresa?.corMarca || undefined,
     formasPagamento: defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
@@ -127,6 +139,7 @@ export default function NovoOrcamentoScreen() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
   // IDs de itens com preço R$ 0,00 que o usuário já confirmou explicitamente
   // como cortesia/brinde (via Alert em Step2Itens). Persiste entre trocas de
   // step porque vive no componente pai, que não desmonta.
@@ -147,6 +160,12 @@ export default function NovoOrcamentoScreen() {
 
   useEffect(() => {
     async function init() {
+      // Carregada primeiro porque tanto a edição (Step4 precisa dela pro
+      // default de cor) quanto a criação (padrões pré-preenchidos) dependem
+      // da empresa já estar em mãos antes de montar o orçamento.
+      const emp = await getEmpresa();
+      setEmpresa(emp);
+
       if (isEdit && orcamentoId) {
         const existing = await getOrcamento(orcamentoId);
         if (existing) {
@@ -162,7 +181,7 @@ export default function NovoOrcamentoScreen() {
         }
       }
       const numero = await getNextOrcamentoNumber();
-      let base = emptyOrcamento(numero);
+      let base = emptyOrcamento(numero, emp);
 
       // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
       if (prefillClienteId) {
@@ -339,8 +358,8 @@ export default function NovoOrcamentoScreen() {
             onConfirmarItemZero={confirmarItemZero}
           />
         )}
-        {step === 2 && <Step3Detalhes orc={orc} onChange={update} />}
-        {step === 3 && <Step4Personalizacao orc={orc} onChange={update} />}
+        {step === 2 && <Step3Detalhes orc={orc} onChange={update} empresa={empresa} />}
+        {step === 3 && <Step4Personalizacao orc={orc} onChange={update} empresa={empresa} />}
       </Animated.View>
 
       <View

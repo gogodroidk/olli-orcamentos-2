@@ -1,0 +1,597 @@
+/**
+ * Pagamentos Stripe — OLLI (worker Cloudflare, SEM SDK).
+ *
+ * Toda conversa com a Stripe é fetch direto na API REST (api.stripe.com),
+ * autenticada por HTTP Basic com env.STRIPE_SECRET_KEY (secret do worker, nunca
+ * vai ao app). O app só fala com estas rotas usando o JWT do Supabase; nenhuma
+ * chave Stripe existe no client — mesmo modelo de segurança do GEMINI_API_KEY.
+ *
+ *   POST /stripe/checkout  → cria Checkout Session (assinatura) e devolve { url }
+ *   POST /stripe/webhook   → recebe eventos da Stripe (assinatura HMAC verificada
+ *                            manualmente) e sincroniza public.assinaturas
+ *   POST /stripe/portal    → cria sessão do Customer Portal e devolve { url }
+ *   GET  /stripe/sucesso   → página "assinatura confirmada"
+ *   GET  /stripe/cancelado → página "pagamento cancelado"
+ *
+ * Escrita no Supabase é sempre via SERVICE_ROLE (bypassa RLS) — o usuário só tem
+ * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
+ */
+
+// URLs de retorno do Checkout / Portal (o worker atende os dois subdomínios;
+// usamos o de diagnóstico, que serve estas páginas de sucesso/cancelado).
+const SUCESSO_URL = 'https://diagnostico.olliorcamentos.online/stripe/sucesso';
+const CANCELADO_URL = 'https://diagnostico.olliorcamentos.online/stripe/cancelado';
+
+const STRIPE_API = 'https://api.stripe.com/v1';
+
+// Lookup keys dos Prices → plano interno. É a fonte da verdade de qual plano cada
+// assinatura representa (o webhook lê lookup_key do price para não depender do
+// price_id específico, que pode mudar entre test/live ou ganhar variantes anuais).
+const LOOKUP_PARA_PLANO = {
+  olli_pro_mensal: 'pro',
+  olli_pro_anual: 'pro',
+  olli_empresa_mensal: 'empresa',
+};
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey',
+  'Access-Control-Max-Age': '86400',
+};
+
+// Contrato único das rotas Stripe: o roteador do index.js valida contra este set.
+// GET só vale para as páginas; POST só para as ações. O método separa os usos.
+export const STRIPE_ROUTES = new Set([
+  '/stripe/checkout',
+  '/stripe/webhook',
+  '/stripe/portal',
+  '/stripe/sucesso',
+  '/stripe/cancelado',
+]);
+
+// ─── helpers de resposta ─────────────────────────────────────
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CORS },
+  });
+}
+
+function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function html(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      // Mesma defesa em profundidade do link.js: CSP restritivo, tudo inline.
+      'Content-Security-Policy':
+        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'",
+    },
+  });
+}
+
+// ─── auth do usuário (mesmo padrão de getUser no index.js) ────
+/** Valida o JWT do Supabase em /auth/v1/user. Retorna o user ({id,email,...}) ou null. */
+async function getUser(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY },
+    });
+    if (!r.ok) return null;
+    const u = await r.json();
+    return u && u.id ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── acesso ao Supabase (service role; bypassa RLS) ──────────
+function sbHeaders(env, extra = {}) {
+  return {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    ...extra,
+  };
+}
+
+/** Lê a linha de assinatura do usuário. null se não houver; { error:true } em falha. */
+async function getAssinatura(env, userId) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}` +
+        `&select=user_id,plano,status,stripe_customer_id,stripe_subscription_id,current_period_end&limit=1`,
+      { headers: sbHeaders(env) },
+    );
+    if (!r.ok) return { error: true };
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr)) return { error: true };
+    return arr.length ? arr[0] : null;
+  } catch {
+    return { error: true };
+  }
+}
+
+/**
+ * Upsert idempotente em public.assinaturas (on_conflict=user_id, merge-duplicates).
+ * `patch` são só as colunas a gravar; user_id é sempre incluído para o merge.
+ * Retorna true em sucesso, false em falha (o webhook usa isso para decidir o HTTP).
+ */
+async function upsertAssinatura(env, userId, patch) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?on_conflict=user_id`,
+      {
+        method: 'POST',
+        headers: sbHeaders(env, {
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        }),
+        body: JSON.stringify({ user_id: userId, ...patch, atualizado_em: new Date().toISOString() }),
+      },
+    );
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ─── chamada à API REST da Stripe (form-urlencoded, Basic auth) ──
+/**
+ * Codifica um objeto (com aninhamento estilo Stripe já achatado pelo chamador)
+ * em application/x-www-form-urlencoded. Os chamadores passam as chaves já no
+ * formato final da Stripe (ex.: 'line_items[0][price]').
+ */
+function encodeForm(fields) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === null) continue;
+    p.append(k, String(v));
+  }
+  return p.toString();
+}
+
+/** POST autenticado na Stripe. Retorna { ok, data } — data é o JSON (ou {} em erro). */
+async function stripePost(env, path, fields) {
+  // Basic auth: usuário = secret key, senha vazia → base64("sk_...:").
+  const authBasic = 'Basic ' + btoa(`${env.STRIPE_SECRET_KEY}:`);
+  const r = await fetch(`${STRIPE_API}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: authBasic,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: encodeForm(fields),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    console.error('[olli-stripe] API', path, r.status, data && data.error && data.error.message);
+    return { ok: false, data };
+  }
+  return { ok: true, data };
+}
+
+/** GET autenticado na Stripe (ex.: buscar a subscription completa). */
+async function stripeGet(env, path) {
+  const authBasic = 'Basic ' + btoa(`${env.STRIPE_SECRET_KEY}:`);
+  const r = await fetch(`${STRIPE_API}${path}`, { headers: { Authorization: authBasic } });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    console.error('[olli-stripe] GET', path, r.status, data && data.error && data.error.message);
+    return { ok: false, data };
+  }
+  return { ok: true, data };
+}
+
+// ─── rate limit (namespace próprio das rotas Stripe) ─────────
+/** Aplica o STRIPE_RL por chave. Retorna true se PODE seguir, false se estourou. */
+async function rateOk(env, key) {
+  if (!env.STRIPE_RL) return true; // binding ausente em algum ambiente: não bloqueia
+  try {
+    const { success } = await env.STRIPE_RL.limit({ key });
+    return !!success;
+  } catch {
+    return true;
+  }
+}
+
+// ─── extração de dados da subscription (robusto entre versões da API) ──
+/**
+ * current_period_end mudou de lugar entre versões da API Stripe: em versões
+ * mais novas (2025+) ele vive no item da assinatura (items.data[0]), não mais
+ * no topo. Lemos os dois lugares para não gravar null num ambiente e no outro não.
+ * Retorna epoch (segundos) ou null.
+ */
+function periodEndEpoch(sub) {
+  if (!sub || typeof sub !== 'object') return null;
+  if (typeof sub.current_period_end === 'number') return sub.current_period_end;
+  const item = sub.items && Array.isArray(sub.items.data) ? sub.items.data[0] : null;
+  if (item && typeof item.current_period_end === 'number') return item.current_period_end;
+  return null;
+}
+
+/** epoch (s) → ISO 8601, ou null. */
+function epochParaIso(epoch) {
+  if (typeof epoch !== 'number' || !isFinite(epoch)) return null;
+  return new Date(epoch * 1000).toISOString();
+}
+
+/** lookup_key do primeiro item da subscription → plano interno ('pro'/'empresa') ou null. */
+function planoDaSubscription(sub) {
+  const item = sub && sub.items && Array.isArray(sub.items.data) ? sub.items.data[0] : null;
+  const lookup = item && item.price ? item.price.lookup_key : null;
+  return (lookup && LOOKUP_PARA_PLANO[lookup]) || null;
+}
+
+// ─── (1) POST /stripe/checkout ───────────────────────────────
+export async function handleCheckout(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+
+  if (!(await rateOk(env, user.id))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+
+  if (!env.STRIPE_SECRET_KEY) return json({ ok: false, erro: 'stripe_nao_configurado' }, 503);
+
+  const body = await request.json().catch(() => ({}));
+  const plano = body && body.plano;
+  // Só vendemos Pro por enquanto (Empresa é só contato até o modo equipe existir).
+  // 'pro' = mensal; 'pro_anual' = 12 meses à vista com desconto.
+  if (plano !== 'pro' && plano !== 'pro_anual') {
+    return json({ ok: false, erro: 'plano_invalido' }, 400);
+  }
+
+  const price = plano === 'pro_anual' ? env.STRIPE_PRICE_PRO_ANUAL : env.STRIPE_PRICE_PRO;
+  if (!price) return json({ ok: false, erro: 'preco_nao_configurado' }, 503);
+
+  // Reaproveita o customer se o usuário já assinou antes (mantém histórico e
+  // método de pagamento no mesmo cliente Stripe, em vez de criar um novo).
+  const existente = await getAssinatura(env, user.id);
+  const customerId = existente && !existente.error ? existente.stripe_customer_id : null;
+
+  const fields = {
+    mode: 'subscription',
+    'line_items[0][price]': price,
+    'line_items[0][quantity]': 1,
+    client_reference_id: user.id,
+    'metadata[user_id]': user.id,
+    'metadata[plano]': 'pro',
+    'subscription_data[metadata][user_id]': user.id,
+    success_url: SUCESSO_URL,
+    cancel_url: CANCELADO_URL,
+    allow_promotion_codes: 'true',
+    locale: 'pt-BR',
+  };
+  // Se já há customer, passamos customer=; senão, customer_email deixa a Stripe
+  // criar o cliente sozinho (não pode mandar os dois juntos).
+  if (customerId) {
+    fields.customer = customerId;
+  } else if (user.email) {
+    fields.customer_email = user.email;
+  }
+
+  const { ok, data } = await stripePost(env, '/checkout/sessions', fields);
+  if (!ok || !data || !data.url) return json({ ok: false, erro: 'falha_checkout' }, 502);
+  return json({ ok: true, url: data.url });
+}
+
+// ─── (3) POST /stripe/portal ─────────────────────────────────
+export async function handlePortal(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+
+  if (!(await rateOk(env, user.id))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+
+  if (!env.STRIPE_SECRET_KEY) return json({ ok: false, erro: 'stripe_nao_configurado' }, 503);
+
+  const assinatura = await getAssinatura(env, user.id);
+  if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  const customerId = assinatura ? assinatura.stripe_customer_id : null;
+  // Sem assinatura/cliente Stripe não há o que gerenciar → 404 amigável.
+  if (!customerId) return json({ erro: 'sem_assinatura' }, 404);
+
+  const { ok, data } = await stripePost(env, '/billing_portal/sessions', {
+    customer: customerId,
+    return_url: SUCESSO_URL,
+  });
+  if (!ok || !data || !data.url) return json({ ok: false, erro: 'falha_portal' }, 502);
+  return json({ ok: true, url: data.url });
+}
+
+// ─── (2) POST /stripe/webhook ────────────────────────────────
+/**
+ * Verifica a assinatura HMAC-SHA256 do header Stripe-Signature.
+ * Formato: t=<epoch>,v1=<hex>[,v1=<hex>...]. Reconstrói signedPayload = `${t}.${raw}`,
+ * calcula o HMAC com STRIPE_WEBHOOK_SECRET e compara em tempo constante com algum v1.
+ * Rejeita se |agora - t| > 300s (replay). Retorna true/false.
+ */
+async function verificarAssinatura(rawBody, sigHeader, secret) {
+  if (!sigHeader || !secret) return false;
+
+  let t = null;
+  const v1s = [];
+  for (const part of sigHeader.split(',')) {
+    const idx = part.indexOf('=');
+    if (idx < 0) continue;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (k === 't') t = v;
+    else if (k === 'v1') v1s.push(v);
+  }
+  if (!t || !v1s.length) return false;
+
+  // Janela de replay: 300s de tolerância.
+  const ts = Number(t);
+  if (!isFinite(ts)) return false;
+  const agora = Math.floor(Date.now() / 1000);
+  if (Math.abs(agora - ts) > 300) return false;
+
+  // HMAC-SHA256(signedPayload) com o secret do webhook.
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const assinado = `${t}.${rawBody}`;
+  const macBuf = await crypto.subtle.sign('HMAC', key, enc.encode(assinado));
+  const esperado = [...new Uint8Array(macBuf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  // Comparação em tempo constante contra cada v1 recebido (rotação de secret).
+  for (const v1 of v1s) {
+    if (compararConstante(esperado, v1)) return true;
+  }
+  return false;
+}
+
+/** Comparação de strings em tempo constante (evita timing attack). */
+function compararConstante(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Grava/atualiza a assinatura a partir de um objeto subscription da Stripe.
+ * `statusForcado` sobrescreve o status (ex.: 'canceled' no evento deleted).
+ * Descobre o user_id pelo metadata da subscription (gravado na criação do checkout).
+ */
+async function sincronizarSubscription(env, sub, statusForcado) {
+  if (!sub || typeof sub !== 'object') return true;
+  const userId = sub.metadata && sub.metadata.user_id;
+  if (!userId) {
+    // Sem user_id no metadata não há como casar com a linha certa; ignora sem falhar
+    // (não é erro de assinatura — só evento que não conseguimos atribuir).
+    console.error('[olli-stripe] subscription sem metadata.user_id:', sub.id);
+    return true;
+  }
+  const plano = planoDaSubscription(sub); // pode ser null se lookup_key desconhecida
+  const status = statusForcado || sub.status || null;
+  const novoPeriodo = periodEndEpoch(sub); // epoch (s) ou null
+
+  // Proteção contra evento fora de ordem: a Stripe não garante a ordem de entrega
+  // dos webhooks. Se este NÃO é um cancelamento forçado e a linha já está
+  // 'canceled', só reabrimos a assinatura se o período deste evento for MAIS NOVO
+  // que o gravado — assim um 'updated' atrasado não ressuscita algo já cancelado
+  // por um 'deleted' que chegou antes. Só consultamos quando faz sentido (evita
+  // um SELECT em todo evento).
+  if (!statusForcado) {
+    const atual = await getAssinatura(env, userId);
+    if (atual && !atual.error && atual.status === 'canceled') {
+      const antigoEpoch = atual.current_period_end
+        ? Math.floor(Date.parse(atual.current_period_end) / 1000)
+        : null;
+      const maisNovo =
+        typeof novoPeriodo === 'number' &&
+        (antigoEpoch == null || novoPeriodo > antigoEpoch);
+      if (!maisNovo) {
+        // Evento velho/duplicado sobre uma assinatura já cancelada: ignora sem
+        // erro (não é falha — só não deve sobrescrever o estado terminal).
+        return true;
+      }
+    }
+  }
+
+  const patch = {
+    status,
+    stripe_customer_id: typeof sub.customer === 'string' ? sub.customer : (sub.customer && sub.customer.id) || null,
+    stripe_subscription_id: sub.id || null,
+    current_period_end: epochParaIso(novoPeriodo),
+  };
+  if (plano) patch.plano = plano; // só toca o plano quando reconhecemos o price
+  return upsertAssinatura(env, userId, patch);
+}
+
+export async function handleWebhook(request, env) {
+  // RAW body ANTES de qualquer parse — a assinatura é calculada sobre ele.
+  const rawBody = await request.text();
+  const sig = request.headers.get('Stripe-Signature') || request.headers.get('stripe-signature');
+
+  const valido = await verificarAssinatura(rawBody, sig, env.STRIPE_WEBHOOK_SECRET);
+  if (!valido) return json({ erro: 'assinatura_invalida' }, 400);
+
+  let evento;
+  try {
+    evento = JSON.parse(rawBody);
+  } catch {
+    return json({ erro: 'payload_invalido' }, 400);
+  }
+
+  const tipo = evento && evento.type;
+  const obj = evento && evento.data ? evento.data.object : null;
+
+  try {
+    if (tipo === 'checkout.session.completed') {
+      // A session traz pouca coisa da assinatura; buscamos a subscription completa
+      // (com items/price/period) para gravar plano e vigência corretos.
+      const subId = obj && (typeof obj.subscription === 'string' ? obj.subscription : obj.subscription && obj.subscription.id);
+      // user_id pode vir do metadata da session ou do client_reference_id.
+      const userId =
+        (obj && obj.metadata && obj.metadata.user_id) || (obj && obj.client_reference_id) || null;
+      if (subId) {
+        const { ok, data: sub } = await stripeGet(env, `/subscriptions/${encodeURIComponent(subId)}`);
+        if (ok) {
+          // Garante o metadata.user_id mesmo que a subscription tenha vindo sem ele
+          // (a session é a fonte confiável do vínculo com o usuário logado).
+          if (userId && (!sub.metadata || !sub.metadata.user_id)) {
+            sub.metadata = { ...(sub.metadata || {}), user_id: userId };
+          }
+          const okDb = await sincronizarSubscription(env, sub);
+          if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+        } else {
+          return json({ erro: 'falha_stripe' }, 502);
+        }
+      } else if (userId && obj && obj.customer) {
+        // Fluxo raro (sem subscription na session): grava ao menos o customer.
+        const okDb = await upsertAssinatura(env, userId, {
+          stripe_customer_id: typeof obj.customer === 'string' ? obj.customer : null,
+        });
+        if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+      }
+    } else if (tipo === 'customer.subscription.updated') {
+      const okDb = await sincronizarSubscription(env, obj);
+      if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+    } else if (tipo === 'customer.subscription.deleted') {
+      const okDb = await sincronizarSubscription(env, obj, 'canceled');
+      if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+    } else if (tipo === 'invoice.payment_failed') {
+      // Marca como past_due sem cortar acesso na hora (carência via Stripe retries).
+      // Casa o user_id via metadata da subscription referenciada na fatura.
+      const subId = obj && (typeof obj.subscription === 'string' ? obj.subscription : obj.subscription && obj.subscription.id);
+      if (subId) {
+        const { ok, data: sub } = await stripeGet(env, `/subscriptions/${encodeURIComponent(subId)}`);
+        if (ok) {
+          const okDb = await sincronizarSubscription(env, sub, sub.status || 'past_due');
+          if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+        }
+        // Se não conseguimos buscar a subscription, não falhamos o webhook: a
+        // Stripe reenviará; e updated/deleted futuros corrigem o status.
+      }
+    }
+    // Eventos não tratados: 200 (a Stripe só precisa saber que recebemos).
+  } catch (e) {
+    console.error('[olli-stripe] webhook falhou:', e && (e.message || e));
+    // 500 → a Stripe reenvia. Upserts são idempotentes, então reenvio é seguro.
+    return json({ erro: 'falha_interna' }, 500);
+  }
+
+  return json({ ok: true });
+}
+
+// ─── (4) páginas GET /stripe/sucesso e /stripe/cancelado ─────
+function pagina(emoji, titulo, sub, tomOk = true) {
+  const accent = tomOk ? '#15B66E' : '#C0392B';
+  const grad = tomOk ? '#0B6FCE' : '#8A93A2';
+  return html(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>${esc(titulo)} · OLLI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 14px}
+  .wrap{max-width:440px;width:100%}
+  .card{background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 18px 50px rgba(10,37,64,.14)}
+  .hd{background:linear-gradient(140deg,${grad},#0A2540);height:8px}
+  .body{padding:40px 30px 34px;text-align:center}
+  .emoji{font-size:52px;line-height:1}
+  .title{font-family:'Spectral',Georgia,serif;font-size:24px;font-weight:700;margin-top:16px;color:${accent}}
+  .sub{font-size:15px;color:#5A6575;margin-top:12px;line-height:1.55}
+  .hint{margin-top:26px;font-size:13px;color:#8A93A2;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:14px;padding:14px 16px;line-height:1.5}
+  .foot{text-align:center;font-size:12px;color:#9AA3B2;margin-top:20px;font-weight:600}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="hd"></div>
+      <div class="body">
+        <div class="emoji">${emoji}</div>
+        <div class="title">${esc(titulo)}</div>
+        <div class="sub">${sub}</div>
+        <div class="hint">Pode fechar esta janela e voltar para o app OLLI. Suas informações são atualizadas automaticamente.</div>
+      </div>
+    </div>
+    <div class="foot">OLLI · o escritório de bolso do prestador</div>
+  </div>
+</body>
+</html>`);
+}
+
+export function renderSucesso() {
+  return pagina(
+    '✅',
+    'Assinatura confirmada!',
+    'Deu tudo certo com o seu pagamento. Volte ao app OLLI — seus recursos do plano já estão liberados.',
+    true,
+  );
+}
+
+export function renderCancelado() {
+  return pagina(
+    '↩️',
+    'Pagamento cancelado',
+    'Nada foi cobrado. Você pode assinar quando quiser, direto pelo app OLLI.',
+    false,
+  );
+}
+
+// ─── roteador das rotas /stripe/* ────────────────────────────
+/**
+ * Ponto de entrada único chamado pelo index.js para qualquer path /stripe/*.
+ * Trata o método por rota e devolve 404/405 coerentes. Mantido aqui para o
+ * index.js só precisar delegar sem conhecer os detalhes de cada rota.
+ */
+export async function handleStripe(request, env, url) {
+  const path = url.pathname;
+
+  // Páginas (GET público, sem auth).
+  if (path === '/stripe/sucesso') {
+    if (request.method === 'GET') return renderSucesso();
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+  if (path === '/stripe/cancelado') {
+    if (request.method === 'GET') return renderCancelado();
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+
+  // Ações (POST).
+  if (path === '/stripe/checkout') {
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (request.method === 'POST') return handleCheckout(request, env);
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+  if (path === '/stripe/portal') {
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (request.method === 'POST') return handlePortal(request, env);
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+  if (path === '/stripe/webhook') {
+    // Sem OPTIONS/CORS: a Stripe fala servidor-a-servidor, não browser.
+    if (request.method === 'POST') return handleWebhook(request, env);
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+
+  return json({ erro: 'nao_encontrado' }, 404);
+}

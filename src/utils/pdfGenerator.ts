@@ -165,7 +165,10 @@ function renderCondicoes(o: Orcamento): string {
   // `pagamento` já vem como HTML seguro de pagamentoTexto (texto livre escapado lá).
   const pagamento = pagamentoTexto(o);
   const garantia = o.garantia ?? '';
-  const prazo = o.agendamentoServico || o.dataPrestacaoServico || o.informacoesAdicionais || '';
+  // Prazo é só data de agendamento/execução — informacoesAdicionais (observações)
+  // ganha bloco próprio em renderObservacoes() e não deve ser "engolido" aqui
+  // quando o orçamento também tiver uma data de agendamento preenchida.
+  const prazo = o.agendamentoServico || o.dataPrestacaoServico || '';
 
   const cols: string[] = [];
   if (pagamento) cols.push(`<div class="cond-col"><div class="cond-label">Pagamento</div><div class="cond-val">${pagamento}</div></div>`);
@@ -173,6 +176,17 @@ function renderCondicoes(o: Orcamento): string {
   if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${escapeHtml(prazo)}</div></div>`);
   if (cols.length === 0) return '';
   return `<div class="conditions">${cols.join('')}</div>`;
+}
+
+/** Bloco "Observações" (informacoesAdicionais) — sempre exibido quando preenchido. */
+function renderObservacoes(o: Orcamento): string {
+  if (!o.informacoesAdicionais) return '';
+  return `
+    <div class="text-block">
+      <div class="eyebrow">Observações</div>
+      <div class="body">${escapeHtml(o.informacoesAdicionais)}</div>
+    </div>
+  `;
 }
 
 function renderApprovalGuide(o: Orcamento): string {
@@ -216,6 +230,7 @@ export function gerarHtmlOrcamento(
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
   const approvalGuideHtml = renderApprovalGuide(o);
+  const observacoesHtml = renderObservacoes(o);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
   const accentSoft = mixWhite(accent, 0.09);   // fundo do TOTAL / pílula
@@ -451,13 +466,16 @@ export function gerarHtmlOrcamento(
     ${condicoesHtml}
     ${approvalGuideHtml}
 
-    <!-- CONDIÇÕES CONTRATUAIS / INFORMAÇÕES (texto livre, opcional) -->
+    <!-- CONDIÇÕES CONTRATUAIS (texto livre, opcional) -->
     ${o.condicoesContratuais ? `
       <div class="text-block">
         <div class="eyebrow">Condições contratuais</div>
         <div class="body">${escapeHtml(o.condicoesContratuais)}</div>
       </div>
     ` : ''}
+
+    <!-- OBSERVAÇÕES (texto livre, opcional — inclui observações padrão da empresa) -->
+    ${observacoesHtml}
 
     <!-- FOTOS DO SERVIÇO -->
     ${renderFotos(o)}

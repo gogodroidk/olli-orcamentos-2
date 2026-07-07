@@ -27,6 +27,7 @@ import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { supabase } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
+import { maybeAutoBackup } from './src/services/autoBackup';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -98,11 +99,16 @@ export default function App() {
   // (SIGNED_IN ou INITIAL_SESSION já autenticado), dispara o sync em background.
   // NÃO inclui TOKEN_REFRESHED: a renovação de token (~1h) não deve forçar um
   // sync completo. syncOnLogin é fire-and-forget e nunca lança (offline/deslogado = no-op).
+  //
+  // Logo em seguida, dispara o backup automático versionado (autoBackup.ts):
+  // roda por conta própria (no-op se já houve 'diario' nas últimas 24h, toggle
+  // desligado ou deslogado) e não depende do sync terminar — só entra DEPOIS
+  // dele para não competir por rede com o sync no exato momento do login.
   useEffect(() => {
     if (!supabase) return;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-        void syncOnLogin();
+        void syncOnLogin().finally(() => { void maybeAutoBackup(); });
       }
     });
     return () => data.subscription.unsubscribe();

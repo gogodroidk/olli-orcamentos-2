@@ -47,6 +47,15 @@ export function isDiagnosticoIADisponivel(): boolean {
 }
 
 /**
+ * Base das rotas de pagamento (Stripe Checkout/Portal). É o MESMO Worker
+ * Cloudflare do diagnóstico (`olli-diagnostico`, que atende
+ * diagnostico.olliorcamentos.online) — ele também expõe `/stripe/checkout`,
+ * `/stripe/webhook` e `/stripe/portal`. Não existe uma URL separada: reusamos
+ * DIAGNOSTICO_URL para não duplicar configuração de ambiente.
+ */
+export const PAGAMENTOS_URL: string = DIAGNOSTICO_URL;
+
+/**
  * WhatsApp de suporte/vendas (dígitos com DDI, ex.: 5511999999999).
  * Usado no CTA "Falar com a gente" da tela de Planos. Vazio = CTA oculto.
  */

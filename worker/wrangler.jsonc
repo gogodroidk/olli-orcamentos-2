@@ -4,17 +4,28 @@
   "main": "src/index.js",
   "compatibility_date": "2025-06-01",
   "observability": { "enabled": true },
-  // Variáveis PÚBLICAS (não-secretas). A chave da IA é secret:
+  // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put GEMINI_API_KEY
+  //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)
+  //   npx wrangler secret put STRIPE_WEBHOOK_SECRET   (whsec_..., do endpoint do webhook)
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpYWVwbHFpbm5ubm5peXZ3dGxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU5NzAsImV4cCI6MjA5NjY5MTk3MH0.P_EF248NN0y7XJ47FmUuqwW00N2gvjq_aNJBqan2COk",
-    "GEMINI_MODEL": "gemini-2.5-flash"
+    "GEMINI_MODEL": "gemini-2.5-flash",
+    // Price IDs da Stripe (não-secretos — identificam produtos, não autenticam).
+    // Pro = R$39/mês (lookup olli_pro_mensal); Empresa = R$99/mês (lookup
+    // olli_empresa_mensal, ainda NÃO vendido no checkout — só contato).
+    "STRIPE_PRICE_PRO": "price_1TqUOA4zjAI9pGd77ZyOCYcQ",
+    "STRIPE_PRICE_PRO_ANUAL": "price_1TqUVb4zjAI9pGd7fGSU4b4v",
+    "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6"
   },
   // Rate limiting nativo da Cloudflare. Protege a cota paga da IA (por usuário) e
   // o link público contra abuso/brute-force (por IP). period: 10 ou 60 (segundos).
   "ratelimits": [
     { "name": "IA_RL", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
-    { "name": "LINK_RL", "namespace_id": "1002", "simple": { "limit": 12, "period": 60 } }
+    { "name": "LINK_RL", "namespace_id": "1002", "simple": { "limit": 12, "period": 60 } },
+    // Rotas Stripe (checkout/portal) por usuário: barra criação em massa de
+    // sessões. Não cobre o webhook (esse é servidor-a-servidor da Stripe).
+    { "name": "STRIPE_RL", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } }
   ]
 }

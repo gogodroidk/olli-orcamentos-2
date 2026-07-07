@@ -18,6 +18,16 @@ export const PENDING_EMAIL_KEY = 'olli.pendingEmail';
 export const LEMBRETE_MAP_KEY = 'olli.agenda.lembretes';
 /** Aviso de lembretes já explicado (AgendaScreen) — por conta, re-explica após logout com limpeza. */
 export const NOTIF_EXPLICADO_KEY = 'olli.agenda.notifExplicado';
+/**
+ * Toggle do backup automático (services/autoBackup + ContaScreen). Default
+ * ligado quando ausente — string '0' desliga explicitamente. É preferência de
+ * CONTA (o usuário decide se quer gastar dado móvel com backup diário), por
+ * isso entra em APP_DATA_STORAGE_KEYS: zera no logout/troca de conta, senão o
+ * próximo usuário do aparelho herdaria a escolha de outra pessoa.
+ */
+export const AUTO_BACKUP_TOGGLE_KEY = 'olli.autoBackup.ativo';
+/** Carimbo ISO do último backup automático 'diario' bem-sucedido (services/autoBackup). */
+export const AUTO_BACKUP_ULTIMO_KEY = 'olli.autoBackup.ultimo';
 
 /**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
@@ -30,4 +40,6 @@ export const APP_DATA_STORAGE_KEYS = [
   PENDING_EMAIL_KEY,
   LEMBRETE_MAP_KEY,
   NOTIF_EXPLICADO_KEY,
+  AUTO_BACKUP_TOGGLE_KEY,
+  AUTO_BACKUP_ULTIMO_KEY,
 ];

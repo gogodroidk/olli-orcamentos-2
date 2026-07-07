@@ -22,6 +22,7 @@
 
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
+import { handleStripe } from './stripe.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -208,6 +209,15 @@ export default {
     // ── PAINEL ADMIN (web + API protegida por super-admin) ──
     if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
       return handleAdmin(request, env, url);
+    }
+
+    // ── PAGAMENTOS STRIPE (checkout/webhook/portal + páginas) ──
+    // Antes do gate da IA: estas rotas não dependem de GEMINI_API_KEY nem do
+    // rate limit de IA. O webhook não tem JWT (autentica por assinatura HMAC);
+    // checkout/portal validam o JWT do Supabase por conta própria. O próprio
+    // handleStripe cuida do método e de OPTIONS/CORS por rota.
+    if (url.pathname.startsWith('/stripe/')) {
+      return handleStripe(request, env, url);
     }
 
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──

@@ -3,12 +3,14 @@ import { View, Text, Switch, ScrollView, StyleSheet, TouchableOpacity, Image, Al
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
-import { ModeloPdfId, Orcamento } from '../types';
+import { ModeloPdfId, Orcamento, Empresa } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { CORES_MARCA } from '../utils/coresMarca';
 
 interface Props {
   orc: Orcamento;
   onChange: (partial: Partial<Orcamento>) => void;
+  empresa?: Empresa | null;
 }
 
 const SwitchRow = ({ label, hint, value, onValueChange }: {
@@ -37,13 +39,7 @@ const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: st
   { id: 'recibo_compacto', nome: 'Recibo compacto', desc: 'servico pequeno', color: '#B4451F', icon: 'receipt-text-outline' },
 ];
 
-const COLOR_SWATCHES = [
-  { label: 'Azul', value: '#0B6FCE' },
-  { label: 'Verde', value: '#0E7C66' },
-  { label: 'Terracota', value: '#B4451F' },
-  { label: 'Roxo', value: '#5B3DA8' },
-  { label: 'Grafite', value: '#1C2230' },
-];
+const COLOR_SWATCHES = CORES_MARCA;
 
 function validadeEmDias(days: number): string {
   const d = new Date();
@@ -51,15 +47,18 @@ function validadeEmDias(days: number): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-export default function Step4Personalizacao({ orc, onChange }: Props) {
+export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
   const modeloAtual = orc.modeloPdf ?? 'editorial';
-  const corAtual = orc.corMarca ?? Colors.primary;
+  // Default da cor: a marca do orçamento, senão a cor padrão salva em "Meu
+  // Negócio", senão a cor do tema — o usuário ainda pode trocar livremente
+  // pelos swatches abaixo (isso só decide o valor inicial sugerido).
+  const corAtual = orc.corMarca ?? empresa?.corMarca ?? Colors.primary;
 
   function escolherModelo(model: (typeof PDF_MODELS)[number]) {
     onChange({
       modeloPdf: model.id,
       modeloNome: model.nome,
-      corMarca: orc.corMarca ?? model.color,
+      corMarca: orc.corMarca ?? empresa?.corMarca ?? model.color,
     });
   }
 

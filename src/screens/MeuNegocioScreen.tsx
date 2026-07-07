@@ -13,6 +13,7 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { getEmpresa, saveEmpresa, getDepoimentos, saveDepoimento, deleteDepoimento } from '../database/database';
 import { Empresa, Depoimento, SEGMENTOS, Segmento } from '../types';
+import { CORES_MARCA } from '../utils/coresMarca';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { track, Eventos } from '../services/analytics';
@@ -46,6 +47,26 @@ function empresaEmBranco(): Empresa {
   };
 }
 
+const VALIDADES_PADRAO = [7, 15, 30, 60];
+
+const GARANTIAS_PADRAO: { dias: number; label: string; texto: string }[] = [
+  {
+    dias: 30,
+    label: '30 dias',
+    texto: 'Garantia de 30 dias para peças e materiais não duráveis, conforme art. 26 do Código de Defesa do Consumidor (CDC).',
+  },
+  {
+    dias: 90,
+    label: '90 dias',
+    texto: 'Garantia de 90 dias para a mão de obra e materiais duráveis, conforme art. 26 do Código de Defesa do Consumidor (CDC).',
+  },
+  {
+    dias: 365,
+    label: '365 dias',
+    texto: 'Garantia estendida de 12 meses para mão de obra e materiais, superior ao mínimo legal do art. 26 do CDC.',
+  },
+];
+
 export default function MeuNegocioScreen() {
   const nav = useNavigation<any>();
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -76,6 +97,24 @@ export default function MeuNegocioScreen() {
     setDirty(true);
     Haptics.selectionAsync().catch(() => {});
     track(Eventos.segmentoChanged, { segmento: id });
+  }
+
+  function chooseCorMarca(cor: string) {
+    setEmpresa(p => (p ? { ...p, corMarca: cor } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
+  }
+
+  function chooseValidadeDias(dias: number) {
+    setEmpresa(p => (p ? { ...p, validadeDiasPadrao: dias } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
+  }
+
+  function chooseGarantiaSugerida(texto: string) {
+    setEmpresa(p => (p ? { ...p, garantiaPadrao: texto } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
   }
 
   async function handleSave() {
@@ -187,6 +226,85 @@ export default function MeuNegocioScreen() {
           <OlliInput label="Normas técnicas" value={empresa.normas} onChangeText={v => set('normas', v)} multiline containerStyle={{ marginBottom: 0 }} />
         </View>
 
+        {/* PERSONALIZAÇÃO — padrões aplicados a todo orçamento novo */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Personalização</Text>
+          <Text style={styles.segHint}>
+            Esses padrões pré-preenchem todo orçamento novo. Você ainda pode ajustar cada um por orçamento.
+          </Text>
+
+          <Text style={styles.segLabel}>Cor da marca</Text>
+          <Text style={styles.segHint}>Aparece no PDF, no total e no link enviado ao cliente.</Text>
+          <View style={styles.colorRow}>
+            {CORES_MARCA.map(swatch => {
+              const active = (empresa.corMarca ?? '').toLowerCase() === swatch.value.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={swatch.value}
+                  style={[styles.colorPick, active && styles.colorPickActive]}
+                  onPress={() => chooseCorMarca(swatch.value)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cor ${swatch.label}`}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: swatch.value }]} />
+                  <Text style={[styles.colorLabel, active && styles.colorLabelActive]}>{swatch.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.segLabel, { marginTop: Spacing.base }]}>Validade padrão do orçamento</Text>
+          <View style={styles.validadeRow}>
+            {VALIDADES_PADRAO.map(dias => {
+              const active = (empresa.validadeDiasPadrao ?? 15) === dias;
+              return (
+                <TouchableOpacity key={dias} style={[styles.validadeChip, active && styles.validadeChipActive]} onPress={() => chooseValidadeDias(dias)} activeOpacity={0.85}>
+                  <Text style={[styles.validadeText, active && styles.validadeTextActive]}>{dias} dias</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.segLabel, { marginTop: Spacing.base }]}>Garantia padrão</Text>
+          <Text style={styles.segHint}>Sugestões com base no art. 26 do Código de Defesa do Consumidor.</Text>
+          <View style={styles.validadeRow}>
+            {GARANTIAS_PADRAO.map(g => {
+              const active = empresa.garantiaPadrao === g.texto;
+              return (
+                <TouchableOpacity key={g.dias} style={[styles.validadeChip, active && styles.validadeChipActive]} onPress={() => chooseGarantiaSugerida(g.texto)} activeOpacity={0.85}>
+                  <Text style={[styles.validadeText, active && styles.validadeTextActive]}>{g.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <OlliInput
+            label="Texto da garantia"
+            value={empresa.garantiaPadrao ?? ''}
+            onChangeText={v => set('garantiaPadrao', v)}
+            placeholder="Ex: 90 dias para mão de obra, conforme CDC art. 26"
+            multiline
+            containerStyle={{ marginTop: 10 }}
+          />
+
+          <OlliInput
+            label="Condições de pagamento padrão"
+            value={empresa.condicoesPagamentoPadrao ?? ''}
+            onChangeText={v => set('condicoesPagamentoPadrao', v)}
+            placeholder="Ex: 50% de entrada, restante na entrega"
+            multiline
+          />
+
+          <OlliInput
+            label="Observações padrão"
+            value={empresa.observacoesPadrao ?? ''}
+            onChangeText={v => set('observacoesPadrao', v)}
+            placeholder="Texto que aparece em todo orçamento, ex: horário de atendimento"
+            multiline
+            containerStyle={{ marginBottom: 0 }}
+          />
+        </View>
+
         {/* DEPOIMENTOS */}
         <View style={styles.card}>
           <View style={styles.depHeader}>
@@ -281,6 +399,17 @@ const styles = StyleSheet.create({
   segChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
   segChipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
   segChipTextActive: { color: '#0A1626' },
+  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  colorPick: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 8 },
+  colorPickActive: { borderColor: Colors.accentLight, backgroundColor: Colors.surfacePressed },
+  colorDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)' },
+  colorLabel: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  colorLabelActive: { color: Colors.accentLight },
+  validadeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  validadeChip: { alignItems: 'center', borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 10 },
+  validadeChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
+  validadeText: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
+  validadeTextActive: { color: '#0A1626' },
   depHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   addDep: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   addDepText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },

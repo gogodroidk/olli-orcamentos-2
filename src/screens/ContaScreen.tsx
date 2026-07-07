@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -17,11 +17,24 @@ import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
 
 import { isSupabaseConfigured, signIn, signUp, signOut, getCurrentUser, supabase } from '../services/supabase';
-import { backupNow, restoreFromCloud, getCloudBackupDate } from '../services/backup';
+import {
+  backupManualVersionado,
+  getUltimoBackupVersionadoData,
+  listBackupsVersionados,
+  restoreBackupById,
+  BackupVersionadoResumo,
+} from '../services/backup';
 import { abortarSyncEmAndamento } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
 import { traduzirErroAuth } from '../utils/authErrors';
-import { PENDING_EMAIL_KEY } from '../services/storageKeys';
+import { PENDING_EMAIL_KEY, AUTO_BACKUP_TOGGLE_KEY } from '../services/storageKeys';
+
+/** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
+const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
+  diario: 'Automático (diário)',
+  semanal: 'Automático (semanal)',
+  manual: 'Manual',
+};
 
 /** Chave do AsyncStorage usada para lembrar o e-mail pendente de confirmação entre sessões do app. */
 
@@ -62,6 +75,11 @@ export default function ContaScreen() {
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
+  const [showBackups, setShowBackups] = useState(false);
+  const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
+  const [carregandoBackups, setCarregandoBackups] = useState(false);
+  const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
   // Garante que o modal de e-mail pendente só se auto-abre 1x por montagem da
   // tela: sem isso, load() (chamado a cada foco via useFocusEffect) reabria o
   // sheet toda vez que o usuário voltava pra aba Conta, tornando-a inutilizável.
@@ -70,11 +88,15 @@ export default function ContaScreen() {
   const load = useCallback(async () => {
     const emp = await getEmpresa();
     setEmpresa(emp);
+    try {
+      const toggle = await AsyncStorage.getItem(AUTO_BACKUP_TOGGLE_KEY);
+      setAutoBackupAtivo(toggle !== '0');
+    } catch { /* best-effort: mantém o default (ativo) */ }
     if (configured) {
       const u = await getCurrentUser();
       setUser(u ? { email: u.email } : null);
       if (u) {
-        setLastBackup(await getCloudBackupDate());
+        setLastBackup(await getUltimoBackupVersionadoData());
         // Já logado: qualquer confirmação pendente de e-mail deixou de fazer sentido.
         setPendingEmail(null);
         try { await AsyncStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* best-effort */ }
@@ -188,7 +210,7 @@ export default function ContaScreen() {
   async function handleBackup() {
     setBusy(true);
     try {
-      const when = await backupNow();
+      const when = await backupManualVersionado();
       setLastBackup(when);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       Alert.alert('Backup feito!', 'Seus dados estão seguros na nuvem.');
@@ -198,27 +220,68 @@ export default function ContaScreen() {
     setBusy(false);
   }
 
-  function handleRestore() {
+  /** Liga/desliga o backup automático (respeitado por services/autoBackup.ts). Persistido de imediato. */
+  async function handleToggleAutoBackup(v: boolean) {
+    Haptics.selectionAsync().catch(() => {});
+    setAutoBackupAtivo(v);
+    try {
+      await AsyncStorage.setItem(AUTO_BACKUP_TOGGLE_KEY, v ? '1' : '0');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
+      setAutoBackupAtivo(!v);
+    }
+  }
+
+  /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
+  async function handleAbrirBackups() {
+    Haptics.selectionAsync().catch(() => {});
+    setShowBackups(true);
+    setCarregandoBackups(true);
+    try {
+      setBackups(await listBackupsVersionados());
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Não foi possível carregar as cópias de segurança.');
+    }
+    setCarregandoBackups(false);
+  }
+
+  /** Restaura uma cópia específica da lista, com confirmação dupla (é destrutivo). */
+  function handleRestaurarBackup(item: BackupVersionadoResumo) {
     Alert.alert(
-      'Restaurar da nuvem',
-      'Isso vai SUBSTITUIR os dados atuais do celular pelos do último backup. Continuar?',
+      'Restaurar esta cópia?',
+      `Isso vai SUBSTITUIR os dados atuais deste aparelho pelos da cópia de ${formatDateTime(item.criadoEm)} (${TIPO_BACKUP_LABEL[item.tipo]}). Essa ação não pode ser desfeita.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Restaurar', style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              const when = await restoreFromCloud();
-              Alert.alert('Restaurado!', `Dados do backup de ${formatDateTime(when)} aplicados.`);
-              await load();
-            } catch (e: any) {
-              Alert.alert('Erro', e?.message ?? 'Falha ao restaurar.');
-            }
-            setBusy(false);
+          text: 'Continuar', style: 'destructive',
+          onPress: () => {
+            // Confirmação DUPLA: a primeira já avisa a substituição; a segunda
+            // reforça que é definitivo antes de tocar nos dados do aparelho.
+            Alert.alert(
+              'Tem certeza?',
+              'Todos os orçamentos, clientes, produtos e serviços salvos neste aparelho agora serão substituídos pelos dessa cópia. Não é possível desfazer.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Restaurar', style: 'destructive',
+                  onPress: async () => {
+                    setRestaurandoId(item.id);
+                    try {
+                      const when = await restoreBackupById(item.id);
+                      setShowBackups(false);
+                      Alert.alert('Restaurado!', `Dados da cópia de ${formatDateTime(when)} aplicados.`);
+                      await load();
+                    } catch (e: any) {
+                      Alert.alert('Erro', e?.message ?? 'Falha ao restaurar essa cópia.');
+                    }
+                    setRestaurandoId(null);
+                  },
+                },
+              ],
+            );
           },
         },
-      ]
+      ],
     );
   }
 
@@ -475,11 +538,27 @@ export default function ContaScreen() {
               <View style={styles.backupStatus}>
                 <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={20} color={lastBackup ? Colors.success : Colors.warning} />
                 <Text style={styles.backupText}>
-                  {lastBackup ? `Último backup: ${formatDateTime(lastBackup)}` : 'Nenhum backup ainda'}
+                  {autoBackupAtivo
+                    ? (lastBackup ? `Backup automático: ativo — última cópia ${formatDateTime(lastBackup)}` : 'Backup automático: ativo — ainda sem cópias')
+                    : 'Backup automático: desativado'}
                 </Text>
               </View>
+
+              <View style={styles.autoBackupRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.autoBackupLabel}>Backup automático diário</Text>
+                  <Text style={styles.autoBackupHint}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
+                </View>
+                <Switch
+                  value={autoBackupAtivo}
+                  onValueChange={handleToggleAutoBackup}
+                  trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
+                  thumbColor={autoBackupAtivo ? Colors.primary : '#fff'}
+                />
+              </View>
+
               <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
-              <OlliButton label="Restaurar da nuvem" variant="outline" size="lg" fullWidth onPress={handleRestore} icon={<MaterialCommunityIcons name="cloud-download" size={20} color={Colors.primary} />} />
+              <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={Colors.primary} />} />
             </View>
 
             <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
@@ -490,6 +569,52 @@ export default function ContaScreen() {
 
         <Text style={styles.version}>OLLI · Orçamentos que fecham negócio</Text>
       </ScrollView>
+
+      {/* MODAL: VER CÓPIAS DE SEGURANÇA */}
+      <Modal visible={showBackups} animationType="slide" onRequestClose={() => setShowBackups(false)}>
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Cópias de segurança</Text>
+            <TouchableOpacity onPress={() => setShowBackups(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
+            {carregandoBackups ? (
+              <ActivityIndicator color={Colors.primary} style={{ marginTop: 24 }} />
+            ) : backups.length === 0 ? (
+              <View style={styles.backupsEmpty}>
+                <MaterialCommunityIcons name="cloud-off-outline" size={32} color={Colors.onSurfaceMuted} />
+                <Text style={styles.backupsEmptyText}>Nenhuma cópia de segurança ainda. Elas aparecem aqui assim que o primeiro backup automático ou manual for feito.</Text>
+              </View>
+            ) : (
+              backups.map((b) => (
+                <View key={b.id} style={styles.backupItem}>
+                  <View style={styles.backupItemIcon}>
+                    <MaterialCommunityIcons
+                      name={b.tipo === 'manual' ? 'content-save-outline' : b.tipo === 'semanal' ? 'calendar-week' : 'calendar-today'}
+                      size={20}
+                      color={Colors.primary}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.backupItemDate}>{formatDateTime(b.criadoEm)}</Text>
+                    <Text style={styles.backupItemMeta}>{TIPO_BACKUP_LABEL[b.tipo]} · ~{b.tamanhoAprox} KB</Text>
+                  </View>
+                  <OlliButton
+                    label="Restaurar"
+                    variant="outline"
+                    size="sm"
+                    loading={restaurandoId === b.id}
+                    disabled={restaurandoId !== null && restaurandoId !== b.id}
+                    onPress={() => handleRestaurarBackup(b)}
+                  />
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -551,6 +676,21 @@ const styles = StyleSheet.create({
   connectedText: { fontSize: 12, color: Colors.success, fontWeight: '600' },
   backupStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.base },
   backupText: { fontSize: 13, color: Colors.onSurfaceVariant, flex: 1 },
+
+  autoBackupRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md, marginBottom: Spacing.base },
+  autoBackupLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  autoBackupHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
+
+  modal: { flex: 1, backgroundColor: Colors.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
+
+  backupsEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: Spacing.lg, gap: 12 },
+  backupsEmptyText: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  backupItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md, marginBottom: 10 },
+  backupItemIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  backupItemDate: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  backupItemMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
 
   version: { textAlign: 'center', fontSize: 12, color: Colors.onSurfaceMuted, marginTop: Spacing.xl },
 });

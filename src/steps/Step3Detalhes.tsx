@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
-import { Orcamento, FormaPagamento } from '../types';
+import { Orcamento, FormaPagamento, Empresa } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { todayISO } from '../utils/date';
@@ -11,6 +11,7 @@ import { isoToBR } from '../utils/masks';
 interface Props {
   orc: Orcamento;
   onChange: (partial: Partial<Orcamento>) => void;
+  empresa?: Empresa | null;
 }
 
 const PAYMENT_OPTIONS: Array<{ key: keyof FormaPagamento; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
@@ -31,7 +32,17 @@ function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunity
   );
 }
 
-export default function Step3Detalhes({ orc, onChange }: Props) {
+export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
+  // Pré-preenche a chave PIX do orçamento com a chave PIX cadastrada em "Meu
+  // Negócio" quando o campo ainda estiver vazio — evita redigitar em todo
+  // orçamento novo, mas nunca sobrescreve um valor que o usuário já digitou.
+  useEffect(() => {
+    if (!orc.chavePix && empresa?.chavePix) {
+      onChange({ chavePix: empresa.chavePix });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresa?.chavePix]);
+
   function togglePagamento(key: keyof FormaPagamento) {
     onChange({ formasPagamento: { ...orc.formasPagamento, [key]: !orc.formasPagamento[key] } });
   }
