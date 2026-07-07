@@ -4,7 +4,7 @@ import {
   TextInputProps, ViewStyle,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, Spacing } from '../theme';
+import { Colors, BorderRadius, Spacing, Fonts } from '../theme';
 import {
   maskPhone, maskCPF, maskCNPJ, maskCpfCnpj, maskCEP, maskDate,
   maskCurrencyInput, currencyToMask,
@@ -202,7 +202,7 @@ export const OlliMoneyInput = React.memo(OlliMoneyInputBase);
 
 const styles = StyleSheet.create({
   container: { marginBottom: Spacing.base },
-  label: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 7 },
+  label: { fontSize: 13, fontFamily: Fonts.extraBold, color: Colors.onSurfaceVariant, marginBottom: 7 },
   req: { color: Colors.danger },
   field: {
     flexDirection: 'row',
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   inputMultiline: { textAlignVertical: 'top', minHeight: 68 },
-  currencyPrefix: { fontSize: 15, fontWeight: '700', color: Colors.onSurfaceMuted, marginRight: 8 },
-  error: { fontSize: 12, color: Colors.danger, marginTop: 4, fontWeight: '500' },
+  currencyPrefix: { fontSize: 15, fontFamily: Fonts.bold, color: Colors.onSurfaceMuted, marginRight: 8 },
+  error: { fontSize: 12, color: Colors.danger, marginTop: 4, fontFamily: Fonts.medium },
   helper: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 4 },
 });

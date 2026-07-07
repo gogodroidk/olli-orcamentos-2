@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Gradients, Shadow, Spacing } from '../theme';
+import { AnimatedEntrance } from './AnimatedEntrance';
 
 interface Props {
   title: string;
@@ -35,10 +36,10 @@ export function GradientHeader({ title, subtitle, onBack, right, children, style
             <MaterialCommunityIcons name="chevron-left" size={28} color="#fff" />
           </TouchableOpacity>
         ) : null}
-        <View style={{ flex: 1 }}>
+        <AnimatedEntrance from="bottom" delay={60} style={{ flex: 1 }}>
           <Text style={[styles.title, compact && styles.titleCompact]} numberOfLines={1}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
-        </View>
+        </AnimatedEntrance>
         {right}
       </View>
       {children}
@@ -77,9 +78,9 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', zIndex: 1 },
   backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     marginLeft: -4,
     marginRight: 10,
     alignItems: 'center',

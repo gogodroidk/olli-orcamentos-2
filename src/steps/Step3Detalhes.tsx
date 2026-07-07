@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
-import { Orcamento, FormaPagamento } from '../types';
+import { Orcamento, FormaPagamento, Empresa } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
+import { todayISO } from '../utils/date';
+import { isoToBR } from '../utils/masks';
 
 interface Props {
   orc: Orcamento;
   onChange: (partial: Partial<Orcamento>) => void;
+  empresa?: Empresa | null;
 }
 
 const PAYMENT_OPTIONS: Array<{ key: keyof FormaPagamento; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
@@ -29,12 +32,22 @@ function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunity
   );
 }
 
-export default function Step3Detalhes({ orc, onChange }: Props) {
+export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
+  // Pré-preenche a chave PIX do orçamento com a chave PIX cadastrada em "Meu
+  // Negócio" quando o campo ainda estiver vazio — evita redigitar em todo
+  // orçamento novo, mas nunca sobrescreve um valor que o usuário já digitou.
+  useEffect(() => {
+    if (!orc.chavePix && empresa?.chavePix) {
+      onChange({ chavePix: empresa.chavePix });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresa?.chavePix]);
+
   function togglePagamento(key: keyof FormaPagamento) {
     onChange({ formasPagamento: { ...orc.formasPagamento, [key]: !orc.formasPagamento[key] } });
   }
 
-  const restante = orc.sinalValor ? orc.valorTotal - orc.sinalValor : 0;
+  const restante = orc.sinalValor ? Math.max(0, orc.valorTotal - orc.sinalValor) : 0;
 
   return (
     <ScrollView
@@ -73,8 +86,24 @@ export default function Step3Detalhes({ orc, onChange }: Props) {
         <OlliInput label="Condições de pagamento" value={orc.condicoesPagamento ?? ''} onChangeText={v => onChange({ condicoesPagamento: v })} placeholder="Ex: 50% de entrada, restante na entrega" multiline />
 
         <View style={styles.rowFields}>
-          <OlliMoneyInput label="Sinal / entrada" value={orc.sinalValor ?? 0} onChangeValue={v => onChange({ sinalValor: v, sinalPercentual: orc.subtotal ? Math.round((v / orc.subtotal) * 100) : 0 })} containerStyle={{ flex: 1, marginRight: 10 }} />
-          <OlliInput label="Data do sinal" mask="date" value={orc.sinalData ?? ''} onChangeText={v => onChange({ sinalData: v })} placeholder="DD/MM/AAAA" containerStyle={{ flex: 1 }} />
+          <OlliMoneyInput
+            label="Sinal / entrada"
+            value={orc.sinalValor ?? 0}
+            onChangeValue={v => {
+              const clamped = Math.max(0, Math.min(orc.valorTotal, v));
+              onChange({ sinalValor: clamped, sinalPercentual: orc.subtotal ? Math.round((clamped / orc.subtotal) * 100) : 0 });
+            }}
+            containerStyle={{ flex: 1, marginRight: 10 }}
+          />
+          <View style={{ flex: 1 }}>
+            <View style={styles.sinalDataRow}>
+              <Text style={[styles.fieldLabel, { marginBottom: 0 }]}>Data do sinal</Text>
+              <TouchableOpacity onPress={() => onChange({ sinalData: isoToBR(todayISO()) })} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={styles.hojeLink}>Hoje</Text>
+              </TouchableOpacity>
+            </View>
+            <OlliInput mask="date" value={orc.sinalData ?? ''} onChangeText={v => onChange({ sinalData: v })} placeholder="DD/MM/AAAA" containerStyle={{ marginBottom: 0 }} />
+          </View>
         </View>
         {orc.sinalValor ? (
           <View style={styles.sinalInfo}>
@@ -110,4 +139,6 @@ const styles = StyleSheet.create({
   rowFields: { flexDirection: 'row' },
   sinalInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.md, padding: 10, marginTop: 4 },
   sinalInfoText: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
+  sinalDataRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  hojeLink: { fontSize: 12, fontWeight: '700', color: Colors.primary },
 });

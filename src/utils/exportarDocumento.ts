@@ -162,6 +162,18 @@ async function exportarHtmlNativo(
   const fileName = nomeArquivo.toLowerCase().endsWith('.pdf') ? nomeArquivo : `${nomeArquivo}.pdf`;
   const dest = FileSystem.documentDirectory + fileName;
   await FileSystem.copyAsync({ from: uri, to: dest });
+
+  // Nem todo dispositivo tem a folha de compartilhamento disponível (emuladores
+  // sem apps configurados, builds restritos corporativos). Sem essa checagem,
+  // shareAsync rejeita e o chamador mostra "não foi possível gerar o PDF" mesmo
+  // o arquivo já existindo salvo em documentDirectory — mensagem enganosa.
+  const disponivel = await Sharing.isAvailableAsync();
+  if (!disponivel) {
+    throw new Error(
+      `Compartilhamento não disponível neste dispositivo. O PDF foi salvo em: ${dest}`,
+    );
+  }
+
   await Sharing.shareAsync(dest, {
     mimeType: 'application/pdf',
     dialogTitle: opcoes?.dialogTitle ?? fileName,

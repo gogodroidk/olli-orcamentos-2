@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl,
 } from 'react-native';
@@ -14,19 +14,22 @@ import { capitalizeFirst } from '../utils/date';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliMascot } from '../components/OlliMascot';
+import { EmptyState } from '../components/EmptyState';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getAgendamentosDoDia } from '../services/agenda';
 import { getOrcamentos } from '../database/database';
+import { onSyncAplicado } from '../services/cloudSync';
 import {
   Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
+import { CHECKLIST_KEY } from '../services/storageKeys';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 interface ChecklistItem { id: string; texto: string; feito: boolean; data: string }
 
-const CHECKLIST_KEY = 'olli.hoje.checklist';
 
 function todayKey(): string {
   return new Date().toISOString().split('T')[0];
@@ -60,6 +63,7 @@ export default function HojeScreen() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [novo, setNovo] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
   const load = useCallback(async () => {
     const [ag, orc, raw] = await Promise.all([
@@ -78,9 +82,15 @@ export default function HojeScreen() {
     } else {
       setChecklist([]);
     }
+    setCarregando(false);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo agendamentos/orçamentos que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(load), [load]);
+
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   async function persist(list: ChecklistItem[]) {
@@ -188,19 +198,27 @@ export default function HojeScreen() {
           </TouchableOpacity>
         </View>
 
-        {itens.length === 0 ? (
+        {carregando ? (
+          <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={styles.agendaCard}>
+                <OlliSkeleton width={46} height={30} radius={8} />
+                <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                  <OlliSkeleton width="70%" height={14} />
+                  <OlliSkeleton width="45%" height={12} />
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : itens.length === 0 ? (
           <View style={styles.emptyDay}>
-            <MaterialCommunityIcons name="calendar-check-outline" size={30} color={Colors.accent} />
-            <Text style={styles.emptyDayTitle}>Nada agendado para hoje</Text>
-            <Text style={styles.emptyDaySub}>Aproveite para organizar a semana ou cadastrar novos orçamentos.</Text>
-            <TouchableOpacity
-              style={styles.emptyDayBtn}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }}
-              activeOpacity={0.85}
-            >
-              <MaterialCommunityIcons name="calendar-plus" size={16} color="#0A1626" />
-              <Text style={styles.emptyDayBtnText}>Abrir agenda</Text>
-            </TouchableOpacity>
+            <EmptyState
+              icon="calendar-check-outline"
+              title="Nada agendado para hoje"
+              subtitle="Aproveite para organizar a semana ou cadastrar novos orçamentos."
+              actionLabel="Abrir agenda"
+              onAction={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }}
+            />
           </View>
         ) : (
           <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
@@ -277,10 +295,34 @@ export default function HojeScreen() {
               </View>
             ))
           )}
+
+          {/* Nota discreta: checklist é local ao aparelho (não sincroniza com a nuvem) */}
+          <View style={styles.checklistNota}>
+            <MaterialCommunityIcons name="cellphone-lock" size={12} color={Colors.onSurfaceMuted} />
+            <Text style={styles.checklistNotaText}>Essa lista fica só neste aparelho e não é sincronizada.</Text>
+          </View>
         </View>
 
+        {/* RELATÓRIO DO DIA FALADO */}
+        <AnimatedEntrance index={2}>
+          <TouchableOpacity
+            style={styles.relatorioCard}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('RelatorioDia'); }}
+            activeOpacity={0.85}
+          >
+            <View style={styles.relatorioIcon}>
+              <MaterialCommunityIcons name="volume-high" size={20} color={Colors.accentLight} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
+              <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+          </TouchableOpacity>
+        </AnimatedEntrance>
+
         {/* ESTADO 100% VAZIO E ELEGANTE */}
-        {semNada && checklist.length === 0 && (
+        {!carregando && semNada && checklist.length === 0 && (
           <AnimatedEntrance index={1}>
             <View style={styles.allClear}>
               <OlliMascot size={48} onDark />
@@ -315,11 +357,7 @@ const styles = StyleSheet.create({
   seeAll: { fontSize: 12.5, color: Colors.accent, fontWeight: '700' },
   checkCount: { fontSize: 13, color: Colors.onSurfaceVariant, fontWeight: '700' },
 
-  emptyDay: { alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.base },
-  emptyDayTitle: { fontSize: 15, fontWeight: '800', color: '#fff', marginTop: 8 },
-  emptyDaySub: { fontSize: 12.5, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 18, paddingHorizontal: 10 },
-  emptyDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 9, marginTop: 12 },
-  emptyDayBtnText: { fontSize: 13, fontWeight: '800', color: '#0A1626' },
+  emptyDay: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, minHeight: 220 },
 
   agendaCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, ...Shadow.sm },
   agendaTime: { width: 46, marginRight: 10 },
@@ -339,6 +377,21 @@ const styles = StyleSheet.create({
   checkTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   checkText: { flex: 1, fontSize: 14, color: Colors.onSurface },
   checkTextDone: { textDecorationLine: 'line-through', color: Colors.onSurfaceMuted },
+  checklistNota: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline },
+  checklistNotaText: { flex: 1, fontSize: 10.5, color: Colors.onSurfaceMuted },
+
+  relatorioCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.outline,
+    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...Shadow.sm,
+  },
+  relatorioIcon: {
+    width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: Colors.accentContainer,
+  },
+  relatorioTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  relatorioSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
 
   allClear: { alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.lg },
   allClearTitle: { fontSize: 17, fontWeight: '800', color: '#fff', marginTop: 10 },

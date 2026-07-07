@@ -12,9 +12,11 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography, Gradients } from '..
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { interpretarVoz, VozResultadoOk, VozItem } from '../services/olliAssistente';
+import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/reconhecimentoVoz';
 import {
   getNextOrcamentoNumber, saveOrcamento,
 } from '../database/database';
@@ -30,19 +32,12 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const isWeb = Platform.OS === 'web';
 const useNativeAnimations = !isWeb;
 
-/* ─── Reconhecimento de voz (só web, acesso defensivo) ─────────────
-   webkitSpeechRecognition / SpeechRecognition existem só no navegador.
-   Tudo fica atrás de Platform.OS === 'web' + checagem de globalThis para
-   nunca quebrar no nativo nem no bundling/SSR. */
-function getSpeechRecognitionCtor(): any | null {
-  if (!isWeb) return null;
-  const g: any = typeof globalThis !== 'undefined' ? globalThis : undefined;
-  if (!g) return null;
-  return g.SpeechRecognition || g.webkitSpeechRecognition || null;
-}
+/** Depois de quantos segundos de "enviando" o botão "Cancelar" aparece. */
+const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 5;
 
+/** Reexportado para telas que já importavam este helper (ex.: HomeScreen). */
 export function isVozDisponivel(): boolean {
-  return getSpeechRecognitionCtor() != null;
+  return vozProvavelmenteDisponivel();
 }
 
 type Fase = 'inicial' | 'ouvindo' | 'enviando' | 'revisao' | 'erro';
@@ -134,15 +129,15 @@ export default function OlliVozScreen() {
   const [parcial, setParcial] = useState(''); // resultado interim do reconhecimento
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [podeCancelar, setPodeCancelar] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // revisão
   const [titulo, setTitulo] = useState('');
   const [clienteNome, setClienteNome] = useState('');
   const [itens, setItens] = useState<ItemEditavel[]>([]);
   const [observacao, setObservacao] = useState('');
-
-  const vozOk = isVozDisponivel();
-  const recRef = useRef<any>(null);
 
   // animação do "pulso" do microfone enquanto ouve
   const pulse = useRef(new Animated.Value(0)).current;
@@ -158,97 +153,51 @@ export default function OlliVozScreen() {
     return () => loop.stop();
   }, [fase, pulse]);
 
-  // limpa o reconhecimento ao sair da tela
+  const voz = useReconhecimentoVoz({
+    onParcial: setParcial,
+    onFinal: (t) => {
+      setTranscript(prev => (prev ? prev + ' ' : '') + t);
+      setParcial('');
+    },
+    onErro: (m) => {
+      setErro(m);
+      setParcial('');
+      setFase('erro');
+    },
+    onFimEscuta: () => {
+      // limite de reinícios sem resultado atingido (silêncio prolongado):
+      // volta para o estado inicial sem tratar como erro fatal
+      setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
+    },
+  });
+  const vozOk = voz.disponivel;
+
+  // limpa chamadas de IA pendentes ao sair da tela (a limpeza do
+  // reconhecimento de voz já é feita internamente pelo hook)
   useEffect(() => {
     return () => {
-      try { recRef.current?.stop?.(); } catch { /* noop */ }
-      recRef.current = null;
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      abortRef.current?.abort();
     };
   }, []);
 
   const pararReconhecimento = useCallback(() => {
-    try { recRef.current?.stop?.(); } catch { /* noop */ }
-  }, []);
-
-  const iniciarReconhecimento = useCallback(() => {
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setErro(null);
-    setParcial('');
-
-    let rec: any;
-    try {
-      rec = new Ctor();
-    } catch {
-      setErro('Não consegui ligar o microfone neste navegador. Use o campo de texto abaixo.');
-      setFase('erro');
-      return;
-    }
-    rec.lang = 'pt-BR';
-    rec.continuous = true;
-    rec.interimResults = true;
-
-    let finalText = transcript ? transcript + ' ' : '';
-
-    rec.onresult = (event: any) => {
-      let interim = '';
-      try {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const res = event.results[i];
-          const txt = res[0]?.transcript ?? '';
-          if (res.isFinal) finalText += txt + ' ';
-          else interim += txt;
-        }
-      } catch { /* defensivo: estrutura inesperada do evento */ }
-      setTranscript(finalText.trim());
-      setParcial(interim.trim());
-    };
-
-    rec.onerror = (event: any) => {
-      const code = event?.error;
-      if (code === 'no-speech') {
-        setParcial('');
-        return; // não trata silêncio como erro fatal
-      }
-      let msg = 'Tive um problema com o microfone. Você pode escrever abaixo.';
-      if (code === 'not-allowed' || code === 'service-not-allowed') {
-        msg = 'Preciso da permissão do microfone para te ouvir. Libere nas configurações do navegador — ou escreva o que precisa abaixo.';
-      } else if (code === 'audio-capture') {
-        msg = 'Não encontrei um microfone neste aparelho. Use o campo de texto abaixo.';
-      } else if (code === 'network') {
-        msg = 'A transcrição precisa de internet. Confira a conexão ou escreva abaixo.';
-      }
-      setErro(msg);
-      setParcial('');
-      setFase('erro');
-    };
-
-    rec.onend = () => {
-      setParcial('');
-      // só volta para "inicial" se ainda estávamos ouvindo (e não houve erro)
-      setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
-      recRef.current = null;
-    };
-
-    recRef.current = rec;
-    try {
-      rec.start();
-      setFase('ouvindo');
-    } catch {
-      setErro('Não consegui iniciar a escuta. Tente novamente ou escreva abaixo.');
-      setFase('erro');
-    }
-  }, [transcript]);
+    voz.parar();
+  }, [voz]);
 
   const onMicPress = useCallback(() => {
     if (!vozOk) return;
-    if (fase === 'ouvindo') {
-      pararReconhecimento();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setErro(null);
+    if (voz.ouvindo) {
+      voz.parar();
+      setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
     } else {
-      iniciarReconhecimento();
+      setParcial('');
+      voz.iniciar();
+      setFase('ouvindo');
     }
-  }, [vozOk, fase, pararReconhecimento, iniciarReconhecimento]);
+  }, [vozOk, voz]);
 
   const enviar = useCallback(async () => {
     const texto = transcript.trim();
@@ -257,25 +206,42 @@ export default function OlliVozScreen() {
     Haptics.selectionAsync().catch(() => {});
     setFase('enviando');
     setErro(null);
-    const res = await interpretarVoz(texto);
-    if (!res.ok) {
-      setErro(res.erro);
-      setFase('erro');
-      return;
+    setPodeCancelar(false);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+
+    try {
+      const res = await interpretarVoz(texto, controller.signal);
+      if (!res.ok) {
+        setErro(res.erro);
+        setFase('erro');
+        return;
+      }
+      const ok = res as VozResultadoOk;
+      if (!ok.itens || ok.itens.length === 0) {
+        setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setFase('erro');
+        return;
+      }
+      setTitulo(ok.titulo ?? '');
+      setClienteNome(ok.clienteNome ?? '');
+      setItens(ok.itens.map(vozItemParaEditavel));
+      setObservacao(ok.observacao ?? '');
+      setFase('revisao');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } finally {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      setPodeCancelar(false);
+      abortRef.current = null;
     }
-    const ok = res as VozResultadoOk;
-    if (!ok.itens || ok.itens.length === 0) {
-      setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
-      setFase('erro');
-      return;
-    }
-    setTitulo(ok.titulo ?? '');
-    setClienteNome(ok.clienteNome ?? '');
-    setItens(ok.itens.map(vozItemParaEditavel));
-    setObservacao(ok.observacao ?? '');
-    setFase('revisao');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [transcript, pararReconhecimento]);
+
+  const cancelarEnvio = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    abortRef.current?.abort();
+  }, []);
 
   const refazer = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -362,7 +328,7 @@ export default function OlliVozScreen() {
           <AnimatedEntrance index={0}>
             <View style={styles.hero}>
               <Text style={styles.heroKicker}>
-                {fase === 'ouvindo' ? 'OUVINDO…' : fase === 'enviando' ? 'MONTANDO…' : (vozOk || isWeb) ? 'TOQUE E FALE' : 'ESCREVA PRA OLLI'}
+                {fase === 'ouvindo' ? 'OUVINDO…' : fase === 'enviando' ? 'MONTANDO…' : vozOk ? 'TOQUE E FALE' : 'ESCREVA PRA OLLI'}
               </Text>
 
               <View style={styles.micWrap}>
@@ -372,14 +338,14 @@ export default function OlliVozScreen() {
                     pointerEvents="none"
                   />
                 )}
-                {(vozOk || isWeb) ? (
+                {vozOk ? (
                   <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={fase === 'enviando' ? undefined : onMicPress}
-                    disabled={!vozOk || fase === 'enviando'}
+                    disabled={fase === 'enviando'}
                     accessibilityRole="button"
                     accessibilityLabel={fase === 'ouvindo' ? 'Parar de ouvir' : 'Tocar e falar'}
-                    style={[styles.micTouch, !vozOk && styles.micDisabled]}
+                    style={styles.micTouch}
                   >
                     <LinearGradient
                       colors={fase === 'ouvindo' ? Gradients.frost : Gradients.primaryDiagonal}
@@ -419,23 +385,40 @@ export default function OlliVozScreen() {
                 {fase === 'enviando'
                   ? 'OLLI está montando seu orçamento…'
                   : fase === 'ouvindo'
-                  ? 'Diga os serviços, peças e quantidades. Toque de novo para parar.'
+                  ? 'Pode falar por partes — toque de novo quando terminar.'
                   : vozOk
                   ? 'Toque no microfone e descreva o serviço. Ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena".'
                   : 'Escreva abaixo o que você precisa — ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena" — que a OLLI monta o orçamento.'}
               </Text>
 
-              {!vozOk && !isWeb && (
+              {!vozOk && (
                 <View style={styles.infoPill}>
                   <MaterialCommunityIcons name="pencil-outline" size={14} color={Colors.accentLight} />
                   <Text style={styles.infoPillText}>Escreva abaixo — a OLLI monta o orçamento pra você</Text>
                 </View>
               )}
+
+              {fase === 'enviando' && podeCancelar && (
+                <OlliButton
+                  label="Cancelar"
+                  variant="outline"
+                  size="sm"
+                  onPress={cancelarEnvio}
+                  style={{ marginTop: 16 }}
+                />
+              )}
             </View>
           </AnimatedEntrance>
 
           {/* TRANSCRIÇÃO AO VIVO / EM EDIÇÃO */}
-          {(transcript.length > 0 || parcial.length > 0) && (
+          {fase === 'enviando' ? (
+            <AnimatedEntrance index={1}>
+              <View style={styles.transcriptCard}>
+                <Text style={styles.transcriptLabel}>O que eu entendi</Text>
+                <OlliSkeleton.Lines count={3} />
+              </View>
+            </AnimatedEntrance>
+          ) : (transcript.length > 0 || parcial.length > 0) && (
             <AnimatedEntrance index={1}>
               <View style={styles.transcriptCard}>
                 <Text style={styles.transcriptLabel}>O que eu entendi</Text>
@@ -452,7 +435,20 @@ export default function OlliVozScreen() {
             <AnimatedEntrance index={1}>
               <View style={styles.erroCard}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={Colors.warning} />
-                <Text style={styles.erroText}>{erro}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.erroText}>{erro}</Text>
+                  {transcript.trim().length > 0 && (
+                    <OlliButton
+                      label="Tentar de novo"
+                      variant="outline"
+                      size="sm"
+                      onPress={enviar}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  )}
+                </View>
               </View>
             </AnimatedEntrance>
           )}
@@ -591,6 +587,7 @@ function Revisao(props: {
                     <TouchableOpacity
                       style={styles.qtyBtn}
                       onPress={() => props.onUpdateItem(item.id, { quantidade: Math.max(1, item.quantidade - 1) })}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <MaterialCommunityIcons name="minus" size={15} color={Colors.primary} />
                     </TouchableOpacity>
@@ -598,6 +595,7 @@ function Revisao(props: {
                     <TouchableOpacity
                       style={styles.qtyBtn}
                       onPress={() => props.onUpdateItem(item.id, { quantidade: item.quantidade + 1 })}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <MaterialCommunityIcons name="plus" size={15} color={Colors.primary} />
                     </TouchableOpacity>
@@ -681,7 +679,6 @@ const styles = StyleSheet.create({
   micWrap: { width: 168, height: 168, justifyContent: 'center', alignItems: 'center' },
   micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },
   micTouch: { borderRadius: 70 },
-  micDisabled: { opacity: 0.5 },
   micGrad: { width: 140, height: 140, borderRadius: 70, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: 'rgba(127,233,245,0.18)' },
   heroHint: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: Spacing.lg, paddingHorizontal: 8 },
   infoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: 'rgba(127,233,245,0.10)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },

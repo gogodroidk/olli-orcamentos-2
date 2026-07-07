@@ -41,3 +41,8 @@ qa-artifacts/
 # generated native folders
 /ios
 /android
+
+# Artefatos de QA/ferramentas locais — nao pertencem ao repo
+.playwright-mcp/
+.codex/
+qa-artifacts/

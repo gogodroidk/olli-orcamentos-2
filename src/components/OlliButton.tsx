@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, ViewStyle, TextStyle, View } from 'react-native';
+import React from 'react';
+import { Text, ActivityIndicator, StyleSheet, ViewStyle, TextStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
 import { Colors, BorderRadius, Gradients, Shadow } from '../theme';
+import { OlliPressable } from './OlliPressable';
 
 interface Props {
   label: string;
@@ -22,11 +22,6 @@ export function OlliButton({
   label, onPress, variant = 'primary', size = 'md',
   loading, disabled, style, textStyle, icon, fullWidth, haptic = true,
 }: Props) {
-  const handlePress = useCallback(() => {
-    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    onPress();
-  }, [haptic, onPress]);
-
   const padV = { sm: 9, md: 13, lg: 16 }[size];
   const padH = { sm: 14, md: 20, lg: 24 }[size];
   const fs = { sm: 13, md: 15, lg: 16 }[size];
@@ -50,10 +45,10 @@ export function OlliButton({
   // Variante gradiente premium
   if (variant === 'gradient' && !disabled) {
     return (
-      <TouchableOpacity
-        onPress={handlePress}
+      <OlliPressable
+        onPress={onPress}
         disabled={loading}
-        activeOpacity={0.85}
+        haptic={haptic ? 'light' : false}
         style={[fullWidth && styles.fullWidth, style]}
       >
         <LinearGradient
@@ -64,7 +59,7 @@ export function OlliButton({
         >
           {content}
         </LinearGradient>
-      </TouchableOpacity>
+      </OlliPressable>
     );
   }
 
@@ -81,10 +76,10 @@ export function OlliButton({
   const border = variant === 'outline' ? { borderWidth: 1.5, borderColor: Colors.strokeGlow } : {};
 
   return (
-    <TouchableOpacity
-      onPress={handlePress}
+    <OlliPressable
+      onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.82}
+      haptic={haptic ? 'light' : false}
       style={[
         styles.base,
         { backgroundColor: bg, minHeight, paddingVertical: padV, paddingHorizontal: padH },
@@ -97,7 +92,7 @@ export function OlliButton({
       ]}
     >
       {content}
-    </TouchableOpacity>
+    </OlliPressable>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
   KeyboardAvoidingView, Platform,
@@ -8,22 +8,37 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Gradients } from '../theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors, Spacing, Gradients, BorderRadius } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
-import { isSupabaseConfigured, signIn, signUp, supabase } from '../services/supabase';
+import {
+  isSupabaseConfigured, signIn, signUp, signInWithGoogle, supabase,
+  normalizarTelefoneBR, temDadosLocais,
+} from '../services/supabase';
+import { getEmpresa, saveEmpresa } from '../database/database';
+import { ONBOARDED_KEY } from './OnboardingScreen';
+import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { traduzirErroAuth } from '../utils/authErrors';
+
+// Fecha uma sessão de autenticação pendente (retorno do OAuth) caso o app
+// tenha sido reaberto no meio do fluxo. Idempotente e seguro na web e no nativo.
+WebBrowser.maybeCompleteAuthSession();
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Entrar'>;
 type Modo = 'login' | 'signup';
 
+
 /**
- * Tela "Entrar" dedicada (protótipo 03). É OPCIONAL: o OLLI é offline-first,
- * então quem quiser pode "usar sem conta". A conta serve para backup na nuvem,
- * link do cliente e a OLLI por voz/chat. Reaproveita o auth do Supabase.
+ * Tela "Entrar" — a CAPA e a ÚNICA porta do app (v3: login obrigatório). Sem
+ * sessão, é aqui que o usuário sempre cai. Suporta e-mail/senha e Google, além
+ * de recuperar senha. Após a sessão criada, decide entre Onboarding (1ª vez) e
+ * as Tabs, e semeia o telefone do cadastro na empresa local.
  */
 export default function EntrarScreen() {
   const nav = useNavigation<Nav>();
@@ -33,22 +48,83 @@ export default function EntrarScreen() {
   const [modo, setModo] = useState<Modo>('login');
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
+  const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
   const [verSenha, setVerSenha] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [temLocais, setTemLocais] = useState(false);
 
-  function entrarNoApp() {
-    nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Tabs' }] }));
+  // No mount: se já há dados locais (o usuário usou o app offline antes de a v3
+  // exigir conta), mostra o banner de migração e assume o modo "criar conta" —
+  // quem tem dados locais provavelmente ainda não tem conta.
+  useEffect(() => {
+    let vivo = true;
+    temDadosLocais().then((tem) => {
+      if (!vivo || !tem) return;
+      setTemLocais(true);
+      setModo('signup');
+    });
+    return () => { vivo = false; };
+  }, []);
+
+  /**
+   * Semeia o telefone do cadastro na empresa local (best-effort, silencioso).
+   * Se a empresa existe e está sem telefone/whatsapp, preenche os vazios; se não
+   * existe, cria uma empresa mínima com o telefone e o e-mail. Nunca lança.
+   */
+  async function semearTelefoneEmpresa(telDigits: string) {
+    if (!telDigits) return;
+    try {
+      const emp = await getEmpresa();
+      // So ATUALIZA empresa existente — nunca cria. Criar aqui faria o
+      // entrarNoApp ver empresa != null e pular o Onboarding para sempre no
+      // cadastro por e-mail (telefone e obrigatorio, entao criaria sempre).
+      // Quem cria a empresa e o Onboarding, que pre-preenche o WhatsApp a
+      // partir do user_metadata do cadastro.
+      if (!emp) return;
+      const patch: Partial<Empresa> = {};
+      if (!emp.telefone?.trim()) patch.telefone = telDigits;
+      if (!emp.whatsapp?.trim()) patch.whatsapp = telDigits;
+      if (Object.keys(patch).length > 0) await saveEmpresa({ ...emp, ...patch });
+    } catch {
+      // best-effort: nunca trava o login por causa da semeadura.
+    }
+  }
+
+  /**
+   * Decide o destino APÓS a sessão criada: 1ª vez (sem empresa e nunca
+   * onboardado) → Onboarding; caso contrário → Tabs. O sync dos dados locais
+   * (cloudSync per-row) já é disparado pelo listener global do App.tsx — não
+   * duplicamos aqui.
+   */
+  async function entrarNoApp() {
+    let destino: keyof RootStackParamList = 'Tabs';
+    try {
+      const [empresa, onboarded] = await Promise.all([
+        getEmpresa(),
+        AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
+      ]);
+      if (empresa === null && onboarded !== '1') destino = 'Onboarding';
+    } catch {
+      // fail-safe: em erro, cai nas Tabs (já está logado).
+    }
+    nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: destino }] }));
   }
 
   async function handleAuth() {
     if (!configured) {
-      Alert.alert('Backup na nuvem não configurado', 'Você já pode usar o OLLI offline. Ative a nuvem em Conta quando quiser.');
+      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
       return;
     }
     if (modo === 'signup' && !nome.trim()) {
       Alert.alert('Faltou o nome', 'Informe seu nome completo.');
+      return;
+    }
+    const telDigits = telefone.replace(/\D/g, '');
+    if (modo === 'signup' && telDigits.length < 10) {
+      Alert.alert('Faltou o telefone', 'Informe um WhatsApp válido com DDD.');
       return;
     }
     if (!email.trim() || senha.length < 8) {
@@ -60,14 +136,18 @@ export default function EntrarScreen() {
       return;
     }
     const emailLimpo = email.trim();
+    const telNormalizado = normalizarTelefoneBR(telefone);
     setBusy(true);
     try {
       if (modo === 'signup') {
-        const data = await signUp(emailLimpo, senha, nome.trim());
+        const data = await signUp(emailLimpo, senha, nome.trim(), telefone);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         if (data.session) {
-          entrarNoApp();
+          await semearTelefoneEmpresa(telNormalizado);
+          await entrarNoApp();
         } else {
+          // Confirmação de e-mail ligada no Supabase: NÃO há sessão. Fail-closed
+          // coerente com o gate — o usuário não entra até confirmar.
           setModo('login');
           setSenha(''); setConfirmar('');
           Alert.alert('Confirme seu e-mail', `Enviamos um link de confirmação para ${emailLimpo}. Confirme e depois entre aqui.`);
@@ -75,30 +155,35 @@ export default function EntrarScreen() {
       } else {
         await signIn(emailLimpo, senha);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        entrarNoApp();
+        await entrarNoApp();
       }
     } catch (e: any) {
-      const msg: string = e?.message ?? '';
-      let titulo = 'Ops';
-      let texto = msg || 'Não foi possível autenticar.';
-      if (/already registered|already exists|User already/i.test(msg)) {
-        titulo = 'E-mail já cadastrado';
-        texto = 'Esse e-mail já tem conta. Tente entrar.';
-      } else if (/invalid login credentials|invalid credentials/i.test(msg)) {
-        titulo = 'E-mail ou senha incorretos';
-        texto = 'Confira os dados. Se acabou de criar a conta, confirme o e-mail antes de entrar.';
-      } else if (/invalid.*email|email.*invalid/i.test(msg)) {
-        titulo = 'E-mail inválido';
-        texto = 'Confira o e-mail digitado.';
-      }
+      const { titulo, texto } = traduzirErroAuth(e);
       Alert.alert(titulo, texto);
     }
     setBusy(false);
   }
 
-  function emBreve(rotulo: string) {
+  /** Login/cadastro com o Google (OAuth real). Cancelamento é silencioso. */
+  async function handleGoogle() {
     Haptics.selectionAsync().catch(() => {});
-    Alert.alert(rotulo, 'Esse acesso rápido chega em breve. Por enquanto, entre com e-mail e senha.');
+    if (!configured) {
+      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      return;
+    }
+    setGoogleBusy(true);
+    try {
+      const res = await signInWithGoogle();
+      if (res === 'ok') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        await entrarNoApp();
+      }
+      // 'cancelado' → silêncio (o usuário desistiu).
+    } catch (e: any) {
+      const { titulo, texto } = traduzirErroAuth(e);
+      Alert.alert(titulo, texto);
+    }
+    setGoogleBusy(false);
   }
 
   /** Recuperar senha: envia o e-mail de redefinição do Supabase. */
@@ -108,30 +193,58 @@ export default function EntrarScreen() {
     if (!e) { Alert.alert('Recuperar senha', 'Digite seu e-mail no campo acima primeiro.'); return; }
     if (!supabase) { Alert.alert('Indisponível', 'O backup na nuvem não está configurado.'); return; }
     try {
-      await supabase.auth.resetPasswordForEmail(e);
+      const { error } = await supabase.auth.resetPasswordForEmail(e);
+      if (error) throw error;
       Alert.alert('Verifique seu e-mail', `Se existir uma conta para ${e}, enviamos um link para redefinir a senha.`);
-    } catch {
-      Alert.alert('Ops', 'Não consegui enviar agora. Tente de novo em instantes.');
+    } catch (e: any) {
+      const { titulo, texto } = traduzirErroAuth(e);
+      Alert.alert(titulo, texto);
     }
   }
+
+  const anyBusy = busy || googleBusy;
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {/* HERO */}
-        <LinearGradient colors={Gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 44 }]}>
+        {/* HERO / CAPA (~45% da tela) */}
+        <LinearGradient colors={Gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 72 }]}>
           <View style={styles.glow1} />
           <View style={styles.glow2} />
-          <OlliMascot size={72} onDark />
+          <OlliMascot size={88} onDark />
           <Text style={styles.brand}>OLLI</Text>
-          <Text style={styles.tagline}>{modo === 'login' ? 'Que bom te ver de novo 👋' : 'Vamos criar a sua conta'}</Text>
+          <Text style={styles.tagline}>Orçamentos que fecham negócio</Text>
         </LinearGradient>
 
+        {/* CARD sobrepondo o hero */}
         <View style={styles.body}>
+          <Text style={styles.cardTitle}>{modo === 'login' ? 'Que bom te ver de novo 👋' : 'Vamos criar a sua conta'}</Text>
+
+          {/* BANNER DE MIGRAÇÃO — só quem já tem dados locais e está no cadastro */}
+          {temLocais && modo === 'signup' && (
+            <View style={styles.migrateCard}>
+              <MaterialCommunityIcons name="shield-check" size={22} color={Colors.accentLight} />
+              <Text style={styles.migrateText}>
+                Crie sua conta para proteger seus dados — tudo que você já fez será vinculado a ela.
+              </Text>
+            </View>
+          )}
+
           {modo === 'signup' && (
             <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
           )}
           <OlliInput label="E-mail" value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
+          {modo === 'signup' && (
+            <OlliInput
+              label="WhatsApp/Telefone"
+              mask="phone"
+              value={telefone}
+              onChangeText={setTelefone}
+              placeholder="(11) 99999-9999"
+              keyboardType="phone-pad"
+              leftIcon="whatsapp"
+            />
+          )}
           <OlliInput
             label="Senha"
             value={senha}
@@ -154,35 +267,31 @@ export default function EntrarScreen() {
 
           <OlliButton
             label={modo === 'login' ? 'Entrar' : 'Criar conta'}
-            variant="gradient" size="lg" fullWidth loading={busy} onPress={handleAuth}
+            variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy} onPress={handleAuth}
             icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color="#fff" />}
             style={{ marginTop: modo === 'login' ? 4 : 8 }}
           />
 
-          {/* ACESSO RÁPIDO */}
-          <View style={styles.dividerRow}>
-            <View style={styles.divLine} />
-            <Text style={styles.divText}>acesso rápido</Text>
-            <View style={styles.divLine} />
-          </View>
-          <View style={styles.socialRow}>
-            <SocialBtn icon="face-recognition" label="Biometria" onPress={() => emBreve('Entrar com biometria')} />
-            <SocialBtn icon="google" label="Google" onPress={() => emBreve('Entrar com Google')} />
-            <SocialBtn icon="apple" label="Apple" onPress={() => emBreve('Entrar com Apple')} />
+          {/* SEPARADOR "ou" */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>ou</Text>
+            <View style={styles.dividerLine} />
           </View>
 
+          {/* GOOGLE */}
+          <OlliButton
+            label="Continuar com o Google"
+            variant="outline" size="lg" fullWidth loading={googleBusy} disabled={busy} haptic={false} onPress={handleGoogle}
+            icon={<MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />}
+          />
+
           {/* ALTERNA LOGIN/SIGNUP */}
-          <TouchableOpacity onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
+          <TouchableOpacity disabled={anyBusy} onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
             <Text style={styles.switchText}>
               {modo === 'login' ? 'Ainda não tem conta? ' : 'Já tem conta? '}
               <Text style={styles.switchLink}>{modo === 'login' ? 'Criar agora' : 'Entrar'}</Text>
             </Text>
-          </TouchableOpacity>
-
-          {/* OFFLINE-FIRST: usar sem conta */}
-          <TouchableOpacity onPress={() => { Haptics.selectionAsync().catch(() => {}); entrarNoApp(); }} style={styles.skipWrap} accessibilityRole="button">
-            <MaterialCommunityIcons name="cloud-off-outline" size={16} color={Colors.onSurfaceVariant} />
-            <Text style={styles.skip}>Usar sem conta (offline)</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -190,41 +299,41 @@ export default function EntrarScreen() {
   );
 }
 
-function SocialBtn({ icon, label, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={styles.social} onPress={onPress} activeOpacity={0.85}>
-      <MaterialCommunityIcons name={icon} size={24} color={Colors.accentLight} />
-      <Text style={styles.socialLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
 
-  hero: { alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: 36, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden' },
+  hero: { alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: 56, overflow: 'hidden' },
   glow1: { position: 'absolute', top: -60, right: -40, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(127,233,245,0.16)' },
   glow2: { position: 'absolute', bottom: -50, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(52,198,217,0.12)' },
-  brand: { fontSize: 30, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 0, marginTop: 14, paddingLeft: 5 },
-  tagline: { fontSize: 13.5, fontFamily: Fonts.semiBold, color: Colors.accentLight, marginTop: 5 },
+  brand: { fontSize: 38, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 1, marginTop: 16, paddingLeft: 6 },
+  tagline: { fontSize: 14, fontFamily: Fonts.semiBold, color: Colors.accentLight, marginTop: 6 },
 
-  body: { padding: Spacing.base, paddingTop: Spacing.lg },
+  body: {
+    marginTop: -24,
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: Spacing.base,
+    paddingTop: Spacing.lg,
+  },
+  cardTitle: { fontSize: 20, fontFamily: Fonts.extraBold, color: '#fff', marginBottom: Spacing.base },
+
+  migrateCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: Colors.accentContainer,
+    borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
+    borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: Spacing.base,
+  },
+  migrateText: { flex: 1, fontSize: 13, color: Colors.onSurface, lineHeight: 19, fontWeight: '600' },
 
   forgotWrap: { alignSelf: 'flex-end', paddingVertical: 4, marginBottom: 8 },
   forgot: { fontSize: 13, fontWeight: '700', color: Colors.accentLight },
 
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginVertical: 22 },
-  divLine: { flex: 1, height: 1, backgroundColor: Colors.outline },
-  divText: { fontSize: 11.5, color: Colors.onSurfaceMuted },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.outline },
+  dividerText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
 
-  socialRow: { flexDirection: 'row', gap: 11 },
-  social: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 13, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, backgroundColor: Colors.surface, ...Shadow.sm },
-  socialLabel: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-  switchWrap: { paddingVertical: 18, alignItems: 'center' },
+  switchWrap: { paddingVertical: 18, alignItems: 'center', marginTop: 8 },
   switchText: { fontSize: 14, color: Colors.onSurfaceVariant },
   switchLink: { color: Colors.accentLight, fontWeight: '800' },
-
-  skipWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 8 },
-  skip: { fontSize: 13.5, fontWeight: '600', color: Colors.onSurfaceVariant },
 });

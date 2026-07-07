@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,10 +11,15 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { OlliMascot } from '../components/OlliMascot';
-import { diagnosticarCaso } from '../services/olliIA';
+import { OlliSkeleton } from '../components/OlliSkeleton';
+import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { diagnosticarCaso, motivoFalhaDiagnostico } from '../services/olliIA';
 import { DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+
+/** Depois de quantos segundos de loading o botão "Cancelar" aparece. */
+const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 4;
 
 type Route = RouteProp<RootStackParamList, 'DiagnosticoIA'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -29,26 +34,52 @@ export default function DiagnosticoIAScreen() {
   const [codigo, setCodigo] = useState(p.codigo ?? '');
   const [sintoma, setSintoma] = useState(p.sintoma ?? '');
   const [loading, setLoading] = useState(false);
+  const [podeCancelar, setPodeCancelar] = useState(false);
   const [res, setRes] = useState<DiagnosticoResultado | null>(null);
+  const [falhouIA, setFalhouIA] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // limpa timers/abort pendentes ao desmontar a tela
+  useEffect(() => {
+    return () => {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const podeEnviar = !!codigo.trim() || !!sintoma.trim();
 
   async function pedirDiagnostico() {
     if (!podeEnviar) return;
     Haptics.selectionAsync().catch(() => {});
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
+    setPodeCancelar(false);
     setRes(null);
+    setFalhouIA(false);
+    cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
     try {
       const r = await diagnosticarCaso({
         marca: marca.trim() || undefined,
         modelo: modelo.trim() || undefined,
         codigo: codigo.trim() || undefined,
         sintoma: sintoma.trim() || undefined,
-      });
+      }, controller.signal);
       setRes(r);
+      setFalhouIA(!!motivoFalhaDiagnostico());
     } finally {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
       setLoading(false);
+      setPodeCancelar(false);
+      abortRef.current = null;
     }
+  }
+
+  function cancelarDiagnostico() {
+    Haptics.selectionAsync().catch(() => {});
+    abortRef.current?.abort();
   }
 
   const d = res?.diagnostico;
@@ -98,63 +129,105 @@ export default function DiagnosticoIAScreen() {
         {loading && (
           <View style={styles.loadingBox}>
             <OlliMascot size={44} onDark />
-            <ActivityIndicator color={Colors.accent} style={{ marginTop: 10 }} />
             <Text style={styles.loadingText}>A OLLI está cruzando código, marca e a base…</Text>
+            <OlliSkeleton.Lines count={4} style={{ width: '100%', marginTop: 16 }} />
+            {podeCancelar && (
+              <OlliButton
+                label="Cancelar"
+                variant="outline"
+                size="sm"
+                onPress={cancelarDiagnostico}
+                style={{ marginTop: 16 }}
+              />
+            )}
           </View>
         )}
 
         {d && (
           <View>
             {/* origem do diagnóstico */}
-            <View style={styles.originRow}>
-              <View style={[styles.originPill, res!.fonte === 'base' ? styles.originBase : styles.originIa]}>
-                <MaterialCommunityIcons
-                  name={res!.fonte === 'base' ? 'database-search-outline' : res!.fonte === 'cache' ? 'lightning-bolt-outline' : 'robot-happy-outline'}
-                  size={13}
-                  color={res!.fonte === 'base' ? Colors.warning : Colors.accentLight}
-                />
-                <Text style={[styles.originText, { color: res!.fonte === 'base' ? Colors.warning : Colors.accentLight }]}>
-                  {res!.fonte === 'base' ? 'Base de códigos' : res!.fonte === 'cache' ? 'Cache' : `OLLI Técnica${res!.modelo ? ` · ${res!.modelo}` : ''}`}
-                </Text>
+            <AnimatedEntrance index={0}>
+              <View style={styles.originRow}>
+                <View style={[styles.originPill, res!.fonte === 'base' ? styles.originBase : styles.originIa]}>
+                  <MaterialCommunityIcons
+                    name={res!.fonte === 'base' ? 'database-search-outline' : res!.fonte === 'cache' ? 'lightning-bolt-outline' : 'robot-happy-outline'}
+                    size={13}
+                    color={res!.fonte === 'base' ? Colors.warning : Colors.accentLight}
+                  />
+                  <Text style={[styles.originText, { color: res!.fonte === 'base' ? Colors.warning : Colors.accentLight }]}>
+                    {res!.fonte === 'base' ? 'Base de códigos' : res!.fonte === 'cache' ? 'Cache' : `OLLI Técnica${res!.modelo ? ` · ${res!.modelo}` : ''}`}
+                  </Text>
+                </View>
+                <View style={[styles.confBadge, { backgroundColor: confColor(d.nivelConfianca) + '22' }]}>
+                  <Text style={[styles.confText, { color: confColor(d.nivelConfianca) }]}>Confiança {d.nivelConfianca}</Text>
+                </View>
               </View>
-              <View style={[styles.confBadge, { backgroundColor: confColor(d.nivelConfianca) + '22' }]}>
-                <Text style={[styles.confText, { color: confColor(d.nivelConfianca) }]}>Confiança {d.nivelConfianca}</Text>
-              </View>
-            </View>
+            </AnimatedEntrance>
 
             {res!.aviso && (
-              <View style={styles.aviso}>
-                <MaterialCommunityIcons name="information-outline" size={15} color={Colors.warning} />
-                <Text style={styles.avisoText}>{res!.aviso}</Text>
-              </View>
+              <AnimatedEntrance index={1}>
+                <View style={styles.aviso}>
+                  <MaterialCommunityIcons name="information-outline" size={15} color={Colors.warning} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.avisoText}>{res!.aviso}</Text>
+                    {falhouIA && (
+                      <OlliButton
+                        label="Tentar de novo"
+                        variant="outline"
+                        size="sm"
+                        onPress={pedirDiagnostico}
+                        haptic={false}
+                        icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                        style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                      />
+                    )}
+                  </View>
+                </View>
+              </AnimatedEntrance>
             )}
 
-            <Text style={styles.resumo}>{d.resumo}</Text>
-            {!!d.significadoProvavel && <Text style={styles.significado}>{d.significadoProvavel}</Text>}
+            <AnimatedEntrance index={2}>
+              <Text style={styles.resumo}>{d.resumo}</Text>
+              {!!d.significadoProvavel && <Text style={styles.significado}>{d.significadoProvavel}</Text>}
+            </AnimatedEntrance>
 
-            <ListSection icon="format-list-numbered" title="Testes em ordem" items={d.testesEmOrdem} accent />
-            <ListSection icon="magnify" title="Causas mais comuns" items={d.causasComuns} />
-            <ListSection icon="wrench-outline" title="Peças suspeitas" items={d.pecasSuspeitas} />
+            <AnimatedEntrance index={3}>
+              <ListSection icon="format-list-numbered" title="Testes em ordem" items={d.testesEmOrdem} accent />
+            </AnimatedEntrance>
+            <AnimatedEntrance index={4}>
+              <ListSection icon="magnify" title="Causas mais comuns" items={d.causasComuns} />
+            </AnimatedEntrance>
+            <AnimatedEntrance index={5}>
+              <ListSection icon="wrench-outline" title="Peças suspeitas" items={d.pecasSuspeitas} />
+            </AnimatedEntrance>
 
             {d.naoFacaAinda?.length > 0 && (
-              <View style={styles.warnBox}>
-                <View style={styles.warnHead}>
-                  <MaterialCommunityIcons name="alert-octagon-outline" size={18} color={Colors.warning} />
-                  <Text style={styles.warnTitle}>Não faça ainda</Text>
+              <AnimatedEntrance index={6}>
+                <View style={styles.warnBox}>
+                  <View style={styles.warnHead}>
+                    <MaterialCommunityIcons name="alert-octagon-outline" size={18} color={Colors.warning} />
+                    <Text style={styles.warnTitle}>Não faça ainda</Text>
+                  </View>
+                  {d.naoFacaAinda.map((t, i) => <Text key={i} style={styles.warnItem}>• {t}</Text>)}
                 </View>
-                {d.naoFacaAinda.map((t, i) => <Text key={i} style={styles.warnItem}>• {t}</Text>)}
-              </View>
+              </AnimatedEntrance>
             )}
 
             {!!d.mensagemCliente && (
-              <Block icon="message-text-outline" title="Mensagem pro cliente" text={d.mensagemCliente} />
+              <AnimatedEntrance index={7}>
+                <Block icon="message-text-outline" title="Mensagem pro cliente" text={d.mensagemCliente} />
+              </AnimatedEntrance>
             )}
             {!!d.sugestaoOrcamento && (
-              <Block icon="file-document-outline" title="Sugestão de orçamento" text={d.sugestaoOrcamento} />
+              <AnimatedEntrance index={8}>
+                <Block icon="file-document-outline" title="Sugestão de orçamento" text={d.sugestaoOrcamento} />
+              </AnimatedEntrance>
             )}
 
             {d.fontes?.length > 0 && (
-              <ListSection icon="link-variant" title="Fontes" items={d.fontes} />
+              <AnimatedEntrance index={9}>
+                <ListSection icon="link-variant" title="Fontes" items={d.fontes} />
+              </AnimatedEntrance>
             )}
 
             {/* CTA — vira orçamento com 1 toque (ciclo do dinheiro) */}

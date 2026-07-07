@@ -1,12 +1,190 @@
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDb } from '../database/database';
 import { Agendamento } from '../types';
 import { pushRow, removeRow } from './cloudSync';
+import { LEMBRETE_MAP_KEY } from './storageKeys';
 
 /**
  * CRUD da Agenda (Fase 2). Mesmo padrão do database.ts: SQLite local,
  * offline-first. As datas (`inicio`/`fim`) são ISO datetime; o filtro por
  * intervalo usa comparação lexicográfica de strings ISO (segura para ordenar).
  */
+
+// ─── LEMBRETES (notificações locais de agendamento) ──────────
+// Como o app é offline-first e o usuário depende de lembrar da visita mesmo
+// com o app fechado, cada agendamento futuro ganha uma notificação local
+// (padrão: 1h antes). Guardamos o id da notificação junto ao id do
+// agendamento em AsyncStorage para poder cancelar ao editar/excluir.
+
+/** Minutos de antecedência do lembrete (fixo por enquanto — "configurável simples"). */
+export const MINUTOS_ANTECEDENCIA_LEMBRETE = 60;
+const CANAL_ANDROID_ID = 'agenda-lembretes';
+
+// Como a UI deve se comportar quando uma notificação chega com o app aberto.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+async function getLembreteMap(): Promise<Record<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(LEMBRETE_MAP_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function setLembreteMap(map: Record<string, string>): Promise<void> {
+  try { await AsyncStorage.setItem(LEMBRETE_MAP_KEY, JSON.stringify(map)); } catch {}
+}
+
+/** Cria (uma vez) o canal padrão de notificações no Android. Sem efeito no iOS. */
+async function garantirCanalAndroid(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(CANAL_ANDROID_ID, {
+      name: 'Lembretes de agenda',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      // Já retornamos cedo quando não é Android, então a cor é sempre aplicada.
+      lightColor: '#34C6D9',
+      sound: 'default',
+    });
+  } catch {}
+}
+
+/** true se a permissão de notificação já está concedida (sem pedir de novo). */
+export async function temPermissaoNotificacao(): Promise<boolean> {
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pede permissão de notificação ao usuário (se ainda não decidiu antes).
+ * Retorna true se concedida. Não mostra nenhum texto — a tela chamadora é
+ * responsável pelo aviso amigável antes de chamar isto na primeira vez.
+ */
+export async function pedirPermissaoNotificacao(): Promise<boolean> {
+  try {
+    const atual = await Notifications.getPermissionsAsync();
+    if (atual.status === 'granted') return true;
+    const pedida = await Notifications.requestPermissionsAsync();
+    return pedida.status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/** Cancela (se existir) a notificação de lembrete agendada para este agendamento. */
+async function cancelarLembrete(agendamentoId: string): Promise<void> {
+  const map = await getLembreteMap();
+  const notifId = map[agendamentoId];
+  if (!notifId) return;
+  try { await Notifications.cancelScheduledNotificationAsync(notifId); } catch {}
+  delete map[agendamentoId];
+  await setLembreteMap(map);
+}
+
+/**
+ * (Re)agenda o lembrete local de um agendamento: cancela o anterior (se
+ * houver) e cria um novo, `MINUTOS_ANTECEDENCIA_LEMBRETE` minutos antes do
+ * início — só se o horário do lembrete ainda estiver no futuro e o
+ * agendamento não estiver cancelado/concluído. Não lança: falha de
+ * notificação nunca deve impedir salvar o agendamento.
+ */
+async function agendarLembrete(a: Agendamento): Promise<void> {
+  try {
+    await cancelarLembrete(a.id);
+    if (a.status !== 'agendado') return;
+    const inicio = new Date(a.inicio);
+    if (isNaN(inicio.getTime())) return;
+    const dataLembrete = new Date(inicio.getTime() - MINUTOS_ANTECEDENCIA_LEMBRETE * 60 * 1000);
+    if (dataLembrete.getTime() <= Date.now()) return; // horário do lembrete já passou
+
+    const temPermissao = await temPermissaoNotificacao();
+    if (!temPermissao) return; // não pede permissão aqui; quem chama já deve ter pedido
+
+    await garantirCanalAndroid();
+
+    const horaTxt = `${String(inicio.getHours()).padStart(2, '0')}:${String(inicio.getMinutes()).padStart(2, '0')}`;
+    const notifId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `Visita em ${MINUTOS_ANTECEDENCIA_LEMBRETE >= 60 ? `${Math.round(MINUTOS_ANTECEDENCIA_LEMBRETE / 60)}h` : `${MINUTOS_ANTECEDENCIA_LEMBRETE}min`}`,
+        body: `${a.titulo} · ${a.clienteNome} às ${horaTxt}${a.endereco ? ' · ' + a.endereco : ''}`,
+        data: { agendamentoId: a.id },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: dataLembrete,
+        channelId: CANAL_ANDROID_ID,
+      },
+    });
+
+    const map = await getLembreteMap();
+    map[a.id] = notifId;
+    await setLembreteMap(map);
+  } catch {
+    // Falha ao agendar notificação nunca deve travar o salvamento do agendamento.
+  }
+}
+
+/**
+ * Cancela TODAS as notificações de lembrete agendadas neste aparelho e limpa o
+ * mapa agendamento→notificação. Usado no logout com "apagar dados": sem isto, os
+ * lembretes da conta anterior (com nome/endereço do cliente) continuariam
+ * disparando após a troca de conta — e, sem o mapa, ficariam impossíveis de
+ * cancelar pelo app. Todas as notificações agendadas do app são lembretes de
+ * agenda, então cancelar tudo é seguro. NUNCA lança.
+ */
+export async function cancelarTodosLembretes(): Promise<void> {
+  if (Platform.OS !== 'web') {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch {
+      // best-effort: se o cancelamento falhar, ainda limpamos o mapa abaixo.
+    }
+  }
+  try {
+    await AsyncStorage.removeItem(LEMBRETE_MAP_KEY);
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Reconcilia os lembretes locais com o estado atual da tabela `agendamentos`.
+ * Cancela todos os lembretes agendados e reagenda a partir do banco (só os
+ * agendamentos com status 'agendado' e horário de lembrete ainda no futuro).
+ * Chamado após o pull do sync e após um restore de backup — caminhos que gravam
+ * direto no SQLite sem passar por saveAgendamento, deixando notificações no
+ * horário velho, órfãs (agendamento excluído na nuvem) ou faltando. NUNCA lança.
+ */
+export async function resincronizarLembretes(): Promise<void> {
+  try {
+    await cancelarTodosLembretes();
+    const agendamentos = await getAgendamentos();
+    for (const a of agendamentos) {
+      try {
+        await agendarLembrete(a);
+      } catch {
+        // pula agendamento problemático, segue o resto
+      }
+    }
+  } catch {
+    // best-effort: reconciliação de lembretes nunca afeta os dados locais
+  }
+}
 
 function rowToAgendamento(r: any): Agendamento {
   return {
@@ -86,10 +264,14 @@ export async function saveAgendamento(a: Agendamento): Promise<void> {
   );
   // Espelha na nuvem em background (fire-and-forget; no-op se offline/deslogado).
   try { void pushRow('agendamentos', a).catch(() => {}); } catch {}
+  // Reagenda o lembrete local (cancela o anterior e cria um novo, se aplicável).
+  // Fire-and-forget: nunca deve travar o salvamento por causa de notificação.
+  void agendarLembrete(a).catch(() => {});
 }
 
 export async function deleteAgendamento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM agendamentos WHERE id = ?', [id]);
   try { void removeRow('agendamentos', id).catch(() => {}); } catch {}
+  void cancelarLembrete(id).catch(() => {});
 }

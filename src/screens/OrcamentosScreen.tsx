@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, RefreshControl,
@@ -11,7 +11,12 @@ import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
+import { OlliSkeleton } from '../components/OlliSkeleton';
+import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { CountUp } from '../components/CountUp';
 import { getOrcamentos, deleteOrcamento, saveOrcamento, getNextOrcamentoNumber } from '../database/database';
+import { sincronizarStatusLinks } from '../services/clienteLink';
+import { onSyncAplicado } from '../services/cloudSync';
 import { formatCurrency } from '../utils/currency';
 import { formatDate, nowISO } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -22,12 +27,17 @@ import { generateId } from '../utils/id';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
 
+// Cobre TODOS os status possíveis de StatusOrcamento (src/types/index.ts) —
+// sem isso, orçamentos "Aguardando assinatura" ou "Cancelado" só apareciam
+// misturados no filtro "Todos", sem como isolá-los.
 const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> = [
   { key: 'todos', label: 'Todos' },
   { key: 'rascunho', label: 'Rascunho' },
   { key: 'enviado', label: 'Enviado' },
+  { key: 'aguardando_assinatura', label: 'Aguard. assinatura' },
   { key: 'aprovado', label: 'Aprovado' },
   { key: 'recusado', label: 'Recusado' },
+  { key: 'cancelado', label: 'Cancelado' },
 ];
 
 export default function OrcamentosScreen() {
@@ -41,14 +51,29 @@ export default function OrcamentosScreen() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusOrcamento | 'todos'>('todos');
   const [refreshing, setRefreshing] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
   const load = useCallback(async () => {
     const data = await getOrcamentos();
     setAll(data);
     applyFilters(data, query, statusFilter, clienteId);
+    setCarregando(false);
   }, [clienteId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    // sincronizarStatusLinks() nunca lança — é seguro chamar sem try/catch.
+    // Se algum orçamento mudou de status (cliente aprovou/recusou pelo link),
+    // recarrega a lista para refletir o novo status.
+    sincronizarStatusLinks().then(alterados => {
+      if (alterados > 0) load();
+    });
+  }, [load]));
+
+  // Recarrega a lista quando o sync em segundo plano (login/foreground) traz
+  // dados novos da nuvem — sem isso, um aparelho recém-logado podia mostrar a
+  // lista vazia até o usuário sair e voltar para a tela.
+  useEffect(() => onSyncAplicado(load), [load]);
 
   function applyFilters(data: Orcamento[], q: string, s: typeof statusFilter, cliId?: string) {
     let r = data;
@@ -88,8 +113,12 @@ export default function OrcamentosScreen() {
         {
           text: 'Excluir', style: 'destructive',
           onPress: async () => {
-            await deleteOrcamento(o.id);
-            load();
+            try {
+              await deleteOrcamento(o.id);
+              load();
+            } catch (e) {
+              Alert.alert('Erro', 'Não foi possível excluir o orçamento agora. Tente novamente.');
+            }
           },
         },
       ]
@@ -97,24 +126,28 @@ export default function OrcamentosScreen() {
   }
 
   async function handleClone(o: Orcamento) {
-    const cloneId = generateId();
-    const numero = await getNextOrcamentoNumber();
-    const clone: Orcamento = {
-      ...o,
-      id: cloneId,
-      numero,
-      status: 'rascunho',
-      // não herdar dados específicos do orçamento original
-      assinaturaClienteUri: undefined,
-      dataAssinaturaCliente: undefined,
-      assinaturaPrestadorUri: undefined,
-      criadoDeModeloId: undefined,
-      criadoEm: nowISO(),
-      atualizadoEm: nowISO(),
-    };
-    await saveOrcamento(clone);
-    load();
-    nav.navigate('EditarOrcamento', { orcamentoId: cloneId });
+    try {
+      const cloneId = generateId();
+      const numero = await getNextOrcamentoNumber();
+      const clone: Orcamento = {
+        ...o,
+        id: cloneId,
+        numero,
+        status: 'rascunho',
+        // não herdar dados específicos do orçamento original
+        assinaturaClienteUri: undefined,
+        dataAssinaturaCliente: undefined,
+        assinaturaPrestadorUri: undefined,
+        criadoDeModeloId: undefined,
+        criadoEm: nowISO(),
+        atualizadoEm: nowISO(),
+      };
+      await saveOrcamento(clone);
+      load();
+      nav.navigate('EditarOrcamento', { orcamentoId: cloneId });
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível clonar o orçamento agora. Tente novamente.');
+    }
   }
 
   const refresh = async () => {
@@ -123,40 +156,42 @@ export default function OrcamentosScreen() {
     setRefreshing(false);
   };
 
-  const renderItem = ({ item: o }: { item: Orcamento }) => (
-    <OlliCard
-      onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
-      style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
-    >
-      <View style={styles.itemHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
-          <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+  const renderItem = ({ item: o, index }: { item: Orcamento; index: number }) => (
+    <AnimatedEntrance index={index}>
+      <OlliCard
+        onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
+        style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
+      >
+        <View style={styles.itemHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
+            <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
+            <StatusBadge status={o.status} size="sm" />
+          </View>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
-          <StatusBadge status={o.status} size="sm" />
+        <View style={styles.itemActions}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
+            <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
+            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
+            <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
+            <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
+            <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
+            <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
+            <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
+            <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
+          </TouchableOpacity>
         </View>
-      </View>
-      <View style={styles.itemActions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
-          <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
-          <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
-          <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
-          <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
-          <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
-          <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
-          <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
-          <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
-        </TouchableOpacity>
-      </View>
-    </OlliCard>
+      </OlliCard>
+    </AnimatedEntrance>
   );
 
   return (
@@ -164,7 +199,7 @@ export default function OrcamentosScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title="Orçamentos"
-        subtitle={clienteId && clienteNome ? `de ${clienteNome}` : `${all.length} no total`}
+        subtitle={clienteId && clienteNome ? `de ${clienteNome}` : undefined}
         right={
           <TouchableOpacity style={styles.newBtn} onPress={() => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})} activeOpacity={0.85}>
             <MaterialCommunityIcons name="plus" size={20} color="#fff" />
@@ -186,6 +221,14 @@ export default function OrcamentosScreen() {
               <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
             </TouchableOpacity>
           ) : null}
+        </View>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>{filtered.length} orçamento{filtered.length !== 1 ? 's' : ''}</Text>
+          <CountUp
+            value={filtered.reduce((s, o) => s + o.valorTotal, 0)}
+            format="currency"
+            style={styles.totalValue}
+          />
         </View>
       </GradientHeader>
 
@@ -224,26 +267,38 @@ export default function OrcamentosScreen() {
       )}
 
       {/* LIST */}
-      <FlatList
-        data={filtered}
-        keyExtractor={o => o.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingVertical: 8, paddingBottom: 80, flexGrow: 1 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} />}
-        ListEmptyComponent={
-          <EmptyState
-            icon="file-document-outline"
-            title="Nenhum orçamento"
-            subtitle={
-              query ? 'Nenhum resultado para sua busca.'
-                : clienteId ? `${clienteNome || 'Este cliente'} ainda não tem orçamentos. Crie o primeiro!`
-                : 'Crie seu primeiro orçamento!'
-            }
-            actionLabel={!query ? 'Criar orçamento' : undefined}
-            onAction={!query ? () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {}) : undefined}
-          />
-        }
-      />
+      {carregando ? (
+        <View style={{ paddingTop: 8, paddingHorizontal: Spacing.base, gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={styles.skeletonCard}>
+              <OlliSkeleton width="55%" height={15} />
+              <OlliSkeleton width="35%" height={12} style={{ marginTop: 8 }} />
+              <OlliSkeleton width="40%" height={20} style={{ marginTop: 12 }} />
+            </View>
+          ))}
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={o => o.id}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 80, flexGrow: 1 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} />}
+          ListEmptyComponent={
+            <EmptyState
+              icon="file-document-outline"
+              title="Nenhum orçamento"
+              subtitle={
+                query ? 'Nenhum resultado para sua busca.'
+                  : clienteId ? `${clienteNome || 'Este cliente'} ainda não tem orçamentos. Crie o primeiro!`
+                  : 'Crie seu primeiro orçamento!'
+              }
+              actionLabel={!query ? 'Criar orçamento' : undefined}
+              onAction={!query ? () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {}) : undefined}
+            />
+          }
+        />
+      )}
     </View>
   );
 }
@@ -266,6 +321,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.base, paddingVertical: 11,
   },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+  totalLabel: { fontSize: 12.5, color: 'rgba(255,255,255,0.75)', fontWeight: '700' },
+  totalValue: { fontSize: 17, color: '#fff', fontWeight: '800' },
+
+  skeletonCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base },
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 6,

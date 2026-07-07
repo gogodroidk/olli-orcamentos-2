@@ -8,7 +8,8 @@ function primeiroNome(nome?: string): string {
 function resumoItens(orc: Orcamento): string {
   const nomes = orc.itens.slice(0, 3).map(i => i.nome.trim()).filter(Boolean);
   if (nomes.length === 0) return '';
-  const extra = orc.itens.length > nomes.length ? ` + ${orc.itens.length - nomes.length} item(ns)` : '';
+  const restantes = orc.itens.length - nomes.length;
+  const extra = restantes > 0 ? ` + mais ${restantes} ${restantes === 1 ? 'item' : 'itens'}` : '';
   return `${nomes.join(', ')}${extra}`;
 }
 
@@ -58,6 +59,21 @@ export function montarMensagemFollowUpOrcamento(orc: Orcamento, empresa?: Empres
     `Ele está em ${formatCurrency(orc.valorTotal)}${orc.validadeOrcamento ? ` e vale até ${orc.validadeOrcamento}` : ''}.`,
     'Se estiver tudo certo, posso deixar aprovado e combinar o próximo passo.',
     empresa?.telefone || empresa?.whatsapp ? `Contato: ${empresa.telefone || empresa.whatsapp}` : '',
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
+
+/**
+ * Mensagem de WhatsApp para reconquistar um cliente sem contato há muito
+ * tempo (Radar de clientes). Calorosa e profissional — nunca soa a cobrança.
+ * `nomePrestador` é o nome do prestador/empresa (getEmpresa), se disponível.
+ */
+export function montarMensagemReconquista(nome: string, meses: number, nomePrestador?: string | null): string {
+  const quem = (nomePrestador ?? '').trim();
+  const linhas = [
+    `Oi, ${primeiroNome(nome)}! ${quem ? `Aqui é ${quem}.` : 'Como vai?'}`,
+    `Já faz ${meses} ${meses === 1 ? 'mês' : 'meses'} desde a nossa última manutenção e lembrei de você — passando pra saber se está tudo funcionando bem por aí.`,
+    'Se quiser, posso passar para dar uma olhada geral e evitar problema maior lá na frente. Me chama por aqui quando puder!',
   ];
   return linhas.filter(Boolean).join('\n');
 }

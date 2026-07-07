@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Text, StyleSheet, Animated, Easing } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BorderRadius, Colors, Spacing } from '../theme';
 import { OlliButton } from './OlliButton';
+import { AnimatedEntrance } from './AnimatedEntrance';
 
 interface Props {
   icon?: keyof typeof MaterialCommunityIcons.glyphMap;
@@ -12,18 +13,37 @@ interface Props {
   onAction?: () => void;
 }
 
+function FloatingIcon({ icon }: { icon: keyof typeof MaterialCommunityIcons.glyphMap }) {
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(translateY, { toValue: -5, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  return (
+    <Animated.View style={[styles.iconWrap, { transform: [{ translateY }] }]}>
+      <MaterialCommunityIcons name={icon} size={42} color={Colors.accentLight} />
+    </Animated.View>
+  );
+}
+
 export function EmptyState({ icon = 'file-document-outline', title, subtitle, actionLabel, onAction }: Props) {
   return (
-    <View style={styles.container}>
-      <View style={styles.iconWrap}>
-        <MaterialCommunityIcons name={icon} size={42} color={Colors.accentLight} />
-      </View>
+    <AnimatedEntrance from="scale" style={styles.container}>
+      <FloatingIcon icon={icon} />
       <Text style={styles.title}>{title}</Text>
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       {actionLabel && onAction && (
         <OlliButton label={actionLabel} onPress={onAction} style={styles.btn} />
       )}
-    </View>
+    </AnimatedEntrance>
   );
 }
 

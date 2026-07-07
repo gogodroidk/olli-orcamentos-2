@@ -1,8 +1,10 @@
 import { supabase, getCurrentUser } from './supabase';
 import { LINK_BASE_URL } from '../config';
 import { track, Eventos } from './analytics';
-import { Orcamento, Empresa } from '../types';
+import { Orcamento, Empresa, StatusOrcamento } from '../types';
 import { generateId } from '../utils/id';
+import { getOrcamento, saveOrcamento } from '../database/database';
+import { nowISO } from '../utils/date';
 
 const TABLE = 'orcamentos_publicos';
 
@@ -168,4 +170,65 @@ export async function statusDoLink(orcamentoId: string): Promise<{ status: strin
     .maybeSingle();
   if (!data) return null;
   return { status: (data as any).status, respondidoEm: (data as any).respondido_em ?? undefined };
+}
+
+/**
+ * Sincroniza no banco LOCAL a resposta do cliente (aprovado/recusado) dos
+ * orçamentos enviados por link. Faz UMA consulta em lote na tabela
+ * `orcamentos_publicos` (RLS já restringe ao dono logado — mesmo caminho de leitura
+ * seguro que `statusDoLink` usa por linha) trazendo só os links já respondidos, e
+ * atualiza o status do orçamento local quando ele diverge da nuvem.
+ *
+ * Retorna QUANTOS orçamentos mudaram de status. NUNCA lança: offline, deslogado,
+ * sem nuvem ou qualquer erro de rede/backend resultam em 0 (no-op silencioso),
+ * para poder ser chamada em background (ex.: ao focar a lista de orçamentos).
+ */
+export async function sincronizarStatusLinks(): Promise<number> {
+  try {
+    if (!supabase) return 0;
+    const user = await getCurrentUser();
+    if (!user) return 0;
+
+    // Só os links que o cliente JÁ respondeu importam para atualizar o local.
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('orcamento_id, status, respondido_em')
+      .eq('user_id', user.id)
+      .in('status', ['aprovado', 'recusado']);
+    if (error || !Array.isArray(data) || data.length === 0) return 0;
+
+    let mudaram = 0;
+    for (const row of data) {
+      try {
+        const orcamentoId = (row as any)?.orcamento_id as string | undefined;
+        const statusNuvem = (row as any)?.status as string | undefined;
+        if (!orcamentoId) continue;
+        // A resposta do cliente é a fonte da verdade; só tratamos os 2 terminais.
+        const novoStatus: StatusOrcamento | null =
+          statusNuvem === 'aprovado' ? 'aprovado' : statusNuvem === 'recusado' ? 'recusado' : null;
+        if (!novoStatus) continue;
+
+        const orc = await getOrcamento(orcamentoId);
+        if (!orc) continue;               // orçamento pode ter sido excluído localmente
+        if (orc.status === novoStatus) continue; // já reflete a resposta → nada a fazer
+        // Só aplicamos a resposta do cliente sobre um orçamento AINDA no estado
+        // pré-resposta ('enviado'). Se o dono já moveu o status manualmente depois
+        // (cancelado, aguardando_assinatura, ou aprovado/recusado à mão), a decisão
+        // local é a mais recente e vence — sem isto, esta rotina reverteria a
+        // mudança manual de volta à resposta antiga a CADA foco, em loop eterno.
+        if (orc.status !== 'enviado') continue;
+
+        // Espelha a resposta do cliente no orçamento local (saveOrcamento já
+        // replica para a nuvem/painel). Bump em atualizadoEm como no fluxo manual.
+        await saveOrcamento({ ...orc, status: novoStatus, atualizadoEm: nowISO() });
+        mudaram++;
+      } catch {
+        // pula linha problemática, segue o resto
+      }
+    }
+    return mudaram;
+  } catch {
+    // nunca lança: qualquer falha vira 0 (offline/erro)
+    return 0;
+  }
 }

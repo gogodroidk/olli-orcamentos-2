@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as SplashScreen from 'expo-splash-screen';
@@ -23,13 +23,23 @@ import { AppTheme, Colors } from './src/theme';
 import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { navigationRef } from './src/navigation/navigationRef';
 import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
-import { supabase } from './src/services/supabase';
+import { supabase, sessaoAtiva } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
+import { maybeAutoBackup } from './src/services/autoBackup';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+/**
+ * Ref global de navegação. A sessão Supabase é a única porta do app, então
+ * precisamos comandar a navegação de fora da árvore de telas em dois momentos:
+ * (1) SIGNED_OUT → resetar para 'Entrar' (sair da conta nunca deixa o usuário
+ * dentro das Tabs); (2) guardas defensivos ("sessão expirada") em telas internas.
+ */
+// navigationRef mora em src/navigation/navigationRef (modulo folha, sem ciclos).
 
 const useNativeAnimations = Platform.OS !== 'web';
 
@@ -57,7 +67,9 @@ function BrandSplash() {
 
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
-  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Tabs');
+  // Fail-closed: se a checagem de sessão lançar, a UI abre na PORTA (Entrar),
+  // nunca dentro do app. Só o caso "sem nuvem configurada" abre direto nas Tabs.
+  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Entrar');
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -69,23 +81,36 @@ export default function App() {
   });
 
   useEffect(() => {
-    // Abre o banco e, ANTES de liberar a UI, decide a rota inicial:
-    // 1º uso (sem empresa e nunca onboardado) → fluxo de boas-vindas (Onboarding).
-    // Quem já tem empresa ou já passou pelo onboarding entra direto nas abas.
+    // Abre o banco e, ANTES de liberar a UI, decide a rota inicial. A sessão
+    // Supabase é a ÚNICA porta do app:
+    //   • sem nuvem configurada (build dev)  → Tabs (único caso sem sessão);
+    //   • sem sessão                          → Entrar (a capa/login obrigatório);
+    //   • com sessão mas sem empresa/onboard  → Onboarding (pós-login);
+    //   • com sessão e já configurado         → Tabs.
+    // Fail-closed: qualquer erro cai no default 'Entrar' (nunca dentro do app).
     (async () => {
       try {
         await getDb();
-        const [empresa, onboarded] = await Promise.all([
+        const [empresa, onboarded, session] = await Promise.all([
           getEmpresa(),
           AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
+          sessaoAtiva(),
         ]);
-        if (empresa === null && onboarded !== '1') {
+        if (!supabase) {
+          // Build dev sem nuvem: não há login possível, entra direto nas abas.
+          setInitialRoute('Tabs');
+        } else if (!session) {
+          setInitialRoute('Entrar');
+        } else if (empresa === null && onboarded !== '1') {
           setInitialRoute('Onboarding');
+        } else {
+          setInitialRoute('Tabs');
         }
       } catch (e) {
-        console.error(e);
+        // Erro técnico só no console de desenvolvimento; em produção (APK) não
+        // vaza stack trace ao usuário. O default 'Entrar' (fail-closed) segura.
+        if (__DEV__) console.error(e);
       } finally {
-        // Mesmo se a checagem falhar, libera o app (cai no default 'Tabs').
         setDbReady(true);
       }
     })();
@@ -96,11 +121,22 @@ export default function App() {
   // (SIGNED_IN ou INITIAL_SESSION já autenticado), dispara o sync em background.
   // NÃO inclui TOKEN_REFRESHED: a renovação de token (~1h) não deve forçar um
   // sync completo. syncOnLogin é fire-and-forget e nunca lança (offline/deslogado = no-op).
+  //
+  // Logo em seguida, dispara o backup automático versionado (autoBackup.ts):
+  // roda por conta própria (no-op se já houve 'diario' nas últimas 24h, toggle
+  // desligado ou deslogado) e não depende do sync terminar — só entra DEPOIS
+  // dele para não competir por rede com o sync no exato momento do login.
   useEffect(() => {
     if (!supabase) return;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-        void syncOnLogin();
+        void syncOnLogin().finally(() => { void maybeAutoBackup(); });
+      }
+      // Sair da conta (em qualquer tela) volta SEMPRE para a porta: reset central
+      // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
+      // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
+      if (event === 'SIGNED_OUT' && navigationRef.isReady()) {
+        navigationRef.reset({ index: 0, routes: [{ name: 'Entrar' }] });
       }
     });
     return () => data.subscription.unsubscribe();
@@ -124,7 +160,7 @@ export default function App() {
           <StatusBar backgroundColor="transparent" translucent barStyle="light-content" />
           <View style={[styles.appFrame, Platform.OS === 'web' && styles.webFrame]}>
             {ready ? (
-              <NavigationContainer>
+              <NavigationContainer ref={navigationRef}>
                 <AppNavigator initialRouteName={initialRoute} />
               </NavigationContainer>
             ) : (

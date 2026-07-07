@@ -64,6 +64,16 @@ export interface Empresa {
   logoUri?: string;
   assinaturaUri?: string;
   nomePrestador: string;
+
+  // Personalização — padrões usados para pré-preencher novos orçamentos e
+  // documentos (o.corMarca segue prevalecendo por orçamento; aqui é só o
+  // valor inicial sugerido). Tudo opcional: schema-less no SQLite (id + data
+  // JSON), então adicionar estes campos não exige nenhuma migração.
+  corMarca?: string;
+  validadeDiasPadrao?: number;
+  garantiaPadrao?: string;
+  condicoesPagamentoPadrao?: string;
+  observacoesPadrao?: string;
 }
 
 export interface Cliente {
@@ -130,7 +140,8 @@ export type ModeloPdfId =
   | 'bold'
   | 'classico'
   | 'faixa_lateral'
-  | 'recibo_compacto';
+  | 'recibo_compacto'
+  | 'premium_capa';
 
 export interface Orcamento {
   id: string;

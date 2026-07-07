@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, Alert,
+  TouchableOpacity, Alert, FlatList, ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
-import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo } from '../database/database';
+import { OlliCard } from '../components/OlliCard';
+import { EmptyState } from '../components/EmptyState';
+import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo, getRecibos } from '../database/database';
 import { Recibo, Empresa, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
@@ -18,18 +21,24 @@ import { generateId } from '../utils/id';
 import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
 import { imagemParaDataUri } from '../utils/imagemDataUri';
 import { escapeHtml } from '../utils/html';
+import { footerSeloOlliHtml } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
 type Route = RouteProp<RootStackParamList, 'EmitirRecibo'>;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const FORMAS = ['PIX', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Transferência'];
 
+type Aba = 'novo' | 'emitidos';
+
 export default function EmitirReciboScreen() {
-  const nav = useNavigation();
+  const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const orcamentoId = route.params?.orcamentoId;
 
+  const [aba, setAba] = useState<Aba>('novo');
+  const [carregandoEmpresa, setCarregandoEmpresa] = useState(true);
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [numero, setNumero] = useState('');
@@ -40,14 +49,13 @@ export default function EmitirReciboScreen() {
   const [dataRecebimento, setDataRecebimento] = useState(isoToBR(todayISO()));
   const [sharing, setSharing] = useState(false);
 
+  // Histórico de recibos já emitidos (aba "Emitidos").
+  const [emitidos, setEmitidos] = useState<Recibo[]>([]);
+  const [carregandoEmitidos, setCarregandoEmitidos] = useState(false);
+  const [reenviandoId, setReenviandoId] = useState<string | null>(null);
+
   useEffect(() => {
-    async function init() {
-      // IMPORTANTE: NÃO chamar getNextReciboNumber() aqui. Esse helper INCREMENTA
-      // e PERSISTE o contador — só abrir a tela e sair queimaria o número. O número
-      // real é obtido apenas no momento do salvar (handleGerar). Até lá exibimos
-      // um placeholder neutro no cabeçalho.
-      const emp = await getEmpresa();
-      setEmpresa(emp);
+    async function initOrcamento() {
       if (orcamentoId) {
         const o = await getOrcamento(orcamentoId);
         if (o) {
@@ -58,8 +66,41 @@ export default function EmitirReciboScreen() {
         }
       }
     }
-    init();
+    initOrcamento();
+  }, [orcamentoId]);
+
+  // Recarrega a empresa a cada vez que a tela ganha foco: cobre o caso de o
+  // usuário sair pelo CTA "Ir para Meu Negócio", cadastrar a empresa e voltar
+  // — sem isso, `empresa` continuava null e o botão de gerar ficava travado.
+  useFocusEffect(useCallback(() => {
+    let vivo = true;
+    // IMPORTANTE: NÃO chamar getNextReciboNumber() aqui. Esse helper INCREMENTA
+    // e PERSISTE o contador — só abrir a tela e sair queimaria o número. O número
+    // real é obtido apenas no momento do salvar (handleGerar). Até lá exibimos
+    // um placeholder neutro no cabeçalho.
+    setCarregandoEmpresa(true);
+    getEmpresa()
+      .then(emp => { if (vivo) setEmpresa(emp); })
+      .catch(() => { /* falha de leitura: trata como sem empresa, sem travar a tela */ })
+      .finally(() => { if (vivo) setCarregandoEmpresa(false); });
+    return () => { vivo = false; };
+  }, []));
+
+  const carregarEmitidos = useCallback(async () => {
+    setCarregandoEmitidos(true);
+    try {
+      const lista = await getRecibos();
+      setEmitidos(lista);
+    } catch {
+      setEmitidos([]);
+    } finally {
+      setCarregandoEmitidos(false);
+    }
   }, []);
+
+  useFocusEffect(useCallback(() => {
+    if (aba === 'emitidos') carregarEmitidos();
+  }, [aba, carregarEmitidos]));
 
   async function buildHtml(r: Recibo): Promise<string> {
     if (!empresa) return '';
@@ -92,28 +133,29 @@ export default function EmitirReciboScreen() {
 <style>
   body { font-family: Arial, sans-serif; font-size: 13px; color: #212121; margin: 0; }
   .page { padding: 32px; max-width: 700px; margin: 0 auto; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1565C0; padding-bottom: 16px; margin-bottom: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0B6FCE; padding-bottom: 16px; margin-bottom: 20px; }
   .brand-logo { max-height: 56px; max-width: 200px; margin-bottom: 8px; display: block; }
-  .empresa-nome { font-size: 20px; font-weight: 700; color: #1565C0; }
+  .empresa-nome { font-size: 20px; font-weight: 700; color: #0B6FCE; }
   .empresa-info { font-size: 12px; color: #555; line-height: 1.6; }
-  .recibo-title { font-size: 28px; font-weight: 800; text-align: center; color: #1565C0; margin: 24px 0 16px; letter-spacing: 4px; }
+  .recibo-title { font-size: 28px; font-weight: 800; text-align: center; color: #0B6FCE; margin: 24px 0 16px; letter-spacing: 4px; }
   .recibo-num { text-align: center; font-size: 14px; color: #555; margin-bottom: 24px; }
   .info-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .info-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
   .info-row:last-child { border-bottom: none; }
   .info-label { color: #777; font-size: 12px; }
   .info-value { font-weight: 600; font-size: 13px; }
-  .valor-box { background: #1565C0; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; }
+  .valor-box { background: #0B6FCE; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; }
   .valor-label { font-size: 12px; opacity: 0.8; }
   .valor-num { font-size: 32px; font-weight: 800; margin-top: 4px; }
-  .pix-box { border: 1px dashed #1565C0; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; background: #f3f8fe; }
-  .pix-label { color: #1565C0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+  .pix-box { border: 1px dashed #0B6FCE; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; background: #f3f8fe; }
+  .pix-label { color: #0B6FCE; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
   .pix-key { font-size: 14px; font-weight: 600; margin-top: 4px; word-break: break-all; }
   .assinatura-row { display: flex; justify-content: space-between; margin-top: 48px; }
   .assinatura-block { text-align: center; min-width: 200px; }
   .sign-img { max-height: 56px; max-width: 200px; display: block; margin: 0 auto -6px; }
   .assinatura-line { border-top: 1px solid #ccc; padding-top: 8px; font-size: 12px; color: #555; margin-top: 40px; }
   .footer { border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 24px; font-size: 11px; color: #888; text-align: center; }
+  .footer-seal { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10.5px; color: #B0B7C2; font-weight: 600; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -172,101 +214,289 @@ export default function EmitirReciboScreen() {
   </div>
 
   <div class="footer">${empresaNome} · CNPJ: ${empresaCnpj} · ${empresaTelefone}</div>
+  <div class="footer-seal">${footerSeloOlliHtml()}</div>
 </div>
 </body>
 </html>`;
   }
 
   async function handleGerar() {
+    if (carregandoEmpresa) {
+      Alert.alert('Aguarde', 'Ainda estamos carregando os dados da sua empresa.');
+      return;
+    }
+    // Sem empresa cadastrada o PDF sairia em branco (sem nome, CNPJ, PIX,
+    // assinatura) e seria entregue ao cliente assim mesmo, sem nenhum aviso —
+    // bloqueamos aqui e orientamos o usuário a cadastrar a empresa primeiro.
+    if (!empresa) {
+      Alert.alert(
+        'Cadastre sua empresa antes',
+        'Para emitir um recibo, cadastre os dados da sua empresa em Meu Negócio.',
+        [
+          { text: 'Agora não', style: 'cancel' },
+          { text: 'Ir para Meu Negócio', onPress: () => nav.navigate('MeuNegocio') },
+        ],
+      );
+      return;
+    }
     if (!clienteNome.trim() || !valorRecebido) {
       Alert.alert('Atenção', 'Preencha o nome do cliente e o valor.');
       return;
     }
     setSharing(true);
-    // O número real é obtido SÓ AQUI (ao salvar): getNextReciboNumber incrementa
-    // e persiste a sequência, então o contador só avança quando o recibo é de
-    // fato emitido — abrir e sair da tela não queima mais o número.
-    const numeroFinal = await getNextReciboNumber();
-    setNumero(numeroFinal);
-    const recibo: Recibo = {
-      id: generateId(),
-      numero: numeroFinal,
-      orcamentoId: orc?.id,
-      orcamentoNumero: orc?.numero,
-      clienteId: orc?.clienteId ?? generateId(),
-      clienteNome,
-      clienteTelefone,
-      itens: orc?.itens ?? [],
-      valorRecebido,
-      formaPagamento,
-      dataRecebimento,
-      exibirAssinatura: true,
-      criadoEm: nowISO(),
-    };
     try {
-      // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
-      // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
-      await saveRecibo(recibo);
-      const html = await buildHtml(recibo);
-      // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
-      await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
-    } catch (e) {
-      Alert.alert('Erro', 'Não foi possível gerar o PDF do recibo. O recibo foi salvo.');
+      // O número real é obtido SÓ AQUI (ao salvar): getNextReciboNumber incrementa
+      // e persiste a sequência, então o contador só avança quando o recibo é de
+      // fato emitido — abrir e sair da tela não queima mais o número. Fica dentro
+      // do mesmo try/catch do salvamento: se o contador falhar, o usuário recebe
+      // o mesmo aviso e nada fica salvo pela metade.
+      let numeroFinal: string;
+      let recibo: Recibo;
+      try {
+        numeroFinal = await getNextReciboNumber();
+        recibo = {
+          id: generateId(),
+          numero: numeroFinal,
+          orcamentoId: orc?.id,
+          orcamentoNumero: orc?.numero,
+          clienteId: orc?.clienteId ?? generateId(),
+          clienteNome,
+          clienteTelefone,
+          itens: orc?.itens ?? [],
+          valorRecebido,
+          formaPagamento,
+          dataRecebimento,
+          exibirAssinatura: true,
+          criadoEm: nowISO(),
+        };
+        // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
+        // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
+        await saveRecibo(recibo);
+      } catch {
+        Alert.alert('Erro', 'Não foi possível salvar o recibo agora. Tente novamente.');
+        return;
+      }
+      setNumero(numeroFinal);
+      try {
+        const html = await buildHtml(recibo);
+        // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
+        await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
+      } catch (e: any) {
+        // Se o compartilhamento simplesmente não está disponível no aparelho,
+        // a mensagem já vem específica (e diz onde o PDF foi salvo).
+        const detalhe = e?.message ? `${e.message} ` : '';
+        Alert.alert('Erro', `${detalhe}Não foi possível compartilhar o PDF do recibo agora. O recibo foi salvo e pode ser reenviado depois na aba "Emitidos".`);
+      }
     } finally {
       // SEMPRE volta o loading — inclusive na web (impressão assíncrona).
       setSharing(false);
     }
   }
 
+  // Reconstrói o HTML de um recibo já emitido (aba "Emitidos") e compartilha
+  // de novo — cenário comum: cliente perdeu o PDF e pede a segunda via.
+  async function handleReenviar(r: Recibo) {
+    if (!empresa) {
+      Alert.alert(
+        'Cadastre sua empresa antes',
+        'Para reenviar um recibo, cadastre os dados da sua empresa em Meu Negócio.',
+        [
+          { text: 'Agora não', style: 'cancel' },
+          { text: 'Ir para Meu Negócio', onPress: () => nav.navigate('MeuNegocio') },
+        ],
+      );
+      return;
+    }
+    setReenviandoId(r.id);
+    try {
+      const html = await buildHtml(r);
+      await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Não foi possível gerar o PDF deste recibo agora.');
+    } finally {
+      setReenviandoId(null);
+    }
+  }
+
+  const semEmpresa = !carregandoEmpresa && !empresa;
+
   return (
     <View style={styles.container}>
       <GradientHeader title="Emitir recibo" subtitle={numero ? `Nº ${numero}` : 'Número gerado ao emitir'} onBack={() => goBackOrHome(nav)} />
-      <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {orc && (
-          <View style={styles.orcCard}>
-            <MaterialCommunityIcons name="file-document-check-outline" size={22} color={Colors.success} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.orcLabel}>Referente ao orçamento nº {orc.numero}</Text>
-              <Text style={styles.orcTotal}>{formatCurrency(orc.valorTotal)}</Text>
+
+      {/* ABAS: Novo recibo / Emitidos (histórico) */}
+      <View style={styles.tabsRow}>
+        <TouchableOpacity style={[styles.tabBtn, aba === 'novo' && styles.tabBtnActive]} onPress={() => setAba('novo')} activeOpacity={0.85}>
+          <MaterialCommunityIcons name="file-plus-outline" size={16} color={aba === 'novo' ? '#fff' : Colors.onSurfaceVariant} />
+          <Text style={[styles.tabLabel, aba === 'novo' && styles.tabLabelActive]}>Novo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, aba === 'emitidos' && styles.tabBtnActive]} onPress={() => setAba('emitidos')} activeOpacity={0.85}>
+          <MaterialCommunityIcons name="history" size={16} color={aba === 'emitidos' ? '#fff' : Colors.onSurfaceVariant} />
+          <Text style={[styles.tabLabel, aba === 'emitidos' && styles.tabLabelActive]}>Emitidos</Text>
+        </TouchableOpacity>
+      </View>
+
+      {aba === 'novo' ? (
+        <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          {carregandoEmpresa && (
+            <View style={styles.avisoCard}>
+              <ActivityIndicator color={Colors.primary} size="small" />
+              <Text style={styles.avisoText}>Carregando dados da sua empresa…</Text>
+            </View>
+          )}
+
+          {semEmpresa && (
+            <View style={styles.avisoCardWarn}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={22} color={Colors.warning} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.avisoWarnTitle}>Cadastre sua empresa antes</Text>
+                <Text style={styles.avisoWarnText}>Sem esses dados o recibo sairia em branco para o cliente.</Text>
+              </View>
+              <TouchableOpacity style={styles.avisoWarnBtn} onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.85}>
+                <Text style={styles.avisoWarnBtnText}>Cadastrar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {orc && (
+            <View style={styles.orcCard}>
+              <MaterialCommunityIcons name="file-document-check-outline" size={22} color={Colors.success} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.orcLabel}>Referente ao orçamento nº {orc.numero}</Text>
+                <Text style={styles.orcTotal}>{formatCurrency(orc.valorTotal)}</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Dados do recibo</Text>
+            <OlliInput label="Nome do cliente" required value={clienteNome} onChangeText={setClienteNome} placeholder="Nome de quem pagou" leftIcon="account" />
+            <OlliInput label="Telefone" mask="phone" value={clienteTelefone} onChangeText={setClienteTelefone} placeholder="(11) 99999-9999" leftIcon="phone" />
+            <OlliMoneyInput label="Valor recebido" required value={valorRecebido} onChangeValue={setValorRecebido} />
+            <OlliInput label="Data do recebimento" mask="date" value={dataRecebimento} onChangeText={setDataRecebimento} placeholder="DD/MM/AAAA" leftIcon="calendar" />
+
+            <Text style={styles.fieldLabel}>Forma de pagamento</Text>
+            <View style={styles.formasGrid}>
+              {FORMAS.map(f => (
+                <TouchableOpacity key={f} style={[styles.formaChip, formaPagamento === f && styles.formaChipActive]} onPress={() => setFormaPagamento(f)} activeOpacity={0.8}>
+                  <Text style={[styles.formaLabel, formaPagamento === f && { color: '#fff' }]}>{f}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
-        )}
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Dados do recibo</Text>
-          <OlliInput label="Nome do cliente" required value={clienteNome} onChangeText={setClienteNome} placeholder="Nome de quem pagou" leftIcon="account" />
-          <OlliInput label="Telefone" mask="phone" value={clienteTelefone} onChangeText={setClienteTelefone} placeholder="(11) 99999-9999" leftIcon="phone" />
-          <OlliMoneyInput label="Valor recebido" required value={valorRecebido} onChangeValue={setValorRecebido} />
-          <OlliInput label="Data do recebimento" mask="date" value={dataRecebimento} onChangeText={setDataRecebimento} placeholder="DD/MM/AAAA" leftIcon="calendar" />
-
-          <Text style={styles.fieldLabel}>Forma de pagamento</Text>
-          <View style={styles.formasGrid}>
-            {FORMAS.map(f => (
-              <TouchableOpacity key={f} style={[styles.formaChip, formaPagamento === f && styles.formaChipActive]} onPress={() => setFormaPagamento(f)} activeOpacity={0.8}>
-                <Text style={[styles.formaLabel, formaPagamento === f && { color: '#fff' }]}>{f}</Text>
+          <OlliButton
+            label="Gerar e compartilhar recibo"
+            variant="success"
+            size="lg"
+            fullWidth
+            loading={sharing}
+            onPress={handleGerar}
+            disabled={carregandoEmpresa || semEmpresa || !clienteNome.trim() || !valorRecebido}
+            icon={<MaterialCommunityIcons name="file-pdf-box" size={22} color="#fff" />}
+            style={{ marginTop: 4 }}
+          />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={emitidos}
+          keyExtractor={r => r.id}
+          contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40, flexGrow: 1 }}
+          refreshing={carregandoEmitidos}
+          onRefresh={carregarEmitidos}
+          ListEmptyComponent={
+            carregandoEmitidos ? (
+              <View style={{ paddingTop: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={Colors.primary} />
+              </View>
+            ) : (
+              <EmptyState
+                icon="receipt"
+                title="Nenhum recibo emitido"
+                subtitle="Os recibos que você gerar aparecem aqui para reenvio."
+              />
+            )
+          }
+          renderItem={({ item }) => (
+            <OlliCard style={{ padding: Spacing.base, marginBottom: 10 }}>
+              <View style={styles.reciboRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reciboNumero}>Recibo Nº {item.numero}</Text>
+                  <Text style={styles.reciboCliente} numberOfLines={1}>{item.clienteNome}</Text>
+                  <Text style={styles.reciboMeta}>{formatDateTime(item.criadoEm)} · {item.formaPagamento}</Text>
+                </View>
+                <Text style={styles.reciboValor}>{formatCurrency(item.valorRecebido)}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.reenviarBtn}
+                onPress={() => handleReenviar(item)}
+                disabled={reenviandoId === item.id}
+                activeOpacity={0.85}
+              >
+                {reenviandoId === item.id ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <MaterialCommunityIcons name="share-variant" size={16} color={Colors.primary} />
+                )}
+                <Text style={styles.reenviarBtnText}>Reenviar / compartilhar</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <OlliButton
-          label="Gerar e compartilhar recibo"
-          variant="success"
-          size="lg"
-          fullWidth
-          loading={sharing}
-          onPress={handleGerar}
-          disabled={!clienteNome.trim() || !valorRecebido}
-          icon={<MaterialCommunityIcons name="file-pdf-box" size={22} color="#fff" />}
-          style={{ marginTop: 4 }}
+            </OlliCard>
+          )}
         />
-      </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+
+  tabsRow: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: Spacing.base, paddingVertical: 10,
+    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline,
+  },
+  tabBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 9, borderRadius: BorderRadius.full,
+    borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant,
+  },
+  tabBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  tabLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  tabLabelActive: { color: '#fff' },
+
+  avisoCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.surfaceVariant, marginBottom: Spacing.base,
+    borderRadius: BorderRadius.md, padding: Spacing.base,
+    borderWidth: 1, borderColor: Colors.outline,
+  },
+  avisoText: { fontSize: 13, color: Colors.onSurfaceVariant },
+  avisoCardWarn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.warningLight, marginBottom: Spacing.base,
+    borderRadius: BorderRadius.md, padding: Spacing.base,
+    borderWidth: 1, borderColor: Colors.warning,
+  },
+  avisoWarnTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
+  avisoWarnText: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  avisoWarnBtn: {
+    backgroundColor: Colors.warning, paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: BorderRadius.full, marginLeft: 8,
+  },
+  avisoWarnBtnText: { fontSize: 12, fontWeight: '800', color: '#0A1626' },
+
+  reciboRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  reciboNumero: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
+  reciboCliente: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  reciboMeta: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 2 },
+  reciboValor: { fontSize: 15, fontWeight: '800', color: Colors.success },
+  reenviarBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline,
+  },
+  reenviarBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+
   orcCard: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.successLight, marginBottom: Spacing.base,

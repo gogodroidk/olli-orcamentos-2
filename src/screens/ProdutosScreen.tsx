@@ -13,14 +13,13 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getProdutos, saveProduto, deleteProduto } from '../database/database';
 import { ProdutoItem, UNIDADES } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { goBackOrHome } from '../navigation/safeBack';
-
-const ACCENT = '#0891B2';
 
 function margemPct(preco?: number, custo?: number): string | null {
   if (!preco || !custo || custo === 0) return null;
@@ -33,6 +32,8 @@ export default function ProdutosScreen() {
   const [filtered, setFiltered] = useState<ProdutoItem[]>([]);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<ProdutoItem> | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -40,6 +41,7 @@ export default function ProdutosScreen() {
     const all = await getProdutos();
     setItems(all);
     applyFilter(all, query);
+    setCarregando(false);
   }
 
   function applyFilter(data: ProdutoItem[], q: string) {
@@ -63,10 +65,34 @@ export default function ProdutosScreen() {
       unidade: editing.unidade ?? 'un', fotoUri: editing.fotoUri,
       criadoEm: editing.criadoEm ?? nowISO(),
     };
-    await saveProduto(p);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setEditing(null);
-    load();
+
+    if (p.preco <= 0) {
+      Alert.alert(
+        'Preço zerado',
+        'Este produto está com preço R$ 0,00. Se for adicionado a um orçamento assim, o cliente não pagará nada por ele. Deseja salvar mesmo assim?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Salvar assim mesmo', style: 'destructive', onPress: () => void persistProduto(p) },
+        ]
+      );
+      return;
+    }
+    await persistProduto(p);
+  }
+
+  async function persistProduto(p: ProdutoItem) {
+    setSalvando(true);
+    try {
+      await saveProduto(p);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setEditing(null);
+      load();
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Erro', 'Não foi possível salvar o produto agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function pickFoto() {
@@ -85,6 +111,19 @@ export default function ProdutosScreen() {
         </View>
       </GradientHeader>
 
+      {carregando ? (
+        <View style={{ padding: Spacing.base, gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={styles.card}>
+              <OlliSkeleton width={52} height={52} radius={BorderRadius.md} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="60%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
       <FlatList
         data={filtered}
         keyExtractor={p => p.id}
@@ -93,7 +132,7 @@ export default function ProdutosScreen() {
           <AnimatedEntrance index={index}>
             <View style={styles.card}>
               {p.fotoUri ? <Image source={{ uri: p.fotoUri }} style={styles.thumb} /> : (
-                <View style={[styles.thumb, styles.thumbPlaceholder]}><MaterialCommunityIcons name="package-variant" size={22} color={ACCENT} /></View>
+                <View style={[styles.thumb, styles.thumbPlaceholder]}><MaterialCommunityIcons name="package-variant" size={22} color={Colors.primary} /></View>
               )}
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.name}>{p.nome}</Text>
@@ -106,8 +145,8 @@ export default function ProdutosScreen() {
                 </View>
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => setEditing({ ...p })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={ACCENT} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${p.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { await deleteProduto(p.id); load(); } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => setEditing({ ...p })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${p.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteProduto(p.id); load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o produto agora. Tente novamente.'); } } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
                 </TouchableOpacity>
               </View>
@@ -116,6 +155,7 @@ export default function ProdutosScreen() {
         )}
         ListEmptyComponent={<EmptyState icon="package-variant-closed" title="Nenhum produto" subtitle="Cadastre peças e materiais para incluir nos orçamentos." actionLabel="Novo produto" onAction={() => setEditing({ unidade: 'un', preco: 0 })} />}
       />
+      )}
 
       <TouchableOpacity style={styles.fab} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
@@ -131,7 +171,7 @@ export default function ProdutosScreen() {
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <TouchableOpacity style={styles.fotoBtn} onPress={pickFoto} activeOpacity={0.8}>
                 {editing.fotoUri ? <Image source={{ uri: editing.fotoUri }} style={styles.fotoPreview} /> : (
-                  <><MaterialCommunityIcons name="camera-plus-outline" size={30} color={ACCENT} /><Text style={styles.fotoBtnLabel}>Adicionar foto</Text></>
+                  <><MaterialCommunityIcons name="camera-plus-outline" size={30} color={Colors.primary} /><Text style={styles.fotoBtnLabel}>Adicionar foto</Text></>
                 )}
               </TouchableOpacity>
               <OlliInput label="Nome do produto" required value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: Fluido refrigerante R-410A" />
@@ -150,6 +190,12 @@ export default function ProdutosScreen() {
                   <Text style={styles.margemBannerText}>Margem de {margemPct(editing.preco, editing.custo)} · Lucro {formatCurrency((editing.preco ?? 0) - (editing.custo ?? 0))}</Text>
                 </View>
               )}
+              {!editing.preco && (
+                <View style={styles.avisoBanner}>
+                  <MaterialCommunityIcons name="alert-outline" size={18} color={Colors.danger} />
+                  <Text style={styles.avisoBannerText}>Preço zerado — este produto entrará de graça em qualquer orçamento.</Text>
+                </View>
+              )}
               <Text style={styles.unidadeLabel}>Unidade de medida</Text>
               <View style={styles.unidadesRow}>
                 {UNIDADES.map(u => (
@@ -160,7 +206,7 @@ export default function ProdutosScreen() {
               </View>
             </ScrollView>
             <View style={styles.modalFooter}>
-              <OlliButton label="Salvar produto" variant="gradient" size="lg" fullWidth onPress={handleSave} disabled={!editing.nome?.trim()} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
+              <OlliButton label="Salvar produto" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
           </View>
         )}
@@ -179,24 +225,26 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
   desc: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
   tagsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
-  price: { fontSize: 13, color: ACCENT, fontWeight: '700' },
+  price: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
   margemTag: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
   margemText: { fontSize: 11, color: Colors.success, fontWeight: '700' },
   cardActions: { flexDirection: 'row', gap: 16, marginLeft: 8 },
-  fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: ACCENT, justifyContent: 'center', alignItems: 'center', ...Shadow.lg, shadowColor: ACCENT, shadowOpacity: 0.4 },
+  fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center', ...Shadow.lg, shadowColor: Colors.primary, shadowOpacity: 0.4 },
   modal: { flex: 1, backgroundColor: Colors.background },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
   modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
-  fotoBtn: { height: 120, borderRadius: BorderRadius.lg, borderWidth: 1.5, borderColor: ACCENT, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.base, overflow: 'hidden', backgroundColor: Colors.surfaceVariant },
+  fotoBtn: { height: 120, borderRadius: BorderRadius.lg, borderWidth: 1.5, borderColor: Colors.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.base, overflow: 'hidden', backgroundColor: Colors.surfaceVariant },
   fotoPreview: { width: '100%', height: '100%' },
-  fotoBtnLabel: { fontSize: 13, color: ACCENT, fontWeight: '700', marginTop: 4 },
+  fotoBtnLabel: { fontSize: 13, color: Colors.primary, fontWeight: '700', marginTop: 4 },
   margemBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.successLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base },
   margemBannerText: { fontSize: 13, color: Colors.success, fontWeight: '700' },
+  avisoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.danger + '1A', borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.danger + '40' },
+  avisoBannerText: { fontSize: 13, color: Colors.danger, fontWeight: '700', flex: 1 },
   unidadeLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
   unidadesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline },
-  unidadeActive: { backgroundColor: ACCENT, borderColor: ACCENT },
+  unidadeActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   unidadeText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Alert, Share, ActivityIndicator,
@@ -10,13 +10,16 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
+import { EmptyState } from '../components/EmptyState';
+import { OlliPressable } from '../components/OlliPressable';
+import { Celebracao } from '../components/Celebracao';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO } from '../utils/date';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
-import { gerarLinkOrcamento, linkConfigurado } from '../services/clienteLink';
+import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks } from '../services/clienteLink';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
@@ -43,15 +46,36 @@ export default function VisualizarOrcamentoScreen() {
   const [sharing, setSharing] = useState(false);
   const [linking, setLinking] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [naoEncontrado, setNaoEncontrado] = useState(false);
+  const [celebrando, setCelebrando] = useState(false);
+  const statusAnteriorRef = useRef<StatusOrcamento | null>(null);
 
   useFocusEffect(useCallback(() => {
     async function load() {
+      setCarregando(true);
       const [o, e, deps] = await Promise.all([getOrcamento(orcamentoId), getEmpresa(), getDepoimentos()]);
+      if (!o) {
+        setOrc(null);
+        setNaoEncontrado(true);
+        setCarregando(false);
+        return;
+      }
+      statusAnteriorRef.current = o.status;
       setOrc(o);
       setEmpresa(e);
       setDepoimentos(deps);
+      setNaoEncontrado(false);
+      setCarregando(false);
     }
     load();
+    // sincronizarStatusLinks() nunca lança — traz de volta o status que o
+    // cliente deu pelo link público (aprovado/recusado). Não é aguardado: a
+    // tela abre instantaneamente com os dados locais, e só recarrega se algo
+    // realmente mudou, igual ao padrão já usado em OrcamentosScreen.
+    sincronizarStatusLinks().then(alterados => {
+      if (alterados > 0) load();
+    });
   }, [orcamentoId]));
 
   async function handleShare() {
@@ -60,8 +84,11 @@ export default function VisualizarOrcamentoScreen() {
     try {
       await compartilharPdfOrcamento(orc, empresa, depoimentos, orc.corMarca);
       if (orc.status === 'rascunho') await updateStatus('enviado');
-    } catch (e) {
-      Alert.alert('Erro', 'Não foi possível gerar o PDF.');
+    } catch (e: any) {
+      // Quando o compartilhamento não está disponível no dispositivo, a
+      // mensagem já vem específica (e diz onde o PDF foi salvo); nos demais
+      // casos cai no texto genérico.
+      Alert.alert('Erro', e?.message || 'Não foi possível gerar o PDF.');
     } finally {
       // SEMPRE volta o loading — inclusive na web, onde a impressão é assíncrona.
       setSharing(false);
@@ -110,6 +137,10 @@ export default function VisualizarOrcamentoScreen() {
     if (!orc) return;
     const updated = { ...orc, status: s, atualizadoEm: nowISO() };
     await saveOrcamento(updated);
+    if (s === 'aprovado' && statusAnteriorRef.current !== 'aprovado') {
+      setCelebrando(true);
+    }
+    statusAnteriorRef.current = s;
     setOrc(updated);
     setShowStatusMenu(false);
   }
@@ -139,7 +170,22 @@ export default function VisualizarOrcamentoScreen() {
     nav.navigate('Orcamentos', { clienteId: orc.clienteId, clienteNome: orc.clienteNome });
   }
 
-  if (!orc) return <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={Colors.primary} /></View>;
+  if (naoEncontrado) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+        <GradientHeader title="Orçamento" onBack={() => goBackOrHome(nav)} compact />
+        <EmptyState
+          icon="file-remove-outline"
+          title="Orçamento não encontrado"
+          subtitle="Este orçamento não existe mais ou foi removido."
+          actionLabel="Voltar"
+          onAction={() => goBackOrHome(nav)}
+        />
+      </View>
+    );
+  }
+
+  if (!orc || carregando) return <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={Colors.primary} /></View>;
 
   const Row = ({ label, value }: { label: string; value?: string }) =>
     value ? (
@@ -215,10 +261,10 @@ export default function VisualizarOrcamentoScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.closePrimary} onPress={handleWhatsApp} activeOpacity={0.86}>
+          <OlliPressable style={styles.closePrimary} onPress={handleWhatsApp} haptic="light">
             <MaterialCommunityIcons name="whatsapp" size={20} color="#0A1626" />
             <Text style={styles.closePrimaryText}>Enviar no WhatsApp</Text>
-          </TouchableOpacity>
+          </OlliPressable>
 
           <View style={styles.closeActions}>
             <CloseAction icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
@@ -302,25 +348,27 @@ export default function VisualizarOrcamentoScreen() {
           )}
         </OlliCard>
       </ScrollView>
+
+      <Celebracao visible={celebrando} tipo="aprovado" onDone={() => setCelebrando(false)} />
     </View>
   );
 }
 
 function ActionBtn({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
   return (
-    <TouchableOpacity style={styles.actionBarBtn} onPress={onPress} disabled={loading} activeOpacity={0.8}>
+    <OlliPressable style={styles.actionBarBtn} onPress={onPress} disabled={loading}>
       {loading ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name={icon} size={22} color="#fff" />}
       <Text style={styles.actionBarLabel}>{label}</Text>
-    </TouchableOpacity>
+    </OlliPressable>
   );
 }
 
 function CloseAction({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
   return (
-    <TouchableOpacity style={styles.closeActionBtn} onPress={onPress} disabled={loading} activeOpacity={0.84}>
+    <OlliPressable style={styles.closeActionBtn} onPress={onPress} disabled={loading}>
       {loading ? <ActivityIndicator size="small" color={Colors.accentLight} /> : <MaterialCommunityIcons name={icon} size={19} color={Colors.accentLight} />}
       <Text style={styles.closeActionText}>{label}</Text>
-    </TouchableOpacity>
+    </OlliPressable>
   );
 }
 

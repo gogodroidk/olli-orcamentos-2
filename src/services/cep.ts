@@ -2,6 +2,8 @@
 // Defensivo: timeout curto e try/catch — se a rede falhar, o cadastro segue
 // manual. Nunca lança: devolve null em qualquer erro.
 
+import { useState } from 'react';
+
 export interface EnderecoCEP {
   logradouro: string; // rua / logradouro
   bairro: string;
@@ -51,4 +53,33 @@ export async function buscarCep(cepBruto: string): Promise<EnderecoCEP | null> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Hook reutilizável para o padrão "CEP com autofill de endereço": mantém o
+ * estado de loading e devolve um `onCepChange` pronto para o onChangeText do
+ * campo CEP. Ao completar 8 dígitos, busca no ViaCEP e chama `preencher` com
+ * o resultado — quem usa decide como aplicar cada campo (endereço/cidade/UF)
+ * no seu próprio estado (Partial<Cliente>, form local, etc.).
+ *
+ * Usado por ClientesScreen e Step1Cliente para não duplicar a busca de CEP.
+ */
+export function useCepLookup(preencher: (r: EnderecoCEP) => void) {
+  const [cepLoading, setCepLoading] = useState(false);
+
+  async function onCepChange(masked: string, atualizarCampo: (masked: string) => void) {
+    atualizarCampo(masked);
+    const digits = masked.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const r = await buscarCep(digits);
+      if (r) preencher(r);
+      // Falha silenciosa: se r vier null (offline/CEP inexistente), mantém digitação manual.
+    } finally {
+      setCepLoading(false);
+    }
+  }
+
+  return { cepLoading, onCepChange };
 }

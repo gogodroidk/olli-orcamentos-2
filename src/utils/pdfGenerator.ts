@@ -70,14 +70,27 @@ function renderStars(n: number): string {
   return '★'.repeat(k) + '☆'.repeat(5 - k);
 }
 
-/** Monograma OLLI (marca d'água / selo) na cor do accent. */
-function monogramSvg(color: string, size: number, opacity: number): string {
+/**
+ * Monograma OLLI (marca d'água / selo) na cor do accent.
+ * Exportado para reuso em outros documentos gerados pelo app (ex.: recibo),
+ * garantindo a mesma identidade visual do orçamento em toda a família de PDFs.
+ */
+export function monogramSvg(color: string, size: number, opacity: number): string {
   // Símbolo oficial OLLI (rebrand v3) em versão mono — balão-documento + check.
   return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" style="opacity:${opacity};">
     <path d="M22 49 L12 59.5 L30 50 Z" fill="${color}"/>
     <rect x="9" y="8" width="46" height="44" rx="14.5" fill="${color}"/>
     <path d="M18 32 l8 9 l20 -19" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
+}
+
+/**
+ * Rodapé "selo OLLI" (monograma cinza + texto), no mesmo padrão usado no
+ * rodapé do orçamento. Exportado para que outros documentos (ex.: recibo)
+ * repliquem a mesma assinatura visual em vez de reinventar o próprio rodapé.
+ */
+export function footerSeloOlliHtml(): string {
+  return `${monogramSvg('#C7CDD6', 14, 1)} Gerado com OLLI Orçamentos`;
 }
 
 function renderFotos(o: Orcamento): string {
@@ -152,7 +165,10 @@ function renderCondicoes(o: Orcamento): string {
   // `pagamento` já vem como HTML seguro de pagamentoTexto (texto livre escapado lá).
   const pagamento = pagamentoTexto(o);
   const garantia = o.garantia ?? '';
-  const prazo = o.agendamentoServico || o.dataPrestacaoServico || o.informacoesAdicionais || '';
+  // Prazo é só data de agendamento/execução — informacoesAdicionais (observações)
+  // ganha bloco próprio em renderObservacoes() e não deve ser "engolido" aqui
+  // quando o orçamento também tiver uma data de agendamento preenchida.
+  const prazo = o.agendamentoServico || o.dataPrestacaoServico || '';
 
   const cols: string[] = [];
   if (pagamento) cols.push(`<div class="cond-col"><div class="cond-label">Pagamento</div><div class="cond-val">${pagamento}</div></div>`);
@@ -160,6 +176,119 @@ function renderCondicoes(o: Orcamento): string {
   if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${escapeHtml(prazo)}</div></div>`);
   if (cols.length === 0) return '';
   return `<div class="conditions">${cols.join('')}</div>`;
+}
+
+/** Bloco "Observações" (informacoesAdicionais) — sempre exibido quando preenchido. */
+function renderObservacoes(o: Orcamento): string {
+  if (!o.informacoesAdicionais) return '';
+  return `
+    <div class="text-block">
+      <div class="eyebrow">Observações</div>
+      <div class="body">${escapeHtml(o.informacoesAdicionais)}</div>
+    </div>
+  `;
+}
+
+/**
+ * Página de capa do modelo "premium_capa": fundo em gradiente da cor de marca,
+ * logo/nome grande centralizado, identificação do orçamento e (se houver) a
+ * primeira foto do serviço em destaque. `page-break-after: always` garante que
+ * a página 2 (layout editorial padrão) comece numa folha nova tanto no
+ * expo-print (Android/iOS) quanto na impressão web.
+ */
+function renderCapa(o: Orcamento, empresa: Empresa, accent: string): string {
+  const emitidoEm = o.dataEmissao ? formatDateBR(o.dataEmissao) : formatDate(o.criadoEm);
+  const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
+  const primeiraFoto = (o.fotosServico ?? []).map(f => img(f)).filter(Boolean)[0] ?? '';
+
+  return `
+    <div class="cover">
+      <div class="cover-inner">
+        <div class="cover-brand">
+          ${img(empresa.logoUri)
+            ? `<img src="${img(empresa.logoUri)}" class="cover-logo" />`
+            : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
+        </div>
+        <div class="cover-kicker">ORÇAMENTO</div>
+        <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
+        ${primeiraFoto ? `<div class="cover-foto-wrap"><img src="${primeiraFoto}" class="cover-foto" /></div>` : ''}
+        ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * CSS das 6 variantes de modelo (mais o "editorial" default, sem classe extra).
+ * Extraído em função pura para manter gerarHtmlOrcamento legível: cada modelo
+ * altera estrutura de verdade (não só cor), conforme a planta v3.
+ */
+function cssModelos(accent: string): string {
+  return `
+  /* MINIMALISTA — some com watermark/spine/depoimentos, fotos viram thumb na tabela */
+  .model-minimalista .spine, .model-minimalista .watermark { display: none; }
+  .model-minimalista .page { padding: 52px; }
+  .model-minimalista .doc-title { color: #1A2230; }
+  .model-minimalista .total-box { background: #fff; }
+  .model-minimalista .depoimento { display: none; }
+  .model-minimalista .foto-item { width: 60px; height: 60px; }
+  .model-minimalista .item-thumb { width: 32px; height: 32px; }
+
+  /* BOLD — cabeçalho full-bleed + faixa de total invertida + pill maior */
+  .model-bold .page { padding-top: 0; }
+  .model-bold .header { margin: 0 -50px 26px -56px; padding: 44px 50px 34px 56px; background: linear-gradient(135deg, ${accent}, #0A2547); color: #fff; }
+  .model-bold .brand-name, .model-bold .doc-title, .model-bold .doc-num { color: #fff; }
+  .model-bold .brand-tagline, .model-bold .doc-date { color: rgba(255,255,255,0.75); }
+  .model-bold .pill { color: #fff; border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.14); font-size: 12.5px; padding: 6px 14px; }
+  .model-bold .rule { display: none; }
+  .model-bold .total-box { background: ${accent}; border-color: ${accent}; flex-direction: row-reverse; }
+  .model-bold .total-box-label, .model-bold .total-box-value { color: #fff; }
+
+  /* CLASSICO — serifado no corpo todo, bordas duplas, accent contido */
+  .model-classico .spine, .model-classico .watermark { display: none; }
+  .model-classico .sheet { border: 3px double #16202E; }
+  .model-classico .header { flex-direction: column; align-items: center; text-align: center; gap: 18px; }
+  .model-classico .header-right { text-align: center; }
+  .model-classico .doc-title { color: #16202E; }
+  .model-classico .pill { border-color: #16202E; background: transparent; color: #16202E; }
+  .model-classico .item-name, .model-classico .item-desc, .model-classico .party-info,
+  .model-classico .cond-val, .model-classico .text-block .body, .model-classico .depo-text { font-family: 'Spectral', Georgia, serif; }
+  .model-classico .total-box { background: #fff; border: 2px solid #16202E; }
+  .model-classico .total-box-value { color: #16202E; }
+
+  /* FAIXA LATERAL — faixa de 42px com nome/número em texto vertical */
+  .model-faixa_lateral .spine { width: 42px; background: linear-gradient(180deg, ${accent}, #0A2547); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 28px; }
+  .model-faixa_lateral .spine-label { writing-mode: vertical-rl; transform: rotate(180deg); color: #fff; font-size: 12px; font-weight: 800; letter-spacing: 2px; white-space: nowrap; }
+  .model-faixa_lateral .page { padding-left: 84px; }
+  .model-faixa_lateral .watermark { right: -150px; }
+
+  /* RECIBO COMPACTO — folha menor, espaçamentos reduzidos */
+  .model-recibo_compacto .page { padding: 32px 38px; }
+  .model-recibo_compacto .doc-title { font-size: 30px; }
+  .model-recibo_compacto .parties, .model-recibo_compacto .conditions { gap: 20px; }
+  .model-recibo_compacto .items { margin-top: 22px; }
+  .model-recibo_compacto .footer { margin-top: 24px; }
+
+  /* PREMIUM COM CAPA — página de capa antes do conteúdo (editorial normal, sem watermark) */
+  .model-premium_capa .watermark { display: none; }
+  .cover {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 1050px; page-break-after: always;
+    background: linear-gradient(160deg, ${accent}, #0A2547);
+    padding: 60px 50px;
+  }
+  .cover-inner { width: 100%; max-width: 560px; text-align: center; color: #fff; }
+  .cover-brand { margin-bottom: 34px; }
+  .cover-logo { max-width: 260px; max-height: 110px; object-fit: contain; }
+  .cover-brand-name { font-family: 'Spectral', Georgia, serif; font-size: 40px; font-weight: 700; color: #fff; }
+  .cover-kicker { font-size: 13px; font-weight: 800; letter-spacing: 6px; color: rgba(255,255,255,0.8); margin-bottom: 10px; }
+  .cover-num { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 30px; }
+  .cover-cliente { font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 700; color: #fff; margin-bottom: 30px; }
+  .cover-foto-wrap { display: flex; justify-content: center; margin-bottom: 30px; }
+  .cover-foto { width: 320px; height: 220px; object-fit: cover; border-radius: 10px; border: 6px solid rgba(255,255,255,0.92); box-shadow: 0 18px 40px rgba(0,0,0,0.35); }
+  .cover-footer { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 10px; }
+  `;
 }
 
 function renderApprovalGuide(o: Orcamento): string {
@@ -203,6 +332,7 @@ export function gerarHtmlOrcamento(
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
   const approvalGuideHtml = renderApprovalGuide(o);
+  const observacoesHtml = renderObservacoes(o);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
   const accentSoft = mixWhite(accent, 0.09);   // fundo do TOTAL / pílula
@@ -344,41 +474,16 @@ export function gerarHtmlOrcamento(
   .footer-contact { font-size: 11px; color: #8A93A2; }
   .footer-seal { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #B0B7C2; font-weight: 600; }
 
-  /* Variantes escolhidas no app. O layout editorial continua sendo o default. */
-  .model-minimalista .spine, .model-minimalista .watermark { display: none; }
-  .model-minimalista .page { padding: 52px; }
-  .model-minimalista .doc-title { color: #1A2230; }
-  .model-minimalista .total-box { background: #fff; }
-
-  .model-bold .page { padding-top: 0; }
-  .model-bold .header { margin: 0 -50px 26px -56px; padding: 44px 50px 34px 56px; background: linear-gradient(135deg, ${accent}, #0A2547); color: #fff; }
-  .model-bold .brand-name, .model-bold .doc-title, .model-bold .doc-num { color: #fff; }
-  .model-bold .brand-tagline, .model-bold .doc-date { color: rgba(255,255,255,0.75); }
-  .model-bold .pill { color: #fff; border-color: rgba(255,255,255,0.34); background: rgba(255,255,255,0.12); }
-  .model-bold .rule { display: none; }
-
-  .model-classico .spine, .model-classico .watermark { display: none; }
-  .model-classico { border: 1px solid #E2E8F0; }
-  .model-classico .header { flex-direction: column; align-items: center; text-align: center; gap: 18px; }
-  .model-classico .header-right { text-align: center; }
-  .model-classico .doc-title { color: #16202E; }
-
-  .model-faixa_lateral .spine { width: 42px; background: linear-gradient(180deg, ${accent}, #0A2547); }
-  .model-faixa_lateral .page { padding-left: 84px; }
-  .model-faixa_lateral .watermark { right: -150px; }
-
-  .model-recibo_compacto .page { padding: 32px 38px; }
-  .model-recibo_compacto .doc-title { font-size: 30px; }
-  .model-recibo_compacto .parties, .model-recibo_compacto .conditions { gap: 20px; }
-  .model-recibo_compacto .items { margin-top: 22px; }
-  .model-recibo_compacto .footer { margin-top: 24px; }
+  /* Variantes escolhidas no app — cada modelo com identidade estrutural própria. */
+  ${cssModelos(accent)}
 
   @media print { .page { padding: 40px 46px; } }
 </style>
 </head>
 <body>
+${o.modeloPdf === 'premium_capa' ? renderCapa(o, empresa, accent) : ''}
 <div class="sheet ${modelClass}">
-  <div class="spine"></div>
+  <div class="spine">${o.modeloPdf === 'faixa_lateral' ? `<span class="spine-label">${escapeHtml(empresa.nome)} · Nº ${escapeHtml(o.numero)}</span>` : ''}</div>
   <div class="watermark">${monogramSvg(accent, 360, 0.05)}</div>
 
   <div class="page">
@@ -438,13 +543,16 @@ export function gerarHtmlOrcamento(
     ${condicoesHtml}
     ${approvalGuideHtml}
 
-    <!-- CONDIÇÕES CONTRATUAIS / INFORMAÇÕES (texto livre, opcional) -->
+    <!-- CONDIÇÕES CONTRATUAIS (texto livre, opcional) -->
     ${o.condicoesContratuais ? `
       <div class="text-block">
         <div class="eyebrow">Condições contratuais</div>
         <div class="body">${escapeHtml(o.condicoesContratuais)}</div>
       </div>
     ` : ''}
+
+    <!-- OBSERVAÇÕES (texto livre, opcional — inclui observações padrão da empresa) -->
+    ${observacoesHtml}
 
     <!-- FOTOS DO SERVIÇO -->
     ${renderFotos(o)}

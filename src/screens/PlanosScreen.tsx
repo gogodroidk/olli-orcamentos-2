@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,9 +11,12 @@ import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { abrirWhatsApp } from '../utils/exportarDocumento';
+import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
+import { supabase } from '../services/supabase';
+import { getPlanoAtual, invalidarCachePlano, PlanoId } from '../services/planos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type PlanoId = 'gratis' | 'pro' | 'empresa';
 
 interface Plano {
   id: PlanoId;
@@ -43,14 +46,15 @@ function precoExibido(plano: Plano, anual: boolean): { preco: string; periodo?: 
   return { preco: plano.preco, periodo: plano.periodo };
 }
 
-const PLANOS: Plano[] = [
+// Lista base dos planos. `atual` é decidido em runtime (plano lido de getPlanoAtual()),
+// por isso não entra aqui como valor fixo.
+const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
   {
     id: 'gratis',
     nome: 'Grátis',
     preco: 'R$ 0',
     tagline: 'Tudo que você precisa pra começar a fechar negócio.',
     icon: 'rocket-launch-outline',
-    atual: true,
     cta: 'Seu plano atual',
     beneficios: [
       'Orçamentos e recibos ilimitados',
@@ -69,14 +73,12 @@ const PLANOS: Plano[] = [
     tagline: 'Para o autônomo que quer vender mais e ganhar tempo.',
     icon: 'crown-outline',
     destaque: true,
-    cta: 'Quero o Pro',
+    cta: 'Assinar Pro — R$ 39/mês',
     beneficios: [
       'Tudo do plano Grátis',
-      'OLLI por voz: monte orçamentos falando',
-      'Chat com a OLLI (técnico e preços)',
-      'Diagnóstico guiado por IA, sem limite',
-      'Backup automático na nuvem',
       'Relatórios de faturamento e conversão',
+      'Metas de vendas e acompanhamento por período',
+      'Suporte prioritário por WhatsApp',
     ],
   },
   {
@@ -87,25 +89,152 @@ const PLANOS: Plano[] = [
     precoMensal: 99,
     tagline: 'Para equipes que atendem em campo todos os dias.',
     icon: 'office-building-outline',
-    cta: 'Falar com a OLLI',
+    cta: 'Falar com a gente',
     beneficios: [
       'Tudo do plano Pro',
-      'Equipe ao vivo no mapa',
-      'Vários técnicos e permissões',
-      'Painel de gestão e metas',
+      'Equipe ao vivo no mapa (em breve)',
+      'Vários técnicos e permissões (em breve)',
+      'Painel de gestão e metas (em breve)',
       'Suporte prioritário',
     ],
   },
 ];
 
+/** Mensagem amigável por tipo de falha ao chamar o worker de pagamentos. */
+function mensagemErroPagamento(status: number | null, offline: boolean): string {
+  if (offline) return 'Sem conexão com a internet agora. Verifique sua conexão e tente novamente.';
+  if (status === 429) return 'Muitas tentativas seguidas. Aguarde um instante e tente de novo.';
+  if (status && status >= 500) return 'Nosso servidor de pagamentos está indisponível no momento. Tente novamente em alguns minutos.';
+  return 'Não foi possível continuar com o pagamento agora. Tente novamente.';
+}
+
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
   const [periodoAnual, setPeriodoAnual] = useState(false);
+  const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
+  const [carregandoPlano, setCarregandoPlano] = useState(true);
+  const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | 'portal' | null>(null);
+
+  const carregarPlano = useCallback(async (invalidarCache: boolean) => {
+    if (invalidarCache) invalidarCachePlano();
+    setCarregandoPlano(true);
+    try {
+      const resultado = await getPlanoAtual();
+      setPlanoAtualId(resultado.plano);
+    } finally {
+      setCarregandoPlano(false);
+    }
+  }, []);
+
+  // Recarrega ao focar a tela — cobre a volta do checkout/portal Stripe (o
+  // usuário sai para o navegador e volta pelo botão "voltar" do sistema).
+  useFocusEffect(
+    useCallback(() => {
+      carregarPlano(true);
+    }, [carregarPlano]),
+  );
+
+  const planos: Plano[] = PLANOS_BASE.map((p) => ({ ...p, atual: p.id === planoAtualId }));
+
+  async function abrirUrlPagamento(caminho: '/stripe/checkout' | '/stripe/portal', body?: object) {
+    if (!PAGAMENTOS_URL) {
+      Alert.alert('Ainda não disponível', 'O pagamento online ainda não foi configurado. Tente novamente em breve.');
+      return;
+    }
+    if (!supabase) {
+      Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
+      return;
+    }
+
+    let status: number | null = null;
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) {
+        Alert.alert('Faça login', 'Entre na sua conta para continuar com o pagamento.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+        ]);
+        return;
+      }
+
+      const r = await fetch(`${PAGAMENTOS_URL}${caminho}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body ?? {}),
+      });
+      status = r.status;
+      if (!r.ok) {
+        Alert.alert('Ops', mensagemErroPagamento(status, false));
+        return;
+      }
+      const resposta: any = await r.json();
+      if (!resposta?.ok || !resposta?.url) {
+        Alert.alert('Ops', mensagemErroPagamento(status, false));
+        return;
+      }
+      await Linking.openURL(resposta.url);
+    } catch {
+      Alert.alert('Ops', mensagemErroPagamento(status, true));
+    }
+  }
+
+  async function assinarPro() {
+    if (!supabase) {
+      Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
+      return;
+    }
+    const user = (await supabase.auth.getSession()).data.session?.user ?? null;
+    if (!user) {
+      Alert.alert(
+        'Faça login primeiro',
+        'Para assinar o plano Pro, entre com sua conta OLLI. Toque em "Ir para Conta" para fazer login ou criar sua conta.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+        ],
+      );
+      return;
+    }
+    setAcaoEmAndamento('pro');
+    try {
+      await abrirUrlPagamento('/stripe/checkout', { plano: periodoAnual ? 'pro_anual' : 'pro' });
+    } finally {
+      setAcaoEmAndamento(null);
+    }
+  }
+
+  async function gerenciarAssinatura() {
+    setAcaoEmAndamento('portal');
+    try {
+      await abrirUrlPagamento('/stripe/portal');
+    } finally {
+      setAcaoEmAndamento(null);
+    }
+  }
 
   function escolher(p: Plano) {
     if (p.atual) return;
     Haptics.selectionAsync().catch(() => {});
-    nav.navigate('OlliChat');
+
+    if (p.id === 'pro') {
+      assinarPro();
+      return;
+    }
+
+    // Empresa: recursos de equipe ainda não existem — mantém contato por WhatsApp.
+    if (!WHATSAPP_SUPORTE) {
+      // Honesto: sem número configurado, não finge que vai abrir uma conversa.
+      Alert.alert(
+        'Ainda não disponível',
+        'O contato para contratar esse plano ainda não foi configurado. Tente novamente em breve.',
+      );
+      return;
+    }
+    const mensagem = `Olá! Quero saber mais sobre o plano ${p.nome} do OLLI Orçamentos.`;
+    abrirWhatsApp(WHATSAPP_SUPORTE, mensagem).catch(() => {
+      Alert.alert('Ops', 'Não consegui abrir o WhatsApp agora. Tente novamente.');
+    });
   }
 
   return (
@@ -118,7 +247,7 @@ export default function PlanosScreen() {
           <View style={styles.intro}>
             <OlliMascot size={44} onDark />
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
-            <Text style={styles.introSub}>Sem fidelidade e sem surpresa. Você só passa para um plano pago quando fizer sentido pro seu negócio.</Text>
+            <Text style={styles.introSub}>O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. O plano Pro já pode ser assinado direto no app; o plano Empresa ainda está em fila de espera.</Text>
           </View>
         </AnimatedEntrance>
 
@@ -144,20 +273,45 @@ export default function PlanosScreen() {
         </AnimatedEntrance>
 
         {/* CARTÕES */}
-        {PLANOS.map((p, i) => (
+        {planos.map((p, i) => (
           <AnimatedEntrance key={p.id} index={2 + i}>
-            <PlanoCard plano={p} periodoAnual={periodoAnual} onPress={() => escolher(p)} />
+            <PlanoCard
+              plano={p}
+              periodoAnual={periodoAnual}
+              carregandoPlano={carregandoPlano}
+              carregandoAcao={acaoEmAndamento === p.id}
+              carregandoPortal={acaoEmAndamento === 'portal'}
+              onPress={() => escolher(p)}
+              onGerenciar={gerenciarAssinatura}
+            />
           </AnimatedEntrance>
         ))}
 
-        <Text style={styles.rodape}>Os planos pagos chegam em breve. Enquanto isso, aproveite tudo de graça. 💙</Text>
+        <Text style={styles.rodape}>O plano Pro é cobrado mensalmente (o desconto anual acima ainda é só uma prévia, a cobrança de fato chega em breve). O plano Empresa ainda está em fila de espera — toque em "Falar com a gente" para entrar na fila. 💙</Text>
       </ScrollView>
     </View>
   );
 }
 
-function PlanoCard({ plano, periodoAnual, onPress }: { plano: Plano; periodoAnual: boolean; onPress: () => void }) {
+function PlanoCard({
+  plano,
+  periodoAnual,
+  carregandoPlano,
+  carregandoAcao,
+  carregandoPortal,
+  onPress,
+  onGerenciar,
+}: {
+  plano: Plano;
+  periodoAnual: boolean;
+  carregandoPlano: boolean;
+  carregandoAcao: boolean;
+  carregandoPortal: boolean;
+  onPress: () => void;
+  onGerenciar: () => void;
+}) {
   const exibido = precoExibido(plano, periodoAnual);
+  const ehPlanoPagoAtivo = plano.atual && plano.id !== 'gratis';
   const body = (
     <View style={styles.cardBody}>
       <View style={styles.cardHead}>
@@ -171,7 +325,9 @@ function PlanoCard({ plano, periodoAnual, onPress }: { plano: Plano; periodoAnua
               <View style={styles.popular}><Text style={styles.popularText}>MAIS POPULAR</Text></View>
             )}
             {plano.atual && (
-              <View style={styles.atualPill}><Text style={styles.atualPillText}>Atual</Text></View>
+              <View style={styles.atualPill}>
+                <Text style={styles.atualPillText}>{ehPlanoPagoAtivo ? 'Seu plano atual' : 'Atual'}</Text>
+              </View>
             )}
           </View>
           <Text style={styles.cardTagline}>{plano.tagline}</Text>
@@ -202,29 +358,52 @@ function PlanoCard({ plano, periodoAnual, onPress }: { plano: Plano; periodoAnua
       </View>
 
       {/* CTA */}
-      {plano.atual ? (
+      {ehPlanoPagoAtivo ? (
+        <TouchableOpacity style={styles.ctaOutline} onPress={onGerenciar} activeOpacity={0.85} disabled={carregandoPortal}>
+          {carregandoPortal ? (
+            <ActivityIndicator size="small" color={Colors.primaryLight} />
+          ) : (
+            <>
+              <MaterialCommunityIcons name="cog-outline" size={17} color={Colors.primaryLight} />
+              <Text style={styles.ctaOutlineText}>Gerenciar assinatura</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : plano.atual ? (
         <View style={styles.ctaAtual}>
           <MaterialCommunityIcons name="check" size={18} color={Colors.success} />
           <Text style={styles.ctaAtualText}>{plano.cta}</Text>
         </View>
       ) : plano.destaque ? (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.88}>
+        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano}>
           <LinearGradient colors={Gradients.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, Shadow.glowCyan]}>
-            <Text style={styles.ctaGradText}>{plano.cta}</Text>
-            <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
+            {carregandoAcao ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.ctaGradText}>{plano.cta}</Text>
+                <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
+              </>
+            )}
           </LinearGradient>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={styles.ctaOutline} onPress={onPress} activeOpacity={0.85}>
-          <Text style={styles.ctaOutlineText}>{plano.cta}</Text>
-          <MaterialCommunityIcons name="arrow-right" size={17} color={Colors.primaryLight} />
+        <TouchableOpacity style={styles.ctaOutline} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao}>
+          {carregandoAcao ? (
+            <ActivityIndicator size="small" color={Colors.primaryLight} />
+          ) : (
+            <>
+              <Text style={styles.ctaOutlineText}>{plano.cta}</Text>
+              <MaterialCommunityIcons name="arrow-right" size={17} color={Colors.primaryLight} />
+            </>
+          )}
         </TouchableOpacity>
       )}
 
-      {!plano.atual && (
+      {!plano.atual && plano.id === 'empresa' && (
         <View style={styles.soonRow}>
-          <MaterialCommunityIcons name="clock-outline" size={13} color={Colors.onSurfaceMuted} />
-          <Text style={styles.soonText}>em breve · a gente te avisa</Text>
+          <MaterialCommunityIcons name="whatsapp" size={13} color={Colors.onSurfaceMuted} />
+          <Text style={styles.soonText}>Lista de espera: abre o WhatsApp para você entrar na fila, sem cobrança agora</Text>
         </View>
       )}
     </View>
@@ -295,8 +474,8 @@ const styles = StyleSheet.create({
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: Colors.successLight, borderWidth: 1, borderColor: 'rgba(43,215,135,0.3)' },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: Colors.success },
 
-  soonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
-  soonText: { fontSize: 11.5, color: Colors.onSurfaceMuted, fontWeight: '600' },
+  soonRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
+  soonText: { flex: 1, fontSize: 11.5, color: Colors.onSurfaceMuted, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
 
   rodape: { fontSize: 12.5, color: Colors.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
 });

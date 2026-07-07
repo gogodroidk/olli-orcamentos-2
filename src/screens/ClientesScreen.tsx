@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, Alert, Modal, ScrollView,
+  TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,11 +13,15 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
-import { getClientes, saveCliente, deleteCliente } from '../database/database';
+import { OlliSkeleton } from '../components/OlliSkeleton';
+import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
+import { getAgendamentos } from '../services/agenda';
+import { clientesParaReconquistar } from '../services/radarClientes';
+import { useCepLookup } from '../services/cep';
 import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
-import { isValidCPF } from '../utils/masks';
+import { isValidCPF, isValidCNPJ } from '../utils/masks';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -31,16 +35,41 @@ export default function ClientesScreen() {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<Cliente> | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string }>({});
+  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
   // Cliente "aberto" no menu de ações (CRM: ver orçamentos, novo orçamento, etc.).
   const [acoes, setAcoes] = useState<Cliente | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  // Ids de clientes "sumidos" (radar de reconquista, >= 5 meses sem contato).
+  // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
+  // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
+  const [radarMeses, setRadarMeses] = useState<Map<string, number>>(new Map());
+  const { cepLoading, onCepChange } = useCepLookup(r => {
+    setEditing(p => p ? {
+      ...p,
+      endereco: p.endereco?.trim() ? p.endereco : r.logradouro,
+      cidade: r.cidade || p.cidade,
+      estado: r.uf || p.estado,
+    } : p);
+  });
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => { load(); loadRadar(); }, []));
 
   async function load() {
     const all = await getClientes();
     setClientes(all);
     applyFilter(all, query);
+    setCarregando(false);
+  }
+
+  async function loadRadar() {
+    try {
+      const lista = await clientesParaReconquistar();
+      setRadarMeses(new Map(lista.map(item => [item.cliente.id, item.mesesSemContato])));
+    } catch {
+      setRadarMeses(new Map());
+    }
   }
 
   function applyFilter(data: Cliente[], q: string) {
@@ -61,16 +90,20 @@ export default function ClientesScreen() {
   async function handleSave() {
     if (!editing?.nome?.trim()) return;
 
-    const nextErrors: { cpf?: string; cnpj?: string } = {};
+    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string } = {};
     const cpfDigits = (editing.cpf ?? '').replace(/\D/g, '');
     const cnpjDigits = (editing.cnpj ?? '').replace(/\D/g, '');
+    const telDigits = (editing.telefone ?? '').replace(/\D/g, '');
     if (cpfDigits.length > 0 && !isValidCPF(editing.cpf!)) {
       nextErrors.cpf = 'CPF inválido';
     }
-    if (cnpjDigits.length > 0 && cnpjDigits.length !== 14) {
-      nextErrors.cnpj = 'CNPJ deve ter 14 dígitos';
+    if (cnpjDigits.length > 0 && !isValidCNPJ(editing.cnpj!)) {
+      nextErrors.cnpj = 'CNPJ inválido';
     }
-    if (nextErrors.cpf || nextErrors.cnpj) {
+    if (telDigits.length > 0 && telDigits.length < 10) {
+      nextErrors.telefone = 'Telefone incompleto (informe DDD + número)';
+    }
+    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
       setErrors(nextErrors);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       return;
@@ -86,16 +119,55 @@ export default function ClientesScreen() {
       cidade: editing.cidade, estado: editing.estado, cep: editing.cep,
       criadoEm: editing.criadoEm ?? nowISO(),
     };
-    await saveCliente(c);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setEditing(null);
-    load();
+    setSalvando(true);
+    try {
+      await saveCliente(c);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setEditing(null);
+      load();
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Erro', 'Não foi possível salvar o cliente agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
-  function handleDelete(c: Cliente) {
-    Alert.alert('Excluir cliente', `Excluir "${c.nome}"?`, [
+  async function handleDelete(c: Cliente) {
+    // Avisa se há orçamentos/agendamentos vinculados antes de confirmar a exclusão.
+    let orcamentosVinculados = 0;
+    let agendamentosVinculados = 0;
+    try {
+      const [orcamentos, agendamentos] = await Promise.all([getOrcamentos(), getAgendamentos()]);
+      orcamentosVinculados = orcamentos.filter(o => o.clienteId === c.id).length;
+      agendamentosVinculados = agendamentos.filter(a => a.clienteId === c.id).length;
+    } catch {
+      // Falha na consulta não deve impedir a exclusão — segue sem o aviso extra.
+    }
+
+    const partes: string[] = [];
+    if (orcamentosVinculados > 0) partes.push(`${orcamentosVinculados} orçamento${orcamentosVinculados === 1 ? '' : 's'}`);
+    if (agendamentosVinculados > 0) partes.push(`${agendamentosVinculados} agendamento${agendamentosVinculados === 1 ? '' : 's'}`);
+
+    const mensagem = partes.length > 0
+      ? `Este cliente tem ${partes.join(' e ')} no histórico. Eles serão mantidos, mas você não poderá mais acessá-los pelo cadastro do cliente.\n\nExcluir "${c.nome}" mesmo assim?`
+      : `Excluir "${c.nome}"?`;
+
+    Alert.alert('Excluir cliente', mensagem, [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => { await deleteCliente(c.id); load(); } },
+      {
+        text: 'Excluir', style: 'destructive', onPress: async () => {
+          setExcluindoId(c.id);
+          try {
+            await deleteCliente(c.id);
+            load();
+          } catch {
+            Alert.alert('Erro', 'Não foi possível excluir o cliente agora. Tente novamente.');
+          } finally {
+            setExcluindoId(null);
+          }
+        }
+      },
     ]);
   }
 
@@ -149,6 +221,19 @@ export default function ClientesScreen() {
         </View>
       </GradientHeader>
 
+      {carregando ? (
+        <View style={{ padding: Spacing.base, gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <View key={i} style={styles.card}>
+              <OlliSkeleton width={46} height={46} radius={23} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="55%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
@@ -162,7 +247,14 @@ export default function ClientesScreen() {
             >
               <View style={styles.avatar}><Text style={styles.avatarText}>{c.nome.charAt(0).toUpperCase()}</Text></View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.name}>{c.nome}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name} numberOfLines={1}>{c.nome}</Text>
+                  {radarMeses.has(c.id) && (
+                    <View style={styles.radarBadge}>
+                      <Text style={styles.radarBadgeText}>{radarMeses.get(c.id)}+ meses</Text>
+                    </View>
+                  )}
+                </View>
                 {c.telefone ? <Text style={styles.info}>{c.telefone}</Text> : null}
                 {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
               </View>
@@ -170,8 +262,10 @@ export default function ClientesScreen() {
                 <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
+                <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  {excluindoId === c.id
+                    ? <ActivityIndicator size="small" color={Colors.danger} />
+                    : <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />}
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -179,6 +273,7 @@ export default function ClientesScreen() {
         )}
         ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
       />
+      )}
 
       <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
@@ -194,8 +289,8 @@ export default function ClientesScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
-              <OlliInput label="Nome completo" required value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
-              <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => setEditing(p => p ? { ...p, telefone: v } : p)} placeholder="(11) 99999-9999" leftIcon="phone" />
+              <OlliInput label="Nome completo" required autoFocus={isNew} value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
+              <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, telefone: v } : p); setErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={errors.telefone} />
               <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
               <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
               <OlliInput label="Endereço" value={editing.endereco ?? ''} onChangeText={v => setEditing(p => p ? { ...p, endereco: v } : p)} placeholder="Rua, número" leftIcon="map-marker" />
@@ -204,10 +299,13 @@ export default function ClientesScreen() {
                 <OlliInput label="Cidade" value={editing.cidade ?? ''} onChangeText={v => setEditing(p => p ? { ...p, cidade: v } : p)} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10 }} />
                 <OlliInput label="UF" value={editing.estado ?? ''} onChangeText={v => setEditing(p => p ? { ...p, estado: v.toUpperCase().slice(0, 2) } : p)} placeholder="SP" autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
               </View>
-              <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => setEditing(p => p ? { ...p, cep: v } : p)} placeholder="00000-000" leftIcon="mailbox" />
+              <View style={styles.cepRow}>
+                <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => onCepChange(v, masked => setEditing(p => p ? { ...p, cep: masked } : p))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
+                {cepLoading && <ActivityIndicator size="small" color={Colors.primary} style={styles.cepSpinner} />}
+              </View>
             </ScrollView>
             <View style={styles.modalFooter}>
-              <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth onPress={handleSave} disabled={!editing.nome?.trim()} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
+              <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
           </View>
         )}
@@ -264,7 +362,10 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontSize: 18, fontWeight: '800', color: Colors.primary },
-  name: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: Colors.onSurface },
+  radarBadge: { backgroundColor: 'rgba(247,178,59,0.14)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.34)', borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  radarBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.warning },
   info: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
   infoMuted: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 1 },
   cardActions: { flexDirection: 'row', gap: 16 },
@@ -274,6 +375,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
   rowFields: { flexDirection: 'row' },
+  cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  cepSpinner: { marginLeft: 10, marginBottom: 14 },
 
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },

@@ -1,7 +1,10 @@
 import * as SQLite from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
+import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
+import { APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -222,6 +225,16 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       atualizado_em TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
+
+    -- Relatório do dia falado — snapshot diário compilado (orçamentos, recibos,
+    -- agendamentos, clientes novos) para reler/ouvir depois. Local-only (não
+    -- sincroniza com a nuvem, igual eventos/cache_ia/casos_erro): é um histórico
+    -- pessoal do aparelho, não um dado relacional do negócio.
+    CREATE TABLE IF NOT EXISTS relatorios_diarios (
+      data TEXT PRIMARY KEY,
+      dados TEXT NOT NULL,
+      criado_em TEXT NOT NULL
+    );
   `);
 
   await runMigrations(database);
@@ -690,6 +703,49 @@ async function getAgendamentosForBackup(): Promise<Agendamento[]> {
   return rows.map(rowToAgendamentoLocal);
 }
 
+// ─── RELATÓRIO DO DIA (falado) ────────────────────────────
+/**
+ * Snapshot compilado de um dia (orçamentos, recibos, agenda, clientes novos).
+ * O shape completo de `dados` é definido por `RelatorioDia` em services/relatorioDia
+ * — aqui a coluna é só um JSON opaco, igual ao padrão de `orcamentos`/`modelos`.
+ */
+export interface RelatorioDiaRow {
+  data: string; // 'YYYY-MM-DD'
+  dados: any;
+  criadoEm: string;
+}
+
+/** Cria ou substitui (upsert) o snapshot do dia — idempotente por `data`. */
+export async function saveRelatorioDia(data: string, dados: unknown): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
+    [data, JSON.stringify(dados), new Date().toISOString()]
+  );
+}
+
+/** Lê o snapshot salvo de um dia específico ('YYYY-MM-DD'), ou null. */
+export async function getRelatorioDia(data: string): Promise<RelatorioDiaRow | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ data: string; dados: string; criado_em: string }>(
+    'SELECT * FROM relatorios_diarios WHERE data = ?', [data]
+  );
+  return row ? { data: row.data, dados: JSON.parse(row.dados), criadoEm: row.criado_em } : null;
+}
+
+/** Histórico de relatórios salvos, do mais recente para o mais antigo. */
+export async function getRelatoriosDias(limit = 30): Promise<RelatorioDiaRow[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ data: string; dados: string; criado_em: string }>(
+    'SELECT * FROM relatorios_diarios ORDER BY data DESC LIMIT ?', [limit]
+  );
+  return rows.map(r => ({ data: r.data, dados: JSON.parse(r.dados), criadoEm: r.criado_em }));
+}
+
+async function getRelatoriosDiasForBackup(): Promise<RelatorioDiaRow[]> {
+  return getRelatoriosDias(3650); // ~10 anos — o backup leva o histórico inteiro
+}
+
 // ─── EXPORT / IMPORT (backup) ─────────────────────────────
 export interface BackupSnapshot {
   version: number;
@@ -705,6 +761,8 @@ export interface BackupSnapshot {
   agendamentos: Agendamento[];
   /** Contadores de numeração (orcamento/recibo). Restaurados p/ a sequência não regredir/colidir. */
   contadores?: Record<string, number>;
+  /** Histórico de relatórios do dia (opcional — snapshots antigos não têm). */
+  relatoriosDiarios?: RelatorioDiaRow[];
 }
 
 /** Lê os contadores de numeração para o backup (chave → valor). */
@@ -717,13 +775,14 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
 }
 
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
+    getRelatoriosDiasForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios,
   };
 }
 
@@ -746,6 +805,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const modelos = asArray<ModeloOrcamento>(data.modelos);
   const depoimentos = asArray<Depoimento>(data.depoimentos);
   const agendamentos = asArray<Agendamento>(data.agendamentos);
+  const relatoriosDiarios = asArray<RelatorioDiaRow>(data.relatoriosDiarios);
 
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
@@ -765,7 +825,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   // mirrorPush) para não disparar uma tempestade de rede no meio da restauração.
   // UM ÚNICO pushAllLocal() é disparado DEPOIS do commit (fire-and-forget).
   await db.withTransactionAsync(async () => {
+    // Restore = "SUBSTITUIR os dados atuais": apaga também a `empresa` antiga, para
+    // não deixar o negócio de outra conta/estado persistir (logo/nome/dados que vão
+    // ao PDF e ao link público). Se o snapshot trouxer empresa, ela é reinserida
+    // abaixo; se NÃO trouxer, o restore fica sem empresa (coerente com o snapshot).
     await db.execAsync(`
+      DELETE FROM empresa;
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
       DELETE FROM agendamentos;
@@ -826,6 +891,13 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          a.observacao ?? null, a.criadoEm, a.atualizadoEm],
       );
     }
+    // Relatórios diários: MERGE (não apaga o histórico local existente) — é um
+    // diário pessoal do aparelho, diferente das tabelas relacionais acima que o
+    // restore SUBSTITUI por completo. O snapshot só adiciona/atualiza os dias que trouxer.
+    for (const rd of relatoriosDiarios) {
+      await db.runAsync('INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
+        [rd.data, JSON.stringify(rd.dados), rd.criadoEm]);
+    }
 
     // Numeração: restaura os contadores do snapshot, com PISO no nº de registros
     // restaurados (Math.max) — a sequência nunca regride nem colide com números já
@@ -864,6 +936,66 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     } catch {
       // idem
     }
+  }
+
+  // O restore apagou e recriou os agendamentos direto no SQLite, sem tocar nas
+  // notificações locais: reconcilia os lembretes com o estado restaurado (cancela
+  // os órfãos e reagenda os futuros). Fire-and-forget: falha de notificação nunca
+  // pode comprometer o restore dos dados.
+  try {
+    void resincronizarLembretes().catch(() => {});
+  } catch {
+    // idem
+  }
+}
+
+// ─── LIMPEZA TOTAL (logout) ───────────────────────────────
+// As chaves de AsyncStorage que guardam DADOS do usuário e devem ser zeradas no
+// logout ficam centralizadas em services/storageKeys (APP_DATA_STORAGE_KEYS),
+// compartilhadas com os módulos donos de cada chave. A allow-list é explícita
+// (nunca AsyncStorage.clear()) para jamais apagar a sessão de auth, a chave de
+// onboarding ('olli.onboarded' — preferência do aparelho) ou chaves de terceiros.
+
+// Tabelas do SQLite que guardam DADOS do usuário — apagadas no logout. Preserva
+// APENAS `codigos_erro` (seed estático de 602 códigos, igual para todos), que é
+// re-semeado sob demanda mas não precisa ser reimportado a cada logout.
+const USER_DATA_TABLES = [
+  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos',
+  'depoimentos', 'agendamentos', 'empresa', 'exclusoes', 'contadores',
+  'eventos', 'cache_ia', 'casos_erro', 'relatorios_diarios',
+];
+
+/**
+ * Apaga TODOS os dados locais do usuário (SQLite + chaves de app no AsyncStorage),
+ * preservando a chave de onboarding e o seed estático `codigos_erro`. Usado no
+ * LOGOUT para o próximo login partir de um estado limpo — impede o vazamento de
+ * dados entre contas em aparelho compartilhado (o pushAllLocal do próximo login
+ * não pode subir dados do usuário anterior). Transacional: se qualquer DELETE
+ * falhar, faz ROLLBACK e nada é perdido pela metade.
+ */
+export async function clearAllLocalData(): Promise<void> {
+  const database = await getDb();
+  // 1) SQLite — tudo dentro de UMA transação (all-or-nothing).
+  await database.withTransactionAsync(async () => {
+    for (const tabela of USER_DATA_TABLES) {
+      // Nomes vêm de uma allow-list fixa (nunca de entrada externa) → SQL seguro.
+      await database.runAsync(`DELETE FROM ${tabela}`);
+    }
+  });
+  // 2) Notificações agendadas — cancela os lembretes de agenda da conta anterior
+  // ANTES de apagar o mapa que permite cancelá-los, senão continuariam disparando
+  // no aparelho (com nome/endereço do cliente) após a troca de conta. Best-effort.
+  try {
+    await cancelarTodosLembretes();
+  } catch {
+    // não bloqueia o logout
+  }
+  // 3) AsyncStorage — remove só as chaves de dados do usuário (allow-list).
+  // Best-effort: uma falha aqui não deve impedir o logout (o SQLite já foi limpo).
+  try {
+    await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS);
+  } catch {
+    // não bloqueia o logout
   }
 }
 

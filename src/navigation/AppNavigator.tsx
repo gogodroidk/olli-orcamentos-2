@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { BorderRadius, Colors } from '../theme';
+import { BorderRadius, Colors, Gradients } from '../theme';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
@@ -29,6 +29,7 @@ import OlliChatScreen from '../screens/OlliChatScreen';
 import PlanosScreen from '../screens/PlanosScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
+import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
 
 /**
  * Item pré-carregado num novo orçamento (vindo de um diagnóstico/código de erro).
@@ -63,6 +64,8 @@ export type RootStackParamList = {
   OlliVoz: undefined;
   OlliChat: undefined;
   Planos: undefined;
+  // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
+  RelatorioDia: undefined;
 };
 
 export type TabParamList = {
@@ -96,7 +99,7 @@ function CenterButton(_props: BottomTabBarButtonProps) {
         style={styles.centerTouch}
       >
         <LinearGradient
-          colors={['#0B6FCE', '#34C6D9']}
+          colors={Gradients.primaryDiagonal}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.centerGrad}
@@ -197,13 +200,18 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       initialRouteName={initialRouteName ?? 'Tabs'}
       screenOptions={{
         headerShown: false,
+        // Design de movimento (v3): transição padrão do stack — deslize lateral
+        // suave. As "capas" (Entrar/Onboarding) usam fade (abaixo).
         animation: 'slide_from_right',
+        animationDuration: 260,
         contentStyle: { backgroundColor: Colors.background },
       }}
     >
       <Stack.Screen name="Tabs" component={TabNavigator} />
-      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-      <Stack.Screen name="Entrar" component={EntrarScreen} />
+      {/* Onboarding é pós-login: entra com fade (não é uma "próxima página"). */}
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade', animationDuration: 320 }} />
+      {/* Entrar é a CAPA/porta: fade e sem gesto de voltar (não há para onde). */}
+      <Stack.Screen name="Entrar" component={EntrarScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
       <Stack.Screen name="NovoOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="EditarOrcamento" component={NovoOrcamentoScreen} />
       <Stack.Screen name="VisualizarOrcamento" component={VisualizarOrcamentoScreen} />
@@ -222,6 +230,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OlliVoz" component={OlliVozScreen} />
       <Stack.Screen name="OlliChat" component={OlliChatScreen} />
       <Stack.Screen name="Planos" component={PlanosScreen} />
+      {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
+      <Stack.Screen name="RelatorioDia" component={RelatorioDiaScreen} />
     </Stack.Navigator>
   );
 }

@@ -11,8 +11,11 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getEmpresa, saveEmpresa, getDepoimentos, saveDepoimento, deleteDepoimento } from '../database/database';
 import { Empresa, Depoimento, SEGMENTOS, Segmento } from '../types';
+import { CORES_MARCA, contrasteTextoSobre } from '../utils/coresMarca';
+import { extrairCoresLogo } from '../utils/extrairCoresLogo';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { track, Eventos } from '../services/analytics';
@@ -46,13 +49,38 @@ function empresaEmBranco(): Empresa {
   };
 }
 
+const VALIDADES_PADRAO = [7, 15, 30, 60];
+
+const GARANTIAS_PADRAO: { dias: number; label: string; texto: string }[] = [
+  {
+    dias: 30,
+    label: '30 dias',
+    texto: 'Garantia de 30 dias para peças e materiais não duráveis, conforme art. 26 do Código de Defesa do Consumidor (CDC).',
+  },
+  {
+    dias: 90,
+    label: '90 dias',
+    texto: 'Garantia de 90 dias para a mão de obra e materiais duráveis, conforme art. 26 do Código de Defesa do Consumidor (CDC).',
+  },
+  {
+    dias: 365,
+    label: '365 dias',
+    texto: 'Garantia estendida de 12 meses para mão de obra e materiais, superior ao mínimo legal do art. 26 do CDC.',
+  },
+];
+
 export default function MeuNegocioScreen() {
   const nav = useNavigation<any>();
-  const [empresa, setEmpresa] = useState<Empresa | null>(null);
+    // Evita re-extrair a paleta a cada focus (closure de coresSugeridas fica stale).
+  const extraiuCoresRef = React.useRef(false);
+const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [dirty, setDirty] = useState(false);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [showDep, setShowDep] = useState(false);
   const [newDep, setNewDep] = useState<Partial<Depoimento>>({ estrelas: 5 });
+  const [salvando, setSalvando] = useState(false);
+  const [coresSugeridas, setCoresSugeridas] = useState<string[]>([]);
+  const [extraindo, setExtraindo] = useState(false);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -60,9 +88,19 @@ export default function MeuNegocioScreen() {
     const [emp, deps] = await Promise.all([getEmpresa(), getDepoimentos()]);
     // Instalação nova ainda sem empresa: inicializa um registro em branco para
     // o formulário aparecer e poder SALVAR (saveEmpresa cria o registro de fato).
-    setEmpresa(emp ?? empresaEmBranco());
+    const empresaCarregada = emp ?? empresaEmBranco();
+    setEmpresa(empresaCarregada);
     setDepoimentos(deps);
     setDirty(false);
+    // Logo já cadastrada em instalações antigas nunca teve suas cores
+    // extraídas — roda uma vez ao focar a tela, sem bloquear a UI.
+    if (empresaCarregada.logoUri && !extraiuCoresRef.current) {
+      extraiuCoresRef.current = true;
+      setExtraindo(true);
+      extrairCoresLogo(empresaCarregada.logoUri)
+        .then(setCoresSugeridas)
+        .finally(() => setExtraindo(false));
+    }
   }
 
   function set(field: keyof Empresa, value: string) {
@@ -77,19 +115,55 @@ export default function MeuNegocioScreen() {
     track(Eventos.segmentoChanged, { segmento: id });
   }
 
+  function chooseCorMarca(cor: string) {
+    setEmpresa(p => (p ? { ...p, corMarca: cor } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
+  }
+
+  function chooseValidadeDias(dias: number) {
+    setEmpresa(p => (p ? { ...p, validadeDiasPadrao: dias } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
+  }
+
+  function chooseGarantiaSugerida(texto: string) {
+    setEmpresa(p => (p ? { ...p, garantiaPadrao: texto } : p));
+    setDirty(true);
+    Haptics.selectionAsync().catch(() => {});
+  }
+
   async function handleSave() {
-    if (!empresa) return;
-    await saveEmpresa(empresa);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setDirty(false);
-    Alert.alert('Salvo!', 'Dados da empresa atualizados.');
+    if (!empresa || salvando) return;
+    setSalvando(true);
+    try {
+      await saveEmpresa(empresa);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setDirty(false);
+      Alert.alert('Salvo!', 'Dados da empresa atualizados.');
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível salvar os dados agora. Tente novamente.');
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function pickImage(field: 'logoUri' | 'assinaturaUri') {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permissão', 'Permita o acesso às fotos.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.9 });
-    if (!r.canceled && empresa) { setEmpresa({ ...empresa, [field]: r.assets[0].uri }); setDirty(true); }
+    if (!r.canceled && empresa) {
+      const uri = r.assets[0].uri;
+      setEmpresa({ ...empresa, [field]: uri });
+      setDirty(true);
+      if (field === 'logoUri') {
+        setExtraindo(true);
+        setCoresSugeridas([]);
+        extrairCoresLogo(uri)
+          .then(setCoresSugeridas)
+          .finally(() => setExtraindo(false));
+      }
+    }
   }
 
   async function handleSaveDep() {
@@ -106,7 +180,7 @@ export default function MeuNegocioScreen() {
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         {/* CONTA E BACKUP */}
-        <TouchableOpacity style={styles.backupCard} onPress={() => nav.navigate('Conta')} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.backupCard} onPress={() => nav.navigate('Tabs', { screen: 'Conta' })} activeOpacity={0.85}>
           <View style={styles.backupIcon}>
             <MaterialCommunityIcons name="cloud-lock-outline" size={26} color="#fff" />
           </View>
@@ -138,6 +212,74 @@ export default function MeuNegocioScreen() {
               <Text style={styles.brandLabel}>Assinatura</Text>
             </View>
           </View>
+
+          {/* COR DA MARCA — sugestões automáticas da logo + paleta OLLI */}
+          <Text style={[styles.segLabel, { marginTop: Spacing.base }]}>Cor da marca</Text>
+
+          {extraindo ? (
+            <View style={[styles.colorRow, { marginBottom: 4 }]}>
+              <OlliSkeleton width={34} height={34} radius={17} />
+              <OlliSkeleton width={34} height={34} radius={17} />
+              <OlliSkeleton width={34} height={34} radius={17} />
+            </View>
+          ) : coresSugeridas.length > 0 ? (
+            <>
+              <Text style={styles.segHint}>Da sua logo</Text>
+              <View style={[styles.colorRow, { marginBottom: Spacing.sm }]}>
+                {coresSugeridas.map(hex => {
+                  const active = (empresa.corMarca ?? '').toLowerCase() === hex.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={hex}
+                      style={styles.swatchCircleWrap}
+                      onPress={() => chooseCorMarca(hex)}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Usar cor sugerida ${hex}`}
+                    >
+                      <View style={[styles.swatchCircle, { width: 34, height: 34, borderRadius: 17, backgroundColor: hex }]}>
+                        {active && (
+                          <MaterialCommunityIcons name="check-bold" size={16} color={contrasteTextoSobre(hex)} />
+                        )}
+                      </View>
+                      <MaterialCommunityIcons
+                        name="auto-fix"
+                        size={12}
+                        color={Colors.onSurfaceMuted}
+                        style={styles.autoFixBadge}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <Text style={styles.segHint}>Paleta OLLI</Text>
+          <View style={styles.colorRow}>
+            {CORES_MARCA.map(swatch => {
+              const active = (empresa.corMarca ?? '').toLowerCase() === swatch.value.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={swatch.value}
+                  style={styles.swatchCircleWrap}
+                  onPress={() => chooseCorMarca(swatch.value)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cor ${swatch.label}`}
+                >
+                  <View style={[styles.swatchCircle, { width: 28, height: 28, borderRadius: 14, backgroundColor: swatch.value }]}>
+                    {active && (
+                      <MaterialCommunityIcons name="check-bold" size={14} color={contrasteTextoSobre(swatch.value)} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[styles.segHint, { marginBottom: 0, marginTop: 6 }]}>
+            Essa cor vira o padrão dos seus PDFs. Você ainda pode trocar por orçamento no passo 4.
+          </Text>
         </View>
 
         {/* DADOS */}
@@ -179,6 +321,64 @@ export default function MeuNegocioScreen() {
           <OlliInput label="Normas técnicas" value={empresa.normas} onChangeText={v => set('normas', v)} multiline containerStyle={{ marginBottom: 0 }} />
         </View>
 
+        {/* PERSONALIZAÇÃO — padrões aplicados a todo orçamento novo */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Personalização</Text>
+          <Text style={styles.segHint}>
+            Esses padrões pré-preenchem todo orçamento novo. Você ainda pode ajustar cada um por orçamento.
+          </Text>
+
+          <Text style={styles.segLabel}>Validade padrão do orçamento</Text>
+          <View style={styles.validadeRow}>
+            {VALIDADES_PADRAO.map(dias => {
+              const active = (empresa.validadeDiasPadrao ?? 15) === dias;
+              return (
+                <TouchableOpacity key={dias} style={[styles.validadeChip, active && styles.validadeChipActive]} onPress={() => chooseValidadeDias(dias)} activeOpacity={0.85}>
+                  <Text style={[styles.validadeText, active && styles.validadeTextActive]}>{dias} dias</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.segLabel, { marginTop: Spacing.base }]}>Garantia padrão</Text>
+          <Text style={styles.segHint}>Sugestões com base no art. 26 do Código de Defesa do Consumidor.</Text>
+          <View style={styles.validadeRow}>
+            {GARANTIAS_PADRAO.map(g => {
+              const active = empresa.garantiaPadrao === g.texto;
+              return (
+                <TouchableOpacity key={g.dias} style={[styles.validadeChip, active && styles.validadeChipActive]} onPress={() => chooseGarantiaSugerida(g.texto)} activeOpacity={0.85}>
+                  <Text style={[styles.validadeText, active && styles.validadeTextActive]}>{g.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <OlliInput
+            label="Texto da garantia"
+            value={empresa.garantiaPadrao ?? ''}
+            onChangeText={v => set('garantiaPadrao', v)}
+            placeholder="Ex: 90 dias para mão de obra, conforme CDC art. 26"
+            multiline
+            containerStyle={{ marginTop: 10 }}
+          />
+
+          <OlliInput
+            label="Condições de pagamento padrão"
+            value={empresa.condicoesPagamentoPadrao ?? ''}
+            onChangeText={v => set('condicoesPagamentoPadrao', v)}
+            placeholder="Ex: 50% de entrada, restante na entrega"
+            multiline
+          />
+
+          <OlliInput
+            label="Observações padrão"
+            value={empresa.observacoesPadrao ?? ''}
+            onChangeText={v => set('observacoesPadrao', v)}
+            placeholder="Texto que aparece em todo orçamento, ex: horário de atendimento"
+            multiline
+            containerStyle={{ marginBottom: 0 }}
+          />
+        </View>
+
         {/* DEPOIMENTOS */}
         <View style={styles.card}>
           <View style={styles.depHeader}>
@@ -208,7 +408,16 @@ export default function MeuNegocioScreen() {
       {/* SAVE BAR */}
       {dirty && (
         <View style={styles.saveBar}>
-          <OlliButton label="Salvar alterações" variant="gradient" size="lg" fullWidth onPress={handleSave} icon={<MaterialCommunityIcons name="content-save" size={20} color="#fff" />} />
+          <OlliButton
+            label="Salvar alterações"
+            variant="gradient"
+            size="lg"
+            fullWidth
+            loading={salvando}
+            disabled={salvando}
+            onPress={handleSave}
+            icon={<MaterialCommunityIcons name="content-save" size={20} color="#fff" />}
+          />
         </View>
       )}
 
@@ -264,6 +473,15 @@ const styles = StyleSheet.create({
   segChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
   segChipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
   segChipTextActive: { color: '#0A1626' },
+  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: Spacing.sm },
+  swatchCircleWrap: { alignItems: 'center', justifyContent: 'center' },
+  swatchCircle: { alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', ...Shadow.sm },
+  autoFixBadge: { position: 'absolute', right: -2, bottom: -2, backgroundColor: Colors.surface, borderRadius: 8, padding: 1 },
+  validadeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  validadeChip: { alignItems: 'center', borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 10 },
+  validadeChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
+  validadeText: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
+  validadeTextActive: { color: '#0A1626' },
   depHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   addDep: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   addDepText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },

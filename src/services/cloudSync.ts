@@ -346,18 +346,22 @@ export async function removeRow(table: SyncTable, id: string): Promise<void> {
 // ─── TOMBSTONES de exclusão (nuvem) ──────────────────────────────────────────
 /**
  * Empurra UM tombstone de exclusão para a nuvem (`public.exclusoes`). Idempotente
- * (upsert por (user_id,tabela,item_id)). Fire-and-forget: só com sessão; NUNCA
- * lança. Offline / deslogado = no-op (o tombstone local sobe no próximo login).
+ * (upsert por (user_id,tabela,item_id)) e com `ignoreDuplicates`: se o tombstone
+ * já existe na nuvem, NÃO reescreve o `excluido_em` — o carimbo ORIGINAL da
+ * exclusão é preservado, para o tombstone poder de fato envelhecer e ser podado
+ * (sem isto, cada sync refrescava a data e a retenção de 90 dias nunca vencia).
+ * `excluidoEm` opcional preserva o carimbo local no re-push em lote. Fire-and-
+ * forget: só com sessão; NUNCA lança. Offline / deslogado = no-op.
  */
-export async function pushTombstone(tabela: string, itemId: string): Promise<void> {
+export async function pushTombstone(tabela: string, itemId: string, excluidoEm?: string): Promise<void> {
   try {
     if (!tabela || !itemId) return;
     if (!(await hasSession()) || !supabase) return;
     await supabase
       .from('exclusoes')
       .upsert(
-        { tabela, item_id: itemId, excluido_em: new Date().toISOString() },
-        { onConflict: 'user_id,tabela,item_id' },
+        { tabela, item_id: itemId, excluido_em: excluidoEm || new Date().toISOString() },
+        { onConflict: 'user_id,tabela,item_id', ignoreDuplicates: true },
       );
   } catch {
     // espelho em background: nunca afeta o app local
@@ -407,6 +411,42 @@ function tsMaisNovo(localTs?: string | null, recebidoEm?: string): boolean {
   const b = Date.parse(recebidoEm);
   if (Number.isNaN(a) || Number.isNaN(b)) return false;
   return a > b;
+}
+
+/**
+ * Guarda de timestamp do PUSH (anti-regressão da nuvem), em LOTE. Antes o push lia
+ * o `atualizado_em` da nuvem com 1 SELECT por linha (N+1: com centenas de registros
+ * o sync passava de segundos a minutos em rede móvel). Agora buscamos TODOS os
+ * timestamps da tabela numa ÚNICA query e montamos um mapa `id → atualizado_em`; o
+ * guard vira um lookup local síncrono. `remoteCol` é o nome (fixo, interno) da
+ * coluna de timestamp. NUNCA lança: na dúvida devolve mapa vazio → o push acontece
+ * (mantém o last-writer-wins antigo como piso seguro).
+ */
+async function carregarTimestampsRemotos(table: SyncTable, remoteCol: string): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  if (!supabase) return mapa;
+  try {
+    // `remoteCol` é um literal interno ('atualizado_em'), nunca entrada externa.
+    const { data, error } = await supabase.from(table).select(`id, ${remoteCol}`);
+    if (error || !Array.isArray(data)) return mapa;
+    for (const row of data) {
+      const id = (row as any)?.id as string | undefined;
+      const ts = (row as any)?.[remoteCol] as string | undefined;
+      if (id && ts) mapa.set(id, ts);
+    }
+  } catch {
+    // best-effort: mapa vazio faz o push acontecer (piso seguro)
+  }
+  return mapa;
+}
+
+/**
+ * Consulta o mapa de timestamps remotos: true se a NUVEM for mais nova que o local
+ * (→ push PULADO, preserva a versão remota). Lookup local, sem round-trip.
+ */
+function remoteMaisNovoNoMapa(mapa: Map<string, string>, id: string, localTs?: string | null): boolean {
+  if (!localTs) return false;
+  return tsMaisNovo(mapa.get(id), localTs);
 }
 
 async function localMaisNovoOrcamento(id: string, recebidoEm?: string): Promise<boolean> {
@@ -570,12 +610,13 @@ async function localRecordTombstone(tabela: string, itemId: string, excluidoEm: 
  * na nuvem (`removeRow`) por garantia — auto-cura caso o aparelho de origem não
  * tenha conseguido apagar, evitando que o pull seguinte ressuscite. NUNCA lança.
  */
-async function applyCloudTombstones(): Promise<void> {
+async function applyCloudTombstones(geracao?: number): Promise<void> {
   try {
     if (!supabase) return;
     const { data, error } = await supabase.from('exclusoes').select('tabela, item_id, excluido_em');
     if (error || !Array.isArray(data)) return;
     for (const row of data) {
+      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de gravar
       try {
         const tabela = (row as any)?.tabela as string;
         const itemId = (row as any)?.item_id as string;
@@ -597,19 +638,23 @@ async function applyCloudTombstones(): Promise<void> {
 /**
  * (b) Sobe os tombstones LOCAIS para a nuvem e APAGA na nuvem os ids
  * correspondentes (`removeRow`). Cobre exclusões feitas offline neste aparelho.
- * NUNCA lança.
+ * Preserva o `excluido_em` ORIGINAL de cada tombstone (lê a coluna local e a
+ * repassa a pushTombstone, que com `ignoreDuplicates` não refresca um carimbo já
+ * na nuvem) — assim os tombstones envelhecem e a poda de 90 dias funciona de
+ * verdade, em vez de "data do último sync" eterna. NUNCA lança.
  */
-async function pushLocalTombstones(): Promise<void> {
+async function pushLocalTombstones(geracao?: number): Promise<void> {
   try {
     if (!supabase) return;
     const db = await getDb();
-    const rows = await db.getAllAsync<any>('SELECT tabela, item_id FROM exclusoes');
+    const rows = await db.getAllAsync<any>('SELECT tabela, item_id, excluido_em FROM exclusoes');
     for (const r of rows) {
+      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de propagar
       try {
         const tabela = r?.tabela as string;
         const itemId = r?.item_id as string;
         if (!tabela || !itemId) continue;
-        await pushTombstone(tabela, itemId);
+        await pushTombstone(tabela, itemId, (r?.excluido_em as string) || undefined);
         if (DELETABLE_TABLES.has(tabela)) {
           await removeRow(tabela as SyncTable, itemId);
         }
@@ -622,6 +667,38 @@ async function pushLocalTombstones(): Promise<void> {
   }
 }
 
+// ─── PODA de tombstones (retenção) ───────────────────────────────────────────
+// A tabela `exclusoes` só CRESCE (cada exclusão grava um tombstone). Sem poda, o
+// SQLite local guarda um conjunto cada vez maior de tombstones para reprocessar.
+// Retenção de 90 dias, apenas no LOCAL: podamos SÓ o SQLite deste aparelho e NUNCA
+// os tombstones da NUVEM — a nuvem é a fonte da verdade das exclusões e precisa
+// preservá-los para que um aparelho que ficou muito tempo sem sincronizar receba a
+// exclusão quando voltar (apagar o tombstone remoto cedo demais faria esse aparelho
+// re-subir a linha excluída, ressuscitando-a nos demais).
+// CAVEAT (troca aceita): podar o tombstone LOCAL antes de a linha original sair
+// deste SQLite não é possível aqui, pois o applyCloudTombstones já removeu a linha
+// local ao aplicar o tombstone; mas um aparelho offline por >90 dias que ainda
+// tenha a linha antiga localmente PODE re-subi-la no próximo push. É uma janela
+// rara e conhecida; a proteção real (tombstone remoto perene) mitiga o caso comum.
+const TOMBSTONE_RETENCAO_MS = 90 * 24 * 60 * 60 * 1000; // 90 dias
+
+/**
+ * Apaga tombstones antigos (> 90 dias) SOMENTE no SQLite local, rodando DEPOIS do
+ * push (para só podar o que já teve chance de propagar). Os tombstones da NUVEM são
+ * intencionalmente preservados (fonte da verdade). Best-effort; NUNCA lança.
+ */
+async function podarTombstonesAntigos(): Promise<void> {
+  const corte = new Date(Date.now() - TOMBSTONE_RETENCAO_MS).toISOString();
+  // Local: SQLite compara ISO-8601 lexicograficamente de forma consistente (ambos
+  // gerados por toISOString, mesmo formato/UTC) — seguro para o `<`.
+  try {
+    const db = await getDb();
+    await db.runAsync('DELETE FROM exclusoes WHERE excluido_em < ?', [corte]);
+  } catch {
+    // best-effort local
+  }
+}
+
 // ─── CONTADORES (numeração) — merge monotônico (nunca regride) ────────────────
 /**
  * Funde os contadores locais com os da nuvem tomando SEMPRE o MAIOR valor por
@@ -629,7 +706,7 @@ async function pushLocalTombstones(): Promise<void> {
  * `user_id,chave`). Garante numeração não-colidente entre aparelhos do mesmo
  * dono SEM nunca regredir um contador. NUNCA lança.
  */
-async function syncContadores(): Promise<void> {
+async function syncContadores(geracao?: number): Promise<void> {
   try {
     if (!supabase) return;
     const db = await getDb();
@@ -652,6 +729,8 @@ async function syncContadores(): Promise<void> {
         max.set(chave, Math.max(max.get(chave) ?? 0, valor));
       }
     }
+
+    if (syncAbortado(geracao)) return; // logout/wipe em voo → não regrava contadores
 
     // Escreve o máximo de cada chave nos dois lados.
     for (const [chave, valor] of max) {
@@ -680,31 +759,34 @@ async function syncContadores(): Promise<void> {
  * registra tombstone) para um registro deletado NÃO reaparecer. Também funde os
  * contadores (numeração) tomando o maior valor.
  */
-export async function pullAll(): Promise<void> {
+export async function pullAll(geracao?: number): Promise<void> {
   try {
     if (!(await hasSession()) || !supabase) return;
 
     // 1) Exclusões primeiro: garante que o pull aditivo abaixo não ressuscite ids.
-    await applyCloudTombstones();
+    await applyCloudTombstones(geracao);
+    if (syncAbortado(geracao)) return;
 
     // empresa (uma linha por usuário)
     try {
       const { data } = await supabase.from('empresa').select('*').maybeSingle();
+      if (syncAbortado(geracao)) return;
       const emp = rowToEmpresa(data);
       if (emp) await localUpsertEmpresa(emp);
     } catch {}
 
-    await pullTable<Cliente>('clientes', rowToCliente, localUpsertCliente);
-    await pullTable<ServicoItem>('servicos', rowToServico, localUpsertServico);
-    await pullTable<ProdutoItem>('produtos', rowToProduto, localUpsertProduto);
-    await pullTable<Orcamento>('orcamentos', rowToOrcamento, localUpsertOrcamento);
-    await pullTable<Recibo>('recibos', rowToRecibo, localUpsertRecibo);
-    await pullTable<ModeloOrcamento>('modelos', rowToModelo, localUpsertModelo);
-    await pullTable<Depoimento>('depoimentos', rowToDepoimento, localUpsertDepoimento);
-    await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento);
+    await pullTable<Cliente>('clientes', rowToCliente, localUpsertCliente, geracao);
+    await pullTable<ServicoItem>('servicos', rowToServico, localUpsertServico, geracao);
+    await pullTable<ProdutoItem>('produtos', rowToProduto, localUpsertProduto, geracao);
+    await pullTable<Orcamento>('orcamentos', rowToOrcamento, localUpsertOrcamento, geracao);
+    await pullTable<Recibo>('recibos', rowToRecibo, localUpsertRecibo, geracao);
+    await pullTable<ModeloOrcamento>('modelos', rowToModelo, localUpsertModelo, geracao);
+    await pullTable<Depoimento>('depoimentos', rowToDepoimento, localUpsertDepoimento, geracao);
+    await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento, geracao);
+    if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.
-    await syncContadores();
+    await syncContadores(geracao);
   } catch {
     // pull é best-effort; falha não afeta o app local
   }
@@ -715,12 +797,14 @@ async function pullTable<T>(
   table: SyncTable,
   fromRow: (row: any) => T | null,
   localUpsert: (obj: T) => Promise<void>,
+  geracao?: number,
 ): Promise<void> {
   try {
     if (!supabase) return;
     const { data, error } = await supabase.from(table).select('*');
     if (error || !Array.isArray(data)) return;
     for (const row of data) {
+      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de gravar
       try {
         const obj = fromRow(row);
         if (obj) await localUpsert(obj);
@@ -738,38 +822,50 @@ async function pullTable<T>(
  * Lê tudo do SQLite e faz upsert de cada item na nuvem. Para aparelhos que já
  * têm dados locais (ex.: o do dono) popularem o painel. NUNCA lança.
  *
- * NOTA (assimetria consciente): o PUSH é last-writer-wins (upsert incondicional),
- * enquanto o PULL tem guarda de timestamp. No syncOnLogin o pullAll roda ANTES, então
- * o local já recebeu a versão mais nova da nuvem antes deste push — o caminho comum é
- * seguro. Resta uma janela estreita (outro aparelho gravando ENTRE o pull e o push
- * deste login) onde o painel fica last-writer-wins. Fix definitivo = upsert condicional
- * server-side (RPC/trigger por atualizado_em); fora do escopo atual (1 prestador/aparelho).
+ * GUARDA DE TIMESTAMP NO PUSH: para as tabelas que carregam timestamp de edição
+ * (`atualizadoEm` → coluna `atualizado_em`: orcamentos e agendamentos) o push é
+ * CONDICIONAL — antes de sobrescrever, compara com o `atualizado_em` da nuvem e
+ * PULA o upsert se a nuvem for mais nova (edição feita em outro aparelho entre o
+ * pull e o push, ou snapshot antigo recém-restaurado). Isso fecha o last-writer-
+ * wins cego que podia reverter, no painel, trabalho mais recente. Os timestamps
+ * remotos dessas duas tabelas são buscados em LOTE (uma query cada) ANTES do loop —
+ * o guard vira lookup no mapa, sem N+1. As demais tabelas
+ * (empresa/clientes/servicos/produtos/recibos/modelos/depoimentos) não têm
+ * timestamp de EDIÇÃO no modelo do app (só `criado_em`/linha única) e seguem no
+ * upsert direto. NUNCA lança: na dúvida (offline/sem timestamp) o push acontece.
  */
-export async function pushAllLocal(): Promise<void> {
+export async function pushAllLocal(geracao?: number): Promise<void> {
   try {
     if (!(await hasSession()) || !supabase) return;
     const db = await getDb();
 
-    // empresa
+    // empresa (uma linha por usuário; sem timestamp de edição → upsert direto).
     try {
       const row = await db.getFirstAsync<{ data: string }>('SELECT data FROM empresa LIMIT 1');
       if (row?.data) await pushRowUnchecked('empresa', JSON.parse(row.data) as Empresa);
     } catch {}
 
-    await pushTable('clientes', 'SELECT * FROM clientes', rowToClienteLocal);
-    await pushTable('servicos', 'SELECT * FROM servicos', rowToServicoLocal);
-    await pushTable('produtos', 'SELECT * FROM produtos', rowToProdutoLocal);
-    await pushTable('orcamentos', 'SELECT data FROM orcamentos', (r: any) => JSON.parse(r.data) as Orcamento);
-    await pushTable('recibos', 'SELECT data FROM recibos', (r: any) => JSON.parse(r.data) as Recibo);
+    // Timestamps remotos em LOTE (1 query por tabela) para o guard anti-regressão.
+    const tsOrcamentos = await carregarTimestampsRemotos('orcamentos', 'atualizado_em');
+    const tsAgendamentos = await carregarTimestampsRemotos('agendamentos', 'atualizado_em');
+
+    await pushTable('clientes', 'SELECT * FROM clientes', rowToClienteLocal, undefined, geracao);
+    await pushTable('servicos', 'SELECT * FROM servicos', rowToServicoLocal, undefined, geracao);
+    await pushTable('produtos', 'SELECT * FROM produtos', rowToProdutoLocal, undefined, geracao);
+    await pushTable('orcamentos', 'SELECT data FROM orcamentos', (r: any) => JSON.parse(r.data) as Orcamento,
+      (o) => remoteMaisNovoNoMapa(tsOrcamentos, o.id, o.atualizadoEm), geracao);
+    await pushTable('recibos', 'SELECT data FROM recibos', (r: any) => JSON.parse(r.data) as Recibo, undefined, geracao);
     await pushTable('modelos', 'SELECT * FROM modelos', (r: any) => ({
       id: r.id, nome: r.nome, descricao: r.descricao ?? undefined,
       orcamentoBase: JSON.parse(r.data), criadoEm: r.criado_em,
-    } as ModeloOrcamento));
-    await pushTable('depoimentos', 'SELECT * FROM depoimentos', rowToDepoimentoLocal);
-    await pushTable('agendamentos', 'SELECT * FROM agendamentos', rowToAgendamentoLocal);
+    } as ModeloOrcamento), undefined, geracao);
+    await pushTable('depoimentos', 'SELECT * FROM depoimentos', rowToDepoimentoLocal, undefined, geracao);
+    await pushTable('agendamentos', 'SELECT * FROM agendamentos', rowToAgendamentoLocal,
+      (a) => remoteMaisNovoNoMapa(tsAgendamentos, a.id, a.atualizadoEm), geracao);
+    if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.
-    await syncContadores();
+    await syncContadores(geracao);
   } catch {
     // best-effort
   }
@@ -778,18 +874,25 @@ export async function pushAllLocal(): Promise<void> {
 /**
  * Lê linhas locais via SQL, mapeia para o objeto do app e faz upsert de cada.
  * Usa `pushRowUnchecked` — pushAllLocal já validou a sessão antes de chamar.
+ * `guard` (opcional, SÍNCRONO): recebe o objeto e retorna true se a NUVEM for mais
+ * nova — nesse caso o item é PULADO (não sobrescreve a versão remota mais recente).
  */
 async function pushTable<T>(
   table: SyncTable,
   sql: string,
   toLocal: (row: any) => T,
+  guard?: (obj: T) => boolean,
+  geracao?: number,
 ): Promise<void> {
   try {
     const db = await getDb();
     const rows = await db.getAllAsync<any>(sql);
     for (const r of rows) {
+      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de empurrar
       try {
-        await pushRowUnchecked(table, toLocal(r));
+        const obj = toLocal(r);
+        if (guard && guard(obj)) continue; // nuvem mais nova → não regride
+        await pushRowUnchecked(table, obj);
       } catch {
         // pula item problemático
       }
@@ -841,8 +944,69 @@ function rowToAgendamentoLocal(r: any): Agendamento {
   };
 }
 
+// ─── SINAL DE CONCLUSÃO DO SYNC (para as telas recarregarem) ─────────────────
+// O sync roda em background (fire-and-forget) e o pullAll escreve DIRETO no
+// SQLite. As telas carregam via useFocusEffect no mount — num aparelho recém-
+// logado a tela pode abrir ANTES do pull terminar e mostrar estado vazio. Este
+// registrador simples de callbacks permite às telas se inscreverem e refazerem
+// o fetch quando o pull traz dados novos, sem acoplar cloudSync a nenhuma UI.
+type SyncListener = () => void;
+const syncListeners = new Set<SyncListener>();
+
+/**
+ * Inscreve um callback disparado quando o pull da nuvem GRAVA dados novos no
+ * SQLite (ou seja, quando vale a pena a tela recarregar). Retorna a função de
+ * cancelamento (chame no cleanup do efeito). Padrão de subscribe já usado no app.
+ */
+export function onSyncAplicado(fn: SyncListener): () => void {
+  syncListeners.add(fn);
+  return () => {
+    syncListeners.delete(fn);
+  };
+}
+
+/** Notifica os inscritos. NUNCA lança: um listener quebrado não afeta o sync. */
+function notificarSyncAplicado(): void {
+  for (const fn of syncListeners) {
+    try {
+      fn();
+    } catch {
+      // um listener com erro não pode quebrar o sync nem os demais
+    }
+  }
+}
+
 // ─── SYNC ON LOGIN ───────────────────────────────────────────────────────────
 let syncing = false;
+
+// Geração do sync (token de aborto). Cada `syncOnLogin` captura o valor atual no
+// início e o carrega ao longo do pipeline; antes de CADA gravação local checa se
+// a geração ainda é a corrente. `abortarSyncEmAndamento` incrementa este token,
+// invalidando na hora qualquer sync em voo — usado no logout com "apagar dados"
+// para nenhuma escrita de um pull já em andamento reinserir dados DEPOIS do wipe.
+let syncGeneration = 0;
+
+/**
+ * Invalida qualquer `syncOnLogin` em andamento: a próxima checagem de geração no
+ * pipeline (antes da próxima gravação local) faz o sync parar sem gravar mais
+ * nada. Também libera a flag de reentrância para um novo login poder sincronizar.
+ * Chamado no início do fluxo de logout-com-limpeza, ANTES do clearAllLocalData,
+ * para fechar a corrida "escrita do pull cai depois do wipe". Síncrono; NUNCA lança.
+ */
+export function abortarSyncEmAndamento(): void {
+  syncGeneration++;
+  syncing = false;
+}
+
+/**
+ * true se a geração capturada no início do sync já não é a corrente — ou seja,
+ * `abortarSyncEmAndamento` foi chamado no meio do caminho. Quando `geracao` é
+ * undefined (pullAll/pushAllLocal chamados fora do syncOnLogin, ex.: restore), o
+ * fluxo não participa do aborto e roda até o fim.
+ */
+function syncAbortado(geracao: number | undefined): boolean {
+  return geracao !== undefined && geracao !== syncGeneration;
+}
 
 /**
  * No login (ordem importa):
@@ -854,19 +1018,43 @@ let syncing = false;
  *  3) pushAllLocal()      — sobe as linhas locais sobreviventes (e funde de novo
  *                           os contadores). Como os ids excluídos já saíram do
  *                           SQLite, nada é ressuscitado.
+ *  4) podarTombstonesAntigos() — poda tombstones > 90 dias no LOCAL para a tabela
+ *                           `exclusoes` não crescer sem limite e degradar o sync.
+ *                           Roda DEPOIS do push (só poda o que já propagou).
+ * Ao terminar, reconcilia os lembretes de agenda (o pull grava agendamentos
+ * direto no SQLite, sem reagendar notificações) e notifica os inscritos
+ * (onSyncAplicado) para as telas recarregarem.
  * NÃO bloqueia a UI: roda em background e NUNCA lança. Reentrância por flag.
+ * Cancelável por `abortarSyncEmAndamento` (checagem de geração antes de gravar).
  */
 export async function syncOnLogin(): Promise<void> {
   if (syncing) return;
   syncing = true;
+  const geracao = syncGeneration;
   try {
     if (!(await hasSession())) return;
-    await pullAll();
-    await pushLocalTombstones();
-    await pushAllLocal();
+    await pullAll(geracao);
+    if (syncAbortado(geracao)) return;
+    await pushLocalTombstones(geracao);
+    if (syncAbortado(geracao)) return;
+    await pushAllLocal(geracao);
+    if (syncAbortado(geracao)) return;
+    await podarTombstonesAntigos();
+    // O pull gravou agendamentos direto no SQLite sem tocar nas notificações:
+    // reconcilia os lembretes locais com o estado novo (reagenda/cancela). Import
+    // tardio p/ não acoplar cloudSync ao módulo de agenda no grafo estático (evita
+    // ciclo de carga). Fire-and-forget: falha de notificação não afeta o sync.
+    void import('./agenda')
+      .then(m => m.resincronizarLembretes())
+      .catch(() => {});
+    // Sinaliza que a nuvem já foi baixada para o SQLite: as telas que se
+    // inscreveram refazem o fetch e o estado "vazio" inicial some sozinho.
+    notificarSyncAplicado();
   } catch {
     // sync de fundo: nunca quebra a sessão / UX
   } finally {
-    syncing = false;
+    // Só zera a flag se ninguém abortou no meio (o abort já a zerou e pode ter
+    // liberado um novo sync); assim não sobrescrevemos o estado de um novo login.
+    if (!syncAbortado(geracao)) syncing = false;
   }
 }

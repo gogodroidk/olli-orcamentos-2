@@ -129,6 +129,26 @@ export function isValidCPF(value: string): boolean {
   return rest === parseInt(cpf[10], 10);
 }
 
+/** Valida CNPJ pelos dígitos verificadores (algoritmo padrão da Receita Federal). */
+export function isValidCNPJ(value: string): boolean {
+  const cnpj = onlyDigits(value);
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+
+  function digitoVerificador(base: string): number {
+    const pesos = base.length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const soma = base.split('').reduce((acc, d, i) => acc + parseInt(d, 10) * pesos[i], 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  }
+
+  const d1 = digitoVerificador(cnpj.slice(0, 12));
+  if (d1 !== parseInt(cnpj[12], 10)) return false;
+  const d2 = digitoVerificador(cnpj.slice(0, 13));
+  return d2 === parseInt(cnpj[13], 10);
+}
+
 /** ISO (AAAA-MM-DD) -> DD/MM/AAAA, ou retorna o que já estiver em BR. */
 export function isoToBR(iso?: string): string {
   if (!iso) return '';

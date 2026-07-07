@@ -23,6 +23,7 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF } from '../utils/masks';
 import { buscarCep } from '../services/cep';
+import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -78,6 +79,7 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
 
   const [welcomed, setWelcomed] = useState(false);
+
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
@@ -85,6 +87,17 @@ export default function OnboardingScreen() {
 
   // dados da empresa (acumulados ao longo das etapas)
   const [emp, setEmp] = useState<Empresa>(empresaEmBranco());
+  // Pre-preenche o WhatsApp com o telefone informado no cadastro (user_metadata)
+  // — o usuario nao precisa digitar duas vezes. Best-effort, nunca bloqueia.
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const u = await getCurrentUser();
+        const tel = (u?.user_metadata as { telefone?: string } | undefined)?.telefone ?? '';
+        if (tel) setEmp(p2 => (p2.whatsapp?.trim() ? p2 : { ...p2, whatsapp: tel, telefone: p2.telefone || tel }));
+      } catch { /* sem sessao/erro: segue vazio */ }
+    })();
+  }, []);
   // partes do endereço (compostas em emp.endereco ao concluir)
   const [end, setEnd] = useState<EnderecoForm>({ cep: '', rua: '', numero: '', complemento: '', bairro: '' });
   const [cepLoading, setCepLoading] = useState(false);
@@ -211,7 +224,7 @@ export default function OnboardingScreen() {
     } else if (step === 1) {
       if (!emp.nomePrestador.trim()) e.nomePrestador = 'Diga seu nome.';
       const tel = emp.whatsapp.replace(/\D/g, '');
-      if (tel.length < 10) e.whatsapp = 'Informe um WhatsApp válido.';
+      if (tel.length !== 11) e.whatsapp = 'Informe um WhatsApp com DDD + 9 dígitos (ex: 11 99999-9999).';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -264,13 +277,13 @@ export default function OnboardingScreen() {
   }
 
   // 1ª tela: boas-vindas calorosas da OLLI (protótipo 04). "Começar" abre o
-  // cadastro; "Já tenho conta" leva pra tela Entrar. Tudo offline-first.
+  // cadastro. Quem chega no Onboarding JÁ está logado (é pós-login), então não
+  // há mais o link "Já tenho conta · Entrar".
   if (!welcomed) {
     return (
       <BoasVindas
         insets={insets}
         onStart={() => { Haptics.selectionAsync().catch(() => {}); setWelcomed(true); }}
-        onLogin={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Entrar'); }}
       />
     );
   }
@@ -504,9 +517,8 @@ function Assure({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyp
 }
 
 /** Tela de boas-vindas (protótipo 04): a OLLI se apresenta antes do cadastro. */
-function BoasVindas({ onStart, onLogin, insets }: {
+function BoasVindas({ onStart, insets }: {
   onStart: () => void;
-  onLogin: () => void;
   insets: { top: number; bottom: number };
 }) {
   return (
@@ -526,9 +538,6 @@ function BoasVindas({ onStart, onLogin, insets }: {
         <TouchableOpacity style={styles.wcStart} onPress={onStart} activeOpacity={0.9} accessibilityRole="button">
           <Text style={styles.wcStartText}>Começar</Text>
           <MaterialCommunityIcons name="arrow-right" size={20} color={Colors.primaryDark} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onLogin} style={styles.wcLoginWrap} accessibilityRole="button">
-          <Text style={styles.wcLogin}>Já tenho conta · <Text style={styles.wcLoginLink}>Entrar</Text></Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -561,9 +570,6 @@ const styles = StyleSheet.create({
   wcFooter: { paddingHorizontal: Spacing.base, paddingTop: 12 },
   wcStart: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.accentLight, borderRadius: 16, paddingVertical: 16, ...Shadow.glowCyan },
   wcStartText: { fontSize: 16, fontWeight: '800', color: Colors.primaryDark },
-  wcLoginWrap: { alignItems: 'center', paddingVertical: 14 },
-  wcLogin: { fontSize: 14, color: 'rgba(255,255,255,0.85)' },
-  wcLoginLink: { color: Colors.accentLight, fontWeight: '800' },
   header: { paddingHorizontal: Spacing.base, paddingBottom: Spacing.base },
   headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
