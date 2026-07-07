@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, Alert, Image, Modal,
+  TouchableOpacity, Alert, Image, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -397,7 +397,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
                 <Text style={styles.depStars}>{'★'.repeat(d.estrelas)}{'☆'.repeat(5 - d.estrelas)}</Text>
                 {d.texto ? <Text style={styles.depText}>{d.texto}</Text> : null}
               </View>
-              <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir depoimento de "${d.nomeCliente}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { await deleteDepoimento(d.id); load(); } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir depoimento de "${d.nomeCliente}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { await deleteDepoimento(d.id); load(); } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir depoimento de ${d.nomeCliente}`}>
                 <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
               </TouchableOpacity>
             </View>
@@ -423,10 +423,10 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
 
       {/* MODAL DEPOIMENTO */}
       <Modal visible={showDep} animationType="slide" onRequestClose={() => setShowDep(false)}>
-        <View style={styles.modal}>
+        <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Novo Depoimento</Text>
-            <TouchableOpacity onPress={() => { setShowDep(false); setNewDep({ estrelas: 5 }); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={() => { setShowDep(false); setNewDep({ estrelas: 5 }); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
               <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
             </TouchableOpacity>
           </View>
@@ -435,7 +435,13 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             <Text style={styles.starLabel}>Avaliação</Text>
             <View style={styles.starsRow}>
               {[1, 2, 3, 4, 5].map(n => (
-                <TouchableOpacity key={n} onPress={() => setNewDep(p => ({ ...p, estrelas: n }))} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setNewDep(p => ({ ...p, estrelas: n }))}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${n} de 5 estrelas`}
+                >
                   <Text style={[styles.star, { color: n <= (newDep.estrelas ?? 5) ? '#F59E0B' : '#E5E7EB' }]}>★</Text>
                 </TouchableOpacity>
               ))}
@@ -445,7 +451,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           <View style={styles.modalFooter}>
             <OlliButton label="Salvar depoimento" variant="gradient" size="lg" fullWidth onPress={handleSaveDep} disabled={!newDep.nomeCliente?.trim()} />
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

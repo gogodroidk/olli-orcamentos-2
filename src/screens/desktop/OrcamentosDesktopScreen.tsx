@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
-import { BarraBusca } from '../../components/web/BarraBusca';
+import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
 import { StatusBadge } from '../../components/StatusBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
@@ -63,8 +63,8 @@ export default function OrcamentosDesktopScreen() {
     if (clienteId) r = r.filter((o) => o.clienteId === clienteId);
     if (statusFiltro !== 'todos') r = r.filter((o) => o.status === statusFiltro);
     if (busca.trim()) {
-      const q = busca.toLowerCase();
-      r = r.filter((o) => o.clienteNome.toLowerCase().includes(q) || o.numero.includes(q));
+      const q = normalizarBusca(busca);
+      r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q));
     }
     return r;
   }, [todos, clienteId, statusFiltro, busca]);
@@ -85,6 +85,7 @@ export default function OrcamentosDesktopScreen() {
       ordenavel: true,
       valorOrdenacao: (o) => o.clienteNome,
       render: (o) => <Text style={styles.celulaTexto} numberOfLines={1}>{o.clienteNome}</Text>,
+      tituloCompleto: (o) => o.clienteNome,
     },
     {
       chave: 'valor',
@@ -136,7 +137,7 @@ export default function OrcamentosDesktopScreen() {
             onPress={() => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})}
             accessibilityRole="button"
             accessibilityLabel="Novo orçamento"
-            style={({ hovered }: PressableWebState) => [styles.botaoNovo, hovered && styles.botaoNovoHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.botaoNovo, hovered && styles.botaoNovoHover, focused && styles.focoVisivel]}
           >
             <MaterialCommunityIcons name="plus" size={18} color="#fff" />
             <Text style={styles.botaoNovoLabel}>Novo orçamento</Text>
@@ -190,10 +191,11 @@ function Chip({ label, ativo, onPress }: { label: string; ativo: boolean; onPres
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ hovered }: PressableWebState) => [
+      style={({ hovered, focused }: PressableWebState) => [
         styles.chip,
         ativo && styles.chipAtivo,
         !ativo && hovered && styles.chipHover,
+        focused && styles.focoVisivel,
       ]}
     >
       <Text style={[styles.chipLabel, ativo && styles.chipLabelAtivo]}>{label}</Text>
@@ -208,7 +210,7 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
       accessibilityRole="button"
       accessibilityLabel={rotulo}
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-      style={({ hovered }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover]}
+      style={({ hovered, focused }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover, focused && styles.focoVisivel]}
     >
       <MaterialCommunityIcons name={icone} size={17} color={Colors.onSurfaceVariant} />
     </Pressable>
@@ -216,6 +218,12 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
 }
 
 const styles = StyleSheet.create({
+  focoVisivel: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: 2,
+  } as any,
   botaoNovo: {
     flexDirection: 'row',
     alignItems: 'center',

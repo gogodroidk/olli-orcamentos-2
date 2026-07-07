@@ -8,9 +8,19 @@
  *   GET  /      → health check
  *
  * Segurança:
- *   - GEMINI_API_KEY é SECRET do Worker (nunca vai pro app/APK).
- *   - Exige JWT do Supabase (Authorization: Bearer <token>), validado em /auth/v1/user.
- *   - CORS liberado para a versão web do app.
+ *   - GEMINI_API_KEY é SECRET do Worker (nunca vai pro app/APK; vai por header
+ *     x-goog-api-key, nunca na query string, pra não vazar em log de proxy).
+ *   - Exige JWT do Supabase (Authorization: Bearer <token>), validado em
+ *     /auth/v1/user (com cache curto em memória do isolate).
+ *   - CORS liberado (Access-Control-Allow-Origin: '*') — seguro aqui porque
+ *     toda rota autenticada usa Bearer token, nunca cookie.
+ *   - Toda rota de IA valida content-length (413 se exceder) e trunca/sanitiza
+ *     cada campo antes de montar o prompt (proteção de custo + prompt injection).
+ *
+ * O diagnóstico (POST '/') é ATERRADO na base oficial HVAC (hvac_codigos +
+ * hvac_chunks via full-text search no Supabase) antes de chamar o Gemini — ver
+ * buscarBaseHvac/diagPrompt. `contextoBase` vindo do cliente é ignorado: era
+ * um vetor de prompt injection e o aterramento agora é feito server-side.
  *
  * Sem a chave configurada → responde { ok:false, motivo:'ia_nao_configurada' }
  * e o app cai no fallback offline (base de 602 códigos). Nunca quebra.
@@ -38,18 +48,48 @@ function json(obj, status = 200) {
   });
 }
 
+// Limite de payload de entrada (bytes) para as rotas de IA autenticadas. Sem
+// isto, request.json() aceita um body de MBs (transcript, mensagens[],
+// contextoBase) que entra cru no prompt: custo direto de tokens Gemini e
+// superfície de prompt injection. 64KB é folgado para qualquer uso legítimo
+// (voz falada, chat, diagnóstico) e barato de validar antes do parse.
+const MAX_BODY_BYTES = 65536;
+
+/** true se o body excede o limite (checa content-length; nunca lê o stream). */
+function bodyMuitoGrande(request) {
+  const len = Number(request.headers.get('content-length') || 0);
+  return len > MAX_BODY_BYTES;
+}
+
+// Cache em memória do worker (por isolate) da validação de token → user. Evita
+// 1 round-trip a /auth/v1/user por CADA request de IA (chat manda 1 por
+// mensagem). TTL curto: só reduz custo, nunca estende uma sessão revogada por
+// mais que este intervalo.
+const USER_CACHE_TTL_MS = 30_000;
+const userCache = new Map(); // token -> { user, exp }
+
 /** Valida o token do Supabase chamando /auth/v1/user. Retorna o user ou null. */
 async function getUser(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
+
+  const cached = userCache.get(token);
+  if (cached && cached.exp > Date.now()) return cached.user;
+
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY },
     });
     if (!r.ok) return null;
     const u = await r.json();
-    return u && u.id ? u : null;
+    const user = u && u.id ? u : null;
+    if (user) {
+      // Cache pequeno e saneado: evita crescimento sem limite no isolate.
+      if (userCache.size > 500) userCache.clear();
+      userCache.set(token, { user, exp: Date.now() + USER_CACHE_TTL_MS });
+    }
+    return user;
   } catch {
     return null;
   }
@@ -58,7 +98,11 @@ async function getUser(request, env) {
 /** Chama o Gemini. `user` pode ser string (1 turno) ou array de `contents` (chat). */
 async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }) {
   const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  // A key vai em header (x-goog-api-key), NUNCA na query string: URLs de
+  // request costumam ser logadas por proxies/CDNs no caminho — na query a
+  // chave vazaria nesses logs. O endpoint aceita a key por header (suportado
+  // pela API do Gemini) exatamente para evitar isso.
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const body = {
     contents: Array.isArray(user) ? user : [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: {
@@ -68,11 +112,28 @@ async function gemini(env, { system, user, wantJson = false, temperature = 0.4 }
   };
   if (system) body.systemInstruction = { parts: [{ text: system }] };
 
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  // AbortController: sem timeout, uma chamada presa ao Gemini segura o worker
+  // até o limite da própria plataforma (CPU/wall time), degradando todo mundo
+  // atrás na fila. 25s é generoso para geração de JSON curto e ainda cabe
+  // dentro do limite de request do Workers.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25_000);
+  let r;
+  try {
+    r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const timedOut = e && e.name === 'AbortError';
+    const err = new Error(timedOut ? 'timeout' : 'falha_rede');
+    err.overloaded = timedOut; // trata timeout como sobrecarga (503, não 502): retry faz sentido
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!r.ok) {
     const txt = await r.text().catch(() => '');
     const overloaded = r.status === 429 || r.status === 503 || /overload|quota|exhausted|rate|unavailable/i.test(txt);
@@ -109,15 +170,136 @@ REGRAS DE OURO (inquebráveis):
 - NUNCA mande trocar/condenar uma peça (placa, compressor, sensor) sem antes eliminar alimentação, comunicação, sensor, cabo e mau contato com TESTES.
 - Mostre o nível de confiança com honestidade (Alta / Média / Baixa).
 - Fale direto, de técnico para técnico, em português do Brasil. Sem enrolação.
+- Se houver "BASE OFICIAL HVAC" no caso, use-a PRIORITARIAMENTE sobre seu conhecimento geral; em "fontes" liste apenas os identificadores F1..Fn dos trechos realmente usados no seu raciocínio (nunca invente um identificador que não esteja listado).
 Responda SOMENTE com JSON válido no formato pedido.`;
 
-function diagPrompt(input) {
-  const ctx = input.contextoBase ? `\nContexto da base local de códigos: ${input.contextoBase}` : '';
+// Limites de sanitização de entrada do diagnóstico (defesa contra payload
+// gigante/prompt injection — ver MAX_BODY_BYTES para o limite geral do body).
+const DIAG_MAX = { marca: 80, codigo: 32, sintoma: 500, modelo: 80 };
+
+function cortar(v, max) {
+  return typeof v === 'string' ? v.trim().slice(0, max) : '';
+}
+
+// Remove os caracteres reservados do PostgREST (`,()*`) de um valor antes de
+// usá-lo num filtro de query string, e então codifica para URL. Sem isto um
+// valor do cliente poderia fechar o filtro `ilike.*valor*` e injetar outro
+// parâmetro/operador PostgREST na query.
+function sanitizarParaFiltro(v) {
+  return encodeURIComponent(String(v || '').replace(/[,()*]/g, ''));
+}
+
+/** GET autenticado (service role) na REST do Supabase. [] em qualquer falha — nunca lança. */
+async function supabaseRest(env, path, signal) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+      signal,
+    });
+    if (!r.ok) return [];
+    const j = await r.json().catch(() => []);
+    return Array.isArray(j) ? j : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Aterramento HVAC: busca códigos exatos (hvac_codigos) e trechos de manuais
+ * (hvac_chunks, full-text search) para injetar no prompt ANTES de chamar o
+ * Gemini. Nunca lança — qualquer erro/timeout vira listas vazias e o
+ * diagnóstico segue sem a base (fallback limpo, ver handleDiag).
+ */
+async function buscarBaseHvac(env, { marca, codigo, sintoma }) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return { codigos: [], chunks: [] };
+
+  const m = sanitizarParaFiltro(marca);
+  const c = sanitizarParaFiltro(codigo);
+  const cols = 'marca,codigo,falha,causa,acao,severidade';
+
+  async function lookupCodigos() {
+    if (!c) return [];
+    const filtroMarca = m ? `&marca=ilike.*${m}*` : '';
+    // 1ª tentativa: código exato (normalizado). 2ª (só se vazio): código como
+    // substring — cobre variações de digitação tipo 'E5' vs 'E-5' vs 'E 5'.
+    const exato = await supabaseRest(
+      env,
+      `hvac_codigos?select=${cols}${filtroMarca}&codigo=ilike.${c}&limit=5`,
+      abortSignal(4000),
+    );
+    if (exato.length) return exato;
+    return supabaseRest(env, `hvac_codigos?select=${cols}${filtroMarca}&codigo=ilike.*${c}*&limit=5`, abortSignal(4000));
+  }
+
+  async function buscaChunks() {
+    const termos = [marca, codigo, sintoma].filter(Boolean).join(' ').trim();
+    if (!termos) return [];
+    // Operador `wfts` (websearch_to_tsquery) na coluna tsvector `busca`: aceita
+    // texto livre do usuário sem erro de sintaxe (diferente de `fts`/to_tsquery,
+    // que quebra com aspas/operadores soltos). Sem RPC de ts_rank nesta v1 —
+    // mitigado com limit=6 e, se vazio, um retry só com marca+código.
+    const q = encodeURIComponent(termos);
+    const r1 = await supabaseRest(
+      env,
+      `hvac_chunks?select=source_path,page,texto&busca=wfts(portuguese).${q}&limit=6`,
+      abortSignal(4000),
+    );
+    if (r1.length) return r1;
+    const termosCurtos = [marca, codigo].filter(Boolean).join(' ').trim();
+    if (!termosCurtos || termosCurtos === termos) return [];
+    return supabaseRest(
+      env,
+      `hvac_chunks?select=source_path,page,texto&busca=wfts(portuguese).${encodeURIComponent(termosCurtos)}&limit=6`,
+      abortSignal(4000),
+    );
+  }
+
+  const [codigosRes, chunksRes] = await Promise.allSettled([lookupCodigos(), buscaChunks()]);
+  return {
+    codigos: codigosRes.status === 'fulfilled' ? codigosRes.value : [],
+    chunks: chunksRes.status === 'fulfilled' ? chunksRes.value : [],
+  };
+}
+
+/**
+ * AbortSignal com timeout — mesmo padrão do AbortController usado em gemini()
+ * (setTimeout explícito em vez de AbortSignal.timeout, por compatibilidade
+ * garantida com o runtime workerd).
+ */
+function abortSignal(ms) {
+  // AbortSignal.timeout limpa o timer sozinho quando a operacao termina antes
+  // do prazo (o setTimeout manual ficava pendurado ate disparar).
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  // fallback: limpa o timer quando alguem consumir o abort (melhor esforco)
+  controller.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+  return controller.signal;
+}
+
+function diagPrompt(input, base) {
+  const codigos = (base && base.codigos) || [];
+  const chunks = (base && base.chunks) || [];
+
+  let blocoBase = '';
+  if (codigos.length) {
+    blocoBase += `\n\n### BASE OFICIAL HVAC — códigos\n${codigos
+      .map((c) => `- [${c.marca || '?'}] ${c.codigo || '?'}: ${c.falha || ''} | causa: ${c.causa || ''} | ação: ${c.acao || ''} | severidade: ${c.severidade || ''}`)
+      .join('\n')}`;
+  }
+  if (chunks.length) {
+    blocoBase += `\n\n### TRECHOS DE MANUAIS\n${chunks
+      .map((ch, i) => `[[F${i + 1}]] (fonte: ${ch.source_path || '?'}, pág. ${ch.page ?? '?'}) ${String(ch.texto || '').slice(0, 700)}`)
+      .join('\n')}`;
+  }
+
   return `Caso do técnico:
 - marca: ${input.marca || '(não informada)'}
 - modelo: ${input.modelo || '(não informado)'}
 - código no display/LED: ${input.codigo || '(não informado)'}
-- sintoma relatado: ${input.sintoma || '(não informado)'}${ctx}
+- sintoma relatado: ${input.sintoma || '(não informado)'}${blocoBase}
 
 Gere o diagnóstico no JSON EXATO (todas as chaves, em pt-BR):
 {
@@ -136,14 +318,41 @@ Gere o diagnóstico no JSON EXATO (todas as chaves, em pt-BR):
 }
 
 async function handleDiag(request, env) {
-  const input = await request.json().catch(() => ({}));
-  const text = await gemini(env, { system: DIAG_SYSTEM, user: diagPrompt(input), wantJson: true, temperature: 0.3 });
+  const raw = await request.json().catch(() => ({}));
+  // Sanitiza e trunca ANTES de qualquer uso — tanto no prompt quanto nos
+  // filtros PostgREST. `contextoBase` do cliente é ignorado/depreciado: o
+  // aterramento agora é feito server-side a partir da base oficial (o campo
+  // era um vetor de prompt injection direto no prompt do Gemini).
+  const input = {
+    marca: cortar(raw && raw.marca, DIAG_MAX.marca),
+    modelo: cortar(raw && raw.modelo, DIAG_MAX.modelo),
+    codigo: cortar(raw && raw.codigo, DIAG_MAX.codigo).toUpperCase(),
+    sintoma: cortar(raw && raw.sintoma, DIAG_MAX.sintoma),
+  };
+
+  const base = await buscarBaseHvac(env, input);
+  const baseConsultada = base.codigos.length > 0 || base.chunks.length > 0;
+
+  const text = await gemini(env, { system: DIAG_SYSTEM, user: diagPrompt(input, base), wantJson: true, temperature: 0.3 });
   const diag = parseJsonLoose(text);
   if (!diag || !diag.resumo) {
     console.error('[olli-diag] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
     return json({ ok: false, erro: 'resposta_invalida' });
   }
-  return json({ ok: true, diagnostico: diag, fonte: 'ia', modelo: env.GEMINI_MODEL || 'gemini-2.5-flash' });
+
+  // Citação confiável: as fontes NUNCA vêm do texto livre do modelo. Montamos
+  // no servidor a partir dos chunks efetivamente enviados, filtrando pelos
+  // Fn que o modelo de fato citou em "fontes" — se ele citar algo fora da
+  // lista (ou inventar um Fn), é descartado.
+  const citados = new Set(Array.isArray(diag.fontes) ? diag.fontes.map(String) : []);
+  const fontesChunks = base.chunks
+    .map((ch, i) => ({ tag: `F${i + 1}`, texto: `${ch.source_path || '?'} — pág. ${ch.page ?? '?'}` }))
+    .filter((f) => citados.has(f.tag))
+    .map((f) => f.texto);
+  const fontesCodigos = base.codigos.length ? ['Base OLLI de códigos (hvac_codigos)'] : [];
+  diag.fontes = [...fontesCodigos, ...fontesChunks];
+
+  return json({ ok: true, diagnostico: diag, fonte: 'ia', modelo: env.GEMINI_MODEL || 'gemini-2.5-flash', baseConsultada });
 }
 
 // ─── VOZ → ITENS ─────────────────────────────────────────────
@@ -167,9 +376,21 @@ Monte os itens no JSON EXATO:
 Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use null em "valorUnitario". Quantidade é número.`;
 }
 
+// Limites de sanitização da rota /voz: sem isto, um transcript ou catálogo
+// gigante (dentro dos 20 req/min da IA_RL) queima cota do Gemini e vira vetor
+// de prompt injection direto no prompt.
+const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
+
 async function handleVoz(request, env) {
-  const { transcript, catalogo } = await request.json().catch(() => ({}));
-  if (!transcript || !String(transcript).trim()) return json({ ok: false, erro: 'sem_transcript' });
+  const { transcript: rawTranscript, catalogo: rawCatalogo } = await request.json().catch(() => ({}));
+  const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
+  if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
+  const catalogo = Array.isArray(rawCatalogo)
+    ? rawCatalogo.slice(0, VOZ_MAX.catalogoItens).map((c) => ({
+        nome: cortar(c && c.nome, VOZ_MAX.nome),
+        preco: c && typeof c.preco === 'number' ? c.preco : undefined,
+      }))
+    : undefined;
   const text = await gemini(env, { system: VOZ_SYSTEM, user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
   const parsed = parseJsonLoose(text);
   if (!parsed || !Array.isArray(parsed.itens)) {
@@ -188,12 +409,18 @@ async function handleVoz(request, env) {
 // ─── CHAT ────────────────────────────────────────────────────
 const CHAT_SYSTEM = `Você é a OLLI, assistente do prestador de serviços (foco em ar-condicionado) no Brasil. Ajuda com diagnóstico técnico, preços e orçamentos, atendimento ao cliente e organização do dia. Seja prática, direta e em português do Brasil. Respostas curtas e úteis. Quando faltar dado técnico, peça marca e modelo. Nunca mande trocar peça sem teste.`;
 
+// Limites de sanitização do chat: máx. de mensagens por request e tamanho por
+// mensagem — sem isto um histórico gigante (dentro dos 20/min da IA_RL) teria
+// custo Gemini ilimitado por request.
+const CHAT_MAX = { mensagens: 40, texto: 4000 };
+
 async function handleChat(request, env) {
   const { mensagens } = await request.json().catch(() => ({}));
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
-    .filter((m) => m && typeof m.texto === 'string')
-    .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.texto }] }));
+    .slice(-CHAT_MAX.mensagens)
+    .filter((m) => m && typeof m.texto === 'string' && m.texto.trim())
+    .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
   const text = await gemini(env, { system: CHAT_SYSTEM, user: contents, temperature: 0.6 });
   if (!text) return json({ ok: false, erro: 'resposta_vazia' });
@@ -237,6 +464,11 @@ export default {
       return json({ ok: true, service: 'olli-diagnostico', ia: env.GEMINI_API_KEY ? 'on' : 'off' });
     }
     if (request.method !== 'POST') return json({ ok: false, erro: 'metodo_nao_suportado' }, 405);
+
+    // Rejeita payload grande ANTES de tocar auth/rate-limit/parse — barato de
+    // checar (só content-length) e evita gastar 1 validação de token ou 1 dos
+    // 20 tokens/min do usuário com um body que nem vamos processar.
+    if (bodyMuitoGrande(request)) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
     if (!env.GEMINI_API_KEY) return json({ ok: false, motivo: 'ia_nao_configurada' });

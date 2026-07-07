@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
-  Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView,
+  Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView, Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,6 +30,7 @@ import { goBackOrHome } from '../navigation/safeBack';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const isWeb = Platform.OS === 'web';
+const isAndroid = Platform.OS === 'android';
 const useNativeAnimations = !isWeb;
 
 /** Depois de quantos segundos de "enviando" o botão "Cancelar" aparece. */
@@ -41,6 +42,19 @@ export function isVozDisponivel(): boolean {
 }
 
 type Fase = 'inicial' | 'ouvindo' | 'enviando' | 'revisao' | 'erro';
+
+/** Bloco de carregamento enquanto checamos se o aparelho tem serviço de voz instalado. */
+function CheckandoVozBloco() {
+  return (
+    <View style={styles.checandoWrap}>
+      <OlliSkeleton width={140} height={140} radius={70} />
+      <View style={{ height: 18 }} />
+      <OlliSkeleton width="70%" height={13} />
+      <View style={{ height: 8 }} />
+      <OlliSkeleton width="50%" height={13} />
+    </View>
+  );
+}
 
 interface ItemEditavel {
   id: string;
@@ -128,6 +142,7 @@ export default function OlliVozScreen() {
   const [transcript, setTranscript] = useState('');
   const [parcial, setParcial] = useState(''); // resultado interim do reconhecimento
   const [erro, setErro] = useState<string | null>(null);
+  const [permissaoNegadaPermanente, setPermissaoNegadaPermanente] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -139,19 +154,36 @@ export default function OlliVozScreen() {
   const [itens, setItens] = useState<ItemEditavel[]>([]);
   const [observacao, setObservacao] = useState('');
 
-  // animação do "pulso" do microfone enquanto ouve
+  // animação do "pulso" do microfone enquanto ouve — duas ondas concêntricas
+  // defasadas simulam o indicador vivo de escuta (nunca fica parado enquanto
+  // o motor de voz está de fato capturando áudio).
   const pulse = useRef(new Animated.Value(0)).current;
+  const pulseOuter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (fase !== 'ouvindo') { pulse.stopAnimation(); pulse.setValue(0); return; }
+    if (fase !== 'ouvindo') {
+      pulse.stopAnimation();
+      pulseOuter.stopAnimation();
+      pulse.setValue(0);
+      pulseOuter.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: useNativeAnimations }),
         Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: useNativeAnimations }),
       ])
     );
+    const loopOuter = Animated.loop(
+      Animated.sequence([
+        Animated.delay(450),
+        Animated.timing(pulseOuter, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: useNativeAnimations }),
+        Animated.timing(pulseOuter, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: useNativeAnimations }),
+      ])
+    );
     loop.start();
-    return () => loop.stop();
-  }, [fase, pulse]);
+    loopOuter.start();
+    return () => { loop.stop(); loopOuter.stop(); };
+  }, [fase, pulse, pulseOuter]);
 
   const voz = useReconhecimentoVoz({
     onParcial: setParcial,
@@ -159,8 +191,9 @@ export default function OlliVozScreen() {
       setTranscript(prev => (prev ? prev + ' ' : '') + t);
       setParcial('');
     },
-    onErro: (m) => {
+    onErro: (m, opts) => {
       setErro(m);
+      setPermissaoNegadaPermanente(!!opts?.permissaoNegadaPermanente);
       setParcial('');
       setFase('erro');
     },
@@ -170,7 +203,10 @@ export default function OlliVozScreen() {
       setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
     },
   });
-  const vozOk = voz.disponivel;
+  // vozOk = motor existe E (para Android) há um serviço de reconhecimento
+  // instalado — só depois da checagem assíncrona terminar. Enquanto isso,
+  // tratamos como indisponível para não mostrar um microfone que não responde.
+  const vozOk = voz.disponivel && !voz.checandoDisponibilidade;
 
   // limpa chamadas de IA pendentes ao sair da tela (a limpeza do
   // reconhecimento de voz já é feita internamente pelo hook)
@@ -189,6 +225,7 @@ export default function OlliVozScreen() {
     if (!vozOk) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setErro(null);
+    setPermissaoNegadaPermanente(false);
     if (voz.ouvindo) {
       voz.parar();
       setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
@@ -249,6 +286,7 @@ export default function OlliVozScreen() {
     setTranscript('');
     setParcial('');
     setErro(null);
+    setPermissaoNegadaPermanente(false);
     setItens([]);
     setTitulo('');
     setClienteNome('');
@@ -292,6 +330,8 @@ export default function OlliVozScreen() {
 
   const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
   const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
+  const pulseScaleOuter = pulseOuter.interpolate({ inputRange: [0, 1], outputRange: [1, 1.34] });
+  const pulseOpacityOuter = pulseOuter.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0] });
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -325,6 +365,11 @@ export default function OlliVozScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* HERO MICROFONE */}
+          {voz.checandoDisponibilidade ? (
+            <AnimatedEntrance index={0}>
+              <CheckandoVozBloco />
+            </AnimatedEntrance>
+          ) : (
           <AnimatedEntrance index={0}>
             <View style={styles.hero}>
               <Text style={styles.heroKicker}>
@@ -333,10 +378,16 @@ export default function OlliVozScreen() {
 
               <View style={styles.micWrap}>
                 {fase === 'ouvindo' && (
-                  <Animated.View
-                    style={[styles.micPulse, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]}
-                    pointerEvents="none"
-                  />
+                  <>
+                    <Animated.View
+                      style={[styles.micPulse, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]}
+                      pointerEvents="none"
+                    />
+                    <Animated.View
+                      style={[styles.micPulseOuter, { transform: [{ scale: pulseScaleOuter }], opacity: pulseOpacityOuter }]}
+                      pointerEvents="none"
+                    />
+                  </>
                 )}
                 {vozOk ? (
                   <TouchableOpacity
@@ -409,6 +460,31 @@ export default function OlliVozScreen() {
               )}
             </View>
           </AnimatedEntrance>
+          )}
+
+          {/* MICROFONE INDISPONÍVEL NESTE APARELHO — mostra exatamente o que falta e uma ação */}
+          {!voz.checandoDisponibilidade && !voz.disponivel && voz.motivoIndisponivel && (
+            <AnimatedEntrance index={1}>
+              <View style={styles.faltandoCard}>
+                <MaterialCommunityIcons name="microphone-off" size={20} color={Colors.warning} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.faltandoTitulo}>Reconhecimento de voz indisponível</Text>
+                  <Text style={styles.faltandoTexto}>{voz.motivoIndisponivel}</Text>
+                  {isAndroid && (
+                    <OlliButton
+                      label="Abrir Play Store"
+                      variant="outline"
+                      size="sm"
+                      onPress={() => Linking.openURL('market://details?id=com.google.android.tts').catch(() => Linking.openURL('https://play.google.com/store/apps/details?id=com.google.android.tts').catch(() => {}))}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="google-play" size={15} color={Colors.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  )}
+                </View>
+              </View>
+            </AnimatedEntrance>
+          )}
 
           {/* TRANSCRIÇÃO AO VIVO / EM EDIÇÃO */}
           {fase === 'enviando' ? (
@@ -437,7 +513,17 @@ export default function OlliVozScreen() {
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={Colors.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.erroText}>{erro}</Text>
-                  {transcript.trim().length > 0 && (
+                  {permissaoNegadaPermanente ? (
+                    <OlliButton
+                      label="Abrir configurações"
+                      variant="outline"
+                      size="sm"
+                      onPress={voz.abrirConfiguracoes}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="cog-outline" size={15} color={Colors.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  ) : transcript.trim().length > 0 ? (
                     <OlliButton
                       label="Tentar de novo"
                       variant="outline"
@@ -445,6 +531,16 @@ export default function OlliVozScreen() {
                       onPress={enviar}
                       haptic={false}
                       icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  ) : (
+                    <OlliButton
+                      label="Tentar de novo"
+                      variant="outline"
+                      size="sm"
+                      onPress={onMicPress}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="microphone-outline" size={15} color={Colors.accentLight} />}
                       style={{ marginTop: 10, alignSelf: 'flex-start' }}
                     />
                   )}
@@ -678,11 +774,18 @@ const styles = StyleSheet.create({
   heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight, marginBottom: Spacing.lg },
   micWrap: { width: 168, height: 168, justifyContent: 'center', alignItems: 'center' },
   micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },
+  micPulseOuter: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },
   micTouch: { borderRadius: 70 },
   micGrad: { width: 140, height: 140, borderRadius: 70, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: 'rgba(127,233,245,0.18)' },
   heroHint: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: Spacing.lg, paddingHorizontal: 8 },
   infoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: 'rgba(127,233,245,0.10)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
   infoPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+
+  checandoWrap: { alignItems: 'center', paddingVertical: Spacing.lg },
+
+  faltandoCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: Colors.warningLight, borderWidth: 1, borderColor: 'rgba(247,178,59,0.35)', borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.sm },
+  faltandoTitulo: { fontSize: 14, fontWeight: '800', color: Colors.onSurface, marginBottom: 4 },
+  faltandoTexto: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19 },
 
   transcriptCard: { backgroundColor: 'rgba(52,198,217,0.06)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', padding: Spacing.base, marginTop: Spacing.sm },
   transcriptLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight, textTransform: 'uppercase', marginBottom: 6 },

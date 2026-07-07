@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,7 +18,7 @@ import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getAgendamentosDoDia } from '../services/agenda';
 import { getOrcamentos } from '../database/database';
-import { onSyncAplicado } from '../services/cloudSync';
+import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import {
   Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
 } from '../types';
@@ -27,6 +27,30 @@ import { generateId } from '../utils/id';
 import { CHECKLIST_KEY } from '../services/storageKeys';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 interface ChecklistItem { id: string; texto: string; feito: boolean; data: string }
 
@@ -64,6 +88,7 @@ export default function HojeScreen() {
   const [novo, setNovo] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
     const [ag, orc, raw] = await Promise.all([
@@ -89,13 +114,17 @@ export default function HojeScreen() {
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo agendamentos/orçamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(load), [load]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
 
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   async function persist(list: ChecklistItem[]) {
     setChecklist(list);
     await AsyncStorage.setItem(CHECKLIST_KEY, JSON.stringify(list));
+    // Espelha o checklist na nuvem (best-effort, fire-and-forget). Grava o carimbo
+    // local e sobe o valor; offline/deslogado fica p/ o próximo login (syncOnLogin).
+    // NUNCA bloqueia nem quebra o salvamento local (o await acima é o que importa).
+    void pushExtraChave('checklist.hoje').catch(() => {});
   }
 
   function addItem() {
@@ -125,6 +154,7 @@ export default function HojeScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} top={insets.top + 8} />}
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
@@ -270,7 +300,7 @@ export default function HojeScreen() {
               placeholderTextColor={Colors.onSurfaceMuted}
             />
             {novo.trim() ? (
-              <TouchableOpacity onPress={addItem} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={addItem} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Adicionar tarefa">
                 <MaterialCommunityIcons name="arrow-up-circle" size={24} color={Colors.accent} />
               </TouchableOpacity>
             ) : null}
@@ -289,17 +319,17 @@ export default function HojeScreen() {
                   />
                   <Text style={[styles.checkText, item.feito && styles.checkTextDone]} numberOfLines={2}>{item.texto}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => remove(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => remove(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Remover tarefa ${item.texto}`}>
                   <MaterialCommunityIcons name="close" size={18} color={Colors.onSurfaceMuted} />
                 </TouchableOpacity>
               </View>
             ))
           )}
 
-          {/* Nota discreta: checklist é local ao aparelho (não sincroniza com a nuvem) */}
+          {/* Nota discreta: checklist agora sincroniza com a nuvem (extras_sync) */}
           <View style={styles.checklistNota}>
-            <MaterialCommunityIcons name="cellphone-lock" size={12} color={Colors.onSurfaceMuted} />
-            <Text style={styles.checklistNotaText}>Essa lista fica só neste aparelho e não é sincronizada.</Text>
+            <MaterialCommunityIcons name="cloud-check-outline" size={12} color={Colors.onSurfaceMuted} />
+            <Text style={styles.checklistNotaText}>Sua lista fica salva na nuvem e acompanha você em qualquer aparelho.</Text>
           </View>
         </View>
 
@@ -338,6 +368,14 @@ export default function HojeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
 
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
   kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight },

@@ -418,6 +418,29 @@ async function sincronizarSubscription(env, sub, statusForcado) {
   return upsertAssinatura(env, userId, patch);
 }
 
+// Dedup best-effort de eventos do webhook por `event.id`, em memória do
+// isolate. A Stripe reenvia eventos que não recebem 200 (e pode reenviar em
+// rajada mesmo com 200 se a latência de rede for alta); os upserts em si já
+// são idempotentes no RESULTADO final (merge por user_id), mas isto evita
+// reprocessar 2x um evento que chegou duplicado na mesma janela — sem exigir
+// tabela nova. Não substitui idempotência real (é por isolate, não global),
+// mas cobre o caso comum de retry imediato.
+const EVENTOS_PROCESSADOS = new Map(); // event.id -> timestamp
+const EVENTO_TTL_MS = 10 * 60 * 1000;
+
+function eventoJaProcessado(id) {
+  if (!id) return false;
+  const limite = Date.now() - EVENTO_TTL_MS;
+  for (const [k, t] of EVENTOS_PROCESSADOS) if (t < limite) EVENTOS_PROCESSADOS.delete(k);
+  return EVENTOS_PROCESSADOS.has(id);
+}
+
+function marcarEventoProcessado(id) {
+  if (!id) return;
+  if (EVENTOS_PROCESSADOS.size > 1000) EVENTOS_PROCESSADOS.clear();
+  EVENTOS_PROCESSADOS.set(id, Date.now());
+}
+
 export async function handleWebhook(request, env) {
   // RAW body ANTES de qualquer parse — a assinatura é calculada sobre ele.
   const rawBody = await request.text();
@@ -435,6 +458,10 @@ export async function handleWebhook(request, env) {
 
   const tipo = evento && evento.type;
   const obj = evento && evento.data ? evento.data.object : null;
+
+  // Evento já visto nesta janela: responde 200 sem reprocessar (idempotência
+  // best-effort — ver comentário acima do cache).
+  if (evento && eventoJaProcessado(evento.id)) return json({ ok: true, duplicado: true });
 
   try {
     if (tipo === 'checkout.session.completed') {
@@ -488,9 +515,13 @@ export async function handleWebhook(request, env) {
   } catch (e) {
     console.error('[olli-stripe] webhook falhou:', e && (e.message || e));
     // 500 → a Stripe reenvia. Upserts são idempotentes, então reenvio é seguro.
+    // NÃO marca como processado: queremos que o reenvio da Stripe seja tentado de novo.
     return json({ erro: 'falha_interna' }, 500);
   }
 
+  // Só marca como processado depois do sucesso — assim uma falha (acima) deixa
+  // o evento livre para reprocessar no próximo reenvio da Stripe.
+  marcarEventoProcessado(evento && evento.id);
   return json({ ok: true });
 }
 

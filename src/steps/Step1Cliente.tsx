@@ -14,6 +14,7 @@ import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { useCepLookup } from '../services/cep';
+import { isValidCPF, isValidCNPJ } from '../utils/masks';
 
 interface Props {
   orc: Orcamento;
@@ -27,6 +28,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [nc, setNc] = useState<Partial<Cliente>>({});
   const [salvandoNovo, setSalvandoNovo] = useState(false);
+  const [ncErrors, setNcErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
   const { cepLoading, onCepChange } = useCepLookup(r => {
     setNc(p => ({
       ...p,
@@ -61,6 +63,31 @@ export default function Step1Cliente({ orc, onChange }: Props) {
 
   async function saveNewCliente() {
     if (!nc.nome?.trim()) return;
+
+    // Mesma validação de CPF/CNPJ por dígito verificador do cadastro de
+    // clientes (ClientesScreen) — sem isso, este formulário (o mais usado, por
+    // ficar dentro do fluxo de orçamento) deixava passar CPF/CNPJ inválido só
+    // com a máscara visual, divergindo do outro cadastro de cliente do app.
+    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string } = {};
+    const cpfDigits = (nc.cpf ?? '').replace(/\D/g, '');
+    const cnpjDigits = (nc.cnpj ?? '').replace(/\D/g, '');
+    const telDigits = (nc.telefone ?? '').replace(/\D/g, '');
+    if (cpfDigits.length > 0 && !isValidCPF(nc.cpf!)) {
+      nextErrors.cpf = 'CPF inválido';
+    }
+    if (cnpjDigits.length > 0 && !isValidCNPJ(nc.cnpj!)) {
+      nextErrors.cnpj = 'CNPJ inválido';
+    }
+    if (telDigits.length > 0 && telDigits.length < 10) {
+      nextErrors.telefone = 'Telefone incompleto (informe DDD + número)';
+    }
+    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
+      setNcErrors(nextErrors);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      return;
+    }
+    setNcErrors({});
+
     const c: Cliente = {
       id: generateId(),
       nome: nc.nome!,
@@ -170,19 +197,19 @@ export default function Step1Cliente({ orc, onChange }: Props) {
       )}
 
       {/* MODAL NOVO CLIENTE */}
-      <Modal visible={showNew} animationType="slide" onRequestClose={() => setShowNew(false)}>
+      <Modal visible={showNew} animationType="slide" onRequestClose={() => { setShowNew(false); setNcErrors({}); }}>
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Novo Cliente</Text>
-            <TouchableOpacity onPress={() => setShowNew(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={() => { setShowNew(false); setNcErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
             <OlliInput label="Nome completo" required autoFocus value={nc.nome ?? ''} onChangeText={v => setNc(p => ({ ...p, nome: v }))} placeholder="Ex: João da Silva" leftIcon="account" />
-            <OlliInput label="Telefone / WhatsApp" mask="phone" value={nc.telefone ?? ''} onChangeText={v => setNc(p => ({ ...p, telefone: v }))} placeholder="(11) 99999-9999" leftIcon="phone" />
-            <OlliInput label="CPF" mask="cpf" value={nc.cpf ?? ''} onChangeText={v => setNc(p => ({ ...p, cpf: v }))} placeholder="000.000.000-00" leftIcon="card-account-details" />
-            <OlliInput label="CNPJ" mask="cnpj" value={nc.cnpj ?? ''} onChangeText={v => setNc(p => ({ ...p, cnpj: v }))} placeholder="00.000.000/0001-00" leftIcon="domain" />
+            <OlliInput label="Telefone / WhatsApp" mask="phone" value={nc.telefone ?? ''} onChangeText={v => { setNc(p => ({ ...p, telefone: v })); setNcErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={ncErrors.telefone} />
+            <OlliInput label="CPF" mask="cpf" value={nc.cpf ?? ''} onChangeText={v => { setNc(p => ({ ...p, cpf: v })); setNcErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={ncErrors.cpf} />
+            <OlliInput label="CNPJ" mask="cnpj" value={nc.cnpj ?? ''} onChangeText={v => { setNc(p => ({ ...p, cnpj: v })); setNcErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={ncErrors.cnpj} />
             <OlliInput label="Endereço" value={nc.endereco ?? ''} onChangeText={v => setNc(p => ({ ...p, endereco: v }))} placeholder="Rua, número" leftIcon="map-marker" />
             <OlliInput label="Complemento" value={nc.complemento ?? ''} onChangeText={v => setNc(p => ({ ...p, complemento: v }))} placeholder="Apto, bloco, referência" />
             <View style={styles.rowFields}>

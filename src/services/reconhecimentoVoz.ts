@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
@@ -7,19 +7,30 @@ import {
 } from 'expo-speech-recognition';
 
 /**
- * Abstração única de reconhecimento de fala (web + nativo) para a v3.
+ * Abstração única de reconhecimento de fala (web + nativo).
  *
  * A lib `expo-speech-recognition` já resolve automaticamente para uma
  * implementação web (`.web.js`, baseada em webkitSpeechRecognition/
  * SpeechRecognition do navegador) quando o bundle é o de web — por isso o
  * MESMO `ExpoSpeechRecognitionModule` e o MESMO `useSpeechRecognitionEvent`
  * funcionam nas duas plataformas, sem precisar de `require` condicional nem
- * de branch de import. Só o COMPORTAMENTO (auto-restart, textos de erro)
- * precisa diferenciar plataforma — e isso é feito com `Platform.OS`, nunca
- * com hooks condicionais.
+ * de branch de import. Só o COMPORTAMENTO (auto-restart, textos de erro,
+ * checagem de serviço instalado) precisa diferenciar plataforma — e isso é
+ * feito com `Platform.OS`, nunca com hooks condicionais.
+ *
+ * REQUISITO DE DISPOSITIVO (Android): o reconhecimento de fala nativo
+ * depende de um serviço de reconhecimento de voz instalado e HABILITADO no
+ * aparelho — normalmente o pacote "Reconhecimento e Síntese de Fala do
+ * Google" (com.google.android.tts, Android 13+) ou o app Google
+ * (com.google.android.googlequicksearchbox, Android ≤12). Em aparelhos sem
+ * Google Play Services (ex.: alguns Android chineses, ROMs customizadas) ou
+ * com esse serviço desabilitado, `isRecognitionAvailable()` retorna false —
+ * e é isso que dispara o card de "faltando" com o botão de ação abaixo, em
+ * vez de deixar o usuário tocar num microfone que nunca vai responder.
  */
 
 const isWeb = Platform.OS === 'web';
+const isAndroid = Platform.OS === 'android';
 
 /** Máximo de reinícios automáticos seguidos sem nenhum resultado de fala. */
 const MAX_RESTARTS_SEM_RESULTADO = 3;
@@ -29,31 +40,53 @@ const DELAY_AUTO_RESTART_MS = 250;
 export interface UseReconhecimentoVozOpts {
   onParcial: (texto: string) => void;
   onFinal: (texto: string) => void;
-  onErro: (mensagemAmigavel: string) => void;
+  onErro: (mensagemAmigavel: string, opts?: { permissaoNegadaPermanente?: boolean }) => void;
   onFimEscuta: () => void;
 }
 
 export interface UseReconhecimentoVozResultado {
+  /** true = motor de fala existe na plataforma (checagem rápida e síncrona). */
   disponivel: boolean;
+  /** false só depois de terminarmos a checagem real de disponibilidade (evita "piscar" a UI). */
+  checandoDisponibilidade: boolean;
+  /** Motivo amigável quando `disponivel` é false, para exibir no card de "faltando". */
+  motivoIndisponivel: string | null;
   ouvindo: boolean;
   iniciar: () => Promise<void>;
   parar: () => void;
+  /** Abre as configurações do app/sistema (usado após negação permanente de permissão). */
+  abrirConfiguracoes: () => void;
 }
 
-function mensagemPermissaoNegada(): string {
-  return isWeb
-    ? 'Preciso da permissão do microfone para te ouvir. Libere nas configurações do navegador — ou escreva o que precisa abaixo.'
-    : 'Preciso da permissão do microfone para te ouvir. Libere em Configurações > Apps > OLLI — ou escreva o que precisa abaixo.';
+function mensagemPermissaoNegada(permanente: boolean): string {
+  if (isWeb) {
+    return 'Preciso da permissão do microfone para te ouvir. Libere nas configurações do navegador — ou escreva o que precisa abaixo.';
+  }
+  return permanente
+    ? 'Você negou o microfone e o Android não vai perguntar de novo. Toque em "Abrir configurações" e libere o Microfone para o OLLI — ou escreva abaixo.'
+    : 'Preciso da permissão do microfone para te ouvir. Toque no microfone de novo e permita — ou escreva o que precisa abaixo.';
 }
 
-function mapearErro(code: ExpoSpeechRecognitionErrorCode | string): string | null {
-  // 'no-speech' (silêncio) não é fatal — quem decide o que fazer é o
-  // controle de auto-restart, não uma mensagem de erro para o usuário.
-  if (code === 'no-speech') return null;
-  if (code === 'not-allowed' || code === 'service-not-allowed') return mensagemPermissaoNegada();
-  if (code === 'network') return 'A transcrição precisa de internet. Confira a conexão ou escreva abaixo.';
-  if (code === 'audio-capture') return 'Não encontrei um microfone neste aparelho. Use o campo de texto abaixo.';
-  return 'Tive um problema com o microfone. Você pode escrever abaixo.';
+function mapearErro(code: ExpoSpeechRecognitionErrorCode | string): { msg: string; permanente?: boolean } | null {
+  // 'no-speech' (silêncio) e 'aborted' (usuário/app cancelou de propósito)
+  // não são fatais — quem decide o que fazer é o controle de auto-restart
+  // ou o próprio fluxo de parar(), não uma mensagem de erro para o usuário.
+  if (code === 'no-speech' || code === 'aborted') return null;
+  if (code === 'not-allowed') return { msg: mensagemPermissaoNegada(false) };
+  if (code === 'service-not-allowed') {
+    return {
+      msg: isAndroid
+        ? 'O serviço de reconhecimento de voz do aparelho recusou o pedido. Confira se o "Reconhecimento e Síntese de Fala do Google" está instalado e habilitado, ou escreva abaixo.'
+        : 'O reconhecimento de fala está desabilitado neste aparelho. Ative Siri e Ditado em Ajustes, ou escreva abaixo.',
+    };
+  }
+  if (code === 'network') return { msg: 'A transcrição precisa de internet. Confira a conexão ou escreva abaixo.' };
+  if (code === 'audio-capture') return { msg: 'Não encontrei um microfone neste aparelho. Use o campo de texto abaixo.' };
+  if (code === 'language-not-supported') return { msg: 'O português não está disponível no reconhecimento de voz deste aparelho. Use o campo de texto abaixo.' };
+  if (code === 'busy') return { msg: 'O microfone está ocupado com outro app agora. Feche o outro app e tente de novo, ou escreva abaixo.' };
+  if (code === 'interrupted') return { msg: 'A escuta foi interrompida (chamada, alarme ou outro app). Toque no microfone para tentar de novo.' };
+  if (code === 'speech-timeout') return null; // Android: equivalente a silêncio — tratado pelo auto-restart.
+  return { msg: 'Tive um problema com o microfone. Você pode escrever abaixo.' };
 }
 
 /**
@@ -67,6 +100,8 @@ export function useReconhecimentoVoz(opts: UseReconhecimentoVozOpts): UseReconhe
   const { onParcial, onFinal, onErro, onFimEscuta } = opts;
 
   const [disponivel, setDisponivel] = useState(false);
+  const [checandoDisponibilidade, setChecandoDisponibilidade] = useState(true);
+  const [motivoIndisponivel, setMotivoIndisponivel] = useState<string | null>(null);
   const [ouvindo, setOuvindo] = useState(false);
 
   // refs para não recriar os handlers de evento a cada render
@@ -83,12 +118,54 @@ export function useReconhecimentoVoz(opts: UseReconhecimentoVozOpts): UseReconhe
   onErroRef.current = onErro;
   onFimEscutaRef.current = onFimEscuta;
 
+  // Checagem REAL de disponibilidade: `isRecognitionAvailable()` chama
+  // `SpeechRecognizer.isRecognitionAvailable()` do próprio Android — é a
+  // fonte de verdade do sistema operacional sobre existir (ou não) um
+  // serviço de reconhecimento de voz resolvível, e NÃO sofre o filtro de
+  // visibilidade de pacotes do manifest (diferente de
+  // `getSpeechRecognitionServices()`, que usa `queryIntentServices` e só
+  // enxerga os pacotes listados em `androidSpeechServicePackages` do
+  // app.json — por isso ela entra aqui só como dado extra de diagnóstico,
+  // nunca decidindo `disponivel` sozinha, senão criaríamos falso negativo
+  // em aparelhos com serviço de voz que não bate com nossa lista).
+  //
+  // É esta checagem que resolve o cenário do dono reportando "não funciona
+  // no aparelho": quando o Android confirma que NENHUM serviço de fala
+  // está instalado/habilitado, mostramos o motivo exato (com ação) em vez
+  // de deixar o usuário tocar num microfone que nunca vai responder.
   useEffect(() => {
-    try {
-      setDisponivel(ExpoSpeechRecognitionModule.isRecognitionAvailable());
-    } catch {
-      setDisponivel(false);
+    let cancelado = false;
+    setChecandoDisponibilidade(true);
+
+    async function checar() {
+      let ok = false;
+      try {
+        ok = ExpoSpeechRecognitionModule.isRecognitionAvailable();
+      } catch {
+        ok = false;
+      }
+
+      if (cancelado) return;
+
+      if (!ok) {
+        setMotivoIndisponivel(
+          isWeb
+            ? 'Este navegador não tem reconhecimento de voz disponível.'
+            : isAndroid
+            ? 'Não encontrei um serviço de reconhecimento de voz neste aparelho. Instale ou habilite o app "Reconhecimento e Síntese de Fala do Google" (com.google.android.tts) na Play Store.'
+            : 'O reconhecimento de fala está desligado neste aparelho. Ative Siri e Ditado em Ajustes > Geral > Teclado.'
+        );
+      } else {
+        setMotivoIndisponivel(null);
+      }
+      setDisponivel(ok);
+      setChecandoDisponibilidade(false);
     }
+
+    checar();
+    return () => {
+      cancelado = true;
+    };
   }, []);
 
   const limparTimerRestart = useCallback(() => {
@@ -113,19 +190,40 @@ export function useReconhecimentoVoz(opts: UseReconhecimentoVozOpts): UseReconhe
     }
   }, []);
 
+  const abrirConfiguracoes = useCallback(() => {
+    // openSettings() retorna uma Promise — precisa de .catch(), um
+    // try/catch síncrono não pegaria uma rejeição.
+    Linking.openSettings().catch(() => {
+      // noop — dispositivo sem suporte a deep link de configurações
+    });
+  }, []);
+
   const iniciar = useCallback(async () => {
     limparTimerRestart();
     restartsSemResultadoRef.current = 0;
     teveResultadoNestaSessaoRef.current = false;
 
     try {
+      // Sempre pedimos o status ATUAL antes de decidir: getPermissionsAsync
+      // é chamado ANTES de qualquer requestPermissionsAsync ou start().
       let permissao = await ExpoSpeechRecognitionModule.getPermissionsAsync();
+
       if (!permissao.granted) {
+        if (!permissao.canAskAgain) {
+          // Negação permanente: o sistema não vai mostrar o diálogo de novo
+          // (comportamento do Android/iOS). Só resta abrir as configurações.
+          onErroRef.current(mensagemPermissaoNegada(true), { permissaoNegadaPermanente: true });
+          return;
+        }
+
         permissao = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      }
-      if (!permissao.granted) {
-        onErroRef.current(mensagemPermissaoNegada());
-        return;
+
+        if (!permissao.granted) {
+          onErroRef.current(mensagemPermissaoNegada(!permissao.canAskAgain), {
+            permissaoNegadaPermanente: !permissao.canAskAgain,
+          });
+          return;
+        }
       }
     } catch {
       // Se a checagem de permissão falhar de forma inesperada, ainda
@@ -162,12 +260,12 @@ export function useReconhecimentoVoz(opts: UseReconhecimentoVozOpts): UseReconhe
   });
 
   useSpeechRecognitionEvent('error', (event) => {
-    const msg = mapearErro(event.error);
-    if (msg == null) return; // no-speech: silencioso
+    const mapeado = mapearErro(event.error);
+    if (mapeado == null) return; // no-speech / aborted / speech-timeout: silencioso
     aindaOuvindoRef.current = false;
     limparTimerRestart();
     setOuvindo(false);
-    onErroRef.current(msg);
+    onErroRef.current(mapeado.msg, { permissaoNegadaPermanente: mapeado.permanente });
   });
 
   useSpeechRecognitionEvent('end', () => {
@@ -221,13 +319,17 @@ export function useReconhecimentoVoz(opts: UseReconhecimentoVozOpts): UseReconhe
     };
   }, [limparTimerRestart]);
 
-  return { disponivel, ouvindo, iniciar, parar };
+  return { disponivel, checandoDisponibilidade, motivoIndisponivel, ouvindo, iniciar, parar, abrirConfiguracoes };
 }
 
 /**
  * Checagem síncrona e rápida se a voz está PROVAVELMENTE disponível —
  * usada por telas que precisam decidir a UI antes de montar o hook (ex.:
  * HomeScreen ao exibir um card de atalho para a OLLI Voz).
+ *
+ * É só uma prévia otimista: a checagem completa (que também confere se há
+ * um serviço de reconhecimento instalado no Android) acontece dentro de
+ * `useReconhecimentoVoz`, já na tela de voz.
  */
 export function vozProvavelmenteDisponivel(): boolean {
   try {

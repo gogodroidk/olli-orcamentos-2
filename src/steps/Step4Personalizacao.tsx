@@ -9,6 +9,7 @@ import { CORES_MARCA } from '../utils/coresMarca';
 import { OlliButton } from '../components/OlliButton';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { getDepoimentos } from '../database/database';
+import { adicionarFotoGaleria, removerFoto } from '../utils/fotosOrcamento';
 
 interface Props {
   orc: Orcamento;
@@ -135,12 +136,16 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
 
   const [previewVisible, setPreviewVisible] = useState(false);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
+  const [carregandoPreview, setCarregandoPreview] = useState(false);
 
   async function abrirPreview() {
+    setCarregandoPreview(true);
     try {
       setDepoimentos(await getDepoimentos());
     } catch {
       setDepoimentos([]);
+    } finally {
+      setCarregandoPreview(false);
     }
     setPreviewVisible(true);
   }
@@ -153,24 +158,23 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
     });
   }
 
+  // Reusa o pipeline central de fotos (permissão + compressão + CÓPIA
+  // PERSISTENTE em documentDirectory): a versão antiga guardava a URI
+  // temporária do picker, e a foto sumia quando o sistema limpava o cache.
   async function pickFoto() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria de fotos.');
+    const r = await adicionarFotoGaleria(orc.fotosServico ?? []);
+    if (r.erro) {
+      Alert.alert('Fotos', r.erro);
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      onChange({ fotosServico: [...(orc.fotosServico ?? []), uri] });
-    }
+    onChange({ fotosServico: r.uris });
   }
 
-  function removeFoto(idx: number) {
-    const updated = (orc.fotosServico ?? []).filter((_, i) => i !== idx);
+  async function removeFoto(idx: number) {
+    const atuais = orc.fotosServico ?? [];
+    const uri = atuais[idx];
+    if (!uri) return;
+    const updated = await removerFoto(atuais, uri);
     onChange({ fotosServico: updated });
   }
 
@@ -222,6 +226,8 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
         variant="outline"
         size="sm"
         onPress={abrirPreview}
+        loading={carregandoPreview}
+        disabled={carregandoPreview}
         icon={<MaterialCommunityIcons name="eye-outline" size={16} color={Colors.accentLight} />}
         style={styles.previewBtn}
       />

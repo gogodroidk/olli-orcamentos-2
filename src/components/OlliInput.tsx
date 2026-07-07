@@ -25,6 +25,8 @@ interface OlliInputProps extends Omit<TextInputProps, 'onChangeText' | 'value' |
   rightIcon?: keyof typeof MaterialCommunityIcons.glyphMap;
   /** Se informado, o ícone à direita vira um botão (ex.: alternar senha). */
   onRightIconPress?: () => void;
+  /** Rótulo de acessibilidade do botão do ícone à direita (ex.: "Mostrar senha"). */
+  rightIconLabel?: string;
   containerStyle?: ViewStyle;
 }
 
@@ -57,7 +59,7 @@ function applyMask(mask: MaskType, raw: string): string {
  */
 function OlliInputBase({
   label, value, onChangeText, mask = 'none', error, helper, required,
-  leftIcon, rightIcon, onRightIconPress, containerStyle, multiline, keyboardType, ...rest
+  leftIcon, rightIcon, onRightIconPress, rightIconLabel, containerStyle, multiline, keyboardType, ...rest
 }: OlliInputProps) {
   const [focused, setFocused] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
@@ -110,7 +112,7 @@ function OlliInputBase({
         />
         {rightIcon ? (
           onRightIconPress ? (
-            <TouchableOpacity onPress={onRightIconPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button">
+            <TouchableOpacity onPress={onRightIconPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={rightIconLabel}>
               <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? Colors.primary : Colors.onSurfaceMuted} style={styles.rightIcon} />
             </TouchableOpacity>
           ) : (

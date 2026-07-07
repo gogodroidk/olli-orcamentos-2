@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Linking, Alert } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Linking, Alert, Animated } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,6 +25,30 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 function saudacao(): string {
   const h = new Date().getHours();
@@ -72,6 +96,7 @@ export default function HomeScreen() {
   const [radar, setRadar] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
     const [all, emp, prox] = await Promise.all([getOrcamentos(), getEmpresa(), getProximoAgendamento()]);
@@ -96,7 +121,7 @@ export default function HomeScreen() {
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { load(); loadRadar(); }), [load, loadRadar]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); }), [load, loadRadar]);
 
   const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar()]); setRefreshing(false); };
 
@@ -150,6 +175,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} top={insets.top + 8} />}
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 116 }}
         showsVerticalScrollIndicator={false}
@@ -164,7 +190,7 @@ export default function HomeScreen() {
               {empresa?.nome ? <Text style={styles.company}>  ·  {empresa.nome}</Text> : null}
             </Text>
           </View>
-          <TouchableOpacity style={styles.olliBtn} onPress={abrirOlli} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.olliBtn} onPress={abrirOlli} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Abrir menu da OLLI">
             <OlliMascot size={34} onDark />
             {parados.length > 0 && (
               <View style={styles.olliBadge}><Text style={styles.olliBadgeText}>{parados.length}</Text></View>
@@ -326,7 +352,7 @@ export default function HomeScreen() {
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.anzolTitle}>Diagnóstico de erro</Text>
-                <Text style={styles.anzolSub}>602 códigos de ar-condicionado · ache a falha em segundos, offline</Text>
+                <Text style={styles.anzolSub}>698 códigos de ar-condicionado · ache a falha em segundos, offline</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
             </LinearGradient>
@@ -563,6 +589,14 @@ function Action({ icon, label, color, onPress }: { icon: keyof typeof MaterialCo
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
   greeting: { fontSize: 13, color: Colors.onSurfaceVariant, fontWeight: '500' },
   name: { fontSize: 21, fontWeight: '800', color: '#fff', marginTop: 1 },

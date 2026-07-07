@@ -49,8 +49,14 @@ function formatData(s) {
   return '';
 }
 
+// O gerador real (novoToken em src/services/clienteLink.ts) produz 16 bytes
+// aleatórios (128 bits) em base64url SEM padding = sempre 22 caracteres. O
+// piso mínimo aqui precisa refletir isso: um token de 8 chars base64url tem
+// só ~48 bits de entropia (força-bruta viável), então 8 era fraco demais para
+// a única credencial deste endpoint público. Piso em 20 dá folga para
+// variações de encoding sem abrir a porta para tokens curtos.
 function validToken(t) {
-  return typeof t === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(t);
+  return typeof t === 'string' && /^[A-Za-z0-9_-]{20,64}$/.test(t);
 }
 
 function safeHexColor(v, fallback = ACCENT) {

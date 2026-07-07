@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, LayoutAnimation,
+  RefreshControl, Animated, KeyboardAvoidingView,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -38,6 +39,30 @@ import { NOTIF_EXPLICADO_KEY } from '../services/storageKeys';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type AgendaRoute = RouteProp<TabParamList, 'Agenda'>;
 type Modo = 'dia' | 'semana' | 'mes';
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 const MODOS: { id: Modo; label: string }[] = [
   { id: 'dia', label: 'Dia' },
@@ -82,6 +107,8 @@ export default function AgendaScreen() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const { inicio, fim } = useMemo(() => rangeFor(modo, ref), [modo, ref]);
 
@@ -99,7 +126,9 @@ export default function AgendaScreen() {
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(load), [load]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
+
+  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   // Dias do período que efetivamente têm agendamentos (para o modo semana/mês).
   const dias = useMemo(() => {
@@ -283,6 +312,7 @@ export default function AgendaScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
@@ -312,11 +342,11 @@ export default function AgendaScreen() {
 
         {/* NAV ‹ período › */}
         <View style={styles.navRow}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => passo(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => passo(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Período anterior">
             <MaterialCommunityIcons name="chevron-left" size={24} color={Colors.accentLight} />
           </TouchableOpacity>
           <Text style={styles.navLabel}>{rotuloPeriodo(modo, ref)}</Text>
-          <TouchableOpacity style={styles.navBtn} onPress={() => passo(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => passo(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Próximo período">
             <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
           </TouchableOpacity>
         </View>
@@ -350,6 +380,7 @@ export default function AgendaScreen() {
         <ScrollView
           contentContainerStyle={{ padding: Spacing.base, paddingBottom: insets.bottom + 110 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.accent]} tintColor={Colors.accent} />}
         >
           {dias.map((dia, di) => {
             const doDia = itens
@@ -506,10 +537,10 @@ function AgendamentoForm({
   }
 
   return (
-    <View style={styles.formContainer}>
+    <KeyboardAvoidingView style={styles.formContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.formHeader, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.formTitle}>{state.id ? 'Editar agendamento' : 'Agendar visita'}</Text>
-        <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
           <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
         </TouchableOpacity>
       </View>
@@ -604,14 +635,14 @@ function AgendamentoForm({
         {/* DATA */}
         <Text style={styles.fieldLabel}>Data</Text>
         <View style={styles.dateRow}>
-          <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Dia anterior">
             <MaterialCommunityIcons name="chevron-left" size={22} color={Colors.accentLight} />
           </TouchableOpacity>
           <View style={styles.dateDisplay}>
             <MaterialCommunityIcons name="calendar" size={18} color={Colors.accent} />
             <Text style={styles.dateText}>{capitalizeFirst(format(state.data, "EEE, d 'de' MMM 'de' yyyy", { locale: ptBR }))}</Text>
           </View>
-          <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Próximo dia">
             <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
           </TouchableOpacity>
         </View>
@@ -703,7 +734,7 @@ function AgendamentoForm({
           icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />}
         />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -721,6 +752,14 @@ function QuickDate({ label, onPress }: { label: string; onPress: () => void }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
 
   todayBtn: { backgroundColor: 'rgba(255,255,255,0.13)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
   todayBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },

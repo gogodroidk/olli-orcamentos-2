@@ -254,6 +254,7 @@ export default function EntrarScreen() {
             leftIcon="lock"
             rightIcon={verSenha ? 'eye-off' : 'eye'}
             onRightIconPress={() => setVerSenha(v => !v)}
+            rightIconLabel={verSenha ? 'Ocultar senha' : 'Mostrar senha'}
           />
           {modo === 'signup' && (
             <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry={!verSenha} leftIcon="lock-check" />

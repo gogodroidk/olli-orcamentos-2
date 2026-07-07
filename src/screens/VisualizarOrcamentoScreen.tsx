@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, Share, ActivityIndicator,
+  Alert, Share, ActivityIndicator, Image,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +13,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
+import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -49,6 +50,9 @@ export default function VisualizarOrcamentoScreen() {
   const [carregando, setCarregando] = useState(true);
   const [naoEncontrado, setNaoEncontrado] = useState(false);
   const [celebrando, setCelebrando] = useState(false);
+  // Overlay de progresso — cobre a espera "silenciosa" de gerar/compartilhar
+  // PDF ou link do cliente (mensagem varia conforme a ação em andamento).
+  const [overlayInfo, setOverlayInfo] = useState<{ titulo: string; subtitulo: string } | null>(null);
   const statusAnteriorRef = useRef<StatusOrcamento | null>(null);
 
   useFocusEffect(useCallback(() => {
@@ -81,6 +85,7 @@ export default function VisualizarOrcamentoScreen() {
   async function handleShare() {
     if (!orc || !empresa) return;
     setSharing(true);
+    setOverlayInfo({ titulo: 'Gerando seu orçamento...', subtitulo: 'Deixando bonito para o cliente...' });
     try {
       await compartilharPdfOrcamento(orc, empresa, depoimentos, orc.corMarca);
       if (orc.status === 'rascunho') await updateStatus('enviado');
@@ -92,6 +97,7 @@ export default function VisualizarOrcamentoScreen() {
     } finally {
       // SEMPRE volta o loading — inclusive na web, onde a impressão é assíncrona.
       setSharing(false);
+      setOverlayInfo(null);
     }
   }
 
@@ -120,6 +126,7 @@ export default function VisualizarOrcamentoScreen() {
       return;
     }
     setLinking(true);
+    setOverlayInfo({ titulo: 'Gerando o link do cliente...', subtitulo: 'Preparando a página de aprovação...' });
     try {
       const url = await gerarLinkOrcamento(orc, empresa);
       if (orc.status === 'rascunho') await updateStatus('enviado');
@@ -130,6 +137,7 @@ export default function VisualizarOrcamentoScreen() {
       Alert.alert('Não consegui gerar o link', e?.message ?? 'Tente novamente.');
     } finally {
       setLinking(false);
+      setOverlayInfo(null);
     }
   }
 
@@ -319,6 +327,18 @@ export default function VisualizarOrcamentoScreen() {
           </OlliCard>
         )}
 
+        {/* FOTOS DO SERVIÇO — faixa horizontal (registro fotográfico entra no PDF também) */}
+        {!!orc.fotosServico?.length && (
+          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+            <Text style={styles.cardTitle}>Fotos do serviço ({orc.fotosServico.length})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fotosRow}>
+              {orc.fotosServico.map(uri => (
+                <Image key={uri} source={{ uri }} style={styles.fotoStrip} />
+              ))}
+            </ScrollView>
+          </OlliCard>
+        )}
+
         {/* TOTAIS */}
         <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
           <Text style={styles.cardTitle}>Resumo financeiro</Text>
@@ -350,6 +370,11 @@ export default function VisualizarOrcamentoScreen() {
       </ScrollView>
 
       <Celebracao visible={celebrando} tipo="aprovado" onDone={() => setCelebrando(false)} />
+      <OverlayProgresso
+        visible={!!overlayInfo}
+        titulo={overlayInfo?.titulo}
+        subtitulo={overlayInfo?.subtitulo}
+      />
     </View>
   );
 }
@@ -449,6 +474,9 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 14, fontWeight: '600', color: Colors.onSurface },
   itemQty: { fontSize: 12, color: Colors.onSurfaceVariant },
   itemSubtotal: { fontSize: 14, fontWeight: '700', color: Colors.primary },
+
+  fotosRow: { gap: 10, paddingRight: 4 },
+  fotoStrip: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: Colors.surfaceVariant },
 
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: Colors.outline },
   rowLabel: { fontSize: 13, color: Colors.onSurfaceVariant },

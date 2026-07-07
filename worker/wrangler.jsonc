@@ -26,6 +26,9 @@
     { "name": "LINK_RL", "namespace_id": "1002", "simple": { "limit": 12, "period": 60 } },
     // Rotas Stripe (checkout/portal) por usuário: barra criação em massa de
     // sessões. Não cobre o webhook (esse é servidor-a-servidor da Stripe).
-    { "name": "STRIPE_RL", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } }
+    { "name": "STRIPE_RL", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
+    // /admin/api/* por IP: barra força bruta/varredura de credencial contra o
+    // painel do super-admin (acesso total a dados de todos os usuários).
+    { "name": "ADMIN_RL", "namespace_id": "1004", "simple": { "limit": 30, "period": 60 } }
   ]
 }

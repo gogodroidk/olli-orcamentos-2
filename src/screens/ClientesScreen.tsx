@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator,
+  TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,6 +19,7 @@ import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../datab
 import { getAgendamentos } from '../services/agenda';
 import { clientesParaReconquistar } from '../services/radarClientes';
 import { useCepLookup } from '../services/cep';
+import { onSyncAplicado } from '../services/cloudSync';
 import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
@@ -27,6 +29,30 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 export default function ClientesScreen() {
   const nav = useNavigation<Nav>();
@@ -41,6 +67,8 @@ export default function ClientesScreen() {
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   // Ids de clientes "sumidos" (radar de reconquista, >= 5 meses sem contato).
   // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
   // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
@@ -56,12 +84,18 @@ export default function ClientesScreen() {
 
   useFocusEffect(useCallback(() => { load(); loadRadar(); }, []));
 
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo clientes que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); }), []);
+
   async function load() {
     const all = await getClientes();
     setClientes(all);
     applyFilter(all, query);
     setCarregando(false);
   }
+
+  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar()]); setRefreshing(false); };
 
   async function loadRadar() {
     try {
@@ -213,11 +247,12 @@ export default function ClientesScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader title="Clientes" subtitle={`${clientes.length} cadastrado${clientes.length === 1 ? '' : 's'}`} onBack={() => goBackOrHome(nav)}>
         <View style={styles.searchBar}>
           <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
           <TextInput style={styles.searchInput} placeholder="Buscar por nome ou telefone..." value={query} onChangeText={handleSearch} placeholderTextColor={Colors.onSurfaceMuted} />
-          {query ? <TouchableOpacity onPress={() => handleSearch('')}><MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} /></TouchableOpacity> : null}
+          {query ? <TouchableOpacity onPress={() => handleSearch('')} accessibilityRole="button" accessibilityLabel="Limpar busca"><MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} /></TouchableOpacity> : null}
         </View>
       </GradientHeader>
 
@@ -238,6 +273,7 @@ export default function ClientesScreen() {
         data={filtered}
         keyExtractor={c => c.id}
         contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.primary} />}
         renderItem={({ item: c, index }) => (
           <AnimatedEntrance index={index}>
             <TouchableOpacity
@@ -259,10 +295,10 @@ export default function ClientesScreen() {
                 {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
                   {excluindoId === c.id
                     ? <ActivityIndicator size="small" color={Colors.danger} />
                     : <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />}
@@ -275,16 +311,16 @@ export default function ClientesScreen() {
       />
       )}
 
-      <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Novo cliente">
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
 
       <Modal visible={!!editing} animationType="slide" onRequestClose={() => { setEditing(null); setErrors({}); }}>
         {editing && (
-          <View style={styles.modal}>
+          <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{isNew ? 'Novo Cliente' : 'Editar Cliente'}</Text>
-              <TouchableOpacity onPress={() => { setEditing(null); setErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={() => { setEditing(null); setErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
                 <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
               </TouchableOpacity>
             </View>
@@ -307,7 +343,7 @@ export default function ClientesScreen() {
             <View style={styles.modalFooter}>
               <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
-          </View>
+          </KeyboardAvoidingView>
         )}
       </Modal>
 
@@ -357,6 +393,14 @@ function SheetAction({ icon, color, label, desc, onPress }: { icon: keyof typeof
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm },

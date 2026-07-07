@@ -22,7 +22,8 @@
       "versionCode": 6,
       "permissions": [
         "CAMERA",
-        "READ_MEDIA_IMAGES"
+        "READ_MEDIA_IMAGES",
+        "RECORD_AUDIO"
       ]
     },
     "web": {
@@ -61,7 +62,8 @@
           "microphonePermission": "O OLLI usa o microfone para você ditar orçamentos por voz.",
           "speechRecognitionPermission": "O OLLI usa o reconhecimento de fala para montar orçamentos ditados.",
           "androidSpeechServicePackages": [
-            "com.google.android.googlequicksearchbox"
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
           ]
         }
       ],

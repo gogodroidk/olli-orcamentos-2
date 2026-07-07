@@ -76,9 +76,10 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
           onPress={novoOrcamento}
           accessibilityRole="button"
           accessibilityLabel="Novo orçamento"
-          style={({ hovered, pressed }: PressableWebState) => [
+          style={({ hovered, focused, pressed }: PressableWebState) => [
             styles.botaoNovoWrap,
             hovered && styles.botaoNovoWrapHover,
+            focused && styles.botaoNovoWrapFocado,
             pressed && styles.botaoNovoWrapPressed,
           ]}
         >
@@ -127,10 +128,11 @@ function ItemSidebar({ item, ativo, onPress }: { item: ItemMenu; ativo: boolean;
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={item.label}
-      style={({ hovered, pressed }: PressableWebState) => [
+      style={({ hovered, focused, pressed }: PressableWebState) => [
         styles.item,
         ativo && styles.itemAtivo,
         !ativo && hovered && styles.itemHover,
+        focused && styles.itemFocado,
         pressed && styles.itemPressed,
       ]}
     >
@@ -176,6 +178,12 @@ const styles = StyleSheet.create({
   botaoNovoWrapHover: {
     opacity: 0.92,
   },
+  botaoNovoWrapFocado: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: 2,
+  } as any,
   botaoNovoWrapPressed: {
     opacity: 0.8,
   },
@@ -212,6 +220,12 @@ const styles = StyleSheet.create({
   itemHover: {
     backgroundColor: Colors.surfacePressed,
   },
+  itemFocado: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: -2,
+  } as any,
   itemPressed: {
     opacity: 0.85,
   },

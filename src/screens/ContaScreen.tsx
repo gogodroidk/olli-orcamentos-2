@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
@@ -23,7 +24,7 @@ import {
   restoreBackupById,
   BackupVersionadoResumo,
 } from '../services/backup';
-import { abortarSyncEmAndamento } from '../services/cloudSync';
+import { abortarSyncEmAndamento, onSyncAplicado } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
 import { AUTO_BACKUP_TOGGLE_KEY } from '../services/storageKeys';
 
@@ -35,6 +36,30 @@ const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
 };
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 /** Formata um telefone em dígitos (com DDI 55) para exibição amigável: +55 (11) 99999-9999. */
 function formatarTelefoneExibicao(digits: string): string {
@@ -88,6 +113,9 @@ export default function ContaScreen() {
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
     const emp = await getEmpresa();
@@ -115,9 +143,16 @@ export default function ContaScreen() {
         setLastBackup(null);
       }
     }
+    setCarregando(false);
   }, [configured]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo backup/negócio atualizados que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
+
+  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   async function handleBackup() {
     setBusy(true);
@@ -127,6 +162,7 @@ export default function ContaScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       Alert.alert('Backup feito!', 'Seus dados estão seguros na nuvem.');
     } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       Alert.alert('Erro', e?.message ?? 'Falha ao fazer backup.');
     }
     setBusy(false);
@@ -181,9 +217,11 @@ export default function ContaScreen() {
                     try {
                       const when = await restoreBackupById(item.id);
                       setShowBackups(false);
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                       Alert.alert('Restaurado!', `Dados da cópia de ${formatDateTime(when)} aplicados.`);
                       await load();
                     } catch (e: any) {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
                       Alert.alert('Erro', e?.message ?? 'Falha ao restaurar essa cópia.');
                     }
                     setRestaurandoId(null);
@@ -294,16 +332,28 @@ export default function ContaScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} top={insets.top + 8} />}
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} colors={[Colors.accent]} />}
       >
         <View style={styles.headRow}>
           <Text style={styles.screenTitle}>Conta</Text>
           <OlliMascot size={34} onDark />
         </View>
 
+        {carregando ? (
+          <View style={[styles.profileCard, { marginBottom: Spacing.base }]}>
+            <OlliSkeleton width={56} height={56} radius={18} />
+            <View style={{ flex: 1, marginLeft: 14, gap: 8 }}>
+              <OlliSkeleton width="55%" height={16} />
+              <OlliSkeleton width="70%" height={12} />
+            </View>
+          </View>
+        ) : (
+        <>
         {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
         <AnimatedEntrance index={0}>
           <TouchableOpacity style={styles.profileCard} onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.85}>
@@ -438,6 +488,8 @@ export default function ContaScreen() {
             <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
           </>
         )}
+        </>
+        )}
 
         <Text style={styles.version}>OLLI · Orçamentos que fecham negócio</Text>
       </ScrollView>
@@ -447,7 +499,7 @@ export default function ContaScreen() {
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Cópias de segurança</Text>
-            <TouchableOpacity onPress={() => setShowBackups(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={() => setShowBackups(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
               <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
             </TouchableOpacity>
           </View>
@@ -493,6 +545,14 @@ export default function ContaScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
 
   guardWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
   guardTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: Spacing.lg },

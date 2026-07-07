@@ -14,8 +14,16 @@
  *    sem chamar os `save*` de database.ts (que disparam push). Assim, baixar da
  *    nuvem não re-dispara upload.
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
 import { getDb } from '../database/database';
+import {
+  CHECKLIST_KEY,
+  CHECKLIST_STAMP_KEY,
+  RADAR_SNOOZE_KEY,
+  RADAR_SNOOZE_STAMP_KEY,
+  EMPRESA_STAMP_KEY,
+} from './storageKeys';
 import type {
   Cliente,
   ServicoItem,
@@ -321,14 +329,80 @@ export async function pushRow(table: SyncTable, objLocal: unknown): Promise<void
 /**
  * Upsert sem checar sessão — para o caminho em LOTE (pushAllLocal), que valida a
  * sessão UMA vez antes de iterar (evita um getUser() por linha). NUNCA lança.
+ *
+ * GUARDA ESPECIAL PARA `empresa`: é upsert por `user_id` (uma linha por dono,
+ * onConflict 'user_id'), então dois aparelhos do MESMO dono editando "Meu
+ * Negócio" em momentos diferentes se alternavam em "último a salvar vence" —
+ * sem proteção, o aparelho que sincronizasse por último sempre vencia, mesmo
+ * partindo de uma base mais velha (relógio ou apenas rede mais lenta). Guarda:
+ * EMPRESA_STAMP_KEY grava o `atualizado_em` da nuvem visto no ÚLTIMO PULL (o
+ * "eu vi a empresa neste estado" deste aparelho — ver localUpsertEmpresa). Se a
+ * nuvem AGORA tem um `atualizado_em` mais novo que esse carimbo, outro aparelho
+ * escreveu depois do nosso último pull: pulamos o push (não sobrescrevemos uma
+ * edição que nunca vimos) em vez de aplicar last-write-wins cego. Sem carimbo
+ * local (aparelho nunca deu pull, ex.: só criou a empresa localmente) o push
+ * sempre acontece — piso seguro igual ao resto do módulo.
  */
 async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<void> {
   try {
     if (!objLocal || !supabase) return;
+    if (table === 'empresa' && (await empresaNuvemMudouDesdeUltimoPull())) {
+      // Outro aparelho editou a empresa depois do nosso último pull: não
+      // sobrescrever — e puxar a versão mais nova para o local convergir em vez
+      // de ficar divergente em silêncio (a edição local perde, estado fica são).
+      void pullEmpresaMaisNova().catch(() => {});
+      return;
+    }
     const row = TO_ROW[table](objLocal);
     await supabase.from(table).upsert(row, { onConflict: ON_CONFLICT[table] });
+    if (table === 'empresa') await marcarEmpresaVistaAgora();
   } catch {
     // idem: silencioso
+  }
+}
+
+/**
+ * true se a linha `empresa` na nuvem for ESTRITAMENTE mais nova que o carimbo do
+ * último pull conhecido por este aparelho (EMPRESA_STAMP_KEY) — ou seja, outro
+ * aparelho escreveu depois da última vez que vimos a nuvem. Sem carimbo local
+ * devolve false → o push acontece (piso seguro). NUNCA lança.
+ */
+async function empresaNuvemMudouDesdeUltimoPull(): Promise<boolean> {
+  try {
+    if (!supabase) return false;
+    const stampLocal = await AsyncStorage.getItem(EMPRESA_STAMP_KEY).catch(() => null);
+    if (!stampLocal) return false;
+    const { data } = await supabase.from('empresa').select('atualizado_em').maybeSingle();
+    const remoto = (data as any)?.atualizado_em as string | undefined;
+    return tsMaisNovo(remoto, stampLocal);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Puxa a versão mais nova da `empresa` na nuvem e aplica localmente. Usado
+ * quando o push é recusado pela guarda (outro aparelho editou depois do nosso
+ * último pull): em vez de divergir em silêncio, o local converge para a nuvem.
+ * NUNCA lança.
+ */
+async function pullEmpresaMaisNova(): Promise<void> {
+  try {
+    if (!supabase) return;
+    const { data } = await supabase.from('empresa').select('*').maybeSingle();
+    const emp = rowToEmpresa(data);
+    if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
+  } catch {
+    // best-effort
+  }
+}
+
+/** Grava o carimbo local de `empresa` = agora (última vez que vimos/escrevemos a nuvem). NUNCA lança. */
+async function marcarEmpresaVistaAgora(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(EMPRESA_STAMP_KEY, new Date().toISOString());
+  } catch {
+    // best-effort: sem carimbo, o próximo push cai no piso seguro (sempre escreve)
   }
 }
 
@@ -479,12 +553,28 @@ async function localMaisNovoAgendamento(id: string, recebidoEm?: string): Promis
 // Estes upserts gravam direto na tabela local, espelhando a forma dos `save*`
 // de database.ts, MAS sem chamar pushRow — é assim que pullAll evita o loop.
 
-async function localUpsertEmpresa(e: Empresa): Promise<void> {
+/**
+ * Grava a `empresa` recebida da nuvem no SQLite local e alinha o carimbo de
+ * comparação (EMPRESA_STAMP_KEY) com o `atualizado_em` da linha — assim o
+ * próximo push (pushRowUnchecked) sabe "a partir de qual versão da nuvem este
+ * aparelho partiu" e detecta corretamente se outro aparelho escreveu depois.
+ * `recebidoEm` é o `atualizado_em` cru da linha da nuvem (pode faltar em dados
+ * legados); sem ele, ainda gravamos a empresa mas não tocamos o carimbo (o
+ * próximo push cai no piso seguro de sempre escrever).
+ */
+async function localUpsertEmpresa(e: Empresa, recebidoEm?: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
     e.id ?? 'empresa_1',
     JSON.stringify(e),
   ]);
+  if (recebidoEm) {
+    try {
+      await AsyncStorage.setItem(EMPRESA_STAMP_KEY, recebidoEm);
+    } catch {
+      // best-effort: sem carimbo, o próximo push cai no piso seguro (sempre escreve)
+    }
+  }
 }
 
 async function localUpsertCliente(c: Cliente): Promise<void> {
@@ -772,7 +862,7 @@ export async function pullAll(geracao?: number): Promise<void> {
       const { data } = await supabase.from('empresa').select('*').maybeSingle();
       if (syncAbortado(geracao)) return;
       const emp = rowToEmpresa(data);
-      if (emp) await localUpsertEmpresa(emp);
+      if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
     } catch {}
 
     await pullTable<Cliente>('clientes', rowToCliente, localUpsertCliente, geracao);
@@ -829,17 +919,19 @@ async function pullTable<T>(
  * pull e o push, ou snapshot antigo recém-restaurado). Isso fecha o last-writer-
  * wins cego que podia reverter, no painel, trabalho mais recente. Os timestamps
  * remotos dessas duas tabelas são buscados em LOTE (uma query cada) ANTES do loop —
- * o guard vira lookup no mapa, sem N+1. As demais tabelas
- * (empresa/clientes/servicos/produtos/recibos/modelos/depoimentos) não têm
- * timestamp de EDIÇÃO no modelo do app (só `criado_em`/linha única) e seguem no
- * upsert direto. NUNCA lança: na dúvida (offline/sem timestamp) o push acontece.
+ * o guard vira lookup no mapa, sem N+1. `empresa` (linha única por dono, sem
+ * timestamp de edição no modelo do app) tem sua PRÓPRIA guarda dentro de
+ * pushRowUnchecked (EMPRESA_STAMP_KEY, ver ali). As demais tabelas
+ * (clientes/servicos/produtos/recibos/modelos/depoimentos) não têm timestamp de
+ * EDIÇÃO no modelo do app (só `criado_em`) e seguem no upsert direto. NUNCA
+ * lança: na dúvida (offline/sem timestamp) o push acontece.
  */
 export async function pushAllLocal(geracao?: number): Promise<void> {
   try {
     if (!(await hasSession()) || !supabase) return;
     const db = await getDb();
 
-    // empresa (uma linha por usuário; sem timestamp de edição → upsert direto).
+    // empresa (uma linha por usuário; guarda anti-regressão em pushRowUnchecked).
     try {
       const row = await db.getFirstAsync<{ data: string }>('SELECT data FROM empresa LIMIT 1');
       if (row?.data) await pushRowUnchecked('empresa', JSON.parse(row.data) as Empresa);
@@ -976,6 +1068,277 @@ function notificarSyncAplicado(): void {
   }
 }
 
+// ─── EXTRAS (chave-valor) — checklist do Hoje, snooze do radar, relatórios ───
+// Estes três dados ficavam SÓ no aparelho. Agora sincronizam via a tabela genérica
+// `public.extras_sync` (uma linha por (user_id, chave)), com last-write-wins pelo
+// `atualizado_em`. Uma tabela chave-valor evita explodir o schema em várias tabelas
+// pequenas. Tudo aqui é best-effort e NUNCA lança (offline/deslogado = no-op).
+//
+// Fontes de cada extra:
+//  - 'checklist.hoje'  → AsyncStorage (CHECKLIST_KEY); carimbo lateral CHECKLIST_STAMP_KEY.
+//  - 'radar.snooze'    → AsyncStorage (RADAR_SNOOZE_KEY); carimbo RADAR_SNOOZE_STAMP_KEY.
+//  - 'relatorio.<data>'→ SQLite (relatorios_diarios), uma linha por dia; `criado_em` é o carimbo.
+//
+// Por que carimbo lateral nos dois primeiros: o valor guardado é um blob sem
+// timestamp próprio, então o LWW precisa saber QUANDO ele foi escrito localmente
+// para comparar com a versão da nuvem. O carimbo é gravado junto de cada escrita
+// local (ver pushExtraChave e o push do HojeScreen).
+
+/** Prefixo das chaves de relatório diário dentro de extras_sync. */
+const PREFIXO_RELATORIO = 'relatorio.';
+
+/** Lê um extra da nuvem: { dados, atualizado_em } ou null. NUNCA lança. */
+async function pullExtraRow(chave: string): Promise<{ dados: any; atualizadoEm: string } | null> {
+  try {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('extras_sync')
+      .select('dados, atualizado_em')
+      .eq('chave', chave)
+      .maybeSingle();
+    if (error || !data) return null;
+    return { dados: (data as any).dados, atualizadoEm: (data as any).atualizado_em };
+  } catch {
+    return null;
+  }
+}
+
+/** Upsert de um extra na nuvem (sem user_id: default auth.uid()). NUNCA lança. */
+async function upsertExtraRow(chave: string, dados: unknown, atualizadoEm: string): Promise<void> {
+  try {
+    if (!supabase) return;
+    await supabase
+      .from('extras_sync')
+      .upsert({ chave, dados, atualizado_em: atualizadoEm }, { onConflict: 'user_id,chave' });
+  } catch {
+    // best-effort
+  }
+}
+
+// ── Extras baseados em AsyncStorage (checklist do Hoje, snooze do radar) ──
+// Cada um casa uma chave de valor com uma chave de carimbo. O carimbo é o
+// `atualizado_em` local usado no LWW; ausência de carimbo = "muito antigo" (a
+// nuvem vence), o que é o comportamento correto num aparelho novo/limpo.
+interface ExtraAsyncSpec {
+  chaveNuvem: string;
+  valorKey: string;
+  stampKey: string;
+}
+const EXTRAS_ASYNC: ExtraAsyncSpec[] = [
+  { chaveNuvem: 'checklist.hoje', valorKey: CHECKLIST_KEY, stampKey: CHECKLIST_STAMP_KEY },
+  { chaveNuvem: 'radar.snooze', valorKey: RADAR_SNOOZE_KEY, stampKey: RADAR_SNOOZE_STAMP_KEY },
+];
+
+/** Lê o carimbo local (ISO) de um extra AsyncStorage, ou null. NUNCA lança. */
+async function lerStamp(stampKey: string): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(stampKey);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sincroniza UM extra baseado em AsyncStorage. Regra de convergência (local-first,
+ * nunca perde uma edição local não sincronizada):
+ *
+ *  - COM carimbo local → LWW puro: a nuvem só vence se for ESTRITAMENTE mais nova
+ *    que o carimbo; senão o local sobe. (Caminho do checklist, que carimba a cada
+ *    escrita via pushExtraChave.)
+ *  - SEM carimbo local, mas COM valor local → ambíguo. Alguns extras (ex.: o snooze
+ *    do radar) são escritos por módulos que não carimbam. Em vez de deixar a nuvem
+ *    clobberar uma possível edição offline, o LOCAL sobe (local-first) e passa a
+ *    ter carimbo para os próximos ciclos. Num aparelho NOVO/limpo não há valor
+ *    local, então este ramo não dispara e a nuvem é aplicada abaixo.
+ *  - SEM valor local, COM nuvem → aparelho novo: aplica a nuvem e alinha o carimbo.
+ *
+ * NUNCA lança.
+ */
+async function sincronizarExtraAsync(spec: ExtraAsyncSpec): Promise<void> {
+  try {
+    const [remoto, valorLocalRaw, stampLocal] = await Promise.all([
+      pullExtraRow(spec.chaveNuvem),
+      AsyncStorage.getItem(spec.valorKey).catch(() => null),
+      lerStamp(spec.stampKey),
+    ]);
+
+    // Nuvem vence só quando: (a) é estritamente mais nova que um carimbo local que
+    // existe, OU (b) não há valor local (aparelho novo — nada a preservar).
+    const nuvemVence = !!remoto && (
+      (!!stampLocal && tsMaisNovo(remoto.atualizadoEm, stampLocal)) ||
+      valorLocalRaw == null
+    );
+
+    if (nuvemVence && remoto) {
+      try {
+        await AsyncStorage.setItem(spec.valorKey, JSON.stringify(remoto.dados));
+        await AsyncStorage.setItem(spec.stampKey, remoto.atualizadoEm);
+      } catch {
+        // best-effort local
+      }
+      return;
+    }
+
+    // Local vence (ou nuvem inexistente): empurra o valor local, se houver.
+    if (valorLocalRaw != null) {
+      let dados: unknown = null;
+      try {
+        dados = JSON.parse(valorLocalRaw);
+      } catch {
+        return; // valor local corrompido: não propaga lixo
+      }
+      const carimbo = stampLocal || new Date().toISOString();
+      await upsertExtraRow(spec.chaveNuvem, dados, carimbo);
+      // Garante um carimbo local para os próximos ciclos (se ainda não havia) —
+      // assim um valor escrito por módulo que não carimba passa a ter LWW real.
+      if (!stampLocal) {
+        try {
+          await AsyncStorage.setItem(spec.stampKey, carimbo);
+        } catch {
+          // best-effort
+        }
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Push imediato (fire-and-forget) de UM extra AsyncStorage após mudança local.
+ * Grava o carimbo local ANTES do upsert (para o LWW deste aparelho refletir a
+ * escrita mesmo se o upload falhar) e sobe o valor atual. Usado pelo HojeScreen
+ * ao salvar o checklist e pelo radar ao adiar um cliente. NUNCA lança.
+ */
+export async function pushExtraChave(chaveNuvem: string): Promise<void> {
+  try {
+    const spec = EXTRAS_ASYNC.find(e => e.chaveNuvem === chaveNuvem);
+    if (!spec) return;
+    const agora = new Date().toISOString();
+    try {
+      await AsyncStorage.setItem(spec.stampKey, agora);
+    } catch {
+      // best-effort: sem carimbo o próximo sync ainda sobe o valor
+    }
+    if (!(await hasSession())) return; // offline/deslogado: fica p/ o próximo login
+    const raw = await AsyncStorage.getItem(spec.valorKey).catch(() => null);
+    if (raw == null) return;
+    let dados: unknown = null;
+    try {
+      dados = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    await upsertExtraRow(chaveNuvem, dados, agora);
+  } catch {
+    // fire-and-forget: nunca afeta a UI
+  }
+}
+
+// ── Relatórios diários (SQLite relatorios_diarios ⇄ extras_sync) ──
+// Cada dia vira a chave 'relatorio.<data>'. `criado_em` da linha local é o
+// carimbo do LWW. O pull grava DIRETO no SQLite (sem passar por saveRelatorioDia,
+// mantendo o caminho silencioso e desacoplado da UI).
+
+/** Sobe os relatórios diários locais para a nuvem. NUNCA lança. */
+async function pushRelatoriosDiarios(geracao?: number): Promise<void> {
+  try {
+    if (!supabase) return;
+    const db = await getDb();
+    const rows = await db.getAllAsync<{ data: string; dados: string; criado_em: string }>(
+      'SELECT data, dados, criado_em FROM relatorios_diarios',
+    );
+    for (const r of rows) {
+      if (syncAbortado(geracao)) return;
+      try {
+        if (!r?.data) continue;
+        let dados: unknown;
+        try {
+          dados = JSON.parse(r.dados);
+        } catch {
+          continue; // linha corrompida: pula
+        }
+        const carimbo = r.criado_em || new Date().toISOString();
+        await upsertExtraRow(PREFIXO_RELATORIO + r.data, dados, carimbo);
+      } catch {
+        // pula linha problemática
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+/** Grava um relatório diário direto no SQLite (silencioso, sem push). NUNCA lança. */
+async function localUpsertRelatorio(data: string, dados: unknown, criadoEm: string): Promise<void> {
+  try {
+    if (!data) return;
+    const db = await getDb();
+    // Anti-perda: se o relatório local for mais novo, preserva a versão local.
+    const local = await db.getFirstAsync<{ ts: string | null }>(
+      'SELECT criado_em AS ts FROM relatorios_diarios WHERE data = ?', [data],
+    );
+    if (tsMaisNovo(local?.ts, criadoEm)) return;
+    await db.runAsync(
+      'INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
+      [data, JSON.stringify(dados), criadoEm || new Date().toISOString()],
+    );
+  } catch {
+    // best-effort
+  }
+}
+
+/** Baixa os relatórios diários da nuvem para o SQLite (LWW por data). NUNCA lança. */
+async function pullRelatoriosDiarios(geracao?: number): Promise<void> {
+  try {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from('extras_sync')
+      .select('chave, dados, atualizado_em')
+      .order('atualizado_em', { ascending: false })
+      .limit(90) // ~3 meses de relatorios; historico completo vive na nuvem
+      .like('chave', PREFIXO_RELATORIO + '%');
+    if (error || !Array.isArray(data)) return;
+    for (const row of data) {
+      if (syncAbortado(geracao)) return;
+      try {
+        const chave = (row as any)?.chave as string;
+        if (!chave || !chave.startsWith(PREFIXO_RELATORIO)) continue;
+        const dia = chave.slice(PREFIXO_RELATORIO.length);
+        if (!dia) continue;
+        await localUpsertRelatorio(dia, (row as any).dados, (row as any).atualizado_em);
+      } catch {
+        // pula linha problemática
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Sincroniza TODOS os extras (chamado no syncOnLogin, DEPOIS do pull principal):
+ *  1) relatórios: pull (nuvem→SQLite, LWW por dia) e depois push (SQLite→nuvem);
+ *  2) checklist do Hoje e snooze do radar: LWW por carimbo lateral.
+ * Ordem pull-antes-de-push nos relatórios espelha o pipeline principal (não
+ * sobrescreve a nuvem com dado velho de um aparelho recém-logado). NUNCA lança.
+ */
+export async function sincronizarExtras(geracao?: number): Promise<void> {
+  try {
+    if (!(await hasSession()) || !supabase) return;
+    await pullRelatoriosDiarios(geracao);
+    if (syncAbortado(geracao)) return;
+    await pushRelatoriosDiarios(geracao);
+    if (syncAbortado(geracao)) return;
+    for (const spec of EXTRAS_ASYNC) {
+      if (syncAbortado(geracao)) return;
+      await sincronizarExtraAsync(spec);
+    }
+  } catch {
+    // best-effort: extras nunca quebram o sync principal
+  }
+}
+
 // ─── SYNC ON LOGIN ───────────────────────────────────────────────────────────
 let syncing = false;
 
@@ -1021,6 +1384,10 @@ function syncAbortado(geracao: number | undefined): boolean {
  *  4) podarTombstonesAntigos() — poda tombstones > 90 dias no LOCAL para a tabela
  *                           `exclusoes` não crescer sem limite e degradar o sync.
  *                           Roda DEPOIS do push (só poda o que já propagou).
+ *  5) sincronizarExtras() — sincroniza os "extras" chave-valor (checklist do Hoje,
+ *                           snooze do radar e relatórios diários) via extras_sync,
+ *                           com last-write-wins. Roda por último para não competir
+ *                           com o pipeline relacional; falha aqui não afeta o resto.
  * Ao terminar, reconcilia os lembretes de agenda (o pull grava agendamentos
  * direto no SQLite, sem reagendar notificações) e notifica os inscritos
  * (onSyncAplicado) para as telas recarregarem.
@@ -1040,6 +1407,11 @@ export async function syncOnLogin(): Promise<void> {
     await pushAllLocal(geracao);
     if (syncAbortado(geracao)) return;
     await podarTombstonesAntigos();
+    if (syncAbortado(geracao)) return;
+    // Extras chave-valor (checklist do Hoje, snooze do radar, relatórios diários)
+    // via extras_sync, com last-write-wins. Por último: não compete com o pipeline
+    // relacional e uma falha aqui não pode afetar o sync principal.
+    await sincronizarExtras(geracao);
     // O pull gravou agendamentos direto no SQLite sem tocar nas notificações:
     // reconcilia os lembretes locais com o estado novo (reagenda/cancela). Import
     // tardio p/ não acoplar cloudSync ao módulo de agenda no grafo estático (evita

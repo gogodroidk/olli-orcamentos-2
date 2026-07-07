@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, Alert, Modal, ScrollView, Image,
+  TouchableOpacity, Alert, Modal, ScrollView, Image, RefreshControl, Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,6 +15,7 @@ import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getProdutos, saveProduto, deleteProduto } from '../database/database';
+import { onSyncAplicado } from '../services/cloudSync';
 import { ProdutoItem, UNIDADES } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { generateId } from '../utils/id';
@@ -26,6 +27,30 @@ function margemPct(preco?: number, custo?: number): string | null {
   return `${Math.round(((preco - custo) / preco) * 100)}%`;
 }
 
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
+
 export default function ProdutosScreen() {
   const nav = useNavigation();
   const [items, setItems] = useState<ProdutoItem[]>([]);
@@ -34,8 +59,14 @@ export default function ProdutosScreen() {
   const [editing, setEditing] = useState<Partial<ProdutoItem> | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo produtos que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), []);
 
   async function load() {
     const all = await getProdutos();
@@ -43,6 +74,8 @@ export default function ProdutosScreen() {
     applyFilter(all, query);
     setCarregando(false);
   }
+
+  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   function applyFilter(data: ProdutoItem[], q: string) {
     if (!q.trim()) { setFiltered(data); return; }
@@ -104,6 +137,7 @@ export default function ProdutosScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader title="Produtos" subtitle={`${items.length} no catálogo`} onBack={() => goBackOrHome(nav)}>
         <View style={styles.searchBar}>
           <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
@@ -128,6 +162,7 @@ export default function ProdutosScreen() {
         data={filtered}
         keyExtractor={p => p.id}
         contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.primary} />}
         renderItem={({ item: p, index }) => (
           <AnimatedEntrance index={index}>
             <View style={styles.card}>
@@ -217,6 +252,14 @@ export default function ProdutosScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, ...Shadow.sm },

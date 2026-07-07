@@ -497,7 +497,7 @@ ${o.modeloPdf === 'premium_capa' ? renderCapa(o, empresa, accent) : ''}
       </div>
       <div class="header-right">
         <div class="doc-title">Orçamento</div>
-        <div class="doc-num">Nº ${o.numero}</div>
+        <div class="doc-num">Nº ${escapeHtml(o.numero)}</div>
         <div class="doc-date">Emitido em ${emitidoEm}</div>
         ${o.validadeOrcamento ? `<div class="pill">Válido até ${formatDateBR(o.validadeOrcamento)}</div>` : `<div class="pill">Válido por 15 dias</div>`}
       </div>

@@ -1,5 +1,6 @@
 import { Empresa, Orcamento } from '../types';
 import { formatCurrency } from './currency';
+import { formatDateBR } from './date';
 
 function primeiroNome(nome?: string): string {
   return (nome ?? '').trim().split(/\s+/)[0] || 'tudo bem';
@@ -16,7 +17,7 @@ function resumoItens(orc: Orcamento): string {
 function dadosComerciais(orc: Orcamento): string[] {
   const linhas = [
     `Total: ${formatCurrency(orc.valorTotal)}`,
-    orc.validadeOrcamento ? `Validade: até ${orc.validadeOrcamento}` : '',
+    orc.validadeOrcamento ? `Validade: até ${formatDateBR(orc.validadeOrcamento)}` : '',
     orc.garantia ? `Garantia: ${orc.garantia}` : '',
     orc.condicoesPagamento ? `Pagamento: ${orc.condicoesPagamento}` : '',
   ];
@@ -56,7 +57,7 @@ export function montarMensagemLinkOrcamento(orc: Orcamento, empresa: Empresa | n
 export function montarMensagemFollowUpOrcamento(orc: Orcamento, empresa?: Empresa | null): string {
   const linhas = [
     `Olá, ${primeiroNome(orc.clienteNome)}! Passando para saber se posso te ajudar com o orçamento nº ${orc.numero}.`,
-    `Ele está em ${formatCurrency(orc.valorTotal)}${orc.validadeOrcamento ? ` e vale até ${orc.validadeOrcamento}` : ''}.`,
+    `Ele está em ${formatCurrency(orc.valorTotal)}${orc.validadeOrcamento ? ` e vale até ${formatDateBR(orc.validadeOrcamento)}` : ''}.`,
     'Se estiver tudo certo, posso deixar aprovado e combinar o próximo passo.',
     empresa?.telefone || empresa?.whatsapp ? `Contato: ${empresa.telefone || empresa.whatsapp}` : '',
   ];

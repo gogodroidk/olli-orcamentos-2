@@ -43,6 +43,18 @@ export function parseNumber(value: string | number): number {
   return parseCurrency(value);
 }
 
+/**
+ * Parser de quantidade para campos que exigem valor > 0 (ex: quantidade de
+ * item do orçamento). Reusa a MESMA heurística BR de parseCurrency (decide
+ * ponto como decimal ou milhar pelo padrão de dígitos) — nunca trata "2.5"
+ * como 25 só porque tem ponto. Retorna `fallback` (padrão 1) para entrada
+ * vazia/inválida/≤0, igual ao contrato de parseQty que esta função substitui.
+ */
+export function parseNumberPositive(value: string | number, fallback = 1): number {
+  const n = parseCurrency(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 export function formatNumber(value: number, decimals = 2): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: decimals,

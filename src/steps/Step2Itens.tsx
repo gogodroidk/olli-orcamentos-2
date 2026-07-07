@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { Orcamento, ItemOrcamento, ServicoItem, ProdutoItem, UNIDADES } from '../types';
 import { searchServicos, searchProdutos } from '../database/database';
-import { formatCurrency, formatQty, parseNumber } from '../utils/currency';
+import { formatCurrency, formatQty, parseNumber, parseNumberPositive } from '../utils/currency';
 import { generateId } from '../utils/id';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
@@ -26,12 +26,6 @@ interface Props {
 
 type Tab = 'servico' | 'produto';
 
-/** Parser numérico simples para QUANTIDADE (contagem, não moeda): aceita dígitos e vírgula/ponto decimal. */
-function parseQty(v: string): number {
-  const n = Number(String(v).replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
 export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroConfirmados, onConfirmarItemZero }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -42,6 +36,10 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   // Texto local do campo de desconto percentual, para preservar a digitação
   // decimal do usuário (ex: "12,5") sem o React reformatar com ponto no meio.
   const [descontoPercentText, setDescontoPercentText] = useState<string | null>(null);
+  // Mesma técnica para o campo de quantidade do item (ex: "2," digitando os
+  // decimais de "2,5") — sem isso, o valor derivado de volta pelo parser a
+  // cada tecla apaga a vírgula/ponto que o usuário acabou de digitar.
+  const [qtyText, setQtyText] = useState<string | null>(null);
 
   const handleCatalogSearch = useCallback(async (q: string) => {
     setCatalogQuery(q);
@@ -97,6 +95,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
 
   function addManual() {
     setIsNewItem(true);
+    setQtyText(null);
     setEditingItem({
       id: generateId(), tipo: activeTab, catalogoId: '',
       nome: '', preco: 0, quantidade: 1, unidade: 'un', subtotal: 0,
@@ -197,7 +196,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                 </View>
               </View>
               <View style={styles.itemActions}>
-                <TouchableOpacity onPress={() => { setIsNewItem(false); setEditingItem(item); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => { setIsNewItem(false); setQtyText(null); setEditingItem(item); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.onSurfaceVariant} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -365,7 +364,22 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                   error={editingItem.preco <= 0 ? 'Preço R$ 0,00 — só confirme se for cortesia/brinde' : undefined}
                   containerStyle={{ flex: 1, marginRight: 10 }}
                 />
-                <OlliInput label="Quantidade" value={editingItem.quantidade ? String(editingItem.quantidade) : ''} onChangeText={v => setEditingItem(p => p ? { ...p, quantidade: parseQty(v) } : p)} keyboardType="decimal-pad" placeholder="1" containerStyle={{ flex: 1 }} />
+                <OlliInput
+                  label="Quantidade"
+                  value={qtyText ?? (editingItem.quantidade ? formatQty(editingItem.quantidade) : '')}
+                  onChangeText={v => {
+                    // Preserva o texto exatamente como digitado (com vírgula
+                    // decimal) enquanto o usuário digita — mesmo padrão do
+                    // campo de desconto percentual, para não apagar a vírgula
+                    // recém-digitada a cada tecla.
+                    setQtyText(v);
+                    setEditingItem(p => p ? { ...p, quantidade: parseNumberPositive(v) } : p);
+                  }}
+                  onBlur={() => setQtyText(null)}
+                  keyboardType="decimal-pad"
+                  placeholder="1"
+                  containerStyle={{ flex: 1 }}
+                />
               </View>
               <Text style={styles.unidadeLabel}>Unidade</Text>
               <View style={styles.unidadesRow}>

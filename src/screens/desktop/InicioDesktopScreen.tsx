@@ -147,7 +147,7 @@ export default function InicioDesktopScreen() {
 
   const colunasOrcamentos: Coluna<Orcamento>[] = [
     { chave: 'numero', titulo: 'Número', largura: 100, render: (o) => <Text style={styles.celulaTexto}>{o.numero}</Text> },
-    { chave: 'cliente', titulo: 'Cliente', largura: '30%', render: (o) => <Text style={styles.celulaTexto} numberOfLines={1}>{o.clienteNome}</Text> },
+    { chave: 'cliente', titulo: 'Cliente', largura: '30%', render: (o) => <Text style={styles.celulaTexto} numberOfLines={1}>{o.clienteNome}</Text>, tituloCompleto: (o) => o.clienteNome },
     { chave: 'valor', titulo: 'Valor', largura: 130, alinhamento: 'direita', render: (o) => <Text style={styles.celulaValor}>{formatCurrency(o.valorTotal)}</Text> },
     { chave: 'status', titulo: 'Status', largura: 150, render: (o) => <StatusBadge status={o.status} size="sm" /> },
     { chave: 'data', titulo: 'Data', largura: 110, render: (o) => <Text style={styles.celulaTexto}>{formatDate(o.criadoEm)}</Text> },

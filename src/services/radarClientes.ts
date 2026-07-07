@@ -21,6 +21,7 @@ import { getAgendamentos } from './agenda';
 import { Cliente } from '../types';
 import { RADAR_SNOOZE_KEY } from './storageKeys';
 import { montarMensagemReconquista } from '../utils/mensagensOrcamento';
+import { pushExtraChave } from './cloudSync';
 
 /** Limiar de dias sem contato para o cliente entrar no radar (~5 meses). */
 const DIAS_LIMIAR = 150;
@@ -59,6 +60,8 @@ export async function adiarClienteRadar(clienteId: string, dias = 30): Promise<v
     const dataAte = new Date(Date.now() + dias * MS_POR_DIA).toISOString();
     mapa[clienteId] = dataAte;
     await AsyncStorage.setItem(RADAR_SNOOZE_KEY, JSON.stringify(mapa));
+    // Espelha o adiamento na nuvem (extras_sync) — best-effort, nunca trava a tela.
+    void pushExtraChave('radar.snooze').catch(() => {});
   } catch {
     // adiar é best-effort: falha aqui não deve travar a tela
   }

@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing } from '../theme';
+import { Motion } from '../theme/motion';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -151,17 +152,33 @@ export default function NovoOrcamentoScreen() {
   // step porque vive no componente pai, que não desmonta.
   const [itensZeroConfirmados, setItensZeroConfirmados] = useState<Set<string>>(new Set());
   const slide = useRef(new Animated.Value(0)).current;
+  // Fade acompanha o slide na troca de passo: some rapidinho e reaparece já
+  // no lugar novo, reforçando a sensação de "página virou" (não só deslizou).
+  const fade = useRef(new Animated.Value(1)).current;
+  // Preenchimento animado da barra de progresso do wizard (0 a 1 = passo 1 a 4).
+  const stepProgress = useRef(new Animated.Value(0)).current;
 
-  const animateStep = useCallback((dir: 1 | -1) => {
+  const animateStep = useCallback((dir: 1 | -1, novoStep: number) => {
     slide.setValue(dir * 40);
-    Animated.spring(slide, { toValue: 0, useNativeDriver: useNativeAnimations, friction: 9, tension: 60 }).start();
-  }, [slide]);
+    fade.setValue(0);
+    Animated.parallel([
+      Animated.spring(slide, { toValue: 0, useNativeDriver: useNativeAnimations, friction: 9, tension: 60 }),
+      Animated.timing(fade, { toValue: 1, duration: Motion.dur.base, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }),
+    ]).start();
+    Animated.timing(stepProgress, {
+      toValue: novoStep / (STEPS.length - 1),
+      duration: Motion.dur.base,
+      easing: Motion.easing.standard,
+      useNativeDriver: false,
+    }).start();
+  }, [slide, fade, stepProgress]);
 
   function goNext() {
     if (!canAdvance()) return;
     Haptics.selectionAsync().catch(() => {});
-    setStep(s => s + 1);
-    animateStep(1);
+    const novoStep = step + 1;
+    setStep(novoStep);
+    animateStep(1, novoStep);
   }
 
   useEffect(() => {
@@ -319,8 +336,9 @@ export default function NovoOrcamentoScreen() {
       ]);
       return;
     }
-    setStep(s => s - 1);
-    animateStep(-1);
+    const novoStep = step - 1;
+    setStep(novoStep);
+    animateStep(-1, novoStep);
   }
 
   function finalizarCelebracao() {
@@ -366,9 +384,22 @@ export default function NovoOrcamentoScreen() {
         }
       >
         <StepIndicator steps={STEPS} current={step} />
+        <View style={styles.progressTrack}>
+          <Animated.View
+            style={[
+              styles.progressFill,
+              {
+                width: stepProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0%', '100%'],
+                }),
+              },
+            ]}
+          />
+        </View>
       </GradientHeader>
 
-      <Animated.View style={[styles.content, { transform: [{ translateX: slide }] }]}>
+      <Animated.View style={[styles.content, { opacity: fade, transform: [{ translateX: slide }] }]}>
         {step === 0 && <Step1Cliente orc={orc} onChange={update} />}
         {step === 1 && (
           <Step2Itens
@@ -453,6 +484,18 @@ export default function NovoOrcamentoScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { flex: 1 },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: Colors.accentLight,
+  },
   quoteSummary: {
     backgroundColor: Colors.surfaceGlass,
     borderTopWidth: 1,

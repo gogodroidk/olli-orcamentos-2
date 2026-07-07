@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, DimensionValue } from 'react-native';
+import { View, Text, Pressable, ScrollView, FlatList, StyleSheet, DimensionValue, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
 import { OlliSkeleton } from '../OlliSkeleton';
@@ -15,7 +15,21 @@ export type Coluna<T> = {
   render: (item: T) => React.ReactNode;
   /** valor usado na ordenação — se ausente, cai para string vazia (não ordena de fato). */
   valorOrdenacao?: (item: T) => string | number;
+  /**
+   * Texto completo p/ tooltip nativo do browser (title HTML) quando a célula
+   * trunca com ellipsis (numberOfLines=1 no render). RN-Web não repassa a prop
+   * `title` de View/Text (framework não a inclui no forwardedProps), então a
+   * tabela injeta um wrapper DOM nativo só na web — nulo no nativo.
+   */
+  tituloCompleto?: (item: T) => string | undefined;
 };
+
+/** Wrapper `<span title>` nativo do DOM — único jeito de dar tooltip real no
+ * RN-Web (View/Text descartam a prop `title`). No-op fora da web. */
+function CelulaComTooltip({ texto, children }: { texto?: string; children: React.ReactNode }) {
+  if (Platform.OS !== 'web' || !texto) return <>{children}</>;
+  return React.createElement('span', { title: texto, style: { display: 'block', minWidth: 0 } }, children);
+}
 
 /** `largura` aceita number|string no contrato (ex.: '20%'); RN tipa `width` como DimensionValue. */
 function larguraParaEstilo(largura: number | string | undefined, padrao: DimensionValue): DimensionValue {
@@ -122,11 +136,19 @@ export function TabelaDados<T extends { id: string }>({
               ))}
             </View>
           ) : (
-            <ScrollView style={styles.corpoScroll} showsVerticalScrollIndicator={false}>
-              {dadosOrdenados.map((item) => (
-                <LinhaTabela key={item.id} item={item} colunas={colunas} onPress={aoClicarLinha} />
-              ))}
-            </ScrollView>
+            // FlatList (virtualizada) em vez de ScrollView+map: com centenas de
+            // linhas, montar tudo de uma vez pesa o DOM na web. ALTURA_LINHA fixa
+            // permite getItemLayout, evitando medição custosa a cada render.
+            <FlatList
+              data={dadosOrdenados}
+              keyExtractor={(item) => item.id}
+              style={styles.corpoScroll}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => <LinhaTabela item={item} colunas={colunas} onPress={aoClicarLinha} />}
+              getItemLayout={(_, index) => ({ length: ALTURA_LINHA, offset: ALTURA_LINHA * index, index })}
+              initialNumToRender={20}
+              windowSize={8}
+            />
           )}
         </View>
       </ScrollView>
@@ -174,7 +196,12 @@ function CelulaHeader<T>({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Ordenar por ${coluna.titulo}`}
-      style={({ hovered }: PressableWebState) => [styles.celulaHeader, { width: largura }, hovered && styles.celulaHeaderHover]}
+      style={({ hovered, focused }: PressableWebState) => [
+        styles.celulaHeader,
+        { width: largura },
+        hovered && styles.celulaHeaderHover,
+        focused && styles.celulaFocada,
+      ]}
     >
       {conteudo}
     </Pressable>
@@ -198,7 +225,9 @@ function LinhaTabela<T extends { id: string }>({
         { width: larguraParaEstilo(coluna.largura, 160), alignItems: coluna.alinhamento === 'direita' ? 'flex-end' : 'flex-start' },
       ]}
     >
-      {coluna.render(item)}
+      <CelulaComTooltip texto={coluna.tituloCompleto?.(item)}>
+        {coluna.render(item)}
+      </CelulaComTooltip>
     </View>
   ));
 
@@ -210,7 +239,7 @@ function LinhaTabela<T extends { id: string }>({
     <Pressable
       onPress={() => onPress(item)}
       accessibilityRole="button"
-      style={({ hovered }: PressableWebState) => [styles.linha, hovered && styles.linhaHover]}
+      style={({ hovered, focused }: PressableWebState) => [styles.linha, hovered && styles.linhaHover, focused && styles.celulaFocada]}
     >
       {conteudo}
     </Pressable>
@@ -246,6 +275,12 @@ const styles = StyleSheet.create({
   celulaHeaderHover: {
     backgroundColor: Colors.surfacePressed,
   },
+  celulaFocada: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: -2,
+  } as any,
   celulaHeaderConteudo: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -17,6 +17,15 @@ const isWeb = Platform.OS === 'web';
 const IMG_TIMEOUT_MS = 5000;
 
 /**
+ * Teto de tamanho do ARQUIVO ORIGINAL antes de virar base64 (8 MB). Fotos vindas
+ * do picker sem redimensionamento (ex.: logo em MeuNegocioScreen, que salva a URI
+ * bruta) podem chegar em dezenas de MB — ler isso inteiro para base64 (que infla
+ * ~33%) e embutir no HTML pode estourar a memória do Hermes no Android. Acima do
+ * teto, tratamos como falha de conversão (mesmo contrato: PDF segue sem a imagem).
+ */
+const MAX_IMG_BYTES = 8 * 1024 * 1024;
+
+/**
  * Resolve com `null` se a promessa não completar dentro de `ms`.
  * Garante que a conversão de UMA imagem nunca segure a geração do PDF.
  */
@@ -55,6 +64,7 @@ async function webUriToDataUri(uri: string): Promise<string | null> {
     const res = await g.fetch(uri);
     if (!res || !res.ok) return null;
     const blob = await res.blob();
+    if (typeof blob?.size === 'number' && blob.size > MAX_IMG_BYTES) return null;
     return await new Promise<string | null>((resolve) => {
       const reader = new g.FileReader();
       reader.onloadend = () => {
@@ -74,6 +84,12 @@ async function nativeUriToDataUri(uri: string): Promise<string | null> {
   try {
     // require dentro do ramo nativo: o módulo nunca é avaliado na web.
     const FileSystem = require('expo-file-system/legacy');
+    // Confere o tamanho ANTES de ler o arquivo inteiro para base64 — uma
+    // logo/foto gigante nunca deve ser lida por completo (ver MAX_IMG_BYTES).
+    const info = await FileSystem.getInfoAsync(uri);
+    if (info?.exists && typeof info.size === 'number' && info.size > MAX_IMG_BYTES) {
+      return null;
+    }
     const b64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });

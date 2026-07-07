@@ -86,8 +86,10 @@ export default function AgendaDesktopScreen() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  const inicioSemana = useMemo(() => startOfWeek(semanaRef, { weekStartsOn: 0 }), [semanaRef]);
-  const fimSemana = useMemo(() => endOfWeek(semanaRef, { weekStartsOn: 0 }), [semanaRef]);
+  // Grade desktop começa na SEGUNDA (padrão de agenda profissional/comercial;
+  // decisão explícita da v4 para a visão semanal desktop, ver PLANTA).
+  const inicioSemana = useMemo(() => startOfWeek(semanaRef, { weekStartsOn: 1 }), [semanaRef]);
+  const fimSemana = useMemo(() => endOfWeek(semanaRef, { weekStartsOn: 1 }), [semanaRef]);
   const dias = useMemo(() => eachDayOfInterval({ start: inicioSemana, end: fimSemana }), [inicioSemana, fimSemana]);
 
   const rotuloSemana = useMemo(() => {
@@ -253,27 +255,27 @@ export default function AgendaDesktopScreen() {
         <View style={styles.acoesRow}>
           <Pressable
             onPress={() => setSemanaRef(addWeeks(semanaRef, -1))}
-            style={({ hovered }: PressableWebState) => [styles.navBtn, hovered && styles.navBtnHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.navBtn, hovered && styles.navBtnHover, focused && styles.focoVisivel]}
             accessibilityLabel="Semana anterior"
           >
             <MaterialCommunityIcons name="chevron-left" size={20} color={Colors.onSurface} />
           </Pressable>
           <Pressable
             onPress={() => setSemanaRef(new Date())}
-            style={({ hovered }: PressableWebState) => [styles.hojeBtn, hovered && styles.navBtnHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.hojeBtn, hovered && styles.navBtnHover, focused && styles.focoVisivel]}
           >
             <Text style={styles.hojeBtnText}>Hoje</Text>
           </Pressable>
           <Pressable
             onPress={() => setSemanaRef(addWeeks(semanaRef, 1))}
-            style={({ hovered }: PressableWebState) => [styles.navBtn, hovered && styles.navBtnHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.navBtn, hovered && styles.navBtnHover, focused && styles.focoVisivel]}
             accessibilityLabel="Próxima semana"
           >
             <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurface} />
           </Pressable>
           <Pressable
             onPress={() => abrirNovo()}
-            style={({ hovered }: PressableWebState) => [styles.novoBtn, hovered && styles.novoBtnHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.novoBtn, hovered && styles.novoBtnHover, focused && styles.focoVisivel]}
           >
             <MaterialCommunityIcons name="calendar-plus" size={18} color="#0A1626" />
             <Text style={styles.novoBtnText}>Novo agendamento</Text>
@@ -311,7 +313,7 @@ export default function AgendaDesktopScreen() {
                   {doDia.length === 0 ? (
                     <Pressable
                       onPress={() => abrirNovo({ data: dia })}
-                      style={({ hovered }: PressableWebState) => [styles.colunaVazia, hovered && styles.colunaVaziaHover]}
+                      style={({ hovered, focused }: PressableWebState) => [styles.colunaVazia, hovered && styles.colunaVaziaHover, focused && styles.focoVisivel]}
                     >
                       <MaterialCommunityIcons name="plus" size={16} color={Colors.onSurfaceMuted} />
                     </Pressable>
@@ -551,7 +553,7 @@ function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => 
   return (
     <Pressable
       onPress={onPress}
-      style={({ hovered }: PressableWebState) => [styles.card, { borderLeftColor: cor }, hovered && styles.cardHover]}
+      style={({ hovered, focused }: PressableWebState) => [styles.card, { borderLeftColor: cor }, hovered && styles.cardHover, focused && styles.focoVisivel]}
     >
       <Text style={styles.cardHora}>{hhmm(item.inicio)}</Text>
       <Text style={[styles.cardTitulo, cancelado && styles.strike]} numberOfLines={1}>{item.titulo}</Text>
@@ -566,6 +568,12 @@ function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => 
 }
 
 const styles = StyleSheet.create({
+  focoVisivel: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: 2,
+  } as any,
   acoesRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   navBtn: {
     width: 36, height: 36, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center',

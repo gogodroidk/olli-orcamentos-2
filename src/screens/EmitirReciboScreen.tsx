@@ -12,6 +12,7 @@ import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
+import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo, getRecibos } from '../database/database';
 import { Recibo, Empresa, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -48,6 +49,8 @@ export default function EmitirReciboScreen() {
   const [formaPagamento, setFormaPagamento] = useState('PIX');
   const [dataRecebimento, setDataRecebimento] = useState(isoToBR(todayISO()));
   const [sharing, setSharing] = useState(false);
+  // Overlay de progresso — cobre a espera "silenciosa" de gerar/compartilhar o PDF do recibo.
+  const [overlayInfo, setOverlayInfo] = useState<{ titulo: string; subtitulo: string } | null>(null);
 
   // Histórico de recibos já emitidos (aba "Emitidos").
   const [emitidos, setEmitidos] = useState<Recibo[]>([]);
@@ -277,6 +280,7 @@ export default function EmitirReciboScreen() {
         return;
       }
       setNumero(numeroFinal);
+      setOverlayInfo({ titulo: 'Gerando seu recibo...', subtitulo: 'Deixando bonito para o cliente...' });
       try {
         const html = await buildHtml(recibo);
         // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
@@ -290,6 +294,7 @@ export default function EmitirReciboScreen() {
     } finally {
       // SEMPRE volta o loading — inclusive na web (impressão assíncrona).
       setSharing(false);
+      setOverlayInfo(null);
     }
   }
 
@@ -308,6 +313,7 @@ export default function EmitirReciboScreen() {
       return;
     }
     setReenviandoId(r.id);
+    setOverlayInfo({ titulo: 'Gerando o recibo...', subtitulo: 'Preparando a segunda via para envio...' });
     try {
       const html = await buildHtml(r);
       await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
@@ -315,6 +321,7 @@ export default function EmitirReciboScreen() {
       Alert.alert('Erro', e?.message || 'Não foi possível gerar o PDF deste recibo agora.');
     } finally {
       setReenviandoId(null);
+      setOverlayInfo(null);
     }
   }
 
@@ -444,6 +451,12 @@ export default function EmitirReciboScreen() {
           )}
         />
       )}
+
+      <OverlayProgresso
+        visible={!!overlayInfo}
+        titulo={overlayInfo?.titulo}
+        subtitulo={overlayInfo?.subtitulo}
+      />
     </View>
   );
 }

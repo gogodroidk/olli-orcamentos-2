@@ -119,7 +119,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
               accessibilityRole="button"
               accessibilityLabel="Fechar"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={({ hovered }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover]}
+              style={({ hovered, focused }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover, focused && styles.focoVisivel]}
             >
               <MaterialCommunityIcons name="close" size={22} color={Colors.onSurface} />
             </Pressable>
@@ -214,7 +214,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
                 disabled={excluindo}
                 accessibilityRole="button"
                 accessibilityLabel="Excluir cliente"
-                style={({ hovered }: PressableWebState) => [styles.botaoExcluir, hovered && styles.botaoExcluirHover]}
+                style={({ hovered, focused }: PressableWebState) => [styles.botaoExcluir, hovered && styles.botaoExcluirHover, focused && styles.focoVisivel]}
               >
                 {excluindo ? (
                   <ActivityIndicator size="small" color={Colors.danger} />
@@ -242,6 +242,12 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
 }
 
 const styles = StyleSheet.create({
+  focoVisivel: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: 2,
+  } as any,
   raiz: {
     flex: 1,
     flexDirection: 'row',

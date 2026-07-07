@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Share, LayoutAnimation, Platform } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Share, LayoutAnimation, Platform, RefreshControl, Animated } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,11 +16,36 @@ import {
   gerarRelatorioDia, relatorioParaTexto, falarRelatorio, pararFala, RelatorioDia,
 } from '../services/relatorioDia';
 import { getRelatoriosDias, RelatorioDiaRow } from '../database/database';
+import { onSyncAplicado } from '../services/cloudSync';
 import { formatDateBR, todayISO } from '../utils/date';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano.
+ */
+function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 /** Nome do dia da semana em PT-BR curto, a partir de 'YYYY-MM-DD'. */
 function diaDaSemana(dataChave: string): string {
@@ -75,6 +100,8 @@ export default function RelatorioDiaScreen() {
   const [falando, setFalando] = useState(false);
   const [historico, setHistorico] = useState<RelatorioDiaRow[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -115,6 +142,12 @@ export default function RelatorioDiaScreen() {
   // isto garante que nenhuma fala sobreviva se o componente sair sem blur).
   useEffect(() => () => pararFala(), []);
 
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo orçamentos/recibos/agendamentos que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); carregar(); carregarHistorico(); }), [carregar, carregarHistorico]);
+
+  const refresh = async () => { setRefreshing(true); await Promise.all([carregar(), carregarHistorico()]); setRefreshing(false); };
+
   async function alternarFala() {
     if (!relatorio) return;
     Haptics.selectionAsync().catch(() => {});
@@ -145,9 +178,14 @@ export default function RelatorioDiaScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader title="Relatório do dia" subtitle="Como foi seu dia hoje" onBack={() => goBackOrHome(nav, 'Hoje')} />
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.accent]} tintColor={Colors.accent} />}
+      >
         {carregando || !relatorio ? (
           <View style={{ gap: 12 }}>
             <OlliSkeleton width="100%" height={100} radius={BorderRadius.lg} />
@@ -282,6 +320,14 @@ export default function RelatorioDiaScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
   scroll: { padding: Spacing.base, paddingBottom: Spacing.xxxl, gap: 12 },
 
   vazioWrap: { minHeight: 280, justifyContent: 'center' },

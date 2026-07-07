@@ -531,7 +531,7 @@ function BoasVindas({ onStart, insets }: {
         <View style={styles.wcFeatures}>
           <WcFeature icon="microphone" text="Monte orçamentos por voz" />
           <WcFeature icon="file-document-outline" text="PDF e link profissional pro cliente" />
-          <WcFeature icon="card-search-outline" text="Diagnóstico de erro offline · 602 códigos" />
+          <WcFeature icon="card-search-outline" text="Diagnóstico de erro offline · 698 códigos" />
         </View>
       </View>
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>

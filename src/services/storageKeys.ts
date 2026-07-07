@@ -38,6 +38,28 @@ export const AUTO_BACKUP_ULTIMO_KEY = 'olli.autoBackup.ultimo';
 export const RADAR_SNOOZE_KEY = 'olli.radar.snooze';
 
 /**
+ * Carimbos ISO da ÚLTIMA escrita LOCAL de cada "extra" sincronizado
+ * (checklist do Hoje, snooze do radar). Como o valor guardado nessas chaves é
+ * um blob sem timestamp próprio, o sync last-write-wins de cloudSync precisa de
+ * um carimbo lateral para comparar com o `atualizado_em` da nuvem. São dados de
+ * CONTA (acompanham o extra) — entram em APP_DATA_STORAGE_KEYS para sumirem no
+ * logout: assim, no próximo login de outra conta, sem carimbo local, a versão da
+ * nuvem sempre vence (comportamento correto para aparelho novo/limpo).
+ */
+export const CHECKLIST_STAMP_KEY = 'olli.hoje.checklist.stamp';
+export const RADAR_SNOOZE_STAMP_KEY = 'olli.radar.snooze.stamp';
+/**
+ * Carimbo ISO da última vez que este aparelho VIU (pull) ou ESCREVEU (push com
+ * sucesso) a `empresa` na nuvem (services/cloudSync). A tabela `empresa` é
+ * upsert por `user_id` (uma linha por dono) sem coluna de edição própria no
+ * tipo do app — sem este carimbo, dois aparelhos do mesmo dono alternando
+ * edições se sobrescreviam "último a sincronizar vence" cego, mesmo partindo
+ * de uma base desatualizada. Compara com o `atualizado_em` real da linha antes
+ * de sobrescrever em qualquer direção (mesmo padrão de CHECKLIST_STAMP_KEY).
+ */
+export const EMPRESA_STAMP_KEY = 'olli.empresa.stamp';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -51,4 +73,7 @@ export const APP_DATA_STORAGE_KEYS = [
   AUTO_BACKUP_TOGGLE_KEY,
   AUTO_BACKUP_ULTIMO_KEY,
   RADAR_SNOOZE_KEY,
+  CHECKLIST_STAMP_KEY,
+  RADAR_SNOOZE_STAMP_KEY,
+  EMPRESA_STAMP_KEY,
 ];

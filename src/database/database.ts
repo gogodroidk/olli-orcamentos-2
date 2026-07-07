@@ -271,15 +271,30 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
 }
 
 /**
- * Etapa 1.2 — importa os 602 códigos de erro do asset na primeira abertura.
- * Idempotente: só insere se a tabela estiver vazia. Tudo em uma transação.
+ * Importa a base de códigos de erro do asset. VERSIONADO: quando o asset é
+ * atualizado (ex.: 602 → 698 códigos da base HVAC v2), basta incrementar
+ * SEED_CODIGOS_VERSAO — instalações existentes fazem re-seed completo
+ * (DELETE + INSERT em transação) na primeira abertura após o update; sem o
+ * versionamento, quem já tinha a tabela populada nunca recebia os códigos novos.
  */
+const SEED_CODIGOS_VERSAO = 2; // v1 = 602 códigos; v2 = 698 (base HVAC 2026-07-07)
+
 async function seedCodigosErro(database: SQLite.SQLiteDatabase) {
+  const meta = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  void meta; // versão de schema é tratada em runMigrations; aqui usamos tabela própria
+  await database.execAsync(
+    'CREATE TABLE IF NOT EXISTS seed_meta (chave TEXT PRIMARY KEY, valor TEXT)'
+  );
+  const atual = await database.getFirstAsync<{ valor: string }>(
+    "SELECT valor FROM seed_meta WHERE chave = 'codigos_versao'"
+  );
   const row = await database.getFirstAsync<{ c: number }>('SELECT COUNT(*) as c FROM codigos_erro');
-  if ((row?.c ?? 0) > 0) return;
+  const versaoAtual = Number(atual?.valor ?? '0');
+  if ((row?.c ?? 0) > 0 && versaoAtual >= SEED_CODIGOS_VERSAO) return;
   const seed = codigosErroSeed as any[];
   if (!Array.isArray(seed) || seed.length === 0) return;
   await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM codigos_erro');
     for (const c of seed) {
       await database.runAsync(
         `INSERT INTO codigos_erro
@@ -291,6 +306,10 @@ async function seedCodigosErro(database: SQLite.SQLiteDatabase) {
          c.fonteId ?? '', c.url ?? '', c.obs ?? '']
       );
     }
+    await database.runAsync(
+      "INSERT INTO seed_meta (chave, valor) VALUES ('codigos_versao', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+      [String(SEED_CODIGOS_VERSAO)]
+    );
   });
 }
 

@@ -45,7 +45,7 @@ export default function FerramentasDesktopScreen() {
           <Pressable
             key={f.key}
             onPress={() => (nav.navigate as (rota: keyof RootStackParamList, params?: unknown) => void)(f.route, undefined)}
-            style={({ hovered }: PressableWebState) => [styles.card, hovered && styles.cardHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.card, hovered && styles.cardHover, focused && styles.cardFocado]}
             accessibilityRole="button"
             accessibilityLabel={f.label}
           >
@@ -80,6 +80,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfacePressed,
     borderColor: Colors.strokeGlow,
   },
+  cardFocado: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: 2,
+  } as any,
   iconeWrap: {
     width: 44,
     height: 44,

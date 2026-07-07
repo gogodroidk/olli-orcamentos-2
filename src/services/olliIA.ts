@@ -19,8 +19,13 @@ function norm(s?: string): string {
   return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// v2: bump proposital do prefixo (era 'diag:v1') — o aterramento com fontes
+// reais no diagnóstico muda o formato/qualidade da resposta da IA. Sem essa
+// virada de versão, técnicos com cache antigo (v1, sempre `fontes: []`)
+// ficariam presos a diagnósticos sem citação para sempre, já que `cache_ia`
+// não tem TTL/expiração — só uma chave nova força a IA a ser chamada de novo.
 function chave(input: DiagnosticoInput): string {
-  return `diag:v1:${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
+  return `diag:v2:${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
 }
 
 /** Timeout do diagnóstico por IA: 30s (campo, conexão instável). */
@@ -38,7 +43,7 @@ export function motivoFalhaDiagnostico(): MotivoFalhaIA {
  * Etapa 2 — diagnóstico da OLLI Técnica. Camadas (protege a margem):
  *   1. cache local (SQLite) — instantâneo e offline;
  *   2. Edge Function `diagnostico` (chave Anthropic server-side + cache na nuvem);
- *   3. fallback: a base de 602 códigos, para nunca deixar o técnico na mão.
+ *   3. fallback: a base de 698 códigos, para nunca deixar o técnico na mão.
  *
  * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
  * (botão "Cancelar" durante o loading) — o cancelamento cai no mesmo caminho do
@@ -60,7 +65,7 @@ export async function diagnosticarCaso(
 
   // 2) IA via Cloudflare Worker (Gemini por padrão; Claude opcional) — só se
   //    configurado E com sessão logada (o Worker exige JWT do Supabase).
-  //    Sem token (deslogado) → pula direto para o fallback offline (602 códigos).
+  //    Sem token (deslogado) → pula direto para o fallback offline (698 códigos).
   if (DIAGNOSTICO_URL) {
     const token = await accessTokenAtual();
     if (!token) {

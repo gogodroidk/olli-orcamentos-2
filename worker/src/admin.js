@@ -194,10 +194,35 @@ async function changeOwnPassword(request, env, senha) {
 export async function handleAdmin(request, env, url) {
   if (url.pathname === '/admin' || url.pathname === '/admin/') {
     return new Response(adminHtml(env), {
-      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        // Mesma defesa em profundidade do link.js/stripe.js: o painel usa
+        // script/style inline (sem framework) + fetch same-origin para
+        // /admin/api e para o Supabase Auth (login).
+        'Content-Security-Policy':
+          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' " +
+          (env.SUPABASE_URL || '') +
+          "; base-uri 'none'; form-action 'none'",
+      },
     });
   }
   if (url.pathname.startsWith('/admin/api/')) {
+    // Rate limit por IP ANTES de qualquer validação de credencial: barra
+    // força bruta/varredura de token contra este painel (é a única rota do
+    // worker que dá acesso total a dados de TODOS os usuários). Roda antes de
+    // requireAdmin para não gastar 1 chamada a /auth/v1/user por tentativa.
+    if (env.ADMIN_RL) {
+      try {
+        const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+        const { success } = await env.ADMIN_RL.limit({ key: ip });
+        if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+      } catch {
+        // binding ausente em algum ambiente: não bloqueia
+      }
+    }
     const user = await requireAdmin(request, env);
     if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
     const id = url.searchParams.get('id');

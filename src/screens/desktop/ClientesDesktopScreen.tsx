@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
-import { BarraBusca } from '../../components/web/BarraBusca';
+import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { PainelCliente } from './PainelCliente';
@@ -63,10 +63,10 @@ export default function ClientesDesktopScreen() {
       ultimoOrcamentoData: ultimoOrcamentoPorCliente.get(c.id),
     }));
     if (busca.trim()) {
-      const q = busca.toLowerCase();
+      const q = normalizarBusca(busca);
       const qDigits = busca.replace(/\D/g, '');
       r = r.filter((c) =>
-        c.nome.toLowerCase().includes(q) ||
+        normalizarBusca(c.nome).includes(q) ||
         (qDigits.length > 0 && c.telefone.replace(/\D/g, '').includes(qDigits))
       );
     }
@@ -115,6 +115,7 @@ export default function ClientesDesktopScreen() {
       ordenavel: true,
       valorOrdenacao: (c) => c.nome,
       render: (c) => <Text style={styles.celulaTexto} numberOfLines={1}>{c.nome}</Text>,
+      tituloCompleto: (c) => c.nome,
     },
     {
       chave: 'telefone',
@@ -135,6 +136,7 @@ export default function ClientesDesktopScreen() {
           {c.cidade ? `${c.cidade}${c.estado ? `, ${c.estado}` : ''}` : '—'}
         </Text>
       ),
+      tituloCompleto: (c) => (c.cidade ? `${c.cidade}${c.estado ? `, ${c.estado}` : ''}` : undefined),
     },
     {
       chave: 'ultimoOrcamento',
@@ -174,7 +176,7 @@ export default function ClientesDesktopScreen() {
             onPress={abrirNovo}
             accessibilityRole="button"
             accessibilityLabel="Novo cliente"
-            style={({ hovered }: PressableWebState) => [styles.botaoNovo, hovered && styles.botaoNovoHover]}
+            style={({ hovered, focused }: PressableWebState) => [styles.botaoNovo, hovered && styles.botaoNovoHover, focused && styles.focoVisivel]}
           >
             <MaterialCommunityIcons name="plus" size={18} color="#fff" />
             <Text style={styles.botaoNovoLabel}>Novo cliente</Text>
@@ -216,7 +218,7 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
       accessibilityRole="button"
       accessibilityLabel={rotulo}
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-      style={({ hovered }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover]}
+      style={({ hovered, focused }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover, focused && styles.focoVisivel]}
     >
       <MaterialCommunityIcons name={icone} size={17} color={Colors.onSurfaceVariant} />
     </Pressable>
@@ -224,6 +226,12 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
 }
 
 const styles = StyleSheet.create({
+  focoVisivel: {
+    outlineWidth: 2,
+    outlineColor: Colors.accent,
+    outlineStyle: 'solid',
+    outlineOffset: 2,
+  } as any,
   botaoNovo: {
     flexDirection: 'row',
     alignItems: 'center',

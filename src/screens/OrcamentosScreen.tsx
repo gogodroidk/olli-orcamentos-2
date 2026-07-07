@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, Alert, RefreshControl,
+  TouchableOpacity, Alert, RefreshControl, Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius } from '../theme';
+import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -26,6 +26,31 @@ import { generateId } from '../utils/id';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
+
+/**
+ * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
+ * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * `onSyncAplicado` recarrega os dados em segundo plano (sem isso o usuário só
+ * vê a lista "piscar" sem entender por quê).
+ */
+function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start(({ finished }) => { if (finished) onDone(); });
+  }, [opacity]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <Text style={styles.syncPillText}>Sincronizando...</Text>
+    </Animated.View>
+  );
+}
 
 // Cobre TODOS os status possíveis de StatusOrcamento (src/types/index.ts) —
 // sem isso, orçamentos "Aguardando assinatura" ou "Cancelado" só apareciam
@@ -52,6 +77,7 @@ export default function OrcamentosScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusOrcamento | 'todos'>('todos');
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
     const data = await getOrcamentos();
@@ -73,7 +99,7 @@ export default function OrcamentosScreen() {
   // Recarrega a lista quando o sync em segundo plano (login/foreground) traz
   // dados novos da nuvem — sem isso, um aparelho recém-logado podia mostrar a
   // lista vazia até o usuário sair e voltar para a tela.
-  useEffect(() => onSyncAplicado(load), [load]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
 
   function applyFilters(data: Orcamento[], q: string, s: typeof statusFilter, cliId?: string) {
     let r = data;
@@ -196,6 +222,7 @@ export default function OrcamentosScreen() {
 
   return (
     <View style={styles.container}>
+      {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title="Orçamentos"
@@ -217,7 +244,7 @@ export default function OrcamentosScreen() {
             placeholderTextColor={Colors.onSurfaceMuted}
           />
           {query ? (
-            <TouchableOpacity onPress={() => handleSearch('')}>
+            <TouchableOpacity onPress={() => handleSearch('')} accessibilityRole="button" accessibilityLabel="Limpar busca">
               <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
             </TouchableOpacity>
           ) : null}
@@ -305,6 +332,14 @@ export default function OrcamentosScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  syncPill: {
+    position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
+    ...Shadow.sm,
+  },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
   newBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
