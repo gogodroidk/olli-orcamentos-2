@@ -92,6 +92,14 @@ Commit: `5a4f4f7`. Push main.
 - **Modelos**: guardas de overflow (nomes longos, muitos itens/fotos, valores grandes, acentos, `page-break-inside:avoid`). ADR-0007 (Gotenberg POC servidor) + porta `DocumentRenderer`.
 - **Fixes de integração**: `GatePro.COPY_RECURSO` faltava `remove_olli_brand`; `pickFoto` do Step4 substituía a lista (perdia fotos ao anexar a 2ª) → mescla. **Gate Fable**: 1 HIGH (capa-foto duplicava a logo no header — o próprio fix da logo abriu novo caminho de duplicação) **corrigido**.
 
+## Onda 10 — Motion / dar vida ao app seco (CONCLUÍDA)
+
+Commit: `e415892`. Push main.
+
+- **Hoje/Agenda/Conta** (`HojeScreen`, `AgendaScreen`, `ContaScreen`): entrada escalonada dos cards/blocos, feedback tátil (`OlliPressable`) nos itens tocáveis, skeletons fiéis ao layout real (sem salto skeleton→conteúdo), empty states com vida, micro-animação de sucesso moderada ao concluir. Reusa o motion system existente (zero libs novas), com moderação ("movimento explica mudança de estado, não purpurina").
+- **Reduced-motion no app inteiro** (`theme/motion.ts` + `components/AnimatedEntrance.tsx`): novo hook `useReducedMotion()` (iOS/Android "Reduzir movimento" + `prefers-reduced-motion` no web via RNW); `AnimatedEntrance` renderiza direto no estado final quando ativo — atende ao pedido de respeitar reduced-motion de uma vez, para todas as telas que usam `AnimatedEntrance`.
+- **Gate Fable**: 2 findings, ambos LOW e explicitamente não-bloqueantes (gate PASSA). A re-animação da agenda ao navegar fica coberta pelo reduced-motion; o role de checkbox para leitor de tela (`OlliPressable` a11y) virou follow-up.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
