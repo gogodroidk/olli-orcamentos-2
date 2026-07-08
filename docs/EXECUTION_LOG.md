@@ -82,6 +82,16 @@ Commit: `7e77d47`. Push main.
 - **Menus** (`components/web/SidebarNav.tsx`): itens derivados de `usePermissao` + `useTipoConta` + `usePlano` — pessoal não vê Equipe; técnico vê menu enxuto; recursos pagos com cadeado→Planos.
 - **Gate Fable**: 1 MEDIUM (receita agrupada por `criadoEm` em vez de `dataRecebimento` → pagamento retroativo no mês errado) **corrigido** (bucketiza por data de recebimento, meio-dia local, fallback `criadoEm`). 2 LOW viraram follow-up (campo `concluidoEm` na OS; KPIs abrirem lista já filtrada — exigem migration/param, desproporcional ao risco).
 
+## Onda 7 — Orçamento/PDF elegante (CONCLUÍDA)
+
+Commit: `5a4f4f7`. Push main.
+
+- **Logo encaixada** (`utils/pdfGenerator.ts`): a "logo dividida em 2" era a logo renderizada duas vezes no modelo com capa (capa + cabeçalho) + largura fixa que achatava. Agora o header não repete a logo quando a capa já a mostra (guard cobre capa `'logo'` E `'foto'`), com `object-fit:contain` + max-w/max-h → logo inteira, sem distorção, em qualquer proporção.
+- **Capa** (`o.capaEstilo`/`o.capaFotoUri`): `'logo'` (marca), `'foto'` (foto de capa escolhida, fallback 1ª foto→logo) ou `'nenhuma'`. `Step4Personalizacao` deixa escolher/anexar a foto; **preview real** (`PdfPreviewModal`) byte-idêntico ao envio.
+- **Marca OLLI removível**: rodapé discreto no grátis, removível no Pro/Empresa via novo entitlement `remove_olli_brand` (`planos.ts` + `GatePro`). PIX/validade/dados do prestador nunca saem — só a marca. Call sites passam `removerMarca=temAcesso('remove_olli_brand')`.
+- **Modelos**: guardas de overflow (nomes longos, muitos itens/fotos, valores grandes, acentos, `page-break-inside:avoid`). ADR-0007 (Gotenberg POC servidor) + porta `DocumentRenderer`.
+- **Fixes de integração**: `GatePro.COPY_RECURSO` faltava `remove_olli_brand`; `pickFoto` do Step4 substituía a lista (perdia fotos ao anexar a 2ª) → mescla. **Gate Fable**: 1 HIGH (capa-foto duplicava a logo no header — o próprio fix da logo abriu novo caminho de duplicação) **corrigido**.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
