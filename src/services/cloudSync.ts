@@ -36,6 +36,7 @@ import type {
   Agendamento,
   OrdemServico,
   ItemChecklist,
+  Equipamento,
 } from '../types';
 
 // ─── Tabelas sincronizadas ───────────────────────────────────────────────────
@@ -49,7 +50,8 @@ export type SyncTable =
   | 'modelos'
   | 'depoimentos'
   | 'agendamentos'
-  | 'ordens_servico';
+  | 'ordens_servico'
+  | 'equipamentos';
 
 /** Alvo de conflito do upsert por tabela. `empresa` é uma linha por usuário. */
 const ON_CONFLICT: Record<SyncTable, string> = {
@@ -63,7 +65,19 @@ const ON_CONFLICT: Record<SyncTable, string> = {
   depoimentos: 'id',
   agendamentos: 'id',
   ordens_servico: 'id',
+  equipamentos: 'id',
 };
+
+// Mapa SyncTable → nome da tabela na NUVEM quando diferem. Padrão: nome igual à
+// chave da SyncTable. `equipamentos` (tabela local) vive em `assets` na nuvem
+// (nomenclatura PMOC). Usado SÓ nas chamadas remotas (upsert/select/delete); as
+// operações LOCAIS seguem usando o nome local 'equipamentos'.
+const REMOTE_TABLE: Partial<Record<SyncTable, string>> = {
+  equipamentos: 'assets',
+};
+function remoteNome(table: SyncTable): string {
+  return REMOTE_TABLE[table] ?? table;
+}
 
 // ─── Mapeadores local → linha da nuvem (toRow) ───────────────────────────────
 // Cada toRow devolve EXATAMENTE as colunas da tabela Supabase (sem user_id).
@@ -223,6 +237,7 @@ const TO_ROW: Record<SyncTable, (obj: any) => Record<string, unknown>> = {
   depoimentos: depoimentoToRow,
   agendamentos: agendamentoToRow,
   ordens_servico: ordemServicoToRow,
+  equipamentos: equipamentoToRow,
 };
 
 // ─── Mapeadores linha da nuvem → local (fromRow) ─────────────────────────────
@@ -338,6 +353,62 @@ function arrOrParse(v: unknown): any[] {
   return [];
 }
 
+// Equipamento → colunas da tabela `assets` na nuvem. NÃO envia user_id (default/RLS
+// + injeção team-tenant). qr_token: PRESERVA o que veio do pull; OMITE quando vazio
+// (1º insert) para o DEFAULT do banco gerar o token opaco — o app nunca gera/edita QR.
+function equipamentoToRow(e: Equipamento): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    id: e.id,
+    cliente_id: e.clienteId ?? null,
+    local_id: e.localId ?? null,
+    codigo_interno: e.codigoInterno ?? null,
+    patrimonio: e.patrimonio ?? null,
+    fabricante: e.fabricante ?? null,
+    modelo: e.modelo ?? null,
+    numero_serie: e.numeroSerie ?? null,
+    categoria: e.categoria ?? null,
+    capacidade_btu: e.capacidadeBtu ?? null,
+    tensao: e.tensao ?? null,
+    refrigerante: e.refrigerante ?? null,
+    localizacao: e.localizacao ?? null,
+    situacao: e.situacao,
+    criticidade: e.criticidade ?? null,
+    qr_revogado_em: e.qrRevogadoEm ?? null,
+    fotos: e.fotos ?? [],
+    criado_em: e.criadoEm,
+    atualizado_em: e.atualizadoEm,
+  };
+  if (e.qrToken) row.qr_token = e.qrToken;
+  return row;
+}
+
+// Linha (nuvem `assets` OU local `equipamentos`) → Equipamento. fotos tolera array
+// (jsonb da nuvem) ou string (TEXT JSON local, no caminho de push) via arrOrParse.
+function rowToEquipamentoCloud(row: any): Equipamento {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id ?? undefined,
+    localId: row.local_id ?? undefined,
+    codigoInterno: row.codigo_interno ?? undefined,
+    patrimonio: row.patrimonio ?? undefined,
+    fabricante: row.fabricante ?? undefined,
+    modelo: row.modelo ?? undefined,
+    numeroSerie: row.numero_serie ?? undefined,
+    categoria: row.categoria ?? undefined,
+    capacidadeBtu: row.capacidade_btu ?? undefined,
+    tensao: row.tensao ?? undefined,
+    refrigerante: row.refrigerante ?? undefined,
+    localizacao: row.localizacao ?? undefined,
+    situacao: (row.situacao ?? 'ativo') as Equipamento['situacao'],
+    criticidade: (row.criticidade ?? undefined) as Equipamento['criticidade'],
+    qrToken: row.qr_token ?? '',
+    qrRevogadoEm: row.qr_revogado_em ?? undefined,
+    fotos: arrOrParse(row.fotos),
+    criadoEm: row.criado_em ?? new Date().toISOString(),
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
+  };
+}
+
 function rowToOrdemServico(row: any): OrdemServico {
   return {
     id: row.id,
@@ -436,10 +507,10 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     const row = TO_ROW[table](objLocal);
     // Membro não-dono: orçamento/agendamento/OS é gravado no tenant do dono da org
     // (empresa/clientes/etc. permanecem escrita só do dono — não injetar aqui).
-    if (contextoEquipeOwner && (table === 'orcamentos' || table === 'agendamentos' || table === 'ordens_servico')) {
+    if (contextoEquipeOwner && (table === 'orcamentos' || table === 'agendamentos' || table === 'ordens_servico' || table === 'equipamentos')) {
       (row as Record<string, unknown>).user_id = contextoEquipeOwner;
     }
-    await supabase.from(table).upsert(row, { onConflict: ON_CONFLICT[table] });
+    await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] });
     if (table === 'empresa') await marcarEmpresaVistaAgora();
   } catch {
     // idem: silencioso
@@ -496,7 +567,7 @@ export async function removeRow(table: SyncTable, id: string): Promise<void> {
   try {
     if (!id) return;
     if (!(await hasSession()) || !supabase) return;
-    await supabase.from(table).delete().eq('id', id);
+    await supabase.from(remoteNome(table)).delete().eq('id', id);
   } catch {
     // idem: silencioso
   }
@@ -586,7 +657,7 @@ async function carregarTimestampsRemotos(table: SyncTable, remoteCol: string): P
   if (!supabase) return mapa;
   try {
     // `remoteCol` é um literal interno ('atualizado_em'), nunca entrada externa.
-    const { data, error } = await supabase.from(table).select(`id, ${remoteCol}`);
+    const { data, error } = await supabase.from(remoteNome(table)).select(`id, ${remoteCol}`);
     if (error || !Array.isArray(data)) return mapa;
     for (const row of data) {
       const id = (row as any)?.id as string | undefined;
@@ -771,12 +842,46 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   );
 }
 
+async function localUpsertEquipamento(e: Equipamento): Promise<void> {
+  const db = await getDb();
+  // Anti-perda: se o equipamento local for mais novo, preserva a edição local.
+  try {
+    const loc = await db.getFirstAsync<{ atualizado_em: string; qr_token: string }>(
+      'SELECT atualizado_em, qr_token FROM equipamentos WHERE id = ?', [e.id],
+    );
+    if (loc?.atualizado_em && tsMaisNovo(loc.atualizado_em, e.atualizadoEm)) {
+      // Local mais novo → preserva a edição. Mas faz BACKFILL do qr_token quando o
+      // local ainda não o tem (equipamento criado offline; o token opaco só existe
+      // após o 1º sync gerar o DEFAULT na nuvem) — sem tocar nos demais campos.
+      if (e.qrToken && !loc.qr_token) {
+        await db.runAsync('UPDATE equipamentos SET qr_token = ? WHERE id = ?', [e.qrToken, e.id]);
+      }
+      return;
+    }
+  } catch {
+    // sem linha local / erro → grava (piso seguro)
+  }
+  // fotos como TEXT JSON (mesmo schema local de database.ts).
+  await db.runAsync(
+    `INSERT OR REPLACE INTO equipamentos
+       (id, cliente_id, local_id, codigo_interno, patrimonio, fabricante, modelo, numero_serie,
+        categoria, capacidade_btu, tensao, refrigerante, localizacao, situacao, criticidade,
+        qr_token, qr_revogado_em, fotos, criado_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [e.id, e.clienteId ?? null, e.localId ?? null, e.codigoInterno ?? null, e.patrimonio ?? null,
+     e.fabricante ?? null, e.modelo ?? null, e.numeroSerie ?? null, e.categoria ?? null,
+     e.capacidadeBtu ?? null, e.tensao ?? null, e.refrigerante ?? null, e.localizacao ?? null,
+     e.situacao, e.criticidade ?? null, e.qrToken ?? '', e.qrRevogadoEm ?? null,
+     JSON.stringify(e.fotos ?? []), e.criadoEm, e.atualizadoEm],
+  );
+}
+
 // ─── EXCLUSÕES (tombstones) — reconciliação nuvem ⇄ local ────────────────────
 // Conjunto FIXO de tabelas que aceitam exclusão por id (todas as locais com PK
 // `id` que sincronizam). Restringe os deletes locais a nomes conhecidos (jamais
 // interpolamos um nome de tabela arbitrário vindo da nuvem em SQL).
 const DELETABLE_TABLES = new Set<string>([
-  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos', 'depoimentos', 'agendamentos', 'ordens_servico',
+  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos', 'depoimentos', 'agendamentos', 'ordens_servico', 'equipamentos',
 ]);
 
 /** Apaga uma linha local por id, só para tabelas conhecidas. NUNCA lança. */
@@ -985,6 +1090,7 @@ export async function pullAll(geracao?: number): Promise<void> {
     await pullTable<Depoimento>('depoimentos', rowToDepoimento, localUpsertDepoimento, geracao);
     await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento, geracao);
     await pullTable<OrdemServico>('ordens_servico', rowToOrdemServico, localUpsertOrdemServico, geracao);
+    await pullTable<Equipamento>('equipamentos', rowToEquipamentoCloud, localUpsertEquipamento, geracao);
     if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.
@@ -1003,7 +1109,7 @@ async function pullTable<T>(
 ): Promise<void> {
   try {
     if (!supabase) return;
-    const { data, error } = await supabase.from(table).select('*');
+    const { data, error } = await supabase.from(remoteNome(table)).select('*');
     if (error || !Array.isArray(data)) return;
     for (const row of data) {
       if (syncAbortado(geracao)) return; // logout/wipe em voo → para de gravar
@@ -1053,6 +1159,7 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
     const tsOrcamentos = await carregarTimestampsRemotos('orcamentos', 'atualizado_em');
     const tsAgendamentos = await carregarTimestampsRemotos('agendamentos', 'atualizado_em');
     const tsOrdens = await carregarTimestampsRemotos('ordens_servico', 'atualizado_em');
+    const tsEquip = await carregarTimestampsRemotos('equipamentos', 'atualizado_em');
 
     await pushTable('clientes', 'SELECT * FROM clientes', rowToClienteLocal, undefined, geracao);
     await pushTable('servicos', 'SELECT * FROM servicos', rowToServicoLocal, undefined, geracao);
@@ -1069,6 +1176,8 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
       (a) => remoteMaisNovoNoMapa(tsAgendamentos, a.id, a.atualizadoEm), geracao);
     await pushTable<OrdemServico>('ordens_servico', 'SELECT * FROM ordens_servico', rowToOrdemServico,
       (o) => remoteMaisNovoNoMapa(tsOrdens, o.id, o.atualizadoEm), geracao);
+    await pushTable<Equipamento>('equipamentos', 'SELECT * FROM equipamentos', rowToEquipamentoCloud,
+      (e) => remoteMaisNovoNoMapa(tsEquip, e.id, e.atualizadoEm), geracao);
     if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.

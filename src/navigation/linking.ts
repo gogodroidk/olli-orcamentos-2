@@ -96,6 +96,8 @@ export function criarLinkingConfig(
         Convite: 'convite/:token',
         // Onda 4 — Ordens de serviço (gestão + técnico). URL real /ordens.
         OrdemServico: 'ordens',
+        // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). URL /equipamentos.
+        Equipamento: 'equipamentos',
       },
     },
   };

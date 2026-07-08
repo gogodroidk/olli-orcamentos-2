@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, propostaJaEnviada } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, propostaJaEnviada } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
@@ -268,6 +268,38 @@ async function initDb(database: SQLite.SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_orcamento ON ordens_servico (orcamento_id);
+
+    -- PMOC Fase 1 — EQUIPAMENTOS (inventario HVAC + etiqueta QR). Espelha a nuvem
+    -- public.assets (ver 20260709_pmoc_fundacao + 20260711_assets_fotos). fotos vive
+    -- como TEXT JSON (mesmo padrao de orcamentos.data / ordens_servico.fotos). O
+    -- qr_token e a IDENTIDADE PUBLICA OPACA vinda do banco (DEFAULT no INSERT da
+    -- nuvem) — o app NUNCA gera nem edita: recebe no pull e preserva/reenvia. Numa
+    -- linha criada offline, qr_token fica '' ate o proximo pull trazer o token.
+    CREATE TABLE IF NOT EXISTS equipamentos (
+      id TEXT PRIMARY KEY,
+      cliente_id TEXT,
+      local_id TEXT,
+      codigo_interno TEXT,
+      patrimonio TEXT,
+      fabricante TEXT,
+      modelo TEXT,
+      numero_serie TEXT,
+      categoria TEXT,
+      capacidade_btu INTEGER,
+      tensao TEXT,
+      refrigerante TEXT,
+      localizacao TEXT,
+      situacao TEXT NOT NULL DEFAULT 'ativo',
+      criticidade TEXT,
+      qr_token TEXT NOT NULL DEFAULT '',
+      qr_revogado_em TEXT,
+      fotos TEXT NOT NULL DEFAULT '[]',
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_equipamentos_cliente ON equipamentos (cliente_id);
+    CREATE INDEX IF NOT EXISTS idx_equipamentos_situacao ON equipamentos (situacao);
+    CREATE INDEX IF NOT EXISTS idx_equipamentos_qr_token ON equipamentos (qr_token);
 
     -- Relatório do dia falado — snapshot diário compilado (orçamentos, recibos,
     -- agendamentos, clientes novos) para reler/ouvir depois. Local-only (não
@@ -865,6 +897,105 @@ async function getOrdensServicoForBackup(): Promise<OrdemServico[]> {
   return rows.map(rowToOrdemServico);
 }
 
+// ─── EQUIPAMENTOS (PMOC Fase 1 — inventário HVAC + etiqueta QR) ──────────────
+// CRUD LOCAL do inventário. A superfície do CONTRATO (getEquipamentos,
+// salvarEquipamento, revogarQr, adicionarFotoEquip, urlEtiqueta…) vive em
+// src/services/equipamentos.ts, que orquestra numeração/QR e chama estas funções.
+// Aqui é só o acesso ao SQLite + o espelho na nuvem pelo caminho padrão de
+// cloudSync (equipamentos é SyncTable de primeira classe: push/pull-no-login/
+// tombstone/guard de timestamp + injeção team-tenant do owner já tratados lá).
+function rowToEquipamento(r: any): Equipamento {
+  // fotos vem como TEXT JSON — parse defensivo (nunca quebra a leitura).
+  let fotos: string[] = [];
+  try {
+    const f = JSON.parse(r.fotos ?? '[]');
+    if (Array.isArray(f)) fotos = f;
+  } catch {
+    // linha corrompida → sem fotos (não quebra a listagem)
+  }
+  return {
+    id: r.id,
+    clienteId: r.cliente_id ?? undefined,
+    localId: r.local_id ?? undefined,
+    codigoInterno: r.codigo_interno ?? undefined,
+    patrimonio: r.patrimonio ?? undefined,
+    fabricante: r.fabricante ?? undefined,
+    modelo: r.modelo ?? undefined,
+    numeroSerie: r.numero_serie ?? undefined,
+    categoria: r.categoria ?? undefined,
+    capacidadeBtu: r.capacidade_btu ?? undefined,
+    tensao: r.tensao ?? undefined,
+    refrigerante: r.refrigerante ?? undefined,
+    localizacao: r.localizacao ?? undefined,
+    situacao: (r.situacao ?? 'ativo') as SituacaoEquipamento,
+    criticidade: (r.criticidade ?? undefined) as CriticidadeEquipamento | undefined,
+    qrToken: r.qr_token ?? '',
+    qrRevogadoEm: r.qr_revogado_em ?? undefined,
+    fotos,
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em,
+  };
+}
+
+export async function getEquipamentosDb(): Promise<Equipamento[]> {
+  const db = await getDb();
+  // Mais recentes primeiro (por criação); tiebreaker estável por id.
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM equipamentos ORDER BY criado_em DESC, id DESC',
+  );
+  return rows.map(rowToEquipamento);
+}
+
+export async function getEquipamentoDb(id: string): Promise<Equipamento | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM equipamentos WHERE id = ?', [id]);
+  return row ? rowToEquipamento(row) : null;
+}
+
+/** Equipamentos de um cliente específico (inventário do cliente). */
+export async function getEquipamentosDoClienteDb(clienteId: string): Promise<Equipamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM equipamentos WHERE cliente_id = ? ORDER BY criado_em DESC, id DESC',
+    [clienteId],
+  );
+  return rows.map(rowToEquipamento);
+}
+
+export async function saveEquipamentoDb(e: Equipamento): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO equipamentos
+       (id, cliente_id, local_id, codigo_interno, patrimonio, fabricante, modelo, numero_serie,
+        categoria, capacidade_btu, tensao, refrigerante, localizacao, situacao, criticidade,
+        qr_token, qr_revogado_em, fotos, criado_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [e.id, e.clienteId ?? null, e.localId ?? null, e.codigoInterno ?? null, e.patrimonio ?? null,
+     e.fabricante ?? null, e.modelo ?? null, e.numeroSerie ?? null, e.categoria ?? null,
+     e.capacidadeBtu ?? null, e.tensao ?? null, e.refrigerante ?? null, e.localizacao ?? null,
+     e.situacao, e.criticidade ?? null, e.qrToken ?? '', e.qrRevogadoEm ?? null,
+     JSON.stringify(e.fotos ?? []), e.criadoEm, e.atualizadoEm],
+  );
+  // Espelho na nuvem pelo caminho PADRÃO de cloudSync (fire-and-forget, nunca
+  // afeta o save local). O TO_ROW preserva o qr_token que veio do pull (ou o omite
+  // no primeiro insert sem token, deixando o DEFAULT do banco gerar) — ver cloudSync.
+  mirrorPush('equipamentos', e);
+}
+
+export async function deleteEquipamentoDb(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM equipamentos WHERE id = ?', [id]);
+  mirrorRemove('equipamentos', id);
+  registrarExclusao('equipamentos', id);
+}
+
+/** Lê todos os equipamentos (para o backup levar o inventário completo). */
+async function getEquipamentosForBackup(): Promise<Equipamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM equipamentos ORDER BY criado_em ASC');
+  return rows.map(rowToEquipamento);
+}
+
 // ─── RECIBOS ─────────────────────────────────────────────
 export async function getRecibos(): Promise<Recibo[]> {
   const db = await getDb();
@@ -1134,6 +1265,8 @@ export interface BackupSnapshot {
   orcamentoVersoes?: OrcamentoVersao[];
   /** Ordens de serviço (opcional — snapshots antigos não têm). */
   ordensServico?: OrdemServico[];
+  /** Equipamentos HVAC / inventário PMOC (opcional — snapshots antigos não têm). */
+  equipamentos?: Equipamento[];
 }
 
 /** Lê todas as versões de orçamento (para o backup levar o histórico completo). */
@@ -1155,14 +1288,14 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
 }
 
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
-    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(),
+    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(), getEquipamentosForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos,
   };
 }
 
@@ -1188,6 +1321,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const relatoriosDiarios = asArray<RelatorioDiaRow>(data.relatoriosDiarios);
   const orcamentoVersoes = asArray<OrcamentoVersao>(data.orcamentoVersoes);
   const ordensServico = asArray<OrdemServico>(data.ordensServico);
+  const equipamentos = asArray<Equipamento>(data.equipamentos);
 
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
@@ -1201,6 +1335,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     ...depoimentos.map((d) => ({ tabela: 'depoimentos', itemId: d.id })),
     ...agendamentos.map((a) => ({ tabela: 'agendamentos', itemId: a.id })),
     ...ordensServico.map((os) => ({ tabela: 'ordens_servico', itemId: os.id })),
+    ...equipamentos.map((e) => ({ tabela: 'equipamentos', itemId: e.id })),
   ];
 
   const db = await getDb();
@@ -1216,7 +1351,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       DELETE FROM empresa;
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM orcamento_versoes; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
-      DELETE FROM agendamentos; DELETE FROM ordens_servico;
+      DELETE FROM agendamentos; DELETE FROM ordens_servico; DELETE FROM equipamentos;
     `);
     if (data.empresa) {
       await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
@@ -1301,6 +1436,23 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          JSON.stringify(Array.isArray(os.fotos) ? os.fotos : []),
          os.observacoes ?? null, os.valor ?? null,
          os.criadoEm ?? new Date().toISOString(), os.atualizadoEm ?? new Date().toISOString()],
+      );
+    }
+    for (const e of equipamentos) {
+      // Defensivo contra snapshots corrompidos: exige id + campos NOT NULL do schema.
+      if (!e || !e.id) continue;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO equipamentos
+           (id, cliente_id, local_id, codigo_interno, patrimonio, fabricante, modelo, numero_serie,
+            categoria, capacidade_btu, tensao, refrigerante, localizacao, situacao, criticidade,
+            qr_token, qr_revogado_em, fotos, criado_em, atualizado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [e.id, e.clienteId ?? null, e.localId ?? null, e.codigoInterno ?? null, e.patrimonio ?? null,
+         e.fabricante ?? null, e.modelo ?? null, e.numeroSerie ?? null, e.categoria ?? null,
+         e.capacidadeBtu ?? null, e.tensao ?? null, e.refrigerante ?? null, e.localizacao ?? null,
+         e.situacao ?? 'ativo', e.criticidade ?? null, e.qrToken ?? '', e.qrRevogadoEm ?? null,
+         JSON.stringify(Array.isArray(e.fotos) ? e.fotos : []),
+         e.criadoEm ?? new Date().toISOString(), e.atualizadoEm ?? new Date().toISOString()],
       );
     }
     // Relatórios diários: MERGE (não apaga o histórico local existente) — é um

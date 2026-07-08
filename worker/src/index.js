@@ -35,6 +35,7 @@ import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleEquipe } from './equipe.js';
+import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -590,6 +591,40 @@ export default {
         status: 405,
         headers: { Allow: 'GET, POST', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
       });
+    }
+
+    // ── ETIQUETA PÚBLICA DO EQUIPAMENTO (PMOC, sem login, antes do gate da IA) ──
+    // GET /q/<token>      → página pública mínima da etiqueta física (dados
+    //                       não-sensíveis + contato do prestador).
+    // GET /q/<token>.svg  → o QR code (do próprio link) como imagem SVG.
+    // Só GET: a etiqueta é somente leitura pública. O handler em pmoc.js resolve o
+    // asset por qr_token via service_role, nega token inválido/revogado sem vazar,
+    // e SEMPRE registra o scan em qr_scan_events (best-effort). CSP/escape lá dentro.
+    if (url.pathname.startsWith('/q/')) {
+      if (request.method !== 'GET') {
+        return new Response('Método não suportado', {
+          status: 405,
+          headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+      const resto = decodeURIComponent(url.pathname.slice(3));
+      // Sub-rota da imagem: /q/<token>.svg. É pura função do texto (não toca o
+      // banco nem escreve scan) → dispensa rate-limit e pode ser cacheada.
+      if (resto.endsWith('.svg')) {
+        return renderEtiquetaSvg(resto.slice(0, -4));
+      }
+      // Página HTML: escreve (SELECT service-role + INSERT de scan). Mesmo teto por
+      // IP do /o/ (LINK_RL); reforço anti-enumeração fica dentro de renderEtiqueta.
+      if (env.LINK_RL) {
+        const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+        try {
+          const { success } = await env.LINK_RL.limit({ key: ip });
+          if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+        } catch {
+          // binding ausente: não bloqueia
+        }
+      }
+      return renderEtiqueta(resto, env, request);
     }
 
     // Health check público (abrir no navegador mostra que está online). GET '/'

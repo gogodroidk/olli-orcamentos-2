@@ -543,3 +543,137 @@ export const STATUS_OS_CORES: Record<StatusOS, string> = {
   concluida: '#10B981',
   cancelada: '#6B7280',
 };
+
+// ─── EQUIPAMENTOS / ATIVOS HVAC (PMOC Fase 1 — inventário + etiqueta QR) ──────
+/**
+ * Situação (ciclo de vida OPERACIONAL) de um equipamento HVAC. Espelha EXATAMENTE
+ * o check da coluna `situacao` de public.assets (ver 20260709_pmoc_fundacao.sql):
+ * mesmos 9 ids, na mesma ordem lógica de vida do ativo. `ativo` é o default.
+ *
+ * CAVEAT LEGAL PMOC (inegociável): isto é ESTADO OPERACIONAL do ativo, NUNCA uma
+ * declaração de conformidade legal. Um equipamento `ativo` não significa "em
+ * conformidade com a norma X" — conformidade depende de plano PMOC vigente,
+ * responsável técnico habilitado e periodicidades cumpridas (fases seguintes).
+ */
+export type SituacaoEquipamento =
+  | 'ativo'
+  | 'reserva'
+  | 'parado'
+  | 'em_manutencao'
+  | 'interditado'
+  | 'desativado'
+  | 'retirado'
+  | 'substituido'
+  | 'descartado';
+
+/** Criticidade operacional do ativo (impacto de uma parada). Opcional na linha. */
+export type CriticidadeEquipamento = 'baixa' | 'media' | 'alta' | 'critica';
+
+/**
+ * Um equipamento HVAC do inventário PMOC (público.assets local). Offline-first:
+ * gravado no SQLite local (tabela `equipamentos`) e espelhado em public.assets
+ * (fotos como jsonb array na nuvem, TEXT JSON no local — ver cloudSync).
+ *
+ * `qrToken` é a IDENTIDADE PÚBLICA OPACA do ativo (o que vai no adesivo/etiqueta):
+ * único, aleatório e url-safe (~32 chars). É GERADO PELO BANCO (DEFAULT no INSERT)
+ * — o app NUNCA o cria nem o edita; recebe-o no primeiro pull e o preserva/reenvia
+ * nos upserts seguintes (ver cloudSync.equipamentoToRow). Numa linha ainda não
+ * sincronizada (criada offline, sem token do banco), `qrToken` fica vazio ('') até
+ * o próximo pull trazer o token gerado pelo DEFAULT.
+ *
+ * `qrRevogadoEm` preenchido = o token vigente está revogado (a página pública nega
+ * o scan). `situacao` é o estado operacional (ver caveat legal em SituacaoEquipamento).
+ */
+export interface Equipamento {
+  id: string;
+  /** Cliente dono do equipamento (id do app; soft ref, sem FK dura). */
+  clienteId?: string;
+  /** Unidade/local de atendimento (soft ref; fase de locais). */
+  localId?: string;
+  /** Código do prestador (ex.: "AC-014"). */
+  codigoInterno?: string;
+  /** Código/patrimônio do cliente. */
+  patrimonio?: string;
+  fabricante?: string;
+  modelo?: string;
+  numeroSerie?: string;
+  /** Categoria HVAC (ver CATEGORIAS_HVAC). */
+  categoria?: string;
+  /** Capacidade em BTU/h (nem todo ativo tem). */
+  capacidadeBtu?: number;
+  /** Tensão como texto livre ('220V', '380V trifásico', …). */
+  tensao?: string;
+  /** Fluido refrigerante ('R410A', 'R32', …). */
+  refrigerante?: string;
+  /** Localização textual curta que cabe no adesivo ("Sala 302 - 3º andar"). */
+  localizacao?: string;
+  situacao: SituacaoEquipamento;
+  criticidade?: CriticidadeEquipamento;
+  /** Token QR opaco vindo do banco (DEFAULT). O app nunca gera/edita — só preserva. */
+  qrToken: string;
+  /** Se preenchido, o token vigente está revogado (página pública nega o scan). */
+  qrRevogadoEm?: string;
+  /** URIs das fotos do ativo (placa/local/etiqueta). jsonb array na nuvem. */
+  fotos: string[];
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+export const STATUS_EQUIP_LABELS: Record<SituacaoEquipamento, string> = {
+  ativo: 'Ativo',
+  reserva: 'Reserva',
+  parado: 'Parado',
+  em_manutencao: 'Em manutenção',
+  interditado: 'Interditado',
+  desativado: 'Desativado',
+  retirado: 'Retirado',
+  substituido: 'Substituído',
+  descartado: 'Descartado',
+};
+
+export const STATUS_EQUIP_CORES: Record<SituacaoEquipamento, string> = {
+  ativo: '#10B981',
+  reserva: '#3B82F6',
+  parado: '#9CA3AF',
+  em_manutencao: '#F59E0B',
+  interditado: '#EF4444',
+  desativado: '#6B7280',
+  retirado: '#6B7280',
+  substituido: '#A78BFA',
+  descartado: '#78716C',
+};
+
+/** Categoria de equipamento HVAC — ids usados no campo `categoria` do ativo. */
+export type CategoriaHvac =
+  | 'split'
+  | 'multisplit'
+  | 'cassete'
+  | 'piso_teto'
+  | 'janela'
+  | 'portatil'
+  | 'vrf'
+  | 'chiller'
+  | 'fancoil'
+  | 'camara_frio'
+  | 'condensadora'
+  | 'outro';
+
+/**
+ * Catálogo de categorias HVAC (id + rótulo PT-BR + ícone MaterialCommunityIcons)
+ * para os chips/seletor do inventário. `categoria` na linha é texto livre (o banco
+ * não restringe), mas o app oferece este conjunto padrão para consistência.
+ */
+export const CATEGORIAS_HVAC: { id: CategoriaHvac; label: string; icon: string }[] = [
+  { id: 'split', label: 'Split', icon: 'air-conditioner' },
+  { id: 'multisplit', label: 'Multi-split', icon: 'air-conditioner' },
+  { id: 'cassete', label: 'Cassete', icon: 'view-grid-outline' },
+  { id: 'piso_teto', label: 'Piso-teto', icon: 'arrow-expand-vertical' },
+  { id: 'janela', label: 'Janela', icon: 'window-closed-variant' },
+  { id: 'portatil', label: 'Portátil', icon: 'fan' },
+  { id: 'vrf', label: 'VRF/VRV', icon: 'sitemap-outline' },
+  { id: 'chiller', label: 'Chiller', icon: 'snowflake' },
+  { id: 'fancoil', label: 'Fancoil', icon: 'hvac' },
+  { id: 'camara_frio', label: 'Câmara fria', icon: 'fridge-outline' },
+  { id: 'condensadora', label: 'Condensadora', icon: 'radiator' },
+  { id: 'outro', label: 'Outro', icon: 'dots-horizontal' },
+];

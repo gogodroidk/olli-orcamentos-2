@@ -73,6 +73,9 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   { rota: 'Agenda', label: 'Agenda', icon: 'calendar-month-outline', acao: 'ver_agenda_propria' },
   // Ordens de serviço (stack raiz). Rótulo role-aware definido em runtime.
   { rota: 'OrdemServico', label: 'Ordens de serviço', icon: 'clipboard-check-outline', stack: true },
+  // Equipamentos HVAC (PMOC Fase 1): inventário + etiqueta QR. Sem gate de plano
+  // (não há Recurso PMOC no mapa) — recurso de campo visível para todos os papéis.
+  { rota: 'Equipamento', label: 'Equipamentos', icon: 'air-conditioner', stack: true },
   // Recibos (financeiro). Técnico não emite recibos no menu enxuto → oculto.
   { rota: 'EmitirRecibo', label: 'Recibos', icon: 'receipt', stack: true, acao: 'criar_orcamento', ocultarTecnico: true },
   // Relatórios: permissão (ver_relatorios) + recurso pago (relatorios → cadeado).
