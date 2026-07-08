@@ -239,6 +239,14 @@ export interface Orcamento {
   modeloNome?: string;
   criadoDeModeloId?: string;
 
+  // Capa do documento (Onda 7 — orçamento/PDF elegante). Define como o PDF
+  // COMEÇA: só a logo (padrão), uma foto de capa escolhida, ou sem capa nenhuma.
+  // `capaFotoUri` só é usado quando `capaEstilo === 'foto'` (a foto que abre o
+  // documento — normalmente uma das fotosServico já anexadas). Ambos opcionais e
+  // aditivos: schema-less no SQLite (id + data JSON), sem migração.
+  capaEstilo?: 'logo' | 'foto' | 'nenhuma';
+  capaFotoUri?: string;
+
   criadoEm: string;
   atualizadoEm: string;
 }

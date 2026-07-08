@@ -149,6 +149,7 @@ export type Recurso =
   | 'radar_clientes'    // radar de clientes sumidos (lista completa)
   | 'relatorio_dia'     // relatório do dia falado
   | 'modelos_pdf_premium' // modelos premium de PDF (Onda 5)
+  | 'remove_olli_brand' // remove a marca discreta OLLI do PDF/documento (Onda 7)
   | 'equipe'            // vários técnicos e papéis
   | 'mapa_equipe'       // equipe ao vivo no mapa
   | 'dashboard_empresa'; // painel de gestão da empresa
@@ -159,8 +160,8 @@ export type Recurso =
  * gratis: orçamentos/recibos/clientes/agenda ilimitados, diagnóstico offline e
  *   link do cliente são livres (não passam pelo mapa: nunca se gateiam). IA tem
  *   3 usos/mês (cota, não plano). Nenhum recurso Pro/Empresa.
- * pro: toda a IA sem cota, relatórios, metas, radar, relatório do dia falado e
- *   os modelos premium de PDF.
+ * pro: toda a IA sem cota, relatórios, metas, radar, relatório do dia falado,
+ *   os modelos premium de PDF e a remoção da marca OLLI do documento (D-07).
  * empresa: tudo do Pro + equipe/papéis/mapa/dashboard da empresa.
  */
 export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
@@ -172,6 +173,7 @@ export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
     'radar_clientes',
     'relatorio_dia',
     'modelos_pdf_premium',
+    'remove_olli_brand',
   ]),
   empresa: new Set<Recurso>([
     'ia_ilimitada',
@@ -180,6 +182,7 @@ export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
     'radar_clientes',
     'relatorio_dia',
     'modelos_pdf_premium',
+    'remove_olli_brand',
     'equipe',
     'mapa_equipe',
     'dashboard_empresa',

@@ -52,6 +52,7 @@ const COPY_RECURSO: Record<Recurso, string> = {
   equipe: 'Vários técnicos, papéis e permissões.',
   mapa_equipe: 'Acompanhe sua equipe ao vivo no mapa.',
   dashboard_empresa: 'Painel de gestão com a operação inteira.',
+  remove_olli_brand: 'Orçamento 100% com a sua marca, sem o selo do OLLI.',
 };
 
 const ROTULO_PLANO: Record<'pro' | 'empresa', string> = {

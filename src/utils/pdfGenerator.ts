@@ -8,6 +8,44 @@ import { escapeHtml, safeHexColor } from './html';
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
 export { abrirWhatsApp } from './exportarDocumento';
 
+/* ─── Contrato entre frentes ──────────────────────────────────────
+ * A capa e a marca OLLI são controladas por dois eixos independentes:
+ *
+ *  1) COMO O DOCUMENTO COMEÇA (`o.capaEstilo` / `o.capaFotoUri`) — campos
+ *     ADITIVOS no interface Orcamento (adicionados pela Frente B). Como esta
+ *     frente (engine) roda contra o contrato ANTES de os campos existirem no
+ *     tipo, leio-os por um acessor tipado (CapaCampos) em vez de alargar o
+ *     tipo aqui. Quando a Frente B adicionar os campos ao Orcamento, este
+ *     acessor continua válido (é um supertipo estrutural).
+ *
+ *  2) SE A MARCA OLLI APARECE (`opts.removerMarca`) — decidido pelo call site
+ *     via entitlement (`temAcesso('remove_olli_brand')`, Frente C). Default
+ *     `false` => rodapé DISCRETO da OLLI em todo documento. `true` (Pro/
+ *     Empresa) => sem esse rodapé (dados legais/PIX/validade PERMANECEM).
+ */
+export type CapaEstilo = 'logo' | 'foto' | 'nenhuma';
+
+interface CapaCampos {
+  capaEstilo?: CapaEstilo;
+  capaFotoUri?: string;
+}
+
+/** Opções de geração do PDF. Tudo opcional — chamadas antigas seguem válidas. */
+export interface OpcoesPdf {
+  /** true (Pro/Empresa) remove o rodapé da marca OLLI. Default false. */
+  removerMarca?: boolean;
+}
+
+/** Estilo de capa efetivo (default 'logo'), validado contra valores conhecidos. */
+function capaEstiloDe(o: Orcamento): CapaEstilo {
+  const v = (o as CapaCampos).capaEstilo;
+  return v === 'foto' || v === 'nenhuma' || v === 'logo' ? v : 'logo';
+}
+
+function capaFotoUriDe(o: Orcamento): string | undefined {
+  return (o as CapaCampos).capaFotoUri;
+}
+
 /* ─── Cache de imagens em data URI ────────────────────────────────
  * URIs locais (file://) NÃO renderizam no expo-print do Android e, na web,
  * `blob:`/`http` não embutem direto no PDF. Convertemos cada imagem para
@@ -24,7 +62,7 @@ function img(uri?: string): string {
 async function populateImages(o: Orcamento, empresa: Empresa): Promise<void> {
   IMG_CACHE = {};
   const uris = new Set<string>();
-  [empresa.logoUri, empresa.assinaturaUri, o.assinaturaPrestadorUri, o.assinaturaClienteUri]
+  [empresa.logoUri, empresa.assinaturaUri, o.assinaturaPrestadorUri, o.assinaturaClienteUri, capaFotoUriDe(o)]
     .forEach(u => u && uris.add(u));
   o.itens.forEach(i => i.fotoUri && uris.add(i.fotoUri));
   (o.fotosServico ?? []).forEach(f => f && uris.add(f));
@@ -190,29 +228,82 @@ function renderObservacoes(o: Orcamento): string {
 }
 
 /**
- * Página de capa do modelo "premium_capa": fundo em gradiente da cor de marca,
- * logo/nome grande centralizado, identificação do orçamento e (se houver) a
- * primeira foto do serviço em destaque. `page-break-after: always` garante que
- * a página 2 (layout editorial padrão) comece numa folha nova tanto no
- * expo-print (Android/iOS) quanto na impressão web.
+ * Decide se ESTE documento tem página de capa e de que tipo, cruzando o estilo
+ * pedido (`capaEstilo`) com o que existe de fato (logo/foto). Fonte única da
+ * verdade para (a) montar a capa e (b) decidir se o header repete a logo — é
+ * isso que evita a "logo dividida em 2" (capa + header renderizando a logo).
+ *
+ *  - 'nenhuma'  => sem capa; o documento começa direto no header (com logo).
+ *  - 'logo'     => capa com a logo (ou o nome, se não houver logo). O header
+ *                  NÃO repete a logo — a logo já é a estrela da capa.
+ *  - 'foto'     => capa com a foto escolhida (capaFotoUri) ou, faltando ela, a
+ *                  1ª foto do serviço; sem nenhuma foto, cai para 'logo'.
  */
-function renderCapa(o: Orcamento, empresa: Empresa, accent: string): string {
+type PlanoCapa =
+  | { tipo: 'nenhuma' }
+  | { tipo: 'logo' }
+  | { tipo: 'foto'; fotoSrc: string };
+
+function planejarCapa(o: Orcamento, empresa: Empresa): PlanoCapa {
+  const estilo = capaEstiloDe(o);
+  if (estilo === 'nenhuma') return { tipo: 'nenhuma' };
+  if (estilo === 'foto') {
+    const escolhida = img(capaFotoUriDe(o));
+    const primeiraFoto = (o.fotosServico ?? []).map(f => img(f)).filter(Boolean)[0] ?? '';
+    const fotoSrc = escolhida || primeiraFoto;
+    if (fotoSrc) return { tipo: 'foto', fotoSrc };
+    // Sem foto disponível: não deixa a capa "vazia" — usa a logo/nome.
+    return { tipo: 'logo' };
+  }
+  return { tipo: 'logo' };
+}
+
+/**
+ * Página de capa (uma folha, `page-break-after: always`). Duas variantes:
+ *  - logo: gradiente da marca + logo (object-fit:contain, uma vez, inteira) ou
+ *    o nome da empresa quando não há logo.
+ *  - foto: a foto ocupa a folha inteira; um overlay escuro na base garante o
+ *    contraste do título/cliente por cima da imagem.
+ * A logo, quando presente, aparece SÓ AQUI (o header não a repete) — nunca duas
+ * vezes no mesmo documento.
+ */
+function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
+  if (plano.tipo === 'nenhuma') return '';
+
   const emitidoEm = o.dataEmissao ? formatDateBR(o.dataEmissao) : formatDate(o.criadoEm);
   const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
-  const primeiraFoto = (o.fotosServico ?? []).map(f => img(f)).filter(Boolean)[0] ?? '';
+  const logoSrc = img(empresa.logoUri);
 
+  if (plano.tipo === 'foto') {
+    return `
+    <div class="cover cover-photo">
+      <img src="${plano.fotoSrc}" class="cover-bg" />
+      <div class="cover-scrim"></div>
+      <div class="cover-inner cover-inner-photo">
+        ${logoSrc
+          ? `<img src="${logoSrc}" class="cover-logo cover-logo-onphoto" />`
+          : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
+        <div class="cover-kicker">ORÇAMENTO</div>
+        <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
+        ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
+      </div>
+    </div>
+  `;
+  }
+
+  // plano.tipo === 'logo'
   return `
     <div class="cover">
       <div class="cover-inner">
         <div class="cover-brand">
-          ${img(empresa.logoUri)
-            ? `<img src="${img(empresa.logoUri)}" class="cover-logo" />`
+          ${logoSrc
+            ? `<img src="${logoSrc}" class="cover-logo" />`
             : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         </div>
         <div class="cover-kicker">ORÇAMENTO</div>
         <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
-        ${primeiraFoto ? `<div class="cover-foto-wrap"><img src="${primeiraFoto}" class="cover-foto" /></div>` : ''}
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
       </div>
     </div>
@@ -270,24 +361,39 @@ function cssModelos(accent: string): string {
   .model-recibo_compacto .items { margin-top: 22px; }
   .model-recibo_compacto .footer { margin-top: 24px; }
 
-  /* PREMIUM COM CAPA — página de capa antes do conteúdo (editorial normal, sem watermark) */
+  /* PREMIUM COM CAPA — mantém o watermark fora da 1ª página de conteúdo (a capa
+     já carrega a marca). A CAPA em si é genérica (qualquer modelo pode ter capa
+     via o.capaEstilo), então o CSS da .cover vive fora do escopo do modelo. */
   .model-premium_capa .watermark { display: none; }
+
+  /* ─── CAPA (logo ou foto) ─────────────────────────────────────
+     Uma folha inteira, sempre seguida de quebra de página. */
   .cover {
+    position: relative; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     min-height: 1050px; page-break-after: always;
     background: linear-gradient(160deg, ${accent}, #0A2547);
     padding: 60px 50px;
   }
-  .cover-inner { width: 100%; max-width: 560px; text-align: center; color: #fff; }
-  .cover-brand { margin-bottom: 34px; }
-  .cover-logo { max-width: 260px; max-height: 110px; object-fit: contain; }
-  .cover-brand-name { font-family: 'Spectral', Georgia, serif; font-size: 40px; font-weight: 700; color: #fff; }
-  .cover-kicker { font-size: 13px; font-weight: 800; letter-spacing: 6px; color: rgba(255,255,255,0.8); margin-bottom: 10px; }
-  .cover-num { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 30px; }
-  .cover-cliente { font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 700; color: #fff; margin-bottom: 30px; }
-  .cover-foto-wrap { display: flex; justify-content: center; margin-bottom: 30px; }
-  .cover-foto { width: 320px; height: 220px; object-fit: cover; border-radius: 10px; border: 6px solid rgba(255,255,255,0.92); box-shadow: 0 18px 40px rgba(0,0,0,0.35); }
-  .cover-footer { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 10px; }
+  .cover-inner { position: relative; width: 100%; max-width: 560px; text-align: center; color: #fff; }
+  .cover-brand { margin-bottom: 34px; display: flex; justify-content: center; }
+  /* Logo da capa: object-fit:contain + max-width/max-height (sem dimensão fixa)
+     para caber INTEIRA e sem distorção em qualquer proporção. */
+  .cover-logo { max-width: 300px; max-height: 130px; width: auto; height: auto; object-fit: contain; }
+  .cover-brand-name { font-family: 'Spectral', Georgia, serif; font-size: 40px; font-weight: 700; color: #fff; line-height: 1.15; }
+  .cover-kicker { font-size: 13px; font-weight: 800; letter-spacing: 6px; color: rgba(255,255,255,0.82); margin-bottom: 10px; }
+  .cover-num { font-size: 13px; color: rgba(255,255,255,0.72); margin-bottom: 30px; }
+  .cover-cliente { font-family: 'Spectral', Georgia, serif; font-size: 30px; font-weight: 700; color: #fff; margin-bottom: 30px; line-height: 1.2; word-break: break-word; }
+  .cover-footer { font-size: 12px; color: rgba(255,255,255,0.72); margin-top: 10px; }
+
+  /* CAPA COM FOTO — a foto preenche a folha; scrim escuro na base dá contraste. */
+  .cover-photo { padding: 0; background: #0A2547; }
+  .cover-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .cover-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,12,24,0.28) 0%, rgba(6,12,24,0.20) 42%, rgba(6,12,24,0.86) 100%); }
+  .cover-inner-photo { align-self: flex-end; max-width: 620px; padding: 0 56px 72px; text-align: left; }
+  .cover-inner-photo .cover-brand-name { text-shadow: 0 2px 14px rgba(0,0,0,0.5); }
+  .cover-inner-photo .cover-cliente { text-shadow: 0 2px 14px rgba(0,0,0,0.5); }
+  .cover-logo-onphoto { max-width: 210px; max-height: 78px; margin-bottom: 22px; filter: drop-shadow(0 3px 10px rgba(0,0,0,0.45)); }
   `;
 }
 
@@ -324,10 +430,33 @@ export function gerarHtmlOrcamento(
   empresa: Empresa,
   depoimentos: Depoimento[],
   accentRaw?: string,
+  opts?: OpcoesPdf,
 ): string {
   // Cor de marca configurável: valida como hex antes de interpolar em <style>/SVG.
   const accent = safeHexColor(accentRaw ?? o.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
   const modelClass = `model-${o.modeloPdf ?? 'editorial'}`;
+  const removerMarca = opts?.removerMarca === true;
+
+  // A capa é decidida por o.capaEstilo/o.capaFotoUri (default 'logo'). O modelo
+  // premium_capa continua começando com capa; nos demais, a capa só aparece se o
+  // usuário pediu explicitamente (estilo != default) OU há uma foto de capa —
+  // preservando o comportamento atual de quem nunca configurou capa.
+  const capaConfigurada =
+    (o as CapaCampos).capaEstilo !== undefined || (o as CapaCampos).capaFotoUri !== undefined;
+  const planoCapa: PlanoCapa =
+    o.modeloPdf === 'premium_capa' || capaConfigurada
+      ? planejarCapa(o, empresa)
+      : { tipo: 'nenhuma' };
+
+  // Se a CAPA já mostra a logo, o header NÃO a repete (evita a "logo dividida
+  // em 2": mesma logo na capa e no cabeçalho lida como duplicada/cortada).
+  // A logo aparece na capa em AMBOS os tipos que a desenham: 'logo' (capa da
+  // marca) e 'foto' (logo sobreposta na foto de capa). A capa-foto só existe
+  // quando há foto (senão planejarCapa cai para 'logo'), então tipo==='foto'
+  // sempre implica logo desenhada sobre a foto quando há logo.
+  const capaMostraLogo =
+    (planoCapa.tipo === 'logo' || planoCapa.tipo === 'foto') && !!img(empresa.logoUri);
+  const mostrarLogoNoHeader = !!img(empresa.logoUri) && !capaMostraLogo;
 
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
@@ -351,6 +480,18 @@ export function gerarHtmlOrcamento(
     [empresa.cidade, empresa.estado].filter(Boolean).join('/'),
   ].filter(Boolean).join(' · ');
   const contatoEmpresa = [empresa.telefone, empresa.email].filter(Boolean).join(' · ');
+
+  // Rodapé do prestador — contato + PIX (dado legal/comercial). Este bloco é
+  // SEMPRE renderizado; removerMarca só afeta a linha da marca OLLI, nunca isto.
+  const pixRodape = o.chavePix || empresa.chavePix || '';
+  const rodapeContato = [contatoEmpresa || empresa.nome, pixRodape ? `PIX ${pixRodape}` : '']
+    .filter(Boolean)
+    .join('  ·  ');
+
+  // Marca OLLI discreta (apenas quando removerMarca é falsy). Texto fixo/controlado.
+  const brandOlliHtml = removerMarca
+    ? ''
+    : `<div class="brand-olli">Orçamento feito com OLLI · <a href="https://olliorcamentos.online">olliorcamentos.online</a></div>`;
 
   // Escapa CADA parte antes de juntar com o <br/> (marcação fixa controlada).
   const clienteLinhas = [
@@ -388,8 +529,12 @@ export function gerarHtmlOrcamento(
   .page { padding: 44px 50px 40px 56px; position: relative; }
 
   /* HEADER */
-  .header { display: flex; justify-content: space-between; align-items: flex-start; }
-  .brand-logo { width: 180px; max-height: 66px; object-fit: contain; margin-bottom: 12px; display: block; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+  .header-left { min-width: 0; }
+  /* Logo do cabeçalho: NUNCA largura+altura fixas (achata/distorce). max-width +
+     max-height + object-fit:contain deixam a logo aparecer INTEIRA e na proporção
+     certa em qualquer formato (horizontal, vertical, quadrada, muito larga). */
+  .brand-logo { max-width: 200px; max-height: 64px; width: auto; height: auto; object-fit: contain; margin-bottom: 12px; display: block; }
   .brand-name { font-family: 'Spectral', Georgia, serif; font-size: 22px; font-weight: 600; letter-spacing: -0.2px; color: #16202E; }
   .brand-tagline { font-size: 12px; color: #6B7686; margin-top: 2px; letter-spacing: 0.2px; }
   .header-right { text-align: right; }
@@ -402,39 +547,45 @@ export function gerarHtmlOrcamento(
 
   /* PARTIES */
   .parties { display: flex; gap: 40px; }
-  .party { flex: 1; }
-  .party-divider { width: 1px; background: #E7E9EE; }
+  .party { flex: 1; min-width: 0; }
+  .party-divider { width: 1px; background: #E7E9EE; flex-shrink: 0; }
   .eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: #9AA3B2; text-transform: uppercase; }
-  .party-name { font-size: 14.5px; font-weight: 700; color: #1A2230; margin-top: 9px; }
-  .party-info { font-size: 12.5px; color: #5A6575; line-height: 1.7; margin-top: 4px; }
+  .party-name { font-size: 14.5px; font-weight: 700; color: #1A2230; margin-top: 9px; overflow-wrap: anywhere; }
+  .party-info { font-size: 12.5px; color: #5A6575; line-height: 1.7; margin-top: 4px; overflow-wrap: anywhere; }
 
   /* ITEMS */
   .items { margin-top: 32px; }
   .items-head { display: flex; align-items: center; padding: 0 4px 11px; border-bottom: 2px solid #1A2230; }
-  .col-desc-h { flex: 1; }
-  .col-qtd-h { width: 56px; text-align: center; }
-  .col-unit-h { width: 110px; text-align: right; }
-  .col-total-h { width: 110px; text-align: right; }
+  .col-desc-h { flex: 1; min-width: 0; }
+  .col-qtd-h { width: 56px; flex-shrink: 0; text-align: center; }
+  .col-unit-h { width: 112px; flex-shrink: 0; text-align: right; }
+  .col-total-h { width: 118px; flex-shrink: 0; text-align: right; }
   .items-head span { font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; color: #6B7686; text-transform: uppercase; }
 
   .item-row { display: flex; align-items: flex-start; padding: 15px 4px; border-bottom: 1px solid #EDEFF2; page-break-inside: avoid; }
-  .item-main { flex: 1; display: flex; gap: 10px; align-items: flex-start; }
+  .item-main { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: flex-start; }
+  /* min-width:0 no texto deixa nomes/descrições longos QUEBRAREM em vez de empurrar
+     as colunas de valor para fora da folha (item com nome gigante sem espaços). */
+  .item-text { min-width: 0; flex: 1; }
   .item-thumb { width: 42px; height: 42px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
-  .item-name { font-size: 14px; font-weight: 600; color: #1A2230; }
-  .item-desc { font-size: 11.5px; color: #8A93A2; margin-top: 2px; }
+  .item-name { font-size: 14px; font-weight: 600; color: #1A2230; overflow-wrap: anywhere; }
+  .item-desc { font-size: 11.5px; color: #8A93A2; margin-top: 2px; overflow-wrap: anywhere; }
   .badge-peca { font-size: 10px; font-weight: 700; color: ${accent}; background: ${accentBadgeBg}; border-radius: 5px; padding: 1px 6px; letter-spacing: 0.3px; }
-  .col-qtd { width: 56px; text-align: center; font-size: 13.5px; color: #5A6575; }
-  .col-unit { width: 110px; text-align: right; font-size: 13.5px; color: #5A6575; }
-  .col-total { width: 110px; text-align: right; font-size: 14px; font-weight: 700; color: #1A2230; }
+  /* Colunas de valor com largura mínima fixa (flex-shrink:0) — números grandes
+     mantêm o alinhamento sem serem espremidos pela descrição. */
+  .col-qtd { width: 56px; flex-shrink: 0; text-align: center; font-size: 13.5px; color: #5A6575; }
+  .col-unit { width: 112px; flex-shrink: 0; text-align: right; font-size: 13.5px; color: #5A6575; }
+  .col-total { width: 118px; flex-shrink: 0; text-align: right; font-size: 14px; font-weight: 700; color: #1A2230; }
 
   /* TOTALS */
   .totals { display: flex; justify-content: flex-end; margin-top: 24px; }
-  .totals-inner { width: 300px; }
-  .total-line { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; color: #5A6575; }
+  .totals-inner { width: 320px; max-width: 100%; }
+  .total-line { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; font-size: 13px; color: #5A6575; }
+  .total-line span:last-child { text-align: right; overflow-wrap: anywhere; }
   .total-line.discount span:last-child { color: #C0392B; }
-  .total-box { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 14px 18px; border-radius: 12px; background: ${accentSoft}; border: 1px solid ${accentBorder}; }
-  .total-box-label { font-size: 13px; font-weight: 700; color: #1A2230; letter-spacing: 0.3px; }
-  .total-box-value { font-family: 'Spectral', Georgia, serif; font-size: 26px; font-weight: 700; color: ${accent}; }
+  .total-box { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 10px; padding: 14px 18px; border-radius: 12px; background: ${accentSoft}; border: 1px solid ${accentBorder}; }
+  .total-box-label { font-size: 13px; font-weight: 700; color: #1A2230; letter-spacing: 0.3px; flex-shrink: 0; }
+  .total-box-value { font-family: 'Spectral', Georgia, serif; font-size: 25px; font-weight: 700; color: ${accent}; text-align: right; overflow-wrap: anywhere; line-height: 1.05; }
 
   /* CONDITIONS */
   .conditions { display: flex; gap: 30px; margin-top: 34px; padding-top: 24px; border-top: 1px solid #E7E9EE; }
@@ -470,9 +621,12 @@ export function gerarHtmlOrcamento(
   .depo-text { font-size: 12px; color: #5A6575; margin-top: 4px; line-height: 1.6; }
 
   /* FOOTER */
-  .footer { border-top: 1px solid #EDEFF2; margin-top: 36px; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; }
-  .footer-contact { font-size: 11px; color: #8A93A2; }
-  .footer-seal { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #B0B7C2; font-weight: 600; }
+  .footer { border-top: 1px solid #EDEFF2; margin-top: 36px; padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  .footer-contact { font-size: 11px; color: #8A93A2; overflow-wrap: anywhere; }
+  /* Marca OLLI — discreta e não intrusiva. Removida (removerMarca) para Pro/Empresa;
+     NUNCA leva dado legal/PIX/validade junto (esses ficam no .footer-contact). */
+  .brand-olli { text-align: center; margin-top: 14px; font-size: 9.5px; letter-spacing: 0.3px; color: #C2C8D2; }
+  .brand-olli a { color: #C2C8D2; text-decoration: none; }
 
   /* Variantes escolhidas no app — cada modelo com identidade estrutural própria. */
   ${cssModelos(accent)}
@@ -481,7 +635,7 @@ export function gerarHtmlOrcamento(
 </style>
 </head>
 <body>
-${o.modeloPdf === 'premium_capa' ? renderCapa(o, empresa, accent) : ''}
+${renderCapa(o, empresa, planoCapa)}
 <div class="sheet ${modelClass}">
   <div class="spine">${o.modeloPdf === 'faixa_lateral' ? `<span class="spine-label">${escapeHtml(empresa.nome)} · Nº ${escapeHtml(o.numero)}</span>` : ''}</div>
   <div class="watermark">${monogramSvg(accent, 360, 0.05)}</div>
@@ -491,7 +645,7 @@ ${o.modeloPdf === 'premium_capa' ? renderCapa(o, empresa, accent) : ''}
     <!-- HEADER -->
     <div class="header">
       <div class="header-left">
-        ${img(empresa.logoUri) ? `<img src="${img(empresa.logoUri)}" class="brand-logo" />` : ''}
+        ${mostrarLogoNoHeader ? `<img src="${img(empresa.logoUri)}" class="brand-logo" />` : ''}
         <div class="brand-name">${escapeHtml(empresa.nome)}</div>
         ${tagline ? `<div class="brand-tagline">${escapeHtml(tagline)}</div>` : ''}
       </div>
@@ -578,14 +732,12 @@ ${o.modeloPdf === 'premium_capa' ? renderCapa(o, empresa, accent) : ''}
       </div>
     ` : ''}
 
-    <!-- FOOTER -->
+    <!-- FOOTER — dados do prestador (contato/PIX/validade) SEMPRE presentes -->
     <div class="footer">
-      <span class="footer-contact">${escapeHtml(contatoEmpresa || empresa.nome)}</span>
-      <span class="footer-seal">
-        ${monogramSvg('#C7CDD6', 14, 1)}
-        gerado com OLLI
-      </span>
+      <span class="footer-contact">${escapeHtml(rodapeContato)}</span>
+      ${o.validadeOrcamento ? `<span class="footer-contact">Válido até ${formatDateBR(o.validadeOrcamento)}</span>` : ''}
     </div>
+    ${brandOlliHtml}
 
   </div>
 </div>
@@ -603,9 +755,10 @@ export async function montarHtmlOrcamentoCompleto(
   empresa: Empresa,
   depoimentos: Depoimento[],
   accent?: string,
+  opts?: OpcoesPdf,
 ): Promise<string> {
   await populateImages(o, empresa);
-  return gerarHtmlOrcamento(o, empresa, depoimentos, accent);
+  return gerarHtmlOrcamento(o, empresa, depoimentos, accent, opts);
 }
 
 /**
@@ -618,8 +771,9 @@ export async function compartilharPdfOrcamento(
   empresa: Empresa,
   depoimentos: Depoimento[],
   accent?: string,
+  opts?: OpcoesPdf,
 ): Promise<void> {
-  const html = await montarHtmlOrcamentoCompleto(o, empresa, depoimentos, accent);
+  const html = await montarHtmlOrcamentoCompleto(o, empresa, depoimentos, accent, opts);
   const fileName = `Orcamento-${safeFileName(o.clienteNome)}-${o.numero}`;
   await exportarHtmlComoPdf(html, fileName, {
     dialogTitle: `Orçamento ${o.numero} - ${o.clienteNome}`,

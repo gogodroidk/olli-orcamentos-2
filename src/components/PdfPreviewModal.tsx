@@ -23,6 +23,13 @@ interface Props {
   orcamento: Orcamento;
   empresa: Empresa | null;
   depoimentos: Depoimento[];
+  /**
+   * Se `true`, monta a prévia SEM o rodapé/selo OLLI — igual ao PDF que o
+   * cliente recebe quando o usuário é Pro/Empresa (recurso 'remove_olli_brand').
+   * Padrão `false`: a prévia mostra o mesmo selo discreto do envio no grátis.
+   * Threaded a partir do call site para a prévia ser IDÊNTICA ao que se envia.
+   */
+  removerMarca?: boolean;
 }
 
 /** Empresa mínima para a prévia funcionar mesmo sem "Meu Negócio" preenchido. */
@@ -58,7 +65,7 @@ function PreviewWeb({ html }: { html: string }) {
  * Prévia real do PDF (mesmo HTML que vai para o compartilhamento), sem
  * thumbnails falsos: nativo usa WebView, web usa iframe srcDoc. Contrato F3.
  */
-export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos }: Props) {
+export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca }: Props) {
   const insets = useSafeAreaInsets();
   const [html, setHtml] = useState<string | null>(null);
   const [erro, setErro] = useState(false);
@@ -76,14 +83,14 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
     setErro(false);
     (async () => {
       try {
-        const doc = await montarHtmlOrcamentoCompleto(orcamento, empresa ?? EMPRESA_VAZIA, depoimentos, orcamento.corMarca);
+        const doc = await montarHtmlOrcamentoCompleto(orcamento, empresa ?? EMPRESA_VAZIA, depoimentos, orcamento.corMarca, { removerMarca });
         if (!cancelado) setHtml(doc);
       } catch {
         if (!cancelado) setErro(true);
       }
     })();
     return () => { cancelado = true; };
-  }, [visible, orcamento, empresa, depoimentos]);
+  }, [visible, orcamento, empresa, depoimentos, removerMarca]);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">

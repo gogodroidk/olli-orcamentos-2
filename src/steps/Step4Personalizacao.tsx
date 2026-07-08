@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, Switch, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
 import { ModeloPdfId, Orcamento, Empresa, Depoimento } from '../types';
@@ -10,6 +9,8 @@ import { OlliButton } from '../components/OlliButton';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { getDepoimentos } from '../database/database';
 import { adicionarFotoGaleria, removerFoto } from '../utils/fotosOrcamento';
+import { usePlano } from '../hooks/usePlano';
+import type { Recurso } from '../services/planos';
 
 interface Props {
   orc: Orcamento;
@@ -45,6 +46,19 @@ const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: st
 ];
 
 const COLOR_SWATCHES = CORES_MARCA;
+
+// Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
+// 'remove_olli_brand' ao type Recurso em services/planos; codificamos contra o
+// NOME do contrato. O cast mantém o call site válido até a união ser ampliada,
+// sem afrouxar a tipagem de temAcesso nos demais usos.
+const RECURSO_REMOVE_MARCA = 'remove_olli_brand' as Recurso;
+
+// Opções de CAPA do documento (Onda 7). Espelham o union Orcamento.capaEstilo.
+const CAPA_OPCOES: Array<{ id: NonNullable<Orcamento['capaEstilo']>; nome: string; desc: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
+  { id: 'logo', nome: 'Só a logo', desc: 'abre com sua marca', icon: 'star-circle-outline' },
+  { id: 'foto', nome: 'Foto de capa', desc: 'abre com uma foto', icon: 'image-outline' },
+  { id: 'nenhuma', nome: 'Sem capa', desc: 'vai direto ao conteúdo', icon: 'file-outline' },
+];
 
 /**
  * Miniatura honesta por modelo (sem imagem, sem lib) — cada uma imita a
@@ -134,9 +148,19 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
   // pelos swatches abaixo (isso só decide o valor inicial sugerido).
   const corAtual = orc.corMarca ?? empresa?.corMarca ?? Colors.primary;
 
+  // Capa: padrão 'logo' (o documento começa com a marca). Só a logo continua
+  // sendo a protagonista até o usuário escolher foto de capa ou nenhuma.
+  const capaAtual = orc.capaEstilo ?? 'logo';
+
+  // Marca OLLI no PDF: Pro/Empresa removem o selo. A PRÉVIA usa o mesmo flag
+  // para ficar IDÊNTICA ao que o cliente recebe (contrato F4/preview real).
+  const { temAcesso } = usePlano();
+  const removerMarca = temAcesso(RECURSO_REMOVE_MARCA);
+
   const [previewVisible, setPreviewVisible] = useState(false);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [carregandoPreview, setCarregandoPreview] = useState(false);
+  const [adicionandoCapa, setAdicionandoCapa] = useState(false);
 
   async function abrirPreview() {
     setCarregandoPreview(true);
@@ -167,7 +191,10 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
       Alert.alert('Fotos', r.erro);
       return;
     }
-    onChange({ fotosServico: r.uris });
+    // adicionarFotoGaleria retorna só as fotos NOVAS — mescla com as existentes
+    // (antes fazia `fotosServico: r.uris`, o que apagava as fotos já anexadas ao
+    // adicionar uma segunda leva).
+    onChange({ fotosServico: [...(orc.fotosServico ?? []), ...r.uris] });
   }
 
   async function removeFoto(idx: number) {
@@ -175,7 +202,54 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
     const uri = atuais[idx];
     if (!uri) return;
     const updated = await removerFoto(atuais, uri);
-    onChange({ fotosServico: updated });
+    // Se a foto removida era a capa, volta a capa para "só a logo" (a URI some).
+    const patch: Partial<Orcamento> = { fotosServico: updated };
+    if (orc.capaFotoUri === uri) {
+      patch.capaFotoUri = undefined;
+      if (orc.capaEstilo === 'foto') patch.capaEstilo = 'logo';
+    }
+    onChange(patch);
+  }
+
+  // Troca o ESTILO da capa. Ao escolher 'foto' sem nenhuma foto ainda escolhida,
+  // adota a 1ª foto do serviço (se houver) para o usuário ver algo de imediato.
+  function escolherCapaEstilo(estilo: NonNullable<Orcamento['capaEstilo']>) {
+    if (estilo === 'foto') {
+      const primeira = orc.capaFotoUri ?? (orc.fotosServico ?? [])[0];
+      onChange({ capaEstilo: 'foto', capaFotoUri: primeira });
+      return;
+    }
+    // 'logo' ou 'nenhuma' não usam foto de capa — limpa a URI para não confundir.
+    onChange({ capaEstilo: estilo, capaFotoUri: undefined });
+  }
+
+  // Marca uma foto JÁ anexada como a capa (mantém capaEstilo='foto').
+  function usarComoCapa(uri: string) {
+    onChange({ capaEstilo: 'foto', capaFotoUri: uri });
+  }
+
+  // Adiciona uma foto NOVA da galeria e já a define como capa. Reusa o mesmo
+  // pipeline persistente das fotos do serviço (permissão + compressão + cópia)
+  // e também a anexa em fotosServico, para a foto sobreviver e ficar disponível.
+  async function adicionarFotoCapa() {
+    setAdicionandoCapa(true);
+    try {
+      const atuais = orc.fotosServico ?? [];
+      const r = await adicionarFotoGaleria(atuais);
+      if (r.erro) {
+        Alert.alert('Foto de capa', r.erro);
+        return;
+      }
+      const novaCapa = r.uris[0];
+      if (!novaCapa) return;
+      onChange({
+        fotosServico: [...atuais, ...r.uris],
+        capaEstilo: 'foto',
+        capaFotoUri: novaCapa,
+      });
+    } finally {
+      setAdicionandoCapa(false);
+    }
   }
 
   const Summary = () => (
@@ -220,6 +294,74 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
           );
         })}
       </ScrollView>
+
+      <Text style={styles.sectionTitle}>Capa do documento</Text>
+      <Text style={styles.sectionHint}>Escolha como o orçamento começa. A logo continua na página de detalhes.</Text>
+      <View style={styles.capaRow}>
+        {CAPA_OPCOES.map(op => {
+          const active = capaAtual === op.id;
+          return (
+            <TouchableOpacity
+              key={op.id}
+              style={[styles.capaCard, active && styles.capaCardActive]}
+              onPress={() => escolherCapaEstilo(op.id)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`Capa: ${op.nome}`}
+            >
+              <MaterialCommunityIcons
+                name={op.icon}
+                size={22}
+                color={active ? Colors.accentLight : Colors.onSurfaceVariant}
+              />
+              <Text style={[styles.capaName, active && styles.capaNameActive]} numberOfLines={1}>{op.nome}</Text>
+              <Text style={styles.capaDesc} numberOfLines={1}>{op.desc}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {capaAtual === 'foto' && (
+        <View style={styles.capaFotoBlock}>
+          <Text style={styles.capaFotoHint}>
+            {(orc.fotosServico ?? []).length > 0
+              ? 'Toque em uma foto anexada para usá-la como capa, ou adicione uma nova.'
+              : 'Adicione uma foto para abrir o documento com ela.'}
+          </Text>
+          <View style={styles.fotosGrid}>
+            {(orc.fotosServico ?? []).map((uri, idx) => {
+              const selecionada = orc.capaFotoUri === uri;
+              return (
+                <TouchableOpacity
+                  key={`capa-${idx}`}
+                  style={[styles.capaFotoItem, selecionada && styles.capaFotoItemActive]}
+                  onPress={() => usarComoCapa(uri)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={selecionada ? 'Foto de capa selecionada' : 'Usar esta foto como capa'}
+                >
+                  <Image source={{ uri }} style={styles.fotoImg} />
+                  {selecionada && (
+                    <View style={styles.capaFotoCheck}>
+                      <MaterialCommunityIcons name="check-circle" size={22} color={Colors.accentLight} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={styles.addFotoBtn}
+              onPress={adicionarFotoCapa}
+              disabled={adicionandoCapa}
+              accessibilityRole="button"
+              accessibilityLabel="Adicionar foto de capa"
+            >
+              <MaterialCommunityIcons name="image-plus" size={26} color={Colors.primary} />
+              <Text style={styles.addFotoLabel}>{adicionandoCapa ? 'Aguarde...' : 'Adicionar'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <OlliButton
         label="Pré-visualizar"
@@ -325,6 +467,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
         orcamento={orc}
         empresa={empresa ?? null}
         depoimentos={depoimentos}
+        removerMarca={removerMarca}
       />
     </ScrollView>
   );
@@ -361,6 +504,27 @@ const styles = StyleSheet.create({
   modelDesc: { fontSize: 10.5, color: Colors.onSurfaceVariant, marginTop: 2 },
 
   previewBtn: { alignSelf: 'flex-start', marginTop: 4, marginBottom: Spacing.sm },
+
+  // Capa do documento (Onda 7)
+  capaRow: { flexDirection: 'row', gap: 8 },
+  capaCard: {
+    flex: 1, alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.outline, paddingVertical: 12, paddingHorizontal: 6,
+    ...Shadow.sm,
+  },
+  capaCardActive: { borderColor: Colors.accentLight, backgroundColor: 'rgba(52,198,217,0.09)' },
+  capaName: { fontSize: 12.5, fontWeight: '800', color: Colors.onSurface, textAlign: 'center' },
+  capaNameActive: { color: Colors.accentLight },
+  capaDesc: { fontSize: 10.5, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  capaFotoBlock: { marginTop: Spacing.sm },
+  capaFotoHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginBottom: Spacing.sm },
+  capaFotoItem: { position: 'relative', borderRadius: BorderRadius.md, borderWidth: 2, borderColor: 'transparent' },
+  capaFotoItemActive: { borderColor: Colors.accentLight },
+  capaFotoCheck: {
+    position: 'absolute', top: 2, right: 2,
+    backgroundColor: 'rgba(10,22,38,0.7)', borderRadius: 12,
+  },
 
   // Miniaturas honestas por modelo (Step4 — sem imagem, sem lib)
   miniCapaWrap: { alignItems: 'center', justifyContent: 'center', gap: 8 },
