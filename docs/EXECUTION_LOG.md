@@ -64,6 +64,15 @@ Commit: `a8e617c`. Migrations `20260708_portal_trilha.sql` + `20260708_versoes.s
 - **Pagamento + recibo** (`pagamentos.ts`): estado financeiro derivado dos recibos + badge (aguardando/pago/recibo emitido); "Registrar pagamento" no aprovado; recibo pré-preenchido sem duplicar número.
 - **Gate Fable**: 13 achados → 10 confirmados (1 HIGH + 3 MEDIUM + 6 LOW). HIGH (fingerprint incompleto — coração da feature) + 3 MEDIUM + 5 LOW aplicados; 1 LOW adiado (limpeza de versões órfãs na nuvem, protegido por RLS — follow-up).
 
+## Onda 4 — Ordem de Serviço + app do técnico (CONCLUÍDA)
+
+Commit: `2135b77`. Migration `20260710_ordens_servico.sql` **aplicada + testada (RLS 6/6)**; push main.
+
+- `public.ordens_servico` no padrão multi-tenant (reusa `donos_visiveis()` + trigger `user_id` imutável + `criado_por` + check dos 6 estados). RLS testada com 2 contas: isolamento, acesso de membro em nome do owner, autoria carimbada (`criado_por=auth.uid()` barra autoria falsa), imutabilidade, status check.
+- **Sync de primeira classe** (`cloudSync.ts`): `ordens_servico` no `SyncTable` — `TO_ROW`/`fromRow` (checklist/fotos array-ou-string), `localUpsert` com guarda anti-perda (`tsMaisNovo`), pull-no-login (`pullAll`), push com guard de timestamp (`pushAllLocal`), injeção team-tenant (`pushRowUnchecked` grava no tenant do owner), tombstone (`DELETABLE_TABLES`). Mirror auto-contido removido de `database.ts`. Recuperação: o agente que integrava caiu na metade (erro de infra) → integração completada à mão.
+- **App role-aware** (`ordemServico.ts`, `OrdemServicoScreen.tsx`): gestão cria (de orçamento aprovado ou manual, com **dedupe** por `orcamentoId`)/atribui (`ver_agenda_equipe` inclui gestor)/muda status/vê todas; técnico vê só "Minhas OS" e executa (checklist com autosave, fotos, concluir) offline. Entrada mobile na `HomeScreen` ("Minhas OS" em destaque para técnico).
+- **Gate Fable** (sync=0 achados): 1 CRITICAL (OS inacessível no celular do técnico — a UI só tinha entrada no SidebarNav desktop) + 1 MEDIUM (dedupe) + 1 LOW (permissão do gestor) + closure stale no checklist otimista — todos aplicados.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
