@@ -14,6 +14,13 @@
  * Volume é pequeno (app local, uso de um autônomo) — por isso montamos tudo a
  * partir das listagens já existentes em database.ts/services/agenda.ts, sem
  * criar query nova nem tocar em database.ts.
+ *
+ * GATE DE PLANO (Onda 1): este service SEMPRE devolve a lista completa —
+ * ele não conhece plano nem faz corte nenhum. Quem decide quantos itens
+ * mostrar de graça (1 cliente completo + "+N no Pro") é a tela que consome
+ * `clientesParaReconquistar()` (hoje: HomeScreen, via
+ * `usePlano().temAcesso('radar_clientes')`). Mantém a regra de negócio do
+ * radar isolada de billing.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getClientes, getOrcamentos, getRecibos, getEmpresa } from '../database/database';

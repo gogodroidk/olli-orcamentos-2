@@ -18,6 +18,9 @@ import { getPlanoAtual, invalidarCachePlano, PlanoId } from '../services/planos'
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+/** Período de cobrança escolhido no toggle de 3 opções. */
+type Periodo = 'mensal' | 'anual' | 'parcelado';
+
 interface Plano {
   id: PlanoId;
   nome: string;
@@ -38,12 +41,36 @@ function reais(n: number): string {
   return `R$ ${Math.round(n).toLocaleString('pt-BR')}`;
 }
 
-// Preço/período a exibir conforme o toggle. No anual, mostra o total com -20% ("/ano").
-function precoExibido(plano: Plano, anual: boolean): { preco: string; periodo?: string } {
-  if (anual && plano.precoMensal) {
+/**
+ * Preço/período a exibir conforme o toggle de 3 opções.
+ *  - mensal    → preço base "/mês"
+ *  - anual     → total do ano com -20% "/ano"
+ *  - parcelado → valor cheio (12 × mensal) parcelado, exibido como total "/ano"
+ *                (a linha "ou 12x de R$ N" fica no cartão via `parcelaExibida`).
+ */
+// O parcelamento 12x sem juros só existe para o Pro (único produto avulso na
+// Stripe). A Empresa é sempre assinatura, então no toggle "12x" ela é exibida
+// no seu preço mensal (e o checkout dela usa a assinatura mensal).
+function suporta12x(plano: Plano): boolean {
+  return plano.id === 'pro';
+}
+
+function precoExibido(plano: Plano, periodo: Periodo): { preco: string; periodo?: string } {
+  if (!plano.precoMensal) return { preco: plano.preco, periodo: plano.periodo };
+  if (periodo === 'anual') {
     return { preco: reais(plano.precoMensal * 12 * 0.8), periodo: '/ano' };
   }
+  if (periodo === 'parcelado' && suporta12x(plano)) {
+    // Avulso 12x sem juros: valor cheio do ano (sem desconto), pago em 12 parcelas.
+    return { preco: reais(plano.precoMensal * 12), periodo: '/ano' };
+  }
   return { preco: plano.preco, periodo: plano.periodo };
+}
+
+/** Linha "ou 12x de R$ N sem juros" no modo parcelado (só planos que suportam 12x). */
+function parcelaExibida(plano: Plano, periodo: Periodo): string | null {
+  if (periodo !== 'parcelado' || !plano.precoMensal || !suporta12x(plano)) return null;
+  return `ou 12x de ${reais(plano.precoMensal)} sem juros`;
 }
 
 // Lista base dos planos. `atual` é decidido em runtime (plano lido de getPlanoAtual()),
@@ -89,12 +116,12 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     precoMensal: 99,
     tagline: 'Para equipes que atendem em campo todos os dias.',
     icon: 'office-building-outline',
-    cta: 'Falar com a gente',
+    cta: 'Assinar Empresa — R$ 99/mês',
     beneficios: [
       'Tudo do plano Pro',
+      'Vários técnicos e permissões por papel (em breve)',
       'Equipe ao vivo no mapa (em breve)',
-      'Vários técnicos e permissões (em breve)',
-      'Painel de gestão e metas (em breve)',
+      'Painel de gestão e metas da equipe (em breve)',
       'Suporte prioritário',
     ],
   },
@@ -110,7 +137,7 @@ function mensagemErroPagamento(status: number | null, offline: boolean): string 
 
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
-  const [periodoAnual, setPeriodoAnual] = useState(false);
+  const [periodo, setPeriodo] = useState<Periodo>('mensal');
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
   const [carregandoPlano, setCarregandoPlano] = useState(true);
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | 'portal' | null>(null);
@@ -179,7 +206,21 @@ export default function PlanosScreen() {
     }
   }
 
-  async function assinarPro() {
+  // Resolve (plano do cartão + período do toggle) no identificador que o worker
+  // aceita em /stripe/checkout. O 12x (parcelado) só existe para o Pro — a
+  // Empresa não tem produto avulso, então no toggle "12x" ela cai na assinatura
+  // mensal (mesmo preço mensal exibido no cartão).
+  function planoCheckout(id: PlanoId, per: Periodo): string {
+    if (id === 'pro') {
+      if (per === 'anual') return 'pro_anual';
+      if (per === 'parcelado') return 'pro_12x';
+      return 'pro';
+    }
+    // empresa
+    return per === 'anual' ? 'empresa_anual' : 'empresa';
+  }
+
+  async function assinarPlano(p: Plano) {
     if (!supabase) {
       Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
       return;
@@ -188,7 +229,7 @@ export default function PlanosScreen() {
     if (!user) {
       Alert.alert(
         'Faça login primeiro',
-        'Para assinar o plano Pro, entre com sua conta OLLI. Toque em "Ir para Conta" para fazer login ou criar sua conta.',
+        `Para assinar o plano ${p.nome}, entre com sua conta OLLI. Toque em "Ir para Conta" para fazer login ou criar sua conta.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
@@ -196,9 +237,9 @@ export default function PlanosScreen() {
       );
       return;
     }
-    setAcaoEmAndamento('pro');
+    setAcaoEmAndamento(p.id);
     try {
-      await abrirUrlPagamento('/stripe/checkout', { plano: periodoAnual ? 'pro_anual' : 'pro' });
+      await abrirUrlPagamento('/stripe/checkout', { plano: planoCheckout(p.id, periodo) });
     } finally {
       setAcaoEmAndamento(null);
     }
@@ -213,21 +254,14 @@ export default function PlanosScreen() {
     }
   }
 
-  function escolher(p: Plano) {
-    if (p.atual) return;
+  // CTA secundário da Empresa: "Falar com a gente" pelo WhatsApp de suporte.
+  function falarComSuporte(p: Plano) {
     Haptics.selectionAsync().catch(() => {});
-
-    if (p.id === 'pro') {
-      assinarPro();
-      return;
-    }
-
-    // Empresa: recursos de equipe ainda não existem — mantém contato por WhatsApp.
     if (!WHATSAPP_SUPORTE) {
       // Honesto: sem número configurado, não finge que vai abrir uma conversa.
       Alert.alert(
         'Ainda não disponível',
-        'O contato para contratar esse plano ainda não foi configurado. Tente novamente em breve.',
+        'O contato de suporte ainda não foi configurado. Tente novamente em breve.',
       );
       return;
     }
@@ -235,6 +269,15 @@ export default function PlanosScreen() {
     abrirWhatsApp(WHATSAPP_SUPORTE, mensagem).catch(() => {
       Alert.alert('Ops', 'Não consegui abrir o WhatsApp agora. Tente novamente.');
     });
+  }
+
+  function escolher(p: Plano) {
+    if (p.atual) return;
+    Haptics.selectionAsync().catch(() => {});
+    // Pro e Empresa são ambos assináveis via Stripe Checkout.
+    if (p.id === 'pro' || p.id === 'empresa') {
+      assinarPlano(p);
+    }
   }
 
   return (
@@ -247,27 +290,35 @@ export default function PlanosScreen() {
           <View style={styles.intro}>
             <OlliMascot size={44} onDark />
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
-            <Text style={styles.introSub}>O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. O plano Pro já pode ser assinado direto no app; o plano Empresa ainda está em fila de espera.</Text>
+            <Text style={styles.introSub}>O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Pro e Empresa podem ser assinados direto no app: mensal, anual com desconto ou em 12x sem juros no cartão.</Text>
           </View>
         </AnimatedEntrance>
 
-        {/* TOGGLE MENSAL / ANUAL — no anual exibe o total real com -20% */}
+        {/* TOGGLE MENSAL / ANUAL / 12X — anual mostra total com -20%; 12x mostra a parcela */}
         <AnimatedEntrance index={1}>
           <View style={styles.toggle}>
             <TouchableOpacity
-              style={[styles.toggleOpt, !periodoAnual && styles.toggleOptActive]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodoAnual(false); }}
+              style={[styles.toggleOpt, periodo === 'mensal' && styles.toggleOptActive]}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodo('mensal'); }}
               activeOpacity={0.85}
             >
-              <Text style={[styles.toggleText, !periodoAnual && styles.toggleTextActive]}>Mensal</Text>
+              <Text style={[styles.toggleText, periodo === 'mensal' && styles.toggleTextActive]}>Mensal</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.toggleOpt, periodoAnual && styles.toggleOptActive]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodoAnual(true); }}
+              style={[styles.toggleOpt, periodo === 'anual' && styles.toggleOptActive]}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodo('anual'); }}
               activeOpacity={0.85}
             >
-              <Text style={[styles.toggleText, periodoAnual && styles.toggleTextActive]}>Anual</Text>
+              <Text style={[styles.toggleText, periodo === 'anual' && styles.toggleTextActive]}>Anual</Text>
               <View style={styles.toggleBadge}><Text style={styles.toggleBadgeText}>-20%</Text></View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleOpt, periodo === 'parcelado' && styles.toggleOptActive]}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodo('parcelado'); }}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.toggleText, periodo === 'parcelado' && styles.toggleTextActive]}>12x</Text>
+              <View style={styles.toggleBadge}><Text style={styles.toggleBadgeText}>sem juros</Text></View>
             </TouchableOpacity>
           </View>
         </AnimatedEntrance>
@@ -277,17 +328,18 @@ export default function PlanosScreen() {
           <AnimatedEntrance key={p.id} index={2 + i}>
             <PlanoCard
               plano={p}
-              periodoAnual={periodoAnual}
+              periodo={periodo}
               carregandoPlano={carregandoPlano}
               carregandoAcao={acaoEmAndamento === p.id}
               carregandoPortal={acaoEmAndamento === 'portal'}
               onPress={() => escolher(p)}
               onGerenciar={gerenciarAssinatura}
+              onFalarSuporte={() => falarComSuporte(p)}
             />
           </AnimatedEntrance>
         ))}
 
-        <Text style={styles.rodape}>O plano Pro é cobrado mensalmente (o desconto anual acima ainda é só uma prévia, a cobrança de fato chega em breve). O plano Empresa ainda está em fila de espera — toque em "Falar com a gente" para entrar na fila. 💙</Text>
+        <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o plano por 12 meses. Algumas funções de equipe do Empresa ainda estão chegando (marcadas como "em breve"). 💙</Text>
       </ScrollView>
     </View>
   );
@@ -295,23 +347,36 @@ export default function PlanosScreen() {
 
 function PlanoCard({
   plano,
-  periodoAnual,
+  periodo,
   carregandoPlano,
   carregandoAcao,
   carregandoPortal,
   onPress,
   onGerenciar,
+  onFalarSuporte,
 }: {
   plano: Plano;
-  periodoAnual: boolean;
+  periodo: Periodo;
   carregandoPlano: boolean;
   carregandoAcao: boolean;
   carregandoPortal: boolean;
   onPress: () => void;
   onGerenciar: () => void;
+  onFalarSuporte: () => void;
 }) {
-  const exibido = precoExibido(plano, periodoAnual);
+  const exibido = precoExibido(plano, periodo);
+  const parcela = parcelaExibida(plano, periodo);
   const ehPlanoPagoAtivo = plano.atual && plano.id !== 'gratis';
+
+  // Rótulo do CTA coerente com o período — nunca dizer "/mês" cobrando o ano
+  // inteiro (evita cobrança-surpresa/estorno). Grátis mantém o texto fixo.
+  const rotuloCta = !plano.precoMensal
+    ? plano.cta
+    : periodo === 'anual'
+      ? `Assinar ${plano.nome} — ${reais(plano.precoMensal * 12 * 0.8)}/ano`
+      : periodo === 'parcelado' && suporta12x(plano)
+        ? `Assinar ${plano.nome} — 12x de ${reais(plano.precoMensal)}`
+        : `Assinar ${plano.nome} — ${reais(plano.precoMensal)}/mês`;
   const body = (
     <View style={styles.cardBody}>
       <View style={styles.cardHead}>
@@ -338,10 +403,11 @@ function PlanoCard({
       <View style={styles.priceRow}>
         <Text style={[styles.price, plano.destaque && styles.priceDestaque]}>{exibido.preco}</Text>
         {exibido.periodo ? <Text style={styles.pricePeriod}>{exibido.periodo}</Text> : null}
-        {periodoAnual && plano.precoMensal ? (
+        {periodo === 'anual' && plano.precoMensal ? (
           <View style={styles.priceSaveBadge}><Text style={styles.priceSaveBadgeText}>-20%</Text></View>
         ) : null}
       </View>
+      {parcela ? <Text style={styles.parcelaText}>{parcela}</Text> : null}
 
       {/* BENEFÍCIOS */}
       <View style={styles.beneficios}>
@@ -381,7 +447,7 @@ function PlanoCard({
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
-                <Text style={styles.ctaGradText}>{plano.cta}</Text>
+                <Text style={styles.ctaGradText}>{rotuloCta}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
               </>
             )}
@@ -393,18 +459,19 @@ function PlanoCard({
             <ActivityIndicator size="small" color={Colors.primaryLight} />
           ) : (
             <>
-              <Text style={styles.ctaOutlineText}>{plano.cta}</Text>
+              <Text style={styles.ctaOutlineText}>{rotuloCta}</Text>
               <MaterialCommunityIcons name="arrow-right" size={17} color={Colors.primaryLight} />
             </>
           )}
         </TouchableOpacity>
       )}
 
+      {/* Empresa: CTA secundário para tirar dúvidas antes de assinar. */}
       {!plano.atual && plano.id === 'empresa' && (
-        <View style={styles.soonRow}>
-          <MaterialCommunityIcons name="whatsapp" size={13} color={Colors.onSurfaceMuted} />
-          <Text style={styles.soonText}>Lista de espera: abre o WhatsApp para você entrar na fila, sem cobrança agora</Text>
-        </View>
+        <TouchableOpacity style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
+          <MaterialCommunityIcons name="whatsapp" size={16} color={Colors.onSurfaceVariant} />
+          <Text style={styles.ctaSecundarioText}>Falar com a gente</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -462,6 +529,7 @@ const styles = StyleSheet.create({
   pricePeriod: { fontSize: 13.5, color: Colors.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 6 },
   priceSaveBadge: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, marginBottom: 7 },
   priceSaveBadgeText: { fontSize: 10.5, fontWeight: '800', color: Colors.success },
+  parcelaText: { fontSize: 13, color: Colors.accentLight, fontWeight: '700', marginTop: 2 },
 
   beneficios: { marginTop: Spacing.base, gap: 10 },
   beneficioRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
@@ -474,8 +542,8 @@ const styles = StyleSheet.create({
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: Colors.successLight, borderWidth: 1, borderColor: 'rgba(43,215,135,0.3)' },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: Colors.success },
 
-  soonRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
-  soonText: { flex: 1, fontSize: 11.5, color: Colors.onSurfaceMuted, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
+  ctaSecundario: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10, paddingVertical: 9 },
+  ctaSecundarioText: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurfaceVariant },
 
   rodape: { fontSize: 12.5, color: Colors.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
 });

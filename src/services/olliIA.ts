@@ -52,6 +52,7 @@ export function motivoFalhaDiagnostico(): MotivoFalhaIA {
 export async function diagnosticarCaso(
   input: DiagnosticoInput,
   sinalCancelamento?: AbortSignal,
+  opts?: { forcarOffline?: boolean },
 ): Promise<DiagnosticoResultado> {
   const key = chave(input);
   ultimoMotivoFalha = null;
@@ -66,7 +67,8 @@ export async function diagnosticarCaso(
   // 2) IA via Cloudflare Worker (Gemini por padrão; Claude opcional) — só se
   //    configurado E com sessão logada (o Worker exige JWT do Supabase).
   //    Sem token (deslogado) → pula direto para o fallback offline (698 códigos).
-  if (DIAGNOSTICO_URL) {
+  //    forcarOffline (cota de IA do plano Grátis esgotada) também pula a nuvem.
+  if (DIAGNOSTICO_URL && !opts?.forcarOffline) {
     const token = await accessTokenAtual();
     if (!token) {
       // Com login obrigatório na v3, chegar aqui sem token significa sessão

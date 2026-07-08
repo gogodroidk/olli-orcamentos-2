@@ -12,6 +12,7 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EmptyState } from '../components/EmptyState';
 import { CountUp } from '../components/CountUp';
+import { GatePro } from '../components/GatePro';
 import {
   gerarRelatorioDia, relatorioParaTexto, falarRelatorio, pararFala, RelatorioDia,
 } from '../services/relatorioDia';
@@ -255,38 +256,43 @@ export default function RelatorioDiaScreen() {
               </AnimatedEntrance>
             )}
 
-            {/* NARRATIVA */}
+            {/* NARRATIVA + AÇÕES — Pro; os KPIs acima já são o teaser grátis */}
             <AnimatedEntrance index={5}>
-              <View style={styles.narrativaCard}>
-                <View style={styles.narrativaHead}>
-                  <MaterialCommunityIcons name="text-box-outline" size={16} color={Colors.onSurfaceVariant} />
-                  <Text style={styles.narrativaTitulo}>Resumo do dia</Text>
-                </View>
-                <Text style={styles.narrativaTexto}>{relatorioParaTexto(relatorio)}</Text>
-              </View>
-            </AnimatedEntrance>
+              <GatePro
+                recurso="relatorio_dia"
+                plano="pro"
+                beneficio="Leia o resumo completo e ouça o relatório falado do seu dia."
+              >
+                <View style={styles.narrativaWrap}>
+                  <View style={styles.narrativaHead}>
+                    <MaterialCommunityIcons name="text-box-outline" size={16} color={Colors.onSurfaceVariant} />
+                    <Text style={styles.narrativaTitulo}>Resumo do dia</Text>
+                  </View>
+                  <Text style={styles.narrativaTexto}>{relatorioParaTexto(relatorio)}</Text>
 
-            {/* AÇÕES: ouvir / compartilhar */}
-            <View style={styles.acoes}>
-              <OlliButton
-                label={falando ? 'Parar' : 'Ouvir relatório'}
-                onPress={alternarFala}
-                variant={falando ? 'danger' : 'gradient'}
-                size="lg"
-                fullWidth
-                icon={<MaterialCommunityIcons name={falando ? 'stop-circle-outline' : 'volume-high'} size={20} color="#fff" />}
-                style={styles.acaoBtn}
-              />
-              <OlliButton
-                label="Compartilhar"
-                onPress={compartilhar}
-                variant="outline"
-                size="lg"
-                fullWidth
-                icon={<MaterialCommunityIcons name="share-variant" size={18} color={Colors.accentLight} />}
-                style={styles.acaoBtn}
-              />
-            </View>
+                  <View style={styles.acoes}>
+                    <OlliButton
+                      label={falando ? 'Parar' : 'Ouvir relatório'}
+                      onPress={alternarFala}
+                      variant={falando ? 'danger' : 'gradient'}
+                      size="lg"
+                      fullWidth
+                      icon={<MaterialCommunityIcons name={falando ? 'stop-circle-outline' : 'volume-high'} size={20} color="#fff" />}
+                      style={styles.acaoBtn}
+                    />
+                    <OlliButton
+                      label="Compartilhar"
+                      onPress={compartilhar}
+                      variant="outline"
+                      size="lg"
+                      fullWidth
+                      icon={<MaterialCommunityIcons name="share-variant" size={18} color={Colors.accentLight} />}
+                      style={styles.acaoBtn}
+                    />
+                  </View>
+                </View>
+              </GatePro>
+            </AnimatedEntrance>
           </>
         )}
 
@@ -348,15 +354,12 @@ const styles = StyleSheet.create({
   clientesNovosText: { fontSize: 13.5, color: Colors.onSurface, fontWeight: '600' },
   clientesNovosNum: { fontSize: 13.5, color: Colors.accentLight, fontWeight: '800' },
 
-  narrativaCard: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, ...Shadow.sm,
-  },
+  narrativaWrap: { padding: Spacing.md },
   narrativaHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   narrativaTitulo: { fontSize: 12.5, fontWeight: '800', color: Colors.onSurfaceVariant, letterSpacing: 0.3 },
   narrativaTexto: { fontSize: 15, color: Colors.onSurface, lineHeight: 22 },
 
-  acoes: { gap: 10, marginTop: 4 },
+  acoes: { gap: 10, marginTop: 16 },
   acaoBtn: { borderRadius: BorderRadius.lg },
 
   sectionRow: { marginTop: Spacing.lg, marginBottom: 4 },

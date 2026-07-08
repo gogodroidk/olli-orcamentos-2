@@ -27,6 +27,8 @@ import { nowISO, todayISO } from '../utils/date';
 import { formatCurrency, parseNumber } from '../utils/currency';
 import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
+import { usePlano } from '../hooks/usePlano';
+import { IA_USOS_GRATIS_MES } from '../services/planos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -140,6 +142,8 @@ function montarOrcamento(
 
 export default function OlliVozScreen() {
   const nav = useNavigation<Nav>();
+  const { usosIaRestantes, consumirUsoIa } = usePlano();
+  const iaEsgotada = usosIaRestantes <= 0;
 
   const [fase, setFase] = useState<Fase>('inicial');
   const [transcript, setTranscript] = useState('');
@@ -267,6 +271,7 @@ export default function OlliVozScreen() {
         setFase('erro');
         return;
       }
+      void consumirUsoIa();
       setTitulo(ok.titulo ?? '');
       setClienteNome(ok.clienteNome ?? '');
       setItens(ok.itens.map(vozItemParaEditavel));
@@ -342,11 +347,30 @@ export default function OlliVozScreen() {
     }
   }, [nuvem]);
 
-  const onMicPress = modoVoz === 'nuvem' ? onMicPressNuvem : onMicPressDispositivo;
+  // IA grátis esgotada (3 usos/mês): bloqueia o microfone ANTES de gastar
+  // bateria/permissão — mostra o teaser caloroso em vez de deixar tocar.
+  const irParaPlanos = useCallback((origem: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateCta, { recurso: 'ia_ilimitada', plano: 'pro', origem });
+    nav.navigate('Planos');
+  }, [nav]);
+
+  const onMicPress = useCallback(() => {
+    if (iaEsgotada) {
+      track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+    return modoVoz === 'nuvem' ? onMicPressNuvem() : onMicPressDispositivo();
+  }, [iaEsgotada, modoVoz, onMicPressNuvem, onMicPressDispositivo]);
 
   const enviar = useCallback(async () => {
     const texto = transcript.trim();
     if (!texto) return;
+    if (iaEsgotada) {
+      track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
+      return;
+    }
     pararReconhecimento();
     Haptics.selectionAsync().catch(() => {});
     setFase('enviando');
@@ -370,6 +394,7 @@ export default function OlliVozScreen() {
         setFase('erro');
         return;
       }
+      void consumirUsoIa();
       setTitulo(ok.titulo ?? '');
       setClienteNome(ok.clienteNome ?? '');
       setItens(ok.itens.map(vozItemParaEditavel));
@@ -381,7 +406,7 @@ export default function OlliVozScreen() {
       setPodeCancelar(false);
       abortRef.current = null;
     }
-  }, [transcript, pararReconhecimento]);
+  }, [transcript, pararReconhecimento, iaEsgotada, consumirUsoIa]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -478,6 +503,28 @@ export default function OlliVozScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* IA GRÁTIS ESGOTADA — mensagem calorosa, nunca erro seco */}
+          {iaEsgotada && fase === 'inicial' ? (
+            <AnimatedEntrance index={0}>
+              <View style={styles.limiteCard}>
+                <OlliMascot size={48} onDark />
+                <Text style={styles.limiteTitle}>Você usou seus {IA_USOS_GRATIS_MES} orçamentos por voz este mês</Text>
+                <Text style={styles.limiteSub}>
+                  Sem problema — você pode continuar montando orçamentos na mão a qualquer hora.
+                  Para falar sem limite com a OLLI, dá uma olhada no plano Pro.
+                </Text>
+                <OlliButton
+                  label="Ver planos"
+                  variant="gradient"
+                  size="md"
+                  onPress={() => irParaPlanos('voz_limite')}
+                  icon={<MaterialCommunityIcons name="crown-outline" size={18} color="#fff" />}
+                  style={{ marginTop: 14 }}
+                />
+              </View>
+            </AnimatedEntrance>
+          ) : (
+          <>
           {/* HERO MICROFONE */}
           {voz.checandoDisponibilidade ? (
             <AnimatedEntrance index={0}>
@@ -495,6 +542,13 @@ export default function OlliVozScreen() {
                   ? 'MONTANDO…'
                   : 'TOQUE E FALE'}
               </Text>
+
+              {Number.isFinite(usosIaRestantes) && !iaEsgotada && fase === 'inicial' && (
+                <View style={styles.usoPill}>
+                  <MaterialCommunityIcons name="creation" size={12} color={Colors.plan} />
+                  <Text style={styles.usoPillText}>{usosIaRestantes} de {IA_USOS_GRATIS_MES} usos grátis este mês</Text>
+                </View>
+              )}
 
               <View style={styles.micWrap}>
                 {(fase === 'ouvindo' || gravandoNuvem) && (
@@ -582,6 +636,8 @@ export default function OlliVozScreen() {
             </View>
           </AnimatedEntrance>
           )}
+          </>
+          )}
 
           {/* TRANSCRIÇÃO AO VIVO / EM EDIÇÃO */}
           {fase === 'enviando' ? (
@@ -666,14 +722,22 @@ export default function OlliVozScreen() {
           <View style={{ height: 12 }} />
 
           <OlliButton
-            label={fase === 'enviando' ? 'Montando seu orçamento…' : 'Montar orçamento com a OLLI'}
+            label={
+              iaEsgotada
+                ? 'Limite grátis atingido — ver planos'
+                : fase === 'enviando' ? 'Montando seu orçamento…' : 'Montar orçamento com a OLLI'
+            }
             variant="gradient"
             size="lg"
             fullWidth
-            onPress={enviar}
-            disabled={!podeEnviar || enviando}
+            onPress={iaEsgotada ? () => irParaPlanos('voz_botao_enviar') : enviar}
+            disabled={iaEsgotada ? false : (!podeEnviar || enviando)}
             loading={enviando}
-            icon={enviando ? undefined : <MaterialCommunityIcons name="robot-happy-outline" size={20} color="#fff" />}
+            icon={
+              iaEsgotada
+                ? <MaterialCommunityIcons name="crown-outline" size={20} color="#fff" />
+                : enviando ? undefined : <MaterialCommunityIcons name="robot-happy-outline" size={20} color="#fff" />
+            }
           />
 
           {transcript.length > 0 && fase !== 'enviando' && (
@@ -867,6 +931,11 @@ const styles = StyleSheet.create({
 
   hero: { alignItems: 'center', paddingVertical: Spacing.lg },
   heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight, marginBottom: Spacing.lg },
+  usoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: Spacing.md, backgroundColor: 'rgba(124,58,237,0.12)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
+  usoPillText: { fontSize: 11.5, fontWeight: '800', color: Colors.plan },
+  limiteCard: { alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.xl, ...Shadow.sm },
+  limiteTitle: { fontSize: 17, fontWeight: '800', color: '#fff', textAlign: 'center', marginTop: 14 },
+  limiteSub: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: 8 },
   micWrap: { width: 168, height: 168, justifyContent: 'center', alignItems: 'center' },
   micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },
   micPulseOuter: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },

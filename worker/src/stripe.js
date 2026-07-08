@@ -30,7 +30,9 @@ const STRIPE_API = 'https://api.stripe.com/v1';
 const LOOKUP_PARA_PLANO = {
   olli_pro_mensal: 'pro',
   olli_pro_anual: 'pro',
+  olli_pro_12x: 'pro', // avulso 12x (mode=payment): dá acesso Pro por 12 meses
   olli_empresa_mensal: 'empresa',
+  olli_empresa_anual: 'empresa',
 };
 
 const CORS = {
@@ -230,6 +232,17 @@ function epochParaIso(epoch) {
   return new Date(epoch * 1000).toISOString();
 }
 
+/**
+ * ISO de agora + N meses. setMonth transborda dias inexistentes para o mês
+ * seguinte (31/jan +1 -> 3/mar); para +12 meses o desvio máximo é 1 dia
+ * (29/fev -> 1/mar), aceitável para vigência de assinatura.
+ */
+function isoDaquiAMeses(meses) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString();
+}
+
 /** lookup_key do primeiro item da subscription → plano interno ('pro'/'empresa') ou null. */
 function planoDaSubscription(sub) {
   const item = sub && sub.items && Array.isArray(sub.items.data) ? sub.items.data[0] : null;
@@ -248,13 +261,26 @@ export async function handleCheckout(request, env) {
 
   const body = await request.json().catch(() => ({}));
   const plano = body && body.plano;
-  // Só vendemos Pro por enquanto (Empresa é só contato até o modo equipe existir).
-  // 'pro' = mensal; 'pro_anual' = 12 meses à vista com desconto.
-  if (plano !== 'pro' && plano !== 'pro_anual') {
-    return json({ ok: false, erro: 'plano_invalido' }, 400);
-  }
 
-  const price = plano === 'pro_anual' ? env.STRIPE_PRICE_PRO_ANUAL : env.STRIPE_PRICE_PRO;
+  // Planos vendidos no checkout, cada um resolvido para price + modo de cobrança:
+  //   pro           → assinatura mensal (R$ 39/mês)
+  //   pro_anual     → assinatura anual à vista com -20% (R$ 374,40/ano)
+  //   pro_12x       → AVULSO em mode=payment: valor cheio (R$ 468) parcelável em
+  //                   12x sem juros no cartão. Não é subscription — o acesso Pro
+  //                   dura 12 meses e é gravado pelo webhook (metadata.origem='12x').
+  //   empresa       → assinatura mensal (R$ 99/mês)
+  //   empresa_anual → assinatura anual com -20% (R$ 950,40/ano)
+  const CONFIG_PLANO = {
+    pro: { price: env.STRIPE_PRICE_PRO, planoInterno: 'pro', modo: 'subscription' },
+    pro_anual: { price: env.STRIPE_PRICE_PRO_ANUAL, planoInterno: 'pro', modo: 'subscription' },
+    pro_12x: { price: env.STRIPE_PRICE_PRO_12X, planoInterno: 'pro', modo: 'payment' },
+    empresa: { price: env.STRIPE_PRICE_EMPRESA, planoInterno: 'empresa', modo: 'subscription' },
+    empresa_anual: { price: env.STRIPE_PRICE_EMPRESA_ANUAL, planoInterno: 'empresa', modo: 'subscription' },
+  };
+  const config = CONFIG_PLANO[plano];
+  if (!config) return json({ ok: false, erro: 'plano_invalido' }, 400);
+
+  const price = config.price;
   if (!price) return json({ ok: false, erro: 'preco_nao_configurado' }, 503);
 
   // Reaproveita o customer se o usuário já assinou antes (mantém histórico e
@@ -263,18 +289,36 @@ export async function handleCheckout(request, env) {
   const customerId = existente && !existente.error ? existente.stripe_customer_id : null;
 
   const fields = {
-    mode: 'subscription',
+    mode: config.modo,
     'line_items[0][price]': price,
     'line_items[0][quantity]': 1,
     client_reference_id: user.id,
     'metadata[user_id]': user.id,
-    'metadata[plano]': 'pro',
-    'subscription_data[metadata][user_id]': user.id,
+    'metadata[plano]': config.planoInterno,
     success_url: SUCESSO_URL,
     cancel_url: CANCELADO_URL,
     allow_promotion_codes: 'true',
     locale: 'pt-BR',
   };
+
+  if (config.modo === 'subscription') {
+    // Propaga o user_id para o metadata da subscription — é dele que o webhook
+    // (customer.subscription.updated/deleted) casa o evento com a linha certa.
+    fields['subscription_data[metadata][user_id]'] = user.id;
+  } else {
+    // AVULSO 12x: SÓ cartão (parcelamento não existe em boleto/Pix; fixar o
+    // método elimina o caminho de pagamento assíncrono e a autorização é
+    // imediata, então payment_status='paid' já chega no checkout.completed).
+    fields['payment_method_types[0]'] = 'card';
+    // Habilita o parcelamento sem juros do cartão BR no Checkout e marca a
+    // session como o fluxo de 12 meses para o webhook derivar plano/vigência.
+    fields['payment_method_options[card][installments][enabled]'] = 'true';
+    fields['metadata[origem]'] = '12x';
+    fields['metadata[meses_acesso]'] = '12';
+    // Guarda o pagamento no mesmo customer (histórico) quando ele já existe.
+    fields['payment_intent_data[metadata][user_id]'] = user.id;
+  }
+
   // Se já há customer, passamos customer=; senão, customer_email deixa a Stripe
   // criar o cliente sozinho (não pode mandar os dois juntos).
   if (customerId) {
@@ -385,26 +429,34 @@ async function sincronizarSubscription(env, sub, statusForcado) {
   const status = statusForcado || sub.status || null;
   const novoPeriodo = periodEndEpoch(sub); // epoch (s) ou null
 
-  // Proteção contra evento fora de ordem: a Stripe não garante a ordem de entrega
-  // dos webhooks. Se este NÃO é um cancelamento forçado e a linha já está
-  // 'canceled', só reabrimos a assinatura se o período deste evento for MAIS NOVO
-  // que o gravado — assim um 'updated' atrasado não ressuscita algo já cancelado
-  // por um 'deleted' que chegou antes. Só consultamos quando faz sentido (evita
-  // um SELECT em todo evento).
-  if (!statusForcado) {
-    const atual = await getAssinatura(env, userId);
-    if (atual && !atual.error && atual.status === 'canceled') {
-      const antigoEpoch = atual.current_period_end
-        ? Math.floor(Date.parse(atual.current_period_end) / 1000)
-        : null;
+  // Proteção contra evento fora de ordem E contra regressão de vigência paga.
+  // A Stripe não garante ordem de entrega, e um MESMO usuário pode ter tido mais
+  // de uma assinatura (ex.: migrou da mensal para o 12x). Regras:
+  //  (a) se a linha já está 'canceled', só reabrimos se o período deste evento
+  //      for mais novo (um 'updated' atrasado não ressuscita um 'deleted' antigo);
+  //  (b) se este evento vem de uma assinatura DIFERENTE da gravada e a vigência
+  //      gravada é MAIS FUTURA que a deste evento, ignoramos — nunca deixar o
+  //      'deleted' da mensal antiga encurtar o acesso 12x recém-comprado (R$468).
+  const atual = await getAssinatura(env, userId);
+  if (atual && !atual.error) {
+    const gravadoEpoch = atual.current_period_end
+      ? Math.floor(Date.parse(atual.current_period_end) / 1000)
+      : null;
+
+    if (atual.status === 'canceled' && !statusForcado) {
       const maisNovo =
         typeof novoPeriodo === 'number' &&
-        (antigoEpoch == null || novoPeriodo > antigoEpoch);
-      if (!maisNovo) {
-        // Evento velho/duplicado sobre uma assinatura já cancelada: ignora sem
-        // erro (não é falha — só não deve sobrescrever o estado terminal).
-        return true;
-      }
+        (gravadoEpoch == null || novoPeriodo > gravadoEpoch);
+      if (!maisNovo) return true; // (a)
+    }
+
+    const outraAssinatura = atual.stripe_subscription_id && atual.stripe_subscription_id !== (sub.id || null);
+    const gravadoMaisFuturo =
+      gravadoEpoch != null && (typeof novoPeriodo !== 'number' || gravadoEpoch > novoPeriodo);
+    if (outraAssinatura && gravadoMaisFuturo) {
+      // (b) evento de outra assinatura tentando encurtar uma vigência paga maior.
+      console.error('[olli-stripe] ignorando evento de sub diferente que regrediria vigencia:', sub.id, '->', atual.stripe_subscription_id);
+      return true;
     }
   }
 
@@ -416,6 +468,33 @@ async function sincronizarSubscription(env, sub, statusForcado) {
   };
   if (plano) patch.plano = plano; // só toca o plano quando reconhecemos o price
   return upsertAssinatura(env, userId, patch);
+}
+
+/**
+ * Libera o acesso do Pro 12x (avulso, mode=payment) por N meses. Usado tanto no
+ * checkout.session.completed (cartão, pago na hora) quanto no
+ * checkout.session.async_payment_succeeded (meio assíncrono). Grava
+ * stripe_subscription_id: null — o 12x NÃO é uma subscription, então nenhum
+ * evento de subscription (deleted/updated) deve se casar com esta linha.
+ */
+async function processar12x(env, obj, evento) {
+  const userId = (obj && obj.metadata && obj.metadata.user_id) || (obj && obj.client_reference_id) || null;
+  if (!userId) {
+    console.error('[olli-stripe] 12x session sem user_id:', obj && obj.id);
+    return json({ ok: true, sem_user: true });
+  }
+  const mesesRaw = Number(obj.metadata && obj.metadata.meses_acesso);
+  const meses = Number.isFinite(mesesRaw) && mesesRaw > 0 ? Math.floor(mesesRaw) : 12;
+  const okDb = await upsertAssinatura(env, userId, {
+    plano: 'pro',
+    status: 'active',
+    current_period_end: isoDaquiAMeses(meses),
+    stripe_customer_id: typeof obj.customer === 'string' ? obj.customer : (obj.customer && obj.customer.id) || null,
+    stripe_subscription_id: null,
+  });
+  if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+  marcarEventoProcessado(evento && evento.id);
+  return json({ ok: true });
 }
 
 // Dedup best-effort de eventos do webhook por `event.id`, em memória do
@@ -471,6 +550,21 @@ export async function handleWebhook(request, env) {
       // user_id pode vir do metadata da session ou do client_reference_id.
       const userId =
         (obj && obj.metadata && obj.metadata.user_id) || (obj && obj.client_reference_id) || null;
+
+      // AVULSO 12x (mode=payment): não há subscription. Só gravamos o acesso se o
+      // pagamento realmente foi concluído (payment_status='paid') — parcelado no
+      // cartão a autorização é imediata, então 'paid' já chega neste evento.
+      const eh12x = obj && obj.metadata && obj.metadata.origem === '12x';
+      if (eh12x) {
+        if (obj.payment_status && obj.payment_status !== 'paid') {
+          // Ainda não pago (fluxo assíncrono): não libera agora — o acesso é
+          // liberado pelo checkout.session.async_payment_succeeded (tratado abaixo).
+          console.error('[olli-stripe] 12x session ainda nao paga (aguarda async):', obj.id);
+          return json({ ok: true, pendente: true });
+        }
+        return processar12x(env, obj, evento);
+      }
+
       if (subId) {
         const { ok, data: sub } = await stripeGet(env, `/subscriptions/${encodeURIComponent(subId)}`);
         if (ok) {
@@ -490,6 +584,11 @@ export async function handleWebhook(request, env) {
           stripe_customer_id: typeof obj.customer === 'string' ? obj.customer : null,
         });
         if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+      }
+    } else if (tipo === 'checkout.session.async_payment_succeeded') {
+      // Pagamento assíncrono do 12x concluído depois: libera o acesso agora.
+      if (obj && obj.metadata && obj.metadata.origem === '12x') {
+        return processar12x(env, obj, evento);
       }
     } else if (tipo === 'customer.subscription.updated') {
       const okDb = await sincronizarSubscription(env, obj);

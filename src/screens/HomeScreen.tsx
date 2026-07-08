@@ -23,6 +23,11 @@ import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
+import { usePlano } from '../hooks/usePlano';
+import { track, Eventos } from '../services/analytics';
+
+/** Quantos clientes do radar o plano Grátis mostra completos (o resto vira teaser bloqueado). */
+const RADAR_GRATIS_QTD = 1;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -87,13 +92,15 @@ function abrirMapa(endereco?: string) {
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { temAcesso } = usePlano();
+  const radarLiberado = temAcesso('radar_clientes');
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [olliMenu, setOlliMenu] = useState(false);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const [radar, setRadar] = useState<ClienteParaReconquistar[]>([]);
+  const [radarTotal, setRadarTotal] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
@@ -109,9 +116,11 @@ export default function HomeScreen() {
   const loadRadar = useCallback(async () => {
     try {
       const lista = await clientesParaReconquistar();
-      setRadar(lista.slice(0, 3));
+      // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser —
+      // busca até 4 (1 mostrado + até 3 contados no "+N"); Pro vê os 3 de sempre.
+      setRadarTotal(lista.slice(0, 4));
     } catch {
-      setRadar([]);
+      setRadarTotal([]);
     } finally {
       setRadarCarregando(false);
     }
@@ -144,11 +153,28 @@ export default function HomeScreen() {
     setAdiandoId(item.cliente.id);
     try {
       await adiarClienteRadar(item.cliente.id, 30);
-      setRadar(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
+      setRadarTotal(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
     } finally {
       setAdiandoId(null);
     }
   }
+
+  // Grátis vê 1 cliente sumido de verdade; o resto vira teaser "+N no Pro".
+  const radar = radarLiberado ? radarTotal.slice(0, 3) : radarTotal.slice(0, RADAR_GRATIS_QTD);
+  const radarBloqueados = radarLiberado ? 0 : Math.max(0, radarTotal.length - RADAR_GRATIS_QTD);
+
+  const irParaPlanos = useCallback((origem: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateCta, { recurso: 'radar_clientes', plano: 'pro', origem });
+    nav.navigate('Planos');
+  }, [nav]);
+
+  useEffect(() => {
+    if (!radarCarregando && radarBloqueados > 0) {
+      track(Eventos.gateVisto, { recurso: 'radar_clientes', plano: 'pro', bloqueados: radarBloqueados });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radarCarregando, radarBloqueados]);
 
   // ── métricas reais ──
   const aprovados = orcamentos.filter(o => o.status === 'aprovado');
@@ -332,6 +358,23 @@ export default function HomeScreen() {
                   </View>
                 </AnimatedEntrance>
               ))}
+
+              {radarBloqueados > 0 && (
+                <AnimatedEntrance index={2 + radar.length}>
+                  <OlliPressable style={styles.radarTeaser} onPress={() => irParaPlanos('radar_card')} haptic="selection">
+                    <View style={styles.radarTeaserIcon}>
+                      <MaterialCommunityIcons name="lock-outline" size={18} color={Colors.plan} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.radarTeaserTitle}>
+                        +{radarBloqueados} cliente{radarBloqueados > 1 ? 's' : ''} sumido{radarBloqueados > 1 ? 's' : ''} esperando
+                      </Text>
+                      <Text style={styles.radarTeaserSub}>Veja todos e reative com 1 toque no Pro</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.plan} />
+                  </OlliPressable>
+                </AnimatedEntrance>
+              )}
             </View>
           </>
         ) : null}
@@ -704,6 +747,11 @@ const styles = StyleSheet.create({
   radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' },
   radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
   radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
+
+  radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
+  radarTeaserIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
+  radarTeaserTitle: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
+  radarTeaserSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
 
   recentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
   recentAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(11,111,206,0.2)', justifyContent: 'center', alignItems: 'center' },

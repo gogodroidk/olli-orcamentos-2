@@ -24,6 +24,11 @@ export const Eventos = {
   onboardingSkipped: 'onboarding_skipped',
   empresaSaved: 'empresa_saved',
   servicoCreated: 'servico_created',
+  // Gate de plano (Onda 1 — funil de conversão do freemium).
+  // gateVisto: o usuário topou num recurso bloqueado (preview borrado + CTA).
+  // gateCta: o usuário tocou em "Ver planos" a partir de um gate.
+  gateVisto: 'gate_visto',
+  gateCta: 'gate_cta',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

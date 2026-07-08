@@ -9,6 +9,7 @@ import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { KpiCard } from '../../components/web/KpiCard';
 import { OlliSkeleton } from '../../components/OlliSkeleton';
 import { OlliPressable } from '../../components/OlliPressable';
+import { GatePro } from '../../components/GatePro';
 import { getOrcamentos } from '../../database/database';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { formatCurrency } from '../../utils/currency';
@@ -108,90 +109,117 @@ export default function RelatoriosDesktopScreen() {
         />
       </View>
 
+      {/* Gráficos completos são Pro — números do mês (KPIs acima) já são o teaser grátis. */}
       <View style={styles.linha}>
-        <View style={[styles.cartao, styles.cartaoPizza]}>
-          <Text style={styles.cartaoTitulo}>Orçamentos por status</Text>
-          <View style={styles.pizzaConteudo}>
-            {carregando ? (
-              <OlliSkeleton width={180} height={180} radius={90} />
-            ) : dadosPizza.length === 0 ? (
-              <Text style={styles.vazioTexto}>Nenhum orçamento ainda.</Text>
-            ) : (
-              <>
-                <PieChart
-                  data={dadosPizza}
-                  donut
-                  radius={90}
-                  innerRadius={58}
-                  innerCircleColor={Colors.surface}
-                  centerLabelComponent={() => (
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={styles.pizzaCentroValor}>{orcamentos.length}</Text>
-                      <Text style={styles.pizzaCentroLabel}>total</Text>
-                    </View>
-                  )}
-                />
-                <View style={styles.legenda}>
-                  {dadosPizza.map((d) => (
-                    <View key={d.status} style={styles.legendaItem}>
-                      <View style={[styles.legendaBolinha, { backgroundColor: d.color }]} />
-                      <Text style={styles.legendaTexto}>{STATUS_LABELS[d.status]}</Text>
-                      <Text style={styles.legendaQtd}>{d.qtd}</Text>
-                    </View>
-                  ))}
-                </View>
-              </>
-            )}
+        <GatePro
+          recurso="relatorios"
+          plano="pro"
+          beneficio="Veja a distribuição completa dos seus orçamentos por status."
+        >
+          <View style={[styles.cartao, styles.cartaoPizza]}>
+            <Text style={styles.cartaoTitulo}>Orçamentos por status</Text>
+            <View style={styles.pizzaConteudo}>
+              {carregando ? (
+                <OlliSkeleton width={180} height={180} radius={90} />
+              ) : dadosPizza.length === 0 ? (
+                <Text style={styles.vazioTexto}>Nenhum orçamento ainda.</Text>
+              ) : (
+                <>
+                  <PieChart
+                    data={dadosPizza}
+                    donut
+                    radius={90}
+                    innerRadius={58}
+                    innerCircleColor={Colors.surface}
+                    centerLabelComponent={() => (
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={styles.pizzaCentroValor}>{orcamentos.length}</Text>
+                        <Text style={styles.pizzaCentroLabel}>total</Text>
+                      </View>
+                    )}
+                  />
+                  <View style={styles.legenda}>
+                    {dadosPizza.map((d) => (
+                      <View key={d.status} style={styles.legendaItem}>
+                        <View style={[styles.legendaBolinha, { backgroundColor: d.color }]} />
+                        <Text style={styles.legendaTexto}>{STATUS_LABELS[d.status]}</Text>
+                        <Text style={styles.legendaQtd}>{d.qtd}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </View>
           </View>
-        </View>
+        </GatePro>
 
-        <View style={[styles.cartao, styles.cartaoLinha]}>
-          <Text style={styles.cartaoTitulo}>Orçamentos criados — últimos 12 meses</Text>
-          <View
-            style={styles.linhaGraficoWrap}
-            onLayout={(e: LayoutChangeEvent) => setLarguraLinha(e.nativeEvent.layout.width)}
+        {/* GatePro não estica em flex-row (wrap sem flex:1) — a View externa
+            garante que o cartão de linha continue ocupando o espaço restante. */}
+        <View style={styles.cartaoLinha}>
+          <GatePro
+            recurso="relatorios"
+            plano="pro"
+            beneficio="Veja a evolução completa dos últimos 12 meses."
           >
-            {carregando ? (
-              <OlliSkeleton width="100%" height={200} />
-            ) : larguraLinha > 0 ? (
-              <LineChart
-                data={dadosLinha}
-                width={Math.max(0, larguraLinha - 50)}
-                height={200}
-                spacing={Math.max(24, (larguraLinha - 90) / 12)}
-                initialSpacing={16}
-                color={Colors.accent}
-                thickness={2}
-                dataPointsColor={Colors.accentLight}
-                dataPointsRadius={4}
-                noOfSections={4}
-                maxValue={maiorQtd * 1.2}
-                yAxisThickness={0}
-                xAxisThickness={1}
-                xAxisColor={Colors.outline}
-                rulesColor={Colors.outline}
-                rulesType="dashed"
-                yAxisTextStyle={{ color: Colors.onSurfaceMuted, fontSize: 10 }}
-                xAxisLabelTextStyle={{ color: Colors.onSurfaceVariant, fontSize: 10 }}
-                yAxisLabelWidth={30}
-                curved
-                isAnimated
-              />
-            ) : null}
-          </View>
+            <View style={styles.cartao}>
+              <Text style={styles.cartaoTitulo}>Orçamentos criados — últimos 12 meses</Text>
+              <View
+                style={styles.linhaGraficoWrap}
+                onLayout={(e: LayoutChangeEvent) => setLarguraLinha(e.nativeEvent.layout.width)}
+              >
+                {carregando ? (
+                  <OlliSkeleton width="100%" height={200} />
+                ) : larguraLinha > 0 ? (
+                  <LineChart
+                    data={dadosLinha}
+                    width={Math.max(0, larguraLinha - 50)}
+                    height={200}
+                    spacing={Math.max(24, (larguraLinha - 90) / 12)}
+                    initialSpacing={16}
+                    color={Colors.accent}
+                    thickness={2}
+                    dataPointsColor={Colors.accentLight}
+                    dataPointsRadius={4}
+                    noOfSections={4}
+                    maxValue={maiorQtd * 1.2}
+                    yAxisThickness={0}
+                    xAxisThickness={1}
+                    xAxisColor={Colors.outline}
+                    rulesColor={Colors.outline}
+                    rulesType="dashed"
+                    yAxisTextStyle={{ color: Colors.onSurfaceMuted, fontSize: 10 }}
+                    xAxisLabelTextStyle={{ color: Colors.onSurfaceVariant, fontSize: 10 }}
+                    yAxisLabelWidth={30}
+                    curved
+                    isAnimated
+                  />
+                ) : null}
+              </View>
+            </View>
+          </GatePro>
         </View>
       </View>
 
-      <OlliPressable style={styles.cardRelatorioVoz} onPress={() => nav.navigate('RelatorioDia')} haptic={false}>
-        <View style={styles.cardRelatorioVozIcone}>
-          <MaterialCommunityIcons name="microphone-outline" size={24} color={Colors.accentLight} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardRelatorioVozTitulo}>Relatório do dia falado</Text>
-          <Text style={styles.cardRelatorioVozSub}>Ouça um resumo falado de como foi o seu dia.</Text>
-        </View>
-        <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
-      </OlliPressable>
+      <GatePro
+        recurso="relatorio_dia"
+        plano="pro"
+        beneficio="Ouça o resumo do seu dia em um toque, todo santo dia."
+      >
+        <OlliPressable
+          style={styles.cardRelatorioVoz}
+          onPress={() => nav.navigate('RelatorioDia')}
+          haptic={false}
+        >
+          <View style={styles.cardRelatorioVozIcone}>
+            <MaterialCommunityIcons name="microphone-outline" size={24} color={Colors.accentLight} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardRelatorioVozTitulo}>Relatório do dia falado</Text>
+            <Text style={styles.cardRelatorioVozSub}>Ouça um resumo falado de como foi o seu dia.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
+        </OlliPressable>
+      </GatePro>
     </LayoutDesktop>
   );
 }

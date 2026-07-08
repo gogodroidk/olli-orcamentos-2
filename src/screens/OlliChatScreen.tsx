@@ -18,6 +18,9 @@ import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { CHAT_KEY } from '../services/storageKeys';
+import { usePlano } from '../hooks/usePlano';
+import { track, Eventos } from '../services/analytics';
+import { IA_USOS_GRATIS_MES } from '../services/planos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -49,6 +52,8 @@ const SAUDACAO: Bolha = {
 export default function OlliChatScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { usosIaRestantes, consumirUsoIa } = usePlano();
+  const iaEsgotada = usosIaRestantes <= 0;
 
   const [bolhas, setBolhas] = useState<Bolha[]>([SAUDACAO]);
   const [texto, setTexto] = useState('');
@@ -118,18 +123,32 @@ export default function OlliChatScreen() {
     try {
       const res = await enviarChat(historico, controller.signal);
       setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: res.resposta, falhou: !res.ok }]);
-      if (res.ok) Haptics.selectionAsync().catch(() => {});
+      if (res.ok) {
+        Haptics.selectionAsync().catch(() => {});
+        void consumirUsoIa();
+      }
     } finally {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
       setDigitando(false);
       setPodeCancelar(false);
       abortRef.current = null;
     }
-  }, []);
+  }, [consumirUsoIa]);
+
+  const irParaPlanos = useCallback((origem: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateCta, { recurso: 'ia_ilimitada', plano: 'pro', origem });
+    nav.navigate('Planos');
+  }, [nav]);
 
   const enviar = useCallback(async (mensagem?: string) => {
     const conteudo = (mensagem ?? texto).trim();
     if (!conteudo || digitando) return;
+    if (iaEsgotada) {
+      track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_chat' });
+      irParaPlanos('chat_enviar');
+      return;
+    }
     Haptics.selectionAsync().catch(() => {});
 
     const userBolha: Bolha = { id: generateId(), role: 'user', texto: conteudo };
@@ -137,7 +156,7 @@ export default function OlliChatScreen() {
     setBolhas(proximas);
     setTexto('');
     await chamarIA(proximas);
-  }, [texto, bolhas, digitando, chamarIA]);
+  }, [texto, bolhas, digitando, chamarIA, iaEsgotada, irParaPlanos]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -146,6 +165,7 @@ export default function OlliChatScreen() {
 
   const tentarDeNovo = useCallback((bolhaErroId: string) => {
     if (digitando) return;
+    if (iaEsgotada) { irParaPlanos('chat_tentar_de_novo'); return; }
     // remove a bolha de erro e reenvia a IA com o histórico até a última msg do usuário
     const idx = bolhas.findIndex(b => b.id === bolhaErroId);
     if (idx <= 0) return;
@@ -154,7 +174,7 @@ export default function OlliChatScreen() {
     Haptics.selectionAsync().catch(() => {});
     setBolhas(historicoBase);
     chamarIA(historicoBase);
-  }, [bolhas, digitando, chamarIA]);
+  }, [bolhas, digitando, chamarIA, iaEsgotada, irParaPlanos]);
 
   const limpar = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -176,6 +196,11 @@ export default function OlliChatScreen() {
 
   const mostrarSugestoes = bolhas.length <= 1 && !digitando;
 
+  useEffect(() => {
+    if (iaEsgotada) track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_chat' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iaEsgotada]);
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -184,7 +209,7 @@ export default function OlliChatScreen() {
     >
       <GradientHeader
         title="Chat com a OLLI"
-        subtitle="Sua assistente técnica"
+        subtitle={Number.isFinite(usosIaRestantes) ? `${usosIaRestantes} de ${IA_USOS_GRATIS_MES} usos grátis este mês` : 'Sua assistente técnica'}
         onBack={() => goBackOrHome(nav)}
         right={
           <TouchableOpacity onPress={limpar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Limpar conversa">
@@ -214,7 +239,7 @@ export default function OlliChatScreen() {
 
         {digitando && <Digitando podeCancelar={podeCancelar} onCancelar={cancelarEnvio} />}
 
-        {mostrarSugestoes && (
+        {mostrarSugestoes && !iaEsgotada && (
           <View style={styles.sugestoesWrap}>
             <Text style={styles.sugestoesLabel}>Sugestões para começar</Text>
             {SUGESTOES.map(s => (
@@ -225,6 +250,22 @@ export default function OlliChatScreen() {
             ))}
           </View>
         )}
+
+        {iaEsgotada && !digitando && (
+          <AnimatedEntrance from="bottom">
+            <View style={styles.limiteCard}>
+              <OlliMascot size={40} onDark float={false} />
+              <Text style={styles.limiteTitle}>Você usou seus {IA_USOS_GRATIS_MES} papos grátis este mês</Text>
+              <Text style={styles.limiteSub}>
+                Volta mês que vem com {IA_USOS_GRATIS_MES} novos, ou continue sem limite agora mesmo no plano Pro.
+              </Text>
+              <TouchableOpacity style={styles.limiteBtn} onPress={() => irParaPlanos('chat_card')} activeOpacity={0.85}>
+                <MaterialCommunityIcons name="crown-outline" size={16} color="#fff" />
+                <Text style={styles.limiteBtnText}>Ver planos</Text>
+              </TouchableOpacity>
+            </View>
+          </AnimatedEntrance>
+        )}
       </ScrollView>
 
       {/* INPUT */}
@@ -234,7 +275,7 @@ export default function OlliChatScreen() {
             style={styles.input}
             value={texto}
             onChangeText={setTexto}
-            placeholder="Escreva sua mensagem…"
+            placeholder={iaEsgotada ? 'Limite grátis atingido este mês…' : 'Escreva sua mensagem…'}
             placeholderTextColor={Colors.onSurfaceMuted}
             multiline
             onSubmitEditing={() => enviar()}
@@ -242,13 +283,13 @@ export default function OlliChatScreen() {
           />
         </View>
         <TouchableOpacity
-          style={[styles.sendBtn, (!texto.trim() || digitando) && styles.sendBtnDisabled]}
-          onPress={() => enviar()}
-          disabled={!texto.trim() || digitando}
+          style={[styles.sendBtn, (!texto.trim() || digitando) && !iaEsgotada && styles.sendBtnDisabled, iaEsgotada && styles.sendBtnPro]}
+          onPress={() => (iaEsgotada ? irParaPlanos('chat_input') : enviar())}
+          disabled={(!texto.trim() || digitando) && !iaEsgotada}
           activeOpacity={0.85}
-          accessibilityLabel="Enviar mensagem"
+          accessibilityLabel={iaEsgotada ? 'Ver planos' : 'Enviar mensagem'}
         >
-          <MaterialCommunityIcons name="send" size={20} color="#fff" />
+          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color="#fff" />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -366,9 +407,16 @@ const styles = StyleSheet.create({
   sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: 'rgba(52,198,217,0.07)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.28)', borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
   sugestaoText: { flex: 1, fontSize: 14, color: Colors.onSurface, fontWeight: '600' },
 
+  limiteCard: { alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.08)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.3)', borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: 8 },
+  limiteTitle: { fontSize: 15, fontWeight: '800', color: '#fff', textAlign: 'center', marginTop: 10 },
+  limiteSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 18, marginTop: 6 },
+  limiteBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: Colors.plan, borderRadius: BorderRadius.full, paddingHorizontal: 18, paddingVertical: 10, marginTop: 14 },
+  limiteBtnText: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
+
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
   inputWrap: { flex: 1, backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },
   input: { fontSize: 15, color: Colors.onSurface, maxHeight: 100 },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center', ...Shadow.glowBlue },
   sendBtnDisabled: { backgroundColor: Colors.surfaceElevated, opacity: 0.6, shadowOpacity: 0 },
+  sendBtnPro: { backgroundColor: Colors.plan, shadowColor: Colors.plan },
 });

@@ -17,6 +17,7 @@ import { diagnosticarCaso, motivoFalhaDiagnostico } from '../services/olliIA';
 import { DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { usePlano } from '../hooks/usePlano';
 
 /** Depois de quantos segundos de loading o botão "Cancelar" aparece. */
 const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 4;
@@ -37,8 +38,15 @@ export default function DiagnosticoIAScreen() {
   const [podeCancelar, setPodeCancelar] = useState(false);
   const [res, setRes] = useState<DiagnosticoResultado | null>(null);
   const [falhouIA, setFalhouIA] = useState(false);
+  const [avisoCota, setAvisoCota] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { temAcesso, usosIaRestantes, consumirUsoIa } = usePlano();
+  // Grátis tem 3 usos de IA/mês (voz + chat + diagnóstico). Esgotou → o
+  // diagnóstico continua funcionando pela base offline de 698 códigos (nunca
+  // fica mudo), só sem a análise da nuvem, com um aviso caloroso + CTA.
+  const iaNuvemEsgotada = !temAcesso('ia_ilimitada') && usosIaRestantes <= 0;
 
   // limpa timers/abort pendentes ao desmontar a tela
   useEffect(() => {
@@ -59,6 +67,7 @@ export default function DiagnosticoIAScreen() {
     setPodeCancelar(false);
     setRes(null);
     setFalhouIA(false);
+    setAvisoCota(iaNuvemEsgotada);
     cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
     try {
       const r = await diagnosticarCaso({
@@ -66,9 +75,12 @@ export default function DiagnosticoIAScreen() {
         modelo: modelo.trim() || undefined,
         codigo: codigo.trim() || undefined,
         sintoma: sintoma.trim() || undefined,
-      }, controller.signal);
+      }, controller.signal, { forcarOffline: iaNuvemEsgotada });
       setRes(r);
       setFalhouIA(!!motivoFalhaDiagnostico());
+      // Só consome cota quando a NUVEM realmente respondeu (fonte 'ia').
+      // A base offline (fonte 'base') e o cache são sempre livres.
+      if (r.fonte === 'ia') await consumirUsoIa();
     } finally {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
       setLoading(false);
@@ -143,6 +155,20 @@ export default function DiagnosticoIAScreen() {
           </View>
         )}
 
+        {d && avisoCota && (
+          <AnimatedEntrance index={0}>
+            <View style={styles.cotaCard}>
+              <MaterialCommunityIcons name="creation" size={18} color={Colors.plan} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.cotaTitulo}>Você usou seus 3 diagnósticos com IA do mês</Text>
+                <Text style={styles.cotaTexto}>
+                  Esta resposta veio da nossa base offline de 698 códigos. No Pro, a análise da OLLI por IA é ilimitada.
+                </Text>
+                <Text style={styles.cotaLink} onPress={() => nav.navigate('Planos')}>Ver planos →</Text>
+              </View>
+            </View>
+          </AnimatedEntrance>
+        )}
         {d && (
           <View>
             {/* origem do diagnóstico */}
@@ -287,6 +313,10 @@ const styles = StyleSheet.create({
   loadingBox: { alignItems: 'center', paddingVertical: 28 },
   loadingText: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 10, textAlign: 'center', paddingHorizontal: 24 },
 
+  cotaCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: Colors.plan + '14', borderWidth: 1, borderColor: Colors.plan + '33', borderRadius: BorderRadius.md, padding: 12, marginTop: 16 },
+  cotaTitulo: { color: Colors.onSurface, fontWeight: '700', fontSize: 13.5 },
+  cotaTexto: { color: Colors.onSurfaceVariant, fontSize: 12.5, marginTop: 3, lineHeight: 17 },
+  cotaLink: { color: Colors.plan, fontWeight: '700', fontSize: 13, marginTop: 6 },
   originRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 10 },
   originPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, borderWidth: 1 },
   originIa: { backgroundColor: 'rgba(127,233,245,0.10)', borderColor: 'rgba(127,233,245,0.3)' },

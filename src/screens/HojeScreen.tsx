@@ -26,6 +26,8 @@ import {
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { CHECKLIST_KEY } from '../services/storageKeys';
+import { usePlano } from '../hooks/usePlano';
+import { track, Eventos } from '../services/analytics';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -82,6 +84,8 @@ function hhmm(iso?: string | null): string {
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { temAcesso } = usePlano();
+  const relatorioLiberado = temAcesso('relatorio_dia');
 
   const [itens, setItens] = useState<Agendamento[]>([]);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
@@ -345,11 +349,15 @@ export default function HojeScreen() {
           </View>
         </View>
 
-        {/* RELATÓRIO DO DIA FALADO */}
+        {/* RELATÓRIO DO DIA FALADO — recurso Pro; KPIs continuam grátis dentro da tela */}
         <AnimatedEntrance index={2}>
           <TouchableOpacity
             style={styles.relatorioCard}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('RelatorioDia'); }}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
+              nav.navigate('RelatorioDia');
+            }}
             activeOpacity={0.85}
           >
             <View style={styles.relatorioIcon}>
@@ -359,7 +367,14 @@ export default function HojeScreen() {
               <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
               <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+            {relatorioLiberado ? (
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+            ) : (
+              <View style={styles.relatorioProBadge}>
+                <MaterialCommunityIcons name="lock-outline" size={11} color={Colors.plan} />
+                <Text style={styles.relatorioProBadgeText}>Pro</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </AnimatedEntrance>
 
@@ -443,6 +458,8 @@ const styles = StyleSheet.create({
   },
   relatorioTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
   relatorioSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
+  relatorioProBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(124,58,237,0.14)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.36)', borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 4 },
+  relatorioProBadgeText: { fontSize: 11, fontWeight: '800', color: Colors.plan },
 
   allClear: { alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.lg },
   allClearTitle: { fontSize: 17, fontWeight: '800', color: '#fff', marginTop: 10 },
