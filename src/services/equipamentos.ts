@@ -54,7 +54,10 @@ export async function salvarEquipamento(
   const agora = new Date().toISOString();
   const existente = parcial.id ? await getEquipamentoDb(parcial.id) : null;
   const e: Equipamento = {
-    id: parcial.id ?? generateId(),
+    // `||` (não `??`): a tela monta um cadastro novo com id:'' (string vazia, que
+    // `??` NÃO trataria como ausente) → sem isto todo equipamento novo nasceria com
+    // id='' e cada INSERT OR REPLACE sobrescreveria o anterior (colapso do inventário).
+    id: parcial.id || generateId(),
     clienteId: parcial.clienteId ?? existente?.clienteId,
     localId: parcial.localId ?? existente?.localId,
     codigoInterno: parcial.codigoInterno ?? existente?.codigoInterno,

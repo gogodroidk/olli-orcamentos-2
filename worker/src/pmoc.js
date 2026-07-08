@@ -189,21 +189,25 @@ async function getPrestador(env, userId) {
 }
 
 // ─── TRILHA de scans (LGPD-safe) ─────────────────────────────
-// Hash irreversível do IP: SHA-256(token || ':' || ip). NUNCA guardamos o IP cru.
-// Salgado com o token → o mesmo IP em etiquetas diferentes gera hashes DIFERENTES
-// (não dá para cruzar a navegação de uma pessoa entre equipamentos). Serve para o
-// gestor distinguir origens e para o rate-limit anti-enumeração por origem.
-async function hashIp(token, ip) {
+// Hash irreversível do IP: SHA-256(segredo_fixo || ':' || ip). NUNCA guardamos o IP cru.
+// Salgado com um SEGREDO FIXO do worker (SUPABASE_SERVICE_ROLE_KEY — nunca no repo/
+// exposto), NÃO com o token. Isso é ESSENCIAL para o rate-limit anti-enumeração
+// funcionar: com sal por-token, cada request de um enumerador (que usa tokens
+// distintos) geraria um ip_hash diferente e a contagem de tentativas por origem NUNCA
+// agregaria (o guard viraria código morto). Sal fixo → hash ESTÁVEL por IP na janela →
+// tentativasFalhasRecentes conta de fato. Truncado a 16 hex (64 bits): agrupa origens
+// para o gestor e para o teto de abuso, sem virar identificador forte de pessoa. A
+// correlação fica restrita ao tenant do dono (RLS de qr_scan_events por user_id).
+async function hashIp(env, ip) {
   try {
     const cripto = globalThis.crypto;
     if (!ip || !cripto || !cripto.subtle) return null;
-    const dados = new TextEncoder().encode(`${token}:${ip}`);
+    const sal = (env && env.SUPABASE_SERVICE_ROLE_KEY) ? String(env.SUPABASE_SERVICE_ROLE_KEY) : 'olli-qr-scan';
+    const dados = new TextEncoder().encode(`${sal}:${ip}`);
     const buf = await cripto.subtle.digest('SHA-256', dados);
     const bytes = new Uint8Array(buf);
     let hex = '';
     for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
-    // Truncado: 16 hex chars (64 bits) chega para agrupar origens sem virar um
-    // identificador forte de pessoa.
     return hex.slice(0, 16);
   } catch {
     return null;
@@ -272,7 +276,7 @@ async function tentativasFalhasRecentes(env, ipHash) {
 export async function renderEtiqueta(token, env, request) {
   const ip = request && request.headers ? request.headers.get('CF-Connecting-IP') || '' : '';
   const ua = request && request.headers ? request.headers.get('User-Agent') || '' : '';
-  const ipHash = await hashIp(token, ip);
+  const ipHash = await hashIp(env, ip);
 
   // Token malformado: nem toca o banco. Registra a tentativa (enumeração) e
   // devolve a página genérica — mesma resposta de inexistente/revogado.

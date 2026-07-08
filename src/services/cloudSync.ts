@@ -373,12 +373,16 @@ function equipamentoToRow(e: Equipamento): Record<string, unknown> {
     localizacao: e.localizacao ?? null,
     situacao: e.situacao,
     criticidade: e.criticidade ?? null,
-    qr_revogado_em: e.qrRevogadoEm ?? null,
     fotos: e.fotos ?? [],
     criado_em: e.criadoEm,
     atualizado_em: e.atualizadoEm,
   };
   if (e.qrToken) row.qr_token = e.qrToken;
+  // qr_revogado_em é MONOTÔNICO (o app só revoga, nunca desrevoga): OMITE quando
+  // vazio para um push last-writer-wins NÃO zerar uma revogação feita em outro
+  // aparelho (que reativaria um QR revogado — falha de segurança). Só envia quando
+  // ESTE aparelho tem a revogação; caso contrário o valor remoto é preservado.
+  if (e.qrRevogadoEm) row.qr_revogado_em = e.qrRevogadoEm;
   return row;
 }
 

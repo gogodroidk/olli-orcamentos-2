@@ -1,5 +1,7 @@
 -- ============================================================================
--- NÃO APLICAR AUTOMATICAMENTE: fundação PMOC, entra no track PMOC pos-ciclo-comercial.
+-- APLICADA em 2026-07-08 (abertura do track PMOC — Fase 1 inventário + QR).
+-- Idempotente; RLS testada com 2 contas reais (isolamento, membro, autoria carimbada,
+-- user_id imutável, QR opaco/único). Fundação PMOC.
 -- ----------------------------------------------------------------------------
 -- OLLI Orçamentos — FUNDAÇÃO do módulo PMOC (esqueleto NÃO-aplicado). Este arquivo
 -- é o núcleo mínimo do vertical HVAC/PMOC: ativos (equipamentos) + identidade física

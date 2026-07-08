@@ -100,6 +100,15 @@ Commit: `e415892`. Push main.
 - **Reduced-motion no app inteiro** (`theme/motion.ts` + `components/AnimatedEntrance.tsx`): novo hook `useReducedMotion()` (iOS/Android "Reduzir movimento" + `prefers-reduced-motion` no web via RNW); `AnimatedEntrance` renderiza direto no estado final quando ativo — atende ao pedido de respeitar reduced-motion de uma vez, para todas as telas que usam `AnimatedEntrance`.
 - **Gate Fable**: 2 findings, ambos LOW e explicitamente não-bloqueantes (gate PASSA). A re-animação da agenda ao navegar fica coberta pelo reduced-motion; o role de checkbox para leitor de tela (`OlliPressable` a11y) virou follow-up.
 
+## Track PMOC — Fase 1: inventário HVAC + etiqueta QR (CONCLUÍDA)
+
+Commits: `f54c212` (WIP) + fix do gate. Push main. **A maior aposta comercial** (receita recorrente / retenção — "quem cadastra centenas de equipamentos não volta pra planilha").
+
+- **Fundação** `20260709_pmoc_fundacao.sql` **aplicada + RLS testada 4/4** (assets, asset_qr_tokens, qr_scan_events, service_contracts, pmoc_plans + versões; multi-tenant via `donos_visiveis()`, `user_id` imutável, versões de contrato/plano congeladas após assinatura). QR opaco (`gen_random_bytes(24)` base64url ~32 chars, UNIQUE, revogável). `20260711_assets_fotos.sql` (coluna `fotos` jsonb).
+- **Inventário** (`equipamentos.ts` + `EquipamentoScreen` + `database.ts`): cadastro HVAC (categoria/fabricante/modelo/série/BTU/tensão/refrigerante/local/criticidade/fotos), offline-first. **Sync de 1ª classe** — `equipamentos` (local) ↔ `assets` (nuvem) via `REMOTE_TABLE` no cloudSync; o `qr_token` opaco é gerado pelo banco e só preservado pelo app (omitido no 1º insert, backfill no pull).
+- **Porta física QR** (`worker/src/pmoc.js`, deploy `v4e5a8819`): `GET /q/<token>` página pública LGPD-safe (só prestador+código+categoria+situação+contato; nunca cliente/endereço/contrato/valores); revogado e inexistente indistinguíveis; `qr_scan_events` sem IP cru (hash salgado com segredo fixo do worker); QR image `/q/<token>.svg` gerado em JS puro (round-trip verificado).
+- **Gate Fable**: 1 CRITICAL (`id: parcial.id ?? generateId()` — `??` não pegava `''` → todo equipamento salvo com id vazio, colapso do inventário), 1 HIGH (rate-limit anti-enumeração inerte por salgar o hash com o token), 1 MEDIUM (push zerava revogação de QR) — **todos corrigidos**.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
