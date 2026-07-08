@@ -35,21 +35,34 @@ Commit: `03ec66d` — "Onda 1 (monetizacao) + correcoes do gate: freemium que co
 
 Pendência humana da Onda 1: habilitar "installments" no dashboard Stripe + criar Prices com lookup_keys (`olli_pro_12x`, `olli_empresa_mensal`, `olli_empresa_anual`). Código pronto.
 
-## Onda 2 — Multi-tenant (EM ANDAMENTO, não commitado)
+## Onda 2 — Multi-tenant / Modo Empresa (CONCLUÍDA)
 
-Arquivos no working tree (git status):
+Commits: `34db77b` (schema + fluxo empresa) — migrations `20260707_multitenant.sql` + `20260708_multitenant_fixes.sql` **aplicadas em produção**.
 
-- `supabase/migrations/20260707_multitenant.sql` (710 linhas, idempotente, **NÃO aplicada ainda**): `organizacoes`, `organizacao_membros`, `convites`, `localizacoes_equipe`, `acessos_equipe`; funções `eh_membro_ativo`/`eh_gestao`/`eh_admin_org`/`donos_visiveis()` (SECURITY DEFINER, search_path=''); policies reescritas nas 7 tabelas de dados (SELECT via `donos_visiveis()`, escrita de equipe só em `orcamentos`/`agendamentos` com `criado_por`); funções `criar_organizacao()` e `aceitar_convite(token)`; blocos de teste T1–T7 comentados no fim do arquivo.
-- Decisão arquitetural documentada em `docs/multi-tenant.md`: org é CAMADA sobre dados do owner (sem big-bang para org_id); `tipo_conta` é derivado.
-- `worker/src/equipe.js` (392 linhas): convites com token + página web do convite + deep link `olli://convite/<token>`.
-- UI: `EquipeScreen`, `EquipeAoVivoScreen`, `ConviteScreen`; hooks `usePermissao`, `useTipoConta`; serviços `equipe.ts`, `localizacaoEquipe.ts` (captura nativa atrás de flag até a Onda do APK).
+- Org como CAMADA sobre os dados do owner (sem big-bang para `org_id`): `donos_visiveis()` SECURITY DEFINER retorna {self} ∪ {owners de orgs onde sou membro ativo}. Usuário sozinho = single-tenant idêntico. Doc: `docs/multi-tenant.md`.
+- Tabelas: `organizacoes`, `organizacao_membros` (papéis owner/admin/gestor/tecnico), `convites` (token + expiração), `localizacoes_equipe`, `acessos_equipe`. `criado_por` em `orcamentos`/`agendamentos`.
+- Trigger `bloquear_troca_user_id()` (user_id imutável) + `aceitar_convite` não rebaixa owner + valida e-mail do convite.
+- `worker/src/equipe.js`: convite server-side (JWT owner/admin) + página pública do convite.
+- **RLS testada com 2 contas reais** (isolamento, exfiltração bloqueada). 4 HIGH do gate corrigidos e re-verificados.
 
-Falta para fechar a Onda 2 (gate de saída):
-1. Aplicar migration via `mcp__supabase__apply_migration` após revisão.
-2. Executar a matriz RLS completa (ver `RLS_MATRIX.md`) com 2+ JWTs reais — obrigatório antes do merge.
-3. Backfill: organização individual para usuários existentes (ver DECISIONS D-09).
-4. Push do técnico em nome do owner no `cloudSync`/`equipe.ts` (`user_id = owner` + `criado_por = eu`).
-5. Commit + typecheck limpo.
+## Integração da pesquisa V3 + PMOC (CONCLUÍDA)
+
+Commit: `478ca6a`. Análise das 3 pesquisas → plano executável, sem instalar nada por impulso.
+
+- `docs/TECHNOLOGY_RADAR.md` (veredito nosso por ferramenta), `docs/INTEGRATION_BACKLOG.md`, `docs/TARGET_ARCHITECTURE.md`.
+- `src/services/ports/` — 13 interfaces de adaptador (Payment/Email/Maps/Fiscal/AI/…), 100% declarativas e aditivas (UI → caso de uso → porta → adaptador).
+- `docs/PMOC_MODULE.md` + `supabase/migrations/20260709_pmoc_fundacao.sql` (esqueleto **NÃO-aplicado**): vertical HVAC/PMOC como track pós-ciclo-comercial.
+- `KNOWN_BLOCKERS.md`: +B7 Sentry, B8 PostHog, B9 Gotenberg, B10 Asaas, B11 Nuvem Fiscal.
+
+## Onda 3 — Ciclo comercial (CONCLUÍDA)
+
+Commit: `a8e617c`. Migrations `20260708_portal_trilha.sql` + `20260708_versoes.sql` **aplicadas + testadas (RLS 4/4)**; worker deployado (`v 14e3ebd6`, smoke ok).
+
+- **Portal do cliente v2** (`worker/src/link.js`): recusar com MOTIVO; TRILHA append-only (`eventos_orcamento_publico`) visualizado/aprovado/recusado com `ip_hash` (SHA-256 salgado, nunca o IP cru) — LGPD; GET carimba `visualizado_em`. Trilha owner-only, imutável (42501).
+- **Versões** (`database.ts`, `clienteLink.ts`): regra de ouro 13.5 — editar proposta enviada congela a versão anterior. Fingerprint por **lista de exclusão** + stringify canônico (cobre formas de pagamento/PIX/fotos/subtotais). Numeração resiliente a merge (renumera no 23505, de-dup).
+- **Status expandido** 6→10; filtros/pizza derivados de fonte única. Radar de parados passa a contar `visualizado`/`em_negociacao`.
+- **Pagamento + recibo** (`pagamentos.ts`): estado financeiro derivado dos recibos + badge (aguardando/pago/recibo emitido); "Registrar pagamento" no aprovado; recibo pré-preenchido sem duplicar número.
+- **Gate Fable**: 13 achados → 10 confirmados (1 HIGH + 3 MEDIUM + 6 LOW). HIGH (fingerprint incompleto — coração da feature) + 3 MEDIUM + 5 LOW aplicados; 1 LOW adiado (limpeza de versões órfãs na nuvem, protegido por RLS — follow-up).
 
 ## Bloqueios externos ativos
 
