@@ -73,6 +73,15 @@ Commit: `2135b77`. Migration `20260710_ordens_servico.sql` **aplicada + testada 
 - **App role-aware** (`ordemServico.ts`, `OrdemServicoScreen.tsx`): gestão cria (de orçamento aprovado ou manual, com **dedupe** por `orcamentoId`)/atribui (`ver_agenda_equipe` inclui gestor)/muda status/vê todas; técnico vê só "Minhas OS" e executa (checklist com autosave, fotos, concluir) offline. Entrada mobile na `HomeScreen` ("Minhas OS" em destaque para técnico).
 - **Gate Fable** (sync=0 achados): 1 CRITICAL (OS inacessível no celular do técnico — a UI só tinha entrada no SidebarNav desktop) + 1 MEDIUM (dedupe) + 1 LOW (permissão do gestor) + closure stale no checklist otimista — todos aplicados.
 
+## Onda 5 — Plataforma web profissional (CONCLUÍDA)
+
+Commit: `7e77d47`. Push main.
+
+- **Entrada/landing** (`EntrarScreen.tsx` + `components/web/LandingHero.tsx`): deslogado no desktop, o domínio mostra uma página de produto (hero "Do orçamento ao recibo, sem planilha" + pilares de valor à esquerda, card de login à direita). Mobile inalterado; login/OAuth intacto (só a apresentação mudou).
+- **Dashboard por conta + papel** (`desktop/InicioDesktopScreen.tsx` + `components/web/KpiCard.tsx`): dados REAIS clicáveis. Pessoal/autônomo (receita do mês, em aberto, contas a receber, taxa de aprovação, gráfico 6 meses); empresa (+ faixa de OS + OS por técnico); técnico (dashboard enxuto, sem receita/margem da empresa). Guard de papel evita piscar valores antes de resolver.
+- **Menus** (`components/web/SidebarNav.tsx`): itens derivados de `usePermissao` + `useTipoConta` + `usePlano` — pessoal não vê Equipe; técnico vê menu enxuto; recursos pagos com cadeado→Planos.
+- **Gate Fable**: 1 MEDIUM (receita agrupada por `criadoEm` em vez de `dataRecebimento` → pagamento retroativo no mês errado) **corrigido** (bucketiza por data de recebimento, meio-dia local, fallback `criadoEm`). 2 LOW viraram follow-up (campo `concluidoEm` na OS; KPIs abrirem lista já filtrada — exigem migration/param, desproporcional ao risco).
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
