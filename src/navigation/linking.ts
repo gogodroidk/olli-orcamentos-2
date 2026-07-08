@@ -92,6 +92,7 @@ export function criarLinkingConfig(
         // 'convite/:token' casa o deep link olliorcamentos://convite/<token> e a
         // URL web /convite/<token>; o token entra em route.params.token.
         Equipe: 'equipe',
+        EquipeAoVivo: 'equipe/ao-vivo',
         Convite: 'convite/:token',
       },
     },

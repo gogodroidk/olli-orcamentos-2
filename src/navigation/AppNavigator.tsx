@@ -34,6 +34,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
 import EquipeScreen from '../screens/EquipeScreen';
+import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
@@ -87,6 +88,8 @@ export type RootStackParamList = {
   RelatorioDia: undefined;
   // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.
   Equipe: undefined;
+  // Onda 2 — Equipe ao vivo: lista de técnicos + última localização + rota no mapa.
+  EquipeAoVivo: undefined;
   // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
   Convite: { token?: string };
 };
@@ -138,6 +141,7 @@ const OlliChatCentro = comCentroDesktop(OlliChatScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
+const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
 
 /** Tela stub para a aba central "Orcar", que nunca é exibida (tabPress.preventDefault). */
@@ -370,6 +374,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
       {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}
       <Stack.Screen name="Equipe" component={EquipeCentro} />
+      <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />
       <Stack.Screen name="Convite" component={ConviteCentro} />
     </Stack.Navigator>
   );

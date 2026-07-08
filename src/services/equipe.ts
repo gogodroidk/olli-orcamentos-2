@@ -49,6 +49,8 @@ export interface Organizacao {
   id: string;
   nome: string;
   papel: Papel;
+  /** user_id do DONO da org — usado pelo cloudSync p/ o técnico gravar dados no tenant do dono. */
+  ownerUserId: string;
 }
 
 export interface MembroEquipe {
@@ -91,13 +93,13 @@ export async function getMinhaOrganizacao(): Promise<Organizacao | null> {
 
     const { data: orgs } = await supabase
       .from('organizacoes')
-      .select('id, nome')
+      .select('id, nome, owner_user_id')
       .eq('id', membro.org_id)
       .limit(1);
 
     const org = Array.isArray(orgs) && orgs.length ? orgs[0] : null;
     if (!org) return null;
-    return { id: org.id, nome: org.nome ?? 'Minha empresa', papel: normalizarPapel(membro.papel) };
+    return { id: org.id, nome: org.nome ?? 'Minha empresa', papel: normalizarPapel(membro.papel), ownerUserId: (org as any).owner_user_id };
   } catch {
     return null;
   }
@@ -125,39 +127,19 @@ export async function criarOrganizacao(nome: string): Promise<Organizacao> {
   const nomeLimpo = (nome || '').trim().slice(0, 120);
   if (!nomeLimpo) throw new Error('Dê um nome para a sua empresa.');
 
-  // Caminho preferido: RPC transacional da frente 1.
-  const rpc = await supabase.rpc('criar_organizacao', { nome: nomeLimpo });
-  if (!rpc.error) {
-    const org = await getMinhaOrganizacao();
-    if (org) return org;
-    // RPC ok mas leitura não achou (propagação de RLS/replica): monta o retorno
-    // mínimo a partir do que a RPC devolveu, sem quebrar o fluxo.
-    const id = typeof rpc.data === 'string' ? rpc.data : (rpc.data && (rpc.data as any).id) || '';
-    return { id, nome: nomeLimpo, papel: 'owner' };
-  }
+  // RPC transacional (SECURITY DEFINER) — cria a org E inscreve o dono como
+  // membro 'owner' numa transação. Nome do parâmetro DEVE bater com a assinatura
+  // SQL criar_organizacao(p_nome text) — o PostgREST casa RPC por nome de arg.
+  // Não há fallback de insert direto: sem a RPC, o insert do membro falharia
+  // (a policy exige ser membro), deixando uma org órfã irrecuperável.
+  const rpc = await supabase.rpc('criar_organizacao', { p_nome: nomeLimpo });
+  if (rpc.error) throw new Error(mensagemAmigavel(rpc.error.message));
 
-  // Fallback: insert direto (org + vínculo owner). Só roda se a RPC não existe.
-  // PGRST202 = função ausente no schema cache (código canônico do PostgREST);
-  // completamos com uma checagem de texto por robustez entre versões.
-  const codigo = (rpc.error as any)?.code;
-  const semRpc =
-    codigo === 'PGRST202' ||
-    /function|does not exist|não existe|not found|schema cache/i.test(rpc.error.message || '');
-  if (!semRpc) throw new Error(mensagemAmigavel(rpc.error.message));
-
-  const { data: org, error: errOrg } = await supabase
-    .from('organizacoes')
-    .insert({ owner_user_id: user.id, nome: nomeLimpo })
-    .select('id, nome')
-    .single();
-  if (errOrg || !org) throw new Error(mensagemAmigavel(errOrg?.message));
-
-  const { error: errMembro } = await supabase
-    .from('organizacao_membros')
-    .insert({ org_id: org.id, user_id: user.id, papel: 'owner', ativo: true });
-  if (errMembro) throw new Error(mensagemAmigavel(errMembro.message));
-
-  return { id: org.id, nome: org.nome ?? nomeLimpo, papel: 'owner' };
+  const org = await getMinhaOrganizacao();
+  if (org) return org;
+  // RPC ok mas leitura ainda não propagou: retorno mínimo sem quebrar o fluxo.
+  const id = typeof rpc.data === 'string' ? rpc.data : (rpc.data && (rpc.data as any).id) || '';
+  return { id, nome: nomeLimpo, papel: 'owner', ownerUserId: user.id };
 }
 
 // ─── membros ─────────────────────────────────────────────────
@@ -300,7 +282,7 @@ export async function aceitarConvite(tokenBruto: string): Promise<Organizacao> {
   const token = extrairToken(tokenBruto);
   if (!token) throw new Error('Código de convite inválido. Confira o que você recebeu.');
 
-  const { error } = await supabase.rpc('aceitar_convite', { token });
+  const { error } = await supabase.rpc('aceitar_convite', { p_token: token });
   if (error) throw new Error(traduzirErroAceite(error.message));
 
   const org = await getMinhaOrganizacao();

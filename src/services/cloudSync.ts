@@ -343,6 +343,25 @@ export async function pushRow(table: SyncTable, objLocal: unknown): Promise<void
  * local (aparelho nunca deu pull, ex.: só criou a empresa localmente) o push
  * sempre acontece — piso seguro igual ao resto do módulo.
  */
+// Contexto de escrita da EQUIPE (Onda 2): quando o usuário é um MEMBRO
+// não-dono de uma organização (técnico/gestor/admin), os orçamentos e
+// agendamentos que ele cria devem nascer no tenant do DONO (user_id=owner) para
+// a empresa enxergá-los — senão caem no tenant do próprio técnico (default
+// auth.uid()) e ficam invisíveis para a org. `criado_por` (default auth.uid())
+// já carimba a autoria. null = conta pessoal/dono → grava no próprio tenant.
+let contextoEquipeOwner: string | null = null;
+
+async function atualizarContextoEquipe(): Promise<void> {
+  try {
+    // import dinâmico evita qualquer aresta estática entre sync e equipe.
+    const { getMinhaOrganizacao } = await import('./equipe');
+    const org = await getMinhaOrganizacao();
+    contextoEquipeOwner = org && org.papel !== 'owner' ? org.ownerUserId : null;
+  } catch {
+    contextoEquipeOwner = null;
+  }
+}
+
 async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<void> {
   try {
     if (!objLocal || !supabase) return;
@@ -354,6 +373,11 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       return;
     }
     const row = TO_ROW[table](objLocal);
+    // Membro não-dono: orçamento/agendamento é gravado no tenant do dono da org
+    // (empresa/clientes/etc. permanecem escrita só do dono — não injetar aqui).
+    if (contextoEquipeOwner && (table === 'orcamentos' || table === 'agendamentos')) {
+      (row as Record<string, unknown>).user_id = contextoEquipeOwner;
+    }
     await supabase.from(table).upsert(row, { onConflict: ON_CONFLICT[table] });
     if (table === 'empresa') await marcarEmpresaVistaAgora();
   } catch {
@@ -1400,6 +1424,9 @@ export async function syncOnLogin(): Promise<void> {
   const geracao = syncGeneration;
   try {
     if (!(await hasSession())) return;
+    // Descobre se o usuário é membro não-dono de uma org ANTES de empurrar, para
+    // gravar orçamentos/agendamentos no tenant do dono (ver contextoEquipeOwner).
+    await atualizarContextoEquipe();
     await pullAll(geracao);
     if (syncAbortado(geracao)) return;
     await pushLocalTombstones(geracao);
