@@ -18,7 +18,10 @@ import { Orcamento, StatusOrcamento, STATUS_LABELS, STATUS_COLORS } from '../../
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const ORDEM_STATUS: StatusOrcamento[] = ['rascunho', 'enviado', 'aguardando_assinatura', 'aprovado', 'recusado', 'cancelado'];
+// Ordem exaustiva dos status na pizza, derivada da fonte única (STATUS_LABELS, na
+// ordem do type) — assim os 4 status novos (visualizado/em_negociação/expirado/
+// convertido) entram automaticamente e nenhum orçamento fica fora da distribuição.
+const ORDEM_STATUS = Object.keys(STATUS_LABELS) as StatusOrcamento[];
 
 /** Nomes curtos dos últimos 12 meses (incluindo o atual), na ordem cronológica. */
 function ultimosDozeMeses(): { chave: string; label: string }[] {

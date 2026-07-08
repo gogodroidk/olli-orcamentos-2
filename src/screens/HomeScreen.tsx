@@ -15,7 +15,7 @@ import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS } from '../types';
+import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliPressable } from '../components/OlliPressable';
@@ -179,7 +179,11 @@ export default function HomeScreen() {
   // ── métricas reais ──
   const aprovados = orcamentos.filter(o => o.status === 'aprovado');
   const faturamento = aprovados.reduce((s, o) => s + o.valorTotal, 0);
-  const emAberto = orcamentos.filter(o => o.status === 'enviado' || o.status === 'aguardando_assinatura');
+  // "Em aberto" = proposta já entregue ao cliente e ainda sem desfecho — cobre
+  // enviado/visualizado/em_negociacao/aguardando_assinatura (propostaJaEnviada),
+  // não só os dois estados antigos. Sem isso as propostas mais quentes
+  // (visualizado/em_negociação) sumiam do funil e do radar de parados.
+  const emAberto = orcamentos.filter(o => propostaJaEnviada(o.status));
   const conversao = orcamentos.length ? Math.round((aprovados.length / orcamentos.length) * 100) : 0;
   const parados = emAberto.filter(o => diasAtras(o.criadoEm) >= 5);
   const valorParado = parados.reduce((s, o) => s + o.valorTotal, 0);

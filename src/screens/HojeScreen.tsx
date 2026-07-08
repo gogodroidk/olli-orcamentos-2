@@ -21,7 +21,7 @@ import { getOrcamentos } from '../database/database';
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import {
-  Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
+  Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada,
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
@@ -150,7 +150,10 @@ export default function HojeScreen() {
   }
 
   // ── lembretes REAIS (sem inventar): orçamentos abertos parados +5 dias ──
-  const emAberto = orcamentos.filter(o => o.status === 'enviado' || o.status === 'aguardando_assinatura');
+  // "Em aberto" cobre toda proposta já entregue ao cliente sem desfecho
+  // (enviado/visualizado/em_negociação/aguardando_assinatura), não só os dois
+  // estados antigos — senão as propostas mais quentes sumiam dos parados.
+  const emAberto = orcamentos.filter(o => propostaJaEnviada(o.status));
   const parados = emAberto.filter(o => diasAtras(o.criadoEm) >= 5);
   const aguardandoAssinatura = orcamentos.filter(o => o.status === 'aguardando_assinatura');
 

@@ -14,27 +14,29 @@ import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
 import { OverlayProgresso } from '../components/OverlayProgresso';
-import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento } from '../database/database';
-import { Orcamento, Empresa, Depoimento, StatusOrcamento } from '../types';
+import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento } from '../database/database';
+import { Orcamento, Empresa, Depoimento, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO } from '../utils/date';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
-import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks } from '../services/clienteLink';
+import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'VisualizarOrcamento'>;
 
-const STATUS_ACTIONS: Array<{ status: StatusOrcamento; label: string; color: string }> = [
-  { status: 'rascunho', label: 'Rascunho', color: '#9CA3AF' },
-  { status: 'enviado', label: 'Enviado', color: '#3B82F6' },
-  { status: 'aguardando_assinatura', label: 'Aguardando assinatura', color: '#F59E0B' },
-  { status: 'aprovado', label: 'Aprovado', color: '#10B981' },
-  { status: 'recusado', label: 'Recusado', color: '#EF4444' },
-  { status: 'cancelado', label: 'Cancelado', color: '#6B7280' },
+// Ações de status na ordem lógica do funil (mestre 13). Derivadas de uma única
+// fonte (o type/labels/colors em ../types) para nunca divergir. 'visualizado' fica
+// de fora da lista MANUAL: é um estado que o CLIENTE dispara pelo link (sync), não
+// algo que o dono marca à mão — mas continua aparecendo no badge quando ocorre.
+const STATUS_MANUAIS: StatusOrcamento[] = [
+  'rascunho', 'enviado', 'em_negociacao', 'aguardando_assinatura',
+  'aprovado', 'recusado', 'expirado', 'cancelado', 'convertido',
 ];
+const STATUS_ACTIONS: Array<{ status: StatusOrcamento; label: string; color: string }> =
+  STATUS_MANUAIS.map(status => ({ status, label: STATUS_LABELS[status], color: STATUS_COLORS[status] }));
 
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
@@ -44,6 +46,9 @@ export default function VisualizarOrcamentoScreen() {
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
+  const [versoes, setVersoes] = useState<OrcamentoVersao[]>([]);
+  const [trilha, setTrilha] = useState<EventoTrilhaCliente[]>([]);
+  const [versoesAbertas, setVersoesAbertas] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [linking, setLinking] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
@@ -58,7 +63,9 @@ export default function VisualizarOrcamentoScreen() {
   useFocusEffect(useCallback(() => {
     async function load() {
       setCarregando(true);
-      const [o, e, deps] = await Promise.all([getOrcamento(orcamentoId), getEmpresa(), getDepoimentos()]);
+      const [o, e, deps, vs] = await Promise.all([
+        getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId),
+      ]);
       if (!o) {
         setOrc(null);
         setNaoEncontrado(true);
@@ -69,17 +76,26 @@ export default function VisualizarOrcamentoScreen() {
       setOrc(o);
       setEmpresa(e);
       setDepoimentos(deps);
+      setVersoes(vs);
       setNaoEncontrado(false);
       setCarregando(false);
+      // Trilha do cliente (link público) — leitura VIVA, não bloqueia a tela: a
+      // página já mostra os dados locais e a trilha aparece quando a nuvem responde.
+      trilhaDoLink(orcamentoId).then(setTrilha).catch(() => setTrilha([]));
     }
     load();
     // sincronizarStatusLinks() nunca lança — traz de volta o status que o
-    // cliente deu pelo link público (aprovado/recusado). Não é aguardado: a
-    // tela abre instantaneamente com os dados locais, e só recarrega se algo
-    // realmente mudou, igual ao padrão já usado em OrcamentosScreen.
+    // cliente deu pelo link público (visualizado/aprovado/recusado). Não é
+    // aguardado: a tela abre instantaneamente com os dados locais, e só recarrega
+    // se algo realmente mudou, igual ao padrão já usado em OrcamentosScreen.
     sincronizarStatusLinks().then(alterados => {
       if (alterados > 0) load();
     });
+    // Versões criadas em OUTRO aparelho/pela equipe: puxa da nuvem e, se algo novo
+    // chegou, atualiza só a lista de versões (sem recarregar a tela inteira).
+    puxarVersoesNuvemParaOrcamento(orcamentoId).then(aplicadas => {
+      if (aplicadas > 0) getVersoesOrcamento(orcamentoId).then(setVersoes).catch(() => {});
+    }).catch(() => {});
   }, [orcamentoId]));
 
   async function handleShare() {
@@ -367,6 +383,54 @@ export default function VisualizarOrcamentoScreen() {
             </View>
           )}
         </OlliCard>
+
+        {/* TRILHA DO CLIENTE (link público) — o que o cliente fez com a proposta */}
+        {trilha.length > 0 && (
+          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+            <Text style={styles.cardTitle}>Trilha do cliente</Text>
+            {trilha.map((ev, i) => (
+              <TrilhaLinha key={`${ev.tipo}-${i}`} evento={ev} ultimo={i === trilha.length - 1} />
+            ))}
+          </OlliCard>
+        )}
+
+        {/* HISTÓRICO DE VERSÕES — snapshots congelados antes de cada edição enviada */}
+        {versoes.length > 0 && (
+          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+            <TouchableOpacity
+              style={styles.versoesHeader}
+              onPress={() => setVersoesAbertas(v => !v)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>Versões anteriores ({versoes.length})</Text>
+                <Text style={styles.versoesHint}>
+                  Guardamos o que o cliente viu antes de cada alteração.
+                </Text>
+              </View>
+              <MaterialCommunityIcons
+                name={versoesAbertas ? 'chevron-up' : 'chevron-down'}
+                size={22}
+                color={Colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            {versoesAbertas && versoes.map(v => (
+              <View key={v.id} style={styles.versaoItem}>
+                <View style={styles.versaoTop}>
+                  <View style={styles.versaoBadge}>
+                    <Text style={styles.versaoBadgeText}>v{v.numeroVersao}</Text>
+                  </View>
+                  <Text style={styles.versaoData}>{formatDateTime(v.criadoEm)}</Text>
+                  <Text style={styles.versaoValor}>{formatCurrency(v.dados.valorTotal ?? 0)}</Text>
+                </View>
+                <Text style={styles.versaoResumo}>
+                  {(v.dados.itens?.length ?? 0)} {(v.dados.itens?.length ?? 0) === 1 ? 'item' : 'itens'}
+                  {v.dados.validadeOrcamento ? ` · válido até ${v.dados.validadeOrcamento}` : ''}
+                </Text>
+              </View>
+            ))}
+          </OlliCard>
+        )}
       </ScrollView>
 
       <Celebracao visible={celebrando} tipo="aprovado" onDone={() => setCelebrando(false)} />
@@ -375,6 +439,38 @@ export default function VisualizarOrcamentoScreen() {
         titulo={overlayInfo?.titulo}
         subtitulo={overlayInfo?.subtitulo}
       />
+    </View>
+  );
+}
+
+// Metadados visuais de cada tipo de evento da trilha do cliente.
+const TRILHA_META: Record<EventoTrilhaCliente['tipo'], { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; label: string }> = {
+  enviado: { icon: 'send', color: '#3B82F6', label: 'Proposta enviada' },
+  visualizado: { icon: 'eye-outline', color: '#8B5CF6', label: 'Cliente visualizou' },
+  aprovado: { icon: 'check-circle', color: '#10B981', label: 'Cliente aprovou' },
+  recusado: { icon: 'close-circle', color: '#EF4444', label: 'Cliente recusou' },
+};
+
+function TrilhaLinha({ evento, ultimo }: { evento: EventoTrilhaCliente; ultimo: boolean }) {
+  const meta = TRILHA_META[evento.tipo];
+  return (
+    <View style={styles.trilhaRow}>
+      <View style={styles.trilhaGutter}>
+        <View style={[styles.trilhaDot, { backgroundColor: meta.color }]}>
+          <MaterialCommunityIcons name={meta.icon} size={12} color="#fff" />
+        </View>
+        {!ultimo && <View style={styles.trilhaLine} />}
+      </View>
+      <View style={{ flex: 1, paddingBottom: ultimo ? 0 : 14 }}>
+        <Text style={styles.trilhaLabel}>{meta.label}</Text>
+        {evento.em ? <Text style={styles.trilhaData}>{formatDateTime(evento.em)}</Text> : null}
+        {evento.tipo === 'recusado' && evento.motivo ? (
+          <View style={styles.trilhaMotivo}>
+            <Text style={styles.trilhaMotivoLabel}>Motivo informado</Text>
+            <Text style={styles.trilhaMotivoText}>{evento.motivo}</Text>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -487,4 +583,34 @@ const styles = StyleSheet.create({
 
   textBlock: { paddingTop: 8 },
   textBlockContent: { fontSize: 13, color: Colors.onSurface, lineHeight: 20, marginTop: 4 },
+
+  // Trilha do cliente (timeline)
+  trilhaRow: { flexDirection: 'row', gap: 12 },
+  trilhaGutter: { alignItems: 'center', width: 24 },
+  trilhaDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  trilhaLine: { width: 2, flex: 1, backgroundColor: Colors.outline, marginTop: 2 },
+  trilhaLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  trilhaData: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  trilhaMotivo: {
+    marginTop: 8, padding: 10, borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.22)',
+  },
+  trilhaMotivoLabel: { fontSize: 10.5, fontWeight: '800', color: '#EF4444', textTransform: 'uppercase', letterSpacing: 0.4 },
+  trilhaMotivoText: { fontSize: 13, color: Colors.onSurface, lineHeight: 19, marginTop: 3 },
+
+  // Histórico de versões
+  versoesHeader: { flexDirection: 'row', alignItems: 'center' },
+  versoesHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: -4, marginBottom: 2 },
+  versaoItem: {
+    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline,
+  },
+  versaoTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  versaoBadge: {
+    backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.full,
+    paddingHorizontal: 8, paddingVertical: 2,
+  },
+  versaoBadgeText: { fontSize: 11, fontWeight: '800', color: Colors.onSurfaceVariant },
+  versaoData: { flex: 1, fontSize: 12.5, color: Colors.onSurfaceVariant },
+  versaoValor: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurface },
+  versaoResumo: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 4 },
 });

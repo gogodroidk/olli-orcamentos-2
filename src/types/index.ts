@@ -1,28 +1,72 @@
+/**
+ * Status do orçamento ao longo do ciclo comercial (mestre 13/35).
+ *
+ * COMPAT: os 6 status originais (rascunho/enviado/aguardando_assinatura/
+ * aprovado/recusado/cancelado) permanecem com o MESMO id — nenhum dado antigo
+ * quebra. Os 4 novos (visualizado/em_negociacao/expirado/convertido) enriquecem
+ * a trilha do cliente e o pós-venda:
+ *  - visualizado: o cliente ABRIU o link público (trilha vinda do worker).
+ *  - em_negociacao: houve conversa/ajuste após o envio (movido à mão pelo dono).
+ *  - expirado: passou da validade sem resposta.
+ *  - convertido: virou serviço fechado/recibo emitido (pós-aprovação).
+ * A ORDEM abaixo é a ordem lógica do funil e alimenta a lista de ações de status.
+ */
 export type StatusOrcamento =
   | 'rascunho'
   | 'enviado'
+  | 'visualizado'
+  | 'em_negociacao'
   | 'aguardando_assinatura'
   | 'aprovado'
   | 'recusado'
-  | 'cancelado';
+  | 'expirado'
+  | 'cancelado'
+  | 'convertido';
 
 export const STATUS_LABELS: Record<StatusOrcamento, string> = {
   rascunho: 'Rascunho',
   enviado: 'Enviado',
+  visualizado: 'Visualizado',
+  em_negociacao: 'Em negociação',
   aguardando_assinatura: 'Aguardando assinatura',
   aprovado: 'Aprovado',
   recusado: 'Recusado',
+  expirado: 'Expirado',
   cancelado: 'Cancelado',
+  convertido: 'Convertido',
 };
 
 export const STATUS_COLORS: Record<StatusOrcamento, string> = {
   rascunho: '#9CA3AF',
   enviado: '#3B82F6',
+  visualizado: '#8B5CF6',
+  em_negociacao: '#F59E0B',
   aguardando_assinatura: '#F59E0B',
   aprovado: '#10B981',
   recusado: '#EF4444',
+  expirado: '#A16207',
   cancelado: '#6B7280',
+  convertido: '#0EA5E9',
 };
+
+/**
+ * Status que representam uma PROPOSTA JÁ ENVIADA ao cliente (mestre 13.5). Editar
+ * um orçamento nestes estados NÃO pode sobrescrever silenciosamente o que o
+ * cliente já viu: o `saveOrcamento` grava uma VERSÃO (snapshot) antes. Fonte única
+ * da verdade, usada pelo app e por qualquer tela de edição (dentro ou fora do
+ * escopo desta frente) para não divergir a regra.
+ */
+export const STATUS_PROPOSTA_ENVIADA: readonly StatusOrcamento[] = [
+  'enviado',
+  'visualizado',
+  'em_negociacao',
+  'aguardando_assinatura',
+];
+
+/** True se o status indica uma proposta que o cliente já pode ter visto. */
+export function propostaJaEnviada(status: StatusOrcamento): boolean {
+  return STATUS_PROPOSTA_ENVIADA.includes(status);
+}
 
 /**
  * Segmento do negócio. O núcleo do OLLI (orçamento/cliente/agenda/OS/link/cobrança)
@@ -199,6 +243,38 @@ export interface Orcamento {
   atualizadoEm: string;
 }
 
+/**
+ * VERSÃO (snapshot) de um orçamento — mestre 13.5. Cada vez que uma proposta JÁ
+ * ENVIADA é editada, congelamos o estado ANTERIOR aqui antes de sobrescrever, para
+ * nunca "sumir" com o que o cliente já viu. `dados` guarda o Orcamento completo no
+ * momento do snapshot (mesmo padrão jsonb das demais tabelas). `numeroVersao` é
+ * sequencial por orçamento (1, 2, 3…). É histórico append-only: nunca se edita.
+ */
+export interface OrcamentoVersao {
+  id: string;
+  orcamentoId: string;
+  numeroVersao: number;
+  /** Snapshot íntegro do orçamento no momento em que esta versão foi congelada. */
+  dados: Orcamento;
+  criadoEm: string;
+}
+
+/**
+ * Um EVENTO da trilha do cliente no link público (mestre 13): o que o cliente fez
+ * com a proposta. Derivado da tabela `orcamentos_publicos` (visualizado/respondido)
+ * — não é uma tabela própria, é a leitura normalizada que o app monta para exibir
+ * a linha do tempo. `motivo` só existe em recusa (resposta_cliente do worker).
+ */
+export type TipoEventoTrilha = 'enviado' | 'visualizado' | 'aprovado' | 'recusado';
+
+export interface EventoTrilhaCliente {
+  tipo: TipoEventoTrilha;
+  /** ISO do momento do evento (quando conhecido). */
+  em?: string;
+  /** Mensagem/motivo do cliente (ex.: motivo da recusa). Nunca contém dado sensível. */
+  motivo?: string;
+}
+
 export interface Recibo {
   id: string;
   numero: string;
@@ -214,6 +290,11 @@ export interface Recibo {
   exibirAssinatura: boolean;
   assinaturaPrestadorUri?: string;
   criadoEm: string;
+  // Ciclo comercial (Onda 3): true assim que o PDF do recibo é gerado/compartilhado
+  // pelo menos uma vez. `false`/ausente = pagamento registrado mas o PDF do recibo
+  // ainda não foi emitido para o cliente (registro rápido de "Registrar pagamento").
+  // Campo opcional e aditivo — nenhuma migração necessária (linha vive no blob JSON).
+  pdfEmitido?: boolean;
 }
 
 export interface ModeloOrcamento {

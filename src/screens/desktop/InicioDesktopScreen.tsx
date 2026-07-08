@@ -20,7 +20,7 @@ import { abrirWhatsApp } from '../../utils/pdfGenerator';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { RootStackParamList } from '../../navigation/AppNavigator';
-import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS } from '../../types';
+import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../../types';
 import { avisar, confirmar } from './dialogo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -127,7 +127,10 @@ export default function InicioDesktopScreen() {
     return d.getFullYear() === agora.getFullYear() && d.getMonth() === agora.getMonth();
   });
   const faturamentoNoMes = aprovadosNoMes.reduce((s, o) => s + o.valorTotal, 0);
-  const emAberto = orcamentos.filter(o => o.status === 'enviado' || o.status === 'aguardando_assinatura');
+  // "Em aberto" cobre toda proposta já entregue ao cliente sem desfecho
+  // (enviado/visualizado/em_negociação/aguardando_assinatura), não só os dois
+  // estados antigos — senão as propostas mais quentes sumiam do KPI/valor.
+  const emAberto = orcamentos.filter(o => propostaJaEnviada(o.status));
   const valorEmAberto = emAberto.reduce((s, o) => s + o.valorTotal, 0);
   const conversao = orcamentos.length ? Math.round((aprovados.length / orcamentos.length) * 100) : 0;
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || empresa?.nome || 'prestador';

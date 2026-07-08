@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, Alert, RefreshControl, Animated,
+  TouchableOpacity, Alert, RefreshControl, Animated, Modal,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,15 +14,32 @@ import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { CountUp } from '../components/CountUp';
-import { getOrcamentos, deleteOrcamento, saveOrcamento, getNextOrcamentoNumber } from '../database/database';
+import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
+import { OlliButton } from '../components/OlliButton';
+import { getOrcamentos, deleteOrcamento, saveOrcamento, getNextOrcamentoNumber, getRecibos } from '../database/database';
 import { sincronizarStatusLinks } from '../services/clienteLink';
 import { onSyncAplicado } from '../services/cloudSync';
+import { getStatusFinanceiro, getBadgeFinanceiro, getReciboDoOrcamento, registrarPagamento, StatusFinanceiro } from '../services/pagamentos';
 import { formatCurrency } from '../utils/currency';
-import { formatDate, nowISO } from '../utils/date';
+import { formatDate, nowISO, todayISO } from '../utils/date';
+import { isoToBR } from '../utils/masks';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
-import { Orcamento, StatusOrcamento } from '../types';
+import { Orcamento, StatusOrcamento, Recibo, STATUS_LABELS } from '../types';
 import { generateId } from '../utils/id';
+
+const FORMAS_PAGAMENTO_RAPIDO = ['PIX', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Transferência'];
+
+/** Badge compacto de estado financeiro — só aparece em orçamentos aprovados/convertidos. */
+function BadgeFinanceiroPill({ status }: { status: StatusFinanceiro }) {
+  const b = getBadgeFinanceiro(status);
+  return (
+    <View style={[styles.finBadge, { backgroundColor: b.color + '20', borderColor: b.color + '55' }]}>
+      <MaterialCommunityIcons name={b.icon} size={11} color={b.color} />
+      <Text style={[styles.finBadgeText, { color: b.color }]}>{b.label}</Text>
+    </View>
+  );
+}
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
@@ -52,17 +69,14 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
   );
 }
 
-// Cobre TODOS os status possíveis de StatusOrcamento (src/types/index.ts) —
-// sem isso, orçamentos "Aguardando assinatura" ou "Cancelado" só apareciam
-// misturados no filtro "Todos", sem como isolá-los.
+// Derivado da fonte única e exaustiva (STATUS_LABELS, na ordem do type) — assim
+// os 10 status ficam sempre cobertos e nenhum orçamento (ex.: "Visualizado",
+// "Em negociação", "Expirado", "Convertido") fica preso só no filtro "Todos"
+// quando a lista de status cresce. Mesmo padrão do STATUS_MANUAIS em
+// VisualizarOrcamentoScreen. "Todos" continua como primeira opção.
 const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> = [
   { key: 'todos', label: 'Todos' },
-  { key: 'rascunho', label: 'Rascunho' },
-  { key: 'enviado', label: 'Enviado' },
-  { key: 'aguardando_assinatura', label: 'Aguard. assinatura' },
-  { key: 'aprovado', label: 'Aprovado' },
-  { key: 'recusado', label: 'Recusado' },
-  { key: 'cancelado', label: 'Cancelado' },
+  ...(Object.keys(STATUS_LABELS) as StatusOrcamento[]).map(key => ({ key, label: STATUS_LABELS[key] })),
 ];
 
 export default function OrcamentosScreen() {
@@ -79,9 +93,21 @@ export default function OrcamentosScreen() {
   const [carregando, setCarregando] = useState(true);
   const [sincronizando, setSincronizando] = useState(false);
 
+  // Recibos vinculados aos orçamentos (badge financeiro: aguardando pagamento /
+  // pago / recibo emitido). Recarregado junto com a lista de orçamentos.
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
+
+  // Modal "Registrar pagamento" — rápido, sem sair da lista.
+  const [orcPagamento, setOrcPagamento] = useState<Orcamento | null>(null);
+  const [valorPagamento, setValorPagamento] = useState(0);
+  const [formaPagamento, setFormaPagamento] = useState('PIX');
+  const [dataPagamento, setDataPagamento] = useState(isoToBR(todayISO()));
+  const [registrando, setRegistrando] = useState(false);
+
   const load = useCallback(async () => {
-    const data = await getOrcamentos();
+    const [data, listaRecibos] = await Promise.all([getOrcamentos(), getRecibos()]);
     setAll(data);
+    setRecibos(listaRecibos);
     applyFilters(data, query, statusFilter, clienteId);
     setCarregando(false);
   }, [clienteId]);
@@ -182,43 +208,101 @@ export default function OrcamentosScreen() {
     setRefreshing(false);
   };
 
-  const renderItem = ({ item: o, index }: { item: Orcamento; index: number }) => (
-    <AnimatedEntrance index={index}>
-      <OlliCard
-        onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
-        style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
-      >
-        <View style={styles.itemHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
-            <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+  /** Abre o modal "Registrar pagamento" pré-preenchido com o valor do orçamento. */
+  function abrirRegistrarPagamento(o: Orcamento) {
+    setOrcPagamento(o);
+    setValorPagamento(o.valorTotal);
+    setFormaPagamento('PIX');
+    setDataPagamento(isoToBR(todayISO()));
+  }
+
+  function fecharRegistrarPagamento() {
+    if (registrando) return; // não fecha no meio de um salvamento em andamento
+    setOrcPagamento(null);
+  }
+
+  async function confirmarRegistrarPagamento() {
+    if (!orcPagamento) return;
+    if (!valorPagamento) {
+      Alert.alert('Atenção', 'Informe o valor recebido.');
+      return;
+    }
+    setRegistrando(true);
+    try {
+      await registrarPagamento({
+        orcamento: orcPagamento,
+        valorRecebido: valorPagamento,
+        formaPagamento,
+        dataRecebimento: dataPagamento,
+      });
+      setOrcPagamento(null);
+      await load();
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível registrar o pagamento agora. Tente novamente.');
+    } finally {
+      setRegistrando(false);
+    }
+  }
+
+  const renderItem = ({ item: o, index }: { item: Orcamento; index: number }) => {
+    const statusFinanceiro = getStatusFinanceiro(o, recibos);
+    const reciboVinculado = statusFinanceiro ? getReciboDoOrcamento(o.id, recibos) : null;
+
+    return (
+      <AnimatedEntrance index={index}>
+        <OlliCard
+          onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
+          style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
+        >
+          <View style={styles.itemHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
+              <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
+              <StatusBadge status={o.status} size="sm" />
+            </View>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
-            <StatusBadge status={o.status} size="sm" />
+
+          {statusFinanceiro && (
+            <View style={styles.finRow}>
+              <BadgeFinanceiroPill status={statusFinanceiro} />
+              {reciboVinculado && (
+                <Text style={styles.finReciboRef} numberOfLines={1}>Recibo Nº {reciboVinculado.numero}</Text>
+              )}
+            </View>
+          )}
+
+          <View style={styles.itemActions}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
+              <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
+              <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
+              <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
+            </TouchableOpacity>
+            {statusFinanceiro === 'aguardando_pagamento' ? (
+              <TouchableOpacity style={styles.actionBtn} onPress={() => abrirRegistrarPagamento(o)}>
+                <MaterialCommunityIcons name="cash-plus" size={16} color={Colors.warning} />
+                <Text style={[styles.actionLabel, { color: Colors.warning }]}>Pagamento</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
+                <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
+                <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
+              <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
+              <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-        <View style={styles.itemActions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
-            <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
-            <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
-            <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
-            <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
-            <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
-            <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
-            <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
-            <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
-          </TouchableOpacity>
-        </View>
-      </OlliCard>
-    </AnimatedEntrance>
-  );
+        </OlliCard>
+      </AnimatedEntrance>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -326,6 +410,55 @@ export default function OrcamentosScreen() {
           }
         />
       )}
+
+      {/* MODAL "Registrar pagamento" — rápido, direto da lista, sem gerar PDF ainda. */}
+      <Modal visible={!!orcPagamento} transparent animationType="fade" onRequestClose={fecharRegistrarPagamento}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <MaterialCommunityIcons name="cash-plus" size={22} color={Colors.warning} />
+              <Text style={styles.modalTitle}>Registrar pagamento</Text>
+              <TouchableOpacity onPress={fecharRegistrarPagamento} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <MaterialCommunityIcons name="close" size={20} color={Colors.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+
+            {orcPagamento && (
+              <Text style={styles.modalSubtitle}>
+                Orçamento nº {orcPagamento.numero} · {orcPagamento.clienteNome}
+              </Text>
+            )}
+
+            <OlliMoneyInput label="Valor recebido" required value={valorPagamento} onChangeValue={setValorPagamento} />
+            <OlliInput label="Data do recebimento" mask="date" value={dataPagamento} onChangeText={setDataPagamento} placeholder="DD/MM/AAAA" leftIcon="calendar" />
+
+            <Text style={styles.modalFieldLabel}>Forma de pagamento</Text>
+            <View style={styles.formasGrid}>
+              {FORMAS_PAGAMENTO_RAPIDO.map(f => (
+                <TouchableOpacity key={f} style={[styles.formaChip, formaPagamento === f && styles.formaChipActive]} onPress={() => setFormaPagamento(f)} activeOpacity={0.8}>
+                  <Text style={[styles.formaLabel, formaPagamento === f && { color: '#fff' }]}>{f}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.modalHint}>
+              O recibo em PDF pode ser gerado depois em "Emitir recibo" — o pagamento já fica registrado aqui.
+            </Text>
+
+            <OlliButton
+              label="Confirmar pagamento"
+              variant="success"
+              size="lg"
+              fullWidth
+              loading={registrando}
+              onPress={confirmarRegistrarPagamento}
+              disabled={!valorPagamento}
+              icon={<MaterialCommunityIcons name="check-circle-outline" size={20} color="#fff" />}
+              style={{ marginTop: 4 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -396,4 +529,36 @@ const styles = StyleSheet.create({
     gap: 3, paddingVertical: 4,
   },
   actionLabel: { fontSize: 11, fontWeight: '700' },
+
+  // Badge de estado financeiro (Aguardando pagamento / Pago / Recibo emitido)
+  finRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  finBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: BorderRadius.full, borderWidth: 1,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  finBadgeText: { fontSize: 10.5, fontWeight: '800' },
+  finReciboRef: { flex: 1, fontSize: 11, color: Colors.onSurfaceMuted },
+
+  // Modal "Registrar pagamento"
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(6,12,22,0.7)',
+    justifyContent: 'center', alignItems: 'center', padding: Spacing.base,
+  },
+  modalCard: {
+    width: '100%', maxWidth: 440,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: Colors.outline,
+    padding: Spacing.base, ...Shadow.md,
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  modalTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: Colors.onSurface },
+  modalSubtitle: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginBottom: Spacing.base },
+  modalFieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 },
+  modalHint: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 12, marginBottom: 4, lineHeight: 16 },
+
+  formasGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  formaChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface },
+  formaChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  formaLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant },
 });

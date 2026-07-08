@@ -1,12 +1,13 @@
 import { supabase, getCurrentUser } from './supabase';
 import { LINK_BASE_URL } from '../config';
 import { track, Eventos } from './analytics';
-import { Orcamento, Empresa, StatusOrcamento } from '../types';
+import { Orcamento, Empresa, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente } from '../types';
 import { generateId } from '../utils/id';
-import { getOrcamento, saveOrcamento } from '../database/database';
+import { getOrcamento, saveOrcamento, upsertVersaoLocalSilencioso, proximoNumeroVersao } from '../database/database';
 import { nowISO } from '../utils/date';
 
 const TABLE = 'orcamentos_publicos';
+const TABLE_VERSOES = 'orcamento_versoes';
 
 /** O link do cliente exige nuvem configurada (login) + domínio do Worker. */
 export function linkConfigurado(): boolean {
@@ -156,28 +157,101 @@ export async function gerarLinkOrcamento(orc: Orcamento, empresa: Empresa | null
   return `${LINK_BASE_URL}/o/${token}`;
 }
 
-/** Lê o status atual da resposta do cliente (aprovado/recusado/enviado). */
-export async function statusDoLink(orcamentoId: string): Promise<{ status: string; respondidoEm?: string } | null> {
-  if (!supabase) return null;
-  const user = await getCurrentUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from(TABLE)
-    .select('status, respondido_em')
-    .eq('orcamento_id', orcamentoId)
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  return { status: (data as any).status, respondidoEm: (data as any).respondido_em ?? undefined };
+/**
+ * Lê o estado atual do link de um orçamento: status (enviado/visualizado/aprovado/
+ * recusado), quando respondeu, quando visualizou e o motivo/mensagem do cliente
+ * (só em recusa). `visualizado_em` pode não existir em bancos antigos — o
+ * `select` tolera via fallback (ver `lerLinkRow`). NUNCA lança (retorna null).
+ */
+export async function statusDoLink(orcamentoId: string): Promise<{
+  status: string;
+  respondidoEm?: string;
+  visualizadoEm?: string;
+  motivo?: string;
+} | null> {
+  try {
+    if (!supabase) return null;
+    const user = await getCurrentUser();
+    if (!user) return null;
+    const row = await lerLinkRow(orcamentoId, user.id);
+    if (!row) return null;
+    return {
+      status: row.status,
+      respondidoEm: row.respondidoEm,
+      visualizadoEm: row.visualizadoEm,
+      motivo: row.motivo,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Sincroniza no banco LOCAL a resposta do cliente (aprovado/recusado) dos
- * orçamentos enviados por link. Faz UMA consulta em lote na tabela
- * `orcamentos_publicos` (RLS já restringe ao dono logado — mesmo caminho de leitura
- * seguro que `statusDoLink` usa por linha) trazendo só os links já respondidos, e
- * atualiza o status do orçamento local quando ele diverge da nuvem.
+ * Forma normalizada de UMA linha de `orcamentos_publicos` para leitura da trilha.
+ * `visualizadoEm`/`motivo` podem faltar (banco antigo / sem resposta).
+ */
+interface LinkRow {
+  status: string;
+  respondidoEm?: string;
+  visualizadoEm?: string;
+  motivo?: string;
+}
+
+/**
+ * Lê a linha do link de um orçamento com resiliência a schema: tenta o SELECT
+ * completo (com `visualizado_em`); se a coluna ainda não existir na nuvem (erro
+ * 42703 "column does not exist"), refaz o SELECT sem ela. Assim o app não quebra
+ * antes de a migration 20260708_versoes.sql ser aplicada. NUNCA lança.
+ */
+async function lerLinkRow(orcamentoId: string, userId: string): Promise<LinkRow | null> {
+  if (!supabase) return null;
+  // 1ª tentativa: com visualizado_em.
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('status, respondido_em, resposta_cliente, visualizado_em')
+      .eq('orcamento_id', orcamentoId)
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) return normalizarLinkRow(data);
+    if (error && (error as any)?.code && (error as any).code !== '42703') return null;
+  } catch {
+    // cai para o fallback abaixo
+  }
+  // 2ª tentativa (fallback): sem visualizado_em (coluna ausente em banco antigo).
+  try {
+    const { data } = await supabase
+      .from(TABLE)
+      .select('status, respondido_em, resposta_cliente')
+      .eq('orcamento_id', orcamentoId)
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+    return data ? normalizarLinkRow(data) : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizarLinkRow(data: any): LinkRow {
+  return {
+    status: data.status,
+    respondidoEm: data.respondido_em ?? undefined,
+    visualizadoEm: data.visualizado_em ?? undefined,
+    // resposta_cliente do worker = mensagem/motivo do cliente (LGPD: texto livre
+    // que o próprio cliente digitou; não logamos, só exibimos para o dono).
+    motivo: data.resposta_cliente ?? undefined,
+  };
+}
+
+/**
+ * Sincroniza no banco LOCAL a EVOLUÇÃO do cliente no link público — visualização
+ * (enviado → visualizado) e resposta (→ aprovado/recusado). Faz UMA consulta em
+ * lote na tabela `orcamentos_publicos` (RLS já restringe ao dono logado) trazendo
+ * TODOS os links do dono, e atualiza o status do orçamento local quando ele deve
+ * avançar, sem NUNCA reverter uma decisão manual do dono (ver `statusLocalAlvo`).
+ * O motivo da recusa NÃO é gravado no orçamento: fica na trilha (ver `trilhaDoLink`).
  *
  * Retorna QUANTOS orçamentos mudaram de status. NUNCA lança: offline, deslogado,
  * sem nuvem ou qualquer erro de rede/backend resultam em 0 (no-op silencioso),
@@ -189,38 +263,31 @@ export async function sincronizarStatusLinks(): Promise<number> {
     const user = await getCurrentUser();
     if (!user) return 0;
 
-    // Só os links que o cliente JÁ respondeu importam para atualizar o local.
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('orcamento_id, status, respondido_em')
-      .eq('user_id', user.id)
-      .in('status', ['aprovado', 'recusado']);
-    if (error || !Array.isArray(data) || data.length === 0) return 0;
+    // Traz TODOS os links do dono (não só os respondidos) para também captar a
+    // VISUALIZAÇÃO (mestre 13). Schema-resiliente: tenta com `visualizado_em`; se a
+    // coluna ainda não existe (migration não aplicada), refaz sem ela.
+    const rows = await lerLinksDoDono(user.id);
+    if (!rows.length) return 0;
 
     let mudaram = 0;
-    for (const row of data) {
+    for (const row of rows) {
       try {
-        const orcamentoId = (row as any)?.orcamento_id as string | undefined;
-        const statusNuvem = (row as any)?.status as string | undefined;
-        if (!orcamentoId) continue;
-        // A resposta do cliente é a fonte da verdade; só tratamos os 2 terminais.
-        const novoStatus: StatusOrcamento | null =
-          statusNuvem === 'aprovado' ? 'aprovado' : statusNuvem === 'recusado' ? 'recusado' : null;
-        if (!novoStatus) continue;
+        if (!row.orcamentoId) continue;
+        // Atalho barato: um link ainda em 'enviado' e SEM sinal de visualização/
+        // resposta não tem nada a aplicar → evita o getOrcamento (leitura no SQLite).
+        if (row.status === 'enviado' && !row.visualizadoEm) continue;
 
-        const orc = await getOrcamento(orcamentoId);
-        if (!orc) continue;               // orçamento pode ter sido excluído localmente
-        if (orc.status === novoStatus) continue; // já reflete a resposta → nada a fazer
-        // Só aplicamos a resposta do cliente sobre um orçamento AINDA no estado
-        // pré-resposta ('enviado'). Se o dono já moveu o status manualmente depois
-        // (cancelado, aguardando_assinatura, ou aprovado/recusado à mão), a decisão
-        // local é a mais recente e vence — sem isto, esta rotina reverteria a
-        // mudança manual de volta à resposta antiga a CADA foco, em loop eterno.
-        if (orc.status !== 'enviado') continue;
+        const orc = await getOrcamento(row.orcamentoId);
+        if (!orc) continue; // orçamento pode ter sido excluído localmente
 
-        // Espelha a resposta do cliente no orçamento local (saveOrcamento já
-        // replica para a nuvem/painel). Bump em atualizadoEm como no fluxo manual.
-        await saveOrcamento({ ...orc, status: novoStatus, atualizadoEm: nowISO() });
+        const alvo = statusLocalAlvo(orc.status, row);
+        if (!alvo || alvo === orc.status) continue;
+
+        // Espelha a evolução do cliente no orçamento local (saveOrcamento replica
+        // para a nuvem/painel). Bump em atualizadoEm como no fluxo manual. Mudar
+        // SÓ o status (mesmo conteúdo comercial) NÃO gera versão — a regra de ouro
+        // do saveOrcamento compara a impressão comercial, imune à troca de status.
+        await saveOrcamento({ ...orc, status: alvo, atualizadoEm: nowISO() });
         mudaram++;
       } catch {
         // pula linha problemática, segue o resto
@@ -229,6 +296,194 @@ export async function sincronizarStatusLinks(): Promise<number> {
     return mudaram;
   } catch {
     // nunca lança: qualquer falha vira 0 (offline/erro)
+    return 0;
+  }
+}
+
+/** Linha de link do dono, já normalizada, para o batch de sincronização. */
+interface LinkDonoRow extends LinkRow {
+  orcamentoId?: string;
+}
+
+/**
+ * Lê em LOTE todos os links do dono com resiliência de schema (com/sem
+ * `visualizado_em`). RLS já restringe ao dono; o `.eq('user_id')` é defensivo.
+ * NUNCA lança: devolve [] em qualquer falha.
+ */
+async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
+  if (!supabase) return [];
+  const mapear = (arr: any[]): LinkDonoRow[] =>
+    arr.map((r) => ({ orcamentoId: r?.orcamento_id ?? undefined, ...normalizarLinkRow(r) }));
+  // 1ª tentativa: com visualizado_em.
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('orcamento_id, status, respondido_em, resposta_cliente, visualizado_em')
+      .eq('user_id', userId);
+    if (!error && Array.isArray(data)) return mapear(data);
+    if (error && (error as any)?.code && (error as any).code !== '42703') return [];
+  } catch {
+    // cai para o fallback
+  }
+  // 2ª tentativa (fallback): sem visualizado_em.
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('orcamento_id, status, respondido_em, resposta_cliente')
+      .eq('user_id', userId);
+    if (error || !Array.isArray(data)) return [];
+    return mapear(data);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Decide o status LOCAL alvo a partir do estado do link na nuvem, respeitando a
+ * decisão do DONO (nunca reverte uma mudança manual). Regras:
+ *  - aprovado/recusado na nuvem: só aplica se o local ainda está pré-resposta
+ *    (enviado/visualizado). Se o dono já moveu para cancelado/aguardando/terminal
+ *    à mão, a decisão local é mais recente e vence (evita loop de reversão).
+ *  - visualizado (status 'visualizado' OU carimbo visualizado_em): só PROMOVE de
+ *    'enviado' → 'visualizado'. Nunca rebaixa um estado mais avançado.
+ * Devolve null quando não há transição a aplicar.
+ */
+function statusLocalAlvo(statusLocal: StatusOrcamento, link: LinkDonoRow): StatusOrcamento | null {
+  const s = link.status;
+  if (s === 'aprovado' || s === 'recusado') {
+    // Só sobrescreve estados pré-resposta; qualquer outro = decisão manual do dono.
+    if (statusLocal === 'enviado' || statusLocal === 'visualizado') return s;
+    return null;
+  }
+  const visualizou = s === 'visualizado' || !!link.visualizadoEm;
+  if (visualizou && statusLocal === 'enviado') return 'visualizado';
+  return null;
+}
+
+/**
+ * Monta a TRILHA do cliente (mestre 13) de um orçamento a partir da linha do link
+ * na nuvem: enviado → visualizado → aprovado/recusado (com motivo, se recusou). É
+ * uma leitura VIVA (não persistida no orçamento) — a tela chama no foco. Ordem
+ * cronológica (mais antigo → mais recente). Se o orçamento nunca teve link ou a
+ * nuvem está indisponível, devolve [] (a tela simplesmente não mostra a seção).
+ * NUNCA lança. LGPD: o `motivo` é texto que o próprio cliente digitou; devolvido
+ * só para exibição ao dono, jamais logado.
+ */
+export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCliente[]> {
+  try {
+    const link = await statusDoLink(orcamentoId);
+    if (!link) return [];
+    const eventos: EventoTrilhaCliente[] = [];
+    // 'enviado': a existência da linha do link já significa que a proposta foi
+    // publicada. Sem carimbo próprio de envio na tabela, deixamos `em` indefinido.
+    eventos.push({ tipo: 'enviado' });
+    if (link.visualizadoEm) {
+      eventos.push({ tipo: 'visualizado', em: link.visualizadoEm });
+    } else if (link.status === 'visualizado' || link.status === 'aprovado' || link.status === 'recusado') {
+      // O cliente respondeu (logo visualizou), mas o banco não tem visualizado_em
+      // (worker antigo): registramos a visualização sem timestamp, para a trilha
+      // não pular direto de "enviado" para a resposta.
+      eventos.push({ tipo: 'visualizado' });
+    }
+    if (link.status === 'aprovado') {
+      eventos.push({ tipo: 'aprovado', em: link.respondidoEm });
+    } else if (link.status === 'recusado') {
+      eventos.push({ tipo: 'recusado', em: link.respondidoEm, motivo: link.motivo });
+    }
+    return eventos;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Espelha UMA versão de orçamento na nuvem (public.orcamento_versoes). Chamado
+ * pelo database.ts (import dinâmico) quando uma versão é congelada.
+ *
+ * Idempotência por `id` (mesmo aparelho re-espelhando a MESMA versão = upsert
+ * limpo). MAS a colisão real entre APARELHOS é na UNIQUE(orcamento_id,
+ * numero_versao): dois aparelhos offline podem congelar a "vN" com `id` diferente;
+ * ao subir, o segundo leva 23505 nessa constraint. Em vez de engolir (o snapshot
+ * sumiria), RENUMERAMOS para o próximo número livre (MAX local + 1) e tentamos UMA
+ * vez mais — e propagamos o novo número para o SQLite local (mesmo `id`), para os
+ * dois aparelhos convergirem sem exibir "vN" duplicada. Fire-and-forget:
+ * offline/deslogado/sem-nuvem = no-op silencioso. NUNCA lança.
+ */
+export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void> {
+  try {
+    if (!supabase || !versao?.id) return;
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const payload = (numeroVersao: number) => ({
+      id: versao.id,
+      orcamento_id: versao.orcamentoId,
+      numero_versao: numeroVersao,
+      dados: versao.dados,
+      criado_em: versao.criadoEm,
+    });
+
+    const { error } = await supabase
+      .from(TABLE_VERSOES)
+      .upsert(payload(versao.numeroVersao), { onConflict: 'id' });
+    if (!error) return;
+
+    // 23505 = unique_violation. Como o upsert é por `id`, uma colisão aqui só pode
+    // ser na UNIQUE(orcamento_id, numero_versao) — esse número já foi usado por
+    // OUTRO aparelho. Renumera para o próximo livre e re-tenta UMA vez.
+    if ((error as any)?.code !== '23505') return;
+    const novoNumero = await proximoNumeroVersao(versao.orcamentoId);
+    if (novoNumero === versao.numeroVersao) return; // nada a renumerar
+    const { error: erroRetry } = await supabase
+      .from(TABLE_VERSOES)
+      .upsert(payload(novoNumero), { onConflict: 'id' });
+    if (erroRetry) return; // ainda colidiu (corrida rara) — desiste sem quebrar
+    // Sucesso na nuvem com o novo número: alinha o SQLite local (mesmo `id`) para
+    // não ficar uma "vN" divergente entre local e nuvem.
+    await upsertVersaoLocalSilencioso({ ...versao, numeroVersao: novoNumero });
+  } catch {
+    // espelho em background: nunca afeta o app local
+  }
+}
+
+/**
+ * Puxa da nuvem as versões de UM orçamento e as grava no SQLite local (upsert
+ * silencioso, sem re-espelhar). Fecha o caminho downstream: versões criadas em
+ * OUTRO aparelho do mesmo dono (ou por um membro da equipe) aparecem aqui. A RLS
+ * de `orcamento_versoes` já restringe ao que o usuário pode ver (dono + org).
+ * Retorna quantas versões foram aplicadas localmente (0 = nada novo / offline).
+ * NUNCA lança — é chamada em background ao focar a tela do orçamento.
+ */
+export async function puxarVersoesNuvemParaOrcamento(orcamentoId: string): Promise<number> {
+  try {
+    if (!supabase || !orcamentoId) return 0;
+    const user = await getCurrentUser();
+    if (!user) return 0;
+    const { data, error } = await supabase
+      .from(TABLE_VERSOES)
+      .select('id, orcamento_id, numero_versao, dados, criado_em')
+      .eq('orcamento_id', orcamentoId);
+    if (error || !Array.isArray(data) || data.length === 0) return 0;
+
+    let aplicadas = 0;
+    for (const row of data) {
+      try {
+        const dados = (row as any)?.dados;
+        if (!dados || typeof dados !== 'object') continue; // snapshot inválido → pula
+        await upsertVersaoLocalSilencioso({
+          id: (row as any).id,
+          orcamentoId: (row as any).orcamento_id,
+          numeroVersao: (row as any).numero_versao,
+          dados: dados as Orcamento,
+          criadoEm: (row as any).criado_em,
+        });
+        aplicadas++;
+      } catch {
+        // pula linha problemática
+      }
+    }
+    return aplicadas;
+  } catch {
     return 0;
   }
 }

@@ -14,6 +14,7 @@ import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo, getRecibos } from '../database/database';
+import { getReciboDoOrcamento, marcarReciboComoPdfEmitido } from '../services/pagamentos';
 import { Recibo, Empresa, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
@@ -57,6 +58,12 @@ export default function EmitirReciboScreen() {
   const [carregandoEmitidos, setCarregandoEmitidos] = useState(false);
   const [reenviandoId, setReenviandoId] = useState<string | null>(null);
 
+  // Recibo com pagamento já registrado (ex.: pelo botão "Registrar pagamento" na
+  // lista de orçamentos) mas cujo PDF ainda não foi gerado/compartilhado. Ao abrir
+  // esta tela a partir do mesmo orçamento, reaproveitamos ESTE registro em vez de
+  // criar um recibo duplicado — só marcamos `pdfEmitido: true` nele.
+  const [reciboPendente, setReciboPendente] = useState<Recibo | null>(null);
+
   useEffect(() => {
     async function initOrcamento() {
       if (orcamentoId) {
@@ -66,6 +73,23 @@ export default function EmitirReciboScreen() {
           setClienteNome(o.clienteNome);
           setClienteTelefone(o.clienteTelefone);
           setValorRecebido(o.valorTotal);
+        }
+        try {
+          const recibos = await getRecibos();
+          const pendente = getReciboDoOrcamento(orcamentoId, recibos);
+          // Só reaproveita como "pendente" quando pdfEmitido é explicitamente
+          // false. Ausente (recibo LEGADO, anterior a este campo) já foi
+          // emitido na época — não deve ser retomado/renumerado aqui.
+          if (pendente && pendente.pdfEmitido === false) {
+            setReciboPendente(pendente);
+            setClienteNome(pendente.clienteNome);
+            setClienteTelefone(pendente.clienteTelefone);
+            setValorRecebido(pendente.valorRecebido);
+            setFormaPagamento(pendente.formaPagamento);
+            setDataRecebimento(pendente.dataRecebimento);
+          }
+        } catch {
+          // sem recibo pendente encontrado: segue o fluxo normal (cria um novo)
         }
       }
     }
@@ -256,9 +280,17 @@ export default function EmitirReciboScreen() {
       let numeroFinal: string;
       let recibo: Recibo;
       try {
-        numeroFinal = await getNextReciboNumber();
+        // Se já existe um pagamento registrado para este orçamento (ex.: via
+        // "Registrar pagamento" na lista), reaproveita o MESMO recibo — mesmo
+        // id e número — em vez de duplicar, só atualizando os campos que o
+        // usuário possa ter ajustado aqui e marcando o PDF como emitido. Sem
+        // recibo pendente, o número real é obtido SÓ AQUI (ao salvar):
+        // getNextReciboNumber incrementa e persiste a sequência, então o
+        // contador só avança quando o recibo é de fato emitido — abrir e sair
+        // da tela não queima mais o número.
+        numeroFinal = reciboPendente ? reciboPendente.numero : await getNextReciboNumber();
         recibo = {
-          id: generateId(),
+          id: reciboPendente?.id ?? generateId(),
           numero: numeroFinal,
           orcamentoId: orc?.id,
           orcamentoNumero: orc?.numero,
@@ -270,11 +302,13 @@ export default function EmitirReciboScreen() {
           formaPagamento,
           dataRecebimento,
           exibirAssinatura: true,
-          criadoEm: nowISO(),
+          criadoEm: reciboPendente?.criadoEm ?? nowISO(),
+          pdfEmitido: true,
         };
         // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
         // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
         await saveRecibo(recibo);
+        setReciboPendente(recibo);
       } catch {
         Alert.alert('Erro', 'Não foi possível salvar o recibo agora. Tente novamente.');
         return;
@@ -285,6 +319,10 @@ export default function EmitirReciboScreen() {
         const html = await buildHtml(recibo);
         // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
         await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
+        // PDF gerado/compartilhado com sucesso: limpa o "pendente" para o card
+        // azul "Pagamento já registrado... gere o PDF" sumir — a ação que ele
+        // pedia já foi concluída (sem isso o card ficava contradizendo a tela).
+        setReciboPendente(null);
       } catch (e: any) {
         // Se o compartilhamento simplesmente não está disponível no aparelho,
         // a mensagem já vem específica (e diz onde o PDF foi salvo).
@@ -313,10 +351,23 @@ export default function EmitirReciboScreen() {
       return;
     }
     setReenviandoId(r.id);
-    setOverlayInfo({ titulo: 'Gerando o recibo...', subtitulo: 'Preparando a segunda via para envio...' });
+    const primeiraEmissao = r.pdfEmitido === false;
+    setOverlayInfo(
+      primeiraEmissao
+        ? { titulo: 'Gerando seu recibo...', subtitulo: 'Deixando bonito para o cliente...' }
+        : { titulo: 'Gerando o recibo...', subtitulo: 'Preparando a segunda via para envio...' }
+    );
     try {
       const html = await buildHtml(r);
       await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      // Pagamento registrado sem PDF ainda (ver "Registrar pagamento" na lista de
+      // orçamentos): agora que o PDF foi gerado/compartilhado pela 1ª vez, marca
+      // o recibo como emitido — vira o badge financeiro do orçamento de "Pago"
+      // para "Recibo emitido".
+      if (primeiraEmissao) {
+        await marcarReciboComoPdfEmitido(r);
+        carregarEmitidos();
+      }
     } catch (e: any) {
       Alert.alert('Erro', e?.message || 'Não foi possível gerar o PDF deste recibo agora.');
     } finally {
@@ -329,7 +380,11 @@ export default function EmitirReciboScreen() {
 
   return (
     <View style={styles.container}>
-      <GradientHeader title="Emitir recibo" subtitle={numero ? `Nº ${numero}` : 'Número gerado ao emitir'} onBack={() => goBackOrHome(nav)} />
+      <GradientHeader
+        title="Emitir recibo"
+        subtitle={numero ? `Nº ${numero}` : reciboPendente ? `Nº ${reciboPendente.numero} · pagamento registrado` : 'Número gerado ao emitir'}
+        onBack={() => goBackOrHome(nav)}
+      />
 
       {/* ABAS: Novo recibo / Emitidos (histórico) */}
       <View style={styles.tabsRow}>
@@ -371,6 +426,18 @@ export default function EmitirReciboScreen() {
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.orcLabel}>Referente ao orçamento nº {orc.numero}</Text>
                 <Text style={styles.orcTotal}>{formatCurrency(orc.valorTotal)}</Text>
+              </View>
+            </View>
+          )}
+
+          {reciboPendente && (
+            <View style={styles.pendenteCard}>
+              <MaterialCommunityIcons name="cash-check" size={22} color={Colors.primary} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.pendenteTitle}>Pagamento já registrado</Text>
+                <Text style={styles.pendenteText}>
+                  Recibo Nº {reciboPendente.numero} · confira os dados abaixo e gere o PDF para entregar ao cliente.
+                </Text>
               </View>
             </View>
           )}
@@ -431,6 +498,9 @@ export default function EmitirReciboScreen() {
                   <Text style={styles.reciboNumero}>Recibo Nº {item.numero}</Text>
                   <Text style={styles.reciboCliente} numberOfLines={1}>{item.clienteNome}</Text>
                   <Text style={styles.reciboMeta}>{formatDateTime(item.criadoEm)} · {item.formaPagamento}</Text>
+                  {item.pdfEmitido === false && (
+                    <Text style={styles.reciboPendenteTag}>Pagamento registrado · PDF ainda não gerado</Text>
+                  )}
                 </View>
                 <Text style={styles.reciboValor}>{formatCurrency(item.valorRecebido)}</Text>
               </View>
@@ -443,9 +513,11 @@ export default function EmitirReciboScreen() {
                 {reenviandoId === item.id ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <MaterialCommunityIcons name="share-variant" size={16} color={Colors.primary} />
+                  <MaterialCommunityIcons name={item.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'} size={16} color={Colors.primary} />
                 )}
-                <Text style={styles.reenviarBtnText}>Reenviar / compartilhar</Text>
+                <Text style={styles.reenviarBtnText}>
+                  {item.pdfEmitido === false ? 'Gerar e compartilhar PDF' : 'Reenviar / compartilhar'}
+                </Text>
               </TouchableOpacity>
             </OlliCard>
           )}
@@ -503,6 +575,7 @@ const styles = StyleSheet.create({
   reciboNumero: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
   reciboCliente: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
   reciboMeta: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 2 },
+  reciboPendenteTag: { fontSize: 11, fontWeight: '700', color: Colors.warning, marginTop: 4 },
   reciboValor: { fontSize: 15, fontWeight: '800', color: Colors.success },
   reenviarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -518,6 +591,14 @@ const styles = StyleSheet.create({
   },
   orcLabel: { fontSize: 13, color: Colors.onSurface },
   orcTotal: { fontSize: 16, fontWeight: '800', color: Colors.success },
+  pendenteCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(11,111,206,0.12)', marginBottom: Spacing.base,
+    borderRadius: BorderRadius.md, padding: Spacing.base,
+    borderWidth: 1, borderColor: Colors.primary,
+  },
+  pendenteTitle: { fontSize: 13, fontWeight: '800', color: Colors.onSurface },
+  pendenteText: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
   card: {
     backgroundColor: Colors.surface, marginBottom: Spacing.base,
     borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm,

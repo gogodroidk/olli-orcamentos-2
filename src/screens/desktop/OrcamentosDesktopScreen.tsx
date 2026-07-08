@@ -20,17 +20,13 @@ import { Orcamento, StatusOrcamento, STATUS_LABELS } from '../../types';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<TabParamList, 'OrcamentosTab'>;
 
-// Mesma cobertura de status da tela mobile (src/screens/OrcamentosScreen.tsx) —
-// todos os valores reais de StatusOrcamento, sem misturar "Aguardando
-// assinatura"/"Cancelado" dentro do filtro "Todos".
+// Mesma cobertura da tela mobile (src/screens/OrcamentosScreen.tsx): derivado da
+// fonte única e exaustiva (STATUS_LABELS, na ordem do type), para os 10 status
+// ficarem sempre cobertos — nenhum ("Visualizado"/"Em negociação"/"Expirado"/
+// "Convertido") fica preso só no "Todos" quando a lista cresce. "Todos" primeiro.
 const FILTROS_STATUS: Array<{ chave: StatusOrcamento | 'todos'; label: string }> = [
   { chave: 'todos', label: 'Todos' },
-  { chave: 'rascunho', label: STATUS_LABELS.rascunho },
-  { chave: 'enviado', label: STATUS_LABELS.enviado },
-  { chave: 'aguardando_assinatura', label: STATUS_LABELS.aguardando_assinatura },
-  { chave: 'aprovado', label: STATUS_LABELS.aprovado },
-  { chave: 'recusado', label: STATUS_LABELS.recusado },
-  { chave: 'cancelado', label: STATUS_LABELS.cancelado },
+  ...(Object.keys(STATUS_LABELS) as StatusOrcamento[]).map(chave => ({ chave, label: STATUS_LABELS[chave] })),
 ];
 
 /**

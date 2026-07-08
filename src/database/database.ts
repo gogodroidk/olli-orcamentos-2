@@ -1,10 +1,11 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, propostaJaEnviada } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
+import { generateId } from '../utils/id';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -121,6 +122,20 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       numero TEXT NOT NULL,
       data TEXT NOT NULL
     );
+
+    -- VERSÕES de orçamento (mestre 13.5) — snapshot congelado do orçamento ANTES
+    -- de uma edição sobre uma proposta JÁ ENVIADA. Append-only (nunca se edita uma
+    -- versão): a numeração é sequencial por orçamento. 'dados' guarda o Orcamento
+    -- completo em JSON (mesmo padrão de 'orcamentos.data'). Sincroniza com a nuvem
+    -- (public.orcamento_versoes) — ver migration 20260708_versoes.sql.
+    CREATE TABLE IF NOT EXISTS orcamento_versoes (
+      id TEXT PRIMARY KEY,
+      orcamento_id TEXT NOT NULL,
+      numero_versao INTEGER NOT NULL,
+      dados TEXT NOT NULL,
+      criado_em TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_orc ON orcamento_versoes (orcamento_id, numero_versao);
 
     CREATE TABLE IF NOT EXISTS recibos (
       id TEXT PRIMARY KEY,
@@ -482,8 +497,90 @@ export async function getOrcamento(id: string): Promise<Orcamento | null> {
   return row ? JSON.parse(row.data) : null;
 }
 
+/**
+ * Metadados VOLÁTEIS do orçamento que NÃO representam mudança comercial e, por
+ * isso, NÃO entram na impressão digital. Tudo o mais (formasPagamento, chavePix,
+ * fotosServico, sinalData, dataEmissao, corMarca, subtotalServicos/Produtos, etc.)
+ * é conteúdo que o cliente vê no PDF/Link e DEVE disparar versão ao mudar. Por
+ * isso usamos LISTA DE EXCLUSÃO (não whitelist): campo comercial novo passa a
+ * contar automaticamente, sem risco de esquecimento. Os excluídos:
+ *  - `id`: identidade, não conteúdo.
+ *  - `status`: o sync do link (visualizado/aprovado/recusado) e o fluxo manual
+ *    mudam status sem mudar a proposta — jamais pode disparar versão falsa.
+ *  - `criadoEm`/`atualizadoEm`: timestamps de trilha, não conteúdo.
+ *  - `assinaturaClienteUri`/`dataAssinaturaCliente`: AÇÃO do cliente sobre a
+ *    proposta (assinar), não uma edição do dono — não gera versão.
+ */
+const CAMPOS_VOLATEIS_ORCAMENTO: ReadonlySet<string> = new Set([
+  'id',
+  'status',
+  'criadoEm',
+  'atualizadoEm',
+  'assinaturaClienteUri',
+  'dataAssinaturaCliente',
+]);
+
+/**
+ * Serialização CANÔNICA: ordena as chaves de objetos recursivamente para que dois
+ * orçamentos com o MESMO conteúdo, mas chaves em ordem diferente (o "anterior" vem
+ * do banco via JSON.parse; o "novo" vem do editor), produzam a MESMA string. Arrays
+ * (ex.: `itens`) PRESERVAM a ordem — reordenar item muda a proposta. Valores
+ * primitivos e `null` passam direto.
+ */
+function stringifyCanonico(valor: unknown): string {
+  if (valor === null || typeof valor !== 'object') {
+    return JSON.stringify(valor === undefined ? null : valor);
+  }
+  if (Array.isArray(valor)) {
+    return `[${valor.map(stringifyCanonico).join(',')}]`;
+  }
+  const obj = valor as Record<string, unknown>;
+  const chaves = Object.keys(obj).sort();
+  const partes = chaves.map((k) => `${JSON.stringify(k)}:${stringifyCanonico(obj[k])}`);
+  return `{${partes.join(',')}}`;
+}
+
+/**
+ * "Impressão digital" comercial de um orçamento — TODO o conteúdo que o CLIENTE
+ * pode ver na proposta (PDF + Link), EXCETO os metadados voláteis de
+ * `CAMPOS_VOLATEIS_ORCAMENTO`. Muda de fingerprint = a proposta mudou de verdade e
+ * merece uma versão. Lista de EXCLUSÃO + stringify canônico (chaves ordenadas) →
+ * comparação estável e à prova de esquecimento (campo comercial novo já conta).
+ */
+function impressaoComercial(o: Orcamento): string {
+  const origem = o as unknown as Record<string, unknown>;
+  const filtrado: Record<string, unknown> = {};
+  for (const chave of Object.keys(origem)) {
+    if (CAMPOS_VOLATEIS_ORCAMENTO.has(chave)) continue;
+    filtrado[chave] = origem[chave];
+  }
+  return stringifyCanonico(filtrado);
+}
+
+/**
+ * Salva o orçamento. REGRA DE OURO (mestre 13.5): se o orçamento JÁ persistido
+ * está numa proposta enviada (enviado/visualizado/em_negociacao/aguardando_
+ * assinatura) e a EDIÇÃO muda o conteúdo comercial, congelamos o estado ANTERIOR
+ * como uma VERSÃO antes de sobrescrever — o que o cliente viu nunca some. Uma
+ * simples troca de status (ex.: o link marcou "visualizado") não gera versão.
+ */
 export async function saveOrcamento(o: Orcamento): Promise<void> {
   const db = await getDb();
+
+  // Snapshot da versão anterior, quando aplicável (best-effort: nunca impede o save).
+  try {
+    const anterior = await getOrcamento(o.id);
+    if (
+      anterior &&
+      propostaJaEnviada(anterior.status) &&
+      impressaoComercial(anterior) !== impressaoComercial(o)
+    ) {
+      await congelarVersaoOrcamento(anterior);
+    }
+  } catch {
+    // versionamento é aditivo: uma falha aqui jamais bloqueia salvar o orçamento
+  }
+
   await db.runAsync(
     'INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
     [o.id, o.numero, JSON.stringify(o)]
@@ -494,8 +591,137 @@ export async function saveOrcamento(o: Orcamento): Promise<void> {
 export async function deleteOrcamento(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM orcamentos WHERE id = ?', [id]);
+  // O histórico de versões deste orçamento morre junto (não faz sentido sem o pai).
+  await db.runAsync('DELETE FROM orcamento_versoes WHERE orcamento_id = ?', [id]);
   mirrorRemove('orcamentos', id);
   registrarExclusao('orcamentos', id);
+}
+
+// ─── VERSÕES DE ORÇAMENTO (mestre 13.5) ─────────────────────
+function rowToVersao(r: any): OrcamentoVersao {
+  return {
+    id: r.id,
+    orcamentoId: r.orcamento_id,
+    numeroVersao: r.numero_versao,
+    dados: JSON.parse(r.dados),
+    criadoEm: r.criado_em,
+  };
+}
+
+/**
+ * Próximo número de versão (sequencial) de um orçamento — 1 se ainda não houver.
+ * Exportado para o espelho na nuvem RENUMERAR ao colidir na UNIQUE
+ * (orcamento_id, numero_versao) de outro aparelho — ver clienteLink.espelhar
+ * VersaoNuvem. MAX+1 é LOCAL; a convergência entre aparelhos é feita lá.
+ */
+export async function proximoNumeroVersao(orcamentoId: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ m: number | null }>(
+    'SELECT MAX(numero_versao) as m FROM orcamento_versoes WHERE orcamento_id = ?',
+    [orcamentoId],
+  );
+  return (row?.m ?? 0) + 1;
+}
+
+/**
+ * Congela um SNAPSHOT do orçamento como uma versão nova (append-only). Grava local
+ * e espelha na nuvem (fire-and-forget). Recebe o estado a preservar (normalmente o
+ * orçamento ANTES da edição). Idempotência prática: cada chamada cria uma versão
+ * nova — quem decide QUANDO chamar é o `saveOrcamento` (só quando o conteúdo mudou).
+ */
+export async function congelarVersaoOrcamento(snapshot: Orcamento): Promise<OrcamentoVersao> {
+  const db = await getDb();
+  const numeroVersao = await proximoNumeroVersao(snapshot.id);
+  const versao: OrcamentoVersao = {
+    id: generateId(),
+    orcamentoId: snapshot.id,
+    numeroVersao,
+    dados: snapshot,
+    criadoEm: new Date().toISOString(),
+  };
+  await db.runAsync(
+    'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+    [versao.id, versao.orcamentoId, versao.numeroVersao, JSON.stringify(versao.dados), versao.criadoEm],
+  );
+  mirrorVersaoNuvem(versao);
+  return versao;
+}
+
+/**
+ * Histórico de versões de um orçamento, da mais RECENTE para a mais antiga.
+ * DE-DUPLICADO de forma estável por `numero_versao`: dois aparelhos podem, por
+ * merge da nuvem, gravar a MESMA vN com `id` diferente (o espelho renumera para
+ * evitar, mas snapshots antigos já podem trazer o duplo). Quando isso ocorre,
+ * exibimos UMA linha por número — preferindo o `criado_em` mais antigo (a versão
+ * "original") e, como desempate final, o menor `id` (determinístico). Ordena a
+ * seleção no SQL por (numero_versao ASC, criado_em ASC, id ASC) e depois inverte
+ * para DESC, garantindo que o de-dup fique com o registro mais antigo de cada nº.
+ */
+export async function getVersoesOrcamento(orcamentoId: string): Promise<OrcamentoVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM orcamento_versoes WHERE orcamento_id = ? ORDER BY numero_versao ASC, criado_em ASC, id ASC',
+    [orcamentoId],
+  );
+  const porNumero = new Map<number, OrcamentoVersao>();
+  for (const r of rows) {
+    const v = rowToVersao(r);
+    // Primeira ocorrência (já é a mais antiga pela ordenação) vence — ignora as duplicatas.
+    if (!porNumero.has(v.numeroVersao)) porNumero.set(v.numeroVersao, v);
+  }
+  return Array.from(porNumero.values()).sort((a, b) => b.numeroVersao - a.numeroVersao);
+}
+
+/** Quantas versões um orçamento tem (para badge/contador sem carregar tudo). */
+export async function countVersoesOrcamento(orcamentoId: string): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ c: number }>(
+    'SELECT COUNT(*) as c FROM orcamento_versoes WHERE orcamento_id = ?',
+    [orcamentoId],
+  );
+  return row?.c ?? 0;
+}
+
+/**
+ * Upsert SILENCIOSO de uma versão vinda da nuvem no SQLite local (sem re-espelhar
+ * para a nuvem — evita loop). Usado pelo pull downstream (clienteLink.puxarVersoes
+ * NuvemParaOrcamento), para as versões criadas em OUTRO aparelho aparecerem aqui.
+ * Idempotente por id. NUNCA lança.
+ */
+export async function upsertVersaoLocalSilencioso(versao: OrcamentoVersao): Promise<void> {
+  try {
+    if (!versao?.id || !versao.orcamentoId || versao.numeroVersao == null) return;
+    const db = await getDb();
+    const dadosStr = typeof (versao.dados as unknown) === 'string'
+      ? (versao.dados as unknown as string)
+      : JSON.stringify(versao.dados);
+    await db.runAsync(
+      'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+      [versao.id, versao.orcamentoId, versao.numeroVersao, dadosStr, versao.criadoEm ?? new Date().toISOString()],
+    );
+  } catch {
+    // best-effort: pull de versão nunca afeta o app local
+  }
+}
+
+/**
+ * Espelha UMA versão na nuvem (public.orcamento_versoes). Fire-and-forget e
+ * import DINÂMICO de clienteLink (evita aresta estática database↔services e
+ * mantém o padrão do módulo). Nunca afeta o save local: offline/deslogado = no-op.
+ */
+function mirrorVersaoNuvem(versao: OrcamentoVersao): void {
+  try {
+    void (async () => {
+      try {
+        const { espelharVersaoNuvem } = await import('../services/clienteLink');
+        await espelharVersaoNuvem(versao);
+      } catch {
+        // espelho em background: nunca afeta o app local
+      }
+    })().catch(() => {});
+  } catch {
+    // idem
+  }
 }
 
 /**
@@ -790,6 +1016,17 @@ export interface BackupSnapshot {
   contadores?: Record<string, number>;
   /** Histórico de relatórios do dia (opcional — snapshots antigos não têm). */
   relatoriosDiarios?: RelatorioDiaRow[];
+  /** Histórico de versões de orçamento (opcional — snapshots antigos não têm). */
+  orcamentoVersoes?: OrcamentoVersao[];
+}
+
+/** Lê todas as versões de orçamento (para o backup levar o histórico completo). */
+async function getVersoesForBackup(): Promise<OrcamentoVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM orcamento_versoes ORDER BY orcamento_id ASC, numero_versao ASC',
+  );
+  return rows.map(rowToVersao);
 }
 
 /** Lê os contadores de numeração para o backup (chave → valor). */
@@ -802,14 +1039,14 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
 }
 
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
-    getRelatoriosDiasForBackup(),
+    getRelatoriosDiasForBackup(), getVersoesForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes,
   };
 }
 
@@ -833,6 +1070,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const depoimentos = asArray<Depoimento>(data.depoimentos);
   const agendamentos = asArray<Agendamento>(data.agendamentos);
   const relatoriosDiarios = asArray<RelatorioDiaRow>(data.relatoriosDiarios);
+  const orcamentoVersoes = asArray<OrcamentoVersao>(data.orcamentoVersoes);
 
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
@@ -859,7 +1097,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     await db.execAsync(`
       DELETE FROM empresa;
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
-      DELETE FROM orcamentos; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
+      DELETE FROM orcamentos; DELETE FROM orcamento_versoes; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
       DELETE FROM agendamentos;
     `);
     if (data.empresa) {
@@ -895,6 +1133,17 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     for (const o of orcamentos) {
       await db.runAsync('INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
         [o.id, o.numero, JSON.stringify(o)]);
+    }
+    for (const v of orcamentoVersoes) {
+      // Só restaura versões válidas e ligadas a um orçamento (defensivo contra
+      // snapshots corrompidos). `dados` pode chegar como objeto (JSON parseado) ou
+      // como string já serializada — normalizamos para string antes de gravar.
+      if (!v || !v.id || !v.orcamentoId || v.numeroVersao == null) continue;
+      const dadosStr = typeof v.dados === 'string' ? v.dados : JSON.stringify(v.dados);
+      await db.runAsync(
+        'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+        [v.id, v.orcamentoId, v.numeroVersao, dadosStr, v.criadoEm ?? new Date().toISOString()],
+      );
     }
     for (const r of recibos) {
       await db.runAsync('INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)',
@@ -987,7 +1236,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
 // APENAS `codigos_erro` (seed estático de 602 códigos, igual para todos), que é
 // re-semeado sob demanda mas não precisa ser reimportado a cada logout.
 const USER_DATA_TABLES = [
-  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos',
+  'clientes', 'servicos', 'produtos', 'orcamentos', 'orcamento_versoes', 'recibos', 'modelos',
   'depoimentos', 'agendamentos', 'empresa', 'exclusoes', 'contadores',
   'eventos', 'cache_ia', 'casos_erro', 'relatorios_diarios',
 ];

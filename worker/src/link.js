@@ -98,7 +98,13 @@ function sbHeaders(env, extra = {}) {
 
 // Colunas explícitas (menor privilégio): só o que a página precisa — nunca
 // puxa colunas internas futuras (custo, margem, observações) pra borda.
-const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados';
+// `resposta_cliente` entra para reexibir ao cliente o motivo que ele deixou ao
+// recusar (existe no schema base). NÃO pedimos `motivo_recusa` aqui de propósito:
+// essa coluna vem na migration 20260708_portal_trilha e pode ainda não ter sido
+// aplicada quando o worker subir — pedir uma coluna inexistente derruba a query
+// inteira (PostgREST 400). O worker grava o motivo em AMBAS, então ler
+// resposta_cliente já basta para a página.
+const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente';
 
 /** Retorna a linha, `null` se não existir, ou `{ error:true }` em falha de backend. */
 async function getRow(env, token) {
@@ -124,12 +130,22 @@ async function getRow(env, token) {
  */
 async function patchStatus(env, token, status, mensagem) {
   try {
+    // Na recusa, o texto do cliente vira TANTO resposta_cliente (coluna que o app
+    // já sincroniza) QUANTO motivo_recusa (coluna nova, semanticamente clara para
+    // o painel). Na aprovação não há motivo → ambas ficam nulas.
+    const patch = {
+      status,
+      resposta_cliente: mensagem ?? null,
+      respondido_em: new Date().toISOString(),
+    };
+    if (status === 'recusado') patch.motivo_recusa = mensagem ?? null;
+
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&status=not.in.(aprovado,recusado)`,
       {
         method: 'PATCH',
         headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=representation' }),
-        body: JSON.stringify({ status, resposta_cliente: mensagem ?? null, respondido_em: new Date().toISOString() }),
+        body: JSON.stringify(patch),
       },
     );
     if (!r.ok) return { error: true };
@@ -137,6 +153,113 @@ async function patchStatus(env, token, status, mensagem) {
     return { rows: Array.isArray(arr) ? arr : [] };
   } catch {
     return { error: true };
+  }
+}
+
+// ─── TRILHA de eventos (LGPD-safe) ───────────────────────────
+// Hash irreversível do IP: SHA-256(token || ':' || ip). NUNCA guardamos o IP cru.
+// Salgado com o token → o mesmo IP em orçamentos diferentes gera hashes DIFERENTES
+// (não dá para cruzar a navegação de uma pessoa entre links). Serve só para o dono
+// distinguir "aberturas de origens diferentes" dentro de UM orçamento.
+async function hashIp(token, ip) {
+  try {
+    const cripto = globalThis.crypto;
+    if (!ip || !cripto || !cripto.subtle) return null;
+    const dados = new TextEncoder().encode(`${token}:${ip}`);
+    const buf = await cripto.subtle.digest('SHA-256', dados);
+    const bytes = new Uint8Array(buf);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return hex;
+  } catch {
+    return null;
+  }
+}
+
+// Extrai da request o par (ip_hash, user_agent_curto) para enriquecer o evento.
+// Tudo LGPD-safe: só o hash do IP (nunca o cru) e o UA truncado (não é fingerprint).
+// `request` pode não existir (a rota GET hoje chama renderLinkPage sem ela) — nesse
+// caso o evento é gravado sem enriquecimento (ip_hash/ua nulos), o que é aceitável.
+async function contextoTrilha(token, request) {
+  if (!request || !request.headers) return { ipHash: null, uaCurto: null };
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  const ua = request.headers.get('User-Agent') || '';
+  const ipHash = await hashIp(token, ip);
+  const uaCurto = ua ? String(ua).slice(0, 120) : null;
+  return { ipHash, uaCurto };
+}
+
+/**
+ * Já existe um evento 'visualizado' para este token HOJE (dedupe por dia, UTC)?
+ * Evita poluir a trilha com uma linha a cada refresh. Em falha de backend retorna
+ * `true` (fail-safe: prefere NÃO gravar duplicado a arriscar spam de linhas).
+ */
+async function visualizadoHoje(env, token) {
+  try {
+    // date_trunc('day', now()) em UTC: início do dia de hoje em ISO (só a data).
+    const hojeUTC = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/eventos_orcamento_publico` +
+        `?token=eq.${encodeURIComponent(token)}` +
+        `&evento=eq.visualizado` +
+        `&criado_em=gte.${encodeURIComponent(hojeUTC + 'T00:00:00Z')}` +
+        `&select=id&limit=1`,
+      { headers: sbHeaders(env) },
+    );
+    if (!r.ok) return true; // fail-safe: não arrisca duplicar
+    const arr = await r.json().catch(() => null);
+    return Array.isArray(arr) ? arr.length > 0 : true;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Carimba orcamentos_publicos.visualizado_em na PRIMEIRA vez que o cliente abre o
+ * link (só grava quando ainda está NULL — filtro `visualizado_em=is.null` torna a
+ * operação idempotente: aberturas seguintes não sobrescrevem o 1º carimbo). É o
+ * dado denormalizado que o app lê (clienteLink) para promover enviado→visualizado
+ * na "Trilha do cliente". Best-effort: nunca lança, nunca bloqueia a página.
+ */
+async function marcarVisualizadoEm(env, token) {
+  try {
+    await fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos` +
+        `?token=eq.${encodeURIComponent(token)}` +
+        `&visualizado_em=is.null`,
+      {
+        method: 'PATCH',
+        headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify({ visualizado_em: new Date().toISOString() }),
+      },
+    );
+  } catch {
+    // best-effort: a coluna pode ainda não existir (pré-migration) ou o backend
+    // pode falhar — em nenhum caso a página do cliente pode cair por isso.
+  }
+}
+
+/**
+ * Grava UM evento na trilha (append-only). Nunca lança e nunca bloqueia o fluxo
+ * principal: a trilha é observabilidade, não pode derrubar a página do cliente
+ * nem a gravação da resposta. `motivo` só é relevante em 'recusado'.
+ */
+async function registrarEvento(env, token, evento, extra = {}) {
+  try {
+    const linha = {
+      token,
+      evento,
+      motivo: extra.motivo ?? null,
+      ip_hash: extra.ipHash ?? null,
+      user_agent_curto: extra.uaCurto ?? null,
+    };
+    await fetch(`${env.SUPABASE_URL}/rest/v1/eventos_orcamento_publico`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify(linha),
+    });
+  } catch {
+    // trilha é best-effort: engolir qualquer erro
   }
 }
 
@@ -155,12 +278,16 @@ export async function responderLink(token, request, env) {
       // binding ausente: não bloqueia
     }
   }
-  // Rejeita payload grande ANTES de parsear (endpoint público sem login).
-  if (Number(request.headers.get('content-length') || 0) > 4096) {
-    return json({ ok: false, erro: 'payload_grande' }, 413);
-  }
+  // Rejeita payload grande ANTES de parsear (endpoint público sem login). Não
+  // confia só no content-length: um POST em Transfer-Encoding: chunked não traz
+  // esse header (Number(null)=0) e escaparia do teto. Lê o corpo cru, mede o
+  // tamanho real e só então parseia — o cap vale mesmo sem content-length.
   let body = {};
-  try { body = await request.json(); } catch { /* corpo opcional */ }
+  try {
+    const raw = await request.text();
+    if (raw.length > 4096) return json({ ok: false, erro: 'payload_grande' }, 413);
+    if (raw) body = JSON.parse(raw);
+  } catch { /* corpo opcional / JSON inválido → segue com body vazio */ }
   const acao = body.acao === 'recusar' ? 'recusado' : body.acao === 'aprovar' ? 'aprovado' : null;
   if (!acao) return json({ ok: false, erro: 'acao_invalida' }, 400);
   const mensagem = typeof body.mensagem === 'string' ? body.mensagem.slice(0, 500) : null;
@@ -182,7 +309,17 @@ export async function responderLink(token, request, env) {
   // Escrita atômica: só grava se ainda não foi respondido (first-writer-wins).
   const res = await patchStatus(env, token, acao, mensagem);
   if (res.error) return json({ ok: false, erro: 'indisponivel' }, 503);
-  if (res.rows.length) return json({ ok: true, status: acao });
+  if (res.rows.length) {
+    // Resposta gravada com sucesso → registra o evento na trilha (best-effort,
+    // não bloqueia a resposta ao cliente). O motivo só entra na recusa.
+    const ctx = await contextoTrilha(token, request);
+    await registrarEvento(env, token, acao, {
+      motivo: acao === 'recusado' ? mensagem : null,
+      ipHash: ctx.ipHash,
+      uaCurto: ctx.uaCurto,
+    });
+    return json({ ok: true, status: acao });
+  }
 
   // Não afetou nada: ou não existe, ou já foi respondido. Relê para distinguir.
   const atual = await getRow(env, token);
@@ -192,11 +329,30 @@ export async function responderLink(token, request, env) {
 }
 
 // ─── GET /o/<token> — página do cliente ──────────────────────
-export async function renderLinkPage(token, env) {
+// `request` é OPCIONAL (o router hoje chama sem ela): quando presente, enriquece
+// o evento 'visualizado' com ip_hash/user-agent; quando ausente, o evento ainda é
+// gravado (sem enriquecimento). Assim a trilha funciona independentemente disso.
+export async function renderLinkPage(token, env, request) {
   if (!validToken(token)) return html(pageErro('Link inválido', 'Confira o endereço que você recebeu.'), 400);
   const row = await getRow(env, token);
   if (row && row.error) return html(pageErro('Erro temporário', 'Não consegui carregar agora. Recarregue em alguns instantes.'), 503);
   if (!row) return html(pageErro('Orçamento não encontrado', 'Este link pode ter expirado ou sido removido.'), 404);
+
+  // TRILHA: registra 'visualizado' na 1ª abertura do dia (dedupe por dia). É
+  // best-effort e roda ANTES de responder — como é 1x/dia por token, o custo é
+  // desprezível e evita depender de waitUntil (que exigiria mexer no router).
+  try {
+    if (!(await visualizadoHoje(env, token))) {
+      const ctx = await contextoTrilha(token, request);
+      await registrarEvento(env, token, 'visualizado', { ipHash: ctx.ipHash, uaCurto: ctx.uaCurto });
+      // Carimba a 1ª visualização (idempotente por `visualizado_em=is.null`): é o
+      // que o app lê para acender o passo "visualizado" na trilha do dono.
+      await marcarVisualizadoEm(env, token);
+    }
+  } catch {
+    // nunca deixa a trilha atrapalhar a entrega da página
+  }
+
   return html(pageOrcamento(row));
 }
 
@@ -250,6 +406,22 @@ function shell(inner, accentRaw = ACCENT) {
   .btn-recusar{flex:1;background:#fff;color:#C0392B;border:1.5px solid #F0D2CE}
   .btn-zap{flex:1;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
   .btn:active{transform:scale(.98)}
+  /* Passo-a-passo do que acontece ao aprovar/recusar (transparência para o cliente). */
+  .comofunciona{margin-top:16px;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:14px;padding:14px 16px}
+  .cf-t{font-size:11px;font-weight:800;letter-spacing:.6px;color:#9AA3B2;text-transform:uppercase}
+  .cf-step{display:flex;align-items:flex-start;gap:9px;margin-top:9px;font-size:12.5px;color:#3C4756;line-height:1.4}
+  .cf-n{flex-shrink:0;width:19px;height:19px;border-radius:6px;background:#EAF3FC;color:${accent};font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  /* Painel de recusa: aparece ao clicar "Recusar" — pede o motivo antes de enviar. */
+  .recusa-panel{margin-top:14px;background:#FDF6F5;border:1px solid #F0D2CE;border-radius:14px;padding:15px}
+  .recusa-title{font-size:14px;font-weight:800;color:#8E2E22}
+  .recusa-sub{font-size:12px;color:#8A6A66;margin-top:3px;line-height:1.4}
+  .recusa-panel textarea{width:100%;margin-top:11px;min-height:78px;resize:vertical;font-family:inherit;font-size:14px;color:#1A2230;background:#fff;border:1.5px solid #F0D2CE;border-radius:11px;padding:11px 12px;line-height:1.4}
+  .recusa-panel textarea:focus{outline:none;border-color:#C0392B;box-shadow:0 0 0 3px rgba(192,57,43,.12)}
+  .recusa-count{font-size:11px;color:#A98D89;text-align:right;margin-top:5px}
+  .recusa-btns{display:flex;gap:10px;margin-top:12px}
+  .btn-voltar{flex:1;background:#fff;color:#5A6575;border:1.5px solid #E0E5EC}
+  .btn-conf-recusa{flex:1.4;background:#C0392B;color:#fff;box-shadow:0 8px 20px rgba(192,57,43,.28)}
+  .hidden{display:none}
   .status-box{margin-top:20px;border-radius:14px;padding:18px;text-align:center}
   .status-ok{background:#E9F9F1;border:1px solid #BFE6CF}
   .status-no{background:#FDECEA;border:1px solid #F5C9C3}
@@ -317,24 +489,54 @@ function pageOrcamento(row) {
   const duvidaTexto = `Olá! ${cliente ? `Sou ${cliente}, ` : ''}quero falar sobre o orçamento nº ${numero} (${formatBRL(total)}).`;
   const zapHref = whats ? `https://wa.me/${whats.startsWith('55') ? whats : '55' + whats}?text=${encodeURIComponent(duvidaTexto)}` : '';
 
+  // Motivo que o cliente deixou ao recusar (o worker grava em resposta_cliente).
+  const motivoRecusa = typeof row.resposta_cliente === 'string' ? row.resposta_cliente.trim() : '';
+
   let actionsHtml;
   if (respondido) {
     const ok = status === 'aprovado';
+    // Na recusa, se o cliente deixou motivo, reexibe para ele ("registramos isto").
+    const motivoBloco = (!ok && motivoRecusa)
+      ? `<div class="status-sub" style="margin-top:8px"><strong>Seu motivo:</strong> “${esc(motivoRecusa)}”</div>`
+      : '';
     actionsHtml = `<div class="status-box ${ok ? 'status-ok' : 'status-no'}">
         <div class="status-emoji">${ok ? '✅' : '❌'}</div>
         <div class="status-title">${ok ? 'Orçamento aprovado' : 'Orçamento recusado'}</div>
-        <div class="status-sub">${ok ? `Avisamos ${esc(nomePrestador)}. Em breve entram em contato.` : 'Sua resposta foi registrada.'}</div>
+        <div class="status-sub">${ok ? `${esc(nomePrestador)} já foi avisado. Em breve entram em contato.` : 'Sua resposta foi registrada.'}</div>
+        ${motivoBloco}
       </div>
       ${zapHref ? `<div class="actions"><a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener">💬 Falar no WhatsApp</a></div>` : ''}`;
   } else {
-    actionsHtml = `<div class="actions" id="actions">
-        ${allowApprove ? `<div class="approve-hint">Aprovando, ${esc(nomePrestador)} já agenda seu serviço — sem burocracia.</div>` : ''}
+    // Passo-a-passo claro do que acontece quando o cliente aprova — só faz sentido
+    // exibir quando aprovar está disponível (é o passo que dispara o restante).
+    const comoFunciona = allowApprove
+      ? `<div class="comofunciona">
+          <div class="cf-t">Como funciona</div>
+          <div class="cf-step"><span class="cf-n">1</span><span>Você aprova aqui, neste link — sem app, sem cadastro.</span></div>
+          <div class="cf-step"><span class="cf-n">2</span><span>${esc(nomePrestador)} é avisado na hora e já organiza o seu serviço.</span></div>
+          <div class="cf-step"><span class="cf-n">3</span><span>Vocês combinam os detalhes${whats ? ' pelo WhatsApp' : ''} e o trabalho começa.</span></div>
+        </div>`
+      : '';
+
+    actionsHtml = `${comoFunciona}
+      <div class="actions" id="actions">
+        ${allowApprove ? `<div class="approve-hint">Aprovando, ${esc(nomePrestador)} já é avisado e agenda seu serviço — sem burocracia.</div>` : ''}
         ${allowApprove ? `<button class="btn btn-aprovar" onclick="responder('aprovar')">✓ Aprovar orçamento</button>` : ''}
         <div class="btn-row">
-          ${allowReject ? `<button class="btn btn-recusar" onclick="responder('recusar')">Recusar</button>` : ''}
+          ${allowReject ? `<button class="btn btn-recusar" onclick="abrirRecusa()">Recusar</button>` : ''}
           ${zapHref ? `<a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener">Tirar dúvida</a>` : ''}
         </div>
-      </div>`;
+      </div>
+      ${allowReject ? `<div class="recusa-panel hidden" id="recusaPanel">
+        <div class="recusa-title">Por que está recusando?</div>
+        <div class="recusa-sub">Conta pra ${esc(nomePrestador)} o motivo (preço, prazo, mudou de ideia…). É opcional, mas ajuda muito — e pode até gerar um ajuste na proposta.</div>
+        <textarea id="motivoRecusa" maxlength="500" placeholder="Ex.: achei o valor acima do meu orçamento…" oninput="contarMotivo()"></textarea>
+        <div class="recusa-count" id="motivoCount">0/500</div>
+        <div class="recusa-btns">
+          <button class="btn btn-voltar" onclick="fecharRecusa()">Voltar</button>
+          <button class="btn btn-conf-recusa" onclick="confirmarRecusa()">Confirmar recusa</button>
+        </div>
+      </div>` : ''}`;
     if (!allowApprove && !allowReject && !zapHref) {
       actionsHtml = `<div class="status-box status-ok"><div class="status-title">Orçamento enviado para conferência</div><div class="status-sub">Responda pelo canal combinado para aprovar ou tirar dúvidas.</div></div>`;
     }
@@ -368,23 +570,53 @@ function pageOrcamento(row) {
   </div>
   <script>
     var enviando = false;
-    async function responder(acao){
-      if (enviando) return;            // trava clique-duplo enquanto a 1ª request está em voo
+    // Abre o painel de recusa (pede o motivo antes de enviar). Não envia nada ainda.
+    function abrirRecusa(){
+      var p = document.getElementById('recusaPanel');
+      if (p){ p.classList.remove('hidden'); }
+      var t = document.getElementById('motivoRecusa');
+      if (t){ t.focus(); }
+    }
+    function fecharRecusa(){
+      var p = document.getElementById('recusaPanel');
+      if (p){ p.classList.add('hidden'); }
+    }
+    function contarMotivo(){
+      var t = document.getElementById('motivoRecusa');
+      var c = document.getElementById('motivoCount');
+      if (t && c){ c.textContent = (t.value ? t.value.length : 0) + '/500'; }
+    }
+    // Confirma a recusa levando o motivo digitado (opcional).
+    function confirmarRecusa(){
+      var t = document.getElementById('motivoRecusa');
+      var motivo = t && t.value ? t.value.trim() : '';
+      responder('recusar', motivo);
+    }
+    // Envia a resposta. Em 'recusar' inclui o motivo (quando houver). Trava o
+    // clique-duplo e desabilita TODOS os controles (ações + painel de recusa)
+    // enquanto a request está em voo.
+    async function responder(acao, motivo){
+      if (enviando) return;
       enviando = true;
+      var alvos = [];
       var box = document.getElementById('actions');
-      var btns = box ? box.querySelectorAll('button,a') : [];
-      btns.forEach(function(b){ b.style.opacity='.5'; b.style.pointerEvents='none'; });
+      if (box){ box.querySelectorAll('button,a').forEach(function(b){ alvos.push(b); }); }
+      var panel = document.getElementById('recusaPanel');
+      if (panel){ panel.querySelectorAll('button,textarea').forEach(function(b){ alvos.push(b); }); }
+      alvos.forEach(function(b){ b.style.opacity='.5'; b.style.pointerEvents='none'; });
+      var corpo = { acao: acao };
+      if (acao === 'recusar' && motivo){ corpo.mensagem = motivo; }
       try {
-        var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ acao: acao }) });
+        var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo) });
         var j = await r.json();
         if (j && j.ok) { location.reload(); return; }
         enviando = false;
-        btns.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
+        alvos.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
         alert(j && j.erro === 'muitas_requisicoes' ? 'Muitas tentativas. Aguarde um instante e tente de novo.' : 'Não consegui registrar agora. Tente de novo.');
         return;
       } catch(e){}
       enviando = false;
-      btns.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
+      alvos.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
       alert('Não consegui registrar agora. Verifique a internet e tente de novo.');
     }
   </script>`;

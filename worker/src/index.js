@@ -569,7 +569,22 @@ export default {
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──
     if (url.pathname.startsWith('/o/')) {
       const token = decodeURIComponent(url.pathname.slice(3));
-      if (request.method === 'GET') return renderLinkPage(token, env);
+      if (request.method === 'GET') {
+        // O GET é caminho de ESCRITA service-role (trilha 'visualizado':
+        // SELECT + INSERT + PATCH). Sem teto, um loop de GET com token válido
+        // amplifica queries service-role. Mesmo rate limit por IP do POST
+        // (fallback 'sem-ip' + try/catch se o binding faltar → degrada seguro).
+        if (env.LINK_RL) {
+          const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+          try {
+            const { success } = await env.LINK_RL.limit({ key: ip });
+            if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+          } catch {
+            // binding ausente: não bloqueia
+          }
+        }
+        return renderLinkPage(token, env, request);
+      }
       if (request.method === 'POST') return responderLink(token, request, env);
       return new Response('Método não suportado', {
         status: 405,
