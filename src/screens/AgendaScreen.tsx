@@ -17,6 +17,7 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliPressable } from '../components/OlliPressable';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -363,6 +364,11 @@ export default function AgendaScreen() {
 
   const vazio = itens.length === 0;
 
+  // Identidade do período visível. Muda ao navegar (‹ ›) ou trocar de modo;
+  // usada como parte da key dos itens para re-disparar a entrada animada,
+  // sinalizando a troca de contexto sem re-renderizar a cada frame.
+  const periodoKey = `${modo}:${inicio.getTime()}`;
+
   return (
     <View style={styles.container}>
       {/* No máximo uma pill por vez (mesmo estilo absoluto, senão se sobrepõem):
@@ -443,14 +449,19 @@ export default function AgendaScreen() {
       {carregando ? (
         <View style={{ padding: Spacing.base, gap: 10 }}>
           {[0, 1, 2].map(i => (
-            <View key={i} style={styles.item}>
-              <OlliSkeleton width={4} height={40} radius={4} style={{ marginRight: 12 }} />
-              <OlliSkeleton width={48} height={30} radius={8} />
-              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                <OlliSkeleton width="60%" height={14} />
-                <OlliSkeleton width="40%" height={12} />
+            // Entrada escalonada também no loading: os placeholders surgem no
+            // mesmo ritmo dos itens reais, então a troca skeleton→conteúdo não
+            // "pisca". marginBottom:0 porque o gap do container já espaça.
+            <AnimatedEntrance key={i} index={i} from="scale">
+              <View style={[styles.item, { marginBottom: 0 }]}>
+                <OlliSkeleton width={4} height={40} radius={4} style={{ marginRight: 12 }} />
+                <OlliSkeleton width={48} height={30} radius={8} />
+                <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                  <OlliSkeleton width="60%" height={14} />
+                  <OlliSkeleton width="40%" height={12} />
+                </View>
               </View>
-            </View>
+            </AnimatedEntrance>
           ))}
         </View>
       ) : vazio ? (
@@ -469,39 +480,52 @@ export default function AgendaScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.accent]} tintColor={Colors.accent} />}
         >
-          {dias.map((dia, di) => {
-            const doDia = itens
-              .filter(a => isSameDay(new Date(a.inicio), dia))
-              .sort((a, b) => a.inicio.localeCompare(b.inicio));
-            if (doDia.length === 0) return null;
-            return (
-              <View key={dia.toISOString()} style={{ marginBottom: Spacing.lg }}>
-                {modo !== 'dia' && (
-                  <View style={styles.dayHeader}>
-                    <Text style={[styles.dayHeaderTitle, isToday(dia) && { color: Colors.accentLight }]}>
-                      {capitalizeFirst(format(dia, "EEE, d 'de' MMM", { locale: ptBR }))}
-                    </Text>
-                    {isToday(dia) && <View style={styles.todayDot} />}
-                  </View>
-                )}
-                {doDia.map((a, i) => (
-                  <AnimatedEntrance key={a.id} index={di + i}>
-                    <AgendaItem item={a} onPress={() => abrirEdicao(a)} />
-                  </AnimatedEntrance>
-                ))}
-              </View>
-            );
-          })}
+          {(() => {
+            // Contador corrido de itens VISÍVEIS entre os grupos de dia: garante
+            // um stagger monotônico e limpo (Motion.maxStagger já corta o delay
+            // dos itens fora da primeira dobra, evitando jank em listas longas).
+            let ordem = -1;
+            return dias.map((dia) => {
+              const doDia = itens
+                .filter(a => isSameDay(new Date(a.inicio), dia))
+                .sort((a, b) => a.inicio.localeCompare(b.inicio));
+              if (doDia.length === 0) return null;
+              return (
+                <View key={dia.toISOString()} style={{ marginBottom: Spacing.lg }}>
+                  {modo !== 'dia' && (
+                    <AnimatedEntrance index={(ordem += 1)}>
+                      <View style={styles.dayHeader}>
+                        <Text style={[styles.dayHeaderTitle, isToday(dia) && { color: Colors.accentLight }]}>
+                          {capitalizeFirst(format(dia, "EEE, d 'de' MMM", { locale: ptBR }))}
+                        </Text>
+                        {isToday(dia) && <View style={styles.todayDot} />}
+                      </View>
+                    </AnimatedEntrance>
+                  )}
+                  {doDia.map((a) => (
+                    // key = período + id: ao trocar de dia/semana o período muda,
+                    // a lista remonta e re-anima a entrada (o movimento EXPLICA a
+                    // troca de contexto, em vez de o conteúdo só "pular").
+                    <AnimatedEntrance key={`${periodoKey}:${a.id}`} index={(ordem += 1)}>
+                      <AgendaItem item={a} onPress={() => abrirEdicao(a)} />
+                    </AnimatedEntrance>
+                  ))}
+                </View>
+              );
+            });
+          })()}
         </ScrollView>
       )}
 
       {/* FAB Agendar visita — oculto quando o período está vazio: o EmptyState
           já mostra o mesmo CTA no centro, e os dois juntos ficam redundantes. */}
       {itens.length > 0 && (
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} activeOpacity={0.9}>
+      // haptic={false}: abrirNovo() já dispara um impactAsync(Light) próprio —
+      // deixar o OlliPressable vibrar de novo daria feedback dobrado.
+      <OlliPressable style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} haptic={false} accessibilityLabel="Agendar visita">
         <MaterialCommunityIcons name="calendar-plus" size={20} color="#0A1626" />
         <Text style={styles.fabText}>Agendar visita</Text>
-      </TouchableOpacity>
+      </OlliPressable>
       )}
 
       {/* FORM MODAL */}
@@ -539,7 +563,7 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
   const fimTxt = item.fim ? hhmm(item.fim) : '';
   const cancelado = item.status === 'cancelado';
   return (
-    <TouchableOpacity style={styles.item} onPress={onPress} activeOpacity={0.85}>
+    <OlliPressable style={styles.item} onPress={onPress} haptic="selection" accessibilityLabel={`Agendamento ${item.titulo}`}>
       <View style={[styles.itemBar, { backgroundColor: cor }]} />
       <View style={styles.itemTime}>
         <Text style={styles.itemHour}>{iniTxt}</Text>
@@ -578,7 +602,7 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
         </TouchableOpacity>
       ) : null}
       <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
-    </TouchableOpacity>
+    </OlliPressable>
   );
 }
 

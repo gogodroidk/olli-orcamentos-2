@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, ViewStyle, Platform } from 'react-native';
-import { Motion } from '../theme/motion';
+import { Motion, useReducedMotion } from '../theme/motion';
 
 interface Props {
   children: React.ReactNode;
@@ -18,8 +18,15 @@ const useNativeAnimations = Platform.OS !== 'web';
  */
 export function AnimatedEntrance({ children, index = 0, style, delay = 0, from = 'bottom' }: Props) {
   const progress = useRef(new Animated.Value(0)).current;
+  const reduzirMovimento = useReducedMotion();
 
   useEffect(() => {
+    // Acessibilidade: com "Reduzir movimento" ligado, aparece direto no estado
+    // final (sem deslize/escala/fade animado) — o conteúdo é o mesmo, sem motion.
+    if (reduzirMovimento) {
+      progress.setValue(1);
+      return;
+    }
     Animated.timing(progress, {
       toValue: 1,
       duration: 380,
@@ -27,7 +34,7 @@ export function AnimatedEntrance({ children, index = 0, style, delay = 0, from =
       easing: Motion.easing.standard,
       useNativeDriver: useNativeAnimations,
     }).start();
-  }, []);
+  }, [reduzirMovimento]);
 
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [from === 'bottom' ? 24 : 0, 0] });
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [from === 'right' ? 32 : 0, 0] });

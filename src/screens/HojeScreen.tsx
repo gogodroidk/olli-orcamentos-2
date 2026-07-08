@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Animated,
+  LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,7 +13,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { capitalizeFirst } from '../utils/date';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Motion } from '../theme/motion';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -30,6 +33,29 @@ import { usePlano } from '../hooks/usePlano';
 import { track, Eventos } from '../services/analytics';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+const useNativeAnimations = Platform.OS !== 'web';
+
+// LayoutAnimation é opt-in fora do New Architecture no Android; motion.ts já
+// chama isto no boot, mas repetimos com guard pois este módulo pode carregar
+// antes daquele em builds tree-shaken. Chamada idempotente e barata.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+/**
+ * Transição de layout curta para add/remover/reordenar tarefas do checklist —
+ * a lista "assenta" em vez de saltar. Usa os tokens de duração/easing da OLLI.
+ * No web, LayoutAnimation é no-op inofensivo (não anima, mas não quebra).
+ */
+function animarLayoutChecklist() {
+  LayoutAnimation.configureNext({
+    duration: Motion.dur.base,
+    create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    update: { type: LayoutAnimation.Types.easeInEaseOut },
+    delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+  });
+}
 
 /**
  * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
@@ -81,6 +107,67 @@ function hhmm(iso?: string | null): string {
   return format(d, 'HH:mm');
 }
 
+/**
+ * Linha do checklist com transição suave de estado: ao concluir, o checkbox dá
+ * um "pop" moderado (o movimento EXPLICA a mudança — não é purpurina) e o texto
+ * ganha o risco. Componente próprio para animar por item sem re-disparar a
+ * animação a cada render do pai. Toque com feedback tátil (OlliPressable).
+ */
+const CheckRow = React.memo(function CheckRow(
+  { item, onToggle, onRemove }: { item: ChecklistItem; onToggle: (id: string) => void; onRemove: (id: string) => void },
+) {
+  // `scale` guarda diretamente o fator de escala do checkbox (1 = normal).
+  const scale = useRef(new Animated.Value(1)).current;
+  const primeiraRender = useRef(true);
+
+  useEffect(() => {
+    // Não anima na montagem — só quando o estado REALMENTE muda depois.
+    if (primeiraRender.current) {
+      primeiraRender.current = false;
+      return;
+    }
+    if (item.feito) {
+      // pop de sucesso: cresce um tico e assenta de volta em 1. Curto e discreto —
+      // o movimento EXPLICA que a tarefa foi concluída, sem virar bounce infantil.
+      scale.setValue(1);
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.18, duration: Motion.dur.fast, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }),
+        Animated.spring(scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: useNativeAnimations }),
+      ]).start();
+    } else {
+      Animated.timing(scale, { toValue: 1, duration: Motion.dur.fast, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }).start();
+    }
+  }, [item.feito, scale]);
+
+  return (
+    <View style={styles.checkRow}>
+      <OlliPressable
+        style={styles.checkTap}
+        onPress={() => onToggle(item.id)}
+        haptic={false}
+        accessibilityLabel={item.feito ? `Desmarcar ${item.texto}` : `Concluir ${item.texto}`}
+      >
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <MaterialCommunityIcons
+            name={item.feito ? 'checkbox-marked' : 'checkbox-blank-outline'}
+            size={22}
+            color={item.feito ? Colors.success : Colors.onSurfaceMuted}
+          />
+        </Animated.View>
+        <Text style={[styles.checkText, item.feito && styles.checkTextDone]} numberOfLines={2}>{item.texto}</Text>
+      </OlliPressable>
+      <TouchableOpacity
+        onPress={() => onRemove(item.id)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Remover tarefa ${item.texto}`}
+      >
+        <MaterialCommunityIcons name="close" size={18} color={Colors.onSurfaceMuted} />
+      </TouchableOpacity>
+    </View>
+  );
+});
+
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -123,31 +210,37 @@ export default function HojeScreen() {
 
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
-  async function persist(list: ChecklistItem[]) {
+  const persist = useCallback(async (list: ChecklistItem[]) => {
     setChecklist(list);
     await AsyncStorage.setItem(CHECKLIST_KEY, JSON.stringify(list));
     // Espelha o checklist na nuvem (best-effort, fire-and-forget). Grava o carimbo
     // local e sobe o valor; offline/deslogado fica p/ o próximo login (syncOnLogin).
     // NUNCA bloqueia nem quebra o salvamento local (o await acima é o que importa).
     void pushExtraChave('checklist.hoje').catch(() => {});
-  }
+  }, []);
 
-  function addItem() {
+  const addItem = useCallback(() => {
     const t = novo.trim();
     if (!t) return;
     Haptics.selectionAsync().catch(() => {});
+    animarLayoutChecklist();
     persist([...checklist, { id: generateId(), texto: t, feito: false, data: todayKey() }]);
     setNovo('');
-  }
+  }, [novo, checklist, persist]);
 
-  function toggle(id: string) {
-    Haptics.selectionAsync().catch(() => {});
+  const toggle = useCallback((id: string) => {
+    const alvo = checklist.find(i => i.id === id);
+    // Concluir = "sucesso" (impacto leve); reabrir = seleção neutra.
+    if (alvo && !alvo.feito) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    else Haptics.selectionAsync().catch(() => {});
     persist(checklist.map(i => i.id === id ? { ...i, feito: !i.feito } : i));
-  }
+  }, [checklist, persist]);
 
-  function remove(id: string) {
+  const remove = useCallback((id: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    animarLayoutChecklist();
     persist(checklist.filter(i => i.id !== id));
-  }
+  }, [checklist, persist]);
 
   // ── lembretes REAIS (sem inventar): orçamentos abertos parados +5 dias ──
   // "Em aberto" cobre toda proposta já entregue ao cliente sem desfecho
@@ -169,18 +262,20 @@ export default function HojeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} colors={[Colors.accent]} />}
       >
         {/* CABEÇALHO */}
-        <View style={styles.head}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>MEU DIA</Text>
-            <Text style={styles.title}>{saudacao()}</Text>
-            <Text style={styles.date}>{capitalizeFirst(format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR }))}</Text>
+        <AnimatedEntrance index={0} from="bottom">
+          <View style={styles.head}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kicker}>MEU DIA</Text>
+              <Text style={styles.title}>{saudacao()}</Text>
+              <Text style={styles.date}>{capitalizeFirst(format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR }))}</Text>
+            </View>
+            <OlliMascot size={40} onDark />
           </View>
-          <OlliMascot size={40} onDark />
-        </View>
+        </AnimatedEntrance>
 
         {/* LEMBRETES DA OLLI (reais) */}
         {(parados.length > 0 || aguardandoAssinatura.length > 0) && (
-          <AnimatedEntrance index={0}>
+          <AnimatedEntrance index={1}>
             <View style={styles.lembretes}>
               <View style={styles.lembretesHead}>
                 <OlliMascot size={26} float={false} onDark />
@@ -188,10 +283,11 @@ export default function HojeScreen() {
               </View>
 
               {parados.length > 0 && (
-                <TouchableOpacity
+                <OlliPressable
                   style={styles.lembreteRow}
                   onPress={() => nav.navigate('Orcamentos')}
-                  activeOpacity={0.85}
+                  haptic="selection"
+                  accessibilityLabel="Ver orçamentos parados"
                 >
                   <View style={[styles.lembreteIcon, { backgroundColor: Colors.warningLight }]}>
                     <MaterialCommunityIcons name="clock-alert-outline" size={18} color={Colors.warning} />
@@ -203,14 +299,15 @@ export default function HojeScreen() {
                     <Text style={styles.lembreteSub}>Que tal dar um toque no cliente?</Text>
                   </View>
                   <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
-                </TouchableOpacity>
+                </OlliPressable>
               )}
 
               {aguardandoAssinatura.length > 0 && (
-                <TouchableOpacity
+                <OlliPressable
                   style={styles.lembreteRow}
                   onPress={() => nav.navigate('Orcamentos')}
-                  activeOpacity={0.85}
+                  haptic="selection"
+                  accessibilityLabel="Ver orçamentos aguardando assinatura"
                 >
                   <View style={[styles.lembreteIcon, { backgroundColor: 'rgba(52,198,217,0.14)' }]}>
                     <MaterialCommunityIcons name="draw-pen" size={18} color={Colors.accent} />
@@ -222,7 +319,7 @@ export default function HojeScreen() {
                     <Text style={styles.lembreteSub}>Toque para acompanhar.</Text>
                   </View>
                   <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
-                </TouchableOpacity>
+                </OlliPressable>
               )}
             </View>
           </AnimatedEntrance>
@@ -239,13 +336,22 @@ export default function HojeScreen() {
         {carregando ? (
           <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
             {[0, 1, 2].map(i => (
-              <View key={i} style={styles.agendaCard}>
-                <OlliSkeleton width={46} height={30} radius={8} />
-                <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                  <OlliSkeleton width="70%" height={14} />
-                  <OlliSkeleton width="45%" height={12} />
+              // Skeleton no formato REAL do agendaCard (hora + barra + título/cliente/chip),
+              // entrando escalonado como os cards de verdade — sem "salto" ao carregar.
+              <AnimatedEntrance key={i} index={i} from="scale">
+                <View style={styles.agendaCard}>
+                  <View style={styles.agendaTime}>
+                    <OlliSkeleton width={38} height={15} radius={6} />
+                    <OlliSkeleton width={30} height={10} radius={5} style={{ marginTop: 4 }} />
+                  </View>
+                  <View style={[styles.agendaBar, { backgroundColor: Colors.surfaceVariant }]} />
+                  <View style={{ flex: 1, gap: 7 }}>
+                    <OlliSkeleton width="70%" height={14} />
+                    <OlliSkeleton width="45%" height={12} />
+                    <OlliSkeleton width={82} height={18} radius={BorderRadius.full} />
+                  </View>
                 </View>
-              </View>
+              </AnimatedEntrance>
             ))}
           </View>
         ) : itens.length === 0 ? (
@@ -264,10 +370,11 @@ export default function HojeScreen() {
               const cor = TIPO_AGENDAMENTO_COLORS[a.tipo];
               return (
                 <AnimatedEntrance key={a.id} index={i}>
-                  <TouchableOpacity
+                  <OlliPressable
                     style={styles.agendaCard}
                     onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda' })}
-                    activeOpacity={0.85}
+                    haptic="selection"
+                    accessibilityLabel={`Abrir agenda — ${a.titulo}`}
                   >
                     <View style={styles.agendaTime}>
                       <Text style={styles.agendaHour}>{hhmm(a.inicio)}</Text>
@@ -293,7 +400,7 @@ export default function HojeScreen() {
                       </TouchableOpacity>
                     ) : null}
                     {a.status === 'concluido' && <MaterialCommunityIcons name="check-circle" size={20} color={Colors.success} />}
-                  </TouchableOpacity>
+                  </OlliPressable>
                 </AnimatedEntrance>
               );
             })}
@@ -319,29 +426,20 @@ export default function HojeScreen() {
               placeholderTextColor={Colors.onSurfaceMuted}
             />
             {novo.trim() ? (
-              <TouchableOpacity onPress={addItem} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Adicionar tarefa">
+              <OlliPressable onPress={addItem} haptic={false} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Adicionar tarefa">
                 <MaterialCommunityIcons name="arrow-up-circle" size={24} color={Colors.accent} />
-              </TouchableOpacity>
+              </OlliPressable>
             ) : null}
           </View>
 
           {checklist.length === 0 ? (
-            <Text style={styles.checklistEmpty}>Sem tarefas. Anote o que precisa fazer hoje.</Text>
+            <View style={styles.checklistEmptyWrap}>
+              <MaterialCommunityIcons name="checkbox-marked-circle-outline" size={26} color={Colors.onSurfaceMuted} />
+              <Text style={styles.checklistEmpty}>Sem tarefas por aqui. Anote o que precisa fazer hoje.</Text>
+            </View>
           ) : (
             checklist.map(item => (
-              <View key={item.id} style={styles.checkRow}>
-                <TouchableOpacity style={styles.checkTap} onPress={() => toggle(item.id)} activeOpacity={0.8}>
-                  <MaterialCommunityIcons
-                    name={item.feito ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                    size={22}
-                    color={item.feito ? Colors.success : Colors.onSurfaceMuted}
-                  />
-                  <Text style={[styles.checkText, item.feito && styles.checkTextDone]} numberOfLines={2}>{item.texto}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => remove(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Remover tarefa ${item.texto}`}>
-                  <MaterialCommunityIcons name="close" size={18} color={Colors.onSurfaceMuted} />
-                </TouchableOpacity>
-              </View>
+              <CheckRow key={item.id} item={item} onToggle={toggle} onRemove={remove} />
             ))
           )}
 
@@ -354,14 +452,15 @@ export default function HojeScreen() {
 
         {/* RELATÓRIO DO DIA FALADO — recurso Pro; KPIs continuam grátis dentro da tela */}
         <AnimatedEntrance index={2}>
-          <TouchableOpacity
+          <OlliPressable
             style={styles.relatorioCard}
+            haptic={false}
+            accessibilityLabel="Abrir relatório do dia"
             onPress={() => {
               Haptics.selectionAsync().catch(() => {});
               if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
               nav.navigate('RelatorioDia');
             }}
-            activeOpacity={0.85}
           >
             <View style={styles.relatorioIcon}>
               <MaterialCommunityIcons name="volume-high" size={20} color={Colors.accentLight} />
@@ -378,12 +477,12 @@ export default function HojeScreen() {
                 <Text style={styles.relatorioProBadgeText}>Pro</Text>
               </View>
             )}
-          </TouchableOpacity>
+          </OlliPressable>
         </AnimatedEntrance>
 
         {/* ESTADO 100% VAZIO E ELEGANTE */}
         {!carregando && semNada && checklist.length === 0 && (
-          <AnimatedEntrance index={1}>
+          <AnimatedEntrance index={1} from="scale" delay={120}>
             <View style={styles.allClear}>
               <OlliMascot size={48} onDark />
               <Text style={styles.allClearTitle}>Tudo em dia!</Text>
@@ -441,7 +540,8 @@ const styles = StyleSheet.create({
   checklistCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...Shadow.sm },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: Colors.outline },
   addInput: { flex: 1, fontSize: 14, color: Colors.onSurface, paddingVertical: 6 },
-  checklistEmpty: { fontSize: 13, color: Colors.onSurfaceMuted, paddingVertical: 14, textAlign: 'center' },
+  checklistEmptyWrap: { alignItems: 'center', gap: 6, paddingVertical: 16 },
+  checklistEmpty: { fontSize: 13, color: Colors.onSurfaceMuted, textAlign: 'center' },
   checkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.outline },
   checkTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   checkText: { flex: 1, fontSize: 14, color: Colors.onSurface },

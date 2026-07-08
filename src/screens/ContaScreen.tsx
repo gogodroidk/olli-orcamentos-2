@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
+import { OlliPressable } from '../components/OlliPressable';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
@@ -354,18 +355,39 @@ export default function ContaScreen() {
         </View>
 
         {carregando ? (
-          <View style={[styles.profileCard, { marginBottom: Spacing.base }]}>
-            <OlliSkeleton width={56} height={56} radius={18} />
-            <View style={{ flex: 1, marginLeft: 14, gap: 8 }}>
-              <OlliSkeleton width="55%" height={16} />
-              <OlliSkeleton width="70%" height={12} />
+          // Skeleton coerente com o layout real: cartão de perfil + faixa PRO +
+          // linhas de ferramentas — evita a tela "piscar" de vazia pra cheia.
+          <>
+            <View style={[styles.profileCard, { marginBottom: Spacing.base }]}>
+              <OlliSkeleton width={56} height={56} radius={18} />
+              <View style={{ flex: 1, marginLeft: 14, gap: 8 }}>
+                <OlliSkeleton width="55%" height={16} />
+                <OlliSkeleton width="70%" height={12} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
             </View>
-          </View>
+            <View style={[styles.proCard, { marginTop: 0 }]}>
+              <OlliSkeleton width="40%" height={14} />
+              <OlliSkeleton width="80%" height={13} style={{ marginTop: 12 }} />
+              <OlliSkeleton width="95%" height={12} style={{ marginTop: 8 }} />
+            </View>
+            <View style={[styles.toolsCard, { marginTop: Spacing.lg }]}>
+              {[0, 1, 2].map(i => (
+                <View key={i} style={[styles.toolRow, i < 2 && styles.toolDivider]}>
+                  <OlliSkeleton width={40} height={40} radius={12} />
+                  <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                    <OlliSkeleton width="50%" height={14} />
+                    <OlliSkeleton width="72%" height={12} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
         ) : (
         <>
         {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
         <AnimatedEntrance index={0}>
-          <TouchableOpacity style={styles.profileCard} onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.85}>
+          <OlliPressable style={styles.profileCard} scaleTo={0.98} accessibilityLabel="Editar perfil e negócio" onPress={() => nav.navigate('MeuNegocio')}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{primeiroNome.charAt(0).toUpperCase()}</Text>
             </View>
@@ -387,7 +409,7 @@ export default function ContaScreen() {
               <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.accent} />
               <Text style={styles.editBtnText}>editar</Text>
             </View>
-          </TouchableOpacity>
+          </OlliPressable>
         </AnimatedEntrance>
 
         {/* OLLI PRO (informativo) */}
@@ -402,14 +424,16 @@ export default function ContaScreen() {
             </View>
             <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
             <Text style={styles.proSub}>Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.</Text>
-            <TouchableOpacity
+            <OlliPressable
               style={styles.proBtn}
+              haptic={false}
+              scaleTo={0.97}
+              accessibilityLabel="Ver planos e assinar"
               onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
-              activeOpacity={0.85}
             >
               <Text style={styles.proBtnText}>Ver planos e assinar</Text>
               <MaterialCommunityIcons name="arrow-right" size={16} color={Colors.accentLight} />
-            </TouchableOpacity>
+            </OlliPressable>
           </View>
         </AnimatedEntrance>
 
@@ -428,15 +452,16 @@ export default function ContaScreen() {
                   </View>
                 </View>
                 {pode('ver_equipe') && (
-                  <TouchableOpacity
+                  <OlliPressable
                     style={styles.empresaBtn}
-                    activeOpacity={0.85}
+                    haptic={false}
+                    accessibilityLabel="Gerenciar equipe"
                     onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Equipe'); }}
                   >
                     <MaterialCommunityIcons name="account-group-outline" size={18} color={Colors.accentLight} />
                     <Text style={styles.empresaBtnText}>Gerenciar equipe</Text>
                     <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
-                  </TouchableOpacity>
+                  </OlliPressable>
                 )}
               </View>
             ) : (
@@ -450,72 +475,83 @@ export default function ContaScreen() {
                     <Text style={styles.empresaPapel}>Crie a conta empresa e convide seus técnicos</Text>
                   </View>
                 </View>
-                <TouchableOpacity
+                <OlliPressable
                   style={styles.empresaBtn}
-                  activeOpacity={0.85}
+                  haptic={false}
+                  accessibilityLabel="Criar conta empresa"
                   onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowCriarEmpresa(true); }}
                 >
                   <MaterialCommunityIcons name="rocket-launch-outline" size={18} color={Colors.accentLight} />
                   <Text style={styles.empresaBtnText}>Criar conta empresa</Text>
                   <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity
+                </OlliPressable>
+                <OlliPressable
                   style={[styles.empresaBtn, styles.empresaBtnGhost]}
-                  activeOpacity={0.7}
+                  haptic={false}
+                  scaleTo={0.98}
+                  accessibilityLabel="Tenho um código de convite"
                   onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowEntrarEquipe(true); }}
                 >
                   <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={Colors.onSurfaceVariant} />
                   <Text style={styles.empresaBtnGhostText}>Tenho um código de convite</Text>
-                </TouchableOpacity>
+                </OlliPressable>
               </View>
             )}
           </AnimatedEntrance>
         )}
 
         {/* FERRAMENTAS */}
-        <Text style={styles.sectionTitle}>Ferramentas</Text>
-        <View style={styles.toolsCard}>
-          {FERRAMENTAS.map((f, i) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.toolRow, i < FERRAMENTAS.length - 1 && styles.toolDivider]}
-              onPress={() => abrirFerramenta(f)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.toolIcon, { backgroundColor: f.color + '1E', borderColor: f.color + '3A' }]}>
-                <MaterialCommunityIcons name={f.icon as any} size={20} color={f.color} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>{f.label}</Text>
-                <Text style={styles.toolDesc}>{f.desc}</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
-            </TouchableOpacity>
-          ))}
-        </View>
+        <AnimatedEntrance index={3}>
+          <Text style={styles.sectionTitle}>Ferramentas</Text>
+          <View style={styles.toolsCard}>
+            {FERRAMENTAS.map((f, i) => (
+              <OlliPressable
+                key={f.key}
+                style={[styles.toolRow, i < FERRAMENTAS.length - 1 && styles.toolDivider]}
+                onPress={() => abrirFerramenta(f)}
+                haptic={false}
+                scaleTo={0.985}
+                accessibilityLabel={f.label}
+              >
+                <View style={[styles.toolIcon, { backgroundColor: f.color + '1E', borderColor: f.color + '3A' }]}>
+                  <MaterialCommunityIcons name={f.icon as any} size={20} color={f.color} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.toolLabel}>{f.label}</Text>
+                  <Text style={styles.toolDesc}>{f.desc}</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              </OlliPressable>
+            ))}
+          </View>
+        </AnimatedEntrance>
 
         {/* CONTA E BACKUP */}
-        <Text style={styles.sectionTitle}>Conta e backup</Text>
+        <AnimatedEntrance index={4}>
+          <Text style={styles.sectionTitle}>Conta e backup</Text>
+        </AnimatedEntrance>
 
         {!configured && (
-          <View style={styles.card}>
-            <View style={styles.iconHeader}>
-              <MaterialCommunityIcons name="cloud-cog-outline" size={24} color={Colors.warning} />
-              <Text style={styles.cardTitle}>Backup ainda não ativado</Text>
+          <AnimatedEntrance index={5}>
+            <View style={styles.card}>
+              <View style={styles.iconHeader}>
+                <MaterialCommunityIcons name="cloud-cog-outline" size={24} color={Colors.warning} />
+                <Text style={styles.cardTitle}>Backup ainda não ativado</Text>
+              </View>
+              <Text style={styles.text}>
+                Para ativar o backup na nuvem, é preciso criar um projeto gratuito no Supabase e colar 2 chaves no app.
+                É rápido — peça ao assistente para te guiar.
+              </Text>
+              <View style={styles.stepRow}><Text style={styles.stepNum}>1</Text><Text style={styles.stepText}>Crie conta grátis em supabase.com</Text></View>
+              <View style={styles.stepRow}><Text style={styles.stepNum}>2</Text><Text style={styles.stepText}>Cole a URL e a chave no arquivo de configuração</Text></View>
+              <View style={styles.stepRow}><Text style={styles.stepNum}>3</Text><Text style={styles.stepText}>Pronto: login e backup automático</Text></View>
             </View>
-            <Text style={styles.text}>
-              Para ativar o backup na nuvem, é preciso criar um projeto gratuito no Supabase e colar 2 chaves no app.
-              É rápido — peça ao assistente para te guiar.
-            </Text>
-            <View style={styles.stepRow}><Text style={styles.stepNum}>1</Text><Text style={styles.stepText}>Crie conta grátis em supabase.com</Text></View>
-            <View style={styles.stepRow}><Text style={styles.stepNum}>2</Text><Text style={styles.stepText}>Cole a URL e a chave no arquivo de configuração</Text></View>
-            <View style={styles.stepRow}><Text style={styles.stepNum}>3</Text><Text style={styles.stepText}>Pronto: login e backup automático</Text></View>
-          </View>
+          </AnimatedEntrance>
         )}
 
         {/* LOGADO (dentro das Tabs sempre há sessão) */}
         {configured && user && (
-          <>
+          <AnimatedEntrance index={5}>
             <View style={styles.card}>
               <View style={styles.userRow}>
                 <View style={styles.avatarSm}><MaterialCommunityIcons name="account" size={24} color={Colors.primary} /></View>
@@ -554,7 +590,7 @@ export default function ContaScreen() {
             </View>
 
             <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
-          </>
+          </AnimatedEntrance>
         )}
         </>
         )}
