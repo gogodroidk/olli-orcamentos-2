@@ -3,7 +3,7 @@
     "name": "OLLI Orçamentos",
     "slug": "olli-orcamentos",
     "scheme": "olliorcamentos",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -19,7 +19,7 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "package": "com.grtech.olliorcamentos",
-      "versionCode": 8,
+      "versionCode": 9,
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",
