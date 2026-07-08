@@ -88,6 +88,11 @@ export function criarLinkingConfig(
         OlliChat: 'olli-chat',
         Planos: 'planos',
         RelatorioDia: 'relatorio-do-dia',
+        // Onda 2 — Equipe (empresa) + aceite de convite por deep link.
+        // 'convite/:token' casa o deep link olliorcamentos://convite/<token> e a
+        // URL web /convite/<token>; o token entra em route.params.token.
+        Equipe: 'equipe',
+        Convite: 'convite/:token',
       },
     },
   };

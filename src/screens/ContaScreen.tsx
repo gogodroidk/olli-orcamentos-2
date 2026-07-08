@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +11,9 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
+import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
+import { usePermissao } from '../hooks/usePermissao';
+import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
@@ -100,6 +103,12 @@ export default function ContaScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const configured = isSupabaseConfigured();
+
+  // Onda 2 — tipo de conta (pessoal vs empresa) e permissão de gerenciar equipe.
+  const { tipo, org, carregando: carregandoConta } = useTipoConta();
+  const { pode } = usePermissao();
+  const [showCriarEmpresa, setShowCriarEmpresa] = useState(false);
+  const [showEntrarEquipe, setShowEntrarEquipe] = useState(false);
 
   const [user, setUser] = useState<PerfilUsuario | null>(null);
   // Sessão perdida DENTRO das Tabs (só deveria acontecer com sessão corrompida/
@@ -404,6 +413,65 @@ export default function ContaScreen() {
           </View>
         </AnimatedEntrance>
 
+        {/* EMPRESA / EQUIPE (Onda 2) — só quando a nuvem está configurada. */}
+        {configured && !carregandoConta && (
+          <AnimatedEntrance index={2}>
+            {tipo === 'empresa' && org ? (
+              <View style={styles.empresaCard}>
+                <View style={styles.empresaHead}>
+                  <View style={styles.empresaIcon}>
+                    <MaterialCommunityIcons name="office-building-outline" size={18} color={Colors.accentLight} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.empresaNome} numberOfLines={1}>{org.nome}</Text>
+                    <Text style={styles.empresaPapel}>Você é {PAPEL_LABEL[org.papel]}</Text>
+                  </View>
+                </View>
+                {pode('ver_equipe') && (
+                  <TouchableOpacity
+                    style={styles.empresaBtn}
+                    activeOpacity={0.85}
+                    onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Equipe'); }}
+                  >
+                    <MaterialCommunityIcons name="account-group-outline" size={18} color={Colors.accentLight} />
+                    <Text style={styles.empresaBtnText}>Gerenciar equipe</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <View style={styles.empresaCard}>
+                <View style={styles.empresaHead}>
+                  <View style={styles.empresaIcon}>
+                    <MaterialCommunityIcons name="account-group-outline" size={18} color={Colors.accentLight} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.empresaNome}>Trabalha com uma equipe?</Text>
+                    <Text style={styles.empresaPapel}>Crie a conta empresa e convide seus técnicos</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.empresaBtn}
+                  activeOpacity={0.85}
+                  onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowCriarEmpresa(true); }}
+                >
+                  <MaterialCommunityIcons name="rocket-launch-outline" size={18} color={Colors.accentLight} />
+                  <Text style={styles.empresaBtnText}>Criar conta empresa</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.empresaBtn, styles.empresaBtnGhost]}
+                  activeOpacity={0.7}
+                  onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowEntrarEquipe(true); }}
+                >
+                  <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={Colors.onSurfaceVariant} />
+                  <Text style={styles.empresaBtnGhostText}>Tenho um código de convite</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </AnimatedEntrance>
+        )}
+
         {/* FERRAMENTAS */}
         <Text style={styles.sectionTitle}>Ferramentas</Text>
         <View style={styles.toolsCard}>
@@ -539,7 +607,159 @@ export default function ContaScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* MODAL: CRIAR CONTA EMPRESA (Onda 2) */}
+      {showCriarEmpresa && (
+        <ModalCriarEmpresa
+          nomeSugerido={empresa?.nome || empresa?.nomePrestador || ''}
+          onFechar={() => setShowCriarEmpresa(false)}
+          onCriada={async () => {
+            setShowCriarEmpresa(false);
+            await recarregarTipoConta();
+            await load();
+          }}
+        />
+      )}
+
+      {/* MODAL: ENTRAR NA EQUIPE POR CÓDIGO (Onda 2) */}
+      {showEntrarEquipe && (
+        <ModalEntrarEquipe
+          onFechar={() => setShowEntrarEquipe(false)}
+          onAceito={async () => {
+            setShowEntrarEquipe(false);
+            await recarregarTipoConta();
+            await load();
+          }}
+        />
+      )}
     </View>
+  );
+}
+
+/** Modal "Criar conta empresa": pede o nome e cria a org com o user como owner. */
+function ModalCriarEmpresa({
+  nomeSugerido, onFechar, onCriada,
+}: { nomeSugerido: string; onFechar: () => void; onCriada: () => void }) {
+  const [nome, setNome] = useState(nomeSugerido);
+  const [criando, setCriando] = useState(false);
+
+  async function criar() {
+    setCriando(true);
+    try {
+      await criarOrganizacao(nome);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Alert.alert('Empresa criada!', 'Agora você pode convidar sua equipe pela tela Equipe.');
+      onCriada();
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Não deu', e?.message ?? 'Não consegui criar a empresa agora.');
+      setCriando(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
+      <View style={styles.sheetBackdrop}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Criar conta empresa</Text>
+            <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
+              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+            <Text style={styles.sheetSub}>
+              A conta empresa deixa você convidar técnicos, definir papéis e ver a equipe. Seus orçamentos e clientes continuam os mesmos — a empresa é uma camada por cima.
+            </Text>
+            <Text style={styles.sheetLabel}>Nome da empresa</Text>
+            <TextInput
+              value={nome}
+              onChangeText={setNome}
+              placeholder="Ex.: Refrigeração Silva"
+              placeholderTextColor={Colors.onSurfaceMuted}
+              style={styles.sheetInput}
+              autoFocus
+            />
+            <OlliButton
+              label="Criar empresa"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              loading={criando}
+              onPress={criar}
+              icon={<MaterialCommunityIcons name="office-building-outline" size={20} color="#fff" />}
+              style={{ marginTop: Spacing.base }}
+            />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/** Modal "Entrar na equipe": cola o código/link do convite e aceita. */
+function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAceito: () => void }) {
+  const [codigo, setCodigo] = useState('');
+  const [aceitando, setAceitando] = useState(false);
+
+  async function aceitar() {
+    const token = extrairToken(codigo);
+    if (!token) {
+      Alert.alert('Código inválido', 'Cole o código ou o link completo do convite que você recebeu.');
+      return;
+    }
+    setAceitando(true);
+    try {
+      const org = await aceitarConvite(token);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Alert.alert('Bem-vindo à equipe!', `Você entrou em ${org.nome} como ${PAPEL_LABEL[org.papel]}.`);
+      onAceito();
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Não deu', e?.message ?? 'Não consegui aceitar o convite agora.');
+      setAceitando(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
+      <View style={styles.sheetBackdrop}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Entrar na equipe</Text>
+            <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
+              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+            <Text style={styles.sheetSub}>
+              Cole o código ou o link do convite que você recebeu de quem te chamou.
+            </Text>
+            <Text style={styles.sheetLabel}>Código do convite</Text>
+            <TextInput
+              value={codigo}
+              onChangeText={setCodigo}
+              placeholder="cole aqui o código ou o link"
+              placeholderTextColor={Colors.onSurfaceMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.sheetInput}
+              autoFocus
+            />
+            <OlliButton
+              label="Entrar na equipe"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              loading={aceitando}
+              onPress={aceitar}
+              icon={<MaterialCommunityIcons name="account-multiple-plus-outline" size={20} color="#fff" />}
+              style={{ marginTop: Spacing.base }}
+            />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -624,4 +844,24 @@ const styles = StyleSheet.create({
   backupItemMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
 
   version: { textAlign: 'center', fontSize: 12, color: Colors.onSurfaceMuted, marginTop: Spacing.xl },
+
+  // Empresa / Equipe (Onda 2)
+  empresaCard: { backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...Shadow.sm },
+  empresaHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  empresaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  empresaNome: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  empresaPapel: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  empresaBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 14, paddingVertical: 12 },
+  empresaBtnText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#fff' },
+  empresaBtnGhost: { backgroundColor: 'transparent', borderColor: 'transparent', marginTop: 4, paddingVertical: 10 },
+  empresaBtnGhostText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+
+  // Bottom sheets (criar empresa / entrar na equipe)
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(4,10,20,0.6)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '88%', paddingBottom: 16 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: Colors.onSurface },
+  sheetSub: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 21, marginBottom: Spacing.base },
+  sheetLabel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 8, letterSpacing: 0.2 },
+  sheetInput: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: Colors.onSurface },
 });

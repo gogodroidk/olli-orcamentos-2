@@ -34,6 +34,7 @@
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
+import { handleEquipe } from './equipe.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -555,6 +556,14 @@ export default {
     // handleStripe cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/stripe/')) {
       return handleStripe(request, env, url);
+    }
+
+    // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──
+    // Antes do gate da IA: a página do convite é pública (GET, sem login) e o
+    // POST /equipe/convite valida o JWT por conta própria. O próprio handleEquipe
+    // cuida do método e de OPTIONS/CORS por rota.
+    if (url.pathname.startsWith('/equipe/')) {
+      return handleEquipe(request, env, url);
     }
 
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──

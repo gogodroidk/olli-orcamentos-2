@@ -33,6 +33,8 @@ import PlanosScreen from '../screens/PlanosScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
+import EquipeScreen from '../screens/EquipeScreen';
+import ConviteScreen from '../screens/ConviteScreen';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
 // nativo/APK nada disto entra na árvore. Barril em src/screens/desktop.
@@ -83,6 +85,10 @@ export type RootStackParamList = {
   Planos: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
+  // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.
+  Equipe: undefined;
+  // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
+  Convite: { token?: string };
 };
 
 export type TabParamList = {
@@ -131,6 +137,8 @@ const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
+const EquipeCentro = comCentroDesktop(EquipeScreen);
+const ConviteCentro = comCentroDesktop(ConviteScreen);
 
 /** Tela stub para a aba central "Orcar", que nunca é exibida (tabPress.preventDefault). */
 const EmptyTab = () => null;
@@ -360,6 +368,9 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Planos" component={PlanosCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
+      {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}
+      <Stack.Screen name="Equipe" component={EquipeCentro} />
+      <Stack.Screen name="Convite" component={ConviteCentro} />
     </Stack.Navigator>
   );
 }

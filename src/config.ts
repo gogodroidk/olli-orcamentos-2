@@ -6,6 +6,7 @@ declare const process: {
     EXPO_PUBLIC_DIAGNOSTICO_URL?: string;
     EXPO_PUBLIC_WHATSAPP_SUPORTE?: string;
     EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID?: string;
+    EXPO_PUBLIC_MAPS_KEY?: string;
   };
 };
 
@@ -70,3 +71,13 @@ export const WHATSAPP_SUPORTE: string = (process.env.EXPO_PUBLIC_WHATSAPP_SUPORT
  * há client_id para autorizar, então mostrar o botão seria um beco sem saída.
  */
 export const GOOGLE_AGENDA_CLIENT_ID: string = process.env.EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID ?? '';
+
+/**
+ * Chave do Google Maps SDK (client-side), usada SÓ para decidir se a "Equipe
+ * ao vivo" mostra um mapa EMBUTIDO em vez de lista + deep-link. Exige billing
+ * habilitado no Google Cloud — por isso fica vazia até o dono decidir ligar
+ * (ver riscos da Onda 2 no roadmap). Vazia = `mapaEmbutidoDisponivel()`
+ * (services/localizacaoEquipe.ts) retorna false e a tela usa SEMPRE lista +
+ * "abrir no mapa", que já funciona hoje sem chave nenhuma.
+ */
+export const EXPO_PUBLIC_MAPS_KEY: string = process.env.EXPO_PUBLIC_MAPS_KEY ?? '';
