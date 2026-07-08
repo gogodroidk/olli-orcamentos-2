@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, propostaJaEnviada } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, propostaJaEnviada } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
@@ -240,6 +240,34 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       atualizado_em TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
+
+    -- Onda 4 — ORDENS DE SERVIÇO (OS mínima + app do técnico). Espelha a nuvem
+    -- public.ordens_servico (ver migration 20260710_ordens_servico.sql). checklist
+    -- e fotos vivem como TEXT JSON (mesmo padrão de orcamentos.data). Nasce de um
+    -- orçamento aprovado (orcamento_id) ou é criada à mão. tecnico_id/tecnico_nome
+    -- é a atribuição (quem executa), não o dono do dado.
+    CREATE TABLE IF NOT EXISTS ordens_servico (
+      id TEXT PRIMARY KEY,
+      numero TEXT NOT NULL,
+      orcamento_id TEXT,
+      cliente_id TEXT,
+      cliente_nome TEXT NOT NULL,
+      titulo TEXT NOT NULL,
+      descricao TEXT,
+      status TEXT NOT NULL DEFAULT 'aberta',
+      tecnico_id TEXT,
+      tecnico_nome TEXT,
+      data_agendada TEXT,
+      checklist TEXT NOT NULL DEFAULT '[]',
+      fotos TEXT NOT NULL DEFAULT '[]',
+      observacoes TEXT,
+      valor REAL,
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
+    CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
+    CREATE INDEX IF NOT EXISTS idx_ordens_servico_orcamento ON ordens_servico (orcamento_id);
 
     -- Relatório do dia falado — snapshot diário compilado (orçamentos, recibos,
     -- agendamentos, clientes novos) para reler/ouvir depois. Local-only (não
@@ -751,6 +779,92 @@ export async function getNextOrcamentoNumber(): Promise<string> {
   return `${String(seq).padStart(3, '0')}${year}`;
 }
 
+// ─── ORDENS DE SERVIÇO (Onda 4) ─────────────────────────────
+function rowToOrdemServico(r: any): OrdemServico {
+  // checklist/fotos vêm como TEXT JSON — parse defensivo (nunca quebra a leitura).
+  let checklist: ItemChecklist[] = [];
+  let fotos: string[] = [];
+  try {
+    const c = JSON.parse(r.checklist ?? '[]');
+    if (Array.isArray(c)) checklist = c;
+  } catch {
+    // linha corrompida → checklist vazio (não quebra a listagem)
+  }
+  try {
+    const f = JSON.parse(r.fotos ?? '[]');
+    if (Array.isArray(f)) fotos = f;
+  } catch {
+    // idem
+  }
+  return {
+    id: r.id,
+    numero: r.numero,
+    orcamentoId: r.orcamento_id ?? undefined,
+    clienteId: r.cliente_id ?? undefined,
+    clienteNome: r.cliente_nome,
+    titulo: r.titulo,
+    descricao: r.descricao ?? undefined,
+    status: r.status as StatusOS,
+    tecnicoId: r.tecnico_id ?? undefined,
+    tecnicoNome: r.tecnico_nome ?? undefined,
+    dataAgendada: r.data_agendada ?? undefined,
+    checklist,
+    fotos,
+    observacoes: r.observacoes ?? undefined,
+    valor: r.valor ?? undefined,
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em,
+  };
+}
+
+export async function getOrdensServico(): Promise<OrdemServico[]> {
+  const db = await getDb();
+  // Mais recentes primeiro (por criação), com tiebreaker por número.
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM ordens_servico ORDER BY criado_em DESC, numero DESC',
+  );
+  return rows.map(rowToOrdemServico);
+}
+
+export async function getOrdemServico(id: string): Promise<OrdemServico | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM ordens_servico WHERE id = ?', [id]);
+  return row ? rowToOrdemServico(row) : null;
+}
+
+export async function saveOrdemServico(os: OrdemServico): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO ordens_servico
+       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+        tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
+        criado_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
+     os.titulo, os.descricao ?? null, os.status, os.tecnicoId ?? null, os.tecnicoNome ?? null,
+     os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
+     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm],
+  );
+  // Espelho na nuvem pelo caminho PADRÃO de cloudSync (ordens_servico é SyncTable
+  // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
+  // team-tenant do owner já tratados lá). Fire-and-forget, nunca afeta o save local.
+  mirrorPush('ordens_servico', os);
+}
+
+export async function deleteOrdemServico(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM ordens_servico WHERE id = ?', [id]);
+  mirrorRemove('ordens_servico', id);
+  registrarExclusao('ordens_servico', id);
+}
+
+/** Lê todas as OS (para o backup levar o histórico completo). */
+async function getOrdensServicoForBackup(): Promise<OrdemServico[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM ordens_servico ORDER BY criado_em ASC');
+  return rows.map(rowToOrdemServico);
+}
+
 // ─── RECIBOS ─────────────────────────────────────────────
 export async function getRecibos(): Promise<Recibo[]> {
   const db = await getDb();
@@ -1018,6 +1132,8 @@ export interface BackupSnapshot {
   relatoriosDiarios?: RelatorioDiaRow[];
   /** Histórico de versões de orçamento (opcional — snapshots antigos não têm). */
   orcamentoVersoes?: OrcamentoVersao[];
+  /** Ordens de serviço (opcional — snapshots antigos não têm). */
+  ordensServico?: OrdemServico[];
 }
 
 /** Lê todas as versões de orçamento (para o backup levar o histórico completo). */
@@ -1039,14 +1155,14 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
 }
 
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
-    getRelatoriosDiasForBackup(), getVersoesForBackup(),
+    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico,
   };
 }
 
@@ -1071,6 +1187,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const agendamentos = asArray<Agendamento>(data.agendamentos);
   const relatoriosDiarios = asArray<RelatorioDiaRow>(data.relatoriosDiarios);
   const orcamentoVersoes = asArray<OrcamentoVersao>(data.orcamentoVersoes);
+  const ordensServico = asArray<OrdemServico>(data.ordensServico);
 
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
@@ -1083,6 +1200,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     ...modelos.map((m) => ({ tabela: 'modelos', itemId: m.id })),
     ...depoimentos.map((d) => ({ tabela: 'depoimentos', itemId: d.id })),
     ...agendamentos.map((a) => ({ tabela: 'agendamentos', itemId: a.id })),
+    ...ordensServico.map((os) => ({ tabela: 'ordens_servico', itemId: os.id })),
   ];
 
   const db = await getDb();
@@ -1098,7 +1216,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       DELETE FROM empresa;
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM orcamento_versoes; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
-      DELETE FROM agendamentos;
+      DELETE FROM agendamentos; DELETE FROM ordens_servico;
     `);
     if (data.empresa) {
       await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
@@ -1165,6 +1283,24 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
         [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
          a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
          a.observacao ?? null, a.criadoEm, a.atualizadoEm],
+      );
+    }
+    for (const os of ordensServico) {
+      // Defensivo contra snapshots corrompidos: exige id + campos NOT NULL do schema.
+      if (!os || !os.id) continue;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO ordens_servico
+           (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+            tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
+            criado_em, atualizado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [os.id, os.numero ?? '', os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome ?? '',
+         os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.tecnicoId ?? null,
+         os.tecnicoNome ?? null, os.dataAgendada ?? null,
+         JSON.stringify(Array.isArray(os.checklist) ? os.checklist : []),
+         JSON.stringify(Array.isArray(os.fotos) ? os.fotos : []),
+         os.observacoes ?? null, os.valor ?? null,
+         os.criadoEm ?? new Date().toISOString(), os.atualizadoEm ?? new Date().toISOString()],
       );
     }
     // Relatórios diários: MERGE (não apaga o histórico local existente) — é um
@@ -1237,7 +1373,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
 // re-semeado sob demanda mas não precisa ser reimportado a cada logout.
 const USER_DATA_TABLES = [
   'clientes', 'servicos', 'produtos', 'orcamentos', 'orcamento_versoes', 'recibos', 'modelos',
-  'depoimentos', 'agendamentos', 'empresa', 'exclusoes', 'contadores',
+  'depoimentos', 'agendamentos', 'ordens_servico', 'empresa', 'exclusoes', 'contadores',
   'eventos', 'cache_ia', 'casos_erro', 'relatorios_diarios',
 ];
 

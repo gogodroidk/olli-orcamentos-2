@@ -24,6 +24,7 @@ import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
 import { usePlano } from '../hooks/usePlano';
+import { usePermissao } from '../hooks/usePermissao';
 import { track, Eventos } from '../services/analytics';
 
 /** Quantos clientes do radar o plano Grátis mostra completos (o resto vira teaser bloqueado). */
@@ -93,7 +94,14 @@ export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { temAcesso } = usePlano();
+  const { papel } = usePermissao();
   const radarLiberado = temAcesso('radar_clientes');
+  // Onda 4 — entrada mobile das Ordens de serviço. O técnico (público-alvo do
+  // APK) vê "Minhas OS" (só as dele) e ganha destaque no 1º atalho, pois é o
+  // fluxo principal dele; gestão/pessoal vê "Ordens". Rótulo role-aware igual
+  // ao da SidebarNav — a mesma rota do stack raiz decide o que listar.
+  const ehTecnico = papel === 'tecnico';
+  const rotuloOS = ehTecnico ? 'Minhas OS' : 'Ordens';
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -471,9 +479,15 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>Ações rápidas</Text>
         <AnimatedEntrance index={4}>
           <View style={styles.actions}>
+            {ehTecnico && (
+              <Action icon="clipboard-check-outline" label={rotuloOS} color={Colors.accentLight} onPress={() => nav.navigate('OrdemServico')} />
+            )}
             <Action icon="file-plus" label="Orçar" color={Colors.accent} onPress={() => nav.navigate('NovoOrcamento', {})} />
             <Action icon="receipt" label="Recibo" color={Colors.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
             <Action icon="account-group" label="Clientes" color="#A78BFA" onPress={() => nav.navigate('Clientes')} />
+            {!ehTecnico && (
+              <Action icon="clipboard-check-outline" label={rotuloOS} color={Colors.accentLight} onPress={() => nav.navigate('OrdemServico')} />
+            )}
             <Action icon="wrench" label="Serviços" color={Colors.primaryLight} onPress={() => nav.navigate('Servicos')} />
           </View>
         </AnimatedEntrance>

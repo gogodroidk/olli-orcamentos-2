@@ -6,6 +6,7 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Colors, Spacing, BorderRadius, Typography, Gradients, Fonts } from '../../theme';
 import { OlliLogo } from '../OlliLogo';
 import { getCurrentUser } from '../../services/supabase';
+import { usePermissao } from '../../hooks/usePermissao';
 import { PressableWebState } from './pressableWebState';
 
 /**
@@ -23,6 +24,8 @@ type ItemMenu = {
   rota: string;
   label: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  /** `true` quando a rota vive no STACK raiz (um nível acima das tabs). */
+  stack?: boolean;
 };
 
 const ITENS_PRINCIPAIS: ItemMenu[] = [
@@ -30,6 +33,9 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   { rota: 'OrcamentosTab', label: 'Orçamentos', icon: 'file-document-outline' },
   { rota: 'ClientesTab', label: 'Clientes', icon: 'account-group-outline' },
   { rota: 'Agenda', label: 'Agenda', icon: 'calendar-month-outline' },
+  // Onda 4 — Ordens de serviço. Vive no stack raiz (não é tab); o rótulo é
+  // definido em runtime (role-aware) no corpo do componente.
+  { rota: 'OrdemServico', label: 'Ordens de serviço', icon: 'clipboard-check-outline', stack: true },
   { rota: 'RelatoriosTab', label: 'Relatórios', icon: 'chart-line' },
   { rota: 'FerramentasTab', label: 'Ferramentas', icon: 'toolbox-outline' },
 ];
@@ -38,6 +44,7 @@ const ITEM_CONTA: ItemMenu = { rota: 'Conta', label: 'Conta', icon: 'account-cir
 
 export function SidebarNav({ state, navigation }: BottomTabBarProps) {
   const [email, setEmail] = useState<string | null>(null);
+  const { papel } = usePermissao();
   const rotaAtiva = state.routes[state.index]?.name;
 
   useEffect(() => {
@@ -52,10 +59,21 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
     };
   }, []);
 
-  function irPara(rota: string) {
+  // Rótulo role-aware das Ordens: o técnico vê "Minhas OS" (só as dele);
+  // gestão/pessoal vê "Ordens de serviço" (todas). Só o rótulo muda — a rota
+  // é a mesma, e a própria tela decide o que listar pelo papel.
+  const rotuloOrdens = papel === 'tecnico' ? 'Minhas OS' : 'Ordens de serviço';
+
+  function irPara(item: ItemMenu) {
+    if (item.stack) {
+      // Rotas do stack raiz (ex.: OrdemServico) ficam um nível acima das tabs.
+      const pai = navigation.getParent?.() ?? navigation;
+      (pai as any).navigate(item.rota);
+      return;
+    }
     // rotas presentes no state (tabs) navegam direto; a navegação de tabs
     // já lida com foco/params existentes.
-    (navigation as any).navigate(rota);
+    (navigation as any).navigate(item.rota);
   }
 
   function novoOrcamento() {
@@ -99,9 +117,9 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
         {ITENS_PRINCIPAIS.map((item) => (
           <ItemSidebar
             key={item.rota}
-            item={item}
+            item={item.rota === 'OrdemServico' ? { ...item, label: rotuloOrdens } : item}
             ativo={rotaAtiva === item.rota}
-            onPress={() => irPara(item.rota)}
+            onPress={() => irPara(item)}
           />
         ))}
       </ScrollView>
@@ -110,7 +128,7 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
         <ItemSidebar
           item={ITEM_CONTA}
           ativo={rotaAtiva === ITEM_CONTA.rota}
-          onPress={() => irPara(ITEM_CONTA.rota)}
+          onPress={() => irPara(ITEM_CONTA)}
         />
         {email && (
           <Text style={styles.email} numberOfLines={1}>

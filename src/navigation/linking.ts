@@ -94,6 +94,8 @@ export function criarLinkingConfig(
         Equipe: 'equipe',
         EquipeAoVivo: 'equipe/ao-vivo',
         Convite: 'convite/:token',
+        // Onda 4 — Ordens de serviço (gestão + técnico). URL real /ordens.
+        OrdemServico: 'ordens',
       },
     },
   };

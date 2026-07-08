@@ -466,3 +466,72 @@ export interface DiagnosticoResultado {
   diagnostico: DiagnosticoIA;
   aviso?: string;
 }
+
+// ─── ORDENS DE SERVIÇO (Onda 4 — OS mínima + app do técnico) ─────────────────
+/**
+ * Status da Ordem de Serviço ao longo da execução. `aberta` (criada, sem data) →
+ * `agendada` (tem data/técnico) → `em_execucao` → `pausada` (interrompida) →
+ * `concluida`/`cancelada` (terminais). A ORDEM abaixo é a ordem lógica do fluxo.
+ * COMPAT com a coluna `status` (check) de public.ordens_servico — mesmos 6 ids.
+ */
+export type StatusOS =
+  | 'aberta'
+  | 'agendada'
+  | 'em_execucao'
+  | 'pausada'
+  | 'concluida'
+  | 'cancelada';
+
+/** Um item do checklist de execução da OS (passo a marcar em campo). */
+export interface ItemChecklist {
+  id: string;
+  texto: string;
+  feito: boolean;
+}
+
+/**
+ * Uma Ordem de Serviço executável. Nasce de um orçamento APROVADO (`orcamentoId`
+ * copia cliente/título/valor) ou é criada à mão. Offline-first: gravada no SQLite
+ * local e espelhada em public.ordens_servico (jsonb checklist/fotos na nuvem).
+ * `tecnicoId` é a ATRIBUIÇÃO (quem executa), não o dono da linha — os dados
+ * continuam do owner (multi-tenant por camada de acesso).
+ */
+export interface OrdemServico {
+  id: string;
+  numero: string;
+  /** Origem: id do orçamento aprovado que gerou esta OS (ausente em OS avulsa). */
+  orcamentoId?: string;
+  clienteId?: string;
+  clienteNome: string;
+  titulo: string;
+  descricao?: string;
+  status: StatusOS;
+  /** Técnico atribuído (quem executa). Ausente enquanto ninguém foi designado. */
+  tecnicoId?: string;
+  tecnicoNome?: string;
+  dataAgendada?: string; // ISO datetime
+  checklist: ItemChecklist[];
+  fotos: string[];
+  observacoes?: string;
+  valor?: number;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+export const STATUS_OS_LABELS: Record<StatusOS, string> = {
+  aberta: 'Aberta',
+  agendada: 'Agendada',
+  em_execucao: 'Em execução',
+  pausada: 'Pausada',
+  concluida: 'Concluída',
+  cancelada: 'Cancelada',
+};
+
+export const STATUS_OS_CORES: Record<StatusOS, string> = {
+  aberta: '#9CA3AF',
+  agendada: '#3B82F6',
+  em_execucao: '#F59E0B',
+  pausada: '#A78BFA',
+  concluida: '#10B981',
+  cancelada: '#6B7280',
+};

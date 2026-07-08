@@ -36,6 +36,7 @@ import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
 import EquipeScreen from '../screens/EquipeScreen';
 import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
+import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
 // nativo/APK nada disto entra na árvore. Barril em src/screens/desktop.
@@ -92,6 +93,9 @@ export type RootStackParamList = {
   EquipeAoVivo: undefined;
   // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
   Convite: { token?: string };
+  // Onda 4 — Ordens de serviço (OS mínima + app do técnico). Role-aware:
+  // gestão vê todas; técnico vê só as suas.
+  OrdemServico: undefined;
 };
 
 export type TabParamList = {
@@ -143,6 +147,7 @@ const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
+const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
 
 /** Tela stub para a aba central "Orcar", que nunca é exibida (tabPress.preventDefault). */
 const EmptyTab = () => null;
@@ -376,6 +381,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Equipe" component={EquipeCentro} />
       <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />
       <Stack.Screen name="Convite" component={ConviteCentro} />
+      {/* Onda 4 — Ordens de serviço (gestão + app do técnico). */}
+      <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />
     </Stack.Navigator>
   );
 }
