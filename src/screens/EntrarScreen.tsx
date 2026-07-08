@@ -16,6 +16,8 @@ import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
+import { LandingHero } from '../components/web/LandingHero';
+import { useEhDesktop } from '../hooks/useEhDesktop';
 import {
   isSupabaseConfigured, signIn, signUp, signInWithGoogle, supabase,
   normalizarTelefoneBR, temDadosLocais,
@@ -44,6 +46,7 @@ export default function EntrarScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const configured = isSupabaseConfigured();
+  const ehDesktop = useEhDesktop();
 
   const [modo, setModo] = useState<Modo>('login');
   const [nome, setNome] = useState('');
@@ -204,6 +207,116 @@ export default function EntrarScreen() {
 
   const anyBusy = busy || googleBusy;
 
+  // FORMULÁRIO de login/cadastro — a MESMA lógica em qualquer largura. No mobile
+  // ele mora sob o hero curto; no desktop, dentro do card à direita das duas
+  // colunas. Extraído para não duplicar nenhuma chamada de auth entre os ramos.
+  const formularioAuth = (
+    <>
+      {/* BANNER DE MIGRAÇÃO — só quem já tem dados locais e está no cadastro */}
+      {temLocais && modo === 'signup' && (
+        <View style={styles.migrateCard}>
+          <MaterialCommunityIcons name="shield-check" size={22} color={Colors.accentLight} />
+          <Text style={styles.migrateText}>
+            Crie sua conta para proteger seus dados — tudo que você já fez será vinculado a ela.
+          </Text>
+        </View>
+      )}
+
+      {modo === 'signup' && (
+        <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
+      )}
+      <OlliInput label="E-mail" value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
+      {modo === 'signup' && (
+        <OlliInput
+          label="WhatsApp/Telefone"
+          mask="phone"
+          value={telefone}
+          onChangeText={setTelefone}
+          placeholder="(11) 99999-9999"
+          keyboardType="phone-pad"
+          leftIcon="whatsapp"
+        />
+      )}
+      <OlliInput
+        label="Senha"
+        value={senha}
+        onChangeText={setSenha}
+        placeholder="mínimo 8 caracteres"
+        secureTextEntry={!verSenha}
+        leftIcon="lock"
+        rightIcon={verSenha ? 'eye-off' : 'eye'}
+        onRightIconPress={() => setVerSenha(v => !v)}
+        rightIconLabel={verSenha ? 'Ocultar senha' : 'Mostrar senha'}
+      />
+      {modo === 'signup' && (
+        <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry={!verSenha} leftIcon="lock-check" />
+      )}
+
+      {modo === 'login' && (
+        <TouchableOpacity onPress={recuperarSenha} style={styles.forgotWrap}>
+          <Text style={styles.forgot}>Esqueci a senha</Text>
+        </TouchableOpacity>
+      )}
+
+      <OlliButton
+        label={modo === 'login' ? 'Entrar' : 'Criar conta'}
+        variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy} onPress={handleAuth}
+        icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color="#fff" />}
+        style={{ marginTop: modo === 'login' ? 4 : 8 }}
+      />
+
+      {/* SEPARADOR "ou" */}
+      <View style={styles.divider}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>ou</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      {/* GOOGLE */}
+      <OlliButton
+        label="Continuar com o Google"
+        variant="outline" size="lg" fullWidth loading={googleBusy} disabled={busy} haptic={false} onPress={handleGoogle}
+        icon={<MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />}
+      />
+
+      {/* ALTERNA LOGIN/SIGNUP */}
+      <TouchableOpacity disabled={anyBusy} onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
+        <Text style={styles.switchText}>
+          {modo === 'login' ? 'Ainda não tem conta? ' : 'Já tem conta? '}
+          <Text style={styles.switchLink}>{modo === 'login' ? 'Criar agora' : 'Entrar'}</Text>
+        </Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  const tituloCard = modo === 'login' ? 'Que bom te ver de novo 👋' : 'Vamos criar a sua conta';
+
+  // DESKTOP (web ≥ 1024px): "parece um produto" — duas colunas. À esquerda a
+  // proposta de valor (LandingHero, apresentacional); à direita o MESMO card de
+  // login num painel rolável. Nada da lógica de auth muda — só a apresentação.
+  if (ehDesktop) {
+    return (
+      <View style={styles.desktopRoot}>
+        <View style={styles.desktopHeroCol}>
+          <LandingHero />
+        </View>
+        <View style={styles.desktopLoginCol}>
+          <ScrollView
+            contentContainerStyle={styles.desktopLoginScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.desktopCard}>
+              <Text style={styles.desktopCardTitle}>{tituloCard}</Text>
+              {formularioAuth}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
+  // MOBILE (e web estreita): hero curto acima do card de login (layout original).
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -218,82 +331,8 @@ export default function EntrarScreen() {
 
         {/* CARD sobrepondo o hero */}
         <View style={styles.body}>
-          <Text style={styles.cardTitle}>{modo === 'login' ? 'Que bom te ver de novo 👋' : 'Vamos criar a sua conta'}</Text>
-
-          {/* BANNER DE MIGRAÇÃO — só quem já tem dados locais e está no cadastro */}
-          {temLocais && modo === 'signup' && (
-            <View style={styles.migrateCard}>
-              <MaterialCommunityIcons name="shield-check" size={22} color={Colors.accentLight} />
-              <Text style={styles.migrateText}>
-                Crie sua conta para proteger seus dados — tudo que você já fez será vinculado a ela.
-              </Text>
-            </View>
-          )}
-
-          {modo === 'signup' && (
-            <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
-          )}
-          <OlliInput label="E-mail" value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
-          {modo === 'signup' && (
-            <OlliInput
-              label="WhatsApp/Telefone"
-              mask="phone"
-              value={telefone}
-              onChangeText={setTelefone}
-              placeholder="(11) 99999-9999"
-              keyboardType="phone-pad"
-              leftIcon="whatsapp"
-            />
-          )}
-          <OlliInput
-            label="Senha"
-            value={senha}
-            onChangeText={setSenha}
-            placeholder="mínimo 8 caracteres"
-            secureTextEntry={!verSenha}
-            leftIcon="lock"
-            rightIcon={verSenha ? 'eye-off' : 'eye'}
-            onRightIconPress={() => setVerSenha(v => !v)}
-            rightIconLabel={verSenha ? 'Ocultar senha' : 'Mostrar senha'}
-          />
-          {modo === 'signup' && (
-            <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry={!verSenha} leftIcon="lock-check" />
-          )}
-
-          {modo === 'login' && (
-            <TouchableOpacity onPress={recuperarSenha} style={styles.forgotWrap}>
-              <Text style={styles.forgot}>Esqueci a senha</Text>
-            </TouchableOpacity>
-          )}
-
-          <OlliButton
-            label={modo === 'login' ? 'Entrar' : 'Criar conta'}
-            variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy} onPress={handleAuth}
-            icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color="#fff" />}
-            style={{ marginTop: modo === 'login' ? 4 : 8 }}
-          />
-
-          {/* SEPARADOR "ou" */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>ou</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* GOOGLE */}
-          <OlliButton
-            label="Continuar com o Google"
-            variant="outline" size="lg" fullWidth loading={googleBusy} disabled={busy} haptic={false} onPress={handleGoogle}
-            icon={<MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />}
-          />
-
-          {/* ALTERNA LOGIN/SIGNUP */}
-          <TouchableOpacity disabled={anyBusy} onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
-            <Text style={styles.switchText}>
-              {modo === 'login' ? 'Ainda não tem conta? ' : 'Já tem conta? '}
-              <Text style={styles.switchLink}>{modo === 'login' ? 'Criar agora' : 'Entrar'}</Text>
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.cardTitle}>{tituloCard}</Text>
+          {formularioAuth}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -302,6 +341,28 @@ export default function EntrarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+
+  // DESKTOP — duas colunas (hero de valor | card de login)
+  desktopRoot: { flex: 1, flexDirection: 'row', backgroundColor: Colors.background },
+  desktopHeroCol: { flex: 1.15, minWidth: 460 },
+  desktopLoginCol: { flex: 1, minWidth: 420, backgroundColor: Colors.background },
+  desktopLoginScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Spacing.xxxl,
+    paddingHorizontal: Spacing.xxl,
+  },
+  desktopCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    padding: Spacing.xl,
+  },
+  desktopCardTitle: { fontSize: 22, fontFamily: Fonts.extraBold, color: '#fff', marginBottom: Spacing.lg },
 
   hero: { alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: 56, overflow: 'hidden' },
   glow1: { position: 'absolute', top: -60, right: -40, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(127,233,245,0.16)' },
