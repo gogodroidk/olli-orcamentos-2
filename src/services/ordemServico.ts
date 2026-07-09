@@ -11,6 +11,7 @@
  * entre aparelhos). Todas as escritas atualizam `atualizadoEm`.
  */
 import {
+  getDb,
   getOrdensServico,
   getOrdemServico as getOrdemServicoDb,
   saveOrdemServico,
@@ -38,18 +39,29 @@ export async function getOrdem(id: string): Promise<OrdemServico | null> {
 
 /**
  * Próximo número de OS no formato OS-0001, sequencial e monotônico. Deriva do MAIOR
- * número já usado (parseando o sufixo numérico) + 1, então excluir uma OS não faz o
- * número regredir/colidir. Sem OS ainda → OS-0001.
+ * número já usado (parseando o sufixo numérico) + 1. Invariante REAL: o número nunca
+ * é reusado enquanto a OS existir na tabela — ativa OU na lixeira (soft delete apenas
+ * marca `excluido_em`, a linha e o número continuam lá). Por isso a query varre TODAS
+ * as ordens direto no banco (sem o filtro de lixeira de getOrdensServico()): se
+ * olhássemos só as ativas, a OS de maior número poderia estar na lixeira, sair do
+ * cálculo do MAX e ter seu número reemitido — colidindo com ela mesma ao ser
+ * restaurada (não há UNIQUE em `numero`). Sem OS ainda (ou erro/tabela ausente) →
+ * OS-0001.
  */
 async function proximoNumeroOS(): Promise<string> {
-  const todas = await getOrdensServico();
   let maior = 0;
-  for (const os of todas) {
-    const m = /(\d+)\s*$/.exec(os.numero ?? '');
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (Number.isFinite(n) && n > maior) maior = n;
+  try {
+    const db = await getDb();
+    const rows = await db.getAllAsync<{ numero: string }>('SELECT numero FROM ordens_servico');
+    for (const row of rows) {
+      const m = /(\d+)\s*$/.exec(row.numero ?? '');
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > maior) maior = n;
+      }
     }
+  } catch {
+    // Tabela ausente ou erro de leitura: segue com maior=0 (não trava a criação da OS).
   }
   return `OS-${String(maior + 1).padStart(4, '0')}`;
 }

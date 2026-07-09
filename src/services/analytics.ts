@@ -29,6 +29,10 @@ export const Eventos = {
   // gateCta: o usuário tocou em "Ver planos" a partir de um gate.
   gateVisto: 'gate_visto',
   gateCta: 'gate_cta',
+  // Central de Ajuda + Suporte (Frente 3).
+  ajudaArtigoAberto: 'ajuda_artigo_aberto',
+  ajudaBuscou: 'ajuda_buscou',
+  ajudaSuporteContato: 'ajuda_suporte_contato',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

@@ -45,6 +45,7 @@ import {
 } from '../services/localizacaoEquipe';
 import { PAPEL_LABEL } from '../services/equipe';
 import { abrirRotaGoogleMaps } from '../services/rotas';
+import { GuardaPapel } from '../components/GuardaPapel';
 
 /** "recente" (<=15min) vs "desatualizado" — só um sinal visual, não filtra ninguém. */
 function estaRecente(iso: string): boolean {
@@ -53,6 +54,15 @@ function estaRecente(iso: string): boolean {
 }
 
 export default function EquipeAoVivoScreen() {
+  // Agenda/rota da equipe inteira é de gestão — o técnico só vê a própria.
+  return (
+    <GuardaPapel acao="ver_agenda_equipe" area="Equipe ao vivo">
+      <EquipeAoVivoConteudo />
+    </GuardaPapel>
+  );
+}
+
+function EquipeAoVivoConteudo() {
   const insets = useSafeAreaInsets();
   const [itens, setItens] = useState<LocalizacaoMembro[]>([]);
   const [carregando, setCarregando] = useState(true);

@@ -132,6 +132,16 @@ export interface Cliente {
   cidade?: string;
   cep?: string;
   criadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do momento em que foi excluido (soft delete). Ausente/undefined = ATIVO. */
+  excluidoEm?: string;
+  /**
+   * RELÓGIO DE SYNC: ISO da última escrita. Quem carimba é o BANCO (as `save*`,
+   * `delete*` e `restaurar*` de database.ts), nunca a UI — daí ser opcional aqui.
+   * O cloudSync usa este campo para decidir quem vence um conflito. Sem ele, um
+   * pull de linha ativa apagava um soft delete feito offline (ressurreição do
+   * item excluído). Ver migration 20260714_atualizado_em.sql.
+   */
+  atualizadoEm?: string;
 }
 
 export interface ServicoItem {
@@ -143,6 +153,10 @@ export interface ServicoItem {
   unidade: string;
   fotoUri?: string;
   criadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
+  /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Ver `Cliente.atualizadoEm`. */
+  atualizadoEm?: string;
 }
 
 export interface ProdutoItem {
@@ -156,6 +170,10 @@ export interface ProdutoItem {
   unidade: string;
   fotoUri?: string;
   criadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
+  /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Ver `Cliente.atualizadoEm`. */
+  atualizadoEm?: string;
 }
 
 export interface ItemOrcamento {
@@ -249,6 +267,8 @@ export interface Orcamento {
 
   criadoEm: string;
   atualizadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. Vive no blob JSON. */
+  excluidoEm?: string;
 }
 
 /**
@@ -298,6 +318,11 @@ export interface Recibo {
   exibirAssinatura: boolean;
   assinaturaPrestadorUri?: string;
   criadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. Vive no blob JSON. */
+  excluidoEm?: string;
+  /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Vive no blob JSON
+   *  e é espelhado na coluna `atualizado_em` da nuvem. Ver `Cliente.atualizadoEm`. */
+  atualizadoEm?: string;
   // Ciclo comercial (Onda 3): true assim que o PDF do recibo é gerado/compartilhado
   // pelo menos uma vez. `false`/ausente = pagamento registrado mas o PDF do recibo
   // ainda não foi emitido para o cliente (registro rápido de "Registrar pagamento").
@@ -311,6 +336,10 @@ export interface ModeloOrcamento {
   descricao?: string;
   orcamentoBase: Partial<Orcamento>;
   criadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
+  /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Ver `Cliente.atualizadoEm`. */
+  atualizadoEm?: string;
 }
 
 export interface Depoimento {
@@ -319,6 +348,10 @@ export interface Depoimento {
   estrelas: number;
   texto?: string;
   criadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
+  /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Ver `Cliente.atualizadoEm`. */
+  atualizadoEm?: string;
 }
 
 // ─── AGENDA (Fase 2 — agendamentos/visitas) ──────────────────
@@ -350,6 +383,8 @@ export interface Agendamento {
   observacao?: string;
   criadoEm: string;
   atualizadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
 }
 
 export const TIPOS_AGENDAMENTO: { id: TipoAgendamento; label: string; icon: string; color: string }[] = [
@@ -524,6 +559,8 @@ export interface OrdemServico {
   valor?: number;
   criadoEm: string;
   atualizadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
 }
 
 export const STATUS_OS_LABELS: Record<StatusOS, string> = {
@@ -617,6 +654,8 @@ export interface Equipamento {
   fotos: string[];
   criadoEm: string;
   atualizadoEm: string;
+  /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
 }
 
 export const STATUS_EQUIP_LABELS: Record<SituacaoEquipamento, string> = {

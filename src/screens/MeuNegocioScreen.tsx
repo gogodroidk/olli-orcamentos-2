@@ -20,6 +20,7 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
+import { GuardaPapel } from '../components/GuardaPapel';
 
 /**
  * Empresa EM BRANCO para instalações novas (não há seed: getEmpresa() retorna
@@ -70,6 +71,16 @@ const GARANTIAS_PADRAO: { dias: number; label: string; texto: string }[] = [
 ];
 
 export default function MeuNegocioScreen() {
+  // Identidade comercial da empresa: PIX, preços/garantia padrão, dados que vão
+  // em todo PDF — camada de valores do negócio que o contrato nega ao técnico.
+  return (
+    <GuardaPapel acao="ver_valores_agregados" area="Meu Negócio">
+      <MeuNegocioConteudo />
+    </GuardaPapel>
+  );
+}
+
+function MeuNegocioConteudo() {
   const nav = useNavigation<any>();
     // Evita re-extrair a paleta a cada focus (closure de coresSugeridas fica stale).
   const extraiuCoresRef = React.useRef(false);

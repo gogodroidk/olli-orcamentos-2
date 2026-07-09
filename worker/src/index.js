@@ -35,6 +35,7 @@ import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleEquipe } from './equipe.js';
+import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 
 const CORS = {
@@ -565,6 +566,15 @@ export default {
     // cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/equipe/')) {
       return handleEquipe(request, env, url);
+    }
+
+    // ── CONTA DO USUÁRIO (excluir conta: POST JWT) ──
+    // Antes do gate da IA: /conta/* não depende de GEMINI_API_KEY nem do rate
+    // limit de IA. O handleConta valida o JWT por conta própria e cuida do
+    // método e de OPTIONS/CORS por rota. Sem isto, POST /conta/excluir cairia
+    // no 404 do gate de IA (rota não listada em IA_ROUTES).
+    if (url.pathname.startsWith('/conta/')) {
+      return handleConta(request, env, url);
     }
 
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──

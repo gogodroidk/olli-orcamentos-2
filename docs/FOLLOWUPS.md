@@ -71,3 +71,32 @@ key (Onda 6). Ver `docs/KNOWN_BLOCKERS.md`. Chrome extension desconectada (OAuth
 
 **Contas QA:** A=`e4f2858f-440f-469d-aca5-18bf0c35569a`, B=`daeb08b4-b1a3-4f96-b568-33b6eea879f0`.
 </content>
+
+## Novos follow-ups (Bloco A, 2026-07-09)
+
+Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiados.
+
+1. **Deep link de convite deslogado perde o token.** `Convite` não está em `ROTAS_PUBLICAS`
+   (App.tsx): um convidado que clica no link sem estar logado é mandado para a porta e o
+   token some. É **pré-existente** (o reset já fazia isso antes da Landing), mas agora que
+   há equipe de verdade vale resolver: guardar o token e reaplicar após o login.
+2. **Copy do HERO da landing** ("cobre e gerencie a equipe") e o pilar 3 ainda falam de
+   equipe como pronta. A FAQ e os bullets por plano já foram sincronizados com
+   `PlanosScreen` ("em breve"); o HERO é copy de posicionamento e ficou de fora — decisão
+   de produto, não de código.
+3. **`MeuNegocio` some da lista de Ferramentas do técnico, mas o card de perfil no topo da
+   ContaScreen continua levando lá.** Não é furo de permissão (o técnico edita o próprio
+   negócio, não o do dono), é inconsistência de UX. Decidir se o técnico deve ter perfil.
+4. **SEO por rota só cobre a home.** `seoWeb.ts` tem a API (`aplicarSeo`), mas só a Landing
+   chama. Como `web.output='single'`, `/planos`, `/ajuda`, `/privacidade` e `/termos`
+   servem o mesmo `index.html` e herdam o canonical da raiz — o Google as trata como
+   duplicatas. Chamar `aplicarSeo` nessas 4 telas (ou pré-renderizar) resolve.
+5. **`EmitirRecibo` está gateado por `ver_valores_agregados`.** É fail-safe, mas discutível:
+   um técnico talvez precise emitir recibo em campo. Decisão de produto.
+6. **Restaurar backup traz de volta como ATIVOS os itens que estavam na lixeira.**
+   `importAllData` substitui o SQLite inteiro e o snapshot só contém itens ativos. Coerente,
+   mas convém confirmar que é a semântica desejada (a Central de Ajuda já documenta assim).
+7. **Upgrade sobre vigência paga registra a subscription nova mas o cliente paga duas vezes.**
+   Quem tem Pro 12x e assina Empresa passa a ser cobrado pelos dois. O worker preserva o
+   maior nível e a maior vigência (não entrega menos do que foi pago), mas o ideal comercial
+   é a `PlanosScreen` avisar/creditar o saldo do 12x antes de deixar assinar.

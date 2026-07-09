@@ -20,6 +20,7 @@ import { getOrcamentos, deleteOrcamento, saveOrcamento, getNextOrcamentoNumber, 
 import { sincronizarStatusLinks } from '../services/clienteLink';
 import { onSyncAplicado } from '../services/cloudSync';
 import { getStatusFinanceiro, getBadgeFinanceiro, getReciboDoOrcamento, registrarPagamento, StatusFinanceiro } from '../services/pagamentos';
+import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
 import { formatCurrency } from '../utils/currency';
 import { formatDate, nowISO, todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
@@ -92,6 +93,9 @@ export default function OrcamentosScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [sincronizando, setSincronizando] = useState(false);
+  // Modo de seleção múltipla (exclusão em lote para a Lixeira).
+  const [selecionando, setSelecionando] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 
   // Recibos vinculados aos orçamentos (badge financeiro: aguardando pagamento /
   // pago / recibo emitido). Recarregado junto com a lista de orçamentos.
@@ -159,7 +163,7 @@ export default function OrcamentosScreen() {
   async function handleDelete(o: Orcamento) {
     Alert.alert(
       'Excluir orçamento',
-      `Deseja excluir o orçamento nº ${o.numero} de ${o.clienteNome}?`,
+      `O orçamento nº ${o.numero} de ${o.clienteNome} vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -174,6 +178,54 @@ export default function OrcamentosScreen() {
           },
         },
       ]
+    );
+  }
+
+  // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
+  function entrarSelecao(inicialId?: string) {
+    setSelecionando(true);
+    setSelecionados(inicialId ? new Set([inicialId]) : new Set());
+  }
+
+  function sairSelecao() {
+    setSelecionando(false);
+    setSelecionados(new Set());
+  }
+
+  function alternarSelecao(id: string) {
+    setSelecionados(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selecionarTodos() {
+    setSelecionados(new Set(filtered.map(o => o.id)));
+  }
+
+  function handleExcluirSelecionados() {
+    const ids = Array.from(selecionados);
+    if (!ids.length) return;
+    Alert.alert(
+      'Excluir selecionados',
+      `${ids.length} orçamento${ids.length === 1 ? '' : 's'} ${ids.length === 1 ? 'vai' : 'vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir', style: 'destructive',
+          onPress: async () => {
+            try {
+              for (const id of ids) {
+                try { await deleteOrcamento(id); } catch { /* pula um; segue o lote */ }
+              }
+            } finally {
+              sairSelecao();
+              await load();
+            }
+          },
+        },
+      ],
     );
   }
 
@@ -247,14 +299,24 @@ export default function OrcamentosScreen() {
   const renderItem = ({ item: o, index }: { item: Orcamento; index: number }) => {
     const statusFinanceiro = getStatusFinanceiro(o, recibos);
     const reciboVinculado = statusFinanceiro ? getReciboDoOrcamento(o.id, recibos) : null;
+    const marcado = selecionados.has(o.id);
 
     return (
       <AnimatedEntrance index={index}>
         <OlliCard
-          onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
+          onPress={() => selecionando ? alternarSelecao(o.id) : nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
+          variant={selecionando && marcado ? 'selected' : 'default'}
           style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
         >
           <View style={styles.itemHeader}>
+            {selecionando && (
+              <MaterialCommunityIcons
+                name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                size={22}
+                color={marcado ? Colors.accent : Colors.onSurfaceMuted}
+                style={{ marginRight: 12, marginTop: 2 }}
+              />
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
               <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
@@ -274,31 +336,34 @@ export default function OrcamentosScreen() {
             </View>
           )}
 
-          <View style={styles.itemActions}>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
-              <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
-              <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
-              <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
-              <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
-            </TouchableOpacity>
-            {statusFinanceiro === 'aguardando_pagamento' ? (
-              <TouchableOpacity style={styles.actionBtn} onPress={() => abrirRegistrarPagamento(o)}>
-                <MaterialCommunityIcons name="cash-plus" size={16} color={Colors.warning} />
-                <Text style={[styles.actionLabel, { color: Colors.warning }]}>Pagamento</Text>
+          {/* Em modo de seleção as ações somem — o card inteiro vira alvo do toque. */}
+          {!selecionando && (
+            <View style={styles.itemActions}>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
+                <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
+                <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
               </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
-                <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
-                <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
+                <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
+                <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
-              <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
-              <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
-            </TouchableOpacity>
-          </View>
+              {statusFinanceiro === 'aguardando_pagamento' ? (
+                <TouchableOpacity style={styles.actionBtn} onPress={() => abrirRegistrarPagamento(o)}>
+                  <MaterialCommunityIcons name="cash-plus" size={16} color={Colors.warning} />
+                  <Text style={[styles.actionLabel, { color: Colors.warning }]}>Pagamento</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
+                  <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
+                  <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
+                <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </OlliCard>
       </AnimatedEntrance>
     );
@@ -377,6 +442,28 @@ export default function OrcamentosScreen() {
         </View>
       )}
 
+      {/* TOOLBAR DE SELEÇÃO — "Selecionar" (entrada) ou controles do modo lote */}
+      {!carregando && filtered.length > 0 && (
+        <View style={styles.selToolbar}>
+          {selecionando ? (
+            <>
+              <TouchableOpacity onPress={sairSelecao} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Cancelar seleção">
+                <Text style={styles.selCancel}>Cancelar</Text>
+              </TouchableOpacity>
+              <Text style={styles.selCount}>{selecionados.size} selecionado{selecionados.size === 1 ? '' : 's'}</Text>
+              <TouchableOpacity onPress={selecionarTodos} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Selecionar todos">
+                <Text style={styles.selAll}>Selecionar todos</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity style={styles.selEnter} onPress={() => entrarSelecao()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Selecionar para excluir vários">
+              <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={Colors.accentLight} />
+              <Text style={styles.selEnterLabel}>Selecionar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* LIST */}
       {carregando ? (
         <View style={{ paddingTop: 8, paddingHorizontal: Spacing.base, gap: 10 }}>
@@ -393,7 +480,7 @@ export default function OrcamentosScreen() {
           data={filtered}
           keyExtractor={o => o.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 80, flexGrow: 1 }}
+          contentContainerStyle={{ paddingVertical: 8, paddingBottom: selecionando ? 104 : 80, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} />}
           ListEmptyComponent={
             <EmptyState
@@ -459,6 +546,20 @@ export default function OrcamentosScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* BARRA DE AÇÃO — excluir selecionados (vai para a Lixeira) */}
+      {selecionando && selecionados.size > 0 && (
+        <View style={styles.bulkBar}>
+          <OlliButton
+            label={`Excluir ${selecionados.size} para a Lixeira`}
+            variant="danger"
+            size="lg"
+            fullWidth
+            onPress={handleExcluirSelecionados}
+            icon={<MaterialCommunityIcons name="trash-can-outline" size={20} color="#fff" />}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -514,6 +615,26 @@ const styles = StyleSheet.create({
   },
   clienteBannerText: { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.accentLight },
   clienteBannerClear: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+
+  // Toolbar / barra do modo de seleção múltipla
+  selToolbar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.base, paddingBottom: 6, paddingTop: 2,
+  },
+  selEnter: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
+  },
+  selEnterLabel: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
+  selCancel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
+  selCount: { fontSize: 13, fontWeight: '800', color: Colors.onSurface },
+  selAll: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+  bulkBar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 22,
+    backgroundColor: 'rgba(7,17,31,0.98)', borderTopWidth: 1, borderTopColor: Colors.strokeGlow,
+  },
 
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   itemNome: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },

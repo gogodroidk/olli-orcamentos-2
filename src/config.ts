@@ -1,3 +1,5 @@
+import appJson from '../app.json';
+
 declare const process: {
   env: {
     EXPO_PUBLIC_SUPABASE_URL?: string;
@@ -58,10 +60,12 @@ export function isDiagnosticoIADisponivel(): boolean {
 export const PAGAMENTOS_URL: string = DIAGNOSTICO_URL;
 
 /**
- * WhatsApp de suporte/vendas (dígitos com DDI, ex.: 5511999999999).
- * Usado no CTA "Falar com a gente" da tela de Planos. Vazio = CTA oculto.
+ * WhatsApp OFICIAL de suporte/vendas (dígitos com DDI, ex.: 5511999999999).
+ * Usado no CTA "Falar com a gente" da tela de Planos e no card de Suporte da
+ * Central de Ajuda. Mesmo padrão de LINK_BASE_URL: fallback hardcoded com o
+ * número real (a env var só existe pra permitir trocar sem rebuild).
  */
-export const WHATSAPP_SUPORTE: string = (process.env.EXPO_PUBLIC_WHATSAPP_SUPORTE ?? '').replace(/\D/g, '');
+export const WHATSAPP_SUPORTE: string = (process.env.EXPO_PUBLIC_WHATSAPP_SUPORTE ?? '5511941727487').replace(/\D/g, '');
 
 /**
  * ID do cliente OAuth ANDROID do Google (Google Cloud Console → Credenciais),
@@ -81,3 +85,11 @@ export const GOOGLE_AGENDA_CLIENT_ID: string = process.env.EXPO_PUBLIC_GOOGLE_OA
  * "abrir no mapa", que já funciona hoje sem chave nenhuma.
  */
 export const EXPO_PUBLIC_MAPS_KEY: string = process.env.EXPO_PUBLIC_MAPS_KEY ?? '';
+
+/**
+ * Versão pública do app (mesmo valor de `expo.version` em app.json — o que a
+ * loja mostra). Importado direto do JSON (sem expo-constants, que não é
+ * dependência declarada do projeto) para compor mensagens de suporte
+ * contextuais ("veio da tela X, plano Y, versão Z") sem gambiarra.
+ */
+export const APP_VERSION: string = (appJson as { expo?: { version?: string } }).expo?.version ?? '';

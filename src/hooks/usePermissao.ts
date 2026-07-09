@@ -104,9 +104,13 @@ const PERMISSOES_PESSOAL: ReadonlySet<Acao> = new Set<Acao>([
 ]);
 
 export interface UsePermissao {
-  /** Papel do usuário na org, ou null quando conta pessoal. */
+  /** Papel do usuário na org, ou null quando conta pessoal. `null` também enquanto indeterminado — cheque `carregando`. */
   papel: Papel | null;
-  /** `true` enquanto o tipo de conta ainda está carregando. */
+  /**
+   * `true` enquanto NÃO SABEMOS o papel (primeira leitura em voo, ou leitura que
+   * falhou e não há cache). A UI deve mostrar "carregando", nunca o conteúdo
+   * protegido e nunca "acesso negado" — é ignorância, não negação.
+   */
   carregando: boolean;
   /** `true` se a conta é empresa (pertence a uma organização). */
   ehEmpresa: boolean;
@@ -115,21 +119,29 @@ export interface UsePermissao {
 }
 
 export function usePermissao(): UsePermissao {
-  const { tipo, org, carregando } = useTipoConta();
+  const { tipo, org, carregando, resolvido } = useTipoConta();
   const papel = tipo === 'empresa' && org ? org.papel : null;
 
   const pode = useCallback(
     (acao: Acao): boolean => {
+      // Papel INDETERMINADO nega tudo. Sem isto, `papel === null` cairia na matriz
+      // PESSOAL — que é a MAIS permissiva (relatórios, valores agregados,
+      // faturamento) — e um técnico com a leitura da org ainda em voo, ou offline,
+      // seria promovido a dono. "Não sei" nunca pode valer mais que "sou técnico".
+      if (!resolvido) return false;
       // Conta pessoal: usa a matriz do solo (dono de si).
       if (!papel) return PERMISSOES_PESSOAL.has(acao);
       return PERMISSOES[papel]?.has(acao) ?? false;
     },
-    [papel],
+    [papel, resolvido],
   );
 
   return {
     papel,
-    carregando,
+    // Enquanto o papel não é conhecido, a tela está "carregando" — mesmo que a
+    // requisição já tenha terminado (em erro). É o que evita mostrar um "acesso
+    // negado" falso para o dono autônomo que abriu o app sem sinal.
+    carregando: carregando || !resolvido,
     ehEmpresa: tipo === 'empresa',
     pode,
   };

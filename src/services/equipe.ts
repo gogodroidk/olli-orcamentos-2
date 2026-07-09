@@ -65,18 +65,28 @@ export interface MembroEquipe {
 
 // ─── organização do usuário (deriva tipo de conta) ───────────
 /**
- * A organização à qual o usuário logado pertence, com o SEU papel. null se o
- * usuário não pertence a nenhuma org (= conta pessoal) ou em qualquer falha
- * (degrada seguro para pessoal). Nunca lança.
+ * Resultado EXPLÍCITO da leitura da organização. Distinguir "não tem org" de
+ * "não consegui saber" é a diferença entre conceder e negar permissão: quem trata
+ * falha de rede como `null` acaba tratando um TÉCNICO offline como conta pessoal —
+ * e conta pessoal é o papel MAIS permissivo que existe (vê faturamento, relatórios,
+ * valores agregados). Ver `normalizarPapel`, que já cai no papel mais restrito.
+ */
+export type LeituraOrganizacao =
+  | { status: 'ok'; org: Organizacao | null } // resolvido: `null` = conta pessoal de verdade
+  | { status: 'erro' }; // indeterminado (offline, RLS, servidor fora)
+
+/**
+ * Lê a organização do usuário logado SEM apagar a diferença entre "sem org" e
+ * "falhou". Use esta quando a resposta decide permissão.
  *
  * A RLS de organizacao_membros já limita a leitura às linhas do próprio usuário,
  * então o filtro por user_id é só para pegar a linha certa (e ser explícito).
  */
-export async function getMinhaOrganizacao(): Promise<Organizacao | null> {
+export async function carregarMinhaOrganizacao(): Promise<LeituraOrganizacao> {
   try {
-    if (!supabase) return null;
+    if (!supabase) return { status: 'erro' };
     const user = await getCurrentUser();
-    if (!user) return null;
+    if (!user) return { status: 'erro' }; // sem sessão: indeterminado, não "pessoal"
 
     // limit(1) em vez de maybeSingle(): se o usuário for membro de mais de uma
     // org (edge case — o schema garante UNIQUE(org_id,user_id), não UNIQUE(user_id)),
@@ -88,21 +98,39 @@ export async function getMinhaOrganizacao(): Promise<Organizacao | null> {
       .eq('ativo', true)
       .limit(1);
 
-    const membro = Array.isArray(membros) && membros.length ? membros[0] : null;
-    if (error || !membro) return null;
+    if (error) return { status: 'erro' }; // a consulta falhou: NÃO é "sem org"
 
-    const { data: orgs } = await supabase
+    const membro = Array.isArray(membros) && membros.length ? membros[0] : null;
+    if (!membro) return { status: 'ok', org: null }; // consultou e não é membro: pessoal
+
+    const { data: orgs, error: erroOrg } = await supabase
       .from('organizacoes')
       .select('id, nome, owner_user_id')
       .eq('id', membro.org_id)
       .limit(1);
 
+    if (erroOrg) return { status: 'erro' };
+
     const org = Array.isArray(orgs) && orgs.length ? orgs[0] : null;
-    if (!org) return null;
-    return { id: org.id, nome: org.nome ?? 'Minha empresa', papel: normalizarPapel(membro.papel), ownerUserId: (org as any).owner_user_id };
+    // É membro de uma org que não conseguimos ler: indeterminado, nunca "pessoal".
+    if (!org) return { status: 'erro' };
+    return {
+      status: 'ok',
+      org: { id: org.id, nome: org.nome ?? 'Minha empresa', papel: normalizarPapel(membro.papel), ownerUserId: (org as any).owner_user_id },
+    };
   } catch {
-    return null;
+    return { status: 'erro' };
   }
+}
+
+/**
+ * Versão que colapsa erro em `null`. Mantida para os call-sites que só querem
+ * exibir a org (nome/ id) e NÃO decidem permissão com o resultado. Para permissão
+ * use `carregarMinhaOrganizacao`. Nunca lança.
+ */
+export async function getMinhaOrganizacao(): Promise<Organizacao | null> {
+  const r = await carregarMinhaOrganizacao();
+  return r.status === 'ok' ? r.org : null;
 }
 
 /** Garante um papel válido; qualquer valor desconhecido cai no mais restrito. */

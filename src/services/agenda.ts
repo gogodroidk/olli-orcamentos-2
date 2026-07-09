@@ -1,9 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getDb } from '../database/database';
+import { getDb, moverAgendamentoParaLixeira } from '../database/database';
 import { Agendamento } from '../types';
-import { pushRow, removeRow } from './cloudSync';
+import { pushRow } from './cloudSync';
 import { LEMBRETE_MAP_KEY } from './storageKeys';
 
 /**
@@ -201,24 +201,27 @@ function rowToAgendamento(r: any): Agendamento {
     observacao: r.observacao ?? undefined,
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
+    excluidoEm: r.excluido_em ?? undefined,
   };
 }
 
-/** Todos os agendamentos, do mais antigo para o mais recente. */
+/** Todos os agendamentos ATIVOS (fora da lixeira), do mais antigo para o mais recente. */
 export async function getAgendamentos(): Promise<Agendamento[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM agendamentos ORDER BY inicio ASC');
+  // LIXEIRA: exclui soft-deletados — senão eles reaparecem em Agenda/Home/relatórios.
+  const rows = await db.getAllAsync<any>('SELECT * FROM agendamentos WHERE excluido_em IS NULL ORDER BY inicio ASC');
   return rows.map(rowToAgendamento);
 }
 
 /**
- * Agendamentos cujo início cai no intervalo [inicioISO, fimISO).
+ * Agendamentos ATIVOS cujo início cai no intervalo [inicioISO, fimISO).
  * Use os limites do dia/semana/mês como ISO datetime.
  */
 export async function getAgendamentosRange(inicioISO: string, fimISO: string): Promise<Agendamento[]> {
   const db = await getDb();
+  // LIXEIRA: exclui soft-deletados (mesmo motivo de getAgendamentos).
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM agendamentos WHERE inicio >= ? AND inicio < ? ORDER BY inicio ASC',
+    'SELECT * FROM agendamentos WHERE excluido_em IS NULL AND inicio >= ? AND inicio < ? ORDER BY inicio ASC',
     [inicioISO, fimISO]
   );
   return rows.map(rowToAgendamento);
@@ -238,13 +241,16 @@ export async function getAgendamentosDoDia(dia: Date = new Date()): Promise<Agen
 export async function getProximoAgendamento(): Promise<Agendamento | null> {
   const db = await getDb();
   const agora = new Date().toISOString();
+  // LIXEIRA: exclui soft-deletados — senão a Home sugere uma visita já excluída.
   const row = await db.getFirstAsync<any>(
-    "SELECT * FROM agendamentos WHERE inicio >= ? AND status != 'cancelado' ORDER BY inicio ASC LIMIT 1",
+    "SELECT * FROM agendamentos WHERE excluido_em IS NULL AND inicio >= ? AND status != 'cancelado' ORDER BY inicio ASC LIMIT 1",
     [agora],
   );
   return row ? rowToAgendamento(row) : null;
 }
 
+// SEM filtro de excluido_em de propósito: leitura por id serve tanto o detalhe
+// de um agendamento ativo quanto o fluxo de restaurar/ver da lixeira.
 export async function getAgendamento(id: string): Promise<Agendamento | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM agendamentos WHERE id = ?', [id]);
@@ -256,11 +262,15 @@ export async function saveAgendamento(a: Agendamento): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO agendamentos
-       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    // `excluido_em` PRECISA entrar aqui: INSERT OR REPLACE reescreve a linha INTEIRA,
+    // e sem a coluna um save sobre um item que está na LIXEIRA o RESSUSCITARIA
+    // (getAgendamento(id) não filtra de propósito — detalhe/restauração o alcançam).
+    // Item ativo tem `excluidoEm` undefined → grava null, que é exatamente o correto.
     [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
-     a.observacao ?? null, a.criadoEm, a.atualizadoEm]
+     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null]
   );
   // Espelha na nuvem em background (fire-and-forget; no-op se offline/deslogado).
   try { void pushRow('agendamentos', a).catch(() => {}); } catch {}
@@ -269,9 +279,14 @@ export async function saveAgendamento(a: Agendamento): Promise<void> {
   void agendarLembrete(a).catch(() => {});
 }
 
+/**
+ * EXCLUIR (usuário) = SOFT DELETE → LIXEIRA. `moverAgendamentoParaLixeira` (em
+ * database.ts) já carimba `excluido_em`/`atualizado_em` e espelha na nuvem
+ * (mirrorPush) — antes este DELETE era definitivo e um pull da nuvem podia
+ * ressuscitar o item; agora ele só some das listas normais e fica recuperável.
+ * Mantém o cancelamento do lembrete local (item na lixeira não deve notificar).
+ */
 export async function deleteAgendamento(id: string): Promise<void> {
-  const db = await getDb();
-  await db.runAsync('DELETE FROM agendamentos WHERE id = ?', [id]);
-  try { void removeRow('agendamentos', id).catch(() => {}); } catch {}
+  await moverAgendamentoParaLixeira(id);
   void cancelarLembrete(id).catch(() => {});
 }

@@ -35,6 +35,13 @@ const LOOKUP_PARA_PLANO = {
   olli_empresa_anual: 'empresa',
 };
 
+/**
+ * Ordem dos planos, para comparar NÍVEL de acesso (não preço nem vigência). Usado
+ * quando um upgrade chega sobre uma compra ainda vigente: o cliente nunca pode
+ * receber menos do que já pagou. Plano desconhecido/ausente vale 0.
+ */
+const NIVEL_PLANO = { gratis: 0, pro: 1, empresa: 2 };
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
@@ -48,6 +55,8 @@ export const STRIPE_ROUTES = new Set([
   '/stripe/checkout',
   '/stripe/webhook',
   '/stripe/portal',
+  '/stripe/faturas',
+  '/stripe/metodo',
   '/stripe/sucesso',
   '/stripe/cancelado',
 ]);
@@ -211,6 +220,17 @@ async function rateOk(env, key) {
   }
 }
 
+/**
+ * Balde SEPARADO para as LEITURAS (faturas, método de pagamento). A tela de
+ * Assinatura recarrega essas duas a cada foco, então elas esgotariam o balde
+ * compartilhado e derrubariam justamente as AÇÕES do usuário — inclusive abrir o
+ * portal para CANCELAR, que a Apple exige que sempre funcione. Prefixo distinto
+ * = contador distinto no mesmo binding.
+ */
+function chaveLeitura(userId) {
+  return `leitura:${userId}`;
+}
+
 // ─── extração de dados da subscription (robusto entre versões da API) ──
 /**
  * current_period_end mudou de lugar entre versões da API Stripe: em versões
@@ -355,6 +375,117 @@ export async function handlePortal(request, env) {
   return json({ ok: true, url: data.url });
 }
 
+// ─── GET /stripe/faturas — histórico de faturas do usuário ───────────────────
+/**
+ * Intervalo de cobrança de uma fatura (mensal/anual), lido da primeira linha
+ * recorrente. null para pagamentos avulsos (ex.: o Pro 12x, que não é assinatura)
+ * ou quando a Stripe não trouxe o preço recorrente.
+ */
+function extrairIntervaloFatura(inv) {
+  const linhas = inv && inv.lines && Array.isArray(inv.lines.data) ? inv.lines.data : [];
+  for (const l of linhas) {
+    const rec = (l && l.price && l.price.recurring) || (l && l.plan) || null;
+    const intv = rec && rec.interval;
+    if (intv === 'month' || intv === 'year') return intv;
+  }
+  return null;
+}
+
+/**
+ * Lista as faturas do customer do usuário logado. O customer é resolvido a
+ * partir do id do JWT validado (getAssinatura), então NUNCA expomos faturas de
+ * outro usuário. Sem customer (nunca assinou) → lista vazia (não é erro).
+ */
+export async function handleFaturas(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+
+  if (!(await rateOk(env, chaveLeitura(user.id)))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+
+  if (!env.STRIPE_SECRET_KEY) return json({ ok: false, erro: 'stripe_nao_configurado' }, 503);
+
+  const assinatura = await getAssinatura(env, user.id);
+  if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  const customerId = assinatura ? assinatura.stripe_customer_id : null;
+  if (!customerId) return json({ ok: true, faturas: [] });
+
+  const { ok, data } = await stripeGet(
+    env,
+    `/invoices?customer=${encodeURIComponent(customerId)}&limit=12`,
+  );
+  if (!ok || !data || !Array.isArray(data.data)) return json({ ok: false, erro: 'falha_faturas' }, 502);
+
+  const faturas = data.data.map((inv) => {
+    const pagoCentavos = typeof inv.amount_paid === 'number' ? inv.amount_paid : 0;
+    const valorCentavos =
+      pagoCentavos > 0
+        ? pagoCentavos
+        : typeof inv.total === 'number'
+          ? inv.total
+          : typeof inv.amount_due === 'number'
+            ? inv.amount_due
+            : 0;
+    return {
+      id: inv.id,
+      data: typeof inv.created === 'number' ? inv.created * 1000 : null, // epoch ms
+      valorCentavos,
+      moeda: typeof inv.currency === 'string' ? inv.currency : 'brl',
+      status: inv.status || null,
+      pago: inv.status === 'paid' || (pagoCentavos > 0 && inv.status !== 'void' && inv.status !== 'uncollectible'),
+      recibo: inv.hosted_invoice_url || inv.invoice_pdf || null,
+      intervalo: extrairIntervaloFatura(inv),
+    };
+  });
+  return json({ ok: true, faturas });
+}
+
+// ─── GET /stripe/metodo — método de pagamento (bandeira + 4 dígitos) ─────────
+/**
+ * Devolve a bandeira e os 4 últimos dígitos do cartão padrão do customer do
+ * usuário logado. Preferimos o `default_payment_method` do customer; se não
+ * houver, caímos no primeiro cartão anexado. Sem customer/cartão → metodo:null.
+ * NUNCA expõe dados de outro usuário (customer vem do JWT via getAssinatura).
+ */
+export async function handleMetodo(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+
+  if (!(await rateOk(env, chaveLeitura(user.id)))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+
+  if (!env.STRIPE_SECRET_KEY) return json({ ok: false, erro: 'stripe_nao_configurado' }, 503);
+
+  const assinatura = await getAssinatura(env, user.id);
+  if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  const customerId = assinatura ? assinatura.stripe_customer_id : null;
+  if (!customerId) return json({ ok: true, metodo: null });
+
+  let card = null;
+
+  // 1) Cartão padrão de faturamento do customer (expand aninhado).
+  const custRes = await stripeGet(
+    env,
+    `/customers/${encodeURIComponent(customerId)}?expand[]=invoice_settings.default_payment_method`,
+  );
+  if (custRes.ok && custRes.data && custRes.data.invoice_settings) {
+    const dpm = custRes.data.invoice_settings.default_payment_method;
+    if (dpm && dpm.card) card = dpm.card;
+  }
+
+  // 2) Fallback: primeiro cartão anexado ao customer.
+  if (!card) {
+    const pmRes = await stripeGet(
+      env,
+      `/payment_methods?customer=${encodeURIComponent(customerId)}&type=card&limit=1`,
+    );
+    if (pmRes.ok && pmRes.data && Array.isArray(pmRes.data.data) && pmRes.data.data.length && pmRes.data.data[0].card) {
+      card = pmRes.data.data[0].card;
+    }
+  }
+
+  if (!card) return json({ ok: true, metodo: null });
+  return json({ ok: true, metodo: { brand: card.brand || null, last4: card.last4 || null } });
+}
+
 // ─── (2) POST /stripe/webhook ────────────────────────────────
 /**
  * Verifica a assinatura HMAC-SHA256 do header Stripe-Signature.
@@ -429,14 +560,23 @@ async function sincronizarSubscription(env, sub, statusForcado) {
   const status = statusForcado || sub.status || null;
   const novoPeriodo = periodEndEpoch(sub); // epoch (s) ou null
 
+  // Um evento cujo status é PAGO significa "este cliente está pagando agora". Um
+  // evento de término ('canceled', 'unpaid', 'incomplete_expired') significa "esta
+  // assinatura acabou". Só o segundo pode ser descartado: descartar o primeiro é
+  // cobrar sem entregar.
+  const eventoEhAtivo = status === 'active' || status === 'trialing' || status === 'past_due';
+
   // Proteção contra evento fora de ordem E contra regressão de vigência paga.
   // A Stripe não garante ordem de entrega, e um MESMO usuário pode ter tido mais
   // de uma assinatura (ex.: migrou da mensal para o 12x). Regras:
   //  (a) se a linha já está 'canceled', só reabrimos se o período deste evento
   //      for mais novo (um 'updated' atrasado não ressuscita um 'deleted' antigo);
-  //  (b) se este evento vem de uma assinatura DIFERENTE da gravada e a vigência
-  //      gravada é MAIS FUTURA que a deste evento, ignoramos — nunca deixar o
-  //      'deleted' da mensal antiga encurtar o acesso 12x recém-comprado (R$468).
+  //  (b) se este evento ENCERRA uma origem DIFERENTE da gravada e a vigência
+  //      gravada é MAIS FUTURA, ignoramos — nunca deixar o 'deleted' da mensal
+  //      antiga encurtar o acesso 12x recém-comprado (R$468).
+  let periodoForcado = null; // ISO a preservar quando o gravado é mais futuro
+  let planoForcado = null; // plano a preservar quando o gravado é de nível maior
+
   const atual = await getAssinatura(env, userId);
   if (atual && !atual.error) {
     const gravadoEpoch = atual.current_period_end
@@ -450,13 +590,36 @@ async function sincronizarSubscription(env, sub, statusForcado) {
       if (!maisNovo) return true; // (a)
     }
 
-    const outraAssinatura = atual.stripe_subscription_id && atual.stripe_subscription_id !== (sub.id || null);
+    // `stripe_subscription_id: null` NÃO significa "mesma assinatura": é a marca
+    // do Pro 12x (mode=payment, ver processar12x), que nenhum evento de subscription
+    // deve ENCERRAR. Testar só `atual.stripe_subscription_id &&` fazia o guard pular
+    // exatamente essa linha — um 'deleted' da mensal antiga rebaixava para
+    // 'canceled' quem tinha acabado de pagar 12 meses à vista.
+    const gravadoEhAvulso = !atual.stripe_subscription_id;
+    const outraOrigem = gravadoEhAvulso
+      ? !!sub.id // evento de subscription vs. linha avulsa = origens diferentes
+      : atual.stripe_subscription_id !== (sub.id || null);
     const gravadoMaisFuturo =
       gravadoEpoch != null && (typeof novoPeriodo !== 'number' || gravadoEpoch > novoPeriodo);
-    if (outraAssinatura && gravadoMaisFuturo) {
-      // (b) evento de outra assinatura tentando encurtar uma vigência paga maior.
-      console.error('[olli-stripe] ignorando evento de sub diferente que regrediria vigencia:', sub.id, '->', atual.stripe_subscription_id);
+
+    if (outraOrigem && gravadoMaisFuturo && !eventoEhAtivo) {
+      // (b) evento de TÉRMINO de outra origem tentando encurtar uma vigência paga.
+      // `gravadoMaisFuturo` preserva a re-assinatura legítima depois que o 12x
+      // vence: com o período gravado no passado, o evento novo escreve normal.
+      console.error('[olli-stripe] ignorando termino de outra origem que regrediria vigencia:', sub.id, '->', atual.stripe_subscription_id || '(avulso 12x)');
       return true;
+    }
+
+    if (outraOrigem && gravadoMaisFuturo && eventoEhAtivo) {
+      // UPGRADE sobre uma vigência já paga (ex.: tem Pro 12x até +12 meses e assina
+      // Empresa mensal). São DUAS compras válidas. Gravamos a subscription nova —
+      // é ela que cobra e que o portal gerencia — mas jamais entregamos MENOS do que
+      // já foi pago: fica o maior nível e a maior vigência.
+      periodoForcado = atual.current_period_end;
+      // `|| 0`: plano ausente/desconhecido nos dois lados não deve virar NaN nem
+      // undefined numa comparação que decide o nível de acesso entregue.
+      if ((NIVEL_PLANO[atual.plano] || 0) > (NIVEL_PLANO[plano] || 0)) planoForcado = atual.plano;
+      console.error('[olli-stripe] upgrade sobre vigencia paga: preservando periodo/nivel maiores para', userId);
     }
   }
 
@@ -464,9 +627,10 @@ async function sincronizarSubscription(env, sub, statusForcado) {
     status,
     stripe_customer_id: typeof sub.customer === 'string' ? sub.customer : (sub.customer && sub.customer.id) || null,
     stripe_subscription_id: sub.id || null,
-    current_period_end: epochParaIso(novoPeriodo),
+    current_period_end: periodoForcado || epochParaIso(novoPeriodo),
   };
-  if (plano) patch.plano = plano; // só toca o plano quando reconhecemos o price
+  const planoFinal = planoForcado || plano;
+  if (planoFinal) patch.plano = planoFinal; // só toca o plano quando reconhecemos o price
   return upsertAssinatura(env, userId, patch);
 }
 
@@ -715,6 +879,17 @@ export async function handleStripe(request, env, url) {
   if (path === '/stripe/portal') {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (request.method === 'POST') return handlePortal(request, env);
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+  // Leituras (GET autenticado por JWT) — histórico de faturas e método de pagamento.
+  if (path === '/stripe/faturas') {
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (request.method === 'GET') return handleFaturas(request, env);
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+  if (path === '/stripe/metodo') {
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (request.method === 'GET') return handleMetodo(request, env);
     return json({ erro: 'metodo_nao_suportado' }, 405);
   }
   if (path === '/stripe/webhook') {

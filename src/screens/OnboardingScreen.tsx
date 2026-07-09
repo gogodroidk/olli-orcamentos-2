@@ -8,7 +8,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius, Shadow, Gradients } from '../theme';
@@ -25,11 +24,13 @@ import { isValidCPF } from '../utils/masks';
 import { buscarCep } from '../services/cep';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
+import { ONBOARDED_KEY, marcarVisto } from '../services/onboarding';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
-export const ONBOARDED_KEY = 'olli.onboarded';
+/** Reexportada por compat: EntrarScreen ainda importa daqui. Fonte real: services/onboarding.ts. */
+export { ONBOARDED_KEY };
 
 /** Empresa em branco (mesma base de MeuNegocioScreen) para o 1º cadastro. */
 function empresaEmBranco(): Empresa {
@@ -158,7 +159,7 @@ export default function OnboardingScreen() {
 
   // marca como concluído (idempotente) — usado tanto no "pular" quanto no "concluir"
   async function marcarConcluido() {
-    try { await AsyncStorage.setItem(ONBOARDED_KEY, '1'); } catch { /* best-effort */ }
+    await marcarVisto();
   }
 
   function irParaApp() {
@@ -527,11 +528,12 @@ function BoasVindas({ onStart, insets }: {
       <View style={styles.wcCenter}>
         <OlliMascot size={104} onDark />
         <Text style={styles.wcHi}>Olá! Eu sou a OLLI 👋</Text>
-        <Text style={styles.wcSub}>Sua assistente de orçamentos. Vou te ajudar a fechar mais negócios — com menos esforço.</Text>
+        <Text style={styles.wcSub}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular, e você organiza a execução em campo até fechar com o recibo — tudo funciona mesmo sem internet.</Text>
         <View style={styles.wcFeatures}>
-          <WcFeature icon="microphone" text="Monte orçamentos por voz" />
-          <WcFeature icon="file-document-outline" text="PDF e link profissional pro cliente" />
-          <WcFeature icon="card-search-outline" text="Diagnóstico de erro offline · 698 códigos" />
+          <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
+          <WcFeature icon="link-variant" text="O cliente aprova ou recusa pelo link, sem instalar nada" />
+          <WcFeature icon="toolbox-outline" text="Ordens de serviço e equipe organizadas em campo" />
+          <WcFeature icon="wifi-off" text="Funciona sem internet — sincroniza sozinho quando ela voltar" />
         </View>
       </View>
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>

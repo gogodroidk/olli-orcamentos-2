@@ -26,6 +26,7 @@ import { escapeHtml } from '../utils/html';
 import { footerSeloOlliHtml } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { GuardaPapel } from '../components/GuardaPapel';
 
 type Route = RouteProp<RootStackParamList, 'EmitirRecibo'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -35,6 +36,16 @@ const FORMAS = ['PIX', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 
 type Aba = 'novo' | 'emitidos';
 
 export default function EmitirReciboScreen() {
+  // Recibo é documento financeiro (valor recebido, forma de pagamento, PIX da
+  // empresa) — parte da camada de valores do negócio, negada ao técnico.
+  return (
+    <GuardaPapel acao="ver_valores_agregados" area="Emitir recibo">
+      <EmitirReciboConteudo />
+    </GuardaPapel>
+  );
+}
+
+function EmitirReciboConteudo() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const orcamentoId = route.params?.orcamentoId;

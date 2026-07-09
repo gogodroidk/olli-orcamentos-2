@@ -30,6 +30,7 @@ import { supabase, sessaoAtiva } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
+import { limparCacheTipoConta, resetarTipoConta } from './src/hooks/useTipoConta';
 import { DESKTOP_BREAKPOINT, useEhDesktop } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
@@ -51,6 +52,28 @@ const ehDesktopInicial =
 // Config de linking criada uma única vez (referência estável) — recriar o objeto
 // a cada render remontaria o NavigationContainer e perderia o estado.
 const linkingConfig = criarLinkingConfig(ehDesktopInicial);
+
+/**
+ * Rotas que um VISITANTE DESLOGADO tem o direito de abrir direto pela URL. Tudo
+ * que não está aqui é considerado protegido e o onReady devolve o visitante para
+ * a porta.
+ *
+ * Privacidade e Termos precisam ser alcançáveis por link externo (exigência das
+ * lojas e da LGPD); Ajuda e Planos estão no sitemap.xml e são a porta de entrada
+ * do tráfego de busca. Sem esta lista, o guard tratava QUALQUER rota diferente de
+ * `initialRoute` como protegida — inclusive estas cinco — e descartava o deep link.
+ */
+const ROTAS_PUBLICAS = new Set(['Landing', 'Entrar', 'Ajuda', 'Privacidade', 'Termos', 'Planos']);
+
+/**
+ * Destino do app DESLOGADO. Na WEB, um visitante que chega no domínio vê a
+ * LANDING pública; no NATIVO (APK) não existe "chegar no domínio" — a porta é
+ * direto o login ('Entrar'). Resolvido uma vez no boot (Platform é estável) e
+ * usado em TODOS os pontos que mandam o usuário para fora do app: rota inicial,
+ * boot sem sessão, INITIAL_SESSION sem sessão e SIGNED_OUT. Manter num só lugar
+ * evita divergência entre eles.
+ */
+const ROTA_DESLOGADO: keyof RootStackParamList = Platform.OS === 'web' ? 'Landing' : 'Entrar';
 
 /**
  * Ref global de navegação. A sessão Supabase é a única porta do app, então
@@ -89,9 +112,10 @@ export default function App() {
   // Layout desktop REATIVO (v4): controla só o frame externo (aplicar ou não o
   // webFrame de 430px). No nativo é sempre false → frame mobile inalterado.
   const ehDesktop = useEhDesktop();
-  // Fail-closed: se a checagem de sessão lançar, a UI abre na PORTA (Entrar),
-  // nunca dentro do app. Só o caso "sem nuvem configurada" abre direto nas Tabs.
-  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('Entrar');
+  // Fail-closed: se a checagem de sessão lançar, a UI abre na PORTA do deslogado
+  // (Landing na web, Entrar no nativo), nunca dentro do app. Só o caso "sem nuvem
+  // configurada" abre direto nas Tabs.
+  const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>(ROTA_DESLOGADO);
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -106,13 +130,17 @@ export default function App() {
     // Abre o banco e, ANTES de liberar a UI, decide a rota inicial. A sessão
     // Supabase é a ÚNICA porta do app:
     //   • sem nuvem configurada (build dev)  → Tabs (único caso sem sessão);
-    //   • sem sessão                          → Entrar (a capa/login obrigatório);
+    //   • sem sessão                          → Landing (web) / Entrar (nativo);
     //   • com sessão mas sem empresa/onboard  → Onboarding (pós-login);
     //   • com sessão e já configurado         → Tabs.
     // Fail-closed: qualquer erro cai no default 'Entrar' (nunca dentro do app).
     (async () => {
       try {
         await getDb();
+        // Expurgo automático da lixeira (itens soft-deletados há mais de 30 dias).
+        // Fire-and-forget best-effort: depende só do DB já aberto acima, nunca
+        // bloqueia o boot e nunca lança (dynamic import + catch silencioso).
+        import('./src/services/lixeira').then(m => m.purgarLixeiraAntiga()).catch(() => {});
         const [empresa, onboarded, session] = await Promise.all([
           getEmpresa(),
           AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
@@ -122,7 +150,8 @@ export default function App() {
           // Build dev sem nuvem: não há login possível, entra direto nas abas.
           setInitialRoute('Tabs');
         } else if (!session) {
-          setInitialRoute('Entrar');
+          // Deslogado: Landing (web) ou Entrar (nativo).
+          setInitialRoute(ROTA_DESLOGADO);
         } else if (empresa === null && onboarded !== '1') {
           setInitialRoute('Onboarding');
         } else {
@@ -161,13 +190,21 @@ export default function App() {
       // o retorno ?code= dispara SIGNED_IN (não INITIAL_SESSION), então não cai
       // aqui. No nativo, onde não há deep link de URL de página, é inócuo.
       if (event === 'INITIAL_SESSION' && !session && navigationRef.isReady()) {
-        navigationRef.reset({ index: 0, routes: [{ name: 'Entrar' }] });
+        navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
       }
       // Sair da conta (em qualquer tela) volta SEMPRE para a porta: reset central
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
       // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
-      if (event === 'SIGNED_OUT' && navigationRef.isReady()) {
-        navigationRef.reset({ index: 0, routes: [{ name: 'Entrar' }] });
+      if (event === 'SIGNED_OUT') {
+        // O papel do usuário que saiu não pode sobreviver ao logout: o store em
+        // memória e o cache em disco são compartilhados por todo o app. Num aparelho
+        // usado por técnico e dono, herdar o papel anterior restringe ou promete
+        // demais. A hidratação também confere o dono, mas limpar é a defesa direta.
+        resetarTipoConta();
+        void limparCacheTipoConta();
+        if (navigationRef.isReady()) {
+          navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
+        }
       }
     });
     return () => data.subscription.unsubscribe();
@@ -202,14 +239,20 @@ export default function App() {
                 // precedência sobre initialRouteName — sem isto, um visitante
                 // deslogado abrindo '/' ou '/orcamentos' cairia DENTRO das Tabs
                 // (o guard de INITIAL_SESSION perde a corrida com isReady()).
-                // initialRoute já foi resolvido fail-closed no boot; se a porta
-                // é Entrar/Onboarding e o linking restaurou outra rota, reseta.
+                // initialRoute já foi resolvido fail-closed no boot; se a porta é
+                // do deslogado (Landing na web / Entrar no nativo) ou Onboarding e
+                // o linking restaurou uma rota PROTEGIDA, reseta.
+                //
+                // O teste é "a rota restaurada é pública?", não "é diferente da
+                // initialRoute?": as rotas públicas (Privacidade, Termos, Ajuda,
+                // Planos) também são diferentes da porta, e a versão antiga as
+                // descartava — matando todo deep link externo do deslogado.
                 onReady={() => {
-                  if (
-                    (initialRoute === 'Entrar' || initialRoute === 'Onboarding') &&
-                    navigationRef.isReady() &&
-                    navigationRef.getCurrentRoute()?.name !== initialRoute
-                  ) {
+                  if (!navigationRef.isReady()) return;
+                  const atual = navigationRef.getCurrentRoute()?.name;
+                  const precisaDePorta =
+                    initialRoute === ROTA_DESLOGADO || initialRoute === 'Onboarding';
+                  if (precisaDePorta && atual && !ROTAS_PUBLICAS.has(atual)) {
                     navigationRef.reset({ index: 0, routes: [{ name: initialRoute }] });
                   }
                 }}

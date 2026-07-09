@@ -17,6 +17,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
+import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
 import { clientesParaReconquistar } from '../services/radarClientes';
 import { useCepLookup } from '../services/cep';
 import { onSyncAplicado } from '../services/cloudSync';
@@ -69,6 +70,9 @@ export default function ClientesScreen() {
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  // Modo de seleção múltipla (exclusão em lote para a Lixeira).
+  const [selecionando, setSelecionando] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   // Ids de clientes "sumidos" (radar de reconquista, >= 5 meses sem contato).
   // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
   // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
@@ -183,9 +187,10 @@ export default function ClientesScreen() {
     if (orcamentosVinculados > 0) partes.push(`${orcamentosVinculados} orçamento${orcamentosVinculados === 1 ? '' : 's'}`);
     if (agendamentosVinculados > 0) partes.push(`${agendamentosVinculados} agendamento${agendamentosVinculados === 1 ? '' : 's'}`);
 
-    const mensagem = partes.length > 0
-      ? `Este cliente tem ${partes.join(' e ')} no histórico. Eles serão mantidos, mas você não poderá mais acessá-los pelo cadastro do cliente.\n\nExcluir "${c.nome}" mesmo assim?`
-      : `Excluir "${c.nome}"?`;
+    const aviso = partes.length > 0
+      ? `Este cliente tem ${partes.join(' e ')} no histórico. Eles serão mantidos.\n\n`
+      : '';
+    const mensagem = `${aviso}"${c.nome}" vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`;
 
     Alert.alert('Excluir cliente', mensagem, [
       { text: 'Cancelar', style: 'cancel' },
@@ -203,6 +208,54 @@ export default function ClientesScreen() {
         }
       },
     ]);
+  }
+
+  // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
+  function entrarSelecao(inicialId?: string) {
+    setAcoes(null);
+    setSelecionando(true);
+    setSelecionados(inicialId ? new Set([inicialId]) : new Set());
+  }
+
+  function sairSelecao() {
+    setSelecionando(false);
+    setSelecionados(new Set());
+  }
+
+  function alternarSelecao(id: string) {
+    setSelecionados(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selecionarTodos() {
+    setSelecionados(new Set(filtered.map(c => c.id)));
+  }
+
+  function handleExcluirSelecionados() {
+    const ids = Array.from(selecionados);
+    if (!ids.length) return;
+    Alert.alert(
+      'Excluir selecionados',
+      `${ids.length} cliente${ids.length === 1 ? '' : 's'} ${ids.length === 1 ? 'vai' : 'vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir', style: 'destructive', onPress: async () => {
+            try {
+              for (const id of ids) {
+                try { await deleteCliente(id); } catch { /* pula um; segue o lote */ }
+              }
+            } finally {
+              sairSelecao();
+              await load();
+            }
+          },
+        },
+      ],
+    );
   }
 
   // ─── AÇÕES DE CRM (a partir do menu do cliente) ───────────────
@@ -272,15 +325,29 @@ export default function ClientesScreen() {
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
-        contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
+        contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: selecionando ? 100 : Spacing.base }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.primary} />}
-        renderItem={({ item: c, index }) => (
+        renderItem={({ item: c, index }) => {
+          const marcado = selecionados.has(c.id);
+          return (
           <AnimatedEntrance index={index}>
             <TouchableOpacity
-              style={styles.card}
+              style={[styles.card, selecionando && marcado && styles.cardSelected]}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setAcoes(c); }}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                if (selecionando) alternarSelecao(c.id); else setAcoes(c);
+              }}
+              onLongPress={() => { Haptics.selectionAsync().catch(() => {}); entrarSelecao(c.id); }}
             >
+              {selecionando && (
+                <MaterialCommunityIcons
+                  name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                  size={24}
+                  color={marcado ? Colors.accent : Colors.onSurfaceMuted}
+                  style={{ marginRight: 10 }}
+                />
+              )}
               <View style={styles.avatar}><Text style={styles.avatarText}>{c.nome.charAt(0).toUpperCase()}</Text></View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <View style={styles.nameRow}>
@@ -294,26 +361,67 @@ export default function ClientesScreen() {
                 {c.telefone ? <Text style={styles.info}>{c.telefone}</Text> : null}
                 {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
               </View>
-              <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
-                  <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
-                  {excluindoId === c.id
-                    ? <ActivityIndicator size="small" color={Colors.danger} />
-                    : <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />}
-                </TouchableOpacity>
-              </View>
+              {!selecionando && (
+                <View style={styles.cardActions}>
+                  <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
+                    <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
+                    {excluindoId === c.id
+                      ? <ActivityIndicator size="small" color={Colors.danger} />
+                      : <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />}
+                  </TouchableOpacity>
+                </View>
+              )}
             </TouchableOpacity>
           </AnimatedEntrance>
-        )}
+          );
+        }}
+        ListHeaderComponent={
+          !carregando && filtered.length > 0 ? (
+            <View style={styles.selToolbar}>
+              {selecionando ? (
+                <>
+                  <TouchableOpacity onPress={sairSelecao} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Cancelar seleção">
+                    <Text style={styles.selCancel}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.selCount}>{selecionados.size} selecionado{selecionados.size === 1 ? '' : 's'}</Text>
+                  <TouchableOpacity onPress={selecionarTodos} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Selecionar todos">
+                    <Text style={styles.selAll}>Selecionar todos</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity style={styles.selEnter} onPress={() => entrarSelecao()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Selecionar para excluir vários">
+                  <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={Colors.accentLight} />
+                  <Text style={styles.selEnterLabel}>Selecionar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
       />
       )}
 
-      <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Novo cliente">
-        <MaterialCommunityIcons name="plus" size={28} color="#fff" />
-      </TouchableOpacity>
+      {!selecionando && (
+        <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Novo cliente">
+          <MaterialCommunityIcons name="plus" size={28} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* BARRA DE AÇÃO — excluir selecionados (vai para a Lixeira) */}
+      {selecionando && selecionados.size > 0 && (
+        <View style={styles.bulkBar}>
+          <OlliButton
+            label={`Excluir ${selecionados.size} para a Lixeira`}
+            variant="danger"
+            size="lg"
+            fullWidth
+            onPress={handleExcluirSelecionados}
+            icon={<MaterialCommunityIcons name="trash-can-outline" size={20} color="#fff" />}
+          />
+        </View>
+      )}
 
       <Modal visible={!!editing} animationType="slide" onRequestClose={() => { setEditing(null); setErrors({}); }}>
         {editing && (
@@ -404,6 +512,22 @@ const styles = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm },
+  cardSelected: { backgroundColor: Colors.surfacePressed, borderWidth: 1, borderColor: Colors.accent },
+  selToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 4 },
+  selEnter: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
+  },
+  selEnterLabel: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
+  selCancel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
+  selCount: { fontSize: 13, fontWeight: '800', color: Colors.onSurface },
+  selAll: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+  bulkBar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 22,
+    backgroundColor: 'rgba(7,17,31,0.98)', borderTopWidth: 1, borderTopColor: Colors.strokeGlow,
+  },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontSize: 18, fontWeight: '800', color: Colors.primary },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

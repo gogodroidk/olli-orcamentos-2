@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,7 +14,7 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
 import { supabase } from '../services/supabase';
-import { getPlanoAtual, invalidarCachePlano, PlanoId } from '../services/planos';
+import { getPlanoAtual, getPlanoCacheado, invalidarCachePlano, PlanoId } from '../services/planos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -142,6 +142,12 @@ export default function PlanosScreen() {
   const [carregandoPlano, setCarregandoPlano] = useState(true);
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | 'portal' | null>(null);
 
+  // Semeia com o plano do cache local ANTES da leitura de rede, para NÃO piscar
+  // a página de venda para quem já é pagante (a "conta limpa" da Frente 2).
+  useEffect(() => {
+    getPlanoCacheado().then(p => { if (p) setPlanoAtualId(p); }).catch(() => {});
+  }, []);
+
   const carregarPlano = useCallback(async (invalidarCache: boolean) => {
     if (invalidarCache) invalidarCachePlano();
     setCarregandoPlano(true);
@@ -162,6 +168,11 @@ export default function PlanosScreen() {
   );
 
   const planos: Plano[] = PLANOS_BASE.map((p) => ({ ...p, atual: p.id === planoAtualId }));
+  // Conta limpa (Frente 2): quem já paga não vê discurso de venda. Vê um card
+  // discreto "Sua assinatura" que leva à AssinaturaScreen (faturas, cobrança,
+  // trocar de plano/cartão e cancelar ficam lá, no portal seguro da Stripe).
+  const ehPagante = planoAtualId !== 'gratis';
+  const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
 
   async function abrirUrlPagamento(caminho: '/stripe/checkout' | '/stripe/portal', body?: object) {
     if (!PAGAMENTOS_URL) {
@@ -285,6 +296,30 @@ export default function PlanosScreen() {
       <GradientHeader title="Planos OLLI" subtitle="Escolha como crescer" onBack={() => goBackOrHome(nav)} />
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+        {ehPagante ? (
+          /* PAGANTE — sem propaganda: card discreto que leva à AssinaturaScreen. */
+          <AnimatedEntrance index={0}>
+            <View style={styles.assinanteHero}>
+              <OlliMascot size={44} onDark />
+              <Text style={styles.assinanteTitle}>Você já é assinante</Text>
+              <Text style={styles.assinanteSub}>
+                Obrigado por apoiar o OLLI! Seu plano <Text style={styles.assinanteForte}>{nomePlanoAtual}</Text> está ativo. Faturas, cobrança, troca de plano/cartão e cancelamento ficam na sua página de assinatura.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.assinaturaBtn}
+              activeOpacity={0.85}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Assinatura' as never); }}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir sua assinatura"
+            >
+              <MaterialCommunityIcons name="card-account-details-outline" size={20} color={Colors.primaryLight} />
+              <Text style={styles.assinaturaBtnText}>Sua assinatura</Text>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.primaryLight} />
+            </TouchableOpacity>
+          </AnimatedEntrance>
+        ) : (
+        <>
         {/* INTRO */}
         <AnimatedEntrance index={0}>
           <View style={styles.intro}>
@@ -340,6 +375,8 @@ export default function PlanosScreen() {
         ))}
 
         <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o plano por 12 meses. Algumas funções de equipe do Empresa ainda estão chegando (marcadas como "em breve"). 💙</Text>
+        </>
+        )}
       </ScrollView>
     </View>
   );
@@ -498,6 +535,18 @@ const styles = StyleSheet.create({
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
   introTitle: { fontSize: 19, fontWeight: '800', color: '#fff', marginTop: 10, textAlign: 'center' },
   introSub: { fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 6, lineHeight: 19, paddingHorizontal: 6 },
+
+  // Pagante (conta limpa)
+  assinanteHero: { alignItems: 'center', paddingVertical: Spacing.lg },
+  assinanteTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 12, textAlign: 'center' },
+  assinanteSub: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 8, lineHeight: 20, paddingHorizontal: 8 },
+  assinanteForte: { color: Colors.accentLight, fontWeight: '800' },
+  assinaturaBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderRadius: BorderRadius.md, paddingVertical: 15, marginTop: Spacing.base,
+    borderWidth: 1.5, borderColor: Colors.primaryLight, backgroundColor: 'rgba(11,111,206,0.10)',
+  },
+  assinaturaBtnText: { fontSize: 15, fontWeight: '800', color: Colors.primaryLight },
 
   toggle: { flexDirection: 'row', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, padding: 4, marginBottom: Spacing.lg, alignSelf: 'center' },
   toggleOpt: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 22, paddingVertical: 9, borderRadius: BorderRadius.full },

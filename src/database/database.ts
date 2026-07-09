@@ -63,8 +63,15 @@ let db: SQLite.SQLiteDatabase | null = null;
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
-    db = await SQLite.openDatabaseAsync('olli_orcamentos.db');
-    await initDb(db);
+    // O handle só é PUBLICADO na variável de módulo depois que initDb (e portanto
+    // runMigrations) termina. Publicá-lo antes deixaria, se um ALTER falhasse no
+    // meio, um banco meio migrado em cache: como o guard é `if (!db)`, ninguém
+    // retentaria a migração e a sessão inteira rodaria com metade das tabelas sem
+    // a coluna nova ("no such column"). Falhando, nada fica em cache e a próxima
+    // chamada tenta de novo.
+    const aberto = await SQLite.openDatabaseAsync('olli_orcamentos.db');
+    await initDb(aberto);
+    db = aberto;
   }
   return db;
 }
@@ -79,6 +86,10 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       data TEXT NOT NULL
     );
 
+    -- A coluna 'atualizado_em' (relógio de sync) existe nestas tabelas desde a v3
+    -- do schema. É o que permite ao cloudSync decidir quem vence um conflito: sem
+    -- ela, um pull de linha ativa apagava um soft delete feito offline. Ver
+    -- runMigrations. (Sem crase aqui: isto vive dentro de um template literal JS.)
     CREATE TABLE IF NOT EXISTS clientes (
       id TEXT PRIMARY KEY,
       nome TEXT NOT NULL,
@@ -90,7 +101,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       estado TEXT,
       cidade TEXT,
       cep TEXT,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      excluido_em TEXT,
+      atualizado_em TEXT
     );
 
     CREATE TABLE IF NOT EXISTS servicos (
@@ -101,7 +114,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       custo REAL,
       unidade TEXT DEFAULT 'un',
       foto_uri TEXT,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      excluido_em TEXT,
+      atualizado_em TEXT
     );
 
     CREATE TABLE IF NOT EXISTS produtos (
@@ -114,7 +129,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       modelo TEXT,
       unidade TEXT DEFAULT 'un',
       foto_uri TEXT,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      excluido_em TEXT,
+      atualizado_em TEXT
     );
 
     CREATE TABLE IF NOT EXISTS orcamentos (
@@ -148,7 +165,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       nome TEXT NOT NULL,
       descricao TEXT,
       data TEXT NOT NULL,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      excluido_em TEXT,
+      atualizado_em TEXT
     );
 
     CREATE TABLE IF NOT EXISTS depoimentos (
@@ -156,7 +175,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       nome_cliente TEXT NOT NULL,
       estrelas INTEGER NOT NULL,
       texto TEXT,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      excluido_em TEXT,
+      atualizado_em TEXT
     );
 
     CREATE TABLE IF NOT EXISTS contadores (
@@ -237,7 +258,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       orcamento_id TEXT,
       observacao TEXT,
       criado_em TEXT NOT NULL,
-      atualizado_em TEXT NOT NULL
+      atualizado_em TEXT NOT NULL,
+      excluido_em TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
 
@@ -263,7 +285,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       observacoes TEXT,
       valor REAL,
       criado_em TEXT NOT NULL,
-      atualizado_em TEXT NOT NULL
+      atualizado_em TEXT NOT NULL,
+      excluido_em TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
@@ -295,7 +318,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       qr_revogado_em TEXT,
       fotos TEXT NOT NULL DEFAULT '[]',
       criado_em TEXT NOT NULL,
-      atualizado_em TEXT NOT NULL
+      atualizado_em TEXT NOT NULL,
+      excluido_em TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_equipamentos_cliente ON equipamentos (cliente_id);
     CREATE INDEX IF NOT EXISTS idx_equipamentos_situacao ON equipamentos (situacao);
@@ -324,7 +348,27 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 3;
+
+/**
+ * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
+ * a coluna já veio no CREATE TABLE acima → PRAGMA table_info a encontra e o ALTER
+ * é pulado; em instalação existente (sem a coluna) o ALTER a acrescenta. Assim o
+ * mesmo bloco de migração roda com segurança nos dois casos, SEM erro de "duplicate
+ * column" e SEM jamais perder dado (ALTER ADD COLUMN é aditivo). NUNCA lança por
+ * causa de coluna já existente; qualquer outra falha propaga (migração deve falhar
+ * alto, não silenciosa). `tabela`/`coluna` são literais internos — nunca entrada externa.
+ */
+async function addColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  tabela: string,
+  coluna: string,
+  definicao: string,
+): Promise<void> {
+  const cols = await database.getAllAsync<{ name: string }>(`PRAGMA table_info(${tabela})`);
+  if (cols.some((c) => c.name === coluna)) return;
+  await database.execAsync(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+}
 
 /**
  * Migrador incremental do SQLite via PRAGMA user_version. Em instalações novas o
@@ -336,11 +380,32 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   const v = row?.user_version ?? 0;
   if (v >= SCHEMA_VERSION) return;
 
-  // v < 1: baseline (todas as tabelas já criadas acima). Sem migração de coluna ainda.
-  // EXEMPLO de migração futura — ao adicionar uma coluna, descomente e ajuste:
-  //   if (v < 2) {
-  //     await database.execAsync("ALTER TABLE clientes ADD COLUMN atualizado_em TEXT");
-  //   }
+  // v < 2 — LIXEIRA (Frente 1): coluna `excluido_em TEXT` (ISO do soft delete,
+  // nullable) nas tabelas de coluna. As de blob JSON (orcamentos/recibos) guardam
+  // `excluidoEm` DENTRO do JSON — não têm coluna. Defensivo (addColumnIfMissing):
+  // seguro tanto para instalação nova (coluna já no CREATE) quanto existente.
+  if (v < 2) {
+    for (const tabela of ['clientes', 'servicos', 'produtos', 'modelos', 'depoimentos', 'agendamentos', 'ordens_servico', 'equipamentos']) {
+      await addColumnIfMissing(database, tabela, 'excluido_em', 'TEXT');
+    }
+  }
+
+  // v < 3 — RELÓGIO DE SYNC: `atualizado_em TEXT` nas cinco tabelas de coluna que
+  // não tinham timestamp de edição. (agendamentos/ordens_servico/equipamentos já
+  // têm; orcamentos/recibos guardam `atualizadoEm` dentro do blob JSON.)
+  // Sem este relógio o sync dessas tabelas era last-writer-wins cego, e o pull de
+  // uma linha ativa zerava um soft delete feito offline — o item ressuscitava.
+  // Espelha a migration da nuvem 20260714_atualizado_em.sql, inclusive o backfill.
+  if (v < 3) {
+    for (const tabela of ['clientes', 'servicos', 'produtos', 'modelos', 'depoimentos']) {
+      await addColumnIfMissing(database, tabela, 'atualizado_em', 'TEXT');
+      // Backfill com criado_em (nunca com "agora"): carimbar tudo como recém-editado
+      // faria cada linha local vencer o guard contra a nuvem no primeiro sync.
+      await database.execAsync(
+        `UPDATE ${tabela} SET atualizado_em = criado_em WHERE atualizado_em IS NULL`,
+      );
+    }
+  }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
@@ -407,14 +472,16 @@ export async function saveEmpresa(empresa: Empresa): Promise<void> {
 // ─── CLIENTES ─────────────────────────────────────────────
 export async function getClientes(): Promise<Cliente[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM clientes ORDER BY nome ASC');
+  // LIXEIRA: leitura normal só ATIVOS (excluido_em IS NULL). Os soft-deletados
+  // vivem em getLixeiraClientes até restaurar / expurgo.
+  const rows = await db.getAllAsync<any>('SELECT * FROM clientes WHERE excluido_em IS NULL ORDER BY nome ASC');
   return rows.map(rowToCliente);
 }
 
 export async function searchClientes(q: string): Promise<Cliente[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM clientes WHERE nome LIKE ? OR telefone LIKE ? ORDER BY nome ASC',
+    'SELECT * FROM clientes WHERE excluido_em IS NULL AND (nome LIKE ? OR telefone LIKE ?) ORDER BY nome ASC',
     [`%${q}%`, `%${q}%`]
   );
   return rows.map(rowToCliente);
@@ -422,23 +489,74 @@ export async function searchClientes(q: string): Promise<Cliente[]> {
 
 export async function saveCliente(cliente: Cliente): Promise<void> {
   const db = await getDb();
+  // O BANCO carimba o relógio de sync — a UI nunca manda `atualizadoEm`. O objeto
+  // espelhado na nuvem tem que levar o MESMO carimbo que foi para o SQLite, senão
+  // os dois lados divergem e o guard de conflito passa a comparar valores errados.
+  const agora = new Date().toISOString();
+  const salvo: Cliente = { ...cliente, atualizadoEm: agora };
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
-     (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    [cliente.id, cliente.nome, cliente.telefone, cliente.cpf ?? null,
-     cliente.cnpj ?? null, cliente.endereco ?? null, cliente.complemento ?? null,
-     cliente.estado ?? null, cliente.cidade ?? null, cliente.cep ?? null,
-     cliente.criadoEm]
+     (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [salvo.id, salvo.nome, salvo.telefone, salvo.cpf ?? null,
+     salvo.cnpj ?? null, salvo.endereco ?? null, salvo.complemento ?? null,
+     salvo.estado ?? null, salvo.cidade ?? null, salvo.cep ?? null,
+     salvo.criadoEm, salvo.excluidoEm ?? null, agora]
   );
-  mirrorPush('clientes', cliente);
+  mirrorPush('clientes', salvo);
 }
 
+/**
+ * EXCLUIR (usuário) = SOFT DELETE: manda o cliente para a LIXEIRA (seta
+ * excluido_em = agora, mantém a linha). Some das listas normais mas é recuperável.
+ * Mantém ESTE nome (deleteCliente) para os call-sites existentes não quebrarem — o
+ * que muda é a semântica (antes hard delete, agora soft). Sincroniza como UPDATE
+ * normal (mirrorPush do objeto atualizado), NÃO usa tombstone.
+ */
 export async function deleteCliente(id: string): Promise<void> {
+  const db = await getDb();
+  // Excluir É uma escrita: bumpa `atualizado_em` junto. Sem isso a exclusão não
+  // teria relógio e um pull de linha ativa (a nuvem, se o mirrorPush falhou
+  // offline) sobrescreveria o soft delete — o cliente ressuscitaria.
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE clientes SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getClienteRaw(id);
+  if (atualizado) mirrorPush('clientes', atualizado);
+}
+
+/** RESTAURAR: tira o cliente da lixeira (excluido_em = null) e re-espelha ativo. */
+export async function restaurarCliente(id: string): Promise<void> {
+  const db = await getDb();
+  // Restaurar também bumpa o relógio: é a única forma de a restauração vencer,
+  // nos outros aparelhos, a cópia ainda excluída que eles têm em cache.
+  await db.runAsync('UPDATE clientes SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getClienteRaw(id);
+  if (atualizado) mirrorPush('clientes', atualizado);
+}
+
+/**
+ * EXCLUIR DEFINITIVAMENTE (da lixeira): hard delete real + tombstone que propaga a
+ * exclusão entre aparelhos/painel. Era o comportamento do antigo deleteCliente.
+ */
+export async function excluirClienteDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM clientes WHERE id = ?', [id]);
   mirrorRemove('clientes', id);
   registrarExclusao('clientes', id);
+}
+
+/** Itens de cliente na LIXEIRA (soft-deletados), do excluído mais recente ao mais antigo. */
+export async function getLixeiraClientes(): Promise<Cliente[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM clientes WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToCliente);
+}
+
+/** Lê um cliente por id INCLUINDO soft-deletados (uso interno: espelho pós-soft-delete). */
+async function getClienteRaw(id: string): Promise<Cliente | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM clientes WHERE id = ?', [id]);
+  return row ? rowToCliente(row) : null;
 }
 
 function rowToCliente(r: any): Cliente {
@@ -448,20 +566,22 @@ function rowToCliente(r: any): Cliente {
     endereco: r.endereco ?? undefined, complemento: r.complemento ?? undefined,
     estado: r.estado ?? undefined, cidade: r.cidade ?? undefined,
     cep: r.cep ?? undefined, criadoEm: r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? undefined,
   };
 }
 
 // ─── SERVIÇOS ─────────────────────────────────────────────
 export async function getServicos(): Promise<ServicoItem[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM servicos ORDER BY nome ASC');
+  const rows = await db.getAllAsync<any>('SELECT * FROM servicos WHERE excluido_em IS NULL ORDER BY nome ASC');
   return rows.map(rowToServico);
 }
 
 export async function searchServicos(q: string): Promise<ServicoItem[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM servicos WHERE nome LIKE ? ORDER BY nome ASC',
+    'SELECT * FROM servicos WHERE excluido_em IS NULL AND nome LIKE ? ORDER BY nome ASC',
     [`%${q}%`]
   );
   return rows.map(rowToServico);
@@ -469,20 +589,53 @@ export async function searchServicos(q: string): Promise<ServicoItem[]> {
 
 export async function saveServico(s: ServicoItem): Promise<void> {
   const db = await getDb();
+  const agora = new Date().toISOString();
+  const salvo: ServicoItem = { ...s, atualizadoEm: agora };
   await db.runAsync(
-    `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [s.id, s.nome, s.descricao ?? null, s.preco, s.custo ?? null,
-     s.unidade, s.fotoUri ?? null, s.criadoEm]
+    `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em, excluido_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [salvo.id, salvo.nome, salvo.descricao ?? null, salvo.preco, salvo.custo ?? null,
+     salvo.unidade, salvo.fotoUri ?? null, salvo.criadoEm, salvo.excluidoEm ?? null, agora]
   );
-  mirrorPush('servicos', s);
+  mirrorPush('servicos', salvo);
 }
 
+/** SOFT DELETE → LIXEIRA (mantém o nome para os call-sites). Bumpa o relógio de sync. */
 export async function deleteServico(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE servicos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getServicoRaw(id);
+  if (atualizado) mirrorPush('servicos', atualizado);
+}
+
+/** RESTAURAR da lixeira. Bumpa o relógio para vencer a cópia excluída dos outros aparelhos. */
+export async function restaurarServico(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE servicos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getServicoRaw(id);
+  if (atualizado) mirrorPush('servicos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirServicoDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM servicos WHERE id = ?', [id]);
   mirrorRemove('servicos', id);
   registrarExclusao('servicos', id);
+}
+
+/** Serviços na LIXEIRA (soft-deletados). */
+export async function getLixeiraServicos(): Promise<ServicoItem[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM servicos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToServico);
+}
+
+async function getServicoRaw(id: string): Promise<ServicoItem | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM servicos WHERE id = ?', [id]);
+  return row ? rowToServico(row) : null;
 }
 
 function rowToServico(r: any): ServicoItem {
@@ -490,20 +643,22 @@ function rowToServico(r: any): ServicoItem {
     id: r.id, nome: r.nome, descricao: r.descricao ?? undefined,
     preco: r.preco, custo: r.custo ?? undefined, unidade: r.unidade,
     fotoUri: r.foto_uri ?? undefined, criadoEm: r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? undefined,
   };
 }
 
 // ─── PRODUTOS ─────────────────────────────────────────────
 export async function getProdutos(): Promise<ProdutoItem[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM produtos ORDER BY nome ASC');
+  const rows = await db.getAllAsync<any>('SELECT * FROM produtos WHERE excluido_em IS NULL ORDER BY nome ASC');
   return rows.map(rowToProduto);
 }
 
 export async function searchProdutos(q: string): Promise<ProdutoItem[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM produtos WHERE nome LIKE ? ORDER BY nome ASC',
+    'SELECT * FROM produtos WHERE excluido_em IS NULL AND nome LIKE ? ORDER BY nome ASC',
     [`%${q}%`]
   );
   return rows.map(rowToProduto);
@@ -511,21 +666,55 @@ export async function searchProdutos(q: string): Promise<ProdutoItem[]> {
 
 export async function saveProduto(p: ProdutoItem): Promise<void> {
   const db = await getDb();
+  const agora = new Date().toISOString();
+  const salvo: ProdutoItem = { ...p, atualizadoEm: agora };
   await db.runAsync(
     `INSERT OR REPLACE INTO produtos
-     (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    [p.id, p.nome, p.descricao ?? null, p.preco, p.custo ?? null,
-     p.marca ?? null, p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm]
+     (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em, excluido_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [salvo.id, salvo.nome, salvo.descricao ?? null, salvo.preco, salvo.custo ?? null,
+     salvo.marca ?? null, salvo.modelo ?? null, salvo.unidade, salvo.fotoUri ?? null,
+     salvo.criadoEm, salvo.excluidoEm ?? null, agora]
   );
-  mirrorPush('produtos', p);
+  mirrorPush('produtos', salvo);
 }
 
+/** SOFT DELETE → LIXEIRA (mantém o nome para os call-sites). Bumpa o relógio de sync. */
 export async function deleteProduto(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE produtos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getProdutoRaw(id);
+  if (atualizado) mirrorPush('produtos', atualizado);
+}
+
+/** RESTAURAR da lixeira. Bumpa o relógio para vencer a cópia excluída dos outros aparelhos. */
+export async function restaurarProduto(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE produtos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getProdutoRaw(id);
+  if (atualizado) mirrorPush('produtos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirProdutoDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM produtos WHERE id = ?', [id]);
   mirrorRemove('produtos', id);
   registrarExclusao('produtos', id);
+}
+
+/** Produtos na LIXEIRA (soft-deletados). */
+export async function getLixeiraProdutos(): Promise<ProdutoItem[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM produtos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToProduto);
+}
+
+async function getProdutoRaw(id: string): Promise<ProdutoItem | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM produtos WHERE id = ?', [id]);
+  return row ? rowToProduto(row) : null;
 }
 
 function rowToProduto(r: any): ProdutoItem {
@@ -534,6 +723,8 @@ function rowToProduto(r: any): ProdutoItem {
     preco: r.preco, custo: r.custo ?? undefined, marca: r.marca ?? undefined,
     modelo: r.modelo ?? undefined, unidade: r.unidade,
     fotoUri: r.foto_uri ?? undefined, criadoEm: r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? undefined,
   };
 }
 
@@ -545,12 +736,17 @@ export async function getOrcamentos(): Promise<Orcamento[]> {
   // local guarda só (id, numero, data). `json_extract` (JSON1, embutido no
   // SQLite do Expo) lê a chave; o tiebreaker por `numero` cobre linhas legadas
   // sem `criadoEm`.
+  // LIXEIRA: só ATIVOS. orcamentos guarda a entidade inteira no blob JSON `data`,
+  // então o soft-delete mora em `data.$.excluidoEm` (não há coluna) — filtramos por
+  // json_extract. Robusto ao sync: o cloudSync escreve o blob inteiro (com excluidoEm).
   const rows = await db.getAllAsync<any>(
-    "SELECT * FROM orcamentos ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
+    "SELECT * FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
   );
   return rows.map(r => JSON.parse(r.data));
 }
 
+// Leitura por id NÃO filtra soft-delete de propósito: restaurar/detalhar da lixeira
+// precisam do registro mesmo excluído (a lista normal é que não o linka).
 export async function getOrcamento(id: string): Promise<Orcamento | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ data: string }>('SELECT data FROM orcamentos WHERE id = ?', [id]);
@@ -578,6 +774,9 @@ const CAMPOS_VOLATEIS_ORCAMENTO: ReadonlySet<string> = new Set([
   'atualizadoEm',
   'assinaturaClienteUri',
   'dataAssinaturaCliente',
+  // LIXEIRA: mandar para a lixeira / restaurar NÃO é mudança comercial da proposta
+  // — nunca deve congelar uma versão falsa se algum save passar por aqui.
+  'excluidoEm',
 ]);
 
 /**
@@ -648,13 +847,61 @@ export async function saveOrcamento(o: Orcamento): Promise<void> {
   mirrorPush('orcamentos', o);
 }
 
+/**
+ * EXCLUIR (usuário) = SOFT DELETE → LIXEIRA. Reescreve o blob com excluidoEm=agora
+ * e bump de atualizadoEm (para o guard de timestamp do sync tratar como a escrita
+ * mais nova). NÃO passa por saveOrcamento (evita congelar versão) e NÃO apaga o
+ * histórico de versões (o orçamento pode ser restaurado). Mantém o nome para os
+ * call-sites. Sincroniza como UPDATE (mirrorPush do blob), sem tombstone.
+ */
 export async function deleteOrcamento(id: string): Promise<void> {
   const db = await getDb();
+  const o = await getOrcamento(id);
+  if (!o) return;
+  const agora = new Date().toISOString();
+  const atualizado: Orcamento = { ...o, excluidoEm: agora, atualizadoEm: agora };
+  await db.runAsync(
+    'INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
+    [atualizado.id, atualizado.numero, JSON.stringify(atualizado)],
+  );
+  mirrorPush('orcamentos', atualizado);
+}
+
+/** RESTAURAR da lixeira: limpa excluidoEm, bump atualizadoEm, re-espelha ativo. */
+export async function restaurarOrcamento(id: string): Promise<void> {
+  const db = await getDb();
+  const o = await getOrcamento(id);
+  if (!o) return;
+  const { excluidoEm, ...resto } = o;
+  void excluidoEm;
+  const atualizado: Orcamento = { ...resto, atualizadoEm: new Date().toISOString() };
+  await db.runAsync(
+    'INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
+    [atualizado.id, atualizado.numero, JSON.stringify(atualizado)],
+  );
+  mirrorPush('orcamentos', atualizado);
+}
+
+/**
+ * EXCLUIR DEFINITIVAMENTE (da lixeira): hard delete real + tombstone. Também apaga
+ * o histórico de versões (não faz sentido sem o orçamento pai). Era o comportamento
+ * do antigo deleteOrcamento.
+ */
+export async function excluirOrcamentoDefinitivo(id: string): Promise<void> {
+  const db = await getDb();
   await db.runAsync('DELETE FROM orcamentos WHERE id = ?', [id]);
-  // O histórico de versões deste orçamento morre junto (não faz sentido sem o pai).
   await db.runAsync('DELETE FROM orcamento_versoes WHERE orcamento_id = ?', [id]);
   mirrorRemove('orcamentos', id);
   registrarExclusao('orcamentos', id);
+}
+
+/** Orçamentos na LIXEIRA (soft-deletados), do excluído mais recente ao mais antigo. */
+export async function getLixeiraOrcamentos(): Promise<Orcamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NOT NULL ORDER BY json_extract(data, '$.excluidoEm') DESC",
+  );
+  return rows.map(r => JSON.parse(r.data));
 }
 
 // ─── VERSÕES DE ORÇAMENTO (mestre 13.5) ─────────────────────
@@ -846,18 +1093,20 @@ function rowToOrdemServico(r: any): OrdemServico {
     valor: r.valor ?? undefined,
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
+    excluidoEm: r.excluido_em ?? undefined,
   };
 }
 
 export async function getOrdensServico(): Promise<OrdemServico[]> {
   const db = await getDb();
-  // Mais recentes primeiro (por criação), com tiebreaker por número.
+  // LIXEIRA: só ATIVAS (excluido_em IS NULL). Mais recentes primeiro, tiebreaker por número.
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM ordens_servico ORDER BY criado_em DESC, numero DESC',
+    'SELECT * FROM ordens_servico WHERE excluido_em IS NULL ORDER BY criado_em DESC, numero DESC',
   );
   return rows.map(rowToOrdemServico);
 }
 
+// Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getOrdemServico(id: string): Promise<OrdemServico | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM ordens_servico WHERE id = ?', [id]);
@@ -870,12 +1119,12 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
      os.titulo, os.descricao ?? null, os.status, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
-     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm],
+     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null],
   );
   // Espelho na nuvem pelo caminho PADRÃO de cloudSync (ordens_servico é SyncTable
   // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
@@ -883,17 +1132,42 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
   mirrorPush('ordens_servico', os);
 }
 
+/** SOFT DELETE → LIXEIRA (mantém o nome). Bump atualizado_em p/ o guard de sync. */
 export async function deleteOrdemServico(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE ordens_servico SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getOrdemServico(id);
+  if (atualizado) mirrorPush('ordens_servico', atualizado);
+}
+
+/** RESTAURAR da lixeira. */
+export async function restaurarOrdemServico(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE ordens_servico SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getOrdemServico(id);
+  if (atualizado) mirrorPush('ordens_servico', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirOrdemServicoDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM ordens_servico WHERE id = ?', [id]);
   mirrorRemove('ordens_servico', id);
   registrarExclusao('ordens_servico', id);
 }
 
-/** Lê todas as OS (para o backup levar o histórico completo). */
+/** OS na LIXEIRA (soft-deletadas). */
+export async function getLixeiraOrdensServico(): Promise<OrdemServico[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM ordens_servico WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToOrdemServico);
+}
+
+/** Lê as OS ATIVAS (para o backup — a lixeira não vai no backup, ver exportAllData). */
 async function getOrdensServicoForBackup(): Promise<OrdemServico[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM ordens_servico ORDER BY criado_em ASC');
+  const rows = await db.getAllAsync<any>('SELECT * FROM ordens_servico WHERE excluido_em IS NULL ORDER BY criado_em ASC');
   return rows.map(rowToOrdemServico);
 }
 
@@ -934,29 +1208,31 @@ function rowToEquipamento(r: any): Equipamento {
     fotos,
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
+    excluidoEm: r.excluido_em ?? undefined,
   };
 }
 
 export async function getEquipamentosDb(): Promise<Equipamento[]> {
   const db = await getDb();
-  // Mais recentes primeiro (por criação); tiebreaker estável por id.
+  // LIXEIRA: só ATIVOS. Mais recentes primeiro (por criação); tiebreaker por id.
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM equipamentos ORDER BY criado_em DESC, id DESC',
+    'SELECT * FROM equipamentos WHERE excluido_em IS NULL ORDER BY criado_em DESC, id DESC',
   );
   return rows.map(rowToEquipamento);
 }
 
+// Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getEquipamentoDb(id: string): Promise<Equipamento | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM equipamentos WHERE id = ?', [id]);
   return row ? rowToEquipamento(row) : null;
 }
 
-/** Equipamentos de um cliente específico (inventário do cliente). */
+/** Equipamentos ATIVOS de um cliente específico (inventário do cliente). */
 export async function getEquipamentosDoClienteDb(clienteId: string): Promise<Equipamento[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
-    'SELECT * FROM equipamentos WHERE cliente_id = ? ORDER BY criado_em DESC, id DESC',
+    'SELECT * FROM equipamentos WHERE cliente_id = ? AND excluido_em IS NULL ORDER BY criado_em DESC, id DESC',
     [clienteId],
   );
   return rows.map(rowToEquipamento);
@@ -968,13 +1244,13 @@ export async function saveEquipamentoDb(e: Equipamento): Promise<void> {
     `INSERT OR REPLACE INTO equipamentos
        (id, cliente_id, local_id, codigo_interno, patrimonio, fabricante, modelo, numero_serie,
         categoria, capacidade_btu, tensao, refrigerante, localizacao, situacao, criticidade,
-        qr_token, qr_revogado_em, fotos, criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        qr_token, qr_revogado_em, fotos, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [e.id, e.clienteId ?? null, e.localId ?? null, e.codigoInterno ?? null, e.patrimonio ?? null,
      e.fabricante ?? null, e.modelo ?? null, e.numeroSerie ?? null, e.categoria ?? null,
      e.capacidadeBtu ?? null, e.tensao ?? null, e.refrigerante ?? null, e.localizacao ?? null,
      e.situacao, e.criticidade ?? null, e.qrToken ?? '', e.qrRevogadoEm ?? null,
-     JSON.stringify(e.fotos ?? []), e.criadoEm, e.atualizadoEm],
+     JSON.stringify(e.fotos ?? []), e.criadoEm, e.atualizadoEm, e.excluidoEm ?? null],
   );
   // Espelho na nuvem pelo caminho PADRÃO de cloudSync (fire-and-forget, nunca
   // afeta o save local). O TO_ROW preserva o qr_token que veio do pull (ou o omite
@@ -982,38 +1258,115 @@ export async function saveEquipamentoDb(e: Equipamento): Promise<void> {
   mirrorPush('equipamentos', e);
 }
 
+/** SOFT DELETE → LIXEIRA (mantém o nome; removerEquipamento do service chama aqui). */
 export async function deleteEquipamentoDb(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE equipamentos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getEquipamentoDb(id);
+  if (atualizado) mirrorPush('equipamentos', atualizado);
+}
+
+/** RESTAURAR da lixeira. */
+export async function restaurarEquipamento(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE equipamentos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getEquipamentoDb(id);
+  if (atualizado) mirrorPush('equipamentos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirEquipamentoDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM equipamentos WHERE id = ?', [id]);
   mirrorRemove('equipamentos', id);
   registrarExclusao('equipamentos', id);
 }
 
-/** Lê todos os equipamentos (para o backup levar o inventário completo). */
+/** Equipamentos na LIXEIRA (soft-deletados). */
+export async function getLixeiraEquipamentos(): Promise<Equipamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM equipamentos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToEquipamento);
+}
+
+/** Lê os equipamentos ATIVOS (para o backup — a lixeira não vai no backup). */
 async function getEquipamentosForBackup(): Promise<Equipamento[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM equipamentos ORDER BY criado_em ASC');
+  const rows = await db.getAllAsync<any>('SELECT * FROM equipamentos WHERE excluido_em IS NULL ORDER BY criado_em ASC');
   return rows.map(rowToEquipamento);
 }
 
 // ─── RECIBOS ─────────────────────────────────────────────
 export async function getRecibos(): Promise<Recibo[]> {
   const db = await getDb();
-  // Mesma lógica de getOrcamentos: ordena por data de criação (mais novo
-  // primeiro), extraída do blob JSON, com fallback por `numero`.
+  // LIXEIRA: só ATIVOS. Mesma lógica de getOrcamentos (soft-delete no blob JSON):
+  // ordena por data de criação (mais novo primeiro), com fallback por `numero`.
   const rows = await db.getAllAsync<any>(
-    "SELECT * FROM recibos ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
+    "SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
   );
   return rows.map(r => JSON.parse(r.data));
 }
 
+// Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
+export async function getRecibo(id: string): Promise<Recibo | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ data: string }>('SELECT data FROM recibos WHERE id = ?', [id]);
+  return row ? JSON.parse(row.data) : null;
+}
+
 export async function saveRecibo(r: Recibo): Promise<void> {
   const db = await getDb();
+  // Recibo é blob: o relógio de sync vive DENTRO do JSON (e é espelhado na coluna
+  // `atualizado_em` da nuvem por reciboToRow).
+  const salvo: Recibo = { ...r, atualizadoEm: new Date().toISOString() };
   await db.runAsync(
     'INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)',
-    [r.id, r.numero, JSON.stringify(r)]
+    [salvo.id, salvo.numero, JSON.stringify(salvo)]
   );
-  mirrorPush('recibos', r);
+  mirrorPush('recibos', salvo);
+}
+
+/** SOFT DELETE → LIXEIRA (excluidoEm no blob). Bumpa o relógio de sync. */
+export async function deleteRecibo(id: string): Promise<void> {
+  const db = await getDb();
+  const r = await getRecibo(id);
+  if (!r) return;
+  const agora = new Date().toISOString();
+  const atualizado: Recibo = { ...r, excluidoEm: agora, atualizadoEm: agora };
+  await db.runAsync('INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)',
+    [atualizado.id, atualizado.numero, JSON.stringify(atualizado)]);
+  mirrorPush('recibos', atualizado);
+}
+
+/** RESTAURAR da lixeira. Bumpa o relógio para vencer a cópia excluída dos outros aparelhos. */
+export async function restaurarRecibo(id: string): Promise<void> {
+  const db = await getDb();
+  const r = await getRecibo(id);
+  if (!r) return;
+  const { excluidoEm, ...resto } = r;
+  void excluidoEm;
+  const atualizado: Recibo = { ...(resto as Recibo), atualizadoEm: new Date().toISOString() };
+  await db.runAsync('INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)',
+    [atualizado.id, atualizado.numero, JSON.stringify(atualizado)]);
+  mirrorPush('recibos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirReciboDefinitivo(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM recibos WHERE id = ?', [id]);
+  mirrorRemove('recibos', id);
+  registrarExclusao('recibos', id);
+}
+
+/** Recibos na LIXEIRA (soft-deletados). */
+export async function getLixeiraRecibos(): Promise<Recibo[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NOT NULL ORDER BY json_extract(data, '$.excluidoEm') DESC",
+  );
+  return rows.map(r => JSON.parse(r.data));
 }
 
 export async function getNextReciboNumber(): Promise<string> {
@@ -1023,49 +1376,135 @@ export async function getNextReciboNumber(): Promise<string> {
 }
 
 // ─── MODELOS ─────────────────────────────────────────────
+function rowToModelo(r: any): ModeloOrcamento {
+  return {
+    id: r.id, nome: r.nome, descricao: r.descricao ?? undefined,
+    orcamentoBase: JSON.parse(r.data), criadoEm: r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? undefined,
+  };
+}
+
 export async function getModelos(): Promise<ModeloOrcamento[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM modelos ORDER BY criado_em DESC');
-  return rows.map(r => ({ id: r.id, nome: r.nome, descricao: r.descricao, orcamentoBase: JSON.parse(r.data), criadoEm: r.criado_em }));
+  const rows = await db.getAllAsync<any>('SELECT * FROM modelos WHERE excluido_em IS NULL ORDER BY criado_em DESC');
+  return rows.map(rowToModelo);
 }
 
 export async function saveModelo(m: ModeloOrcamento): Promise<void> {
   const db = await getDb();
+  const agora = new Date().toISOString();
+  const salvo: ModeloOrcamento = { ...m, atualizadoEm: agora };
   await db.runAsync(
-    'INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em) VALUES (?,?,?,?,?)',
-    [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm]
+    'INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em, excluido_em, atualizado_em) VALUES (?,?,?,?,?,?,?)',
+    [salvo.id, salvo.nome, salvo.descricao ?? null, JSON.stringify(salvo.orcamentoBase),
+     salvo.criadoEm, salvo.excluidoEm ?? null, agora]
   );
-  mirrorPush('modelos', m);
+  mirrorPush('modelos', salvo);
 }
 
+/** SOFT DELETE → LIXEIRA (mantém o nome). Bumpa o relógio de sync. */
 export async function deleteModelo(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE modelos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getModeloRaw(id);
+  if (atualizado) mirrorPush('modelos', atualizado);
+}
+
+/** RESTAURAR da lixeira. Bumpa o relógio para vencer a cópia excluída dos outros aparelhos. */
+export async function restaurarModelo(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE modelos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getModeloRaw(id);
+  if (atualizado) mirrorPush('modelos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirModeloDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM modelos WHERE id = ?', [id]);
   mirrorRemove('modelos', id);
   registrarExclusao('modelos', id);
 }
 
+/** Modelos na LIXEIRA (soft-deletados). */
+export async function getLixeiraModelos(): Promise<ModeloOrcamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM modelos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToModelo);
+}
+
+async function getModeloRaw(id: string): Promise<ModeloOrcamento | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM modelos WHERE id = ?', [id]);
+  return row ? rowToModelo(row) : null;
+}
+
 // ─── DEPOIMENTOS ─────────────────────────────────────────────
+function rowToDepoimento(r: any): Depoimento {
+  return {
+    id: r.id, nomeCliente: r.nome_cliente, estrelas: r.estrelas,
+    texto: r.texto ?? undefined, criadoEm: r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? undefined,
+  };
+}
+
 export async function getDepoimentos(): Promise<Depoimento[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM depoimentos ORDER BY criado_em DESC');
-  return rows.map(r => ({ id: r.id, nomeCliente: r.nome_cliente, estrelas: r.estrelas, texto: r.texto ?? undefined, criadoEm: r.criado_em }));
+  const rows = await db.getAllAsync<any>('SELECT * FROM depoimentos WHERE excluido_em IS NULL ORDER BY criado_em DESC');
+  return rows.map(rowToDepoimento);
 }
 
 export async function saveDepoimento(d: Depoimento): Promise<void> {
   const db = await getDb();
+  const agora = new Date().toISOString();
+  const salvo: Depoimento = { ...d, atualizadoEm: agora };
   await db.runAsync(
-    'INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em) VALUES (?,?,?,?,?)',
-    [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm]
+    'INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em, excluido_em, atualizado_em) VALUES (?,?,?,?,?,?,?)',
+    [salvo.id, salvo.nomeCliente, salvo.estrelas, salvo.texto ?? null, salvo.criadoEm,
+     salvo.excluidoEm ?? null, agora]
   );
-  mirrorPush('depoimentos', d);
+  mirrorPush('depoimentos', salvo);
 }
 
+/** SOFT DELETE → LIXEIRA (mantém o nome). Bumpa o relógio de sync. */
 export async function deleteDepoimento(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE depoimentos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getDepoimentoRaw(id);
+  if (atualizado) mirrorPush('depoimentos', atualizado);
+}
+
+/** RESTAURAR da lixeira. Bumpa o relógio para vencer a cópia excluída dos outros aparelhos. */
+export async function restaurarDepoimento(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE depoimentos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getDepoimentoRaw(id);
+  if (atualizado) mirrorPush('depoimentos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE (hard delete + tombstone). */
+export async function excluirDepoimentoDefinitivo(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM depoimentos WHERE id = ?', [id]);
   mirrorRemove('depoimentos', id);
   registrarExclusao('depoimentos', id);
+}
+
+/** Depoimentos na LIXEIRA (soft-deletados). */
+export async function getLixeiraDepoimentos(): Promise<Depoimento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM depoimentos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
+  return rows.map(rowToDepoimento);
+}
+
+async function getDepoimentoRaw(id: string): Promise<Depoimento | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM depoimentos WHERE id = ?', [id]);
+  return row ? rowToDepoimento(row) : null;
 }
 
 // ─── CACHE DE IA (Etapa 0.3) ─────────────────────────────
@@ -1192,12 +1631,58 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     endereco: r.endereco ?? undefined, status: r.status,
     orcamentoId: r.orcamento_id ?? undefined, observacao: r.observacao ?? undefined,
     criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
+    excluidoEm: r.excluido_em ?? undefined,
   };
 }
 
 async function getAgendamentosForBackup(): Promise<Agendamento[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>('SELECT * FROM agendamentos ORDER BY inicio ASC');
+  // Só ATIVOS (a lixeira não entra no backup — ver exportAllData).
+  const rows = await db.getAllAsync<any>('SELECT * FROM agendamentos WHERE excluido_em IS NULL ORDER BY inicio ASC');
+  return rows.map(rowToAgendamentoLocal);
+}
+
+// ─── AGENDAMENTOS — LIXEIRA (soft-delete). As LEITURAS e o DELETE do usuário
+// vivem em services/agenda.ts (fora do meu escopo). Estas funções dão o suporte
+// da lixeira em database.ts; o INTEGRADOR liga o agenda.deleteAgendamento a
+// moverAgendamentoParaLixeira e filtra `excluido_em IS NULL` nas leituras de agenda
+// (ver observações). Enquanto não ligado, nada solta soft-delete de agendamento e
+// getLixeiraAgendamentos fica vazio — sem inconsistência.
+async function getAgendamentoLocalRaw(id: string): Promise<Agendamento | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM agendamentos WHERE id = ?', [id]);
+  return row ? rowToAgendamentoLocal(row) : null;
+}
+
+/** SOFT DELETE de agendamento → LIXEIRA. Bump atualizado_em p/ o guard de sync. */
+export async function moverAgendamentoParaLixeira(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE agendamentos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const atualizado = await getAgendamentoLocalRaw(id);
+  if (atualizado) mirrorPush('agendamentos', atualizado);
+}
+
+/** RESTAURAR agendamento da lixeira. */
+export async function restaurarAgendamento(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE agendamentos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const atualizado = await getAgendamentoLocalRaw(id);
+  if (atualizado) mirrorPush('agendamentos', atualizado);
+}
+
+/** EXCLUIR DEFINITIVAMENTE agendamento (hard delete + tombstone). */
+export async function excluirAgendamentoDefinitivo(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM agendamentos WHERE id = ?', [id]);
+  mirrorRemove('agendamentos', id);
+  registrarExclusao('agendamentos', id);
+}
+
+/** Agendamentos na LIXEIRA (soft-deletados). */
+export async function getLixeiraAgendamentos(): Promise<Agendamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM agendamentos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC');
   return rows.map(rowToAgendamentoLocal);
 }
 
@@ -1358,29 +1843,37 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
         data.empresa.id, JSON.stringify(data.empresa),
       ]);
     }
+    // `atualizado_em` PRECISA ir nestes inserts: a coluna da nuvem é NOT NULL, e o
+    // pushAllLocal que roda logo após o commit mandaria null para todo item
+    // restaurado, quebrando o sync inteiro de quem acabou de restaurar um backup.
+    // Snapshots antigos não têm o campo → caímos em criadoEm (nunca em "agora",
+    // que faria o item restaurado vencer cópias remotas mais recentes).
     for (const c of clientes) {
       await db.runAsync(
         `INSERT OR REPLACE INTO clientes
-         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, atualizado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [c.id, c.nome, c.telefone, c.cpf ?? null, c.cnpj ?? null, c.endereco ?? null,
-         c.complemento ?? null, c.estado ?? null, c.cidade ?? null, c.cep ?? null, c.criadoEm],
+         c.complemento ?? null, c.estado ?? null, c.cidade ?? null, c.cep ?? null, c.criadoEm,
+         c.atualizadoEm ?? c.criadoEm],
       );
     }
     for (const s of servicos) {
       await db.runAsync(
-        `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em)
-         VALUES (?,?,?,?,?,?,?,?)`,
-        [s.id, s.nome, s.descricao ?? null, s.preco, s.custo ?? null, s.unidade, s.fotoUri ?? null, s.criadoEm],
+        `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em, atualizado_em)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [s.id, s.nome, s.descricao ?? null, s.preco, s.custo ?? null, s.unidade, s.fotoUri ?? null, s.criadoEm,
+         s.atualizadoEm ?? s.criadoEm],
       );
     }
     for (const p of produtos) {
       await db.runAsync(
         `INSERT OR REPLACE INTO produtos
-         (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em, atualizado_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
         [p.id, p.nome, p.descricao ?? null, p.preco, p.custo ?? null, p.marca ?? null,
-         p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm],
+         p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm,
+         p.atualizadoEm ?? p.criadoEm],
       );
     }
     for (const o of orcamentos) {
@@ -1403,12 +1896,14 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
         [r.id, r.numero, JSON.stringify(r)]);
     }
     for (const m of modelos) {
-      await db.runAsync('INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em) VALUES (?,?,?,?,?)',
-        [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm]);
+      await db.runAsync('INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em, atualizado_em) VALUES (?,?,?,?,?,?)',
+        [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm,
+         m.atualizadoEm ?? m.criadoEm]);
     }
     for (const d of depoimentos) {
-      await db.runAsync('INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em) VALUES (?,?,?,?,?)',
-        [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm]);
+      await db.runAsync('INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em, atualizado_em) VALUES (?,?,?,?,?,?)',
+        [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm,
+         d.atualizadoEm ?? d.criadoEm]);
     }
     for (const a of agendamentos) {
       await db.runAsync(

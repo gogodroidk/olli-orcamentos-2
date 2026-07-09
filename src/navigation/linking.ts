@@ -98,6 +98,18 @@ export function criarLinkingConfig(
         OrdemServico: 'ordens',
         // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). URL /equipamentos.
         Equipamento: 'equipamentos',
+
+        // ─── Frentes novas ──────────────────────────────────────────────
+        Ajuda: 'ajuda',
+        Privacidade: 'privacidade',
+        Termos: 'termos',
+        Lixeira: 'lixeira',
+        Assinatura: 'assinatura',
+        // 'Landing' de PROPÓSITO não tem path: assim a URL raiz '/' continua '/'
+        // quando o deslogado vê a landing na web, preservando o canonical de SEO
+        // (dar um path a Landing empurraria a home autenticada de '/' e mudaria a
+        // URL raiz). O destino da landing é resolvido pelo initialRouteName, não
+        // pelo linking.
       },
     },
   };

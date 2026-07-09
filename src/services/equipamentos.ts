@@ -47,12 +47,21 @@ export function getEquipamentosDoCliente(clienteId: string): Promise<Equipamento
 /**
  * Cria ou atualiza um equipamento. Preenche defaults e PRESERVA o `qrToken`
  * existente (nunca sobrescreve com vazio). Carimba `atualizadoEm` sempre.
+ *
+ * Recusa editar um equipamento que está na LIXEIRA: `getEquipamentoDb` não filtra
+ * soft-delete, então sem essa guarda um "salvar" comum ressuscitaria o item (zerando
+ * `excluidoEm` implicitamente) e ainda bumparia `atualizadoEm`, fazendo o guard de
+ * sync propagar a ressurreição como escrita mais nova. Restaurar é ação explícita
+ * (tela de lixeira), nunca efeito colateral de editar.
  */
 export async function salvarEquipamento(
   parcial: Partial<Equipamento> & { id?: string },
 ): Promise<Equipamento> {
   const agora = new Date().toISOString();
   const existente = parcial.id ? await getEquipamentoDb(parcial.id) : null;
+  if (existente?.excluidoEm) {
+    throw new Error('Este equipamento está na lixeira. Restaure-o antes de editar.');
+  }
   const e: Equipamento = {
     // `||` (não `??`): a tela monta um cadastro novo com id:'' (string vazia, que
     // `??` NÃO trataria como ausente) → sem isto todo equipamento novo nasceria com
@@ -78,6 +87,10 @@ export async function salvarEquipamento(
     qrRevogadoEm: parcial.qrRevogadoEm ?? existente?.qrRevogadoEm,
     fotos: parcial.fotos ?? existente?.fotos ?? [],
     criadoEm: existente?.criadoEm ?? parcial.criadoEm ?? agora,
+    // Preserva a lixeira: só chega aqui se `existente` não estava excluído (guarda
+    // acima), então isto é sempre undefined na prática — mas nunca deve ser
+    // reconstruído a partir de `parcial`, que não carrega esse campo.
+    excluidoEm: existente?.excluidoEm,
     atualizadoEm: agora,
   };
   await saveEquipamentoDb(e);

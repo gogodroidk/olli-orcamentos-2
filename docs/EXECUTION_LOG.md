@@ -109,6 +109,40 @@ Commits: `f54c212` (WIP) + fix do gate. Push main. **A maior aposta comercial** 
 - **Porta física QR** (`worker/src/pmoc.js`, deploy `v4e5a8819`): `GET /q/<token>` página pública LGPD-safe (só prestador+código+categoria+situação+contato; nunca cliente/endereço/contrato/valores); revogado e inexistente indistinguíveis; `qr_scan_events` sem IP cru (hash salgado com segredo fixo do worker); QR image `/q/<token>.svg` gerado em JS puro (round-trip verificado).
 - **Gate Fable**: 1 CRITICAL (`id: parcial.id ?? generateId()` — `??` não pegava `''` → todo equipamento salvo com id vazio, colapso do inventário), 1 HIGH (rate-limit anti-enumeração inerte por salgar o hash com o token), 1 MEDIUM (push zerava revogação de QR) — **todos corrigidos**.
 
+## Bloco A — Lixeira, assinatura, ajuda, landing/SEO, legal, modo técnico (CONCLUÍDO)
+
+Força total: 7 frentes de construção + 2 gates adversariais + 5 frentes de correção. 42 arquivos.
+
+### O que entrou
+- **Lixeira real** (`lixeira.ts`, `LixeiraScreen`, `database.ts`): `excluido_em` em 10 entidades. Excluir = mandar pra lixeira (retenção 30 dias, restaurar item a item, excluir de vez, expurgo automático no boot). Antes a exclusão era permanente e escondida. Migrations `20260713_lixeira.sql` + `20260714_atualizado_em.sql` (aplicadas).
+- **Assinatura** (`AssinaturaScreen`, `assinatura.ts`, worker `/stripe/faturas|/stripe/metodo`): valor, ciclo, próxima cobrança, histórico de faturas, cartão (bandeira+last4), cancelar pelo portal. `ContaScreen` sem venda para quem já paga. Foto de perfil.
+- **Excluir minha conta** (`conta.ts`, `worker/src/conta.js`): exigência da Apple e da LGPD. Cancela a assinatura na Stripe **antes** e só então apaga `auth.users`; se o cancelamento falhar, não apaga nada (502 retryável).
+- **Central de Ajuda** (`AjudaScreen`, `content/ajuda/`) + onboarding com liga/desliga.
+- **Landing + SEO** (`LandingScreen`, `LandingSecoes`, `public/index.html`, `robots.txt`, `sitemap.xml`, `seoWeb.ts`) e **Legal** (Privacidade/Termos).
+- **Modo técnico** (`TecnicoHomeScreen`, `GuardaPapel`): no APK o técnico tem home de campo, sem aba de orçamento, sem financeiro.
+
+### Gate 1 (5 dimensões) — 4 HIGH + 6 MEDIUM, todos corrigidos
+Cada achado era um **comentário prometendo uma invariante que o código deixara de garantir** quando soft-delete e papéis entraram:
+- **Ressurreição de item excluído** (`cloudSync.ts`): 6 tabelas (clientes/servicos/produtos/modelos/depoimentos/recibos) não tinham `atualizado_em`. Excluir offline → `mirrorPush` falha → o pull da linha ativa zerava o `excluido_em` local. **Correção estrutural**: relógio de sync nessas 6 tabelas (nuvem + SQLite v3), guards nos dois sentidos. "Exclusão sempre vence" foi rejeitado: tornaria a exclusão estado absorvente e desfaria o Restaurar.
+- **Deep link público descartado** (`App.tsx`): o `onReady` tratava toda rota ≠ `initialRoute` como protegida → Privacidade, Termos, Ajuda e Planos eram inalcançáveis por URL. `ROTAS_PUBLICAS`.
+- **Pro 12x rebaixado** (`worker/src/stripe.js`): a linha do 12x tem `stripe_subscription_id: null`, e `null && ...` fazia o guard pular exatamente a linha que ele devia proteger. Um `deleted` da mensal antiga cancelava quem pagou R$468.
+- **Papel indeterminado = permissões de dono** (`usePermissao`/`useTipoConta`/`equipe.ts`/`AppNavigator`): `getMinhaOrganizacao` devolvia `null` em erro de rede, e `null` caía na matriz `pessoal` — a mais permissiva. Técnico offline via faturamento a sessão inteira. Agora: `carregarMinhaOrganizacao` distingue erro de ausência; `resolvido` fail-closed; cache do papel amarrado ao `userId`; Home neutra enquanto carrega.
+- MEDIUM: número de OS colidindo com OS na lixeira; conta apagada com assinatura viva; técnico alcançando financeiro por deep link; ferramentas de dono na aba Conta do técnico; landing vendendo "equipe" como pronta (a tela de compra dizia "em breve"); artigo de ajuda negando a existência da Lixeira.
+
+### Gate 2 (sobre as próprias correções) — 3 HIGH + 1 MEDIUM, todos corrigidos
+Correção errada é pior que o bug, porque cria a ilusão de resolvido:
+- **Guard fail-closed era código morto** (`conta.js`): o arquivo tem seu *próprio* `getAssinatura`, que retorna `null` em erro — não `{error:true}`. A cobrança órfã seguia possível, agora com um comentário jurando que não.
+- **Exclusão de conta travada para sempre**: a Stripe responde `400 subscription_already_canceled` (não 404) para quem já cancelou, e o `deleted` mantém o `subscription_id` na linha. Quem cancelou pelo portal nunca mais conseguiria apagar a conta.
+- **Upgrade legítimo descartado**: ao alargar o guard (b) para a linha avulsa, todo evento de subscription virou "outra origem". Quem tinha 12x e assinasse Empresa pagaria R$99/mês e receberia Pro. Agora só eventos de **término** são ignorados; um evento **ativo** grava a subscription nova preservando o maior nível e a maior vigência.
+- MEDIUM: `/conta/excluir` dividia balde de rate-limit com `/stripe/portal` — retentar a exclusão derrubava o botão Cancelar.
+
+Dois bugs eu achei nas minhas próprias correções antes do gate: `auth.getUser()` (rede) no lugar de `getSession()` (disco), que faria o fix offline falhar exatamente offline; e `!assinatura.error` reabrindo a cobrança órfã.
+
+**Raiz comum de três bugs da onda**: colapsar o estado de *erro* no estado *vazio* (`erro → null → "não tem" → permitido`).
+
+### Verificações
+`npx tsc --noEmit` exit 0 · `node --check` nos 4 arquivos do worker · migrations aplicadas e idempotentes (backfill `atualizado_em = criado_em`, zero nulos) · semântica de soft-delete testada na nuvem (exclusão offline sobrevive ao pull; restaurar mais novo vence) · varredura confirmando que toda escrita nas 5 tabelas de coluna carimba o relógio · 7 cenários de webhook Stripe simulados contra a lógica real · worker deployado (`705a60c7`) e smoke verde (4 rotas novas em 401 sem auth).
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.

@@ -21,6 +21,7 @@ import { formatCurrency } from '../utils/currency';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { goBackOrHome } from '../navigation/safeBack';
+import { GuardaPapel } from '../components/GuardaPapel';
 
 function margemPct(preco?: number, custo?: number): string | null {
   if (!preco || !custo || custo === 0) return null;
@@ -52,6 +53,15 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 }
 
 export default function ProdutosScreen() {
+  // Catálogo expõe custo/margem/lucro — valores do negócio negados ao técnico.
+  return (
+    <GuardaPapel acao="ver_valores_agregados" area="Produtos">
+      <ProdutosConteudo />
+    </GuardaPapel>
+  );
+}
+
+function ProdutosConteudo() {
   const nav = useNavigation();
   const [items, setItems] = useState<ProdutoItem[]>([]);
   const [filtered, setFiltered] = useState<ProdutoItem[]>([]);

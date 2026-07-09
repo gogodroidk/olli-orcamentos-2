@@ -38,6 +38,16 @@ import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
+// Frentes novas — landing pública, lixeira, assinatura, ajuda/suporte, legal
+// (Privacidade/Termos = mesmo componente) e o shell do técnico (Home dele).
+import LandingScreen from '../screens/LandingScreen';
+import LixeiraScreen from '../screens/LixeiraScreen';
+import AssinaturaScreen from '../screens/AssinaturaScreen';
+import AjudaScreen from '../screens/AjudaScreen';
+import LegalScreen from '../screens/LegalScreen';
+import TecnicoHomeScreen from '../screens/TecnicoHomeScreen';
+import type { AjudaRouteParams } from '../screens/AjudaScreen';
+import { usePermissao } from '../hooks/usePermissao';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
 // nativo/APK nada disto entra na árvore. Barril em src/screens/desktop.
@@ -99,6 +109,20 @@ export type RootStackParamList = {
   OrdemServico: undefined;
   // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR da porta física).
   Equipamento: undefined;
+  // ─── Frentes novas ────────────────────────────────────────────────────────
+  // Landing pública (web deslogado) — full-bleed, sem wrap desktop nem path.
+  Landing: undefined;
+  // Lixeira (soft-delete unificado) e Assinatura (billing) — telas de gestão.
+  Lixeira: undefined;
+  Assinatura: undefined;
+  // Central de Ajuda/suporte (aceita abrir direto num artigo/categoria).
+  Ajuda: AjudaRouteParams;
+  // Legal: Privacidade e Termos são o MESMO componente (LegalScreen), que
+  // detecta qual doc mostrar pelo route.name (começa com 'term' = Termos).
+  Privacidade: undefined;
+  Termos: undefined;
+  // Home do técnico (papel === 'tecnico') — full-bleed, mobile-only.
+  TecnicoHome: undefined;
 };
 
 export type TabParamList = {
@@ -152,9 +176,26 @@ const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
 const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
 const EquipamentoCentro = comCentroDesktop(EquipamentoScreen);
+// Frentes novas: telas mobile-like centralizadas no desktop (pass-through no
+// nativo). Landing e TecnicoHome NÃO entram aqui — são full-bleed por conta
+// própria. Privacidade e Termos compartilham o LegalCentro (mesmo componente).
+const LixeiraCentro = comCentroDesktop(LixeiraScreen);
+const AssinaturaCentro = comCentroDesktop(AssinaturaScreen);
+const AjudaCentro = comCentroDesktop(AjudaScreen);
+const LegalCentro = comCentroDesktop(LegalScreen);
 
 /** Tela stub para a aba central "Orcar", que nunca é exibida (tabPress.preventDefault). */
 const EmptyTab = () => null;
+
+/**
+ * Home NEUTRA, exibida enquanto o papel do usuário ainda é desconhecido (leitura da
+ * organização em voo, ou falhou e não há cache). Montar a HomeScreen do dono aqui
+ * mostraria faturamento e conversão a um técnico durante todo cold start lento — e
+ * a sessão inteira quando ele está sem sinal, que é a rotina de campo.
+ */
+function HomeCarregando() {
+  return <View style={styles.homeCarregando} />;
+}
 
 /** Botão central elevado (＋ Orçamento). Não é uma tela — abre o stack NovoOrcamento. */
 function CenterButton(_props: BottomTabBarButtonProps) {
@@ -191,6 +232,20 @@ function TabNavigator() {
   // comportamento mobile/APK EXATO de hoje. As diferenças (sidebar à esquerda,
   // telas desktop, 4 abas extras) só existem na web ≥ 1024px.
   const ehDesktop = useEhDesktop();
+  // Shell do técnico (papel === 'tecnico'): no MOBILE a Home vira a
+  // TecnicoHomeScreen e o atalho central de orçamento some. Para desktop e para
+  // os demais papéis (owner/admin/gestor/pessoal) nada muda — `papel` é null em
+  // conta pessoal, então a condição só dispara para técnicos de uma empresa.
+  //
+  // `carregando` é FAIL-CLOSED: enquanto o papel não é conhecido, `papel` também é
+  // null (indistinguível de conta pessoal), então não dá para escolher a Home pelo
+  // papel sozinho. Montamos uma Home neutra e escondemos o atalho de orçamento.
+  const { papel, carregando: papelCarregando } = usePermissao();
+  const homeMobile = papelCarregando
+    ? HomeCarregando
+    : papel === 'tecnico'
+      ? TecnicoHomeScreen
+      : HomeScreen;
 
   return (
     <Tab.Navigator
@@ -226,8 +281,10 @@ function TabNavigator() {
     >
       <Tab.Screen
         name="Home"
-        // Desktop: dashboard (InicioDesktopScreen); mobile: HomeScreen atual.
-        component={ehDesktop ? InicioDesktopScreen : HomeScreen}
+        // Desktop: dashboard (InicioDesktopScreen — tem guarda própria de papel).
+        // Mobile: técnico vê a TecnicoHomeScreen (home do campo); os demais papéis
+        // mantêm a HomeScreen; papel desconhecido vê uma Home neutra.
+        component={ehDesktop ? InicioDesktopScreen : homeMobile}
         options={{
           tabBarLabel: 'Início',
           tabBarIcon: ({ color, size }) => (
@@ -247,8 +304,11 @@ function TabNavigator() {
         }}
       />
       {/* Aba central "Orcar" (botão elevado) — só existe no mobile. No desktop o
-          botão '+ Novo orçamento' vive na SidebarNav, que ignora este item. */}
-      {!ehDesktop && (
+          botão '+ Novo orçamento' vive na SidebarNav, que ignora este item. O
+          técnico não vê atalho de orçamento (fluxo de campo é OS, não venda).
+          Enquanto o papel carrega, o atalho fica escondido: aparecer e sumir é
+          pior que aparecer um instante depois, e evita o flash para o técnico. */}
+      {!ehDesktop && !papelCarregando && papel !== 'tecnico' && (
         <Tab.Screen
           name="Orcar"
           // Stub vazio: esta aba nunca é exibida (tabPress faz preventDefault e o
@@ -358,6 +418,10 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Entrar é a CAPA/porta: fade e sem gesto de voltar (não há para onde).
           NÃO recebe wrap desktop — capa full-bleed. */}
       <Stack.Screen name="Entrar" component={EntrarScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
+      {/* Landing pública (web deslogado): capa full-bleed, sem wrap desktop e sem
+          gesto de voltar. NÃO tem path no linking (a URL raiz '/' segue sendo '/'
+          para preservar o canonical de SEO). */}
+      <Stack.Screen name="Landing" component={LandingScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
       {/* As telas abaixo usam `comCentroDesktop`: mobile/APK intacto (pass-through);
           desktop centraliza a tela mobile-like sobre o shell. Referências estáveis
           criadas no módulo (ver topo do arquivo). */}
@@ -389,11 +453,26 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />
       {/* PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). */}
       <Stack.Screen name="Equipamento" component={EquipamentoCentro} />
+      {/* ─── Frentes novas ──────────────────────────────────────────────────
+          Lixeira e Assinatura (gestão), Ajuda/suporte e os documentos legais.
+          Privacidade e Termos apontam para o MESMO LegalCentro — a tela decide
+          qual doc renderizar pelo route.name. */}
+      <Stack.Screen name="Lixeira" component={LixeiraCentro} />
+      <Stack.Screen name="Assinatura" component={AssinaturaCentro} />
+      <Stack.Screen name="Ajuda" component={AjudaCentro} />
+      <Stack.Screen name="Privacidade" component={LegalCentro} />
+      <Stack.Screen name="Termos" component={LegalCentro} />
+      {/* Home do técnico como rota de stack: full-bleed, mobile-only (não recebe
+          wrap desktop — a própria tela se vira). */}
+      <Stack.Screen name="TecnicoHome" component={TecnicoHomeScreen} />
     </Stack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
+  // Fundo liso (sem spinner): esta Home aparece por milissegundos no caso comum e
+  // um indicador piscando seria mais ruidoso que a espera.
+  homeCarregando: { flex: 1, backgroundColor: Colors.background },
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
   centerTouch: { alignItems: 'center', justifyContent: 'center', marginTop: -28 },
   centerGrad: {

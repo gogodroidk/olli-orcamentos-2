@@ -13,6 +13,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EmptyState } from '../components/EmptyState';
 import { CountUp } from '../components/CountUp';
 import { GatePro } from '../components/GatePro';
+import { GuardaPapel } from '../components/GuardaPapel';
 import {
   gerarRelatorioDia, relatorioParaTexto, falarRelatorio, pararFala, RelatorioDia,
 } from '../services/relatorioDia';
@@ -94,6 +95,15 @@ function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number 
 }
 
 export default function RelatorioDiaScreen() {
+  // Relatório do dia expõe faturamento/recebidos — restrito a papéis de gestão.
+  return (
+    <GuardaPapel acao="ver_relatorios" area="Relatório do dia">
+      <RelatorioDiaConteudo />
+    </GuardaPapel>
+  );
+}
+
+function RelatorioDiaConteudo() {
   const nav = useNavigation<Nav>();
 
   const [relatorio, setRelatorio] = useState<RelatorioDia | null>(null);

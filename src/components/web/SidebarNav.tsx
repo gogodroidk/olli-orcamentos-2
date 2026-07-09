@@ -83,6 +83,10 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   { rota: 'FerramentasTab', label: 'Ferramentas', icon: 'toolbox-outline' },
   // Equipe: só empresa, quem pode ver a equipe (owner/admin/gestor), recurso 'equipe'.
   { rota: 'Equipe', label: 'Equipe', icon: 'account-multiple-outline', stack: true, acao: 'ver_equipe', soEmpresa: true, recurso: 'equipe' },
+  // Ajuda/suporte (stack raiz): disponível para todos os papéis, inclusive o técnico.
+  { rota: 'Ajuda', label: 'Ajuda', icon: 'help-circle-outline', stack: true },
+  // Lixeira (stack raiz): ação de GESTÃO — o técnico não vê (menu enxuto).
+  { rota: 'Lixeira', label: 'Lixeira', icon: 'delete-outline', stack: true, ocultarTecnico: true },
 ];
 
 const ITEM_CONTA: ItemMenu = { rota: 'Conta', label: 'Conta', icon: 'account-circle-outline' };

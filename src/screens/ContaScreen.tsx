@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,6 +14,10 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
+import { usePlano } from '../hooks/usePlano';
+import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/conta';
+import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
+import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -79,7 +83,16 @@ interface PerfilUsuario {
   email?: string;
   nome?: string;
   telefone?: string;
+  /** Foto de perfil do usuário (user_metadata.avatar_url) — distinta da logo da empresa. */
+  avatarUrl?: string;
 }
+
+/** Rótulo pt-BR do plano, para o card discreto "Sua assinatura" de quem já paga. */
+const PLANO_LABEL: Record<'gratis' | 'pro' | 'empresa', string> = {
+  gratis: 'Grátis',
+  pro: 'Pro',
+  empresa: 'Empresa',
+};
 
 // Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
 const FERRAMENTAS: {
@@ -89,15 +102,22 @@ const FERRAMENTAS: {
   desc: string;
   color: string;
   route: keyof RootStackParamList;
+  /**
+   * Mesmo critério de SidebarNav.tsx (ITENS_PRINCIPAIS): itens de dono do
+   * catálogo/financeiro que o menu enxuto do técnico não deve mostrar. Sem
+   * isso o técnico chegava a Serviços/Produtos/Recibos/Meu Negócio por esta
+   * lista mesmo com a sidebar escondendo os mesmos itens.
+   */
+  ocultarTecnico?: boolean;
 }[] = [
   { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: Colors.accent, route: 'OlliVoz' },
   { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: Colors.primaryLight, route: 'OlliChat' },
-  { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: Colors.primary, route: 'Servicos' },
-  { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: Colors.primary, route: 'Produtos' },
+  { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: Colors.primary, route: 'Servicos', ocultarTecnico: true },
+  { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: Colors.primary, route: 'Produtos', ocultarTecnico: true },
   { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
   { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: Colors.accent, route: 'Diagnostico' },
-  { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: Colors.success, route: 'EmitirRecibo' },
-  { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio' },
+  { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: Colors.success, route: 'EmitirRecibo', ocultarTecnico: true },
+  { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
 ];
 
 export default function ContaScreen() {
@@ -107,9 +127,23 @@ export default function ContaScreen() {
 
   // Onda 2 — tipo de conta (pessoal vs empresa) e permissão de gerenciar equipe.
   const { tipo, org, carregando: carregandoConta } = useTipoConta();
-  const { pode } = usePermissao();
+  const { pode, papel, carregando: carregandoPermissao } = usePermissao();
+  // Fail-closed: enquanto o papel ainda carrega, trata como se pudesse ser
+  // técnico — evita o flash de um item de dono (Serviços/Produtos/Recibos/
+  // Meu Negócio) antes da permissão real chegar.
+  const ferramentasVisiveis = FERRAMENTAS.filter(
+    (f) => !(f.ocultarTecnico && (papel === 'tecnico' || carregandoPermissao)),
+  );
+  // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
+  const { plano } = usePlano();
   const [showCriarEmpresa, setShowCriarEmpresa] = useState(false);
   const [showEntrarEquipe, setShowEntrarEquipe] = useState(false);
+
+  // Frente 2 — foto de perfil (identidade do usuário) e exclusão de conta.
+  const [avatarErro, setAvatarErro] = useState(false);
+  const [showFotoOpcoes, setShowFotoOpcoes] = useState(false);
+  const [salvandoFoto, setSalvandoFoto] = useState(false);
+  const [showExcluir, setShowExcluir] = useState(false);
 
   const [user, setUser] = useState<PerfilUsuario | null>(null);
   // Sessão perdida DENTRO das Tabs (só deveria acontecer com sessão corrompida/
@@ -119,6 +153,8 @@ export default function ContaScreen() {
   const [busy, setBusy] = useState(false);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
+  // Toggle "Mostrar dicas contextuais" (onboarding.ts) — carregado no foco.
+  const [ajudaAtiva, setAjudaAtiva] = useState(true);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
@@ -134,6 +170,8 @@ export default function ContaScreen() {
       const toggle = await AsyncStorage.getItem(AUTO_BACKUP_TOGGLE_KEY);
       setAutoBackupAtivo(toggle !== '0');
     } catch { /* best-effort: mantém o default (ativo) */ }
+    // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
+    setAjudaAtiva(await estaAtiva());
     if (configured) {
       const u = await getCurrentUser();
       if (u) {
@@ -142,7 +180,9 @@ export default function ContaScreen() {
           email: u.email,
           nome: typeof meta.full_name === 'string' ? meta.full_name : undefined,
           telefone: typeof meta.telefone === 'string' ? meta.telefone : undefined,
+          avatarUrl: typeof meta.avatar_url === 'string' && meta.avatar_url ? meta.avatar_url : undefined,
         });
+        setAvatarErro(false);
         setSessaoPerdida(false);
         setLastBackup(await getUltimoBackupVersionadoData());
       } else {
@@ -188,6 +228,27 @@ export default function ContaScreen() {
       Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
       setAutoBackupAtivo(!v);
     }
+  }
+
+  /** Liga/desliga as dicas contextuais (onboarding.ts). Otimista. */
+  async function handleToggleAjuda(v: boolean) {
+    Haptics.selectionAsync().catch(() => {});
+    setAjudaAtiva(v);
+    // ligar/desligarAjuda são best-effort e nunca lançam (persistem em AsyncStorage).
+    if (v) await ligarAjuda();
+    else await desligarAjuda();
+  }
+
+  /** "Rever apresentação e dicas": religa a ajuda, esquece dicas vistas e refaz o onboarding. */
+  async function handleReverApresentacao() {
+    Haptics.selectionAsync().catch(() => {});
+    await resetarAjuda();
+    setAjudaAtiva(true); // resetarAjuda religa a Central de Ajuda
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    Alert.alert(
+      'Tudo pronto!',
+      'A apresentação e as dicas vão aparecer de novo na próxima vez que você abrir o app.',
+    );
   }
 
   /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
@@ -313,9 +374,126 @@ export default function ContaScreen() {
     else nav.navigate(f.route as never);
   }
 
+  /**
+   * Escolhe a foto de perfil (câmera ou galeria) reusando o pipeline de fotos
+   * (compressão + cópia persistente) e salva a URI em user_metadata.avatar_url.
+   * A foto de perfil é do USUÁRIO — a logo/identidade da empresa fica em Meu Negócio.
+   */
+  async function handleEscolherFoto(fonte: 'camera' | 'galeria') {
+    setShowFotoOpcoes(false);
+    setSalvandoFoto(true);
+    try {
+      const resultado = fonte === 'camera'
+        ? await adicionarFotoCamera([])
+        : await adicionarFotoGaleria([]);
+
+      if (resultado.erro === 'PERMISSAO_NEGADA_PERMANENTE') {
+        Alert.alert(
+          fonte === 'camera' ? 'Câmera bloqueada' : 'Fotos bloqueadas',
+          'Libere o acesso nas configurações do aparelho para escolher sua foto.',
+          [
+            { text: 'Agora não', style: 'cancel' },
+            { text: 'Abrir configurações', onPress: () => { abrirConfiguracoesPermissao(); } },
+          ],
+        );
+        return;
+      }
+      if (resultado.erro) {
+        Alert.alert('Ops', resultado.erro);
+        return;
+      }
+      const uri = resultado.uris[0];
+      if (!uri) return; // usuário cancelou o picker
+
+      await salvarFotoPerfil(uri);
+      setUser(prev => (prev ? { ...prev, avatarUrl: uri } : prev));
+      setAvatarErro(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      Alert.alert('Erro', e?.message ?? 'Não foi possível salvar sua foto agora.');
+    } finally {
+      setSalvandoFoto(false);
+    }
+  }
+
+  /** Remove a foto de perfil (volta a usar a logo da empresa, ou a inicial). */
+  async function handleRemoverFoto() {
+    setShowFotoOpcoes(false);
+    setSalvandoFoto(true);
+    try {
+      await removerFotoPerfil();
+      setUser(prev => (prev ? { ...prev, avatarUrl: undefined } : prev));
+      setAvatarErro(false);
+      Haptics.selectionAsync().catch(() => {});
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Não foi possível remover sua foto agora.');
+    } finally {
+      setSalvandoFoto(false);
+    }
+  }
+
+  /**
+   * Executa a exclusão da conta (já com dupla confirmação: o usuário digitou
+   * 'EXCLUIR' no modal e confirma neste Alert final). Ao concluir, o serviço faz
+   * logout local + wipe do SQLite; o reset da navegação vem do listener global.
+   */
+  function confirmarExclusaoFinal() {
+    Alert.alert(
+      'Excluir a conta agora?',
+      'Esta é a última confirmação. Sua conta e todos os dados serão apagados para sempre. Não há como desfazer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir para sempre',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              const res = await excluirConta();
+              if (!res.ok) {
+                const msg =
+                  res.motivo === 'nao_configurado'
+                    ? 'A exclusão online ainda não foi configurada. Fale com o suporte.'
+                    : res.motivo === 'sem_login'
+                      ? 'Sua sessão expirou. Entre de novo e tente outra vez.'
+                      : res.motivo === 'rede'
+                        ? 'Sem conexão agora. Verifique a internet e tente novamente.'
+                        : res.motivo === 'falha_cancelamento'
+                          // O servidor não apagou NADA de propósito: apagar a conta com a
+                          // assinatura viva deixaria o cartão sendo cobrado sem nenhuma
+                          // conta pela qual cancelar. O usuário precisa saber que está
+                          // seguro para tentar de novo.
+                          ? 'Não consegui cancelar sua assinatura agora, então não apaguei nada. Sua conta e sua cobrança seguem como estavam. Tente de novo em alguns minutos.'
+                          : 'Não foi possível excluir a conta agora. Tente novamente em instantes.';
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+                Alert.alert('Não deu', msg);
+                setBusy(false);
+                return;
+              }
+              // Sucesso: o SIGNED_OUT (logout local no serviço) reseta a navegação
+              // para 'Entrar'. Fecha o modal por garantia; a tela será desmontada.
+              setShowExcluir(false);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } catch (e: any) {
+              Alert.alert('Erro', e?.message ?? 'Falha ao excluir a conta.');
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   const primeiroNome = user?.nome?.split(' ')[0] || empresa?.nomePrestador?.split(' ')[0] || 'prestador';
   const nomeExibido = user?.nome || empresa?.nomePrestador || 'Seu nome';
   const segmentoLabel = SEGMENTOS.find(s => s.id === empresa?.segmento)?.label;
+
+  // Foto do avatar: prioridade para a foto de perfil do usuário; se não houver
+  // (ou falhar ao carregar — URI local pode não existir em outro aparelho), usa
+  // a logo da empresa (regra do produto); por fim, a inicial do nome.
+  const avatarUri = (!avatarErro && user?.avatarUrl) ? user.avatarUrl : (empresa?.logoUri || null);
+  const temAssinaturaPaga = plano !== 'gratis';
 
   // GUARDA DEFENSIVO: sessão expirada dentro das Tabs → botão para voltar à porta.
   if (sessaoPerdida) {
@@ -388,9 +566,29 @@ export default function ContaScreen() {
         {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
         <AnimatedEntrance index={0}>
           <OlliPressable style={styles.profileCard} scaleTo={0.98} accessibilityLabel="Editar perfil e negócio" onPress={() => nav.navigate('MeuNegocio')}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{primeiroNome.charAt(0).toUpperCase()}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.avatar}
+              activeOpacity={0.85}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowFotoOpcoes(true); }}
+              disabled={salvandoFoto}
+              accessibilityRole="button"
+              accessibilityLabel="Trocar foto de perfil"
+            >
+              {salvandoFoto ? (
+                <ActivityIndicator color={Colors.accentLight} />
+              ) : avatarUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={styles.avatarImg}
+                  onError={() => setAvatarErro(true)}
+                />
+              ) : (
+                <Text style={styles.avatarText}>{primeiroNome.charAt(0).toUpperCase()}</Text>
+              )}
+              <View style={styles.avatarBadge}>
+                <MaterialCommunityIcons name="camera" size={12} color="#0A1626" />
+              </View>
+            </TouchableOpacity>
             <View style={{ flex: 1, marginLeft: 14 }}>
               <Text style={styles.profileName} numberOfLines={1}>{nomeExibido}</Text>
               {user?.email ? <Text style={styles.profileCompany} numberOfLines={1}>{user.email}</Text> : null}
@@ -410,31 +608,55 @@ export default function ContaScreen() {
               <Text style={styles.editBtnText}>editar</Text>
             </View>
           </OlliPressable>
+          <Text style={styles.identidadeHint}>
+            Toque na foto para trocar a <Text style={styles.identidadeHintForte}>sua foto de perfil</Text>. A logo e a identidade visual da empresa (que aparecem nos PDFs) ficam em{' '}
+            <Text style={styles.identidadeLink} onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('MeuNegocio'); }}>Meu Negócio</Text>.
+          </Text>
         </AnimatedEntrance>
 
-        {/* OLLI PRO (informativo) */}
+        {/* ASSINATURA — pagante vê um card discreto "Sua assinatura"; grátis vê o
+            convite para conhecer os planos (sem propaganda para quem já paga). */}
         <AnimatedEntrance index={1}>
-          <View style={styles.proCard}>
-            <View style={styles.proHead}>
-              <View style={styles.proBadge}>
-                <MaterialCommunityIcons name="crown-outline" size={16} color="#0A1626" />
-                <Text style={styles.proBadgeText}>OLLI PRO</Text>
-              </View>
-              <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
-            </View>
-            <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
-            <Text style={styles.proSub}>Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.</Text>
+          {temAssinaturaPaga ? (
             <OlliPressable
-              style={styles.proBtn}
+              style={styles.assinaturaCard}
               haptic={false}
-              scaleTo={0.97}
-              accessibilityLabel="Ver planos e assinar"
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
+              scaleTo={0.98}
+              accessibilityLabel="Ver sua assinatura"
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Assinatura' as never); }}
             >
-              <Text style={styles.proBtnText}>Ver planos e assinar</Text>
-              <MaterialCommunityIcons name="arrow-right" size={16} color={Colors.accentLight} />
+              <View style={styles.assinaturaIcon}>
+                <MaterialCommunityIcons name="check-decagram" size={20} color={Colors.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.assinaturaTitle}>Sua assinatura</Text>
+                <Text style={styles.assinaturaSub}>Plano {PLANO_LABEL[plano]} · faturas, cobrança e cancelamento</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
             </OlliPressable>
-          </View>
+          ) : (
+            <View style={styles.proCard}>
+              <View style={styles.proHead}>
+                <View style={styles.proBadge}>
+                  <MaterialCommunityIcons name="crown-outline" size={16} color="#0A1626" />
+                  <Text style={styles.proBadgeText}>OLLI PRO</Text>
+                </View>
+                <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
+              </View>
+              <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
+              <Text style={styles.proSub}>Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.</Text>
+              <OlliPressable
+                style={styles.proBtn}
+                haptic={false}
+                scaleTo={0.97}
+                accessibilityLabel="Ver planos e assinar"
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
+              >
+                <Text style={styles.proBtnText}>Ver planos e assinar</Text>
+                <MaterialCommunityIcons name="arrow-right" size={16} color={Colors.accentLight} />
+              </OlliPressable>
+            </View>
+          )}
         </AnimatedEntrance>
 
         {/* EMPRESA / EQUIPE (Onda 2) — só quando a nuvem está configurada. */}
@@ -504,10 +726,10 @@ export default function ContaScreen() {
         <AnimatedEntrance index={3}>
           <Text style={styles.sectionTitle}>Ferramentas</Text>
           <View style={styles.toolsCard}>
-            {FERRAMENTAS.map((f, i) => (
+            {ferramentasVisiveis.map((f, i) => (
               <OlliPressable
                 key={f.key}
-                style={[styles.toolRow, i < FERRAMENTAS.length - 1 && styles.toolDivider]}
+                style={[styles.toolRow, i < ferramentasVisiveis.length - 1 && styles.toolDivider]}
                 onPress={() => abrirFerramenta(f)}
                 haptic={false}
                 scaleTo={0.985}
@@ -526,8 +748,88 @@ export default function ContaScreen() {
           </View>
         </AnimatedEntrance>
 
-        {/* CONTA E BACKUP */}
+        {/* AJUDA E PREFERÊNCIAS — suporte, lixeira (gestão) e controle das dicas. */}
         <AnimatedEntrance index={4}>
+          <Text style={styles.sectionTitle}>Ajuda e preferências</Text>
+          <View style={styles.toolsCard}>
+            {/* Ajuda e suporte — disponível para todos os papéis. */}
+            <OlliPressable
+              style={[styles.toolRow, styles.toolDivider]}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Ajuda'); }}
+              haptic={false}
+              scaleTo={0.985}
+              accessibilityLabel="Ajuda e suporte"
+            >
+              <View style={[styles.toolIcon, { backgroundColor: Colors.accent + '1E', borderColor: Colors.accent + '3A' }]}>
+                <MaterialCommunityIcons name="help-circle-outline" size={20} color={Colors.accent} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolLabel}>Ajuda e suporte</Text>
+                <Text style={styles.toolDesc}>Dúvidas, tutoriais e falar com a gente</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+            </OlliPressable>
+
+            {/* Lixeira — ação de GESTÃO: o técnico não vê. */}
+            {papel !== 'tecnico' && (
+              <OlliPressable
+                style={[styles.toolRow, styles.toolDivider]}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Lixeira'); }}
+                haptic={false}
+                scaleTo={0.985}
+                accessibilityLabel="Lixeira"
+              >
+                <View style={[styles.toolIcon, { backgroundColor: Colors.onSurfaceVariant + '1E', borderColor: Colors.onSurfaceVariant + '3A' }]}>
+                  <MaterialCommunityIcons name="delete-outline" size={20} color={Colors.onSurfaceVariant} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.toolLabel}>Lixeira</Text>
+                  <Text style={styles.toolDesc}>Recupere itens excluídos nos últimos 30 dias</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              </OlliPressable>
+            )}
+
+            {/* Toggle "Mostrar dicas contextuais" — só controla DicaContextual (onboarding.ts);
+                a Central de Ajuda abaixo continua acessível independente deste switch. */}
+            <View style={[styles.toolRow, styles.toolDivider]}>
+              <View style={[styles.toolIcon, { backgroundColor: Colors.primaryLight + '1E', borderColor: Colors.primaryLight + '3A' }]}>
+                <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color={Colors.primaryLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Mostrar dicas contextuais</Text>
+                <Text style={styles.toolDesc}>Balões curtos explicando elementos da tela</Text>
+              </View>
+              <Switch
+                value={ajudaAtiva}
+                onValueChange={handleToggleAjuda}
+                trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
+                thumbColor={ajudaAtiva ? Colors.primary : '#fff'}
+              />
+            </View>
+
+            {/* Rever apresentação e dicas — item secundário (último, sem divisória). */}
+            <OlliPressable
+              style={styles.toolRow}
+              onPress={handleReverApresentacao}
+              haptic={false}
+              scaleTo={0.985}
+              accessibilityLabel="Rever apresentação e dicas"
+            >
+              <View style={[styles.toolIcon, { backgroundColor: '#A78BFA1E', borderColor: '#A78BFA3A' }]}>
+                <MaterialCommunityIcons name="restart" size={20} color="#A78BFA" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolLabel}>Rever apresentação e dicas</Text>
+                <Text style={styles.toolDesc}>Mostra a introdução e as dicas de novo</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+            </OlliPressable>
+          </View>
+        </AnimatedEntrance>
+
+        {/* CONTA E BACKUP */}
+        <AnimatedEntrance index={5}>
           <Text style={styles.sectionTitle}>Conta e backup</Text>
         </AnimatedEntrance>
 
@@ -590,6 +892,18 @@ export default function ContaScreen() {
             </View>
 
             <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
+
+            {/* ZONA DE PERIGO — exclusão de conta (requisito Apple + LGPD) */}
+            <TouchableOpacity
+              style={styles.excluirLink}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowExcluir(true); }}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Excluir minha conta"
+            >
+              <MaterialCommunityIcons name="account-remove-outline" size={16} color={Colors.onSurfaceMuted} />
+              <Text style={styles.excluirLinkText}>Excluir minha conta</Text>
+            </TouchableOpacity>
           </AnimatedEntrance>
         )}
         </>
@@ -668,7 +982,126 @@ export default function ContaScreen() {
           }}
         />
       )}
+
+      {/* SHEET: OPÇÕES DE FOTO DE PERFIL */}
+      <Modal visible={showFotoOpcoes} animationType="slide" transparent onRequestClose={() => setShowFotoOpcoes(false)}>
+        <View style={styles.sheetBackdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Foto de perfil</Text>
+              <TouchableOpacity onPress={() => setShowFotoOpcoes(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
+                <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: Spacing.base }}>
+              <Text style={styles.sheetSub}>
+                Esta é a sua foto pessoal — diferente da logo da empresa (que fica em Meu Negócio e aparece nos PDFs).
+              </Text>
+              <OlliPressable style={styles.fotoOpcao} haptic={false} accessibilityLabel="Tirar foto" onPress={() => handleEscolherFoto('camera')}>
+                <MaterialCommunityIcons name="camera-outline" size={22} color={Colors.accentLight} />
+                <Text style={styles.fotoOpcaoText}>Tirar foto</Text>
+              </OlliPressable>
+              <OlliPressable style={styles.fotoOpcao} haptic={false} accessibilityLabel="Escolher da galeria" onPress={() => handleEscolherFoto('galeria')}>
+                <MaterialCommunityIcons name="image-outline" size={22} color={Colors.accentLight} />
+                <Text style={styles.fotoOpcaoText}>Escolher da galeria</Text>
+              </OlliPressable>
+              {user?.avatarUrl ? (
+                <OlliPressable style={[styles.fotoOpcao, styles.fotoOpcaoRemover]} haptic={false} accessibilityLabel="Remover foto" onPress={handleRemoverFoto}>
+                  <MaterialCommunityIcons name="trash-can-outline" size={22} color={Colors.danger} />
+                  <Text style={[styles.fotoOpcaoText, { color: Colors.danger }]}>Remover foto</Text>
+                </OlliPressable>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: EXCLUIR MINHA CONTA (dupla confirmação — digitar EXCLUIR) */}
+      {showExcluir && (
+        <ModalExcluirConta
+          busy={busy}
+          onFechar={() => setShowExcluir(false)}
+          onConfirmar={confirmarExclusaoFinal}
+        />
+      )}
     </View>
+  );
+}
+
+/**
+ * Modal "Excluir minha conta": lista o que será apagado, deixa claro que é
+ * irreversível e exige que o usuário digite EXCLUIR (1ª confirmação). O botão
+ * dispara o Alert final do pai (2ª confirmação) que efetiva a exclusão.
+ */
+function ModalExcluirConta({
+  busy, onFechar, onConfirmar,
+}: { busy: boolean; onFechar: () => void; onConfirmar: () => void }) {
+  const [texto, setTexto] = useState('');
+  const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
+      <View style={styles.sheetBackdrop}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>Excluir minha conta</Text>
+            <TouchableOpacity onPress={onFechar} disabled={busy} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
+              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+            <View style={styles.perigoBanner}>
+              <MaterialCommunityIcons name="alert-octagon-outline" size={22} color={Colors.danger} />
+              <Text style={styles.perigoBannerText}>Esta ação é permanente e não pode ser desfeita.</Text>
+            </View>
+
+            <Text style={styles.excluirSub}>Ao excluir a conta, apagamos para sempre:</Text>
+            {[
+              'Seu login e o perfil da sua conta',
+              'Orçamentos, clientes, produtos e serviços',
+              'Agenda, recibos e demais registros',
+              'Backups e dados guardados na nuvem',
+            ].map(item => (
+              <View key={item} style={styles.excluirItem}>
+                <MaterialCommunityIcons name="close-circle-outline" size={16} color={Colors.danger} />
+                <Text style={styles.excluirItemText}>{item}</Text>
+              </View>
+            ))}
+
+            <Text style={styles.excluirNota}>
+              Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
+            </Text>
+
+            <Text style={styles.sheetLabel}>Para confirmar, digite EXCLUIR</Text>
+            <TextInput
+              value={texto}
+              onChangeText={setTexto}
+              placeholder="EXCLUIR"
+              placeholderTextColor={Colors.onSurfaceMuted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!busy}
+              style={styles.sheetInput}
+            />
+
+            <OlliButton
+              label="Excluir minha conta"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={!confirmado || busy}
+              onPress={onConfirmar}
+              icon={<MaterialCommunityIcons name="account-remove-outline" size={20} color="#fff" />}
+              style={{ marginTop: Spacing.base, opacity: confirmado ? 1 : 0.5 }}
+            />
+            <TouchableOpacity style={styles.excluirCancelar} onPress={onFechar} disabled={busy} accessibilityRole="button" accessibilityLabel="Cancelar">
+              <Text style={styles.excluirCancelarText}>Cancelar</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -820,6 +1253,42 @@ const styles = StyleSheet.create({
   profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...Shadow.sm },
   avatar: { width: 56, height: 56, borderRadius: 18, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontSize: 24, fontWeight: '800', color: Colors.accentLight },
+  avatarImg: { width: 56, height: 56, borderRadius: 18, backgroundColor: Colors.surfaceElevated },
+  avatarBadge: {
+    position: 'absolute', right: -3, bottom: -3, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: Colors.accentLight, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: Colors.surface,
+  },
+  identidadeHint: { fontSize: 12, color: Colors.onSurfaceMuted, lineHeight: 17, marginHorizontal: Spacing.base, marginTop: 8 },
+  identidadeHintForte: { color: Colors.onSurfaceVariant, fontWeight: '700' },
+  identidadeLink: { color: Colors.accentLight, fontWeight: '700' },
+
+  // Card discreto "Sua assinatura" (pagante)
+  assinaturaCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow,
+    padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...Shadow.sm,
+  },
+  assinaturaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  assinaturaTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  assinaturaSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+
+  // Excluir conta
+  excluirLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 4 },
+  excluirLinkText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceMuted },
+
+  fotoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 16, paddingVertical: 14, marginTop: 10 },
+  fotoOpcaoText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  fotoOpcaoRemover: { borderColor: 'rgba(255,107,107,0.35)' },
+
+  perigoBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.dangerLight, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,107,107,0.35)', padding: Spacing.base },
+  perigoBannerText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: Colors.onSurface },
+  excluirSub: { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: Spacing.base, marginBottom: 6 },
+  excluirItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
+  excluirItemText: { flex: 1, fontSize: 13.5, color: Colors.onSurface, lineHeight: 19 },
+  excluirNota: { fontSize: 12.5, color: Colors.onSurfaceMuted, lineHeight: 18, marginTop: Spacing.base },
+  excluirCancelar: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  excluirCancelarText: { fontSize: 14, fontWeight: '700', color: Colors.onSurfaceVariant },
   profileName: { fontSize: 18, fontWeight: '800', color: '#fff' },
   profileCompany: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
   profilePhone: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },

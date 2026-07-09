@@ -101,6 +101,11 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
     cidade: c.cidade ?? null,
     cep: c.cep ?? null,
     criado_em: c.criadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: c.excluidoEm ?? null,
+    // Relógio de sync. NUNCA null: a coluna na nuvem é NOT NULL, e um objeto vindo
+    // de snapshot antigo (backup pré-v3) não tem o campo — caímos em criadoEm.
+    atualizado_em: c.atualizadoEm ?? c.criadoEm,
   };
 }
 
@@ -114,6 +119,9 @@ function servicoToRow(s: ServicoItem): Record<string, unknown> {
     unidade: s.unidade ?? null,
     foto_uri: s.fotoUri ?? null,
     criado_em: s.criadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: s.excluidoEm ?? null,
+    atualizado_em: s.atualizadoEm ?? s.criadoEm, // NOT NULL na nuvem (ver clienteToRow)
   };
 }
 
@@ -129,6 +137,9 @@ function produtoToRow(p: ProdutoItem): Record<string, unknown> {
     unidade: p.unidade ?? null,
     foto_uri: p.fotoUri ?? null,
     criado_em: p.criadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: p.excluidoEm ?? null,
+    atualizado_em: p.atualizadoEm ?? p.criadoEm, // NOT NULL na nuvem (ver clienteToRow)
   };
 }
 
@@ -146,6 +157,9 @@ function orcamentoToRow(o: Orcamento): Record<string, unknown> {
     dados: o,
     criado_em: o.criadoEm,
     atualizado_em: o.atualizadoEm,
+    // Coluna-espelho só p/ índice/painel; a verdade do soft-delete é o `excluidoEm`
+    // dentro de `dados` (blob), que já faz round-trip sozinho.
+    excluido_em: o.excluidoEm ?? null,
   };
 }
 
@@ -161,6 +175,11 @@ function reciboToRow(r: Recibo): Record<string, unknown> {
     data_recebimento: r.dataRecebimento ?? null,
     dados: r,
     criado_em: r.criadoEm,
+    // Coluna-espelho só p/ índice/painel; a verdade do soft-delete é o `excluidoEm`
+    // dentro de `dados` (blob), que já faz round-trip sozinho.
+    excluido_em: r.excluidoEm ?? null,
+    // Idem: espelho da coluna. A verdade do relógio é `atualizadoEm` dentro do blob.
+    atualizado_em: r.atualizadoEm ?? r.criadoEm, // NOT NULL na nuvem (ver clienteToRow)
   };
 }
 
@@ -171,6 +190,9 @@ function modeloToRow(m: ModeloOrcamento): Record<string, unknown> {
     descricao: m.descricao ?? null,
     dados: { orcamentoBase: m.orcamentoBase },
     criado_em: m.criadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: m.excluidoEm ?? null,
+    atualizado_em: m.atualizadoEm ?? m.criadoEm, // NOT NULL na nuvem (ver clienteToRow)
   };
 }
 
@@ -181,6 +203,9 @@ function depoimentoToRow(d: Depoimento): Record<string, unknown> {
     estrelas: d.estrelas,
     texto: d.texto ?? null,
     criado_em: d.criadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: d.excluidoEm ?? null,
+    atualizado_em: d.atualizadoEm ?? d.criadoEm, // NOT NULL na nuvem (ver clienteToRow)
   };
 }
 
@@ -199,6 +224,8 @@ function agendamentoToRow(a: Agendamento): Record<string, unknown> {
     observacao: a.observacao ?? null,
     criado_em: a.criadoEm,
     atualizado_em: a.atualizadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: a.excluidoEm ?? null,
   };
 }
 
@@ -223,6 +250,8 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
     valor: o.valor ?? null,
     criado_em: o.criadoEm,
     atualizado_em: o.atualizadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: o.excluidoEm ?? null,
   };
 }
 
@@ -262,6 +291,11 @@ function rowToCliente(row: any): Cliente {
     cidade: row.cidade ?? undefined,
     cep: row.cep ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
+    // Relógio remoto: é o que o localUpsert compara com o local para decidir se
+    // esta linha da nuvem pode ou não sobrescrever a versão deste aparelho.
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
   };
 }
 
@@ -275,6 +309,9 @@ function rowToServico(row: any): ServicoItem {
     unidade: row.unidade ?? 'un',
     fotoUri: row.foto_uri ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined, // ver rowToCliente
   };
 }
 
@@ -290,6 +327,9 @@ function rowToProduto(row: any): ProdutoItem {
     unidade: row.unidade ?? 'un',
     fotoUri: row.foto_uri ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined, // ver rowToCliente
   };
 }
 
@@ -312,6 +352,9 @@ function rowToModelo(row: any): ModeloOrcamento | null {
     descricao: row.descricao ?? undefined,
     orcamentoBase: base,
     criadoEm: row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined, // ver rowToCliente
   };
 }
 
@@ -322,6 +365,9 @@ function rowToDepoimento(row: any): Depoimento {
     estrelas: row.estrelas ?? 5,
     texto: row.texto ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined, // ver rowToCliente
   };
 }
 
@@ -340,6 +386,8 @@ function rowToAgendamento(row: any): Agendamento {
     observacao: row.observacao ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
   };
 }
 
@@ -376,6 +424,8 @@ function equipamentoToRow(e: Equipamento): Record<string, unknown> {
     fotos: e.fotos ?? [],
     criado_em: e.criadoEm,
     atualizado_em: e.atualizadoEm,
+    // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
+    excluido_em: e.excluidoEm ?? null,
   };
   if (e.qrToken) row.qr_token = e.qrToken;
   // qr_revogado_em é MONOTÔNICO (o app só revoga, nunca desrevoga): OMITE quando
@@ -410,6 +460,8 @@ function rowToEquipamentoCloud(row: any): Equipamento {
     fotos: arrOrParse(row.fotos),
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
   };
 }
 
@@ -432,6 +484,8 @@ function rowToOrdemServico(row: any): OrdemServico {
     valor: row.valor ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
+    // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
+    excluidoEm: row.excluido_em ?? undefined,
   };
 }
 
@@ -709,6 +763,44 @@ async function localMaisNovoAgendamento(id: string, recebidoEm?: string): Promis
   }
 }
 
+/**
+ * Guard de PULL para as tabelas de coluna com `atualizado_em` (clientes, servicos,
+ * produtos, modelos, depoimentos — schema local v3). Retorna true quando a linha
+ * LOCAL é mais nova que a recebida: nesse caso o pull PULA o upsert e preserva o
+ * que este aparelho escreveu.
+ *
+ * É o que impede a ressurreição: excluí um serviço offline (excluido_em e
+ * atualizado_em = agora), o mirrorPush falhou, a nuvem seguiu com a linha ativa e
+ * ANTIGA. No próximo login o pullAll roda antes do pushAllLocal e, sem este guard,
+ * a linha ativa remota zerava o excluido_em local. `tabela` é literal interno.
+ */
+async function localMaisNovoColuna(tabela: string, id: string, recebidoEm?: string): Promise<boolean> {
+  if (!recebidoEm) return false;
+  try {
+    const db = await getDb();
+    const row = await db.getFirstAsync<{ ts: string | null }>(
+      `SELECT atualizado_em AS ts FROM ${tabela} WHERE id = ?`, [id],
+    );
+    return tsMaisNovo(row?.ts, recebidoEm);
+  } catch {
+    return false;
+  }
+}
+
+/** Idem, para `recibos` (blob JSON): o relógio vive dentro de `data`. */
+async function localMaisNovoRecibo(id: string, recebidoEm?: string): Promise<boolean> {
+  if (!recebidoEm) return false;
+  try {
+    const db = await getDb();
+    const row = await db.getFirstAsync<{ ts: string | null }>(
+      "SELECT json_extract(data, '$.atualizadoEm') AS ts FROM recibos WHERE id = ?", [id],
+    );
+    return tsMaisNovo(row?.ts, recebidoEm);
+  } catch {
+    return false;
+  }
+}
+
 // ─── Escrita SILENCIOSA no SQLite (sem re-disparar push) ─────────────────────
 // Estes upserts gravam direto na tabela local, espelhando a forma dos `save*`
 // de database.ts, MAS sem chamar pushRow — é assim que pullAll evita o loop.
@@ -738,35 +830,45 @@ async function localUpsertEmpresa(e: Empresa, recebidoEm?: string): Promise<void
 }
 
 async function localUpsertCliente(c: Cliente): Promise<void> {
+  // Guard de conflito: se este aparelho escreveu depois, a linha remota não entra.
+  if (await localMaisNovoColuna('clientes', c.id, c.atualizadoEm)) return;
   const db = await getDb();
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
-       (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [c.id, c.nome, c.telefone ?? null, c.cpf ?? null, c.cnpj ?? null,
      c.endereco ?? null, c.complemento ?? null, c.estado ?? null,
-     c.cidade ?? null, c.cep ?? null, c.criadoEm],
+     c.cidade ?? null, c.cep ?? null, c.criadoEm, c.excluidoEm ?? null,
+     c.atualizadoEm ?? c.criadoEm],
   );
 }
 
 async function localUpsertServico(s: ServicoItem): Promise<void> {
+  if (await localMaisNovoColuna('servicos', s.id, s.atualizadoEm)) return;
   const db = await getDb();
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
-    `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em)
-     VALUES (?,?,?,?,?,?,?,?)`,
+    `INSERT OR REPLACE INTO servicos (id, nome, descricao, preco, custo, unidade, foto_uri, criado_em, excluido_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [s.id, s.nome, s.descricao ?? null, s.preco, s.custo ?? null,
-     s.unidade, s.fotoUri ?? null, s.criadoEm],
+     s.unidade, s.fotoUri ?? null, s.criadoEm, s.excluidoEm ?? null,
+     s.atualizadoEm ?? s.criadoEm],
   );
 }
 
 async function localUpsertProduto(p: ProdutoItem): Promise<void> {
+  if (await localMaisNovoColuna('produtos', p.id, p.atualizadoEm)) return;
   const db = await getDb();
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO produtos
-       (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+       (id, nome, descricao, preco, custo, marca, modelo, unidade, foto_uri, criado_em, excluido_em, atualizado_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [p.id, p.nome, p.descricao ?? null, p.preco, p.custo ?? null,
-     p.marca ?? null, p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm],
+     p.marca ?? null, p.modelo ?? null, p.unidade, p.fotoUri ?? null, p.criadoEm, p.excluidoEm ?? null,
+     p.atualizadoEm ?? p.criadoEm],
   );
 }
 
@@ -782,27 +884,37 @@ async function localUpsertOrcamento(o: Orcamento): Promise<void> {
 }
 
 async function localUpsertRecibo(r: Recibo): Promise<void> {
+  if (await localMaisNovoRecibo(r.id, r.atualizadoEm)) return;
   const db = await getDb();
+  // Blob vindo de nuvem antiga pode não ter o relógio; grava com criadoEm para o
+  // guard ter o que comparar da próxima vez (em vez de undefined, que nunca vence).
+  const gravado: Recibo = r.atualizadoEm ? r : { ...r, atualizadoEm: r.criadoEm };
   await db.runAsync('INSERT OR REPLACE INTO recibos (id, numero, data) VALUES (?,?,?)', [
-    r.id,
-    r.numero,
-    JSON.stringify(r),
+    gravado.id,
+    gravado.numero,
+    JSON.stringify(gravado),
   ]);
 }
 
 async function localUpsertModelo(m: ModeloOrcamento): Promise<void> {
+  if (await localMaisNovoColuna('modelos', m.id, m.atualizadoEm)) return;
   const db = await getDb();
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
-    'INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em) VALUES (?,?,?,?,?)',
-    [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm],
+    'INSERT OR REPLACE INTO modelos (id, nome, descricao, data, criado_em, excluido_em, atualizado_em) VALUES (?,?,?,?,?,?,?)',
+    [m.id, m.nome, m.descricao ?? null, JSON.stringify(m.orcamentoBase), m.criadoEm, m.excluidoEm ?? null,
+     m.atualizadoEm ?? m.criadoEm],
   );
 }
 
 async function localUpsertDepoimento(d: Depoimento): Promise<void> {
+  if (await localMaisNovoColuna('depoimentos', d.id, d.atualizadoEm)) return;
   const db = await getDb();
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
-    'INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em) VALUES (?,?,?,?,?)',
-    [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm],
+    'INSERT OR REPLACE INTO depoimentos (id, nome_cliente, estrelas, texto, criado_em, excluido_em, atualizado_em) VALUES (?,?,?,?,?,?,?)',
+    [d.id, d.nomeCliente, d.estrelas, d.texto ?? null, d.criadoEm, d.excluidoEm ?? null,
+     d.atualizadoEm ?? d.criadoEm],
   );
 }
 
@@ -810,13 +922,14 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   const db = await getDb();
   // Anti-perda: se o agendamento local for mais novo, preserva a edição local.
   if (await localMaisNovoAgendamento(a.id, a.atualizadoEm)) return;
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO agendamentos
-       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
-     a.observacao ?? null, a.criadoEm, a.atualizadoEm],
+     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null],
   );
 }
 
@@ -833,16 +946,17 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
     // sem linha local / erro de leitura → segue e grava (piso seguro)
   }
   // checklist/fotos como TEXT JSON (mesmo schema local de database.ts).
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [o.id, o.numero, o.orcamentoId ?? null, o.clienteId ?? null, o.clienteNome,
      o.titulo, o.descricao ?? null, o.status, o.tecnicoId ?? null, o.tecnicoNome ?? null,
      o.dataAgendada ?? null, JSON.stringify(o.checklist ?? []), JSON.stringify(o.fotos ?? []),
-     o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm],
+     o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null],
   );
 }
 
@@ -866,17 +980,18 @@ async function localUpsertEquipamento(e: Equipamento): Promise<void> {
     // sem linha local / erro → grava (piso seguro)
   }
   // fotos como TEXT JSON (mesmo schema local de database.ts).
+  // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO equipamentos
        (id, cliente_id, local_id, codigo_interno, patrimonio, fabricante, modelo, numero_serie,
         categoria, capacidade_btu, tensao, refrigerante, localizacao, situacao, criticidade,
-        qr_token, qr_revogado_em, fotos, criado_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        qr_token, qr_revogado_em, fotos, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [e.id, e.clienteId ?? null, e.localId ?? null, e.codigoInterno ?? null, e.patrimonio ?? null,
      e.fabricante ?? null, e.modelo ?? null, e.numeroSerie ?? null, e.categoria ?? null,
      e.capacidadeBtu ?? null, e.tensao ?? null, e.refrigerante ?? null, e.localizacao ?? null,
      e.situacao, e.criticidade ?? null, e.qrToken ?? '', e.qrRevogadoEm ?? null,
-     JSON.stringify(e.fotos ?? []), e.criadoEm, e.atualizadoEm],
+     JSON.stringify(e.fotos ?? []), e.criadoEm, e.atualizadoEm, e.excluidoEm ?? null],
   );
 }
 
@@ -1140,13 +1255,13 @@ async function pullTable<T>(
  * PULA o upsert se a nuvem for mais nova (edição feita em outro aparelho entre o
  * pull e o push, ou snapshot antigo recém-restaurado). Isso fecha o last-writer-
  * wins cego que podia reverter, no painel, trabalho mais recente. Os timestamps
- * remotos dessas duas tabelas são buscados em LOTE (uma query cada) ANTES do loop —
- * o guard vira lookup no mapa, sem N+1. `empresa` (linha única por dono, sem
- * timestamp de edição no modelo do app) tem sua PRÓPRIA guarda dentro de
- * pushRowUnchecked (EMPRESA_STAMP_KEY, ver ali). As demais tabelas
- * (clientes/servicos/produtos/recibos/modelos/depoimentos) não têm timestamp de
- * EDIÇÃO no modelo do app (só `criado_em`) e seguem no upsert direto. NUNCA
- * lança: na dúvida (offline/sem timestamp) o push acontece.
+ * remotos são buscados em LOTE (uma query por tabela) ANTES do loop — o guard vira
+ * lookup no mapa, sem N+1. Desde o schema local v3 TODAS as dez tabelas de dado
+ * carregam `atualizado_em` e passam pelo guard; antes disso seis delas iam no
+ * upsert direto, e era por aí que uma cópia local velha desfazia uma exclusão.
+ * `empresa` (linha única por dono, sem timestamp de edição no modelo do app) tem
+ * sua PRÓPRIA guarda dentro de pushRowUnchecked (EMPRESA_STAMP_KEY, ver ali).
+ * NUNCA lança: na dúvida (offline/sem timestamp) o push acontece.
  */
 export async function pushAllLocal(geracao?: number): Promise<void> {
   try {
@@ -1164,18 +1279,36 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
     const tsAgendamentos = await carregarTimestampsRemotos('agendamentos', 'atualizado_em');
     const tsOrdens = await carregarTimestampsRemotos('ordens_servico', 'atualizado_em');
     const tsEquip = await carregarTimestampsRemotos('equipamentos', 'atualizado_em');
+    // Desde o schema v3 estas seis também têm relógio, então ganham o MESMO guard.
+    // Sem ele, uma cópia local ativa e velha (aparelho que ainda não puxou o
+    // "excluir"/"restaurar" feito em outro) sobrescreveria a versão mais nova da nuvem.
+    const tsClientes = await carregarTimestampsRemotos('clientes', 'atualizado_em');
+    const tsServicos = await carregarTimestampsRemotos('servicos', 'atualizado_em');
+    const tsProdutos = await carregarTimestampsRemotos('produtos', 'atualizado_em');
+    const tsRecibos = await carregarTimestampsRemotos('recibos', 'atualizado_em');
+    const tsModelos = await carregarTimestampsRemotos('modelos', 'atualizado_em');
+    const tsDepoimentos = await carregarTimestampsRemotos('depoimentos', 'atualizado_em');
 
-    await pushTable('clientes', 'SELECT * FROM clientes', rowToClienteLocal, undefined, geracao);
-    await pushTable('servicos', 'SELECT * FROM servicos', rowToServicoLocal, undefined, geracao);
-    await pushTable('produtos', 'SELECT * FROM produtos', rowToProdutoLocal, undefined, geracao);
+    await pushTable('clientes', 'SELECT * FROM clientes', rowToClienteLocal,
+      (c) => remoteMaisNovoNoMapa(tsClientes, c.id, c.atualizadoEm), geracao);
+    await pushTable('servicos', 'SELECT * FROM servicos', rowToServicoLocal,
+      (s) => remoteMaisNovoNoMapa(tsServicos, s.id, s.atualizadoEm), geracao);
+    await pushTable('produtos', 'SELECT * FROM produtos', rowToProdutoLocal,
+      (p) => remoteMaisNovoNoMapa(tsProdutos, p.id, p.atualizadoEm), geracao);
     await pushTable('orcamentos', 'SELECT data FROM orcamentos', (r: any) => JSON.parse(r.data) as Orcamento,
       (o) => remoteMaisNovoNoMapa(tsOrcamentos, o.id, o.atualizadoEm), geracao);
-    await pushTable('recibos', 'SELECT data FROM recibos', (r: any) => JSON.parse(r.data) as Recibo, undefined, geracao);
+    await pushTable('recibos', 'SELECT data FROM recibos', (r: any) => JSON.parse(r.data) as Recibo,
+      (r) => remoteMaisNovoNoMapa(tsRecibos, r.id, r.atualizadoEm), geracao);
     await pushTable('modelos', 'SELECT * FROM modelos', (r: any) => ({
       id: r.id, nome: r.nome, descricao: r.descricao ?? undefined,
       orcamentoBase: JSON.parse(r.data), criadoEm: r.criado_em,
-    } as ModeloOrcamento), undefined, geracao);
-    await pushTable('depoimentos', 'SELECT * FROM depoimentos', rowToDepoimentoLocal, undefined, geracao);
+      // Sem isso, modeloToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
+      excluidoEm: r.excluido_em ?? undefined,
+      atualizadoEm: r.atualizado_em ?? r.criado_em, // ver rowToClienteLocal
+    } as ModeloOrcamento),
+      (m) => remoteMaisNovoNoMapa(tsModelos, m.id, m.atualizadoEm), geracao);
+    await pushTable('depoimentos', 'SELECT * FROM depoimentos', rowToDepoimentoLocal,
+      (d) => remoteMaisNovoNoMapa(tsDepoimentos, d.id, d.atualizadoEm), geracao);
     await pushTable('agendamentos', 'SELECT * FROM agendamentos', rowToAgendamentoLocal,
       (a) => remoteMaisNovoNoMapa(tsAgendamentos, a.id, a.atualizadoEm), geracao);
     await pushTable<OrdemServico>('ordens_servico', 'SELECT * FROM ordens_servico', rowToOrdemServico,
@@ -1231,6 +1364,10 @@ function rowToClienteLocal(r: any): Cliente {
     endereco: r.endereco ?? undefined, complemento: r.complemento ?? undefined,
     estado: r.estado ?? undefined, cidade: r.cidade ?? undefined,
     cep: r.cep ?? undefined, criadoEm: r.criado_em,
+    // Sem isso, clienteToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
+    excluidoEm: r.excluido_em ?? undefined,
+    // Idem para o relógio: sem ele o push mandaria atualizado_em=null (coluna NOT NULL).
+    atualizadoEm: r.atualizado_em ?? r.criado_em,
   };
 }
 function rowToServicoLocal(r: any): ServicoItem {
@@ -1238,6 +1375,9 @@ function rowToServicoLocal(r: any): ServicoItem {
     id: r.id, nome: r.nome, descricao: r.descricao ?? undefined,
     preco: r.preco, custo: r.custo ?? undefined, unidade: r.unidade,
     fotoUri: r.foto_uri ?? undefined, criadoEm: r.criado_em,
+    // Sem isso, servicoToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? r.criado_em, // ver rowToClienteLocal
   };
 }
 function rowToProdutoLocal(r: any): ProdutoItem {
@@ -1246,12 +1386,18 @@ function rowToProdutoLocal(r: any): ProdutoItem {
     preco: r.preco, custo: r.custo ?? undefined, marca: r.marca ?? undefined,
     modelo: r.modelo ?? undefined, unidade: r.unidade,
     fotoUri: r.foto_uri ?? undefined, criadoEm: r.criado_em,
+    // Sem isso, produtoToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? r.criado_em, // ver rowToClienteLocal
   };
 }
 function rowToDepoimentoLocal(r: any): Depoimento {
   return {
     id: r.id, nomeCliente: r.nome_cliente, estrelas: r.estrelas,
     texto: r.texto ?? undefined, criadoEm: r.criado_em,
+    // Sem isso, depoimentoToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
+    excluidoEm: r.excluido_em ?? undefined,
+    atualizadoEm: r.atualizado_em ?? r.criado_em, // ver rowToClienteLocal
   };
 }
 function rowToAgendamentoLocal(r: any): Agendamento {
@@ -1261,6 +1407,8 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     endereco: r.endereco ?? undefined, status: r.status,
     orcamentoId: r.orcamento_id ?? undefined, observacao: r.observacao ?? undefined,
     criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
+    // Sem isso, agendamentoToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
+    excluidoEm: r.excluido_em ?? undefined,
   };
 }
 
