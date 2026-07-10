@@ -23,6 +23,8 @@ export { abrirWhatsApp } from './exportarDocumento';
  *     `false` => rodapé DISCRETO da OLLI em todo documento. `true` (Pro/
  *     Empresa) => sem esse rodapé (dados legais/PIX/validade PERMANECEM).
  */
+import { qrSvg } from './qrcode';
+
 export type CapaEstilo = 'logo' | 'foto' | 'nenhuma';
 
 interface CapaCampos {
@@ -34,6 +36,12 @@ interface CapaCampos {
 export interface OpcoesPdf {
   /** true (Pro/Empresa) remove o rodapé da marca OLLI. Default false. */
   removerMarca?: boolean;
+  /**
+   * URL pública do orçamento (`https://link.../o/<token>`). Quando presente, o PDF
+   * ganha os blocos de QR "Aprovar" e "Recusar". Ausente (offline, sem nuvem), o
+   * documento cai no texto de instrução de sempre — nunca mostra um QR morto.
+   */
+  linkPublico?: string;
 }
 
 /** Estilo de capa efetivo (default 'logo'), validado contra valores conhecidos. */
@@ -397,19 +405,88 @@ function cssModelos(accent: string): string {
   `;
 }
 
-function renderApprovalGuide(o: Orcamento): string {
-  if (o.exibirAprovacao === false && o.exibirRecusa === false && !o.solicitarAssinaturaCliente) {
-    return '';
+/**
+ * Bloco de QR para uma ação do cliente.
+ *
+ * O SVG vai INLINE, não como `<img src="data:image/svg+xml...">`: o motor de
+ * impressão do iOS (UIMarkupTextPrintFormatter) costuma ignorar data-URI de SVG,
+ * enquanto o do Android (Chromium) as renderiza. Um QR que aparece num celular e
+ * some no outro entrega ao cliente um retângulo branco.
+ *
+ * A URL vai TAMBÉM por extenso: numa folha impressa, num PDF aberto no desktop, ou
+ * num leitor que não abre a câmera, o texto é a única saída.
+ */
+function renderQrAcao(url: string, rotulo: string, legenda: string, classe: string): string {
+  return `
+    <div class="qr-card ${classe}">
+      <div class="qr-rotulo">${escapeHtml(rotulo)}</div>
+      <div class="qr-img">${qrSvg(url)}</div>
+      <div class="qr-legenda">${escapeHtml(legenda)}</div>
+      <div class="qr-url">${escapeHtml(url)}</div>
+    </div>
+  `;
+}
+
+/**
+ * "Como fechar este orçamento".
+ *
+ * BOTÃO DENTRO DO PDF NÃO EXISTE. Botões reais em PDF exigem AcroForm com
+ * JavaScript, e praticamente todo visualizador o bloqueia (WhatsApp, Quick Look do
+ * iOS, Gmail, leitor do Chrome): o cliente clicaria e nada aconteceria, sem
+ * mensagem de erro. E este PDF é gerado no aparelho por `expo-print`, cujo motor
+ * no iOS descarta até hiperlinks comuns — o link funcionaria no Android e morreria
+ * no iPhone.
+ *
+ * O QR funciona em todo lugar, inclusive numa folha impressa. Ele leva à página
+ * pública, que tem botões de verdade e grava a decisão de forma atômica.
+ *
+ * O QR NUNCA aprova sozinho: `?acao=` só PRÉ-SELECIONA na página. `GET` não pode
+ * mudar estado — um pré-visualizador de link (WhatsApp, Slack) que buscasse a URL
+ * aprovaria o orçamento sem o cliente tocar em nada.
+ */
+function renderApprovalGuide(o: Orcamento, linkPublico?: string): string {
+  const podeAprovar = o.exibirAprovacao !== false;
+  const podeRecusar = o.exibirRecusa !== false;
+  if (!podeAprovar && !podeRecusar && !o.solicitarAssinaturaCliente) return '';
+
+  // Com link publicado: QR de ação. Sem link (offline / sem nuvem): texto de sempre.
+  const temQr = !!linkPublico && (podeAprovar || podeRecusar);
+  if (temQr) {
+    const base = linkPublico as string;
+    const sep = base.includes('?') ? '&' : '?';
+    const cards = [
+      podeAprovar
+        ? renderQrAcao(`${base}${sep}acao=aprovar`, 'Aprovar', 'Aponte a câmera do celular', 'qr-aprovar')
+        : '',
+      podeRecusar
+        ? renderQrAcao(`${base}${sep}acao=recusar`, 'Recusar ou pedir ajuste', 'Aponte a câmera do celular', 'qr-recusar')
+        : '',
+    ].filter(Boolean).join('');
+
+    const nota = o.solicitarAssinaturaCliente
+      ? 'Se preferir, assine no campo abaixo e devolva este documento ao prestador.'
+      : 'A confirmação ainda pede um toque na página — o QR só abre a opção escolhida.';
+
+    return `
+      <div class="approval-guide approval-guide-qr">
+        <div class="approval-head">
+          <div class="approval-kicker">Próximo passo</div>
+          <div class="approval-title">Como fechar este orçamento</div>
+          <div class="approval-copy">${escapeHtml(nota)}</div>
+        </div>
+        <div class="qr-acoes">${cards}</div>
+      </div>
+    `;
   }
 
   const passos: string[] = [];
-  if (o.exibirAprovacao !== false) {
+  if (podeAprovar) {
     passos.push('Para aprovar, responda "aprovado" no WhatsApp ou confirme pelo link enviado.');
   }
   if (o.solicitarAssinaturaCliente) {
     passos.push('Se preferir, assine no campo abaixo e devolva este documento ao prestador.');
   }
-  if (o.exibirRecusa !== false) {
+  if (podeRecusar) {
     passos.push('Se quiser ajustar algum item, responda com a dúvida ou motivo da recusa.');
   }
   if (passos.length === 0) return '';
@@ -460,7 +537,7 @@ export function gerarHtmlOrcamento(
 
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
-  const approvalGuideHtml = renderApprovalGuide(o);
+  const approvalGuideHtml = renderApprovalGuide(o, opts?.linkPublico);
   const observacoesHtml = renderObservacoes(o);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
@@ -593,6 +670,21 @@ export function gerarHtmlOrcamento(
   .cond-label { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
   .cond-val { font-size: 12.5px; color: #3C4756; margin-top: 6px; line-height: 1.55; }
   .approval-guide { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 22px; align-items: flex-start; page-break-inside: avoid; }
+  /* Variante com QR: empilha o texto sobre os dois cartões de ação. */
+  .approval-guide-qr { display: block; }
+  .approval-head { margin-bottom: 14px; }
+  .qr-acoes { display: flex; gap: 14px; align-items: stretch; }
+  .qr-card { flex: 1; background: #FFFFFF; border: 1.5px solid ${accentBorder}; border-radius: 12px; padding: 12px 10px 10px; text-align: center; page-break-inside: avoid; }
+  /* Cor só na borda e no rótulo: o QR PRECISA de módulos escuros sobre branco puro
+     para a câmera ler. Fundo colorido atrás do código quebra a leitura. */
+  .qr-aprovar { border-color: ${accent}; }
+  .qr-recusar { border-color: #C6CEDA; }
+  .qr-rotulo { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 8px; color: #0A2540; }
+  .qr-aprovar .qr-rotulo { color: ${accent}; }
+  .qr-img { display: block; margin: 0 auto 8px; width: 128px; height: 128px; }
+  .qr-img svg { width: 100%; height: 100%; display: block; }
+  .qr-legenda { font-size: 9.5px; color: #5A6A7D; margin-bottom: 4px; }
+  .qr-url { font-size: 7.5px; color: #8A97A6; word-break: break-all; line-height: 1.25; }
   .approval-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; color: ${accent}; text-transform: uppercase; white-space: nowrap; }
   .approval-title { font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 700; color: #16202E; margin-top: 2px; white-space: nowrap; }
   .approval-copy { flex: 1; font-size: 12.5px; color: #3C4756; line-height: 1.65; }
@@ -762,6 +854,24 @@ export async function montarHtmlOrcamentoCompleto(
 }
 
 /**
+ * Link público do orçamento, se der. NUNCA lança: sem nuvem, sem login ou sem
+ * internet o PDF sai com o texto de instrução em vez do QR — melhor um documento
+ * sem QR do que um QR que não resolve.
+ *
+ * `import` dinâmico de propósito: `clienteLink` puxa supabase e o banco, e o
+ * pdfGenerator é usado em contextos (preview, teste) onde isso não deve carregar.
+ */
+async function obterLinkPublico(o: Orcamento, empresa: Empresa | null): Promise<string | undefined> {
+  try {
+    const { gerarLinkOrcamento, linkConfigurado } = await import('../services/clienteLink');
+    if (!linkConfigurado()) return undefined;
+    return await gerarLinkOrcamento(o, empresa);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Gera e entrega o PDF do orçamento (web: imprime/salva como PDF; nativo:
  * expo-print + compartilhamento). Toda a parte nativo-only fica isolada no
  * helper exportarHtmlComoPdf, então nada disso é avaliado na web.
@@ -773,7 +883,8 @@ export async function compartilharPdfOrcamento(
   accent?: string,
   opts?: OpcoesPdf,
 ): Promise<void> {
-  const html = await montarHtmlOrcamentoCompleto(o, empresa, depoimentos, accent, opts);
+  const comLink: OpcoesPdf = { ...opts, linkPublico: opts?.linkPublico ?? (await obterLinkPublico(o, empresa)) };
+  const html = await montarHtmlOrcamentoCompleto(o, empresa, depoimentos, accent, comLink);
   const fileName = `Orcamento-${safeFileName(o.clienteNome)}-${o.numero}`;
   await exportarHtmlComoPdf(html, fileName, {
     dialogTitle: `Orçamento ${o.numero} - ${o.clienteNome}`,

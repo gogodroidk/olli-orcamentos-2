@@ -343,7 +343,26 @@ export async function responderLink(token, request, env) {
 // `request` é OPCIONAL (o router hoje chama sem ela): quando presente, enriquece
 // o evento 'visualizado' com ip_hash/user-agent; quando ausente, o evento ainda é
 // gravado (sem enriquecimento). Assim a trilha funciona independentemente disso.
+/**
+ * `?acao=aprovar|recusar` vem dos QR codes do PDF. Ele SÓ PRÉ-SELECIONA a ação na
+ * página: rola até os botões e, no caso de recusa, abre o campo de motivo. NUNCA
+ * envia.
+ *
+ * GET não pode mudar estado. Um pré-visualizador de link (WhatsApp, Slack, um
+ * antivírus de e-mail) que buscasse a URL aprovaria o orçamento sem o cliente
+ * tocar em nada — e a aprovação é irreversível pela página.
+ */
+function acaoPreSelecionada(request) {
+  try {
+    const v = new URL(request.url).searchParams.get('acao');
+    return v === 'aprovar' || v === 'recusar' ? v : '';
+  } catch {
+    return '';
+  }
+}
+
 export async function renderLinkPage(token, env, request) {
+  const preSelecao = acaoPreSelecionada(request);
   if (!validToken(token)) return html(pageErro('Link inválido', 'Confira o endereço que você recebeu.'), 400);
   const row = await getRow(env, token);
   if (row && row.error) return html(pageErro('Erro temporário', 'Não consegui carregar agora. Recarregue em alguns instantes.'), 503);
@@ -364,7 +383,7 @@ export async function renderLinkPage(token, env, request) {
     // nunca deixa a trilha atrapalhar a entrega da página
   }
 
-  return html(pageOrcamento(row));
+  return html(pageOrcamento(row, preSelecao));
 }
 
 // ─── páginas ─────────────────────────────────────────────────
@@ -413,6 +432,7 @@ function shell(inner, accentRaw = ACCENT) {
   .approve-hint{font-size:12px;color:#5A6575;text-align:center;line-height:1.4;padding:0 6px}
   .btn{border:none;border-radius:14px;padding:15px;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
   .btn-aprovar{background:#15B66E;color:#fff;box-shadow:0 8px 20px rgba(21,182,110,.32)}
+  .destacado{outline:3px solid rgba(255,255,255,.65);outline-offset:3px}
   .btn-row{display:flex;gap:10px}
   .btn-recusar{flex:1;background:#fff;color:#C0392B;border:1.5px solid #F0D2CE}
   .btn-zap{flex:1;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
@@ -460,7 +480,7 @@ function pageErro(titulo, sub) {
   return shell(`<div class="err"><div class="err-emoji">🔍</div><div class="err-title">${esc(titulo)}</div><div class="err-sub">${esc(sub)}</div><div class="foot" style="margin-top:22px">enviado com OLLI</div></div>`);
 }
 
-function pageOrcamento(row) {
+function pageOrcamento(row, preSelecao = '') {
   const d = (row && typeof row.dados === 'object' && row.dados) ? row.dados : {};
   const prestador = (d.prestador && typeof d.prestador === 'object') ? d.prestador : {};
   const nomePrestador = prestador.nome || row.prestador_nome || 'Prestador';
@@ -532,7 +552,7 @@ function pageOrcamento(row) {
     actionsHtml = `${comoFunciona}
       <div class="actions" id="actions">
         ${allowApprove ? `<div class="approve-hint">Aprovando, ${esc(nomePrestador)} já é avisado e agenda seu serviço — sem burocracia.</div>` : ''}
-        ${allowApprove ? `<button class="btn btn-aprovar" onclick="responder('aprovar')">✓ Aprovar orçamento</button>` : ''}
+        ${allowApprove ? `<button id="btnAprovar" class="btn btn-aprovar" onclick="responder('aprovar')">✓ Aprovar orçamento</button>` : ''}
         <div class="btn-row">
           ${allowReject ? `<button class="btn btn-recusar" onclick="abrirRecusa()">Recusar</button>` : ''}
           ${zapHref ? `<a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener">Tirar dúvida</a>` : ''}
@@ -630,6 +650,18 @@ function pageOrcamento(row) {
       alvos.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
       alert('Não consegui registrar agora. Verifique a internet e tente de novo.');
     }
+
+    // Pré-seleção vinda do QR do PDF (?acao=). NÃO envia nada: rola até as ações e,
+    // na recusa, abre o campo de motivo. O cliente ainda confirma com um toque.
+    (function(){
+      var acao = ${JSON.stringify(preSelecao)};
+      if (!acao) return;
+      var box = document.getElementById('actions');
+      if (box && box.scrollIntoView) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      if (acao === 'recusar') { abrirRecusa(); return; }
+      var b = document.getElementById('btnAprovar');
+      if (b) { b.classList.add('destacado'); if (b.focus) b.focus(); }
+    })();
   </script>`;
 
   return shell(inner, accent);
