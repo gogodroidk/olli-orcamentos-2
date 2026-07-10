@@ -63,3 +63,27 @@ if (await exists(fromDir)) {
 } else {
   console.log('fix-cf-assets: nada a mover (sem assets/node_modules).');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `_redirects` — o mesmo build serve DOIS destinos com regras opostas.
+//
+//   Cloudflare Pages (olli-app -> app.olliorcamentos.online) EXIGE o `_redirects`
+//   com `/* /index.html 200` para o fallback de SPA. Esse deploy é feito pela
+//   PRÓPRIA Cloudflare a partir do Git (Git provider = Yes), usando `public/`.
+//
+//   Cloudflare Workers Assets (olli-site -> RAIZ olliorcamentos.online) RECUSA a
+//   mesma regra: "Infinite loop detected in this rule" (code 100324). Lá o
+//   fallback é configuração (`not_found_handling: single-page-application`, em
+//   site/wrangler.jsonc), não arquivo.
+//
+// Como este `dist/` local só é usado para publicar a RAIZ, tiramos o arquivo
+// daqui. `public/_redirects` continua versionado, e o Pages segue funcionando.
+// `.assetsignore` seria mais elegante, mas o wrangler 4.105 não o honrou.
+// ─────────────────────────────────────────────────────────────────────────────
+const redirects = path.join(dist, '_redirects');
+if (await exists(redirects)) {
+  await fs.rm(redirects);
+  console.log('fix-cf-assets: dist/_redirects removido (proibido no Workers Assets; ver comentario).');
+}
+const assetsIgnoreAntigo = path.join(dist, '.assetsignore');
+if (await exists(assetsIgnoreAntigo)) await fs.rm(assetsIgnoreAntigo);

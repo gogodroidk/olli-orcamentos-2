@@ -1,0 +1,38 @@
+{
+  // ─────────────────────────────────────────────────────────────────────────────
+  // olli-site — o worker de ASSETS ESTÁTICOS que serve a RAIZ olliorcamentos.online
+  // (landing pública + app web). NÃO confundir com `worker/` (olli-diagnostico),
+  // que serve a API, o portal do cliente /o/<token>, a etiqueta /q/<token> e /admin.
+  //
+  // POR QUE ESTE ARQUIVO EXISTE
+  //   Até 2026-07-09 este worker era um deploy ÓRFÃO: existia em produção desde
+  //   18/06, servindo um build de 30/06, e não tinha fonte em repositório nenhum.
+  //   Resultado: toda a landing, o SEO, o robots.txt e o sitemap.xml estavam
+  //   mergeados na main e no ar em `app.olliorcamentos.online` — mas a RAIZ, que é
+  //   o que o Google e os clientes veem, continuava servindo o site velho
+  //   (`<html lang="en">`, sem sitemap, og-image placeholder de 1KB).
+  //   Um deploy sem fonte é um deploy que ninguém sabe reproduzir.
+  //
+  // COMO PUBLICAR
+  //   1. na raiz do projeto:  npm run export:web     (gera dist/ e conserta o wasm)
+  //   2. aqui:               npx wrangler deploy
+  //
+  // O domínio customizado (olliorcamentos.online) é um recurso à parte, ligado a
+  // este worker no painel — não é declarado aqui e não é tocado pelo deploy.
+  // ─────────────────────────────────────────────────────────────────────────────
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "olli-site",
+  "compatibility_date": "2026-06-29",
+
+  "assets": {
+    "directory": "../dist",
+    // A landing e o app são uma SPA (app.json: web.output = "single"): qualquer
+    // rota desconhecida devolve o index.html. Os arquivos REAIS (sitemap.xml,
+    // robots.txt, og-image.png) continuam sendo servidos com o próprio
+    // Content-Type — é isso que faz /sitemap.xml voltar como application/xml em
+    // vez de cair no catch-all e virar text/html.
+    "not_found_handling": "single-page-application"
+  },
+
+  "observability": { "enabled": true }
+}
