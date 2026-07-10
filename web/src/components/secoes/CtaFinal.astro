@@ -1,0 +1,70 @@
+<!--
+  CTA FINAL — o clique no momento de menor atrito.
+  O arco térmico do hero se fecha aqui: o caos (bolha de áudio, laranja)
+  já esfriou em documento (papel, fluido). Setpoint atingido — só falta
+  o técnico apertar o botão. id="comecar" é o alvo dos dois CTAs do hero.
+-->
+<section id="comecar" class="relative overflow-hidden bg-maquinas py-24 md:py-32">
+  <!-- brilho radial de fluido, reaproveitado do hero -->
+  <div
+    class="pointer-events-none absolute left-1/2 top-0 h-[42rem] w-[42rem] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-40 blur-[120px]"
+    style="background: radial-gradient(closest-side, var(--color-fluido), transparent)"
+  ></div>
+
+  <div class="relative mx-auto max-w-3xl px-6 text-center">
+    <span class="etiqueta">✓ Setpoint atingido</span>
+
+    <h2 class="display mt-6 text-papel" style="font-size: clamp(2.5rem, 6vw, 5rem)">
+      Deixa o caos no WhatsApp.<br />
+      <span class="text-fluido">A ordem começa agora.</span>
+    </h2>
+
+    <p class="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-gelo/80 sm:text-xl">
+      Cria seu primeiro orçamento em minutos — de graça, sem cartão, funcionando até sem sinal.
+    </p>
+
+    <!-- o arco fecha: a mesma bolha quente do hero, agora resolvida em documento frio -->
+    <div class="mt-10 flex items-center justify-center gap-3" aria-hidden="true">
+      <!-- mini bolha de áudio (fase quente) -->
+      <div class="flex items-center gap-2 rounded-xl rounded-bl-sm bg-[#1f1a16] px-3 py-2 ring-1 ring-laranja/20">
+        <span class="grid h-5 w-5 flex-none place-items-center rounded-full bg-laranja/20 text-[10px] text-laranja">▶</span>
+        <div class="flex h-4 items-center gap-[2px]">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <span
+              class="w-[2px] rounded-full bg-laranja/60"
+              style={`height:${20 + Math.round(65 * Math.abs(Math.sin(i * 1.7)))}%`}
+            ></span>
+          ))}
+        </div>
+      </div>
+
+      <span class="mono text-cobre">→</span>
+
+      <!-- mini documento (fase fria) -->
+      <div class="rounded-xl bg-papel px-3 py-2 text-left text-tinta ring-1 ring-black/5">
+        <span class="mono text-[9px] font-semibold tracking-wide text-tinta/50">ORÇAMENTO</span>
+        <div class="mt-1 flex items-center gap-1.5">
+          <div class="h-1 w-12 overflow-hidden rounded-full bg-tinta/10">
+            <div class="h-full w-full rounded-full bg-fluido"></div>
+          </div>
+          <span class="mono text-[10px] font-semibold text-fluido-forte">✓</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+      <a
+        href="https://app.olliorcamentos.online/cadastro"
+        class="w-full rounded-full bg-fluido px-8 py-4 text-center text-base font-semibold text-maquinas shadow-xl shadow-fluido/25 transition hover:bg-fluido-forte sm:w-auto sm:text-lg"
+      >Criar meu primeiro orçamento — grátis</a>
+      <a
+        href="https://wa.me/5511941727487"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="w-full rounded-full border border-cobre/60 px-8 py-4 text-center text-base font-medium text-gelo/90 transition hover:border-cobre hover:bg-cobre/10 sm:w-auto"
+      >Falar no WhatsApp</a>
+    </div>
+
+    <p class="mono mt-6 text-xs text-gelo/50">sem cartão · sem fidelidade · offline</p>
+  </div>
+</section>

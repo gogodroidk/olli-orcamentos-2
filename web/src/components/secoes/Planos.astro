@@ -1,0 +1,152 @@
+<!--
+  PLANOS — o grátis vira hábito, a marca no PDF vira motor de conversão.
+  Free generoso de propósito: orçamento/recibo/cliente/agenda sem limite, pra
+  o técnico trocar o caderno pela OLLI sem pensar duas vezes. O gatilho pra
+  assinar não é bloqueio de função — é o rodapé "Feito com OLLI" que o
+  CLIENTE dele vê no PDF. Tira essa marca (e destrava IA/relatórios/modelos)
+  é o Pro, ancorado como barato: R$ 39/mês, ou 12x menor que um ERP genérico
+  de escritório (ver seção "bolso-vs-erp").
+  Toggle Mensal/Anual é 100% CSS (dois <input type="radio"> + seletor :has()
+  via variante arbitrária do Tailwind) — zero JS, zero ilha.
+  Fonte dos recursos por plano: src/services/planos.ts (RECURSOS_POR_PLANO).
+  Preço Empresa (R$ 99/mês) já é o valor em produção (PlanosScreen.tsx) — ver
+  nota HONESTIDADE junto ao preço, no card, sobre reconfirmar antes do live.
+-->
+<section id="planos" class="planos-precos relative mx-auto max-w-7xl px-6 py-24 md:py-32">
+  <div class="mx-auto max-w-3xl text-center">
+    <span class="etiqueta">Planos</span>
+    <h2 class="display mt-5 text-papel" style="font-size: clamp(2rem, 5vw, 4rem)">
+      Comece de graça.<br />
+      <span class="text-fluido">Pague quando o cliente vir.</span>
+    </h2>
+    <p class="mx-auto mt-5 max-w-xl text-lg text-gelo/70">
+      O grátis é sério: orçamento, recibo, cliente e agenda sem limite, pra virar hábito — não isca.
+      O motor de conversão é simples: o PDF que o <strong class="font-semibold text-gelo">seu cliente</strong>
+      recebe leva o rodapé <span class="mono text-cobre">"Feito com OLLI"</span>. No dia em que isso incomodar,
+      o Pro tira a marca por <span class="mono text-fluido">R$ 39/mês</span>.
+    </p>
+  </div>
+
+  <!-- ── TOGGLE MENSAL / ANUAL — puro CSS, sem ilha ── -->
+  <input type="radio" name="periodo-planos" id="periodo-mensal" checked class="sr-only" />
+  <input type="radio" name="periodo-planos" id="periodo-anual" class="sr-only" />
+
+  <div class="mt-10 flex justify-center" role="group" aria-label="Período de cobrança do plano Pro">
+    <div class="flex items-center gap-1 rounded-full border border-cobre/30 bg-graxa/60 p-1">
+      <label
+        for="periodo-mensal"
+        class="relative z-10 cursor-pointer rounded-full px-5 py-2 text-sm font-semibold text-gelo/60 transition [.planos-precos:has(#periodo-mensal:checked)_&]:bg-fluido [.planos-precos:has(#periodo-mensal:checked)_&]:text-maquinas"
+      >Mensal</label>
+      <label
+        for="periodo-anual"
+        class="relative z-10 flex cursor-pointer items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold text-gelo/60 transition [.planos-precos:has(#periodo-anual:checked)_&]:bg-fluido [.planos-precos:has(#periodo-anual:checked)_&]:text-maquinas"
+      >
+        Anual
+        <span class="mono text-[10px] font-bold text-fluido [.planos-precos:has(#periodo-anual:checked)_&]:text-maquinas">−20%</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- ── OS TRÊS CARTÕES ── -->
+  <div class="mt-14 grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+
+    <!-- GRÁTIS -->
+    <div class="flex h-full flex-col rounded-2xl border border-cobre/25 bg-graxa/30 p-8">
+      <div class="flex items-start justify-between gap-3">
+        <h3 class="display text-2xl text-papel">Grátis</h3>
+        <span class="etiqueta shrink-0">Pra sempre</span>
+      </div>
+      <p class="mt-2 text-sm text-gelo/60">Pra sair do caderno e do grupo de WhatsApp.</p>
+
+      <div class="mt-6 flex items-baseline gap-1">
+        <span class="mono text-4xl font-bold text-papel">R$ 0</span><span class="mono text-base font-medium text-gelo/60">/mês</span>
+      </div>
+
+      <ul class="mt-8 flex-1 space-y-3 text-sm leading-relaxed text-gelo/85">
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Orçamentos, recibos, clientes e agenda <strong class="text-papel">ilimitados</strong></span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Diagnóstico HVAC offline, por código de erro</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Link do orçamento pro cliente aprovar</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>IA de diagnóstico: <span class="mono text-papel">3 usos/mês</span></span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>1 modelo de PDF <span class="text-gelo/55">(Editorial)</span></span></li>
+      </ul>
+
+      <p class="mt-6 border-t border-cobre/20 pt-5 text-xs leading-relaxed text-cobre">
+        O PDF grátis leva um rodapé discreto <span class="mono">"Feito com OLLI"</span>.
+      </p>
+
+      <a
+        href="https://app.olliorcamentos.online/cadastro"
+        class="mt-6 block rounded-full bg-fluido px-6 py-3.5 text-center text-sm font-semibold text-maquinas transition hover:bg-fluido-forte"
+      >Criar meu primeiro orçamento</a>
+    </div>
+
+    <!-- PRO — recomendado -->
+    <div class="relative flex h-full flex-col rounded-2xl border-2 border-fluido bg-graxa/50 p-8 shadow-2xl shadow-fluido/10 lg:-translate-y-4">
+      <span class="etiqueta absolute -top-3 left-1/2 -translate-x-1/2 !border-fluido/60 !text-fluido">Recomendado</span>
+
+      <h3 class="display mt-2 text-2xl text-papel">Pro</h3>
+      <p class="mt-2 text-sm text-gelo/60">Pra quem vive de climatização e já não cabe no grátis.</p>
+
+      <div class="mt-6">
+        <div class="preco-mensal flex items-baseline gap-1 [.planos-precos:has(#periodo-anual:checked)_&]:hidden">
+          <span class="mono text-4xl font-bold text-papel">R$ 39</span><span class="mono text-base font-medium text-gelo/60">/mês</span>
+        </div>
+        <div class="preco-anual hidden items-baseline gap-1 [.planos-precos:has(#periodo-anual:checked)_&]:flex">
+          <span class="mono text-4xl font-bold text-papel">R$ 374</span><span class="mono text-base font-medium text-gelo/60">/ano</span>
+        </div>
+      </div>
+
+      <ul class="mt-8 flex-1 space-y-3 text-sm leading-relaxed text-gelo/85">
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Tudo do Grátis</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>IA sem limite de uso</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span><strong class="text-papel">Tira a marca OLLI</strong> do PDF</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Todos os modelos de PDF</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Relatórios de faturamento e conversão</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Metas de vendas</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Radar de clientes sumidos</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Backup de <span class="mono text-papel">90 dias</span></span></li>
+      </ul>
+
+      <a
+        href="https://app.olliorcamentos.online/cadastro"
+        class="mt-6 block rounded-full bg-fluido px-6 py-3.5 text-center text-sm font-semibold text-maquinas transition hover:bg-fluido-forte"
+      >Assinar o Pro</a>
+    </div>
+
+    <!-- EMPRESA -->
+    <div class="flex h-full flex-col rounded-2xl border border-cobre/25 bg-graxa/30 p-8">
+      <h3 class="display text-2xl text-papel">Empresa</h3>
+      <p class="mt-2 text-sm text-gelo/60">Pra equipe que atende em campo todo santo dia.</p>
+
+      <!--
+        HONESTIDADE: R$ 99/mês é o valor hoje em produção (ver PlanosScreen.tsx).
+        Confirmar com o dono antes do live desta página. Se não confirmado até
+        o lançamento, trocar o bloco de preço abaixo por "sob consulta".
+      -->
+      <div class="mt-6 flex items-baseline gap-1">
+        <span class="mono text-4xl font-bold text-papel">R$ 99</span><span class="mono text-base font-medium text-gelo/60">/mês</span>
+      </div>
+
+      <ul class="mt-8 flex-1 space-y-3 text-sm leading-relaxed text-gelo/85">
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Tudo do Pro</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Equipe — até <span class="mono text-papel">10</span> técnicos</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Papéis e permissões por técnico</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Equipe ao vivo no mapa</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Painel de gestão da empresa</span></li>
+        <li class="flex gap-3"><span class="mt-0.5 text-fluido" aria-hidden="true">✓</span><span>Backup de <span class="mono text-papel">365 dias</span></span></li>
+      </ul>
+
+      <a
+        href="https://wa.me/5511941727487"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-6 block rounded-full border border-cobre/60 px-6 py-3.5 text-center text-sm font-medium text-gelo/90 transition hover:border-cobre hover:bg-cobre/10"
+      >Falar com a gente</a>
+    </div>
+
+  </div>
+
+  <p class="mono mt-14 text-center text-xs tracking-wide text-gelo/50">
+    Sem cartão pra testar. Sem fidelidade. Cancela quando quiser.
+  </p>
+</section>

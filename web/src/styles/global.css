@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/*
+  OLLI — sistema visual "SETPOINT" (direção vencedora do painel criativo).
+  Duas temperaturas: a rotina QUENTE (WhatsApp/papel/planilha) esfria para a
+  ordem FRIA da OLLI. O scroll é o termostato: --temp (0=quente, 1=frio) é
+  dirigido por Motion e interpola fundo/acento. ZERO navy — de propósito.
+*/
+@theme {
+  /* QUENTE — fase caos (só fundo/acento/cena, nunca texto de conteúdo) */
+  --color-graxa: #151210;        /* quase-preto quente, fundo do caos */
+  --color-laranja: #ff4d26;      /* laranja-compressor: dor/alerta — PROIBIDO em CTA */
+
+  /* FRIO — fase ordem */
+  --color-maquinas: #0b1517;     /* casa-de-máquinas: quase-preto com subtom verde (NÃO navy) */
+  --color-fluido: #3ecfb2;       /* verde-fluido: marca, CTA, sucesso */
+  --color-fluido-forte: #2bb89c; /* variante para hover/press do CTA */
+
+  /* NEUTROS — todo conteúdo transacional (documentos = sempre "papel") */
+  --color-papel: #f2ede4;        /* superfícies claras e documentos */
+  --color-tinta: #12100e;        /* texto sobre claro */
+  --color-gelo: #dff6f1;         /* texto sobre escuro frio */
+  --color-cobre: #c97b4a;        /* hairlines, bordas de etiqueta, o "tubo de cobre" gráfico */
+
+  /* Tipografia — três vozes (Google Fonts) */
+  --font-display: "Archivo", system-ui, sans-serif;       /* manchetes CAIXA-ALTA, industrial */
+  --font-sans: "Instrument Sans", system-ui, sans-serif;  /* corpo */
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;  /* dados: R$, µF, nº OS, tempo */
+
+  /* Tokens de movimento — a assinatura "O ENCAIXE" */
+  --ease-encaixe: linear(0, 0.4 8%, 0.9 20%, 1.02 34%, 1);
+  --dur-encaixe: 320ms;
+}
+
+/* Fundo térmico da página: interpola entre graxa (quente) e casa-de-máquinas
+   (frio) conforme --temp (0→1), setado pelo scroll na ilha ThermalScroll. */
+:root {
+  --temp: 0;
+  color-scheme: dark;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: color-mix(in oklab, var(--color-graxa), var(--color-maquinas) calc(var(--temp) * 100%));
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-gelo);
+  overflow-x: hidden;
+}
+
+/* Números são a linguagem de confiança do técnico: sempre tabulares no mono. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Display expandido de verdade (Archivo tem eixo de largura variável). */
+.display {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+}
+
+/* Etiqueta de inspeção — componente proprietário de marca (canto chanfrado). */
+.etiqueta {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid color-mix(in oklab, var(--color-cobre), transparent 20%);
+  color: var(--color-cobre);
+  padding: 0.32rem 0.7rem 0.3rem;
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* Regra P0 do perfil generic-saas: caminho sem movimento sempre. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

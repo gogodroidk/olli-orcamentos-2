@@ -1,0 +1,105 @@
+<!--
+  ComoFunciona.astro — "linha de produção" dos 4 passos que já funcionam hoje.
+  Objetivo: matar o medo de complexidade mostrando que é o mesmo caminho que
+  o técnico já faz no WhatsApp. OS e PMOC só são citadas como "crescem daqui",
+  nunca prometidas como prontas.
+-->
+<section id="como-funciona" class="relative mx-auto max-w-7xl px-6 py-24 md:py-32">
+  <div class="mx-auto max-w-3xl text-center">
+    <span class="etiqueta">Como funciona</span>
+    <h2 class="display mt-5 text-papel" style="font-size: clamp(2rem, 5vw, 4rem)">
+      Do áudio ao recibo,<br /><span class="text-fluido">sem sair do campo.</span>
+    </h2>
+    <p class="mx-auto mt-4 max-w-xl text-lg text-gelo/70">
+      Da mensagem de voz até o dinheiro no bolso — sem trocar de aplicativo, sem digitar do zero.
+    </p>
+  </div>
+
+  <!-- ── linha de produção: 4 estações ligadas por um tubo de cobre ── -->
+  <div class="relative mt-16">
+    <!-- o tubo: só aparece nos vãos entre os cards (passa "por trás" das estações) -->
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 hidden h-[2px] bg-gradient-to-r from-cobre/0 via-cobre/50 to-cobre/0 lg:block"
+      aria-hidden="true"
+    ></div>
+    <!-- rebites de conexão nos vãos -->
+    <span class="pointer-events-none absolute top-0 hidden h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cobre/70 lg:block" style="left:25%" aria-hidden="true"></span>
+    <span class="pointer-events-none absolute top-0 hidden h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cobre/70 lg:block" style="left:50%" aria-hidden="true"></span>
+    <span class="pointer-events-none absolute top-0 hidden h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cobre/70 lg:block" style="left:75%" aria-hidden="true"></span>
+
+    <ol class="relative grid grid-cols-1 gap-8 lg:grid-cols-4 lg:gap-6">
+      <!-- 01 · ESCUTA -->
+      <li class="relative z-10 flex flex-col rounded-2xl border border-cobre/15 border-t-[3px] border-t-cobre/50 bg-maquinas p-6 transition hover:border-cobre/30 hover:border-t-cobre/80">
+        <div class="flex items-start justify-between">
+          <span class="mono text-5xl font-bold leading-none text-cobre">01</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 shrink-0 text-cobre/50" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21.5h7" stroke-linecap="round" />
+          </svg>
+        </div>
+        <h3 class="display mt-6 text-papel" style="font-size: 1.375rem">Escuta</h3>
+        <p class="mt-2 text-sm leading-relaxed text-gelo/70">
+          Encaminha pro OLLI o áudio do WhatsApp do cliente. A voz vira os itens do orçamento.
+        </p>
+        <span class="absolute -bottom-7 left-1/2 -translate-x-1/2 text-lg leading-none text-cobre/40 lg:hidden" aria-hidden="true">↓</span>
+      </li>
+
+      <!-- 02 · MONTA -->
+      <li class="relative z-10 flex flex-col rounded-2xl border border-cobre/15 border-t-[3px] border-t-cobre/50 bg-maquinas p-6 transition hover:border-cobre/30 hover:border-t-cobre/80">
+        <div class="flex items-start justify-between">
+          <span class="mono text-5xl font-bold leading-none text-cobre">02</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 shrink-0 text-cobre/50" aria-hidden="true">
+            <path d="M4 6h9M4 12h5M4 18h11" stroke-linecap="round" />
+            <circle cx="16.5" cy="6" r="2" />
+            <circle cx="12" cy="12" r="2" />
+            <circle cx="18" cy="18" r="2" />
+          </svg>
+        </div>
+        <h3 class="display mt-6 text-papel" style="font-size: 1.375rem">Monta</h3>
+        <p class="mt-2 text-sm leading-relaxed text-gelo/70">
+          Revisa, ajusta o preço, escolhe o modelo de PDF. O defeito já entra diagnosticado.
+        </p>
+        <span class="absolute -bottom-7 left-1/2 -translate-x-1/2 text-lg leading-none text-cobre/40 lg:hidden" aria-hidden="true">↓</span>
+      </li>
+
+      <!-- 03 · ENVIA -->
+      <li class="relative z-10 flex flex-col rounded-2xl border border-cobre/15 border-t-[3px] border-t-cobre/50 bg-maquinas p-6 transition hover:border-cobre/30 hover:border-t-cobre/80">
+        <div class="flex items-start justify-between">
+          <span class="mono text-5xl font-bold leading-none text-cobre">03</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 shrink-0 text-cobre/50" aria-hidden="true">
+            <path d="M3 11.5 21 4l-7.5 18-3-7.5-7.5-3Z" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <h3 class="display mt-6 text-papel" style="font-size: 1.375rem">Envia</h3>
+        <p class="mt-2 text-sm leading-relaxed text-gelo/70">
+          Manda o link. O cliente abre no próprio celular e aprova no dedo.
+        </p>
+        <span class="absolute -bottom-7 left-1/2 -translate-x-1/2 text-lg leading-none text-cobre/40 lg:hidden" aria-hidden="true">↓</span>
+      </li>
+
+      <!-- 04 · RECEBE -->
+      <li class="relative z-10 flex flex-col rounded-2xl border border-cobre/15 border-t-[3px] border-t-cobre/50 bg-maquinas p-6 transition hover:border-cobre/30 hover:border-t-cobre/80">
+        <div class="flex items-start justify-between">
+          <span class="mono text-5xl font-bold leading-none text-cobre">04</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 shrink-0 text-cobre/50" aria-hidden="true">
+            <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M9 9h6M9 13h4" stroke-linecap="round" />
+          </svg>
+        </div>
+        <h3 class="display mt-6 text-papel" style="font-size: 1.375rem">Recebe</h3>
+        <p class="mt-2 text-sm leading-relaxed text-gelo/70">
+          Emite o recibo na hora, vinculado ao orçamento.
+        </p>
+      </li>
+    </ol>
+  </div>
+
+  <!-- ── fecho: mata o medo de complexidade e passa o bastão pra OS/PMOC ── -->
+  <div class="mx-auto mt-16 max-w-2xl border-t border-cobre/20 pt-8 text-center">
+    <p class="text-base leading-relaxed text-gelo/70 sm:text-lg">
+      É o mesmo caminho que você já faz no WhatsApp — só que no fim
+      <strong class="font-semibold text-gelo">sobra documento, não bagunça</strong>.
+    </p>
+    <span class="etiqueta mx-auto mt-5 w-fit">A ordem de serviço e o PMOC crescem daqui →</span>
+  </div>
+</section>
