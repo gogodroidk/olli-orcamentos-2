@@ -1659,6 +1659,35 @@ export async function searchCodigosErro(opts: { marca?: string | null; q?: strin
   return rows.map(rowToCodigoErro);
 }
 
+/**
+ * Quantos códigos existem em cada severidade DENTRO do contexto atual (marca +
+ * texto), ignorando o próprio filtro de severidade. Alimenta a contagem ao vivo
+ * dos chips — o técnico vê "12 críticas, 40 altas" e usa o filtro pra triar, em
+ * vez de tatear. Mesma cláusula WHERE da busca, menos a severidade.
+ */
+export async function countCodigosErroPorSeveridade(
+  opts: { marca?: string | null; q?: string }
+): Promise<Record<string, number>> {
+  const db = await getDb();
+  const where: string[] = [];
+  const params: any[] = [];
+  if (opts.marca) { where.push('marca = ?'); params.push(opts.marca); }
+  const q = opts.q?.trim();
+  if (q) {
+    where.push('(codigo LIKE ? OR falha LIKE ? OR causa LIKE ? OR acao LIKE ? OR exibicao LIKE ? OR cat_app LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like, like, like, like, like);
+  }
+  const sql =
+    'SELECT severidade, COUNT(*) as c FROM codigos_erro' +
+    (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
+    ' GROUP BY severidade';
+  const rows = await db.getAllAsync<{ severidade: string | null; c: number }>(sql, params);
+  const out: Record<string, number> = {};
+  for (const r of rows) { if (r.severidade) out[r.severidade] = r.c; }
+  return out;
+}
+
 // ─── CASOS "NÃO ACHEI MEU ERRO" (Etapa 1.6) ──────────────
 export async function saveCasoErro(caso: CasoErro): Promise<void> {
   const db = await getDb();

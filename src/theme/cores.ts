@@ -278,6 +278,8 @@ export interface Cores {
   success: string; successLight: string;
   danger: string; dangerLight: string;
   warning: string; warningLight: string;
+  /** Rampa de severidade da falha — 4 níveis com matiz distinta (não colapsar Crítica e Alta no mesmo vermelho). */
+  sevCritica: string; sevAlta: string; sevMedia: string; sevInfo: string;
   background: string; surface: string; surfaceVariant: string;
   surfaceElevated: string; surfaceGlass: string; surfacePressed: string; card: string;
   onPrimary: string; onBackground: string; onSurface: string;
@@ -374,6 +376,15 @@ export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO)
     dangerLight: comAlfa(danger, escuro ? 0.16 : 0.12),
     warning,
     warningLight: comAlfa(warning, escuro ? 0.16 : 0.12),
+
+    // Severidade: Crítica reaproveita danger (vermelho) e Média reaproveita warning
+    // (âmbar); Alta ganha um laranja próprio (entre os dois) e Info um azul frio —
+    // assim os quatro níveis ficam distinguíveis num relance. Cada base passa pelo
+    // mesmo ajuste de contraste dos status, pra ficar legível como texto nos 2 modos.
+    sevCritica: danger,
+    sevAlta: ajustarParaContraste('#E8620E', fundoDificil, 4.5),
+    sevMedia: warning,
+    sevInfo: ajustarParaContraste('#5C82A6', fundoDificil, 4.5),
 
     background: sup.background,
     surface: sup.surface,

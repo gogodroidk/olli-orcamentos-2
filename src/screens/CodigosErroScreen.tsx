@@ -16,6 +16,7 @@ import { EmptyState } from '../components/EmptyState';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import {
   getMarcasErro, countCodigosErro, searchCodigosErro, saveCasoErro,
+  countCodigosErroPorSeveridade,
 } from '../database/database';
 import { CodigoErro, CasoErro } from '../types';
 import { track, Eventos } from '../services/analytics';
@@ -26,13 +27,13 @@ import { goBackOrHome } from '../navigation/safeBack';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-/** Cor da severidade da falha. */
+/** Cor da severidade da falha — rampa de 4 níveis distintos (ver tokens sev* no tema). */
 function sevColor(s: string, c: Cores): string {
   const v = (s || '').toLowerCase();
-  if (v.startsWith('crít') || v.startsWith('crit')) return c.danger;
-  if (v.startsWith('alta')) return c.danger;
-  if (v.startsWith('méd') || v.startsWith('med')) return c.warning;
-  return c.primaryLight; // Info / desconhecido
+  if (v.startsWith('crít') || v.startsWith('crit')) return c.sevCritica;
+  if (v.startsWith('alta')) return c.sevAlta;
+  if (v.startsWith('méd') || v.startsWith('med')) return c.sevMedia;
+  return c.sevInfo; // Info / desconhecido
 }
 
 /** Chips de severidade — valores exatamente como gravados na base (SQL casa por igualdade). */
@@ -55,6 +56,7 @@ export default function CodigosErroScreen() {
   const [total, setTotal] = useState(0);
   const [marca, setMarca] = useState<string | null>(null);
   const [severidade, setSeveridade] = useState<string | null>(null);
+  const [sevCounts, setSevCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CodigoErro[]>([]);
   const [selected, setSelected] = useState<CodigoErro | null>(null);
@@ -98,6 +100,21 @@ export default function CodigosErroScreen() {
     debounce.current = setTimeout(() => { executarBusca(); }, q ? 250 : 0);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
   }, [marca, severidade, query, executarBusca]);
+
+  // Contagem por severidade dentro do contexto atual (marca + texto). Ignora o
+  // filtro de severidade de propósito — os números guiam qual nível vale filtrar.
+  useEffect(() => {
+    let vivo = true;
+    const t = setTimeout(async () => {
+      try {
+        const c = await countCodigosErroPorSeveridade({ marca, q: query.trim() });
+        if (vivo) setSevCounts(c);
+      } catch {
+        if (vivo) setSevCounts({}); // contagem é auxiliar — some sem quebrar o filtro
+      }
+    }, query.trim() ? 250 : 0);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [marca, query]);
 
   function pickMarca(m: string | null) {
     Haptics.selectionAsync().catch(() => {});
@@ -200,8 +217,9 @@ export default function CodigosErroScreen() {
         </Text>
       </View>
 
-      {/* CHIPS DE MARCA */}
-      <View style={styles.chipsWrap}>
+      {/* FILTROS — marca (rolagem) + severidade com cor distinta e contagem ao vivo */}
+      <View style={styles.filtros}>
+        {/* marca */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
           <TouchableOpacity style={[styles.chip, !marca && styles.chipActive]} onPress={() => pickMarca(null)} activeOpacity={0.85}>
             <Text style={[styles.chipText, !marca && styles.chipTextActive]}>Todas</Text>
@@ -215,29 +233,46 @@ export default function CodigosErroScreen() {
             );
           })}
         </ScrollView>
-      </View>
 
-      {/* CHIPS DE SEVERIDADE */}
-      <View style={styles.chipsWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+        {/* severidade — cada nível tem matiz própria e mostra quantos casos há no contexto */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sevRow}>
           {SEVERIDADES.map(s => {
             const active = severidade === s;
             const cor = sevColor(s, cores);
+            const n = sevCounts[s] ?? 0;
+            const vazio = n === 0 && !active; // sem casos neste contexto: apaga, não some
             return (
               <TouchableOpacity
                 key={s}
+                disabled={vazio}
                 style={[
                   styles.sevChip,
-                  { borderColor: active ? cor : cores.outline, backgroundColor: active ? cor + '22' : cores.surface },
+                  { borderColor: active ? cor : cores.outline, backgroundColor: active ? cor + '22' : cores.surface, opacity: vazio ? 0.45 : 1 },
                 ]}
                 onPress={() => pickSeveridade(s)}
                 activeOpacity={0.85}
               >
                 <View style={[styles.sevDot, { backgroundColor: cor }]} />
-                <Text style={[styles.chipText, { color: active ? cor : cores.onSurfaceVariant }]}>{s}</Text>
+                <Text style={[styles.sevLabel, { color: active ? cor : cores.onSurfaceVariant }]}>{s}</Text>
+                {n > 0 && (
+                  <View style={[styles.sevCount, { backgroundColor: cor + (active ? '2E' : '1F') }]}>
+                    <Text style={[styles.sevCountText, { color: cor }]}>{n}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
+          {severidade && (
+            <TouchableOpacity
+              style={styles.sevClear}
+              onPress={() => pickSeveridade(severidade)}
+              activeOpacity={0.85}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <MaterialCommunityIcons name="filter-remove-outline" size={15} color={cores.onSurfaceVariant} />
+              <Text style={styles.sevClearText}>Limpar</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
@@ -503,14 +538,22 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ouroText: { flex: 1, fontSize: 11.5, lineHeight: 16, color: c.onSurfaceVariant },
   ouroBold: { fontWeight: '800', color: c.onSurface },
 
-  chipsWrap: { borderBottomWidth: 1, borderBottomColor: c.outline },
-  chipsRow: { paddingHorizontal: Spacing.base, paddingVertical: 10, gap: 8 },
+  // Uma faixa só pros dois eixos de filtro (marca + severidade): uma borda em vez
+  // de duas, sobra mais tela pros resultados no celular.
+  filtros: { borderBottomWidth: 1, borderBottomColor: c.outline, paddingBottom: 2 },
+  chipsRow: { paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 6, gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surface },
   chipActive: { backgroundColor: c.primary, borderColor: c.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   chipTextActive: { color: c.onPrimary },
-  sevChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5 },
+  sevRow: { paddingHorizontal: Spacing.base, paddingTop: 2, paddingBottom: 8, gap: 8, alignItems: 'center' },
+  sevChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 11, paddingRight: 9, paddingVertical: 6, borderRadius: BorderRadius.full, borderWidth: 1.5 },
   sevDot: { width: 7, height: 7, borderRadius: 4 },
+  sevLabel: { fontSize: 13, fontWeight: '700' },
+  sevCount: { minWidth: 20, paddingHorizontal: 5, paddingVertical: 1, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center' },
+  sevCountText: { fontSize: 11, fontWeight: '800' },
+  sevClear: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6 },
+  sevClearText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
   // Azul fixo (base da marca padrão, não a cor de marca escolhida): decorativo, sem chave semântica exata.
