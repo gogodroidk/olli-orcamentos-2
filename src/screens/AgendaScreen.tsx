@@ -13,7 +13,7 @@ import {
   addDays, addWeeks, addMonths, isSameDay, eachDayOfInterval, isToday,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, sobreSecundario, corCategoriaEmChip, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -420,7 +420,7 @@ export default function AgendaScreen() {
                     styles.segmentLabel,
                     // Inativo: a cor do header a 75%. Ativo: o chip é pintado com
                     // `c.accent`, então o rótulo é decidido pelo chip, não pelo header.
-                    { color: comAlfa(gradientes.sobreHeader, 0.75) },
+                    { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) },
                     active && styles.segmentLabelActive,
                   ]}
                 >
@@ -596,7 +596,10 @@ function hhmm(iso?: string | null): string {
 function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = TIPO_AGENDAMENTO_COLORS[item.tipo];
+  // O matiz identifica o tipo; a luminosidade cede contra o fundo REAL do chip
+  // (o próprio matiz a 13% sobre a superfície). Cru, media 1.72–4.19:1 no claro.
+  const cor = corCategoriaEmChip(TIPO_AGENDAMENTO_COLORS[item.tipo], cores.surface);
+  const corChip = TIPO_AGENDAMENTO_COLORS[item.tipo];
   const iniTxt = hhmm(item.inicio);
   const fimTxt = item.fim ? hhmm(item.fim) : '';
   const cancelado = item.status === 'cancelado';
@@ -611,7 +614,7 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
         <Text style={[styles.itemTitle, cancelado && styles.strike]} numberOfLines={1}>{item.titulo}</Text>
         <Text style={styles.itemClient} numberOfLines={1}>{item.clienteNome}</Text>
         <View style={styles.itemMetaRow}>
-          <View style={[styles.tipoChip, { backgroundColor: cor + '22', borderColor: cor + '55' }]}>
+          <View style={[styles.tipoChip, { backgroundColor: corChip + '22', borderColor: corChip + '55' }]}>
             <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[item.tipo]}</Text>
           </View>
           {item.endereco ? (
@@ -739,8 +742,8 @@ function AgendamentoForm({
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ tipo: t.id }); }}
                 activeOpacity={0.85}
               >
-                <MaterialCommunityIcons name={t.icon as any} size={18} color={active ? t.color : cores.onSurfaceVariant} />
-                <Text style={[styles.tipoOptionText, active && { color: t.color }]}>{t.label}</Text>
+                <MaterialCommunityIcons name={t.icon as any} size={18} color={active ? corCategoriaEmChip(t.color, cores.surface) : cores.onSurfaceVariant} />
+                <Text style={[styles.tipoOptionText, active && { color: corCategoriaEmChip(t.color, cores.surface) }]}>{t.label}</Text>
               </TouchableOpacity>
             );
           })}

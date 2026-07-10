@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, useEstilos, textoSobre, type Cores } from '../theme';
+import { Spacing, useEstilos, useGradientes, textoSobre, sobreSecundario, type Cores } from '../theme';
 
 interface Props {
   steps: string[];
@@ -11,6 +11,14 @@ interface Props {
 /** Indicador de passos desenhado para fundo em gradiente (texto claro). */
 export function StepIndicator({ steps, current }: Props) {
   const styles = useEstilos(criarEstilos);
+  const gradientes = useGradientes();
+  // Número e rótulo (inativos) ficam dentro/sob o header em gradiente — o círculo
+  // é só um véu translúcido por cima dele (não uma superfície própria). Um
+  // 'rgba(255,255,255,0.8|0.65)' cravado caía a 3.79:1/3.03:1 na ponta clara do
+  // header no modo claro (#0B6FCE); sobreSecundario() rebaixa só até onde as duas
+  // pontas do gradiente ainda passam 4.5:1.
+  const corNum = sobreSecundario(gradientes.sobreHeader, gradientes.header);
+  const corLabel = sobreSecundario(gradientes.sobreHeader, gradientes.header, 0.65);
   return (
     <View style={styles.container}>
       {steps.map((label, i) => {
@@ -23,10 +31,10 @@ export function StepIndicator({ steps, current }: Props) {
                 {done ? (
                   <MaterialCommunityIcons name="check" size={15} color="#fff" />
                 ) : (
-                  <Text style={[styles.num, active && styles.numActive]}>{i + 1}</Text>
+                  <Text style={[styles.num, { color: corNum }, active && styles.numActive]}>{i + 1}</Text>
                 )}
               </View>
-              <Text style={[styles.label, (active || done) && styles.labelActive]} numberOfLines={1}>{label}</Text>
+              <Text style={[styles.label, { color: corLabel }, (active || done) && styles.labelActive]} numberOfLines={1}>{label}</Text>
             </View>
             {i < steps.length - 1 && <View style={[styles.line, done && styles.lineDone]} />}
           </React.Fragment>
@@ -50,12 +58,16 @@ const criarEstilos = (c: Cores) =>
     },
     circleDone: { backgroundColor: c.success, borderColor: c.success },
     circleActive: { backgroundColor: c.accentLight, borderColor: c.accentLight },
-    num: { fontSize: 13, fontWeight: '800', color: 'rgba(255,255,255,0.8)' },
+    // Sem `color` aqui: esta fábrica só recebe `Cores`, não os gradientes — a cor
+    // do número (inativo) depende do par claro/escuro do header e é aplicada
+    // inline no ponto de uso via sobreSecundario(gradientes.sobreHeader, ...).
+    num: { fontSize: 13, fontWeight: '800' },
     // accentLight clareia no escuro (pede tinta escura) e escurece no claro
     // (pediria tinta clara) — textoSobre() acerta os dois casos, ao contrário
     // do antigo `primaryDark` fixo.
     numActive: { color: textoSobre(c.accentLight) },
-    label: { alignSelf: 'stretch', fontSize: 10, color: 'rgba(255,255,255,0.65)', textAlign: 'center', fontWeight: '700' },
+    // Idem: cor do rótulo (inativo) aplicada inline — ver corLabel no componente.
+    label: { alignSelf: 'stretch', fontSize: 10, textAlign: 'center', fontWeight: '700' },
     labelActive: { color: '#fff' },
     line: { flex: 0.55, height: 2, backgroundColor: 'rgba(255,255,255,0.24)', marginTop: 16, marginHorizontal: 1, borderRadius: 1 },
     lineDone: { backgroundColor: c.success },

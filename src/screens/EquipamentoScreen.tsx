@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -113,6 +113,7 @@ function SituacaoBadge({ situacao }: { situacao: SituacaoEquipamento }) {
 export default function EquipamentoScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
+  const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   // Atalho para os Planos PMOC (Fase 2): só quem gerencia planos vê (o técnico não).
   const { pode } = usePermissao();
@@ -268,7 +269,7 @@ export default function EquipamentoScreen() {
           >
             <MaterialCommunityIcons name="calendar-sync-outline" size={16} color="#fff" />
             <Text style={styles.pmocAtalhoText}>Planos de manutenção (PMOC)</Text>
-            <MaterialCommunityIcons name="chevron-right" size={16} color="rgba(255,255,255,0.7)" />
+            <MaterialCommunityIcons name="chevron-right" size={16} color={gradientes.sobreHeader} />
           </TouchableOpacity>
         )}
       </GradientHeader>

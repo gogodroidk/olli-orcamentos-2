@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { capitalizeFirst } from '../utils/date';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { Motion } from '../theme/motion';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliPressable } from '../components/OlliPressable';
@@ -377,7 +377,9 @@ export default function HojeScreen() {
         ) : (
           <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
             {itens.map((a, i) => {
-              const cor = TIPO_AGENDAMENTO_COLORS[a.tipo];
+              // Matiz = significado; luminosidade cede contra o fundo real do chip.
+              const corChip = TIPO_AGENDAMENTO_COLORS[a.tipo];
+              const cor = corCategoriaEmChip(corChip, cores.surface);
               return (
                 <AnimatedEntrance key={a.id} index={i}>
                   <OlliPressable
@@ -394,7 +396,7 @@ export default function HojeScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.agendaTitle} numberOfLines={1}>{a.titulo}</Text>
                       <Text style={styles.agendaClient} numberOfLines={1}>{a.clienteNome}</Text>
-                      <View style={[styles.tipoChip, { backgroundColor: cor + '22', borderColor: cor + '55' }]}>
+                      <View style={[styles.tipoChip, { backgroundColor: corChip + '22', borderColor: corChip + '55' }]}>
                         <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
                       </View>
                     </View>

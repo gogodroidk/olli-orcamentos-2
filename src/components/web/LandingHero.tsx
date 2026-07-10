@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Spacing, BorderRadius, useCores, useGradientes } from '../../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, sobreSecundario } from '../../theme';
 import { Fonts } from '../../theme/fonts';
 import { OlliMascot } from '../OlliMascot';
 
@@ -73,7 +73,12 @@ export function LandingHero() {
         <Text style={[styles.headline, { color: gradientes.sobrePrimary }]}>
           Do orçamento ao recibo, sem planilha
         </Text>
-        <Text style={styles.subheadline}>
+        <Text
+          style={[
+            styles.subheadline,
+            { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) },
+          ]}
+        >
           A plataforma de campo para quem presta serviço: orçamento, ordem de
           serviço, equipe e financeiro no mesmo lugar.
         </Text>
@@ -82,13 +87,20 @@ export function LandingHero() {
           {BENEFICIOS.map((b) => (
             <View key={b.titulo} style={styles.beneficio}>
               <View style={styles.beneficioIcone}>
-                <MaterialCommunityIcons name={b.icone} size={22} color={cores.accentLight} />
+                <MaterialCommunityIcons name={b.icone} size={22} color={gradientes.sobrePrimary} />
               </View>
               <View style={styles.beneficioTextos}>
                 <Text style={[styles.beneficioTitulo, { color: gradientes.sobrePrimary }]}>
                   {b.titulo}
                 </Text>
-                <Text style={styles.beneficioDescricao}>{b.descricao}</Text>
+                <Text
+                  style={[
+                    styles.beneficioDescricao,
+                    { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) },
+                  ]}
+                >
+                  {b.descricao}
+                </Text>
               </View>
             </View>
           ))}
@@ -98,7 +110,14 @@ export function LandingHero() {
           {PROVAS.map((p) => (
             <View key={p} style={styles.prova}>
               <MaterialCommunityIcons name="check-circle" size={16} color={cores.success} />
-              <Text style={styles.provaTexto}>{p}</Text>
+              <Text
+                style={[
+                  styles.provaTexto,
+                  { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) },
+                ]}
+              >
+                {p}
+              </Text>
             </View>
           ))}
         </View>
@@ -107,13 +126,15 @@ export function LandingHero() {
   );
 }
 
-// Estilos abaixo NÃO usam `Colors`: os textos translúcidos e os glows em rgba
-// vivem sobre `gradientes.primary`, que é fixo (marca → marca escura) e igual nos
-// dois modos — como o próprio `header` do tema (ver theme/index.ts), é um banner,
-// não uma superfície. Por isso ficam module-scope, sem `useEstilos`: nada aqui
-// congela por modo porque nada aqui depende do modo. As cores de texto sólido
-// (marcaTexto, headline, beneficioTitulo) saíram daqui e são aplicadas inline
-// com `gradientes.sobrePrimary`, pois dependem da marca customizável do usuário.
+// Estilos abaixo NÃO usam `Colors`: os glows em rgba vivem sobre `gradientes.primary`,
+// que é fixo (marca → marca escura) e igual nos dois modos — como o próprio `header`
+// do tema (ver theme/index.ts), é um banner, não uma superfície. Por isso ficam
+// module-scope, sem `useEstilos`: nada aqui congela por modo porque nada aqui depende
+// do modo. Toda cor de TEXTO (principal e secundária) saiu daqui e é aplicada inline
+// no ponto de uso — principal com `gradientes.sobrePrimary`, secundária com
+// `sobreSecundario(gradientes.sobrePrimary, gradientes.primary)` — pois ambas dependem
+// da marca customizável do usuário, e um alfa fixo não é seguro nas duas pontas do
+// gradiente (ver assinatura de `sobreSecundario` em theme/cores.ts).
 const styles = StyleSheet.create({
   fundo: {
     flex: 1,
@@ -162,11 +183,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.extraBold,
     letterSpacing: -0.5,
   },
+  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.primary) —
+  // StyleSheet de escopo de módulo não enxerga o tema. Era 'rgba(226,232,240,0.82)',
+  // que media 3.23:1 na ponta clara do gradiente padrão (reprova 4.5:1).
   subheadline: {
     fontSize: 16,
     lineHeight: 24,
     fontFamily: Fonts.medium,
-    color: 'rgba(226,232,240,0.82)',
     marginTop: Spacing.base,
     marginBottom: Spacing.xxl,
   },
@@ -196,11 +219,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: Fonts.bold,
   },
+  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.primary) —
+  // era 'rgba(226,232,240,0.68)', que media 2.68:1 na ponta clara (reprova 4.5:1).
   beneficioDescricao: {
     fontSize: 14,
     lineHeight: 20,
     fontFamily: Fonts.regular,
-    color: 'rgba(226,232,240,0.68)',
   },
   provas: {
     marginTop: Spacing.xxl,
@@ -211,9 +235,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.primary) —
+  // era 'rgba(226,232,240,0.78)', que media 3.07:1 na ponta clara (reprova 4.5:1).
   provaTexto: {
     fontSize: 13.5,
     fontFamily: Fonts.semiBold,
-    color: 'rgba(226,232,240,0.78)',
   },
 });

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Linking, Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, type Cores } from '../../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, sobreSecundario, type Cores } from '../../theme';
 import { Fonts } from '../../theme/fonts';
 import { useReducedMotion } from '../../theme/motion';
 import { OlliMascot } from '../OlliMascot';
@@ -119,6 +119,10 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  // Texto secundário sobre `gradientes.primary` — rebaixado por alfa só até onde
+  // as DUAS pontas do gradiente ainda passam 4.5:1 (ver comentário no rodapé do
+  // arquivo). Calculado uma vez e reaproveitado no subheadline e nas provas.
+  const corSecundariaHero = sobreSecundario(gradientes.sobrePrimary, gradientes.primary);
   return (
     <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroFundo}>
       <View style={styles.heroGlow1} pointerEvents="none" />
@@ -128,7 +132,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
           <Text style={[styles.heroHeadline, { color: gradientes.sobrePrimary }]}>Do orçamento ao recibo, sem planilha</Text>
         </AnimatedEntrance>
         <AnimatedEntrance index={1}>
-          <Text style={styles.heroSubheadline}>
+          <Text style={[styles.heroSubheadline, { color: corSecundariaHero }]}>
             A plataforma de campo para quem presta serviço: monte o orçamento, transforme em ordem de
             serviço, cobre e gerencie a equipe — tudo no mesmo lugar, no celular ou no computador.
           </Text>
@@ -149,7 +153,17 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
               variant="outline"
               size="lg"
               haptic={false}
-              icon={<MaterialCommunityIcons name="tag-outline" size={18} color={cores.accentLight} />}
+              // O botão "outline" pinta o próprio fundo com um véu translúcido
+              // (accentContainer, 12-15% alfa) — aqui composto sobre gradientes.primary.
+              // TANTO o ícone (prop `icon`) QUANTO o rótulo (que o OlliButton pinta com
+              // `accentLight` por padrão) erram o alvo sobre esse fundo: accentLight mede
+              // 1.15:1 no claro / 2.12:1 no escuro contra a ponta clara já composta com o
+              // véu — reprova o rótulo (texto, 4.5:1) e o ícone (3:1). `sobrePrimary` é a
+              // cor que o resto do HERO usa sobre este mesmo gradiente e passa nas duas
+              // pontas nos dois modos (4.51/12.08 claro, 4.36/11.30 escuro). Sem o
+              // `textStyle` o rótulo ficaria teal escuro ao lado de um ícone branco.
+              textStyle={{ color: gradientes.sobrePrimary }}
+              icon={<MaterialCommunityIcons name="tag-outline" size={18} color={gradientes.sobrePrimary} />}
             />
           </View>
         </AnimatedEntrance>
@@ -158,7 +172,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
             {PROVAS_HERO.map((p) => (
               <View key={p} style={styles.heroProva}>
                 <MaterialCommunityIcons name="check-circle" size={15} color={cores.success} />
-                <Text style={styles.heroProvaTexto}>{p}</Text>
+                <Text style={[styles.heroProvaTexto, { color: corSecundariaHero }]}>{p}</Text>
               </View>
             ))}
           </View>
@@ -564,10 +578,14 @@ export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  // `primaryDiagonal` É `gradientes.brand` (mesmas pontas — ver criarGradientes em
+  // theme/cores.ts). Texto secundário rebaixado por alfa só até onde as DUAS
+  // pontas ainda passam 4.5:1 (ver comentário no rodapé do arquivo).
+  const corSecundariaCta = sobreSecundario(gradientes.sobreBrand, gradientes.brand);
   return (
     <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaFinalFundo}>
       <Text style={[styles.ctaFinalTitulo, { color: gradientes.sobreBrand }]}>Pronto pra tirar sua empresa da planilha?</Text>
-      <Text style={styles.ctaFinalSub}>Crie sua conta grátis agora — leva menos de 2 minutos.</Text>
+      <Text style={[styles.ctaFinalSub, { color: corSecundariaCta }]}>Crie sua conta grátis agora — leva menos de 2 minutos.</Text>
       <OlliButton
         label="Criar conta grátis"
         onPress={onCriarConta}
@@ -579,7 +597,7 @@ export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
         icon={<MaterialCommunityIcons name="arrow-right" size={19} color={cores.primaryDark} />}
       />
 
-      <Text style={styles.ctaFinalBaixe}>ou baixe o app</Text>
+      <Text style={[styles.ctaFinalBaixe, { color: corSecundariaCta }]}>ou baixe o app</Text>
       <View style={styles.ctaFinalDownloads}>
         <OlliPressable
           onPress={() => abrirDownload(GOOGLE_PLAY_URL, 'Google Play')}
@@ -665,15 +683,27 @@ const LARGURA_MAXIMA = 1120;
 /**
  * HERO e CTA FINAL ficam sobre `gradientes.primary`/`primaryDiagonal` (marca →
  * marca escura), que — como o `header` do próprio tema (ver theme/index.ts) —
- * é igual nos dois modos. O texto/ícone principal (headline, título do CTA,
- * ícone e rótulo dos botões de download) usa `gradientes.sobrePrimary`/
- * `sobreBrand`, aplicado inline no ponto de uso (a folha de estilo de escopo
- * de módulo não enxerga o tema). Os elementos translúcidos — `ctaFinalSub`,
- * `ctaFinalBaixe`, a borda de `downloadBtn` — continuam com rgba(255,255,255,
- * alpha) fixo de propósito: são véus/hairlines, não texto sólido, e por isso
- * não precisam (nem devem) seguir a cor de contraste calculada. `ctaFinalBotao`
- * também: o pill branco sobre o gradiente é um `backgroundColor`, não texto, e
- * é o mesmo nos dois modos.
+ * é igual nos dois modos. `primaryDiagonal` É `gradientes.brand` (mesmas pontas,
+ * ver `criarGradientes` em theme/cores.ts).
+ *
+ * O texto/ícone PRINCIPAL (headline, título do CTA, ícone e rótulo dos botões
+ * de download) usa `gradientes.sobrePrimary`/`sobreBrand`, aplicado inline no
+ * ponto de uso (a folha de estilo de escopo de módulo não enxerga o tema).
+ *
+ * O texto SECUNDÁRIO (`heroSubheadline`, `heroProvaTexto`, `ctaFinalSub`,
+ * `ctaFinalBaixe`) media 2.7–3.4:1 contra a ponta clara do gradiente com um
+ * rgba(255,255,255,alfa) fixo — reprovava AA (4.5:1). Passou a usar
+ * `sobreSecundario(gradientes.sobreX, gradientes.X)`, calculado uma vez por
+ * componente (`corSecundariaHero`/`corSecundariaCta`) e aplicado inline: o
+ * alfa desce a partir de 0.82 só até onde as DUAS pontas do gradiente ainda
+ * passam 4.5:1 — um alfa cravado não é seguro pra qualquer cor de marca.
+ * O `color` correspondente SAIU destes estilos de módulo (StyleSheet não lê
+ * `gradientes`) — só sobrou o resto do estilo (fonte, tamanho, margem).
+ *
+ * A borda de `downloadBtn` continua com rgba(255,255,255,alpha) fixo de
+ * propósito: é hairline (borda), não texto — não segue a cor de contraste
+ * calculada. `ctaFinalBotao` também: o pill branco sobre o gradiente é um
+ * `backgroundColor`, não texto, e é o mesmo nos dois modos.
  */
 const criarEstilos = (c: Cores) => StyleSheet.create({
   // Layout base de seção
@@ -767,7 +797,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     fontSize: 16,
     lineHeight: 25,
     fontFamily: Fonts.medium,
-    color: 'rgba(226,232,240,0.85)',
+    // cor aplicada inline no ponto de uso — ver comentário no topo da seção de estilos
     textAlign: 'center',
     marginTop: Spacing.lg,
     maxWidth: 560,
@@ -777,7 +807,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroCtasDesktop: { flexDirection: 'row', justifyContent: 'center' },
   heroProvas: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.lg, justifyContent: 'center', marginTop: Spacing.xxl },
   heroProva: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroProvaTexto: { fontSize: 13, fontFamily: Fonts.semiBold, color: 'rgba(226,232,240,0.82)' },
+  // cor aplicada inline no ponto de uso — ver comentário no topo da seção de estilos
+  heroProvaTexto: { fontSize: 13, fontFamily: Fonts.semiBold },
 
   // PILARES / PASSOS (cartões)
   pilarCartao: {
@@ -924,9 +955,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // CTA FINAL (banner — ver comentário acima)
   ctaFinalFundo: { width: '100%', alignItems: 'center', paddingVertical: Spacing.xxxl, paddingHorizontal: Spacing.xl },
   ctaFinalTitulo: { fontSize: 26, lineHeight: 32, fontFamily: Fonts.extraBold, textAlign: 'center', maxWidth: 520 },
-  ctaFinalSub: { fontSize: 14.5, fontFamily: Fonts.medium, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: Spacing.sm },
+  // cor aplicada inline no ponto de uso — ver comentário no topo da seção de estilos
+  ctaFinalSub: { fontSize: 14.5, fontFamily: Fonts.medium, textAlign: 'center', marginTop: Spacing.sm },
   ctaFinalBotao: { marginTop: Spacing.xxl, backgroundColor: '#fff' },
-  ctaFinalBaixe: { fontSize: 12.5, fontFamily: Fonts.semiBold, color: 'rgba(255,255,255,0.75)', marginTop: Spacing.xl, textTransform: 'uppercase', letterSpacing: 0.8 },
+  // cor aplicada inline no ponto de uso — ver comentário no topo da seção de estilos
+  ctaFinalBaixe: { fontSize: 12.5, fontFamily: Fonts.semiBold, marginTop: Spacing.xl, textTransform: 'uppercase', letterSpacing: 0.8 },
   ctaFinalDownloads: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, justifyContent: 'center', marginTop: Spacing.md },
   downloadBtn: {
     flexDirection: 'row',

@@ -387,13 +387,22 @@ export interface Agendamento {
   excluidoEm?: string;
 }
 
+/**
+ * Matizes de CATEGORIA. São DADOS, não cores de texto: `#2BD787` significa "limpeza".
+ * Foram escolhidos num app dark-only e medem 1.88:1 a 2.05:1 sobre branco. Quem pinta
+ * rótulo ou ícone com eles tem de passar por `corCategoria(matiz, fundo)` — a
+ * luminosidade cede contra o fundo real, o matiz (que é o significado) não se move.
+ * Como preenchimento translúcido (`cor + '22'`) ou borda, o valor cru continua certo.
+ */
 export const TIPOS_AGENDAMENTO: { id: TipoAgendamento; label: string; icon: string; color: string }[] = [
   { id: 'orcamento', label: 'Orçamento', icon: 'file-document-outline', color: '#34C6D9' },
   { id: 'limpeza', label: 'Limpeza', icon: 'spray-bottle', color: '#2BD787' },
   { id: 'instalacao', label: 'Instalação', icon: 'tools', color: '#0B6FCE' },
   { id: 'manutencao', label: 'Manutenção', icon: 'wrench-outline', color: '#F7B23B' },
   { id: 'visita', label: 'Visita', icon: 'map-marker-radius-outline', color: '#A78BFA' },
-  { id: 'outro', label: 'Outro', icon: 'calendar-blank-outline', color: 'rgba(226,232,240,0.62)' },
+  // Era rgba(226,232,240,0.62) — cinza quase branco, 1.15:1 sobre o fundo claro. Um
+  // matiz opaco: `corCategoria` faz o resto em cada modo.
+  { id: 'outro', label: 'Outro', icon: 'calendar-blank-outline', color: '#64748B' },
 ];
 
 export const TIPO_AGENDAMENTO_LABELS: Record<TipoAgendamento, string> = {
@@ -411,7 +420,7 @@ export const TIPO_AGENDAMENTO_COLORS: Record<TipoAgendamento, string> = {
   instalacao: '#0B6FCE',
   manutencao: '#F7B23B',
   visita: '#A78BFA',
-  outro: 'rgba(226,232,240,0.62)',
+  outro: '#64748B',
 };
 
 export const STATUS_AGENDAMENTO_LABELS: Record<StatusAgendamento, string> = {

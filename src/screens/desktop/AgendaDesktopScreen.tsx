@@ -7,7 +7,7 @@ import {
   format, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, isToday, eachDayOfInterval,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { OlliInput } from '../../components/OlliInput';
@@ -338,7 +338,7 @@ export default function AgendaDesktopScreen() {
             <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <View style={[styles.tipoChip, { backgroundColor: TIPO_AGENDAMENTO_COLORS[detalhe.tipo] + '22', borderColor: TIPO_AGENDAMENTO_COLORS[detalhe.tipo] + '55' }]}>
-                  <Text style={[styles.tipoChipText, { color: TIPO_AGENDAMENTO_COLORS[detalhe.tipo] }]}>
+                  <Text style={[styles.tipoChipText, { color: corCategoriaEmChip(TIPO_AGENDAMENTO_COLORS[detalhe.tipo], cores.surface) }]}>
                     {TIPO_AGENDAMENTO_LABELS[detalhe.tipo]}
                   </Text>
                 </View>
@@ -467,8 +467,8 @@ export default function AgendaDesktopScreen() {
                           !active && hovered && styles.tipoOptionHover,
                         ]}
                       >
-                        <MaterialCommunityIcons name={t.icon as any} size={16} color={active ? t.color : cores.onSurfaceVariant} />
-                        <Text style={[styles.tipoOptionText, active && { color: t.color }]}>{t.label}</Text>
+                        <MaterialCommunityIcons name={t.icon as any} size={16} color={active ? corCategoriaEmChip(t.color, cores.surface) : cores.onSurfaceVariant} />
+                        <Text style={[styles.tipoOptionText, active && { color: corCategoriaEmChip(t.color, cores.surface) }]}>{t.label}</Text>
                       </Pressable>
                     );
                   })}
@@ -551,7 +551,8 @@ export default function AgendaDesktopScreen() {
 function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = TIPO_AGENDAMENTO_COLORS[item.tipo];
+  const corChip = TIPO_AGENDAMENTO_COLORS[item.tipo];
+  const cor = corCategoriaEmChip(corChip, cores.surface);
   const cancelado = item.status === 'cancelado';
   const concluido = item.status === 'concluido';
   return (

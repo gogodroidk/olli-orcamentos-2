@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, sobreSecundario, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliMascot } from '../components/OlliMascot';
@@ -303,7 +303,10 @@ export default function OnboardingScreen() {
             <OlliMascot size={40} onDark float={false} />
             <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={[styles.brand, { color: gradientes.sobreHeader }]}>Bem-vindo ao OLLI</Text>
-              <Text style={styles.brandSub} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
+              {/* Subtítulo SECUNDÁRIO sobre o header em gradiente: sobreSecundario rebaixa o
+                  branco só até onde as DUAS pontas passam 4.5:1. O 'rgba(255,255,255,0.78)'
+                  cravado que estava aqui media 3.67:1 na ponta clara (#0B6FCE) no modo claro. */}
+              <Text style={[styles.brandSub, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
             </View>
           </View>
           <TouchableOpacity onPress={pular} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Pular configuração">
@@ -538,7 +541,9 @@ function BoasVindas({ onStart, insets }: {
       <View style={styles.wcCenter}>
         <OlliMascot size={104} onDark />
         <Text style={[styles.wcHi, { color: gradientes.sobrePrimary }]}>Olá! Eu sou a OLLI 👋</Text>
-        <Text style={styles.wcSub}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular, e você organiza a execução em campo até fechar com o recibo — tudo funciona mesmo sem internet.</Text>
+        {/* Subtítulo SECUNDÁRIO sobre gradientes.primary: sobreSecundario mantém 4.5:1 nas
+            duas pontas. O 'rgba(255,255,255,0.82)' cravado media 3.90:1 na ponta clara (#0B6FCE). */}
+        <Text style={[styles.wcSub, { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) }]}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular, e você organiza a execução em campo até fechar com o recibo — tudo funciona mesmo sem internet.</Text>
         <View style={styles.wcFeatures}>
           <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
           <WcFeature icon="link-variant" text="O cliente aprova ou recusa pelo link, sem instalar nada" />
@@ -587,7 +592,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Cor de texto aplicada inline no ponto de uso (gradientes.sobrePrimary) — StyleSheet
   // de escopo de módulo não enxerga o tema.
   wcHi: { fontSize: 26, fontWeight: '800', marginTop: 22, textAlign: 'center', letterSpacing: 0 },
-  wcSub: { fontSize: 15, color: 'rgba(255,255,255,0.82)', textAlign: 'center', marginTop: 10, lineHeight: 22 },
+  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.primary) —
+  // StyleSheet de escopo de módulo não enxerga o tema. Era 'rgba(255,255,255,0.82)' (3.90:1).
+  wcSub: { fontSize: 15, textAlign: 'center', marginTop: 10, lineHeight: 22 },
   wcFeatures: { alignSelf: 'stretch', marginTop: 28, gap: 12 },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema
   // (o branco translúcido do glass em si continua fixo, é o próprio efeito).
@@ -603,7 +610,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
   // Idem: cor aplicada inline (gradientes.sobreHeader) no ponto de uso.
   brand: { fontSize: 18, fontWeight: '800' },
-  brandSub: { fontSize: 12.5, color: 'rgba(255,255,255,0.78)', marginTop: 2 },
+  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.header) —
+  // era 'rgba(255,255,255,0.78)', que media 3.67:1 na ponta clara no modo claro.
+  brandSub: { fontSize: 12.5, marginTop: 2 },
   // Cor aplicada inline (gradientes.sobreHeader) no ponto de uso — mesmo padrão de
   // `brand`. Era c.accentLight, que no claro escurece e some sobre o header (1.03:1).
   skip: { fontSize: 14, fontWeight: '700' },

@@ -158,6 +158,88 @@ export function parLegivel(a: string, b: string, alvo = 4.5): { pontas: readonly
   };
 }
 
+/** Compõe `cor` com alfa sobre `fundo` opaco e devolve o hex resultante. */
+function compor(cor: string, fundo: string, alfa: number): string {
+  const c = hexParaRgb(cor);
+  const f = hexParaRgb(fundo);
+  const m = (a: number, b: number) => Math.round(a * alfa + b * (1 - alfa));
+  const h = (v: number) => v.toString(16).padStart(2, '0');
+  return `#${h(m(c.r, f.r))}${h(m(c.g, f.g))}${h(m(c.b, f.b))}`;
+}
+
+/**
+ * Achata um véu `rgba(r,g,b,a)` sobre uma base OPACA e devolve o hex efetivo.
+ *
+ * Existe porque `contraste()` só sabe ler cor opaca. Um véu translúcido sobre uma
+ * superfície que muda com o tema — o hero da Home é literalmente
+ * `rgba(11,111,206,0.38)` sobre `background` — resulta em azul claro no modo claro
+ * e azul-marinho no escuro. Medir contra o véu, ou contra a base, dá as duas
+ * respostas erradas: o que o olho vê é a composição.
+ */
+export function achatarVeu(base: string, veu: string): string {
+  const m = veu.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/);
+  if (!m) return veu; // já é hex (ou algo que não sabemos compor): devolve como veio
+  const alfa = m[4] === undefined ? 1 : Number(m[4]);
+  const h = (v: string) => Number(v).toString(16).padStart(2, '0');
+  return compor(`#${h(m[1])}${h(m[2])}${h(m[3])}`, base, alfa);
+}
+
+/**
+ * Texto SECUNDÁRIO sobre um gradiente: o mesmo `sobre`, rebaixado por alfa até onde
+ * ainda passa 4.5:1 nas DUAS pontas.
+ *
+ * Um alfa fixo não pode ser seguro. A folga depende da cor de marca: branco opaco
+ * sobre o azul padrão mede 5.02:1 — dez por cento de margem — e sobre o vermelho,
+ * 4.83:1. Um `comAlfa(sobre, 0.82)` cravado (que eu mesmo escrevi no subtítulo do
+ * header) derruba a ponta clara para 3.90:1. Aqui o alfa DESCE a partir de `ideal`
+ * só enquanto o contraste aguenta; se nem o mais alto passar, devolve a cor opaca.
+ * Hierarquia visual sem sacrificar a legibilidade — e se não der, a hierarquia cede.
+ */
+export function sobreSecundario(
+  sobre: string,
+  pontas: readonly [string, string],
+  ideal = 0.82,
+  alvo = 4.5,
+): string {
+  const passa = (alfa: number) =>
+    pontas.every((p) => contraste(compor(sobre, p, alfa), p) >= alvo);
+
+  // Sobe de `ideal` até 1.0 em passos de 0.02 procurando o menor alfa que passa
+  // (menor alfa = texto mais discreto, que é o objetivo).
+  for (let alfa = ideal; alfa <= 1.0001; alfa += 0.02) {
+    if (passa(Math.min(alfa, 1))) return alfa >= 0.999 ? sobre : comAlfa(sobre, Math.min(alfa, 1));
+  }
+  return sobre; // nem opaco passaria: devolve opaco, que é o melhor possível
+}
+
+/**
+ * Matiz de CATEGORIA (tipo de agendamento, status de OS, situação de equipamento)
+ * tornado legível sobre um fundo concreto, preservando o matiz.
+ *
+ * `#2BD787` significa "limpeza"; `#34C6D9`, "orçamento". São dados, não cores de
+ * texto — foram escolhidos num app dark-only e medem 1.88:1 e 2.05:1 sobre branco.
+ * Nenhum hex estático resolve: `#64748B` passa no claro (4.76:1) e reprova no escuro
+ * (3.37:1). A luminosidade tem que ceder no PONTO DE USO, contra o fundo real; o
+ * matiz, que é o significado, não se move.
+ *
+ * Use só quando o matiz vira TEXTO ou ÍCONE. Como preenchimento translúcido
+ * (`cor + '22'`) ou borda, o valor cru continua certo.
+ */
+export function corCategoria(matiz: string, fundo: string, alvo = 4.5): string {
+  return ajustarParaContraste(matiz, fundo, alvo);
+}
+
+/**
+ * O caso comum: o matiz pinta o rótulo de um chip cujo fundo é o PRÓPRIO matiz
+ * translúcido (`cor + '22'`, ou seja ~13%) sobre uma superfície. Medir contra a
+ * superfície nua erra: o chip é mais escuro (ou mais claro) que ela.
+ *
+ * Sem isto, 8 dos 12 pares tipo×modo reprovavam — dois deles no modo ESCURO.
+ */
+export function corCategoriaEmChip(matiz: string, superficie: string, tintAlfa = 0.13, alvo = 4.5): string {
+  return corCategoria(matiz, achatarVeu(superficie, comAlfa(matiz, tintAlfa)), alvo);
+}
+
 /** `#RRGGBB` + alfa → `rgba(r,g,b,a)`. Usado nos containers e hairlines. */
 export function comAlfa(hex: string, alfa: number): string {
   const { r, g, b } = hexParaRgb(hex);

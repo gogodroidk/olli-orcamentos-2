@@ -48,6 +48,14 @@ const BRANCO_FG = /\b(?:color|tintColor)\s*(?::|=)\s*\{?['"](?:#fff|#FFF|#ffffff
 // Um `//` depois de `/>` NÃO é comentário: está na posição de FILHO do JSX e o texto
 // aparece na tela. O tsc não reclama. Cometido uma vez; nunca mais.
 const COMENTARIO_EM_JSX = /\/>\s*\/\//;
+// `rgba(...)` cravado como COR DE TEXTO. Era o subtítulo do onboarding a 3.67:1 e o
+// hero da Home a 1.06:1. Véu de FUNDO (`backgroundColor: 'rgba(...)'`) é legítimo e
+// não casa este padrão.
+const RGBA_FG = /\b(?:color|tintColor)\s*(?::|=)\s*\{?['"]rgba?\([^)]*\)['"]\}?/;
+// Alfa fixo sobre a cor de um gradiente: reprova na ponta clara, porque o branco opaco
+// já está em 5.02:1 no azul padrão (e 4.83:1 no vermelho). Use `sobreSecundario`, que
+// desce o alfa só até onde as duas pontas aguentam.
+const ALFA_FIXO_SOBRE = /comAlfa\(\s*(?:gradientes|g)\.sobre(?:Primary|Header|Brand)\s*,/;
 
 const arquivos = globSync('{src/**/*.{ts,tsx},App.tsx}', { cwd: RAIZ })
   .filter((f) => !f.replaceAll('\\', '/').endsWith('src/theme/cores.ts'));
@@ -75,6 +83,15 @@ for (const rel of arquivos) {
     if (TINTA_FG.test(linha)) {
       erro(`${rel}:${n}  tinta '#0A1626' cravada como cor de texto/ícone. Use textoSobre(<fundo>), ` +
            `ou declare a exceção com  // contraste-ok: <motivo>`);
+    }
+    if (RGBA_FG.test(linha)) {
+      erro(`${rel}:${n}  'rgba(...)' cravado como cor de texto/ícone. Sobre gradiente use ` +
+           `sobreSecundario(gradientes.sobreX, gradientes.X); sobre superfície use c.onSurfaceVariant; ` +
+           `sobre véu translúcido use achatarVeu(). Ou declare a exceção com  // contraste-ok: <motivo>`);
+    }
+    if (ALFA_FIXO_SOBRE.test(linha)) {
+      erro(`${rel}:${n}  comAlfa(gradientes.sobreX, <fixo>) reprova na ponta clara do gradiente. ` +
+           `Use sobreSecundario(gradientes.sobreX, gradientes.X).`);
     }
     if (BRANCO_FG.test(linha)) brancos.push(`${rel}:${n}`);
   });

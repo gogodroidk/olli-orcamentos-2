@@ -13,7 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { BotaoApple } from '../components/BotaoApple';
 import { appleSignInDisponivel, signInWithApple } from '../services/appleAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sobreSecundario, type Cores } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
@@ -373,7 +373,14 @@ export default function EntrarScreen() {
           <View style={styles.glow2} />
           <OlliMascot size={88} onDark />
           <Text style={[styles.brand, { color: gradientes.sobrePrimary }]}>OLLI</Text>
-          <Text style={styles.tagline}>Orçamentos que fecham negócio</Text>
+          {/* A tagline vive sobre o gradiente da marca, não sobre uma superfície.
+              `accentLight` escurece no modo claro (#197884) e media 2.36:1 aqui —
+              medido nos pixels do APK, na primeira tela que o usuário vê.
+              `sobreSecundario` rebaixa o branco só até onde as duas pontas ainda
+              passam 4.5:1 (alfa 0.94 no azul padrão, 0.96 no vermelho). */}
+          <Text style={[styles.tagline, { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) }]}>
+            Orçamentos que fecham negócio
+          </Text>
         </LinearGradient>
 
         {/* CARD sobrepondo o hero */}
@@ -418,7 +425,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   glow1: { position: 'absolute', top: -60, right: -40, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(127,233,245,0.16)' },
   glow2: { position: 'absolute', bottom: -50, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(52,198,217,0.12)' },
   brand: { fontSize: 38, fontFamily: Fonts.extraBold, letterSpacing: 1, marginTop: 16, paddingLeft: 6 },
-  tagline: { fontSize: 14, fontFamily: Fonts.semiBold, color: c.accentLight, marginTop: 6 },
+  // Sem cor: a tagline esta sobre o gradiente, e a fabrica so recebe `Cores`.
+  tagline: { fontSize: 14, fontFamily: Fonts.semiBold, marginTop: 6 },
 
   body: {
     marginTop: -24,

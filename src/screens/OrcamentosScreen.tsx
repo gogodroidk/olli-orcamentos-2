@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, sobreSecundario, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -92,6 +92,7 @@ export default function OrcamentosScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const cores = useCores();
+  const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   // Filtro por cliente (CRM): quando aberto a partir de um cliente.
   const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
@@ -409,7 +410,7 @@ export default function OrcamentosScreen() {
           ) : null}
         </View>
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>{filtered.length} orçamento{filtered.length !== 1 ? 's' : ''}</Text>
+          <Text style={[styles.totalLabel, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]}>{filtered.length} orçamento{filtered.length !== 1 ? 's' : ''}</Text>
           <CountUp
             value={filtered.reduce((s, o) => s + o.valorTotal, 0)}
             format="currency"
@@ -618,8 +619,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // totalRow vive dentro do GradientHeader — texto branco fixo, mesma
   // convenção do header (sempre colorido, independente do tema).
+  // totalLabel: sem cor aqui — é texto SECUNDÁRIO sobre o gradiente do header,
+  // aplicada inline com sobreSecundario(gradientes.sobreHeader, gradientes.header)
+  // no ponto de uso. rgba(255,255,255,0.75) fixo media 3.52:1 contra a ponta clara
+  // do header (gradientes.header[0] = #0B6FCE) — reprova o alvo de 4.5:1.
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  totalLabel: { fontSize: 12.5, color: 'rgba(255,255,255,0.75)', fontWeight: '700' },
+  totalLabel: { fontSize: 12.5, fontWeight: '700' },
   totalValue: { fontSize: 17, color: '#fff', fontWeight: '800' },
 
   skeletonCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base },

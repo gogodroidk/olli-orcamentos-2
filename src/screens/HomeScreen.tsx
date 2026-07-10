@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Linking, Alert, Animated } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, type Cores } from '../theme';
 import { getOrcamentos, getEmpresa } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
@@ -97,11 +97,36 @@ function abrirMapa(endereco?: string) {
   Linking.openURL(url).catch(() => {});
 }
 
+/**
+ * Véu do hero: cor de marca translúcida POR CIMA de `background`. Não é um gradiente
+ * do tema, então não tem companheira `sobre*` — o que o olho vê é a composição, e ela
+ * muda com o modo: azul pálido no claro, azul-marinho no escuro.
+ */
+const VEU_HERO = ['rgba(11,111,206,0.38)', 'rgba(52,198,217,0.08)'] as const;
+
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+
+  /**
+   * Cores do hero, derivadas do fundo EFETIVO (véu achatado sobre `background`).
+   *
+   * O hero nasceu num app dark-only: título `#fff`, legendas `rgba(226,232,240,…)`,
+   * acentos `accentLight`. No modo claro o composto vira #9CC3E9 → #E6F3F7 (quase
+   * branco) e TODOS os oito elementos reprovavam — o título ficava branco no branco
+   * (1.13:1). No escuro os mesmos oito passavam, e por isso ninguém viu.
+   */
+  const heroPontas = useMemo(
+    () => [achatarVeu(cores.background, VEU_HERO[0]), achatarVeu(cores.background, VEU_HERO[1])] as const,
+    [cores.background],
+  );
+  // Âncora na ponta mais difícil (a primeira): tinta escura no claro, branco no escuro.
+  const heroTexto = textoSobre(heroPontas[0]);
+  const heroTextoSec = sobreSecundario(heroTexto, heroPontas);
+  // O acento da marca também precisa ceder: `accentLight` media 2.81:1 sobre o hero claro.
+  const heroAcento = ajustarParaContraste(cores.accentLight, heroPontas[0], 4.5);
   const { temAcesso } = usePlano();
   const { papel } = usePermissao();
   const radarLiberado = temAcesso('radar_clientes');
@@ -248,32 +273,32 @@ export default function HomeScreen() {
         {/* HERO — AO VIVO · próxima parada (empty-state até existir agenda) */}
         <AnimatedEntrance index={0}>
           <LinearGradient
-            colors={['rgba(11,111,206,0.38)', 'rgba(52,198,217,0.08)']}
+            colors={VEU_HERO}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={styles.hero}
           >
             <View style={styles.heroTopRow}>
               <View style={styles.liveRow}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveLabel}>AO VIVO · PRÓXIMA PARADA</Text>
+                <Text style={[styles.liveLabel, { color: heroAcento }]}>AO VIVO · PRÓXIMA PARADA</Text>
               </View>
             </View>
             {carregando ? (
               <View style={styles.heroEmpty}>
-                <MaterialCommunityIcons name="dots-horizontal" size={30} color={cores.accentLight} />
-                <Text style={styles.heroEmptyTitle}>Carregando…</Text>
+                <MaterialCommunityIcons name="dots-horizontal" size={30} color={heroAcento} />
+                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Carregando…</Text>
               </View>
             ) : proxima ? (
               <View style={styles.heroFilled}>
-                <Text style={styles.heroWhen}>{quandoLabel(proxima.inicio)}</Text>
-                <Text style={styles.heroClient} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
-                <Text style={styles.heroType} numberOfLines={1}>
+                <Text style={[styles.heroWhen, { color: heroAcento }]}>{quandoLabel(proxima.inicio)}</Text>
+                <Text style={[styles.heroClient, { color: heroTexto }]} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
+                <Text style={[styles.heroType, { color: heroTextoSec }]} numberOfLines={1}>
                   {TIPO_AGENDAMENTO_LABELS[proxima.tipo]}{proxima.titulo && proxima.clienteNome ? ` · ${proxima.titulo}` : ''}
                 </Text>
                 {proxima.endereco ? (
                   <View style={styles.heroAddr}>
-                    <MaterialCommunityIcons name="map-marker" size={14} color={cores.accentLight} />
-                    <Text style={styles.heroAddrText} numberOfLines={1}>{proxima.endereco}</Text>
+                    <MaterialCommunityIcons name="map-marker" size={14} color={heroAcento} />
+                    <Text style={[styles.heroAddrText, { color: heroTextoSec }]} numberOfLines={1}>{proxima.endereco}</Text>
                   </View>
                 ) : null}
                 <View style={styles.heroActions}>
@@ -284,15 +309,15 @@ export default function HomeScreen() {
                     </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity style={styles.heroBtnGhost} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
-                    <Text style={styles.heroBtnGhostText}>Ver agenda</Text>
+                    <Text style={[styles.heroBtnGhostText, { color: heroAcento }]}>Ver agenda</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : (
               <View style={styles.heroEmpty}>
-                <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={cores.accentLight} />
-                <Text style={styles.heroEmptyTitle}>Nenhuma visita agendada</Text>
-                <Text style={styles.heroEmptySub}>Agende seus serviços e organize o seu dia. A próxima parada aparece aqui.</Text>
+                <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={heroAcento} />
+                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Nenhuma visita agendada</Text>
+                <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Agende seus serviços e organize o seu dia. A próxima parada aparece aqui.</Text>
                 <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
                   <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.heroBtnText}>Abrir agenda</Text>
@@ -713,23 +738,24 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
-  liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
+  // Sem cor: o hero deriva a sua do fundo EFETIVO (véu achatado). Ver VEU_HERO.
+  liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0 },
   heroEmpty: { alignItems: 'center', paddingVertical: 14 },
-  heroEmptyTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginTop: 8 },
-  heroEmptySub: { fontSize: 12.5, color: 'rgba(226,232,240,0.65)', textAlign: 'center', marginTop: 4, lineHeight: 18, paddingHorizontal: 10 },
+  heroEmptyTitle: { fontSize: 16, fontWeight: '800', marginTop: 8 },
+  heroEmptySub: { fontSize: 12.5, textAlign: 'center', marginTop: 4, lineHeight: 18, paddingHorizontal: 10 },
   heroBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 17, paddingVertical: 11, marginTop: 14 },
   heroBtnText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight) },
 
   // Próxima parada preenchida (próximo agendamento real)
   heroFilled: { marginTop: 12 },
-  heroWhen: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
-  heroClient: { fontSize: 19, fontWeight: '800', color: '#fff', marginTop: 4 },
-  heroType: { fontSize: 13, color: 'rgba(226,232,240,0.7)', marginTop: 2 },
+  heroWhen: { fontSize: 12, fontWeight: '800', letterSpacing: 0 },
+  heroClient: { fontSize: 19, fontWeight: '800', marginTop: 4 },
+  heroType: { fontSize: 13, marginTop: 2 },
   heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
-  heroAddrText: { flex: 1, fontSize: 12.5, color: 'rgba(226,232,240,0.8)' },
+  heroAddrText: { flex: 1, fontSize: 12.5 },
   heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   heroBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
-  heroBtnGhostText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
+  heroBtnGhostText: { fontSize: 13, fontWeight: '800' },
 
   kpis: { flexDirection: 'row', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, paddingVertical: 14 },
   kpi: { flex: 1, alignItems: 'center' },

@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -53,6 +53,7 @@ export default function OlliChatScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const cores = useCores();
+  const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   const { usosIaRestantes, consumirUsoIa } = usePlano();
   const iaEsgotada = usosIaRestantes <= 0;
@@ -215,7 +216,8 @@ export default function OlliChatScreen() {
         onBack={() => goBackOrHome(nav)}
         right={
           <TouchableOpacity onPress={limpar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Limpar conversa">
-            <MaterialCommunityIcons name="broom" size={22} color="rgba(255,255,255,0.85)" />
+            {/* dentro do LinearGradient de gradientes.header (via GradientHeader `right`): ícone decorativo -> sobreHeader */}
+            <MaterialCommunityIcons name="broom" size={22} color={gradientes.sobreHeader} />
           </TouchableOpacity>
         }
       />

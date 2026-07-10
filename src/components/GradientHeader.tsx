@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ViewStyle, Platform } from 'r
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BorderRadius, Spacing, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { BorderRadius, Spacing, useCores, useGradientes, useEstilos, sombrasDe, sobreSecundario, type Cores } from '../theme';
 import { AnimatedEntrance } from './AnimatedEntrance';
 
 interface Props {
@@ -41,7 +41,7 @@ export function GradientHeader({ title, subtitle, onBack, right, children, style
         ) : null}
         <AnimatedEntrance from="bottom" delay={60} style={{ flex: 1 }}>
           <Text style={[styles.title, compact && styles.titleCompact, { color: gradientes.sobreHeader }]} numberOfLines={1}>{title}</Text>
-          {subtitle ? <Text style={[styles.subtitle, { color: comAlfa(gradientes.sobreHeader, 0.82) }]} numberOfLines={1}>{subtitle}</Text> : null}
+          {subtitle ? <Text style={[styles.subtitle, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]} numberOfLines={1}>{subtitle}</Text> : null}
         </AnimatedEntrance>
         {right}
       </View>
