@@ -190,13 +190,13 @@ Este repo já mentiu três vezes em copy. Voltou a mentir, duas delas por minha 
 ### O incidente
 Depois de trazer o worker órfão `olli-site` para o repositório e publicar, **toda leitura de banco do `olli-diagnostico` passou a devolver 503**. Causa: o Workers Build por Git republica o worker a cada push na `main`, e `wrangler deploy` **apaga as vars de texto do painel** antes de aplicar as do `wrangler.jsonc` (`keep_vars` é `false` por padrão). Os segredos moravam como vars de texto. `wrangler secret list` devolveu `[]`.
 
-Restaurados como **secrets** (que deploy nenhum apaga), não como vars:
+Restaurados os segredos:
 
 | segredo | como voltou |
 | --- | --- |
 | `SUPABASE_SERVICE_ROLE_KEY` | Management API do Supabase, `?reveal=true` (exige `User-Agent` de navegador) |
 | `STRIPE_SECRET_KEY` | cofre local |
-| `ADMIN_EMAIL` | cofre local |
+| `ADMIN_EMAIL` | **não é segredo** — `admin.js:28` já usa `igoreluisa@gmail.com` como default; setei a var pelo mesmo valor |
 | `GEMINI_API_KEY` | `gcloud services api-keys get-key-string` — chaves novas do Google começam com `AQ.A`, não `AIza` |
 | `STRIPE_WEBHOOK_SECRET` | **irrecuperável**: a Stripe só devolve o `secret` na criação. Endpoint recriado (`we_1TrWMD…`), o antigo apagado |
 
@@ -204,7 +204,14 @@ Enquanto faltou o `STRIPE_WEBHOOK_SECRET`, `handleWebhook` rejeitava **todo** ev
 
 **Verificação (5/5, contra produção):** assinatura válida → `200 {ok:true}`; segredo errado, timestamp fora dos 300s de replay, header ausente e `v1` truncado → `400 assinatura_invalida`. Vetor de teste: evento de tipo inexistente, que atravessa a verificação e cai fora de todos os `else if` sem escrever no banco. `GET /` responde `{"ia":"on"}`.
 
-**Conserto estrutural:** os 5 valores sensíveis são secrets; os 8 não-sensíveis vivem no `wrangler.jsonc`. Não sobrou nada no painel para ser apagado — o Workers Build por Git deixou de ser perigoso e **não deve ser desativado**. `keep_vars` foi rejeitado: preservar var de painel só faz a divergência painel↔repo crescer calada.
+### A queda voltou — porque eu deduzi em vez de testar (2026-07-10, à tarde)
+Declarei o problema estrutural "resolvido" com a tese **"secrets sobrevivem a `wrangler deploy`, então o Workers Build por Git deixou de ser perigoso e não deve ser desativado"**. A tese vem da documentação do Cloudflare. **A realidade a refutou**: cada push na `main` derrubou o worker de novo (3× no dia — versões 109/110/111), e cada `wrangler deploy` de restauração **apagou os secrets**. O `GET /` passou a servir o HTML do site (o build publica um worker de *assets*, sem módulo JS nem bindings), o webhook virou 404, e as assinaturas pararam de novo.
+
+**Correções de fato:**
+- **Ordem de restauração:** `wrangler deploy` PRIMEIRO, secrets DEPOIS (o deploy os apaga). Esperar ~30s de propagação antes de concluir que a assinatura falhou.
+- **O passo humano é real e obrigatório:** desativar o Workers Build por Git do `olli-diagnostico` no dashboard. A API de builds recusa o token (`401`), então não há automação possível. Enquanto não for desativado, **todo push na main derruba pagamento**.
+- `keep_vars` não resolve: o problema não são as vars (voltam do `wrangler.jsonc`), são os secrets, que o deploy zera.
+- Memória `olli-cloudflare-git-integracoes` corrigida com a receita completa. **Lição:** "a doc diz que sobrevive" não é o mesmo que "sobrevive" — este repo já me puniu por colapsar dedução e teste.
 
 ### PDF que aprova — `1375de7`
 Botão de verdade dentro de PDF não é viável (AcroForm+JS bloqueado por WhatsApp, Quick Look do iOS, Gmail e visor do Chrome; e o `expo-print` no iOS descarta até hyperlink). Entregue: dois QR codes, "Aprovar" e "Recusar", em **SVG inline** (o iOS descarta `data:image/svg+xml` em `<img>`), gerados por `src/utils/qrcode.ts` — TS puro, sem dependência nova, funciona offline.
