@@ -200,3 +200,11 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     padrão passa despercebido; com Terracota ou Vinho ele destoa no hero do login (visto no APK).
     Não é bug de contraste — é coerência visual. Ou o mascote vira SVG parametrizado pelo `primary`,
     ou ele é declarado neutro por decisão de marca.
+
+28. **Recibo só tem um layout; falta multi-template de recibo.** O dono pediu "vários templates de
+    orçamento E de recibo". Orçamento ganhou os 7 modelos + a tela de padrão (`ModelosDocumentoScreen`,
+    `empresa.modeloPdfPadrao`). O recibo monta HTML próprio em `EmitirReciboScreen.buildHtml` — layout
+    único, sem `modeloPdf`. Para paridade: dar ao `Recibo` um `modeloPdf?: ModeloPdfId` (ou uma união
+    própria de estilos de recibo), variar o `buildHtml` por modelo, adicionar `empresa.modeloReciboPadrao`
+    e uma segunda seção em `ModelosDocumentoScreen`. A tela já avisa o dono ("modelos de recibo a
+    caminho"), então a expectativa está setada, não quebrada.

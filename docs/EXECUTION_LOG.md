@@ -292,6 +292,22 @@ O conserto perdido das setas da Agenda só apareceu porque um agente esqueceu um
 - **`expo-asset` faltando.** É peer de `expo-audio` e o `expo-doctor` avisava: *"your app may crash outside of Expo Go"* — ou seja, exatamente no APK. Agora 21/21.
 - **`clienteLink.base64url` devolvia lixo silencioso.** O ramo final entregava a string **binária crua** como se fosse base64 quando `btoa` e `Buffer` faltassem — sem lançar. Nem o RN 0.85 nem nenhuma dependência instalam `btoa` (verificado varrendo `node_modules`), então o ramo dependia do motor. Esse token é a **única** proteção do link que expõe o orçamento ao cliente, e é o mesmo que o QR do PDF carrega. Reescrito em ES puro e provado contra o `Buffer` do Node: comprimentos 0–64, casos de borda, exaustivo em 1 e 2 bytes.
 
+## Pedido do dono: nav-bar, motion, filtros, relatório, modelos (2026-07-10)
+
+Seis frentes a partir de um pedido único, cada uma commitada e provada (tsc 0, gate verde).
+
+**A barra de gestos comia o conteúdo.** No aparelho do dono (navegação virtual), FAB, rodapé e fim das listas ficavam SOB os botões do Android — Catálogo, Diagnóstico "e em todas as abas". `useSafeAreaInsets()` em 11 telas: `paddingBottom` das listas passou a somar `insets.bottom`, FABs sobem `insets.bottom+N`. Web não pega isso; só se vê no aparelho.
+
+**"Efeito uau" derivado do 21st.dev, reimplementado em RN.** O catálogo do 21st.dev é web (shadcn/Framer) — não roda no app; virou referência. Saíram `AuroraBackground` (orbes animados, `useNativeDriver`, estático no reduced-motion, `blur` só na web) no hero da landing/login e no onboarding, e `Revelar` (reveal-on-scroll por `measureInWindow`, fade+translate, instantâneo no reduced-motion) na landing. Perfil generic-saas: zero canvas/WebGL atrás de formulário ou tabela.
+
+**"Não gostei desses filtros" (Diagnóstico).** Duas queixas reais: Crítica e Alta eram o **mesmo vermelho** (`c.danger`), e o filtro não dizia quantos casos havia. Severidade virou eixo de tema (`sevCritica/sevAlta/sevMedia/sevInfo`, rampa de 4 matizes ajustadas a 4,5:1 nos dois modos) e ganhou **contagem ao vivo** (`countCodigosErroPorSeveridade`) — vira triagem. Verifiquei contra o dataset: `Crítica/Alta/Média/Info` = 30/370/293/5, batem com os rótulos → zero "erro vira vazio".
+
+**Onde o dono vê feedback e erros: a caixa de entrada.** Antes, o formulário da Ajuda só abria `mailto` — não guardava nada. Agora: tabela `public.feedback` (RLS insert-only-own, sem policy de select → só `/admin` lê via service_role), `services/feedback.ts`, captura GLOBAL de erro JS (`errorReport.ts`: `ErrorUtils` no Hermes + `window.onerror` na web, defensivo, deduplicado, teto por sessão) gravando tipo 'erro', e a seção "Feedback & Erros" no painel `/admin` com filtros/resolver. Caminho provado ponta a ponta: insert do usuário 201, leitura do usuário negada pela RLS, admin vê tudo.
+
+**Relatório diário com nota manual.** `RelatorioDia.nota` mora dentro do snapshot (blob), sincroniza pelo mesmo LWW de `relatorios_diarios` — sem coluna nem sync novo. A pegadinha: o relatório é um cache recomputado por aparelho e re-salvo a cada foco; `gerarRelatorioDia` agora **preserva a nota** ao regenerar (padrão recompute-but-preserve), senão um foco/sync a apagaria. Card "Como foi o dia?" editável, visível até em dia parado, aparece no histórico e no falar/compartilhar.
+
+**Modelos de documento em Conta → Ferramentas.** Os 7 templates já existiam (escolha por-orçamento no Step4); faltava o **padrão global**. `empresa.modeloPdfPadrao` (schema-less), herdado por `emptyOrcamento`. Tela nova com os 7 modelos e **prévia REAL** (mesmo `PdfPreviewModal`/HTML do envio, orçamento fictício na cor de marca do dono). Salvamento otimista com reversão em falha. Recibo segue com layout compacto próprio — modelos alternativos ficaram em `FOLLOWUPS` (#28).
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
