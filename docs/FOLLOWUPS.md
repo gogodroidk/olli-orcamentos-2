@@ -118,7 +118,7 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
 ## Sign in with Apple / SEO (2026-07-09)
 
 11. **PASSO HUMANO — Supabase → Authentication → Providers → Apple:** habilitar e colar
-   `com.grtech.olliorcamentos` em **Client IDs**. Para login NATIVO é só isso (Services ID, Team ID
+   `online.olliorcamentos.app` em **Client IDs**. Para login NATIVO é só isso (Services ID, Team ID
    e chave `.p8` só entram no fluxo OAuth da web). Não precisa da conta Apple paga.
 12. **Sign in with Apple NÃO foi testado**, e não dá para testar antes da conta Developer (a
    entitlement `com.apple.developer.applesignin` exige provisioning profile). O ponto mais frágil é

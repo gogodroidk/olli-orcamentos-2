@@ -14,7 +14,7 @@ import { Agendamento } from '../types';
  * ─────────────────────────────────────────────────────────────────────────
  * LIGA quando o dono criar o OAuth client Android (ver passos humanos da
  * planta): console.cloud.google.com/apis/credentials → "Criar credenciais" →
- * "ID do cliente OAuth" → tipo Android → pacote com.grtech.olliorcamentos →
+ * "ID do cliente OAuth" → tipo Android → pacote online.olliorcamentos.app →
  * SHA-1 do keystore de assinatura. Copiar o client ID para
  * `EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID` no `.env` do build.
  *

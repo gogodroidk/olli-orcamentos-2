@@ -3,7 +3,7 @@
 App **Expo / React Native** (SDK 56). Esta pasta já tem a **parte nativa Android gerada** (`android/`), pronta pra compilar.
 
 - **Nome:** OLLI Orçamentos
-- **Pacote (applicationId):** `com.grtech.olliorcamentos`
+- **Pacote (applicationId):** `online.olliorcamentos.app`
 - **Versão:** 1.0.0 (versionCode 2)
 - **Política de privacidade (a Play Store exige):** https://olliorcamentos.online/privacidade
 - **Site / app:** https://olliorcamentos.online · https://app.olliorcamentos.online

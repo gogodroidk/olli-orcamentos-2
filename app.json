@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.grtech.olliorcamentos",
+      "bundleIdentifier": "online.olliorcamentos.app",
       "buildNumber": "1",
       "usesAppleSignIn": true
     },
@@ -19,7 +19,7 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png"
       },
-      "package": "com.grtech.olliorcamentos",
+      "package": "online.olliorcamentos.app",
       "versionCode": 9,
       "permissions": [
         "CAMERA",

@@ -4,7 +4,7 @@
 > executável. Escrito em 2026-07-09 com base no estado real do app nesta data — revalide os itens
 > marcados **[VERIFICAR]** perto da data do envio, porque políticas de loja mudam.
 >
-> Pacote (`applicationId` / `bundleIdentifier`): `com.grtech.olliorcamentos` (igual nas duas lojas).
+> Pacote (`applicationId` / `bundleIdentifier`): `online.olliorcamentos.app` (igual nas duas lojas).
 > Versão atual em `app.json`: `1.1.0`, `android.versionCode` 9, `ios.buildNumber` "1".
 
 ---
@@ -57,18 +57,34 @@ resolvem preenchendo formulário:
    dois faz o login falhar SEMPRE.
 
    **PASSO HUMANO (1 minuto, não precisa da conta paga):** painel do Supabase → Authentication →
-   Providers → Apple → habilitar e, em **Client IDs**, colar `com.grtech.olliorcamentos`. Para login
+   Providers → Apple → habilitar e, em **Client IDs**, colar `online.olliorcamentos.app`. Para login
    NATIVO só isso é necessário — Services ID, Team ID e chave `.p8` só entram no fluxo OAuth da web.
 
    **NÃO DÁ PARA TESTAR antes da conta Apple Developer paga:** rodar o app no iPhone exige um
    provisioning profile com a entitlement `com.apple.developer.applesignin`, e isso só sai com a
    conta. Até lá o código é inerte no Android e na web (o módulo é `require`-preguiçoso; fora do iOS
    o botão renderiza `null`).
-3. **Decisão sobre o Checkout do Stripe no build iOS (Guideline 3.1.1 — In‑App Purchase).** A tela
-   Planos abre o Stripe Checkout num navegador externo para assinar Pro/Empresa. A Apple, em geral,
-   exige que compras que desbloqueiam recursos **dentro do app** passem pelo In‑App Purchase da
-   Apple (StoreKit), salvo exceções (app "reader", serviços consumidos fora do app, etc. — nenhuma
-   claramente se aplica ao OLLI hoje). Três caminhos possíveis, cada um com trabalho de código:
+3. **In-App Purchase no build iOS — DECIDIDO (D-16), falta implementar.** A tela Planos abre o
+   Stripe Checkout num navegador externo. No iOS isso viola a Guideline 3.1.1: *"If you want to
+   unlock features or functionality within your app ... you must use in-app purchase."*
+
+   As três exceções foram checadas contra o texto vigente da guideline e **nenhuma cobre o OLLI**:
+   - **3.1.3(c) Enterprise Services** termina em *"Consumer, single user, or family sales must use
+     in-app purchase."* — o alvo do OLLI é o autônomo, venda para usuário único.
+   - **3.1.3(b) Multiplatform Services** só libera acesso ao que foi comprado no site *"provided
+     those items are also available as in-app purchases within the app"* — exige IAP de todo jeito.
+   - **3.1.3(f) Free Stand-alone Apps** exige ser companion de uma ferramenta **web** paga (os
+     exemplos são VoIP, cloud storage, e-mail, hospedagem). O app OLLI **é** o produto, offline-first,
+     e é dentro dele que o recurso pago destrava.
+
+   **Escopo do trabalho:** StoreKit no build iOS (produtos de assinatura no App Store Connect),
+   validação de recibo no worker (App Store Server API, JWS assinado), endpoint de App Store Server
+   Notifications v2, e a tabela `assinaturas` ganhando a origem (`stripe` | `apple`) para reconciliar
+   as duas trilhas. No iOS, a tela Planos vende por IAP; Stripe segue no web e no Android.
+   **Custo: 15%** (Small Business Program, receita abaixo de US$1M/ano).
+   **Não é testável antes da conta paga** — o sandbox de IAP exige App Store Connect.
+
+   (Registro histórico dos caminhos avaliados:)
    - (a) Implementar StoreKit/`expo-in-app-purchases` para o build iOS e reconciliar com o mesmo
      estado de plano que hoje vem do webhook do Stripe (mais trabalho, mas é o caminho "oficial");
    - (b) Ocultar/desabilitar o CTA de assinatura na build iOS (deixar só leitura do plano atual +
@@ -240,7 +256,7 @@ Simulador do iOS, **sem precisar de nenhuma credencial Apple**. Bom para validar
 conta paga estar pronta.
 
 ### 3.3 Bundle ID
-Já está fixo em `app.json`: `com.grtech.olliorcamentos` (mesmo valor do Android — não precisa ser
+Já está fixo em `app.json`: `online.olliorcamentos.app` (mesmo valor do Android — não precisa ser
 igual, mas mantivemos igual por simplicidade). Ele precisa ser registrado uma vez em
 developer.apple.com → Certificates, IDs & Profiles → Identifiers (o `eas build` faz isso sozinho na
 primeira vez, se você deixar o EAS gerenciar credenciais).
