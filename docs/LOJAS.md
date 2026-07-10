@@ -42,16 +42,28 @@ resolvem preenchendo formulário:
 1. **Botão "Excluir minha conta" dentro do app.** A Apple **exige** isso desde 2022 (App Store
    Review Guideline 5.1.1(v)) para qualquer app com criação de conta, e a Play Store também cobra
    um "mecanismo de exclusão" no Data Safety. Sem isso a Apple rejeita na primeira revisão, sempre.
-   **Status neste worktree, no momento em que este documento foi escrito:** o backend já existe —
-   `src/services/conta.ts` + `worker/src/conta.js` (rota `POST /conta/excluir`, apaga o usuário em
-   `auth.users` com SERVICE_ROLE, cascade de FKs limpa os dados) — mas `ContaScreen.tsx` ainda não
-   chama esse serviço (só tem o botão "Sair da conta" hoje). Antes de submeter pro iOS, confirme se
-   o botão na UI já foi ligado (é trabalho de outra frente em paralelo, pode já estar pronto quando
-   você ler isto).
-2. **"Sign in with Apple" na tela de login.** `EntrarScreen.tsx` já oferece login social com Google
-   (OAuth via Supabase, funciona em qualquer plataforma). A Guideline 4.8 da Apple exige que, se o
-   app oferece login social de terceiros, ofereça também "Sign in with Apple" como opção
-   equivalente — isso vale mesmo com o OLLI sendo um app B2B. Sem isso, risco alto de rejeição.
+   **Status: FEITO.** `src/services/conta.ts` + `worker/src/conta.js` (rota `POST /conta/excluir`)
+   e o botão na `ContaScreen` (modal com "digite EXCLUIR" + alerta de última confirmação). O worker
+   cancela a assinatura Stripe ANTES de apagar `auth.users`, e se o cancelamento falhar ele devolve
+   502 e **não apaga nada** — apagar a conta com a assinatura viva deixaria o cartão sendo cobrado
+   sem nenhuma conta pela qual cancelar.
+2. **"Sign in with Apple" na tela de login.** **Status: CÓDIGO FEITO, falta 1 passo humano.**
+   `src/services/appleAuth.ts` + `src/components/BotaoApple.tsx` + `EntrarScreen.tsx`; `app.json` com
+   o plugin `expo-apple-authentication` e `ios.usesAppleSignIn: true`. O botão é o componente nativo
+   da Apple (a HIG exige), aparece só no iOS 13+ (`isAvailableAsync`) e tem peso equivalente ao do
+   Google, como a Guideline 4.8 manda. Anti-replay: nonce aleatório — o **SHA-256** vai para a Apple
+   (vira claim no `identityToken`) e o **valor cru** vai para o `supabase.auth.signInWithIdToken`,
+   que hasheia e compara (confirmado na tipagem instalada, `auth-js/types.d.ts:586`). Inverter os
+   dois faz o login falhar SEMPRE.
+
+   **PASSO HUMANO (1 minuto, não precisa da conta paga):** painel do Supabase → Authentication →
+   Providers → Apple → habilitar e, em **Client IDs**, colar `com.grtech.olliorcamentos`. Para login
+   NATIVO só isso é necessário — Services ID, Team ID e chave `.p8` só entram no fluxo OAuth da web.
+
+   **NÃO DÁ PARA TESTAR antes da conta Apple Developer paga:** rodar o app no iPhone exige um
+   provisioning profile com a entitlement `com.apple.developer.applesignin`, e isso só sai com a
+   conta. Até lá o código é inerte no Android e na web (o módulo é `require`-preguiçoso; fora do iOS
+   o botão renderiza `null`).
 3. **Decisão sobre o Checkout do Stripe no build iOS (Guideline 3.1.1 — In‑App Purchase).** A tela
    Planos abre o Stripe Checkout num navegador externo para assinar Pro/Empresa. A Apple, em geral,
    exige que compras que desbloqueiam recursos **dentro do app** passem pelo In‑App Purchase da

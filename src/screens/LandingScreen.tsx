@@ -42,11 +42,17 @@ export default function LandingScreen() {
   // Rota pública "/" — sem isso, a home fica com o <title>/canonical fixos do
   // index.html estático (mesmo problema das demais rotas públicas; ver
   // src/utils/seoWeb.ts).
+  //
+  // Esta descrição é FACTUAL, não copy de posicionamento: o Google a indexa e o
+  // WhatsApp a usa no cartão do link. Só pode citar o que o app entrega HOJE.
+  // Duas coisas que ela já afirmou e eram falsas: "ordem de serviço com assinatura"
+  // (a OS tem fotos e checklist; quem tem assinatura é o ORÇAMENTO) e "equipe"
+  // (os recursos de equipe do plano Empresa estão "(em breve)" em PlanosScreen).
   useEffect(() => {
     aplicarSeo({
       titulo: 'OLLI Orçamentos — Do orçamento ao recibo, sem planilha',
       descricao:
-        'OLLI é o sistema para quem presta serviço em campo: orçamento que o cliente aprova online, ordem de serviço com fotos e assinatura, agenda, equipe e financeiro num só lugar. Comece grátis.',
+        'OLLI é o sistema para quem presta serviço em campo: orçamento que o cliente aprova e assina online, ordem de serviço com fotos e checklist, agenda, clientes e financeiro num só lugar. Comece grátis.',
       caminho: '/',
     });
   }, []);

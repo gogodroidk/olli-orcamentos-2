@@ -7,6 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, BorderRadius } from '../theme';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { DicaContextual } from '../components/DicaContextual';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
@@ -165,6 +166,14 @@ export default function TecnicoHomeScreen() {
           <Text style={styles.saudacao}>{saudacao()}, {primeiroNome}</Text>
           <Text style={styles.subtitulo}>Minhas ordens de serviço</Text>
         </AnimatedEntrance>
+
+        {/* DICA (1º uso) — como a OS do dia funciona. Sem financeiro/orçamento/plano:
+            o técnico só vê OS. Abrir = onAbrir; avançar status = onAvancar (1 toque). */}
+        <DicaContextual
+          id="tecnico.os-do-dia"
+          icon="clipboard-check-outline"
+          texto="Aqui ficam só as suas ordens de serviço. Toque numa OS para ver os detalhes e avance o status com um toque, direto no card."
+        />
 
         {/* Resumo do dia */}
         <View style={styles.resumoRow}>

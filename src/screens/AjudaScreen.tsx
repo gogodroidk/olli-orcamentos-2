@@ -17,6 +17,7 @@ import { WHATSAPP_SUPORTE, APP_VERSION } from '../config';
 import { usePlano } from '../hooks/usePlano';
 import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
+import { aplicarSeo } from '../utils/seoWeb';
 import {
   CATEGORIAS_AJUDA, ARTIGOS_AJUDA, getCategoria, getArtigo, getArtigosDaCategoria,
   buscarArtigos, type AjudaArtigo, type AjudaBloco,
@@ -50,6 +51,16 @@ const TIPO_CONTATO_LABEL: Record<TipoContato, string> = { duvida: 'Dúvida', sug
 export default function AjudaScreen() {
   const nav = useNavigation();
   const route = useRoute<Rota>();
+
+  // SEO da rota publica "/ajuda" (ver src/utils/seoWeb.ts). No-op no nativo.
+  useEffect(() => {
+    aplicarSeo({
+      titulo: 'Central de Ajuda — OLLI Orçamentos',
+      descricao:
+        'Como criar orçamentos, emitir recibos, usar a agenda, gerenciar a assinatura e recuperar itens da lixeira. Respostas curtas, com o passo a passo de cada tela do OLLI.',
+      caminho: '/ajuda',
+    });
+  }, []);
   const { plano } = usePlano();
 
   const [query, setQuery] = useState('');

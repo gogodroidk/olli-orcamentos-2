@@ -114,3 +114,24 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
    reconciliador fica cego: `getOrdensGeradas` filtra ativos, a reserva soft-deletada some do
    snapshot mas continua ocupando o índice único → bloqueia a regeração em silêncio. Não é bug
    hoje (nada soft-deleta reserva); é um convite a cuidado.
+
+## Sign in with Apple / SEO (2026-07-09)
+
+11. **PASSO HUMANO — Supabase → Authentication → Providers → Apple:** habilitar e colar
+   `com.grtech.olliorcamentos` em **Client IDs**. Para login NATIVO é só isso (Services ID, Team ID
+   e chave `.p8` só entram no fluxo OAuth da web). Não precisa da conta Apple paga.
+12. **Sign in with Apple NÃO foi testado**, e não dá para testar antes da conta Developer (a
+   entitlement `com.apple.developer.applesignin` exige provisioning profile). O ponto mais frágil é
+   o nonce: se o login falhar com "invalid nonce", a alternativa documentada é remover o argumento
+   `nonce` das DUAS chamadas (Apple e Supabase).
+13. **Preview de link (WhatsApp/Slack) ainda mostra o cartão da home** em todas as rotas: esses
+   crawlers não executam JavaScript e leem o `index.html` estático. `aplicarSeo` só conserta para o
+   Googlebot, que renderiza JS. Solução completa: pré-render por rota (SSG), que troca o pipeline
+   de build.
+14. **HERO da landing** (`LandingSecoes.tsx`) ainda diz "cobre e gerencie a equipe". Não é meta
+   description, mas é a mesma promessa que `PlanosScreen` marca "(em breve)". Decisão de produto.
+15. **`expo-crypto` e `expo-apple-authentication` são módulos nativos novos:** o APK v1.1.0 atual
+   não os tem. Nada quebra (o Apple é iOS-only e o crypto só é chamado por ele), mas o próximo
+   build precisa ser feito do zero.
+16. **Dica do técnico:** "Toque numa OS para ver os detalhes" navega para a tela de OS sem id, não
+   para o detalhe daquela OS. Imprecisão leve de navegação, não promessa falsa.

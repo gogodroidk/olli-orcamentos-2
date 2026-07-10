@@ -14,6 +14,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { DicaContextual } from '../components/DicaContextual';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
@@ -308,6 +309,20 @@ export default function ClientesScreen() {
           {query ? <TouchableOpacity onPress={() => handleSearch('')} accessibilityRole="button" accessibilityLabel="Limpar busca"><MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} /></TouchableOpacity> : null}
         </View>
       </GradientHeader>
+
+      {/* DICA (1º uso) — o que a tela faz. Tocar num cliente abre o menu de ações
+          (verOrcamentos / novoOrcamento / agendarVisita / chamarWhatsApp / editar). */}
+      {/* Sem padding VERTICAL: DicaContextual devolve null quando dispensada, mas o
+          wrapper continua na arvore — um View com paddingTop e sem filho ainda ocupa
+          essa altura, deixando um vao permanente depois do "Entendi". O card da dica
+          ja traz o proprio marginTop. */}
+      <View style={{ paddingHorizontal: Spacing.base }}>
+        <DicaContextual
+          id="clientes.acoes"
+          icon="gesture-tap"
+          texto="Cadastre seus clientes aqui. Toque em um cliente para criar orçamento, agendar visita ou chamar no WhatsApp na hora."
+        />
+      </View>
 
       {carregando ? (
         <View style={{ padding: Spacing.base, gap: 10 }}>

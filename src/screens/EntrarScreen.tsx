@@ -10,6 +10,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
+import { BotaoApple } from '../components/BotaoApple';
+import { appleSignInDisponivel, signInWithApple } from '../services/appleAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, Gradients, BorderRadius } from '../theme';
 import { Fonts } from '../theme/fonts';
@@ -57,11 +59,21 @@ export default function EntrarScreen() {
   const [verSenha, setVerSenha] = useState(false);
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [appleBusy, setAppleBusy] = useState(false);
+  // Sign in with Apple so existe no iOS 13+. Checagem assincrona: enquanto nao
+  // responde, o botao nao aparece (nunca piscar um botao que some).
+  const [temApple, setTemApple] = useState(false);
   const [temLocais, setTemLocais] = useState(false);
 
   // No mount: se já há dados locais (o usuário usou o app offline antes de a v3
   // exigir conta), mostra o banner de migração e assume o modo "criar conta" —
   // quem tem dados locais provavelmente ainda não tem conta.
+  useEffect(() => {
+    let vivo = true;
+    appleSignInDisponivel().then((ok) => { if (vivo) setTemApple(ok); });
+    return () => { vivo = false; };
+  }, []);
+
   useEffect(() => {
     let vivo = true;
     temDadosLocais().then((tem) => {
@@ -189,6 +201,31 @@ export default function EntrarScreen() {
     setGoogleBusy(false);
   }
 
+  /**
+   * Login/cadastro com a Apple (iOS). Cancelamento é silencioso, igual ao Google.
+   * Exigência da Guideline 4.8: existe porque o app oferece login com o Google.
+   */
+  async function handleApple() {
+    Haptics.selectionAsync().catch(() => {});
+    if (!configured) {
+      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      return;
+    }
+    setAppleBusy(true);
+    try {
+      const res = await signInWithApple();
+      if (res === 'ok') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        await entrarNoApp();
+      }
+      // 'cancelado' → silêncio (o usuário desistiu).
+    } catch (e: any) {
+      const { titulo, texto } = traduzirErroAuth(e);
+      Alert.alert(titulo, texto);
+    }
+    setAppleBusy(false);
+  }
+
   /** Recuperar senha: envia o e-mail de redefinição do Supabase. */
   async function recuperarSenha() {
     Haptics.selectionAsync().catch(() => {});
@@ -205,7 +242,7 @@ export default function EntrarScreen() {
     }
   }
 
-  const anyBusy = busy || googleBusy;
+  const anyBusy = busy || googleBusy || appleBusy;
 
   // FORMULÁRIO de login/cadastro — a MESMA lógica em qualquer largura. No mobile
   // ele mora sob o hero curto; no desktop, dentro do card à direita das duas
@@ -260,7 +297,7 @@ export default function EntrarScreen() {
 
       <OlliButton
         label={modo === 'login' ? 'Entrar' : 'Criar conta'}
-        variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy} onPress={handleAuth}
+        variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy || appleBusy} onPress={handleAuth}
         icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color="#fff" />}
         style={{ marginTop: modo === 'login' ? 4 : 8 }}
       />
@@ -275,9 +312,16 @@ export default function EntrarScreen() {
       {/* GOOGLE */}
       <OlliButton
         label="Continuar com o Google"
-        variant="outline" size="lg" fullWidth loading={googleBusy} disabled={busy} haptic={false} onPress={handleGoogle}
+        variant="outline" size="lg" fullWidth loading={googleBusy} disabled={busy || appleBusy} haptic={false} onPress={handleGoogle}
         icon={<MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />}
       />
+
+      {/* APPLE — só monta no iOS (o componente devolve null nas outras plataformas).
+          A Guideline 4.8 exige o botão com peso equivalente ao do Google, e não
+          escondido atrás de um "mais opções". */}
+      {temApple && (
+        <BotaoApple onPress={handleApple} desabilitado={busy || googleBusy || appleBusy} />
+      )}
 
       {/* ALTERNA LOGIN/SIGNUP */}
       <TouchableOpacity disabled={anyBusy} onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>

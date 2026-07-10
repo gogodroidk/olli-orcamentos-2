@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
+import { aplicarSeo } from '../utils/seoWeb';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -41,6 +42,28 @@ export default function LegalScreen() {
   const outroDoc = docKey === 'termos' ? PRIVACIDADE : TERMOS;
   // Rótulo curto para o botão de troca no cabeçalho (o título cheio não cabe no header).
   const outroCurto = docKey === 'termos' ? 'Privacidade' : 'Termos';
+
+  // Esta MESMA tela serve duas rotas públicas ("/privacidade" e "/termos"), então o
+  // SEO depende de `docKey` e é reaplicado ao trocar de documento — sem isso as duas
+  // páginas dividiriam um canonical só. Exigência de loja e da LGPD é que ambas
+  // sejam alcançáveis por link direto. No-op no nativo (ver src/utils/seoWeb.ts).
+  useEffect(() => {
+    if (docKey === 'termos') {
+      aplicarSeo({
+        titulo: 'Termos de Uso — OLLI Orçamentos',
+        descricao:
+          'Condições de uso do OLLI Orçamentos: assinatura, cancelamento, direito de arrependimento, responsabilidades e limites do serviço.',
+        caminho: '/termos',
+      });
+    } else {
+      aplicarSeo({
+        titulo: 'Política de Privacidade — OLLI Orçamentos',
+        descricao:
+          'Que dados o OLLI coleta, para que usa, por quanto tempo guarda e como você exclui sua conta e seus dados. Direitos do titular segundo a LGPD.',
+        caminho: '/privacidade',
+      });
+    }
+  }, [docKey]);
 
   function irParaOutro() {
     // Navega para a rota irmã pelo nome. O integrador registra 'Privacidade' e 'Termos'.

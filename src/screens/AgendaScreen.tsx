@@ -17,6 +17,7 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
@@ -444,6 +445,17 @@ export default function AgendaScreen() {
           </Text>
         </View>
       )}
+
+      {/* DICA (1º uso) — como criar um compromisso. O FAB "Agendar visita" abre o
+          form (abrirNovo) e o segmented Dia/Semana/Mês troca o período (trocarModo). */}
+      {/* Sem padding vertical: ver ClientesScreen (wrapper vazio deixaria vao). */}
+      <View style={{ paddingHorizontal: Spacing.base }}>
+        <DicaContextual
+          id="agenda.criar"
+          icon="calendar-plus"
+          texto="Toque em Agendar visita para marcar seus serviços. Use Dia, Semana e Mês no topo para navegar pelo período."
+        />
+      </View>
 
       {/* LISTA */}
       {carregando ? (

@@ -18,6 +18,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
@@ -292,6 +293,16 @@ export default function HomeScreen() {
             )}
           </LinearGradient>
         </AnimatedEntrance>
+
+        {/* DICA (1º uso) — de onde sai um orçamento. O botão central "Orçar" da
+            tab bar abre NovoOrcamento (ver CenterButton no AppNavigator). */}
+        <View style={{ paddingHorizontal: Spacing.base }}>
+          <DicaContextual
+            id="home.botao-orcar"
+            icon="plus-circle-outline"
+            texto="O botão central da barra de baixo (Orçar) cria um novo orçamento. É por ali que começa toda proposta."
+          />
+        </View>
 
         {/* KPIs */}
         {carregando ? (

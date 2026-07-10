@@ -13,6 +13,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { DicaContextual } from '../components/DicaContextual';
 import { CountUp } from '../components/CountUp';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
@@ -426,6 +427,17 @@ export default function OrcamentosScreen() {
               </Text>
             </TouchableOpacity>
           )}
+        />
+      </View>
+
+      {/* DICA (1º uso) — o que o status significa e como ele anda sozinho. O link
+          do cliente é gerado ao abrir o orçamento (gerarLinkOrcamento) e o status
+          local avança quando o cliente responde (sincronizarStatusLinks, no foco). */}
+      <View style={{ paddingHorizontal: Spacing.base }}>
+        <DicaContextual
+          id="orcamentos.status-link"
+          icon="link-variant"
+          texto="O status mostra em que pé está cada proposta. Abra um orçamento para enviar o link ao cliente: quando ele aprova por lá, o status atualiza sozinho aqui."
         />
       </View>
 

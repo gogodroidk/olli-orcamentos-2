@@ -10,7 +10,8 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.grtech.olliorcamentos",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -74,7 +75,8 @@
           "microphonePermission": "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {

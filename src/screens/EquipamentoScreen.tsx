@@ -14,6 +14,7 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { DicaContextual } from '../components/DicaContextual';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
@@ -282,6 +283,21 @@ export default function EquipamentoScreen() {
               </TouchableOpacity>
             );
           }}
+        />
+      </View>
+
+      {/* DICA (1º uso) — a etiqueta QR da porta física.
+          A página pública `/q/<token>` (worker/src/pmoc.js) mostra DE PROPÓSITO só o
+          mínimo: prestador, código, categoria, situação e um contato. Nada de
+          histórico, cliente, endereço, contrato ou valores — é uma etiqueta colada
+          numa porta, qualquer um escaneia. E o `qrToken` nasce vazio: o backend o
+          gera no primeiro sync (services/equipamentos.ts). O texto abaixo precisa
+          respeitar as duas coisas. */}
+      <View style={{ paddingHorizontal: Spacing.base }}>
+        <DicaContextual
+          id="equipamento.etiqueta-qr"
+          icon="qrcode"
+          texto="Depois de sincronizar com a nuvem, cada equipamento ganha uma etiqueta QR para colar na porta. Quem escanear vê a identificação do aparelho e como falar com o responsável pela manutenção."
         />
       </View>
 

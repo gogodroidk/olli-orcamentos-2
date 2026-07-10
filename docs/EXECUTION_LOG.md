@@ -160,6 +160,31 @@ Migration `20260715_pmoc_fase2.sql` **aplicada** (idempotente; RLS 4 policies; i
 ### Re-gate sobre as próprias correções — **PASSA**
 Nenhum critical/high/medium. Confirmou o ponto que mais importava: `getOrdemServico(id)` não filtra soft-delete, então o reconciliador enxerga a OS na lixeira e **não** desfaz uma exclusão deliberada. Restaram 3 notas LOW de robustez (uma delas — guarda de `ordemId` vazio, o velho `?? vs ||` — foi fechada na hora).
 
+## Sign in with Apple + dicas contextuais + SEO por rota (CONCLUÍDO)
+
+### Sign in with Apple (exigência da Guideline 4.8, não escolha nossa)
+`src/services/appleAuth.ts`, `src/components/BotaoApple.tsx`, `EntrarScreen`, `app.json` (plugin + `ios.usesAppleSignIn`), `expo-apple-authentication` e `expo-crypto` no SDK 56.
+
+- **iOS apenas.** `expo-apple-authentication` não suporta Android nem web, então o módulo é resolvido com `require` preguiçoso atrás de guarda de plataforma — import estático quebraria o bundle do APK. Fora do iOS o botão renderiza `null`.
+- **Anti-replay com nonce.** O SHA-256 vai para a Apple (vira claim no `identityToken`); o valor CRU vai para o `signInWithIdToken`, que hasheia e compara. Verificado na tipagem instalada (`auth-js/types.d.ts:586`), não num resumo de doc — o resumo dizia "cru para os dois", o que faria o login falhar SEMPRE.
+- **Gate: 1 HIGH.** O nome vindo da Apple era gravado em `user_metadata.nome`, e o app inteiro lê `full_name` (`supabase.ts:53`, `ContaScreen:181`, `admin.js:126`). Como a Apple só manda o nome na PRIMEIRA autorização, ele sumiria para sempre. Corrigido.
+- **Falta 1 passo humano** (não precisa da conta paga): Supabase → Authentication → Providers → Apple → habilitar e colar `com.grtech.olliorcamentos` em Client IDs. Para login nativo é só isso. **Não dá para testar** antes da conta Developer: a entitlement exige provisioning profile.
+
+### Dicas contextuais — o toggle finalmente controla alguma coisa
+`DicaContextual` existia, o serviço rastreava dicas dispensadas, o toggle estava na Conta — e o componente **nunca era renderizado**. Um gate anterior classificou como LOW e só corrigiu o rótulo do switch: ficou honesto e continuou inútil. Agora há 6 dicas (Home, Orçamentos, Agenda, Clientes, Equipamento, TecnicoHome), o componente reavalia no foco (desligar o toggle some com a dica na hora) e a do técnico não cita financeiro.
+
+### SEO por rota
+`aplicarSeo` agora escreve `title`, `description`, `canonical` **e** `og:*`/`twitter:*`, chamado nas 4 rotas do `sitemap.xml`. Sem as Open Graph, indexar `/planos` como página própria não adiantaria: o cartão compartilhado continuaria o da home.
+
+### Gates — 4 HIGH, todos de TEXTO QUE MENTE
+Este repo já mentiu três vezes em copy. Voltou a mentir, duas delas por minha mão:
+- **`/planos` (meu texto):** "o Pro libera orçamentos ilimitados" — o **Grátis** já os inclui (`PLANOS_BASE:88`); "o Empresa acrescenta os recursos de equipe" — a própria tela marca "(em breve)"; "cancele direto no app" — o cancelamento abre o portal externo da Stripe.
+- **`/` (copy antiga promovida a meta description):** "ordem de serviço com fotos e **assinatura**" — a interface `OrdemServico` não tem campo de assinatura (quem assina é o orçamento); e "**equipe**", que a tela de compra marca "(em breve)".
+- **Dica do equipamento:** prometia "ficha e histórico" — a página `/q/<token>` mostra de propósito só identificação e contato; e prometia QR imediato, quando o `qrToken` só é gerado no primeiro sync.
+- **LOW:** wrapper de dica com `paddingTop` deixava um vão permanente depois do "Entendi" (um `View` sem filho ainda ocupa o padding).
+
+**Lição registrada:** copy que descreve o produto tem que ser DERIVADA da fonte de verdade lida na hora (`PLANOS_BASE`, `types/index.ts`), nunca escrita de memória. E promover copy de posicionamento a `<meta name="description">` muda o padrão de qualidade dela: deixa de ser tom de marca e vira declaração factual ao Google.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.

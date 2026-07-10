@@ -15,6 +15,7 @@ import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
 import { supabase } from '../services/supabase';
 import { getPlanoAtual, getPlanoCacheado, invalidarCachePlano, PlanoId } from '../services/planos';
+import { aplicarSeo } from '../utils/seoWeb';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -137,6 +138,24 @@ function mensagemErroPagamento(status: number | null, offline: boolean): string 
 
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
+
+  // SEO da rota pública "/planos". Sem isto ela herda o canonical da home e o
+  // Google a trata como duplicata, apesar de estar no sitemap.xml. No-op no nativo.
+  //
+  // A descrição é DERIVADA de PLANOS_BASE (acima), nunca escrita de memória: ela é
+  // indexada pelo Google e vira o cartão do link compartilhado. Já erramos aqui —
+  // "o Pro libera orçamentos ilimitados" era falso (o Grátis já os tem) e "o Empresa
+  // acrescenta os recursos de equipe" vendia o que a própria tela marca "(em breve)".
+  // Ao mexer nos planos, reveja este texto.
+  useEffect(() => {
+    aplicarSeo({
+      titulo: 'Planos e preços — OLLI Orçamentos',
+      descricao:
+        'Comece grátis, com orçamentos e recibos ilimitados, catálogo, clientes e agenda. O Pro (R$ 39/mês) acrescenta relatórios de faturamento e conversão, metas de vendas e suporte prioritário.',
+      caminho: '/planos',
+    });
+  }, []);
+
   const [periodo, setPeriodo] = useState<Periodo>('mensal');
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
   const [carregandoPlano, setCarregandoPlano] = useState(true);

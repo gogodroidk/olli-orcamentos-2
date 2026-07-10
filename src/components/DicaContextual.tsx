@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, BorderRadius, Spacing } from '../theme';
@@ -30,14 +31,22 @@ interface Props {
 export function DicaContextual({ id, texto, icon = 'lightbulb-on-outline', style }: Props) {
   const [visivel, setVisivel] = useState(false);
 
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      const [ativa, vista] = await Promise.all([estaAtiva(), dicaFoiVista(id)]);
-      if (vivo) setVisivel(ativa && !vista);
-    })();
-    return () => { vivo = false; };
-  }, [id]);
+  // Reavalia SEMPRE que a tela ganha foco (useFocusEffect), não só no mount: se o
+  // usuário desliga o toggle na Conta e volta para uma aba já montada (ex.: Home),
+  // a dica precisa sumir na hora. Ler só no mount deixava a dica na tela apesar do
+  // switch desligado. "Some pra sempre no Entendi" continua: após marcarDicaVista,
+  // dicaFoiVista(id) volta true e a reavaliação mantém a dica escondida.
+  // `vivo` (limpo no blur/desmontagem) evita setState depois de sair da tela.
+  useFocusEffect(
+    useCallback(() => {
+      let vivo = true;
+      (async () => {
+        const [ativa, vista] = await Promise.all([estaAtiva(), dicaFoiVista(id)]);
+        if (vivo) setVisivel(ativa && !vista);
+      })();
+      return () => { vivo = false; };
+    }, [id]),
+  );
 
   function entendi() {
     Haptics.selectionAsync().catch(() => {});
