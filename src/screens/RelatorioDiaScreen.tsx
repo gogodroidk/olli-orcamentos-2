@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Share, LayoutAnimation, Platform, RefreshControl, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Share, LayoutAnimation, Platform, RefreshControl, Animated, TextInput, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import { GatePro } from '../components/GatePro';
 import { GuardaPapel } from '../components/GuardaPapel';
 import {
   gerarRelatorioDia, relatorioParaTexto, falarRelatorio, pararFala, RelatorioDia,
+  salvarNotaDia, notaComoTexto,
 } from '../services/relatorioDia';
 import { getRelatoriosDias, RelatorioDiaRow } from '../database/database';
 import { onSyncAplicado } from '../services/cloudSync';
@@ -95,10 +96,85 @@ function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number 
         {aberto && (
           <View style={styles.histBody}>
             <Text style={styles.histTexto}>{relatorioParaTexto(r)}</Text>
+            {!!r.nota?.trim() && (
+              <View style={styles.histNota}>
+                <MaterialCommunityIcons name="notebook-outline" size={14} color={cores.accentLight} />
+                <Text style={styles.histNotaText}>{r.nota.trim()}</Text>
+              </View>
+            )}
           </View>
         )}
       </OlliCard>
     </AnimatedEntrance>
+  );
+}
+
+/**
+ * Campo manual "como foi o dia / problemas". Guarda um diário curto do dono por
+ * dia — o que rolou, perrengue, pendência. Salva no snapshot do dia (sincroniza).
+ * Adota uma nota mais nova vinda de sync só quando o usuário não está editando.
+ */
+function NotaDoDia({ data, inicial, onSalvo }: { data: string; inicial?: string; onSalvo?: (nota: string) => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const [texto, setTexto] = useState(inicial ?? '');
+  const [salvando, setSalvando] = useState(false);
+  const baseRef = useRef(inicial ?? '');
+
+  // Sync externo pode trazer uma nota mais recente; adota se não há edição pendente.
+  useEffect(() => {
+    const nova = inicial ?? '';
+    if (texto === baseRef.current && nova !== baseRef.current) {
+      baseRef.current = nova;
+      setTexto(nova);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inicial]);
+
+  const dirty = texto !== baseRef.current;
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await salvarNotaDia(data, texto);
+      baseRef.current = texto;
+      onSalvo?.(texto.trim());
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch {
+      Alert.alert('Ops', 'Não consegui salvar sua nota agora. Tente de novo.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <View style={styles.notaWrap}>
+      <View style={styles.notaHead}>
+        <MaterialCommunityIcons name="notebook-edit-outline" size={16} color={cores.accentLight} />
+        <Text style={styles.notaTitulo}>Como foi o dia?</Text>
+      </View>
+      <Text style={styles.notaSub}>Anote os perrengues, pendências e o que rolou — fica no seu histórico e sincroniza entre aparelhos.</Text>
+      <TextInput
+        style={styles.notaInput}
+        value={texto}
+        onChangeText={setTexto}
+        placeholder="Ex: cliente do Jardim remarcou; compressor da obra chegou com defeito; fechei a manutenção do prédio."
+        placeholderTextColor={cores.onSurfaceMuted}
+        multiline
+        textAlignVertical="top"
+      />
+      <OlliButton
+        label={salvando ? 'Salvando...' : dirty ? 'Salvar nota' : 'Nota salva'}
+        onPress={salvar}
+        variant={dirty ? 'gradient' : 'outline'}
+        size="md"
+        fullWidth
+        disabled={!dirty || salvando}
+        loading={salvando}
+        icon={!salvando ? <MaterialCommunityIcons name={dirty ? 'content-save-outline' : 'check-circle-outline'} size={18} color={dirty ? '#fff' : cores.accentLight} /> : undefined}
+        style={{ marginTop: 10 }}
+      />
+    </View>
   );
 }
 
@@ -189,11 +265,16 @@ function RelatorioDiaConteudo() {
     if (!relatorio) return;
     Haptics.selectionAsync().catch(() => {});
     try {
-      await Share.share({ message: relatorioParaTexto(relatorio) });
+      await Share.share({ message: relatorioParaTexto(relatorio) + notaComoTexto(relatorio) });
     } catch {
       // usuário cancelou o share sheet — nada a fazer
     }
   }
+
+  // Reflete a nota recém-salva no estado, para o compartilhar/ouvir já a incluírem.
+  const onNotaSalva = useCallback((nota: string) => {
+    setRelatorio(r => (r ? { ...r, nota: nota || undefined } : r));
+  }, []);
 
   const semMovimentos = relatorio?.semMovimentos ?? false;
 
@@ -316,6 +397,13 @@ function RelatorioDiaConteudo() {
           </>
         )}
 
+        {/* NOTA MANUAL DO DIA — visível mesmo em dia parado (útil pra registrar "por quê") */}
+        {relatorio && !carregando && (
+          <AnimatedEntrance>
+            <NotaDoDia data={relatorio.data} inicial={relatorio.nota} onSalvo={onNotaSalva} />
+          </AnimatedEntrance>
+        )}
+
         {/* HISTÓRICO — dias anteriores */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Dias anteriores</Text>
@@ -406,4 +494,24 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   histResumo: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 1 },
   histBody: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline },
   histTexto: { fontSize: 13.5, color: c.onSurface, lineHeight: 20 },
+  histNota: {
+    flexDirection: 'row', gap: 8, marginTop: 10, paddingTop: 10,
+    borderTopWidth: 1, borderTopColor: c.outline,
+  },
+  histNotaText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 20, fontStyle: 'italic' },
+
+  // Nota manual do dia — card editável
+  notaWrap: {
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.md,
+    ...sombrasDe(c).sm,
+  },
+  notaHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4 },
+  notaTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  notaSub: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginBottom: 10 },
+  notaInput: {
+    minHeight: 90, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.outline, padding: 12,
+    fontSize: 14.5, color: c.onSurface, lineHeight: 20,
+  },
 });

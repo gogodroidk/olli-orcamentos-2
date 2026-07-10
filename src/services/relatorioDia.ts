@@ -40,6 +40,12 @@ export interface RelatorioDia {
   clientesNovos: number;
   /** true quando não houve NENHUM movimento no dia (para a narrativa honesta). */
   semMovimentos: boolean;
+  /**
+   * Nota manual do dono ("como foi o dia / problemas"). Fica DENTRO do snapshot
+   * (blob `dados`), então sincroniza junto pelo mesmo caminho LWW — sem coluna
+   * nova. A regeração automática do dia preserva a nota já escrita.
+   */
+  nota?: string;
 }
 
 /**
@@ -100,6 +106,11 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
   // reescreve sozinho (o usuário revisita o passado, não o recalcula).
   if (dataChave === hoje) {
     try {
+      // PRESERVA a nota manual já escrita: a regeração recomputa os números, mas
+      // a nota do dono não pode ser apagada por um foco de tela ou por um sync.
+      const anterior = await getRelatorioDiaRow(dataChave);
+      const notaAnterior = (anterior?.dados as RelatorioDia | undefined)?.nota;
+      if (notaAnterior) relatorio.nota = notaAnterior;
       await saveRelatorioDia(dataChave, relatorio);
     } catch {
       // salvar o snapshot é best-effort: nunca deve quebrar a geração/leitura do relatório
@@ -107,6 +118,24 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
   }
 
   return relatorio;
+}
+
+/**
+ * Salva a nota manual do dono para um dia, preservando os números já compilados.
+ * Lê o snapshot existente (ou compila na hora, se ainda não houver) e reescreve
+ * só a nota — o `criado_em` novo faz a nota vencer no LWW da sincronização.
+ */
+export async function salvarNotaDia(data: string, nota: string): Promise<void> {
+  const row = await getRelatorioDiaRow(data);
+  const base = (row?.dados as RelatorioDia | undefined) ?? await gerarRelatorioDia(data);
+  const limpa = nota.trim();
+  await saveRelatorioDia(data, { ...base, nota: limpa || undefined });
+}
+
+/** Nota manual formatada como parágrafo pra colar no fim do texto falado/compartilhado. */
+export function notaComoTexto(r: RelatorioDia): string {
+  const n = r.nota?.trim();
+  return n ? `\n\nMinha nota do dia: ${n}` : '';
 }
 
 /** Lê o snapshot salvo de um dia anterior (histórico), ou null se nunca foi gerado/salvo. */
@@ -180,7 +209,7 @@ export function relatorioParaTexto(r: RelatorioDia): string {
  * para voltar o botão de "Parar" para "Ouvir relatório" sem esperar um toque.
  */
 export async function falarRelatorio(r: RelatorioDia, onFim?: () => void): Promise<void> {
-  const texto = relatorioParaTexto(r);
+  const texto = relatorioParaTexto(r) + notaComoTexto(r);
   try {
     await Speech.stop();
   } catch {
