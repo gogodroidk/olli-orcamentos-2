@@ -24,6 +24,7 @@ import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
+import { instalarCapturaDeErro } from './src/services/errorReport';
 import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
@@ -137,6 +138,16 @@ function AppConteudo() {
     Spectral_600SemiBold,
     Spectral_700Bold,
   });
+
+  // Captura global de erro de JS -> caixa de feedback (o dono ve no /admin o que
+  // quebra nos aparelhos). Instala uma vez; a tela atual vem do navigationRef.
+  // Best-effort e defensivo: nunca derruba o app.
+  useEffect(() => {
+    instalarCapturaDeErro(() => {
+      try { return navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined; }
+      catch { return undefined; }
+    });
+  }, []);
 
   useEffect(() => {
     // Abre o banco e, ANTES de liberar a UI, decide a rota inicial. A sessão

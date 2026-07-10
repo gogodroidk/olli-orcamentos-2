@@ -15,6 +15,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, APP_VERSION } from '../config';
 import { usePlano } from '../hooks/usePlano';
+import { enviarFeedback } from '../services/feedback';
 import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
 import { aplicarSeo } from '../utils/seoWeb';
@@ -73,6 +74,7 @@ export default function AjudaScreen() {
   const [formNome, setFormNome] = useState('');
   const [formTipo, setFormTipo] = useState<TipoContato>('duvida');
   const [formMensagem, setFormMensagem] = useState('');
+  const [enviandoForm, setEnviandoForm] = useState(false);
 
   // Deep-link: chegar já num artigo específico (ex.: vindo de uma dica contextual).
   useEffect(() => {
@@ -157,15 +159,37 @@ export default function AjudaScreen() {
     });
   }
 
-  function handleEnviarFormulario() {
+  async function handleEnviarFormulario() {
     if (!formMensagem.trim()) {
       Alert.alert('Conta pra gente', 'Escreva sua dúvida ou o que aconteceu antes de enviar.');
       return;
     }
+    if (enviandoForm) return;
     Haptics.selectionAsync().catch(() => {});
+    setEnviandoForm(true);
     track(Eventos.ajudaSuporteContato, { canal: 'formulario', tipo: formTipo, origem: origemAtual() });
+
+    // GRAVA de verdade na caixa (o dono ve no /admin). O nome opcional entra no
+    // corpo — nunca em campo separado, para nao virar dado pessoal indexavel.
+    const tipoDb = formTipo === 'sugestao' ? 'sugestao' : formTipo === 'bug' ? 'bug' : 'feedback';
+    const nome = formNome.trim();
+    const mensagem = (nome ? `[${nome}] ` : '') + formMensagem.trim();
+    const r = await enviarFeedback(tipoDb, mensagem, { tela: origemAtual(), plano: PLANO_LABEL[plano] ?? plano });
+    setEnviandoForm(false);
+
+    if (r === 'ok') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Alert.alert('Recebemos! 🙌', 'Sua mensagem chegou pra gente. Se precisar de retorno rápido, chama no WhatsApp.');
+      setFormAberto(false);
+      setFormNome('');
+      setFormMensagem('');
+      setFormTipo('duvida');
+      return;
+    }
+
+    // Sem sessao / falha de rede: nao perde a mensagem — abre o e-mail ja escrito.
     const extra = [
-      formNome.trim() ? `Nome: ${formNome.trim()}` : null,
+      nome ? `Nome: ${nome}` : null,
       `Tipo: ${TIPO_CONTATO_LABEL[formTipo]}`,
       `Mensagem: ${formMensagem.trim()}`,
     ].filter(Boolean).join('\n');
@@ -173,13 +197,13 @@ export default function AjudaScreen() {
     const corpo = encodeURIComponent(mensagemSuporte(extra));
     Linking.openURL(`mailto:${EMAIL_SUPORTE}?subject=${assunto}&body=${corpo}`)
       .then(() => {
-        Alert.alert('Prontinho!', 'Abrimos seu app de e-mail com a mensagem já escrita — é só conferir e enviar.');
+        Alert.alert('Quase lá', 'Não consegui salvar aqui agora, então abri seu e-mail com a mensagem pronta — é só enviar.');
         setFormAberto(false);
         setFormNome('');
         setFormMensagem('');
         setFormTipo('duvida');
       })
-      .catch(() => Alert.alert('Ops', 'Não consegui abrir seu aplicativo de e-mail agora.'));
+      .catch(() => Alert.alert('Ops', 'Não consegui salvar nem abrir o e-mail agora. Tente o WhatsApp.'));
   }
 
   /** Botões WhatsApp/E-mail/Formulário + o formulário inline quando aberto — reaproveitado no card do topo e dentro do artigo. */
@@ -230,10 +254,11 @@ export default function AjudaScreen() {
               containerStyle={{ marginTop: 12, marginBottom: 14 }}
             />
             <OlliButton
-              label="Enviar por e-mail"
+              label="Enviar mensagem"
               variant="gradient"
               size="md"
               fullWidth
+              loading={enviandoForm}
               onPress={handleEnviarFormulario}
               icon={<MaterialCommunityIcons name="send" size={16} color="#fff" />}
             />

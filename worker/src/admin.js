@@ -60,6 +60,25 @@ async function rest(env, path) {
   }
 }
 
+// ─── caixa de feedback + erros (tabela public.feedback) ──────
+async function feedbackList(env) {
+  const rows = await rest(env, 'feedback?select=id,user_id,tipo,mensagem,contexto,resolvido,criado_em&order=criado_em.desc&limit=300');
+  return json({ ok: true, feedback: rows });
+}
+async function feedbackResolve(env, id, resolvido) {
+  if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/feedback?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: svc(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({ resolvido: !!resolvido }),
+    });
+    return json({ ok: r.ok });
+  } catch {
+    return json({ ok: false }, 500);
+  }
+}
+
 async function listAuthUsers(env) {
   const out = [];
   for (let page = 1; page <= 20; page++) {
@@ -260,6 +279,8 @@ export async function handleAdmin(request, env, url) {
     if (m === 'POST' && p === '/admin/api/user/unban') return setBan(env, id, false);
     if (m === 'POST' && p === '/admin/api/user/delete') return deleteUser(env, id);
     if (m === 'POST' && p === '/admin/api/user/reset') return resetUserPassword(env, url.searchParams.get('email'));
+    if (m === 'GET' && p === '/admin/api/feedback') return feedbackList(env);
+    if (m === 'POST' && p === '/admin/api/feedback/resolve') return feedbackResolve(env, id, url.searchParams.get('resolvido') === '1');
     if (m === 'POST' && p === '/admin/api/me/password') {
       const body = await request.json().catch(() => ({}));
       return changeOwnPassword(request, env, body && body.senha);
@@ -379,6 +400,9 @@ function adminHtml(env) {
    <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
   </div>
   <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
+  <div class="sec-head"><h2>Feedback & Erros <span class="muted" id="fcount"></span></h2></div>
+  <div id="ffilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+  <div id="frows"></div>
  </div>
 </div>
 
@@ -458,13 +482,52 @@ function renderUsers(list){
 }
 function applySearch(){const q=$('usearch').value.trim().toLowerCase();renderUsers(!q?ALLUSERS:ALLUSERS.filter(u=>(u.email||'').toLowerCase().includes(q)||(u.empresa||'').toLowerCase().includes(q)));}
 
+// ── Feedback & Erros ──
+let ALLFB=[], FBFILTER='abertos';
+const TIPO_FB={feedback:['💬','#0B6FCE'],sugestao:['💡','#F7B23B'],bug:['🐞','#E5484D'],elogio:['⭐','#2BD787'],erro:['⛔','#E5484D']};
+function emailDe(uid){const u=ALLUSERS.find(x=>x.id===uid);return u?(u.email||u.nome||'usuário'):(uid?('id '+String(uid).slice(0,8)):'anônimo');}
+function renderFbFilters(){
+ const box=$('ffilters');if(!box)return;box.innerHTML='';
+ const abertos=ALLFB.filter(f=>!f.resolvido).length,erros=ALLFB.filter(f=>f.tipo==='erro'&&!f.resolvido).length;
+ $('fcount').textContent='('+abertos+' abertos'+(erros?' · '+erros+' erros':'')+')';
+ const opts=[['abertos','Não resolvidos'],['todos','Todos'],['erro','⛔ Erros'],['bug','🐞 Bugs'],['sugestao','💡 Sugestões'],['feedback','💬 Feedback']];
+ for(const o of opts){const b=el('button',{className:'btn '+(FBFILTER===o[0]?'soft sm':'ghost sm'),onclick:()=>{FBFILTER=o[0];renderFbFilters();renderFeedback();}},o[1]);box.append(b);}
+}
+function renderFeedback(){
+ const box=$('frows');if(!box)return;box.innerHTML='';
+ let list=ALLFB.slice();
+ if(FBFILTER==='abertos')list=list.filter(f=>!f.resolvido);
+ else if(FBFILTER!=='todos')list=list.filter(f=>f.tipo===FBFILTER);
+ if(!list.length){box.append(el('div',{className:'empty'},'Nada por aqui. 🎉'));return;}
+ for(const f of list){
+  const meta=TIPO_FB[f.tipo]||['💬','#8aa'],ctx=f.contexto||{};
+  const item=el('div',{style:'border:1px solid #ffffff14;border-radius:14px;padding:14px;margin-bottom:10px;background:#ffffff08'+(f.resolvido?';opacity:.5':'')});
+  const head=el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:7px;flex-wrap:wrap'});
+  head.append(el('span',{style:'font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px;background:'+meta[1]+'22;color:'+meta[1]},meta[0]+' '+f.tipo));
+  const bits=[ctx.tela,ctx.plano,ctx.versao?('v'+ctx.versao):null,ctx.plataforma].filter(Boolean).join(' · ');
+  head.append(el('span',{className:'muted',style:'font-size:12px;flex:1'},bits));
+  head.append(el('span',{className:'muted',style:'font-size:12px'},fmtDate(f.criado_em)));
+  item.append(head);
+  item.append(el('div',{style:'font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word'},f.mensagem||''));
+  const foot=el('div',{style:'display:flex;align-items:center;gap:10px;margin-top:9px'});
+  foot.append(el('span',{className:'muted',style:'font-size:12px;flex:1'},emailDe(f.user_id)));
+  if(ctx.stack)foot.append(el('button',{className:'btn ghost sm',onclick:()=>alert(ctx.stack)},'ver stack'));
+  foot.append(el('button',{className:'btn '+(f.resolvido?'ghost':'soft')+' sm',onclick:()=>fbResolve(f)},f.resolvido?'reabrir':'resolver'));
+  item.append(foot);box.append(item);
+ }
+}
+async function fbResolve(f){
+ try{await api('feedback/resolve?id='+encodeURIComponent(f.id)+'&resolvido='+(f.resolvido?'0':'1'),{method:'POST'});f.resolvido=!f.resolvido;renderFbFilters();renderFeedback();toast(f.resolvido?'Resolvido ✓':'Reaberto','ok');}catch(e){toast('Falha.','err');}
+}
+
 async function loadDash(){
  show('dash');$('cards').innerHTML='';$('urows').innerHTML='';
  for(let i=0;i<6;i++){const c=el('div',{className:'card'});c.append(el('div',{className:'skel',style:'width:60%;height:24px'}),el('div',{className:'skel',style:'width:40%;margin-top:10px'}));$('cards').append(c);}
  try{
-  const [m,u]=await Promise.all([api('metrics'),api('users')]);
+  const [m,u,fb]=await Promise.all([api('metrics'),api('users'),api('feedback').catch(()=>({feedback:[]}))]);
   MET=m;ALLUSERS=u.users||[];
   renderCards(m);$('ucount').textContent='('+ALLUSERS.length+')';applySearch();
+  ALLFB=(fb&&fb.feedback)||[];renderFbFilters();renderFeedback();
  }catch(e){if(String(e.message)!=='401')toast('Erro ao carregar.','err');}
 }
 
