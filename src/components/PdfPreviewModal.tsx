@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -20,9 +20,10 @@ if (Platform.OS !== 'web') {
 interface Props {
   visible: boolean;
   onClose: () => void;
-  orcamento: Orcamento;
+  /** Orçamento a pré-visualizar. Opcional quando `construirHtml` é passado. */
+  orcamento?: Orcamento;
   empresa: Empresa | null;
-  depoimentos: Depoimento[];
+  depoimentos?: Depoimento[];
   /**
    * Se `true`, monta a prévia SEM o rodapé/selo OLLI — igual ao PDF que o
    * cliente recebe quando o usuário é Pro/Empresa (recurso 'remove_olli_brand').
@@ -30,6 +31,16 @@ interface Props {
    * Threaded a partir do call site para a prévia ser IDÊNTICA ao que se envia.
    */
   removerMarca?: boolean;
+  /**
+   * Construtor de HTML alternativo (ex.: recibo). Se passado, ignora o caminho
+   * do orçamento e usa o HTML que esta função devolver. Fica num ref para não
+   * disparar rebuild a cada render — a reconstrução é atrelada a `chave`.
+   */
+  construirHtml?: () => Promise<string>;
+  /** Muda para forçar reconstrução da prévia (ex.: id do modelo selecionado). */
+  chave?: string | number;
+  /** Título do cabeçalho. Padrão: "Prévia do orçamento". */
+  titulo?: string;
 }
 
 /** Empresa mínima para a prévia funcionar mesmo sem "Meu Negócio" preenchido. */
@@ -65,12 +76,16 @@ function PreviewWeb({ html }: { html: string }) {
  * Prévia real do PDF (mesmo HTML que vai para o compartilhamento), sem
  * thumbnails falsos: nativo usa WebView, web usa iframe srcDoc. Contrato F3.
  */
-export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca }: Props) {
+export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca, construirHtml, chave, titulo }: Props) {
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [html, setHtml] = useState<string | null>(null);
   const [erro, setErro] = useState(false);
+  // Ref para o construtor: usar a versão mais recente sem colocá-la nas deps do
+  // efeito (uma função nova a cada render dispararia rebuild em loop).
+  const construirRef = useRef(construirHtml);
+  construirRef.current = construirHtml;
 
   useEffect(() => {
     if (!visible) {
@@ -85,20 +100,25 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
     setErro(false);
     (async () => {
       try {
-        const doc = await montarHtmlOrcamentoCompleto(orcamento, empresa ?? EMPRESA_VAZIA, depoimentos, orcamento.corMarca, { removerMarca });
+        const fn = construirRef.current;
+        const doc = fn
+          ? await fn()
+          : orcamento
+            ? await montarHtmlOrcamentoCompleto(orcamento, empresa ?? EMPRESA_VAZIA, depoimentos ?? [], orcamento.corMarca, { removerMarca })
+            : '';
         if (!cancelado) setHtml(doc);
       } catch {
         if (!cancelado) setErro(true);
       }
     })();
     return () => { cancelado = true; };
-  }, [visible, orcamento, empresa, depoimentos, removerMarca]);
+  }, [visible, chave, orcamento, empresa, depoimentos, removerMarca]);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <View style={[styles.container, { paddingTop: Platform.OS === 'android' ? insets.top : 0 }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>Prévia do orçamento</Text>
+          <Text style={styles.title}>{titulo ?? 'Prévia do orçamento'}</Text>
           <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar prévia" hitSlop={10}>
             <MaterialCommunityIcons name="close" size={24} color={cores.onSurface} />
           </TouchableOpacity>

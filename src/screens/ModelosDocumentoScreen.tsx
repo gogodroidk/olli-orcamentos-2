@@ -10,8 +10,9 @@ import { GradientHeader } from '../components/GradientHeader';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { PDF_MODELS } from '../steps/Step4Personalizacao';
+import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { getEmpresa, saveEmpresa, getDepoimentos } from '../database/database';
-import { Empresa, Depoimento, ItemOrcamento, ModeloPdfId, Orcamento } from '../types';
+import { Empresa, Depoimento, ItemOrcamento, ModeloPdfId, ModeloReciboId, Orcamento, Recibo } from '../types';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
@@ -64,6 +65,40 @@ function orcamentoDeExemplo(modelo: ModeloPdfId, corMarca?: string): Orcamento {
   };
 }
 
+// Modelos de RECIBO — identidade visual de cada um (cores NÃO seguem o tema do
+// app, igual às do orçamento; são o rosto do documento impresso).
+const RECIBO_MODELS: Array<{ id: ModeloReciboId; nome: string; desc: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
+  { id: 'classico', nome: 'Clássico', desc: 'limpo e centrado', color: '#0B6FCE', icon: 'receipt-text-outline' },
+  { id: 'compacto', nome: 'Compacto', desc: 'folha menor, direto', color: '#64748B', icon: 'receipt-text-check-outline' },
+  { id: 'faixa', nome: 'Faixa de marca', desc: 'banner colorido no topo', color: '#0E7C66', icon: 'card-text-outline' },
+];
+
+/** Empresa mínima para a prévia do recibo funcionar sem "Meu Negócio" preenchido. */
+const EMPRESA_EXEMPLO: Empresa = {
+  id: 'preview', nome: 'Sua empresa', especialidade: 'Refrigeração e Climatização', slogan: '',
+  cnpj: '00.000.000/0001-00', cpf: '', endereco: '', cidade: 'São Paulo', estado: 'SP',
+  telefone: '(11) 90000-0000', whatsapp: '', site: '', email: '', chavePix: 'sua-chave@pix.com',
+  normas: '', nomePrestador: 'Responsável Técnico',
+};
+
+/** Recibo fictício para a PRÉVIA de cada modelo (mesmo HTML do recibo enviado). */
+function reciboDeExemplo(): Recibo {
+  return {
+    id: 'exemplo',
+    numero: '0001',
+    orcamentoNumero: '0042',
+    clienteId: '',
+    clienteNome: 'João da Silva',
+    clienteTelefone: '(11) 98888-7777',
+    itens: [],
+    valorRecebido: 930,
+    formaPagamento: 'PIX',
+    dataRecebimento: '10/07/2026',
+    exibirAssinatura: true,
+    criadoEm: '2026-07-10T14:30:00.000Z',
+  };
+}
+
 export default function ModelosDocumentoScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
@@ -75,6 +110,9 @@ export default function ModelosDocumentoScreen() {
   const [padrao, setPadrao] = useState<ModeloPdfId>('editorial');
   const [salvando, setSalvando] = useState<ModeloPdfId | null>(null);
   const [previewModelo, setPreviewModelo] = useState<ModeloPdfId | null>(null);
+  const [padraoRecibo, setPadraoRecibo] = useState<ModeloReciboId>('classico');
+  const [salvandoRecibo, setSalvandoRecibo] = useState<ModeloReciboId | null>(null);
+  const [previewRecibo, setPreviewRecibo] = useState<ModeloReciboId | null>(null);
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -83,6 +121,7 @@ export default function ModelosDocumentoScreen() {
         setEmpresa(emp);
         setDepoimentos(deps);
         if (emp?.modeloPdfPadrao) setPadrao(emp.modeloPdfPadrao);
+        if (emp?.modeloReciboPadrao) setPadraoRecibo(emp.modeloReciboPadrao);
       } catch {
         // leitura best-effort — a tela ainda funciona pra pré-visualizar
       }
@@ -115,6 +154,32 @@ export default function ModelosDocumentoScreen() {
     }
   }
 
+  async function escolherRecibo(id: ModeloReciboId) {
+    if (id === padraoRecibo) return;
+    Haptics.selectionAsync().catch(() => {});
+    if (!empresa) {
+      Alert.alert(
+        'Configure seu negócio',
+        'Preencha os dados em "Meu Negócio" antes de definir o modelo padrão dos documentos.',
+        [{ text: 'Agora não' }, { text: 'Abrir Meu Negócio', onPress: () => nav.navigate('MeuNegocio') }],
+      );
+      return;
+    }
+    const anterior = padraoRecibo;
+    setPadraoRecibo(id); // otimista
+    setSalvandoRecibo(id);
+    try {
+      await saveEmpresa({ ...empresa, modeloReciboPadrao: id });
+      setEmpresa(e => (e ? { ...e, modeloReciboPadrao: id } : e));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch {
+      setPadraoRecibo(anterior); // reverte se falhar
+      Alert.alert('Ops', 'Não consegui salvar o modelo de recibo agora. Tente de novo.');
+    } finally {
+      setSalvandoRecibo(null);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <GradientHeader
@@ -131,12 +196,17 @@ export default function ModelosDocumentoScreen() {
           <View style={styles.intro}>
             <MaterialCommunityIcons name="palette-swatch-outline" size={18} color={cores.accentLight} />
             <Text style={styles.introText}>
-              Escolha o modelo <Text style={styles.introForte}>padrão</Text> dos seus orçamentos. Você ainda pode
-              trocar em cada orçamento na hora de criar. A <Text style={styles.introForte}>sua cor de marca e logo</Text> (em
+              Escolha os modelos <Text style={styles.introForte}>padrão</Text> dos seus documentos. No orçamento você ainda
+              pode trocar na hora de criar. A <Text style={styles.introForte}>sua cor de marca e logo</Text> (em
               Meu Negócio) valem em todos eles.
             </Text>
           </View>
         </AnimatedEntrance>
+
+        <View style={styles.divisor}>
+          <Text style={styles.divisorTitulo}>Orçamento</Text>
+          <Text style={styles.divisorSub}>O documento que fecha o serviço — 7 modelos.</Text>
+        </View>
 
         {PDF_MODELS.map((m, i) => {
           const ativo = m.id === padrao;
@@ -191,13 +261,64 @@ export default function ModelosDocumentoScreen() {
           );
         })}
 
-        <View style={styles.notaRecibo}>
-          <MaterialCommunityIcons name="receipt-text-outline" size={16} color={cores.onSurfaceVariant} />
-          <Text style={styles.notaReciboText}>
-            Os <Text style={styles.introForte}>recibos</Text> usam um layout compacto próprio, já com a sua cor de marca e
-            logo. Modelos alternativos de recibo estão a caminho.
-          </Text>
+        {/* ─── RECIBO ─── */}
+        <View style={styles.divisor}>
+          <Text style={styles.divisorTitulo}>Recibo</Text>
+          <Text style={styles.divisorSub}>O comprovante de pagamento também segue a sua marca.</Text>
         </View>
+
+        {RECIBO_MODELS.map((m, i) => {
+          const ativo = m.id === padraoRecibo;
+          return (
+            <AnimatedEntrance key={m.id} index={Math.min(i, 8)}>
+              <TouchableOpacity
+                style={[styles.card, ativo && { borderColor: cores.primary, borderWidth: 2 }]}
+                onPress={() => escolherRecibo(m.id)}
+                activeOpacity={0.9}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: ativo }}
+              >
+                <View style={[styles.iconChip, { backgroundColor: comAlfa(m.color, 0.16) }]}>
+                  <MaterialCommunityIcons name={m.icon} size={24} color={m.color} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <View style={styles.nomeRow}>
+                    <Text style={styles.nome}>{m.nome}</Text>
+                    {ativo && (
+                      <View style={styles.badgePadrao}>
+                        <MaterialCommunityIcons name="check" size={12} color={cores.onPrimary} />
+                        <Text style={styles.badgePadraoText}>Padrão</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.desc}>{m.desc}</Text>
+
+                  <TouchableOpacity
+                    style={styles.verBtn}
+                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setPreviewRecibo(m.id); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
+                    <Text style={styles.verBtnText}>Ver exemplo</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.radio}>
+                  {salvandoRecibo === m.id ? (
+                    <MaterialCommunityIcons name="loading" size={22} color={cores.primary} />
+                  ) : (
+                    <MaterialCommunityIcons
+                      name={ativo ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={22}
+                      color={ativo ? cores.primary : cores.onSurfaceMuted}
+                    />
+                  )}
+                </View>
+              </TouchableOpacity>
+            </AnimatedEntrance>
+          );
+        })}
       </ScrollView>
 
       <PdfPreviewModal
@@ -206,6 +327,14 @@ export default function ModelosDocumentoScreen() {
         orcamento={orcamentoDeExemplo(previewModelo ?? 'editorial', empresa?.corMarca)}
         empresa={empresa}
         depoimentos={depoimentos}
+      />
+      <PdfPreviewModal
+        visible={previewRecibo !== null}
+        onClose={() => setPreviewRecibo(null)}
+        empresa={empresa}
+        titulo="Prévia do recibo"
+        chave={previewRecibo ?? ''}
+        construirHtml={() => montarHtmlRecibo(reciboDeExemplo(), empresa ?? EMPRESA_EXEMPLO, { modelo: previewRecibo ?? 'classico', corMarca: empresa?.corMarca })}
       />
     </View>
   );
@@ -229,6 +358,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   verBtnText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
   radio: { width: 26, alignItems: 'center' },
 
-  notaRecibo: { flexDirection: 'row', gap: 8, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginTop: 4 },
-  notaReciboText: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, lineHeight: 18 },
+  divisor: { marginTop: 10, marginBottom: 2 },
+  divisorTitulo: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  divisorSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 1 },
 });

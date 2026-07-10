@@ -120,6 +120,8 @@ export interface Empresa {
   observacoesPadrao?: string;
   /** Modelo de PDF padrão para orçamentos novos (escolhido em Conta → Modelos de documento). */
   modeloPdfPadrao?: ModeloPdfId;
+  /** Modelo padrão do recibo (escolhido em Conta → Modelos de documento). */
+  modeloReciboPadrao?: ModeloReciboId;
 }
 
 export interface Cliente {
@@ -206,6 +208,12 @@ export type ModeloPdfId =
   | 'faixa_lateral'
   | 'recibo_compacto'
   | 'premium_capa';
+
+/** Estilos de PDF do RECIBO (documento próprio, mais simples que o orçamento). */
+export type ModeloReciboId =
+  | 'classico'   // limpo e centrado (padrão)
+  | 'compacto'   // folha menor, espaçamento reduzido
+  | 'faixa';     // faixa de marca no topo, mais destaque visual
 
 export interface Orcamento {
   id: string;

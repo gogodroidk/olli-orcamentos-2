@@ -22,9 +22,7 @@ import { formatDateTime, nowISO, todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
 import { generateId } from '../utils/id';
 import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
-import { imagemParaDataUri } from '../utils/imagemDataUri';
-import { escapeHtml } from '../utils/html';
-import { footerSeloOlliHtml } from '../utils/pdfGenerator';
+import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
@@ -146,120 +144,9 @@ function EmitirReciboConteudo() {
 
   async function buildHtml(r: Recibo): Promise<string> {
     if (!empresa) return '';
-
-    // Converte as imagens em data URI ANTES de montar o HTML (igual ao PDF do
-    // orçamento via populateImages/img). Em qualquer falha a conversão devolve
-    // null e a imagem é simplesmente omitida — nunca quebra o documento.
-    const [logoData, assinaturaData] = await Promise.all([
-      imagemParaDataUri(empresa.logoUri),
-      imagemParaDataUri(r.assinaturaPrestadorUri ?? empresa.assinaturaUri),
-    ]);
-
-    // Campos de string livre do usuário escapados (XSS / quebra de layout).
-    const empresaNome = escapeHtml(empresa.nome);
-    const empresaEspecialidade = escapeHtml(empresa.especialidade);
-    const empresaCnpj = escapeHtml(empresa.cnpj);
-    const empresaTelefone = escapeHtml(empresa.telefone);
-    const empresaPrestador = escapeHtml(empresa.nomePrestador);
-    const empresaPix = escapeHtml(empresa.chavePix);
-    const clienteNomeHtml = escapeHtml(r.clienteNome);
-    const clienteTelefoneHtml = escapeHtml(r.clienteTelefone);
-    const dataRecebimentoHtml = escapeHtml(r.dataRecebimento);
-    const formaPagamentoHtml = escapeHtml(r.formaPagamento);
-    const orcamentoNumeroHtml = escapeHtml(r.orcamentoNumero);
-    const numeroHtml = escapeHtml(r.numero);
-
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="UTF-8"/>
-<style>
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #212121; margin: 0; }
-  .page { padding: 32px; max-width: 700px; margin: 0 auto; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0B6FCE; padding-bottom: 16px; margin-bottom: 20px; }
-  .brand-logo { max-height: 56px; max-width: 200px; margin-bottom: 8px; display: block; }
-  .empresa-nome { font-size: 20px; font-weight: 700; color: #0B6FCE; }
-  .empresa-info { font-size: 12px; color: #555; line-height: 1.6; }
-  .recibo-title { font-size: 28px; font-weight: 800; text-align: center; color: #0B6FCE; margin: 24px 0 16px; letter-spacing: 4px; }
-  .recibo-num { text-align: center; font-size: 14px; color: #555; margin-bottom: 24px; }
-  .info-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .info-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
-  .info-row:last-child { border-bottom: none; }
-  .info-label { color: #777; font-size: 12px; }
-  .info-value { font-weight: 600; font-size: 13px; }
-  .valor-box { background: #0B6FCE; color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; }
-  .valor-label { font-size: 12px; opacity: 0.8; }
-  .valor-num { font-size: 32px; font-weight: 800; margin-top: 4px; }
-  .pix-box { border: 1px dashed #0B6FCE; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; background: #f3f8fe; }
-  .pix-label { color: #0B6FCE; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
-  .pix-key { font-size: 14px; font-weight: 600; margin-top: 4px; word-break: break-all; }
-  .assinatura-row { display: flex; justify-content: space-between; margin-top: 48px; }
-  .assinatura-block { text-align: center; min-width: 200px; }
-  .sign-img { max-height: 56px; max-width: 200px; display: block; margin: 0 auto -6px; }
-  .assinatura-line { border-top: 1px solid #ccc; padding-top: 8px; font-size: 12px; color: #555; margin-top: 40px; }
-  .footer { border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 24px; font-size: 11px; color: #888; text-align: center; }
-  .footer-seal { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10.5px; color: #B0B7C2; font-weight: 600; margin-top: 8px; }
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="header">
-    <div>
-      ${logoData ? `<img src="${logoData}" class="brand-logo" />` : ''}
-      <div class="empresa-nome">${empresaNome}</div>
-      <div class="empresa-info">${empresaEspecialidade}<br/>CNPJ: ${empresaCnpj}<br/>${empresaTelefone}</div>
-    </div>
-    <div class="empresa-info" style="text-align:right">Documento gerado em<br/>${formatDateTime(r.criadoEm)}</div>
-  </div>
-
-  <div class="recibo-title">RECIBO</div>
-  <div class="recibo-num">Nº ${numeroHtml}</div>
-
-  <div class="info-box">
-    <div class="info-row"><span class="info-label">Cliente</span><span class="info-value">${clienteNomeHtml}</span></div>
-    <div class="info-row"><span class="info-label">Telefone</span><span class="info-value">${clienteTelefoneHtml}</span></div>
-    <div class="info-row"><span class="info-label">Data do recebimento</span><span class="info-value">${dataRecebimentoHtml}</span></div>
-    <div class="info-row"><span class="info-label">Forma de pagamento</span><span class="info-value">${formaPagamentoHtml}</span></div>
-    ${r.orcamentoNumero ? `<div class="info-row"><span class="info-label">Referente ao orçamento</span><span class="info-value">Nº ${orcamentoNumeroHtml}</span></div>` : ''}
-  </div>
-
-  <div class="valor-box">
-    <div class="valor-label">Valor recebido</div>
-    <div class="valor-num">${formatCurrency(r.valorRecebido)}</div>
-  </div>
-
-  ${empresa.chavePix ? `<div class="pix-box">
-    <div class="pix-label">PIX</div>
-    <div class="pix-key">${empresaPix}</div>
-  </div>` : ''}
-
-  <p style="font-size:13px;color:#444;text-align:center;">
-    Recebi de <strong>${clienteNomeHtml}</strong> a importância de <strong>${formatCurrency(r.valorRecebido)}</strong>
-    referente aos serviços prestados pela <strong>${empresaNome}</strong>.
-    Emitido em ${dataRecebimentoHtml}.
-  </p>
-
-  <div class="assinatura-row">
-    <div class="assinatura-block">
-      ${assinaturaData ? `<img src="${assinaturaData}" class="sign-img" />` : ''}
-      <div class="assinatura-line">
-        <strong>${empresaPrestador}</strong><br/>
-        ${empresaNome}<br/>
-        CNPJ: ${empresaCnpj}
-      </div>
-    </div>
-    <div class="assinatura-block">
-      <div class="assinatura-line">
-        <strong>${clienteNomeHtml}</strong><br/>
-        Cliente
-      </div>
-    </div>
-  </div>
-
-  <div class="footer">${empresaNome} · CNPJ: ${empresaCnpj} · ${empresaTelefone}</div>
-  <div class="footer-seal">${footerSeloOlliHtml()}</div>
-</div>
-</body>
-</html>`;
+    // Delega ao util compartilhado (mesmo HTML usado na prévia de Modelos de
+    // documento): recibo agora segue a cor de marca e o modelo escolhido.
+    return montarHtmlRecibo(r, empresa, { modelo: empresa.modeloReciboPadrao, corMarca: empresa.corMarca });
   }
 
   async function handleGerar() {
