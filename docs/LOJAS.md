@@ -56,9 +56,10 @@ resolvem preenchendo formulário:
    que hasheia e compara (confirmado na tipagem instalada, `auth-js/types.d.ts:586`). Inverter os
    dois faz o login falhar SEMPRE.
 
-   **PASSO HUMANO (1 minuto, não precisa da conta paga):** painel do Supabase → Authentication →
-   Providers → Apple → habilitar e, em **Client IDs**, colar `online.olliorcamentos.app`. Para login
-   NATIVO só isso é necessário — Services ID, Team ID e chave `.p8` só entram no fluxo OAuth da web.
+   **CONFIGURAÇÃO DO SUPABASE: FEITA (2026-07-09).** Provider Apple habilitado via Management API,
+   com `external_apple_client_id = online.olliorcamentos.app`; verificado relendo a config da nuvem
+   (`external_apple_enabled: true`). Para login NATIVO só isso é necessário — Services ID, Team ID e
+   chave `.p8` só entram no fluxo OAuth da web, que não usamos.
 
    **NÃO DÁ PARA TESTAR antes da conta Apple Developer paga:** rodar o app no iPhone exige um
    provisioning profile com a entitlement `com.apple.developer.applesignin`, e isso só sai com a

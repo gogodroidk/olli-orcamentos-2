@@ -117,9 +117,9 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
 
 ## Sign in with Apple / SEO (2026-07-09)
 
-11. **PASSO HUMANO — Supabase → Authentication → Providers → Apple:** habilitar e colar
-   `online.olliorcamentos.app` em **Client IDs**. Para login NATIVO é só isso (Services ID, Team ID
-   e chave `.p8` só entram no fluxo OAuth da web). Não precisa da conta Apple paga.
+11. ~~PASSO HUMANO — Supabase → Providers → Apple~~ **FEITO (2026-07-09).** Provider habilitado via
+   Management API com `external_apple_client_id = online.olliorcamentos.app`, verificado relendo a
+   config. Login nativo não precisa de Services ID / Team ID / `.p8`.
 12. **Sign in with Apple NÃO foi testado**, e não dá para testar antes da conta Developer (a
    entitlement `com.apple.developer.applesignin` exige provisioning profile). O ponto mais frágil é
    o nonce: se o login falhar com "invalid nonce", a alternativa documentada é remover o argumento
