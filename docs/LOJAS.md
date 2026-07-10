@@ -5,6 +5,18 @@
 > marcados **[VERIFICAR]** perto da data do envio, porque políticas de loja mudam.
 >
 > Pacote (`applicationId` / `bundleIdentifier`): `online.olliorcamentos.app` (igual nas duas lojas).
+
+> **Chave de UPLOAD (Android): GERADA em 2026-07-09.**
+> Arquivo: `CONFIG CLAUDE/olli-keystore/olli-upload.jks` (PKCS12, alias `olli-upload`, RSA 4096,
+> SHA384withRSA, válida até 2053). Senha no cofre local (`OLLI_UPLOAD_KEYSTORE_PASSWORD`), **nunca**
+> no repositório — `.gitignore` bloqueia `credentials.json`, `*.jks`, `*.keystore`, `*.p12`.
+> **SHA-1 desta chave:** `44:93:1D:96:77:A6:24:40:26:F3:87:2B:AC:71:AC:91:38:88:20:1E`
+> — é ESTE valor que vai no OAuth client Android do Google (o SHA-1 antigo, `5E:8F:...`, era do
+> keystore de *debug* e não serve para produção).
+>
+> Com **Play App Signing** (padrão para apps novos), o Google guarda a chave de assinatura do app e
+> você guarda só a de upload. Perder a de upload é recuperável (o Google reseta mediante pedido);
+> perder a de assinatura, não — e ela fica com eles. Guarde a senha mesmo assim.
 > Versão atual em `app.json`: `1.1.0`, `android.versionCode` 9, `ios.buildNumber` "1".
 
 ---

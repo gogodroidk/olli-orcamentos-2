@@ -46,3 +46,7 @@ qa-artifacts/
 .playwright-mcp/
 .codex/
 qa-artifacts/
+
+# Credenciais de assinatura (NUNCA no repositorio)
+credentials.json
+*.keystore
