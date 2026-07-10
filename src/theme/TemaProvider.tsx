@@ -4,7 +4,7 @@ import {
   COR_MARCA_PADRAO,
   criarGradientes,
   criarPaleta,
-  criarSombras,
+  sombrasDe,
   type Cores,
   type Gradientes,
   type ModoTema,
@@ -150,7 +150,8 @@ export function useGradientes(): Gradientes {
  */
 export function useSombras() {
   const { modo, cores } = useTema();
-  return useMemo(() => criarSombras(modo, cores), [modo, cores]);
+  void modo; // o modo já está embutido na paleta
+  return useMemo(() => sombrasDe(cores), [cores]);
 }
 
 /**

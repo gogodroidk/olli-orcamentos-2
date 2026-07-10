@@ -368,3 +368,14 @@ export function criarSombras(modo: ModoTema, cores: Cores) {
     focusRing: { shadowColor: cores.accentLight, shadowOffset: { width: 0, height: 0 }, shadowOpacity: escuro ? 0.5 : 0.35, shadowRadius: 8, elevation: 4 },
   };
 }
+
+/**
+ * Sombras a partir SÓ da paleta — o modo é inferido da luminância do fundo.
+ *
+ * Existe para a fábrica de estilos (`useEstilos(c => ...)`) poder usar sombra sem
+ * receber o modo por fora. Setenta arquivos usam `Shadow.md` dentro do
+ * `StyleSheet.create`; passar o modo em todos eles seria ruído sem informação.
+ */
+export function sombrasDe(cores: Cores) {
+  return criarSombras(luminancia(cores.background) < 0.5 ? 'escuro' : 'claro', cores);
+}
