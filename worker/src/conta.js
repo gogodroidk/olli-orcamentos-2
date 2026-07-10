@@ -2,9 +2,11 @@
  * Conta do usuário — OLLI (worker Cloudflare, SEM SDK).
  *
  *   POST /conta/excluir → exclui a conta do usuário logado (JWT). Cancela a
- *                         assinatura Stripe ativa (best-effort) e apaga o
- *                         usuário em auth.users com SERVICE_ROLE — o cascade das
- *                         FKs limpa os dados. Requisito da Apple + LGPD.
+ *                         assinatura Stripe ativa e SÓ ENTÃO apaga o usuário em
+ *                         auth.users com SERVICE_ROLE (o cascade das FKs limpa os
+ *                         dados). Se o cancelamento falhar, NADA é apagado (502
+ *                         retryável): conta apagada com assinatura viva = cartão
+ *                         cobrado sem ninguém para cancelar. Apple + LGPD.
  *
  * Segurança (mesmo modelo de stripe.js / equipe.js):
  *  - Exige JWT do Supabase (Authorization: Bearer <token>), validado em
@@ -70,7 +72,7 @@ function sbHeaders(env, extra = {}) {
  * a conta com a subscription viva — a cobrança órfã que ele existe para impedir.
  * Mesmo contrato do getAssinatura de stripe.js.
  */
-async function getAssinatura(env, userId) {
+export async function getAssinatura(env, userId) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}` +
@@ -101,12 +103,17 @@ async function rateOk(env, key) {
 
 /**
  * Cancela imediatamente a assinatura na Stripe (DELETE /subscriptions/<id>).
- * Best-effort: uma falha aqui NÃO impede a exclusão da conta (o webhook e a
- * própria exclusão do usuário já encerram o vínculo). Retorna true/false só
- * para log. Só roda para assinaturas de verdade (o Pro 12x avulso tem
- * stripe_subscription_id null e não cai aqui).
+ * Devolve 'ok' | 'erro'. NÃO é best-effort: quem chama BLOQUEIA a exclusão da
+ * conta quando dá 'erro' — apagar o usuário com a subscription viva deixaria o
+ * cartão sendo cobrado sem nenhuma conta pela qual cancelar.
+ * 'ok' cobre também "já estava cancelada" (404 e o 400 subscription_already_canceled),
+ * senão quem cancelou pelo portal nunca mais conseguiria apagar a conta.
+ * O Pro 12x avulso tem stripe_subscription_id null e sai por 'ok' logo na entrada.
+ *
+ * EXPORTADA de propósito: o painel admin usa ESTA função. Uma segunda cópia da
+ * regra foi exatamente o que fez o guard do getAssinatura virar código morto.
  */
-async function cancelarAssinaturaStripe(env, subscriptionId) {
+export async function cancelarAssinaturaStripe(env, subscriptionId) {
   if (!subscriptionId) return 'ok'; // nada a cancelar
   if (!env.STRIPE_SECRET_KEY) return 'erro'; // há o que cancelar e não podemos: falha
   try {

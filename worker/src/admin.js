@@ -15,6 +15,8 @@
  * Só DEPOIS disso o Worker usa o SERVICE_ROLE. A service key NUNCA vai ao browser.
  */
 
+import { getAssinatura, cancelarAssinaturaStripe } from './conta.js';
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -159,11 +161,34 @@ async function setBan(env, id, ban) {
   } catch { return json({ ok: false, erro: 'falha' }, 502); }
 }
 
+/**
+ * Exclui um usuário. Reusa as MESMAS funções de conta.js — não uma segunda cópia.
+ *
+ * O admin reintroduzia o bug que /conta/excluir foi escrito para impedir: apagava
+ * `auth.users` sem cancelar a assinatura na Stripe. Resultado: o cartão do cliente
+ * segue sendo cobrado sem nenhuma conta pela qual cancelar, e os webhooks seguintes
+ * batem em FK órfã, fazendo a Stripe reenviar em loop.
+ *
+ * Três estados da leitura da assinatura importam: existe / não existe / NÃO SEI.
+ * "Não sei" (rede fora) bloqueia — nunca destrói dado sob incerteza.
+ */
 async function deleteUser(env, id) {
   if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
+
+  const assinatura = await getAssinatura(env, id);
+  if (assinatura && assinatura.error) {
+    return json({ ok: false, erro: 'assinatura_indeterminada' }, 502);
+  }
+  if (assinatura && assinatura.stripe_subscription_id) {
+    const r = await cancelarAssinaturaStripe(env, assinatura.stripe_subscription_id);
+    if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+  }
+
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', headers: svc(env) });
-    return json({ ok: r.ok });
+    // 404 = já não existe (idempotente). Falha real vira 502, não um 200 com ok:false.
+    if (r.ok || r.status === 404) return json({ ok: true });
+    return json({ ok: false, erro: 'falha_exclusao' }, 502);
   } catch { return json({ ok: false, erro: 'falha' }, 502); }
 }
 

@@ -107,10 +107,18 @@ function sbHeaders(env, extra = {}) {
 const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente';
 
 /** Retorna a linha, `null` se não existir, ou `{ error:true }` em falha de backend. */
+/**
+ * Uma linha pública viva. `revogado_em` é preenchido pelo gatilho do banco quando o
+ * orçamento vai para a lixeira ou é excluído de vez (migration
+ * 20260716_publicos_revogacao.sql). Sem este filtro, o link continuava servindo
+ * nome do cliente, valor e itens — e aceitando aprovação — para sempre.
+ *
+ * ESTE é o único portão: renderLinkPage e responderLink passam os dois por aqui.
+ */
 async function getRow(env, token) {
   try {
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&select=${SELECT_COLS}&limit=1`,
+      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&select=${SELECT_COLS}&limit=1`,
       { headers: sbHeaders(env) },
     );
     if (!r.ok) return { error: true };
@@ -141,7 +149,9 @@ async function patchStatus(env, token, status, mensagem) {
     if (status === 'recusado') patch.motivo_recusa = mensagem ?? null;
 
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&status=not.in.(aprovado,recusado)`,
+      // `revogado_em=is.null` também aqui: defesa em profundidade. getRow já barrou,
+      // mas esta escrita não pode depender de quem a chamou ter checado.
+      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&status=not.in.(aprovado,recusado)`,
       {
         method: 'PATCH',
         headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=representation' }),
@@ -226,6 +236,7 @@ async function marcarVisualizadoEm(env, token) {
     await fetch(
       `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos` +
         `?token=eq.${encodeURIComponent(token)}` +
+        `&revogado_em=is.null` +
         `&visualizado_em=is.null`,
       {
         method: 'PATCH',

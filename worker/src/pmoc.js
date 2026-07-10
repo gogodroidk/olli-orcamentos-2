@@ -154,6 +154,10 @@ async function getAsset(env, token) {
       `${env.SUPABASE_URL}/rest/v1/assets` +
         `?qr_token=eq.${encodeURIComponent(token)}` +
         `&qr_revogado_em=is.null` +
+        // Equipamento na LIXEIRA não resolve a etiqueta. `qr_revogado_em` cobre a
+        // revogação do token; `excluido_em` cobre a exclusão do equipamento — são
+        // duas coisas diferentes e faltava a segunda.
+        `&excluido_em=is.null` +
         `&select=${ASSET_COLS}&limit=1`,
       { headers: sbHeaders(env) },
     );
