@@ -250,6 +250,41 @@ A regra virou código: `scripts/checar-contraste.mjs`, ligado ao `npm run prefli
 
 **Seletor entregue.** `ContaScreen` → "Aparência": interruptor de modo escuro (com anúncio para leitor de tela — trocar paleta não muda o foco nem a árvore de acessibilidade) e 12 amostras de cor. `OlliPressable` passou a encaminhar `accessibilityRole` e `accessibilityState`, que engolia: uma amostra selecionada era indistinguível para quem não enxerga a borda.
 
+## APK v1.1.0 testado no emulador (2026-07-10)
+
+**BUILD SUCCESSFUL**, 100,8 MB, `online.olliorcamentos.app`, versionCode 9. Assinado com a chave de **debug** — instala e roda, mas a Play Store recusa; o artefato da loja é um AAB com a chave de upload (dia 20).
+
+### Emulador `olli_phone` (Android 15, x86_64)
+- Boot sem `FATAL EXCEPTION`, sem `SIGABRT`, **zero** erro de `ReactNativeJS`. Mesmo PID depois de 8s: não houve crash-restart.
+- **Zero** ocorrência de `Unknown encoding`/`latin1` — o crash que matou o v6.
+- Abre no **modo claro**: fundo `#F5F7FA` e `#EDF1F6` amostrados do screenshot.
+- Forçando `olli.tema.v1 = {escuro, #B45309}` no AsyncStorage (via `adb root`), o **modo escuro** e a **marca Terracota** renderizam: fundo `#07111F`, gradientes recalculados, sem crash. As duas features que o dono pediu, provadas no aparelho.
+
+### O que só a tela mostrou
+`tsc` verde, gate verde, 68 agentes, e mesmo assim a **primeira tela do app** tinha a tagline "Orçamentos que fecham negócio" a **2,36:1** — medido nos pixels do screenshot. A partir daí caíram três famílias inteiras, todas da mesma raiz.
+
+| família | o que era | pior caso | onde |
+| --- | --- | --- | --- |
+| 3ª — token de superfície sobre gradiente | `accentLight` sobre a marca | **1,03:1** | setas da Agenda, tagline do login, ícones da landing |
+| 4ª — `rgba(...)` cravado como texto | branco translúcido sobre gradiente | **1,06:1** | **hero da Home** (8 de 8 elementos), Onboarding, StepIndicator |
+| 5ª — matiz de categoria como texto | `#2BD787` = "limpeza" | **1,72:1** | chips de tipo de agendamento (8 de 12 pares, dois no escuro) |
+
+O hero da Home merece destaque: ele não usa gradiente do tema, e sim um véu literal `rgba(11,111,206,0.38)` sobre `background`. No escuro o composto é escuro e o texto claro funciona; no claro vira `#9CC3E9` → `#E6F3F7` e **o título ficava branco sobre branco**. Oito de oito passavam no escuro — por isso ninguém viu.
+
+O conserto perdido das setas da Agenda só apareceu porque um agente esqueceu um `.tmp` no disco e eu comparei os dois arquivos. Nem `tsc` nem gate acusavam.
+
+### Ferramentas novas, cada uma provada antes de usada
+- **`sobreSecundario(sobre, pontas)`** — texto secundário sobre gradiente. **Alfa fixo não pode ser seguro**: branco opaco sobre o azul mede 5,02:1 (dez por cento de folga) e sobre o vermelho 4,83:1. Um `comAlfa(sobreHeader, 0.82)` cravado — que **eu** escrevi — derruba a ponta clara para 3,90:1. A função sobe o alfa a partir do ideal até as duas pontas passarem: **0 de 48** combinações reprovam.
+- **`achatarVeu(base, veu)`** — compõe `rgba` sobre base opaca. `contraste()` só lê hex; medir contra o véu, ou contra a base, dá as duas respostas erradas.
+- **`corCategoria` / `corCategoriaEmChip`** — ajusta a **luminosidade** do matiz contra o fundo real (inclusive o próprio matiz a 13%, que é o fundo do chip). O matiz, que é o significado, não se move. **8/12 → 0/12**. Nenhum hex estático resolveria: `#64748B` passa no claro (4,76:1) e reprova no escuro (3,37:1).
+
+### O gate aprendeu três regras
+`rgba(...)` como cor de texto; `comAlfa(gradientes.sobreX, <fixo>)`; e **`//` depois de `/>`**, que em JSX está na posição de filho e **renderiza como texto** — eu mesmo cometi ao anotar uma exceção, e o `tsc` cala.
+
+### Dois bugs de build
+- **`expo-asset` faltando.** É peer de `expo-audio` e o `expo-doctor` avisava: *"your app may crash outside of Expo Go"* — ou seja, exatamente no APK. Agora 21/21.
+- **`clienteLink.base64url` devolvia lixo silencioso.** O ramo final entregava a string **binária crua** como se fosse base64 quando `btoa` e `Buffer` faltassem — sem lançar. Nem o RN 0.85 nem nenhuma dependência instalam `btoa` (verificado varrendo `node_modules`), então o ramo dependia do motor. Esse token é a **única** proteção do link que expõe o orçamento ao cliente, e é o mesmo que o QR do PDF carrega. Reescrito em ES puro e provado contra o `Buffer` do Node: comprimentos 0–64, casos de borda, exaustivo em 1 e 2 bytes.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.

@@ -5,7 +5,7 @@
 > ou atacá-los diretamente. Todos são melhorias fora do caminho crítico —
 > nenhum bloqueia o que já está no ar.
 
-## Pendentes (25)
+## Pendentes (27)
 
 1. **Badge financeiro na tabela desktop de orçamentos**
    - `src/screens/desktop/OrcamentosDesktopScreen.tsx` não recebeu o badge de estado
@@ -187,3 +187,16 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     de `scripts/checar-contraste.mjs` falha o build se alguém acrescentar uma cor clara. Para liberar
     amarelo/ciano/verde-limão (todas já provadas acessíveis em [2]), é preciso antes eliminar os
     brancos — a maior parte deles some junto com o item 22 (`OlliButton` colorindo o próprio ícone).
+
+26. **Badges de status ainda usam matiz de categoria como cor de texto.** `STATUS_OS_CORES`,
+    `STATUS_EQUIP_CORES`, `STATUS_COLORS` e `TIPO_LIXEIRA_META` são mapas estáticos de matiz,
+    pintados direto em `color:` de rótulo (`CardOS:100`, `OrdemServicoScreen:82`,
+    `EquipamentoScreen:103`, `PmocPlanosScreen:96`, `LixeiraScreen:61`). A primitiva já existe —
+    `corCategoriaEmChip(matiz, cores.surface)` — e foi aplicada nos chips de tipo de agendamento
+    (8 de 12 pares reprovavam, dois no modo escuro). Falta aplicá-la nesses cinco. O gate não pega:
+    são hex, não `rgba`, e o lint não sabe qual `color:` é rótulo e qual é preenchimento.
+
+27. **O mascote (`OlliMascot`) não segue a cor da marca.** É um asset azul-ciano fixo. Com o tema
+    padrão passa despercebido; com Terracota ou Vinho ele destoa no hero do login (visto no APK).
+    Não é bug de contraste — é coerência visual. Ou o mascote vira SVG parametrizado pelo `primary`,
+    ou ele é declarado neutro por decisão de marca.
