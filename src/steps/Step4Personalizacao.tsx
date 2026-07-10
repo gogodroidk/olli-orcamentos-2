@@ -42,7 +42,7 @@ function SwitchRow({ label, hint, value, onValueChange }: {
 // Cores dos modelos de PDF (documento) — NÃO seguem o tema do app: são a
 // identidade visual de cada modelo impresso, igual às chaves `pdf*` da
 // paleta. Ver cabeçalho de src/theme/cores.ts.
-const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
+export const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
   { id: 'editorial', nome: 'Editorial', desc: 'premium com marca d\'agua', color: '#0B6FCE', icon: 'file-document-edit-outline' },
   { id: 'premium_capa', nome: 'Premium com capa', desc: 'capa + pagina de detalhes', color: '#0A2547', icon: 'book-open-page-variant-outline' },
   { id: 'minimalista', nome: 'Minimalista', desc: 'limpo e direto', color: '#64748B', icon: 'file-document-outline' },

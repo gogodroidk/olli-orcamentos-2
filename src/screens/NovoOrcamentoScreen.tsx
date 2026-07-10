@@ -82,6 +82,9 @@ function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
     informacoesAdicionais: empresa?.observacoesPadrao || undefined,
     chavePix: empresa?.chavePix || undefined,
     corMarca: empresa?.corMarca || undefined,
+    // Modelo de PDF padrão escolhido em Conta → Modelos de documento (o técnico
+    // ainda troca por orçamento em Step4). Sem padrão, Step4 assume 'editorial'.
+    modeloPdf: empresa?.modeloPdfPadrao || undefined,
     formasPagamento: defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,

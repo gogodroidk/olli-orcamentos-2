@@ -118,6 +118,8 @@ export interface Empresa {
   garantiaPadrao?: string;
   condicoesPagamentoPadrao?: string;
   observacoesPadrao?: string;
+  /** Modelo de PDF padrão para orçamentos novos (escolhido em Conta → Modelos de documento). */
+  modeloPdfPadrao?: ModeloPdfId;
 }
 
 export interface Cliente {

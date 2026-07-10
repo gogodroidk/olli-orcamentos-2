@@ -19,6 +19,7 @@ import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
 import CodigosErroScreen from '../screens/CodigosErroScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
+import ModelosDocumentoScreen from '../screens/ModelosDocumentoScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
 import ClientesScreen from '../screens/ClientesScreen';
 import ServicosScreen from '../screens/ServicosScreen';
@@ -92,6 +93,7 @@ export type RootStackParamList = {
   EmitirRecibo: { orcamentoId?: string };
   Conta: undefined;
   MeuNegocio: undefined;
+  ModelosDocumento: undefined;
   Diagnostico: undefined;
   DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
   // Fase 3 — OLLI conversacional + planos
@@ -172,6 +174,7 @@ const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
+const ModelosDocumentoCentro = comCentroDesktop(ModelosDocumentoScreen);
 const DiagnosticoIACentro = comCentroDesktop(DiagnosticoIAScreen);
 const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
@@ -455,6 +458,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="EmitirRecibo" component={EmitirReciboCentro} />
       <Stack.Screen name="Conta" component={ContaCentro} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioCentro} />
+      <Stack.Screen name="ModelosDocumento" component={ModelosDocumentoCentro} />
       <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIACentro} />
       {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} />
