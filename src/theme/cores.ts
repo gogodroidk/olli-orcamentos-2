@@ -139,6 +139,25 @@ export function ajustarParaContraste(cor: string, fundo: string, alvo: number): 
   return melhor;
 }
 
+/**
+ * Um gradiente é uma superfície CONTÍNUA: o texto atravessa as duas pontas, então
+ * as duas precisam de contraste com ele. `textoSobre(marca)` responde "que texto
+ * vai sobre a cor da marca?", que é outra pergunta — e a resposta errada assim que
+ * o gradiente não é feito da marca (o header escuro é azul-marinho fixo).
+ *
+ * Aqui a PRIMEIRA ponta é a âncora de identidade e decide branco-ou-tinta; depois
+ * as duas cedem luminosidade até 4.5:1 contra esse texto. Matiz e saturação — a
+ * identidade — não se movem. Com a marca padrão nenhuma ponta muda: elas já
+ * passavam (5.02:1 e 15.32:1).
+ */
+export function parLegivel(a: string, b: string, alvo = 4.5): { pontas: readonly [string, string]; sobre: string } {
+  const sobre = textoSobre(a);
+  return {
+    pontas: [ajustarParaContraste(a, sobre, alvo), ajustarParaContraste(b, sobre, alvo)] as const,
+    sobre,
+  };
+}
+
 /** `#RRGGBB` + alfa → `rgba(r,g,b,a)`. Usado nos containers e hairlines. */
 export function comAlfa(hex: string, alfa: number): string {
   const { r, g, b } = hexParaRgb(hex);
@@ -213,7 +232,6 @@ const PDF = {
 export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO): Cores {
   const sup = SUPERFICIES[modo];
   const escuro = modo === 'escuro';
-  const bg = sup.background;
   const marca = hexParaHsl(corMarca);
 
   // Acento: análogo à marca, deslocado -21° e mais luminoso — um par harmônico,
@@ -234,13 +252,24 @@ export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO)
 
   // Primeiro plano: 4.5:1 para texto; 3:1 basta para ícone/borda, mas usamos 4.5
   // porque estas chaves aparecem em rótulo também.
-  const primaryLight = ajustarParaContraste(hslParaHex({ ...marca, l: escuro ? marca.l + 14 : marca.l - 6 }), bg, 4.5);
-  const accentLight = ajustarParaContraste(acentoBase, bg, 4.5);
+  //
+  // O ajuste é contra a superfície mais DIFÍCIL, não contra `background`. Estes
+  // tokens também são pintados sobre `surface` e `surfaceElevated`, e no escuro
+  // essas superfícies são mais CLARAS que o fundo — garantir contra o fundo é
+  // garantir contra o caso fácil. Com o azul padrão sobrava folga e ninguém via;
+  // com marca terracota ou vinho o texto caía a 3.9:1 sobre um card.
+  //
+  // Token claro (modo escuro) → a superfície mais clara é a pior. Token escuro
+  // (modo claro) → a pior é a mais escura. `ajustarParaContraste` é monótono na
+  // luminosidade, então satisfazer a pior satisfaz todas as outras.
+  const fundoDificil = escuro ? sup.surfaceElevated : sup.surfaceVariant;
+  const primaryLight = ajustarParaContraste(hslParaHex({ ...marca, l: escuro ? marca.l + 14 : marca.l - 6 }), fundoDificil, 4.5);
+  const accentLight = ajustarParaContraste(acentoBase, fundoDificil, 4.5);
   const tabActive = ajustarParaContraste(accent, sup.surfaceVariant, 3);
 
-  const success = ajustarParaContraste(STATUS_BASE.success, bg, 4.5);
-  const danger = ajustarParaContraste(STATUS_BASE.danger, bg, 4.5);
-  const warning = ajustarParaContraste(STATUS_BASE.warning, bg, 4.5);
+  const success = ajustarParaContraste(STATUS_BASE.success, fundoDificil, 4.5);
+  const danger = ajustarParaContraste(STATUS_BASE.danger, fundoDificil, 4.5);
+  const warning = ajustarParaContraste(STATUS_BASE.warning, fundoDificil, 4.5);
 
   const tinta = sup.tinta;
   const primaryDark = escuro ? '#0A2547' : hslParaHex({ ...marca, l: Math.max(12, marca.l - 28) });
@@ -290,8 +319,8 @@ export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO)
     tabActive,
 
     whatsapp: '#25D366',
-    plan: ajustarParaContraste('#7C3AED', bg, 4.5),
-    voice: ajustarParaContraste('#7C3AED', bg, 4.5),
+    plan: ajustarParaContraste('#7C3AED', fundoDificil, 4.5),
+    voice: ajustarParaContraste('#7C3AED', fundoDificil, 4.5),
     avatarLilac: '#A4B6F5',
     inkLight: escuro ? '#16202E' : '#E7ECF3',
 
@@ -316,6 +345,13 @@ export interface Gradientes {
   dark: readonly [string, string];
   cockpit: readonly [string, string];
   surface: readonly [string, string];
+
+  // Texto legível sobre as DUAS pontas do gradiente de mesmo nome. Existem porque
+  // `cores.onPrimary` só sabe da cor da marca, e o header no escuro não é feito
+  // dela. Sempre use estes — nunca `'#fff'` cravado.
+  sobrePrimary: string;
+  sobreHeader: string;
+  sobreBrand: string;
 }
 
 /** Gradientes derivados da mesma cor de marca. Os de superfície mudam com o modo. */
@@ -325,17 +361,31 @@ export function criarGradientes(modo: ModoTema, corMarca: string = COR_MARCA_PAD
   const marca = hexParaHsl(corMarca);
   const marcaEscura = hslParaHex({ ...marca, l: Math.max(12, marca.l - 28) });
 
+  // Gradientes que CARREGAM TEXTO passam por `parLegivel`: as duas pontas ficam
+  // legíveis sob a mesma cor de rótulo, para qualquer marca que o dono escolher.
+  // Os decorativos (frost, progress, liveCard) não passam — não têm texto em cima,
+  // e escurecê-los só apagaria o brilho da marca sem ganho de acessibilidade.
+  const gPrimary = parLegivel(c.primary, marcaEscura);
+  const gBrand = parLegivel(c.primary, c.accent);
+  // O header no escuro é azul-marinho FIXO, não a marca: a âncora tem que ser ele
+  // mesmo, senão uma marca clara pinta tinta escura sobre marinho (1.10:1).
+  const gHeader = escuro ? parLegivel('#12385D', c.background) : parLegivel(c.primary, marcaEscura);
+
   return {
-    primary: [c.primary, marcaEscura],
-    primaryDiagonal: [c.primary, c.accent],
-    brand: [c.primary, c.accent],
+    primary: gPrimary.pontas,
+    primaryDiagonal: gBrand.pontas,
+    brand: gBrand.pontas,
     frost: [c.accent, hslParaHex({ ...hexParaHsl(c.accent), l: Math.min(86, hexParaHsl(c.accent).l + 14) })],
     success: [c.success, ajustarParaContraste(c.success, '#FFFFFF', 4.5)],
     progress: [c.primary, c.accent],
     liveCard: [comAlfa(c.primary, escuro ? 0.34 : 0.14), comAlfa(c.accent, escuro ? 0.07 : 0.05)],
-    // Cabeçalho: no escuro é o gradiente cockpit; no claro é a marca (texto branco
-    // por cima, como um banner) — inverter isso deixaria o header cinza e sem marca.
-    header: escuro ? ['#12385D', c.background] : [c.primary, marcaEscura],
+    // Cabeçalho: no escuro é o gradiente cockpit; no claro é a marca (como um
+    // banner) — inverter isso deixaria o header cinza e sem marca.
+    header: gHeader.pontas,
+
+    sobrePrimary: gPrimary.sobre,
+    sobreHeader: gHeader.sobre,
+    sobreBrand: gBrand.sobre,
     card: escuro ? [c.surfaceElevated, c.surfaceVariant] : [c.surface, c.surfaceVariant],
     dark: escuro ? ['#102A47', c.background] : [c.surfaceVariant, c.background],
     cockpit: escuro ? [c.surfaceVariant, c.background] : [c.background, c.surfaceVariant],

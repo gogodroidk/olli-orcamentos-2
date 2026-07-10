@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Typography, Gradients } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -138,6 +138,8 @@ function mensagemErroPagamento(status: number | null, offline: boolean): string 
 
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   // SEO da rota pública "/planos". Sem isto ela herda o canonical da home e o
   // Google a trata como duplicata, apesar de estar no sitemap.xml. No-op no nativo.
@@ -332,9 +334,9 @@ export default function PlanosScreen() {
               accessibilityRole="button"
               accessibilityLabel="Abrir sua assinatura"
             >
-              <MaterialCommunityIcons name="card-account-details-outline" size={20} color={Colors.primaryLight} />
+              <MaterialCommunityIcons name="card-account-details-outline" size={20} color={cores.primaryLight} />
               <Text style={styles.assinaturaBtnText}>Sua assinatura</Text>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.primaryLight} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.primaryLight} />
             </TouchableOpacity>
           </AnimatedEntrance>
         ) : (
@@ -420,6 +422,11 @@ function PlanoCard({
   onGerenciar: () => void;
   onFalarSuporte: () => void;
 }) {
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
+  // Ink de contraste sobre `accentLight` (ícone/badge do plano "mais popular").
+  const textoSobreAccent = textoSobre(cores.accentLight);
   const exibido = precoExibido(plano, periodo);
   const parcela = parcelaExibida(plano, periodo);
   const ehPlanoPagoAtivo = plano.atual && plano.id !== 'gratis';
@@ -437,7 +444,7 @@ function PlanoCard({
     <View style={styles.cardBody}>
       <View style={styles.cardHead}>
         <View style={[styles.cardIcon, plano.destaque ? styles.cardIconDestaque : null]}>
-          <MaterialCommunityIcons name={plano.icon as any} size={22} color={plano.destaque ? '#0A1626' : Colors.accentLight} />
+          <MaterialCommunityIcons name={plano.icon as any} size={22} color={plano.destaque ? textoSobreAccent : cores.accentLight} />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <View style={styles.cardNameRow}>
@@ -472,7 +479,7 @@ function PlanoCard({
             <MaterialCommunityIcons
               name="check-circle"
               size={17}
-              color={plano.destaque ? Colors.accentLight : Colors.success}
+              color={plano.destaque ? cores.accentLight : cores.success}
             />
             <Text style={styles.beneficioText}>{b}</Text>
           </View>
@@ -483,28 +490,28 @@ function PlanoCard({
       {ehPlanoPagoAtivo ? (
         <TouchableOpacity style={styles.ctaOutline} onPress={onGerenciar} activeOpacity={0.85} disabled={carregandoPortal}>
           {carregandoPortal ? (
-            <ActivityIndicator size="small" color={Colors.primaryLight} />
+            <ActivityIndicator size="small" color={cores.primaryLight} />
           ) : (
             <>
-              <MaterialCommunityIcons name="cog-outline" size={17} color={Colors.primaryLight} />
+              <MaterialCommunityIcons name="cog-outline" size={17} color={cores.primaryLight} />
               <Text style={styles.ctaOutlineText}>Gerenciar assinatura</Text>
             </>
           )}
         </TouchableOpacity>
       ) : plano.atual ? (
         <View style={styles.ctaAtual}>
-          <MaterialCommunityIcons name="check" size={18} color={Colors.success} />
+          <MaterialCommunityIcons name="check" size={18} color={cores.success} />
           <Text style={styles.ctaAtualText}>{plano.cta}</Text>
         </View>
       ) : plano.destaque ? (
         <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano}>
-          <LinearGradient colors={Gradients.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, Shadow.glowCyan]}>
+          <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan]}>
             {carregandoAcao ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color={gradientes.sobreBrand} />
             ) : (
               <>
-                <Text style={styles.ctaGradText}>{rotuloCta}</Text>
-                <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />
+                <Text style={[styles.ctaGradText, { color: gradientes.sobreBrand }]}>{rotuloCta}</Text>
+                <MaterialCommunityIcons name="arrow-right" size={18} color={gradientes.sobreBrand} />
               </>
             )}
           </LinearGradient>
@@ -512,11 +519,11 @@ function PlanoCard({
       ) : (
         <TouchableOpacity style={styles.ctaOutline} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao}>
           {carregandoAcao ? (
-            <ActivityIndicator size="small" color={Colors.primaryLight} />
+            <ActivityIndicator size="small" color={cores.primaryLight} />
           ) : (
             <>
               <Text style={styles.ctaOutlineText}>{rotuloCta}</Text>
-              <MaterialCommunityIcons name="arrow-right" size={17} color={Colors.primaryLight} />
+              <MaterialCommunityIcons name="arrow-right" size={17} color={cores.primaryLight} />
             </>
           )}
         </TouchableOpacity>
@@ -525,7 +532,7 @@ function PlanoCard({
       {/* Empresa: CTA secundário para tirar dúvidas antes de assinar. */}
       {!plano.atual && plano.id === 'empresa' && (
         <TouchableOpacity style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
-          <MaterialCommunityIcons name="whatsapp" size={16} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="whatsapp" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Falar com a gente</Text>
         </TouchableOpacity>
       )}
@@ -536,10 +543,13 @@ function PlanoCard({
   if (plano.destaque) {
     return (
       <LinearGradient
+        // Ciano→azul fixo: é a identidade do PRODUTO OLLI (moldura do plano
+        // "mais popular"), não a cor de marca que o usuário escolhe para os
+        // PRÓPRIOS orçamentos — não deve seguir `cores`/`gradientes`. Mantido.
         colors={['#34C6D9', '#0B6FCE']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.cardFrame, Shadow.md]}
+        style={[styles.cardFrame, sombrasDe(cores).md]}
       >
         {body}
       </LinearGradient>
@@ -548,70 +558,84 @@ function PlanoCard({
   return <View style={[styles.cardPlain, plano.atual && styles.cardAtual]}>{body}</View>;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
-  introTitle: { fontSize: 19, fontWeight: '800', color: '#fff', marginTop: 10, textAlign: 'center' },
-  introSub: { fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 6, lineHeight: 19, paddingHorizontal: 6 },
+  // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.
+  introTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface, marginTop: 10, textAlign: 'center' },
+  introSub: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 6, lineHeight: 19, paddingHorizontal: 6 },
 
   // Pagante (conta limpa)
   assinanteHero: { alignItems: 'center', paddingVertical: Spacing.lg },
-  assinanteTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 12, textAlign: 'center' },
-  assinanteSub: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 8, lineHeight: 20, paddingHorizontal: 8 },
-  assinanteForte: { color: Colors.accentLight, fontWeight: '800' },
+  // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.
+  assinanteTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface, marginTop: 12, textAlign: 'center' },
+  assinanteSub: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 8, lineHeight: 20, paddingHorizontal: 8 },
+  assinanteForte: { color: c.accentLight, fontWeight: '800' },
   assinaturaBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderRadius: BorderRadius.md, paddingVertical: 15, marginTop: Spacing.base,
-    borderWidth: 1.5, borderColor: Colors.primaryLight, backgroundColor: 'rgba(11,111,206,0.10)',
+    // rgba(11,111,206,x) era o primaryLight estático (mesma cor do texto/borda
+    // ao lado) — vira o primaryLight do tema.
+    borderWidth: 1.5, borderColor: c.primaryLight, backgroundColor: comAlfa(c.primaryLight, 0.10),
   },
-  assinaturaBtnText: { fontSize: 15, fontWeight: '800', color: Colors.primaryLight },
+  assinaturaBtnText: { fontSize: 15, fontWeight: '800', color: c.primaryLight },
 
-  toggle: { flexDirection: 'row', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, padding: 4, marginBottom: Spacing.lg, alignSelf: 'center' },
+  toggle: { flexDirection: 'row', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, padding: 4, marginBottom: Spacing.lg, alignSelf: 'center' },
   toggleOpt: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 22, paddingVertical: 9, borderRadius: BorderRadius.full },
-  toggleOptActive: { backgroundColor: Colors.primary, ...Shadow.sm },
-  toggleText: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  toggleTextActive: { color: '#fff' },
-  toggleBadge: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 7, paddingVertical: 2 },
-  toggleBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.success },
+  toggleOptActive: { backgroundColor: c.primary, ...sombrasDe(c).sm },
+  toggleText: { fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant },
+  // Era '#fff' fixo sobre fundo chapado c.primary — vira onPrimary (contraste
+  // calculado), correto pra qualquer cor de marca escolhida pelo usuário.
+  toggleTextActive: { color: c.onPrimary },
+  toggleBadge: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 7, paddingVertical: 2 },
+  toggleBadgeText: { fontSize: 10, fontWeight: '800', color: c.success },
 
   cardFrame: { borderRadius: BorderRadius.xl + 2, padding: 2, marginBottom: Spacing.base },
-  cardPlain: { borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outline, marginBottom: Spacing.base, backgroundColor: Colors.surface, ...Shadow.sm },
-  cardAtual: { borderColor: 'rgba(43,215,135,0.35)' },
-  cardBody: { backgroundColor: Colors.surface, borderRadius: BorderRadius.xl, padding: Spacing.lg },
+  cardPlain: { borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, marginBottom: Spacing.base, backgroundColor: c.surface, ...sombrasDe(c).sm },
+  // rgba(43,215,135,x) era o success estático — vira o success do tema.
+  cardAtual: { borderColor: comAlfa(c.success, 0.35) },
+  cardBody: { backgroundColor: c.surface, borderRadius: BorderRadius.xl, padding: Spacing.lg },
 
   cardHead: { flexDirection: 'row', alignItems: 'flex-start' },
-  cardIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
-  cardIconDestaque: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
+  // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
+  cardIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center' },
+  cardIconDestaque: { backgroundColor: c.accentLight, borderColor: c.accentLight },
   cardNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  cardName: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  popular: { backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  popularText: { fontSize: 9.5, fontWeight: '800', color: '#0A1626', letterSpacing: 0.6 },
-  atualPill: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  atualPillText: { fontSize: 10, fontWeight: '800', color: Colors.success },
-  cardTagline: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
+  // Era '#fff' fixo sobre c.surface (cardBody) — ilegível no claro.
+  cardName: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  popular: { backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
+  // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
+  popularText: { fontSize: 9.5, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0.6 },
+  atualPill: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
+  atualPillText: { fontSize: 10, fontWeight: '800', color: c.success },
+  cardTagline: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
 
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.base, marginBottom: 4 },
-  price: { ...Typography.valueLarge, color: '#fff' },
-  priceDestaque: { color: Colors.accentLight },
-  pricePeriod: { fontSize: 13.5, color: Colors.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 6 },
-  priceSaveBadge: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, marginBottom: 7 },
-  priceSaveBadgeText: { fontSize: 10.5, fontWeight: '800', color: Colors.success },
-  parcelaText: { fontSize: 13, color: Colors.accentLight, fontWeight: '700', marginTop: 2 },
+  // Era '#fff' fixo sobre c.surface (cardBody) — ilegível no claro.
+  price: { ...Typography.valueLarge, color: c.onSurface },
+  priceDestaque: { color: c.accentLight },
+  pricePeriod: { fontSize: 13.5, color: c.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 6 },
+  priceSaveBadge: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, marginBottom: 7 },
+  priceSaveBadgeText: { fontSize: 10.5, fontWeight: '800', color: c.success },
+  parcelaText: { fontSize: 13, color: c.accentLight, fontWeight: '700', marginTop: 2 },
 
   beneficios: { marginTop: Spacing.base, gap: 10 },
   beneficioRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
-  beneficioText: { flex: 1, fontSize: 13.5, color: Colors.onSurface, lineHeight: 19 },
+  beneficioText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
 
+  // ctaGrad é o preenchimento em gradiente `primaryDiagonal` (= gradientes.brand,
+  // deriva da marca) — a cor do texto/ícone vem de `gradientes.sobreBrand`
+  // aplicada inline no ponto de uso (StyleSheet de módulo não lê o tema).
   ctaGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 14, marginTop: Spacing.lg },
-  ctaGradText: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  ctaOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, borderWidth: 1.5, borderColor: Colors.primaryLight, backgroundColor: 'rgba(11,111,206,0.10)' },
-  ctaOutlineText: { fontSize: 14.5, fontWeight: '800', color: Colors.primaryLight },
-  ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: Colors.successLight, borderWidth: 1, borderColor: 'rgba(43,215,135,0.3)' },
-  ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: Colors.success },
+  ctaGradText: { fontSize: 15, fontWeight: '800' },
+  ctaOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, borderWidth: 1.5, borderColor: c.primaryLight, backgroundColor: comAlfa(c.primaryLight, 0.10) },
+  ctaOutlineText: { fontSize: 14.5, fontWeight: '800', color: c.primaryLight },
+  ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: c.successLight, borderWidth: 1, borderColor: comAlfa(c.success, 0.3) },
+  ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: c.success },
 
   ctaSecundario: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10, paddingVertical: 9 },
-  ctaSecundarioText: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  ctaSecundarioText: { fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant },
 
-  rodape: { fontSize: 12.5, color: Colors.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
+  rodape: { fontSize: 12.5, color: c.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
 });

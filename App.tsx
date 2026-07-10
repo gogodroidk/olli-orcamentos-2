@@ -31,7 +31,7 @@ import { syncOnLogin } from './src/services/cloudSync';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
 import { limparCacheTipoConta, resetarTipoConta } from './src/hooks/useTipoConta';
-import { DESKTOP_BREAKPOINT, useEhDesktop } from './src/hooks/useEhDesktop';
+import { DESKTOP_BREAKPOINT } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -124,9 +124,6 @@ function AppConteudo() {
   // O tema do Paper é recalculado só quando o modo ou a cor de marca mudam.
   const paperTheme = useMemo(() => criarAppTheme(modo, cores), [modo, cores]);
   const [dbReady, setDbReady] = useState(false);
-  // Layout desktop REATIVO (v4): controla só o frame externo (aplicar ou não o
-  // webFrame de 430px). No nativo é sempre false → frame mobile inalterado.
-  const ehDesktop = useEhDesktop();
   // Fail-closed: se a checagem de sessão lançar, a UI abre na PORTA do deslogado
   // (Landing na web, Entrar no nativo), nunca dentro do app. Só o caso "sem nuvem
   // configurada" abre direto nas Tabs.
@@ -247,10 +244,13 @@ function AppConteudo() {
             translucent
             barStyle={modo === 'escuro' ? 'light-content' : 'dark-content'}
           />
-          {/* webFrame (430px centrado) SÓ na web mobile: no desktop o app ocupa
-              a tela toda (o shell da sidebar cuida do layout). No nativo o frame
-              nunca se aplica — comportamento do APK intacto. */}
-          <View style={[styles.appFrame, { backgroundColor: cores.background }, Platform.OS === 'web' && !ehDesktop && styles.webFrame]}>
+          {/* Na web o app ocupa a largura toda, em qualquer tamanho de janela. O
+              frame de 430px que existia aqui desenhava um celular no meio do
+              navegador sempre que a janela tinha menos de 1024px. Web é web, não
+              emulador: abaixo do breakpoint o layout mobile flui em largura
+              total, como qualquer site responsivo. No nativo isto nunca se
+              aplicou — comportamento do APK intacto. */}
+          <View style={[styles.appFrame, { backgroundColor: cores.background }]}>
             {ready ? (
               // linking com URLs reais (v4): o mapa é fixado no boot (linkingConfig).
               <NavigationContainer
@@ -292,8 +292,7 @@ function AppConteudo() {
 
 const styles = StyleSheet.create({
   appFrame: { flex: 1, backgroundColor: Colors.background },
-  webFrame: { width: '100%', maxWidth: 430, alignSelf: 'center', overflow: 'hidden' },
   splash: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primaryDark },
   brand: { fontSize: 42, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 5, marginTop: 22 },
-  tagline: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.accent, letterSpacing: 1, marginTop: 4 },
+  tagline: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.accent, letterSpacing: 1, marginTop: 4 }, // contraste-ok: splash Colors.primaryDark #042646 fixo (não segue o modo) — accentLight cairia a 2.96:1 (7.46:1)
 });

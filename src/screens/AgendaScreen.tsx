@@ -13,7 +13,7 @@ import {
   addDays, addWeeks, addMonths, isSameDay, eachDayOfInterval, isToday,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -53,6 +53,8 @@ type Modo = 'dia' | 'semana' | 'mes';
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone, texto = 'Sincronizando...', icon = 'cloud-sync-outline' }: { onDone: () => void; texto?: string; icon?: keyof typeof MaterialCommunityIcons.glyphMap }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -65,7 +67,11 @@ function SincronizandoPill({ onDone, texto = 'Sincronizando...', icon = 'cloud-s
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
-      <MaterialCommunityIcons name={icon} size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons
+        name={icon}
+        size={13}
+        color={cores.accent} // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+      />
       <Text style={styles.syncPillText}>{texto}</Text>
     </Animated.View>
   );
@@ -106,6 +112,11 @@ export default function AgendaScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<AgendaRoute>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  // O conteúdo do <GradientHeader> não se pinta com tokens de SUPERFÍCIE: o fundo
+  // ali é o gradiente da marca. `sobreHeader` é a cor que atravessa as duas pontas.
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
 
   const [modo, setModo] = useState<Modo>('dia');
   const [ref, setRef] = useState<Date>(new Date());
@@ -389,7 +400,7 @@ export default function AgendaScreen() {
         subtitle={`${itens.length} compromisso${itens.length === 1 ? '' : 's'} no período`}
         right={
           <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); }} activeOpacity={0.85}>
-            <Text style={styles.todayBtnText}>Hoje</Text>
+            <Text style={[styles.todayBtnText, { color: gradientes.sobreHeader }]}>Hoje</Text>
           </TouchableOpacity>
         }
       >
@@ -404,20 +415,33 @@ export default function AgendaScreen() {
                 onPress={() => trocarModo(m.id)}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>{m.label}</Text>
+                <Text
+                  style={[
+                    styles.segmentLabel,
+                    // Inativo: a cor do header a 75%. Ativo: o chip é pintado com
+                    // `c.accent`, então o rótulo é decidido pelo chip, não pelo header.
+                    { color: comAlfa(gradientes.sobreHeader, 0.75) },
+                    active && styles.segmentLabelActive,
+                  ]}
+                >
+                  {m.label}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* NAV ‹ período › */}
+        {/* NAV ‹ período › — está DENTRO do GradientHeader, então a cor vem do
+            gradiente, não da superfície. `accentLight` media 1.03:1 contra a marca
+            no modo claro (o glifo sumia); `sobreHeader` dá 5.02:1 e 15.32:1 nas
+            duas pontas, e acompanha uma marca clara trocando para tinta escura. */}
         <View style={styles.navRow}>
           <TouchableOpacity style={styles.navBtn} onPress={() => passo(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Período anterior">
-            <MaterialCommunityIcons name="chevron-left" size={24} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="chevron-left" size={24} color={gradientes.sobreHeader} />
           </TouchableOpacity>
-          <Text style={styles.navLabel}>{rotuloPeriodo(modo, ref)}</Text>
+          <Text style={[styles.navLabel, { color: gradientes.sobreHeader }]}>{rotuloPeriodo(modo, ref)}</Text>
           <TouchableOpacity style={styles.navBtn} onPress={() => passo(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Próximo período">
-            <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="chevron-right" size={24} color={gradientes.sobreHeader} />
           </TouchableOpacity>
         </View>
       </GradientHeader>
@@ -427,7 +451,7 @@ export default function AgendaScreen() {
       {googleDisponivel && (
         <View style={styles.googleCard}>
           <View style={styles.googleCardRow}>
-            <MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="google" size={20} color={cores.accentLight} />
             <View style={{ flex: 1, marginLeft: 10, marginRight: 10 }}>
               <Text style={styles.googleCardTitle}>Conectar Google Agenda</Text>
               <Text style={styles.googleCardHint}>Seus agendamentos também no calendário do celular</Text>
@@ -436,8 +460,8 @@ export default function AgendaScreen() {
               value={googleConectado}
               onValueChange={alternarGoogleAgenda}
               disabled={googleBusy}
-              trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
-              thumbColor={googleConectado ? Colors.primary : '#fff'}
+              trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+              thumbColor={googleConectado ? cores.primary : '#fff'}
             />
           </View>
           <Text style={styles.googleCardFooter}>
@@ -490,7 +514,7 @@ export default function AgendaScreen() {
         <ScrollView
           contentContainerStyle={{ padding: Spacing.base, paddingBottom: insets.bottom + 110 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.accent]} tintColor={Colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
         >
           {(() => {
             // Contador corrido de itens VISÍVEIS entre os grupos de dia: garante
@@ -507,7 +531,7 @@ export default function AgendaScreen() {
                   {modo !== 'dia' && (
                     <AnimatedEntrance index={(ordem += 1)}>
                       <View style={styles.dayHeader}>
-                        <Text style={[styles.dayHeaderTitle, isToday(dia) && { color: Colors.accentLight }]}>
+                        <Text style={[styles.dayHeaderTitle, isToday(dia) && { color: cores.accentLight }]}>
                           {capitalizeFirst(format(dia, "EEE, d 'de' MMM", { locale: ptBR }))}
                         </Text>
                         {isToday(dia) && <View style={styles.todayDot} />}
@@ -535,7 +559,7 @@ export default function AgendaScreen() {
       // haptic={false}: abrirNovo() já dispara um impactAsync(Light) próprio —
       // deixar o OlliPressable vibrar de novo daria feedback dobrado.
       <OlliPressable style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} haptic={false} accessibilityLabel="Agendar visita">
-        <MaterialCommunityIcons name="calendar-plus" size={20} color="#0A1626" />
+        <MaterialCommunityIcons name="calendar-plus" size={20} color={textoSobre(cores.accentLight)} />
         <Text style={styles.fabText}>Agendar visita</Text>
       </OlliPressable>
       )}
@@ -570,6 +594,8 @@ function hhmm(iso?: string | null): string {
 
 // ─── ITEM DA LISTA ──────────────────────────────────────────
 function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const cor = TIPO_AGENDAMENTO_COLORS[item.tipo];
   const iniTxt = hhmm(item.inicio);
   const fimTxt = item.fim ? hhmm(item.fim) : '';
@@ -590,13 +616,13 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
           </View>
           {item.endereco ? (
             <View style={styles.addrRow}>
-              <MaterialCommunityIcons name="map-marker-outline" size={13} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="map-marker-outline" size={13} color={cores.onSurfaceMuted} />
               <Text style={styles.addrText} numberOfLines={1}>{item.endereco}</Text>
             </View>
           ) : null}
         </View>
         {item.status !== 'agendado' && (
-          <Text style={[styles.statusText, item.status === 'concluido' ? { color: Colors.success } : { color: Colors.danger }]}>
+          <Text style={[styles.statusText, item.status === 'concluido' ? { color: cores.success } : { color: cores.danger }]}>
             {STATUS_AGENDAMENTO_LABELS[item.status]}
           </Text>
         )}
@@ -610,10 +636,10 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
           accessibilityLabel="Traçar rota"
           activeOpacity={0.8}
         >
-          <MaterialCommunityIcons name="navigation-variant" size={18} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="navigation-variant" size={18} color={cores.accentLight} />
         </TouchableOpacity>
       ) : null}
-      <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
     </OlliPressable>
   );
 }
@@ -662,6 +688,8 @@ function AgendamentoForm({
   onVerCliente?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [showClientes, setShowClientes] = useState(false);
 
   const set = (patch: Partial<EditState>) => onChange({ ...state, ...patch });
@@ -676,7 +704,7 @@ function AgendamentoForm({
       <View style={[styles.formHeader, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.formTitle}>{state.id ? 'Editar agendamento' : 'Agendar visita'}</Text>
         <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-          <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+          <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
         </TouchableOpacity>
       </View>
 
@@ -686,13 +714,13 @@ function AgendamentoForm({
           <View style={styles.linkRow}>
             {onAbrirOrcamento && (
               <TouchableOpacity style={styles.linkBtn} onPress={onAbrirOrcamento} activeOpacity={0.85}>
-                <MaterialCommunityIcons name="file-document-outline" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="file-document-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.linkBtnText}>Ver orçamento</Text>
               </TouchableOpacity>
             )}
             {onVerCliente && (
               <TouchableOpacity style={styles.linkBtn} onPress={onVerCliente} activeOpacity={0.85}>
-                <MaterialCommunityIcons name="account-search-outline" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="account-search-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.linkBtnText}>Orçamentos do cliente</Text>
               </TouchableOpacity>
             )}
@@ -711,7 +739,7 @@ function AgendamentoForm({
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ tipo: t.id }); }}
                 activeOpacity={0.85}
               >
-                <MaterialCommunityIcons name={t.icon as any} size={18} color={active ? t.color : Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name={t.icon as any} size={18} color={active ? t.color : cores.onSurfaceVariant} />
                 <Text style={[styles.tipoOptionText, active && { color: t.color }]}>{t.label}</Text>
               </TouchableOpacity>
             );
@@ -721,11 +749,11 @@ function AgendamentoForm({
         {/* CLIENTE */}
         <Text style={[styles.fieldLabel, { marginTop: Spacing.base }]}>Cliente</Text>
         <TouchableOpacity style={styles.clientePicker} onPress={() => setShowClientes(v => !v)} activeOpacity={0.85}>
-          <MaterialCommunityIcons name="account-outline" size={20} color={Colors.onSurfaceMuted} />
-          <Text style={[styles.clientePickerText, !state.clienteNome && { color: Colors.onSurfaceMuted }]} numberOfLines={1}>
+          <MaterialCommunityIcons name="account-outline" size={20} color={cores.onSurfaceMuted} />
+          <Text style={[styles.clientePickerText, !state.clienteNome && { color: cores.onSurfaceMuted }]} numberOfLines={1}>
             {state.clienteNome || 'Selecionar cliente (opcional)'}
           </Text>
-          <MaterialCommunityIcons name={showClientes ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.onSurfaceMuted} />
+          <MaterialCommunityIcons name={showClientes ? 'chevron-up' : 'chevron-down'} size={20} color={cores.onSurfaceMuted} />
         </TouchableOpacity>
         {showClientes && (
           <View style={styles.clienteList}>
@@ -771,14 +799,14 @@ function AgendamentoForm({
         <Text style={styles.fieldLabel}>Data</Text>
         <View style={styles.dateRow}>
           <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Dia anterior">
-            <MaterialCommunityIcons name="chevron-left" size={22} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="chevron-left" size={22} color={cores.accentLight} />
           </TouchableOpacity>
           <View style={styles.dateDisplay}>
-            <MaterialCommunityIcons name="calendar" size={18} color={Colors.accent} />
+            <MaterialCommunityIcons name="calendar" size={18} color={cores.accentLight} />
             <Text style={styles.dateText}>{capitalizeFirst(format(state.data, "EEE, d 'de' MMM 'de' yyyy", { locale: ptBR }))}</Text>
           </View>
           <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Próximo dia">
-            <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
           </TouchableOpacity>
         </View>
         <View style={styles.quickDates}>
@@ -835,7 +863,7 @@ function AgendamentoForm({
             <View style={styles.statusRow}>
               {(['agendado', 'concluido', 'cancelado'] as const).map(s => {
                 const active = (state.status ?? 'agendado') === s;
-                const cor = s === 'concluido' ? Colors.success : s === 'cancelado' ? Colors.danger : Colors.accent;
+                const cor = s === 'concluido' ? cores.success : s === 'cancelado' ? cores.danger : cores.accent;
                 return (
                   <TouchableOpacity
                     key={s}
@@ -843,7 +871,10 @@ function AgendamentoForm({
                     onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ status: s }); }}
                     activeOpacity={0.85}
                   >
-                    <Text style={[styles.statusOptionText, active && { color: cor }]}>{STATUS_AGENDAMENTO_LABELS[s]}</Text>
+                    {/* Texto usa accentLight (não accent) quando 'agendado': o preenchimento
+                        continua com `cor` (accent), mas a tinta em cima precisa do tom mais
+                        escuro para não sumir sobre a superfície clara. */}
+                    <Text style={[styles.statusOptionText, active && { color: s === 'agendado' ? cores.accentLight : cor }]}>{STATUS_AGENDAMENTO_LABELS[s]}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -853,7 +884,7 @@ function AgendamentoForm({
 
         {onDelete && (
           <TouchableOpacity style={[styles.deleteBtn, salvando && { opacity: 0.5 }]} onPress={onDelete} activeOpacity={0.8} disabled={salvando}>
-            <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
+            <MaterialCommunityIcons name="trash-can-outline" size={18} color={cores.danger} />
             <Text style={styles.deleteText}>Excluir agendamento</Text>
           </TouchableOpacity>
         )}
@@ -874,6 +905,7 @@ function AgendamentoForm({
 }
 
 function QuickDate({ label, onPress }: { label: string; onPress: () => void }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity
       style={styles.quickDate}
@@ -885,98 +917,108 @@ function QuickDate({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    // Pill sempre escura de propósito (como um toast): flutua sobre o header,
+    // que é sempre um banner colorido/escuro nos dois modos (ver GradientHeader).
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
+  // Textos/hairlines brancos abaixo pertencem ao GradientHeader (não migrado): o
+  // header é sempre um banner colorido/escuro nos dois modos, então branco fixo
+  // continua correto — ver comentário de `header` em theme/cores.ts.
   todayBtn: { backgroundColor: 'rgba(255,255,255,0.13)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
-  todayBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  // Sem cor: estes três vivem dentro do GradientHeader e recebem `sobreHeader` no
+  // ponto de uso. A fábrica só conhece `Cores` (superfícies), não os gradientes.
+  todayBtnText: { fontSize: 13, fontWeight: '800' },
 
   segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: BorderRadius.md, padding: 4, marginTop: Spacing.base, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   segmentItem: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: BorderRadius.sm },
-  segmentItemActive: { backgroundColor: Colors.accent },
-  segmentLabel: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
-  segmentLabelActive: { color: '#0A1626' },
+  segmentItemActive: { backgroundColor: c.accent },
+  segmentLabel: { fontSize: 14, fontWeight: '700' },
+  segmentLabelActive: { color: textoSobre(c.accent) },
 
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.base },
   navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
-  navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: '#fff' },
+  navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700' },
 
-  googleCard: { margin: Spacing.base, marginBottom: 0, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, ...Shadow.sm },
+  googleCard: { margin: Spacing.base, marginBottom: 0, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   googleCardRow: { flexDirection: 'row', alignItems: 'center' },
-  googleCardTitle: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  googleCardHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
-  googleCardFooter: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 10 },
+  googleCardTitle: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  googleCardHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+  googleCardFooter: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 10 },
 
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   routeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(52,198,217,0.12)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  dayHeaderTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
-  todayDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.accentLight },
+  dayHeaderTitle: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  todayDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accentLight },
 
-  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, marginBottom: 10, ...Shadow.sm },
+  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10, ...sombrasDe(c).sm },
   itemBar: { width: 4, alignSelf: 'stretch', borderRadius: 4, marginRight: 12 },
   itemTime: { width: 48, marginRight: 8 },
-  itemHour: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  itemHourEnd: { fontSize: 11, color: Colors.onSurfaceMuted, marginTop: 1 },
-  itemTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  itemClient: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },
+  itemHour: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  itemHourEnd: { fontSize: 11, color: c.onSurfaceMuted, marginTop: 1 },
+  itemTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  itemClient: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   itemMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
   tipoChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2 },
   tipoChipText: { fontSize: 11, fontWeight: '800' },
   addrRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
-  addrText: { fontSize: 11.5, color: Colors.onSurfaceMuted, flex: 1 },
+  addrText: { fontSize: 11.5, color: c.onSurfaceMuted, flex: 1 },
   statusText: { fontSize: 12, fontWeight: '700', marginTop: 4 },
-  strike: { textDecorationLine: 'line-through', color: Colors.onSurfaceMuted },
+  strike: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
 
-  fab: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 22, paddingVertical: 14, ...Shadow.glowCyan },
-  fabText: { fontSize: 15, fontWeight: '800', color: '#0A1626' },
+  fab: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 22, paddingVertical: 14, ...sombrasDe(c).glowCyan },
+  fabText: { fontSize: 15, fontWeight: '800', color: textoSobre(c.accentLight) },
 
   // FORM
-  formContainer: { flex: 1, backgroundColor: Colors.background },
-  formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: Spacing.base, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  formTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  formContainer: { flex: 1, backgroundColor: c.background },
+  formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: Spacing.base, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  formTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
 
   linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 10 },
-  linkBtnText: { fontSize: 13, fontWeight: '700', color: Colors.accentLight },
+  linkBtnText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   tipoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },
-  tipoOptionText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
+  tipoOptionText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
 
-  clientePicker: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.outline, paddingHorizontal: 14, minHeight: 50 },
-  clientePickerText: { flex: 1, fontSize: 15, color: Colors.onSurface },
-  clienteList: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, marginTop: 6, overflow: 'hidden' },
-  clienteRow: { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  clienteRowName: { fontSize: 14, fontWeight: '600', color: Colors.onSurface },
-  clienteRowMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
-  clienteEmpty: { fontSize: 13, color: Colors.onSurfaceMuted, padding: 14, textAlign: 'center' },
+  clientePicker: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.outline, paddingHorizontal: 14, minHeight: 50 },
+  clientePickerText: { flex: 1, fontSize: 15, color: c.onSurface },
+  clienteList: { backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, marginTop: 6, overflow: 'hidden' },
+  clienteRow: { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.outline },
+  clienteRowName: { fontSize: 14, fontWeight: '600', color: c.onSurface },
+  clienteRowMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
+  clienteEmpty: { fontSize: 13, color: c.onSurfaceMuted, padding: 14, textAlign: 'center' },
 
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  dateNav: { width: 42, height: 50, borderRadius: BorderRadius.md, backgroundColor: Colors.surfaceVariant, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.outline },
-  dateDisplay: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: BorderRadius.md, backgroundColor: Colors.surfaceVariant, borderWidth: 1.5, borderColor: Colors.outline },
-  dateText: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  dateNav: { width: 42, height: 50, borderRadius: BorderRadius.md, backgroundColor: c.surfaceVariant, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: c.outline },
+  dateDisplay: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: BorderRadius.md, backgroundColor: c.surfaceVariant, borderWidth: 1.5, borderColor: c.outline },
+  dateText: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   quickDates: { flexDirection: 'row', gap: 8, marginBottom: Spacing.base },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   quickDate: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: BorderRadius.sm, backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.3)' },
-  quickDateText: { fontSize: 12.5, fontWeight: '700', color: Colors.accentLight },
+  quickDateText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
 
   rowFields: { flexDirection: 'row' },
 
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: Spacing.base },
-  statusOption: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },
-  statusOptionText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  statusOption: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
+  statusOptionText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
 
   deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, marginTop: 6 },
-  deleteText: { fontSize: 14, fontWeight: '700', color: Colors.danger },
+  deleteText: { fontSize: 14, fontWeight: '700', color: c.danger },
 
-  formFooter: { padding: Spacing.base, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
+  formFooter: { padding: Spacing.base, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
 });

@@ -6,7 +6,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -51,6 +51,8 @@ const TIPO_CONTATO_LABEL: Record<TipoContato, string> = { duvida: 'Dúvida', sug
 export default function AjudaScreen() {
   const nav = useNavigation();
   const route = useRoute<Rota>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   // SEO da rota publica "/ajuda" (ver src/utils/seoWeb.ts). No-op no nativo.
   useEffect(() => {
@@ -190,11 +192,11 @@ export default function AjudaScreen() {
             <Text style={styles.suporteBtnTextWhats}>WhatsApp</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.suporteBtn} onPress={handleEmail} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Enviar e-mail">
-            <MaterialCommunityIcons name="email-outline" size={17} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="email-outline" size={17} color={cores.accentLight} />
             <Text style={styles.suporteBtnText}>E-mail</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.suporteBtn} onPress={() => setFormAberto(v => !v)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Abrir formulário de contato">
-            <MaterialCommunityIcons name={formAberto ? 'chevron-up' : 'form-textbox'} size={17} color={Colors.accentLight} />
+            <MaterialCommunityIcons name={formAberto ? 'chevron-up' : 'form-textbox'} size={17} color={cores.accentLight} />
             <Text style={styles.suporteBtnText}>Formulário</Text>
           </TouchableOpacity>
         </View>
@@ -245,19 +247,19 @@ export default function AjudaScreen() {
     <View style={styles.container}>
       <GradientHeader onBack={() => goBackOrHome(nav as any)} title="Central de Ajuda" subtitle={`${ARTIGOS_AJUDA.length} artigos · fale com o suporte quando quiser`}>
         <View style={styles.searchBar}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} />
           <TextInput
             style={styles.searchInput}
             placeholder="Busque por um assunto (ex.: link do cliente, backup)"
             value={query}
             onChangeText={setQuery}
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
             autoCapitalize="none"
             autoCorrect={false}
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -268,7 +270,7 @@ export default function AjudaScreen() {
         <AnimatedEntrance index={0}>
           <View style={styles.suporteCard}>
             <View style={styles.suporteHead}>
-              <MaterialCommunityIcons name="lifebuoy" size={20} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="lifebuoy" size={20} color={cores.accentLight} />
               <Text style={styles.suporteTitle}>Precisa falar com a gente?</Text>
             </View>
             <Text style={styles.suporteSub}>Escolha o canal — sem precisar mandar dado sensível de cliente.</Text>
@@ -298,7 +300,7 @@ export default function AjudaScreen() {
           // ─── ARTIGOS DA CATEGORIA ─────────────────────────────
           <View style={{ marginTop: Spacing.lg }}>
             <TouchableOpacity style={styles.breadcrumb} onPress={() => setCategoriaAtiva(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="chevron-left" size={18} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="chevron-left" size={18} color={cores.accentLight} />
               <Text style={styles.breadcrumbText}>Categorias</Text>
             </TouchableOpacity>
             <Text style={styles.sectionTitle}>{categoriaSelecionada.titulo}</Text>
@@ -314,13 +316,13 @@ export default function AjudaScreen() {
                 <AnimatedEntrance key={c.id} index={Math.min(idx, 8)}>
                   <TouchableOpacity style={styles.catCard} onPress={() => abrirCategoria(c.id)} activeOpacity={0.85}>
                     <View style={styles.catIconWrap}>
-                      <MaterialCommunityIcons name={c.icone as keyof typeof MaterialCommunityIcons.glyphMap} size={22} color={Colors.accentLight} />
+                      <MaterialCommunityIcons name={c.icone as keyof typeof MaterialCommunityIcons.glyphMap} size={22} color={cores.accentLight} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.catTitle}>{c.titulo}</Text>
                       <Text style={styles.catCount}>{count} artigo{count === 1 ? '' : 's'}</Text>
                     </View>
-                    <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+                    <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
                   </TouchableOpacity>
                 </AnimatedEntrance>
               );
@@ -339,7 +341,7 @@ export default function AjudaScreen() {
                 <Text style={styles.modalTitle}>{artigo.titulo}</Text>
               </View>
               <TouchableOpacity onPress={() => setArtigo(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-                <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+                <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
 
@@ -361,6 +363,8 @@ export default function AjudaScreen() {
 }
 
 function ArtigoRow({ artigo, index, onPress }: { artigo: AjudaArtigo; index: number; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <AnimatedEntrance index={Math.min(index, 8)}>
       <TouchableOpacity style={styles.artRow} onPress={onPress} activeOpacity={0.85}>
@@ -368,13 +372,15 @@ function ArtigoRow({ artigo, index, onPress }: { artigo: AjudaArtigo; index: num
           <Text style={styles.artTitle}>{artigo.titulo}</Text>
           <Text style={styles.artResumo} numberOfLines={2}>{artigo.resumo}</Text>
         </View>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+        <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
       </TouchableOpacity>
     </AnimatedEntrance>
   );
 }
 
 function Bloco({ bloco }: { bloco: AjudaBloco }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   if (bloco.tipo === 'passos' && Array.isArray(bloco.conteudo)) {
     return (
       <View style={styles.passosBox}>
@@ -390,7 +396,7 @@ function Bloco({ bloco }: { bloco: AjudaBloco }) {
   if (bloco.tipo === 'aviso' && typeof bloco.conteudo === 'string') {
     return (
       <View style={styles.avisoBox}>
-        <MaterialCommunityIcons name="information-outline" size={16} color={Colors.warning} />
+        <MaterialCommunityIcons name="information-outline" size={16} color={cores.warning} />
         <Text style={styles.avisoText}>{bloco.conteudo}</Text>
       </View>
     );
@@ -401,64 +407,70 @@ function Bloco({ bloco }: { bloco: AjudaBloco }) {
   return null;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
 
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.onSurface, marginBottom: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: 10 },
 
   breadcrumb: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 6 },
-  breadcrumbText: { fontSize: 13.5, fontWeight: '700', color: Colors.accentLight },
+  breadcrumbText: { fontSize: 13.5, fontWeight: '700', color: c.accentLight },
 
-  catCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.outline, marginBottom: 10, ...Shadow.sm },
+  catCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: c.outline, marginBottom: 10, ...sombrasDe(c).sm },
+  // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   catIconWrap: { width: 42, height: 42, borderRadius: BorderRadius.md, backgroundColor: 'rgba(127,233,245,0.12)', alignItems: 'center', justifyContent: 'center' },
-  catTitle: { fontSize: 14.5, fontWeight: '800', color: Colors.onSurface },
-  catCount: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  catTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface },
+  catCount: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
-  artRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.outline, marginBottom: 10, ...Shadow.sm },
-  artTitle: { fontSize: 14.5, fontWeight: '800', color: Colors.onSurface },
-  artResumo: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 3, lineHeight: 17 },
+  artRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: c.outline, marginBottom: 10, ...sombrasDe(c).sm },
+  artTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface },
+  artResumo: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 3, lineHeight: 17 },
 
   // Suporte (card do topo + bloco dentro do artigo)
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   suporteCard: { backgroundColor: 'rgba(52,198,217,0.08)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.25)', borderRadius: BorderRadius.lg, padding: Spacing.base },
   suporteHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  suporteTitle: { fontSize: 15, fontWeight: '800', color: Colors.onSurface },
-  suporteSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 4, marginBottom: 12, lineHeight: 17 },
+  suporteTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  suporteSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 4, marginBottom: 12, lineHeight: 17 },
   suporteBtns: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  suporteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline, borderRadius: BorderRadius.full, paddingHorizontal: 13, paddingVertical: 9 },
-  suporteBtnText: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
-  suporteBtnWhats: { backgroundColor: Colors.whatsapp, borderColor: Colors.whatsapp },
+  suporteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full, paddingHorizontal: 13, paddingVertical: 9 },
+  suporteBtnText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  suporteBtnWhats: { backgroundColor: c.whatsapp, borderColor: c.whatsapp },
   suporteBtnTextWhats: { fontSize: 12.5, fontWeight: '800', color: '#fff' },
 
-  formBox: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.outline },
-  formLabel: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  formBox: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: c.outline },
+  formLabel: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
   formChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  formChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surface },
-  formChipAtivo: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  formChipText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  formChipTextAtivo: { color: '#fff' },
+  formChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surface },
+  formChipAtivo: { backgroundColor: c.primary, borderColor: c.primary },
+  formChipText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  formChipTextAtivo: { color: c.onPrimary },
 
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   duvidaBox: { marginTop: 24, backgroundColor: 'rgba(52,198,217,0.08)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.25)', borderRadius: BorderRadius.lg, padding: Spacing.base },
-  duvidaTitle: { fontSize: 15, fontWeight: '800', color: Colors.onSurface },
-  duvidaSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 3, marginBottom: 12 },
+  duvidaTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  duvidaSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 3, marginBottom: 12 },
 
   // Modal do artigo
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalCategoria: { fontSize: 11.5, fontWeight: '800', color: Colors.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
-  modalTitle: { fontSize: 19, fontWeight: '800', color: Colors.onSurface, marginTop: 2 },
-  modalResumo: { fontSize: 14.5, color: Colors.onSurfaceVariant, lineHeight: 20, marginBottom: 6 },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalCategoria: { fontSize: 11.5, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
+  modalTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface, marginTop: 2 },
+  modalResumo: { fontSize: 14.5, color: c.onSurfaceVariant, lineHeight: 20, marginBottom: 6 },
 
-  paragrafo: { fontSize: 14.5, color: Colors.onSurface, lineHeight: 21, marginTop: 14 },
+  paragrafo: { fontSize: 14.5, color: c.onSurface, lineHeight: 21, marginTop: 14 },
 
   passosBox: { marginTop: 14, gap: 10 },
   passoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  // Azul fixo (base da marca padrão, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   passoNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(11,111,206,0.20)', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  passoNumText: { fontSize: 11.5, fontWeight: '800', color: Colors.accentLight },
-  passoText: { flex: 1, fontSize: 14, color: Colors.onSurface, lineHeight: 20 },
+  passoNumText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
+  passoText: { flex: 1, fontSize: 14, color: c.onSurface, lineHeight: 20 },
 
+  // Aviso: tom fixo de warning do handoff cockpit; próximo de `warningLight` mas
+  // alfa/hex não batem exatamente — deixado como está (ver rule 7 da migração).
   avisoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.25)', borderRadius: BorderRadius.md, padding: 12, marginTop: 14 },
-  avisoText: { flex: 1, fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18 },
+  avisoText: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
 });

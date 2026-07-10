@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../../theme';
 import { AnimatedEntrance } from '../AnimatedEntrance';
 import { OlliButton } from '../OlliButton';
 import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
@@ -69,7 +69,9 @@ function proximaAcao(status: StatusOS): {
  * onde um toque no botão interno também dispararia o onPress do card externo.
  */
 export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvancar }: Props) {
-  const cor = STATUS_OS_CORES[ordem.status] ?? Colors.onSurfaceVariant;
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const cor = STATUS_OS_CORES[ordem.status] ?? cores.onSurfaceVariant;
   const acao = proximaAcao(ordem.status);
   const quando = quandoLabel(ordem.dataAgendada);
   const feitos = ordem.checklist?.filter((c) => c.feito).length ?? 0;
@@ -103,19 +105,19 @@ export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvanc
             <Text style={styles.metaTexto}>Nº {ordem.numero}</Text>
             {quando ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="calendar-clock-outline" size={14} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="calendar-clock-outline" size={14} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipTexto}>{quando}</Text>
               </View>
             ) : null}
             {total > 0 ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="checkbox-marked-outline" size={14} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="checkbox-marked-outline" size={14} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipTexto}>{feitos}/{total}</Text>
               </View>
             ) : null}
             {(ordem.fotos?.length ?? 0) > 0 ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="image-multiple-outline" size={14} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="image-multiple-outline" size={14} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipTexto}>{ordem.fotos.length}</Text>
               </View>
             ) : null}
@@ -130,18 +132,21 @@ export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvanc
             fullWidth
             loading={avancando}
             onPress={() => onAvancar(acao.proximo)}
+            // '#fff' fixo de propósito: o OlliButton (fora do escopo desta migração)
+            // ainda pinta o próprio texto com `Colors.onSurface` estático — trocar só
+            // o ícone aqui criaria uma cor diferente da do rótulo ao lado dele.
             icon={<MaterialCommunityIcons name={acao.icon} size={22} color="#fff" />}
             style={styles.acaoBtn}
           />
         ) : ordem.status === 'concluida' ? (
           <View style={styles.selo}>
-            <MaterialCommunityIcons name="check-circle" size={18} color={Colors.success} />
-            <Text style={[styles.seloTexto, { color: Colors.success }]}>Serviço concluído</Text>
+            <MaterialCommunityIcons name="check-circle" size={18} color={cores.success} />
+            <Text style={[styles.seloTexto, { color: cores.success }]}>Serviço concluído</Text>
           </View>
         ) : ordem.status === 'cancelada' ? (
           <View style={styles.selo}>
-            <MaterialCommunityIcons name="cancel" size={18} color={Colors.onSurfaceMuted} />
-            <Text style={[styles.seloTexto, { color: Colors.onSurfaceMuted }]}>Cancelada</Text>
+            <MaterialCommunityIcons name="cancel" size={18} color={cores.onSurfaceMuted} />
+            <Text style={[styles.seloTexto, { color: cores.onSurfaceMuted }]}>Cancelada</Text>
           </View>
         ) : null}
       </View>
@@ -149,31 +154,34 @@ export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvanc
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   card: {
-    backgroundColor: Colors.surfaceGlass,
+    backgroundColor: c.surfaceGlass,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outlineDark,
+    borderColor: c.outlineDark,
     padding: Spacing.lg,
     gap: Spacing.md,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
   cardDestaque: {
-    borderColor: Colors.warning + '88',
+    borderColor: c.warning + '88',
     borderWidth: 1.5,
-    backgroundColor: 'rgba(247,178,59,0.08)',
-    ...Shadow.md,
+    backgroundColor: comAlfa(c.warning, 0.08),
+    ...sombrasDe(c).md,
   },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  cliente: { fontSize: 13.5, fontWeight: '700', color: Colors.accentLight },
-  titulo: { fontSize: 19, fontWeight: '800', color: '#fff', marginTop: 3, lineHeight: 24 },
+  cliente: { fontSize: 13.5, fontWeight: '700', color: c.accentLight },
+  // Era '#fff' fixo (bug latente: `card` usa `surfaceGlass`, que no modo claro é
+  // quase branco — título branco sobre fundo quase branco ficava ilegível). Vira
+  // `onSurface`, que segue a superfície de verdade nos dois modos.
+  titulo: { fontSize: 19, fontWeight: '800', color: c.onSurface, marginTop: 3, lineHeight: 24 },
   badge: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 11, paddingVertical: 5 },
   badgeText: { fontSize: 12, fontWeight: '800' },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 12 },
-  metaTexto: { fontSize: 13, color: Colors.onSurfaceMuted, fontWeight: '700' },
+  metaTexto: { fontSize: 13, color: c.onSurfaceMuted, fontWeight: '700' },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaChipTexto: { fontSize: 13, color: Colors.onSurfaceVariant, fontWeight: '600' },
+  metaChipTexto: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
   acaoBtn: { marginTop: 2 },
   selo: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 6 },
   seloTexto: { fontSize: 14, fontWeight: '700' },

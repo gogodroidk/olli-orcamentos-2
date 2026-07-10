@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -52,6 +52,8 @@ const SAUDACAO: Bolha = {
 export default function OlliChatScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { usosIaRestantes, consumirUsoIa } = usePlano();
   const iaEsgotada = usosIaRestantes <= 0;
 
@@ -244,7 +246,7 @@ export default function OlliChatScreen() {
             <Text style={styles.sugestoesLabel}>Sugestões para começar</Text>
             {SUGESTOES.map(s => (
               <TouchableOpacity key={s} style={styles.sugestaoChip} onPress={() => enviar(s)} activeOpacity={0.8}>
-                <MaterialCommunityIcons name="lightbulb-on-outline" size={16} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="lightbulb-on-outline" size={16} color={cores.accentLight} />
                 <Text style={styles.sugestaoText}>{s}</Text>
               </TouchableOpacity>
             ))}
@@ -276,7 +278,7 @@ export default function OlliChatScreen() {
             value={texto}
             onChangeText={setTexto}
             placeholder={iaEsgotada ? 'Limite grátis atingido este mês…' : 'Escreva sua mensagem…'}
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
             multiline
             onSubmitEditing={() => enviar()}
             blurOnSubmit={false}
@@ -297,6 +299,8 @@ export default function OlliChatScreen() {
 }
 
 function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }: { role: 'user' | 'assistant'; texto: string; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const isUser = role === 'user';
   if (isUser) {
     return (
@@ -318,13 +322,13 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }
         </View>
         {falhou && (
           <TouchableOpacity style={styles.tentarDeNovoBtn} onPress={onTentarDeNovo} activeOpacity={0.75}>
-            <MaterialCommunityIcons name="refresh" size={14} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="refresh" size={14} color={cores.accentLight} />
             <Text style={styles.tentarDeNovoText}>Tentar de novo</Text>
           </TouchableOpacity>
         )}
         {!falhou && onTransformarEmOrcamento && (
           <TouchableOpacity style={styles.transformarBtn} onPress={onTransformarEmOrcamento} activeOpacity={0.75}>
-            <MaterialCommunityIcons name="file-plus-outline" size={14} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="file-plus-outline" size={14} color={cores.accentLight} />
             <Text style={styles.transformarText}>Transformar em orçamento</Text>
           </TouchableOpacity>
         )}
@@ -334,6 +338,7 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }
 }
 
 function PontoPulsante({ delay }: { delay: number }) {
+  const styles = useEstilos(criarEstilos);
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -356,6 +361,8 @@ function PontoPulsante({ delay }: { delay: number }) {
 }
 
 function Digitando({ podeCancelar, onCancelar }: { podeCancelar: boolean; onCancelar: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <AnimatedEntrance from="bottom">
       <View style={styles.rowOlli}>
@@ -370,7 +377,7 @@ function Digitando({ podeCancelar, onCancelar }: { podeCancelar: boolean; onCanc
           </View>
           {podeCancelar && (
             <TouchableOpacity style={styles.tentarDeNovoBtn} onPress={onCancelar} activeOpacity={0.75}>
-              <MaterialCommunityIcons name="close" size={14} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="close" size={14} color={cores.onSurfaceVariant} />
               <Text style={styles.cancelarText}>Cancelar</Text>
             </TouchableOpacity>
           )}
@@ -380,43 +387,51 @@ function Digitando({ podeCancelar, onCancelar }: { podeCancelar: boolean; onCanc
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   rowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   rowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 12 },
-  olliAvatar: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
+  olliAvatar: { width: 36, height: 36, borderRadius: 12, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 8 },
 
   bubble: { maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 11 },
-  bubbleUser: { backgroundColor: Colors.primary, borderBottomRightRadius: 5, ...Shadow.sm },
+  bubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },
   bubbleUserText: { fontSize: 14.5, color: '#fff', lineHeight: 20 },
-  bubbleOlli: { backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: Colors.outline, borderBottomLeftRadius: 5 },
-  bubbleOlliText: { fontSize: 14.5, color: Colors.onSurface, lineHeight: 20 },
-  bubbleErro: { borderColor: 'rgba(247,178,59,0.4)', backgroundColor: 'rgba(247,178,59,0.08)' },
+  bubbleOlli: { backgroundColor: c.surfaceElevated, borderWidth: 1, borderColor: c.outline, borderBottomLeftRadius: 5 },
+  bubbleOlliText: { fontSize: 14.5, color: c.onSurface, lineHeight: 20 },
+  // rgba(247,178,59,x) era o warning estático — vira o warning do tema.
+  bubbleErro: { borderColor: comAlfa(c.warning, 0.4), backgroundColor: comAlfa(c.warning, 0.08) },
   bubbleTyping: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.accentLight },
+  typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accentLight },
 
   tentarDeNovoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
-  tentarDeNovoText: { fontSize: 12.5, fontWeight: '700', color: Colors.accentLight },
-  cancelarText: { fontSize: 12.5, fontWeight: '600', color: Colors.onSurfaceVariant },
+  tentarDeNovoText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
+  cancelarText: { fontSize: 12.5, fontWeight: '600', color: c.onSurfaceVariant },
   transformarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
-  transformarText: { fontSize: 12.5, fontWeight: '700', color: Colors.accentLight },
+  transformarText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
 
   sugestoesWrap: { marginTop: 8 },
-  sugestoesLabel: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.8, color: Colors.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 },
-  sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: 'rgba(52,198,217,0.07)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.28)', borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
-  sugestaoText: { flex: 1, fontSize: 14, color: Colors.onSurface, fontWeight: '600' },
+  sugestoesLabel: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.8, color: c.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 },
+  // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
+  sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: comAlfa(c.accent, 0.07), borderWidth: 1, borderColor: comAlfa(c.accent, 0.28), borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
+  sugestaoText: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '600' },
 
-  limiteCard: { alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.08)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.3)', borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: 8 },
-  limiteTitle: { fontSize: 15, fontWeight: '800', color: '#fff', textAlign: 'center', marginTop: 10 },
-  limiteSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 18, marginTop: 6 },
-  limiteBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: Colors.plan, borderRadius: BorderRadius.full, paddingHorizontal: 18, paddingVertical: 10, marginTop: 14 },
+  // rgba(124,58,237,x) era o roxo fixo do "plan" — vira c.plan (ajustado por contraste).
+  limiteCard: { alignItems: 'center', backgroundColor: comAlfa(c.plan, 0.08), borderWidth: 1, borderColor: comAlfa(c.plan, 0.3), borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: 8 },
+  // Era '#fff' fixo: card fica sobre a superfície da tela (não sobre o header
+  // colorido), então no claro (padrão do app) o texto branco já nascia
+  // ilegível sobre o tint claro — vira onSurface do tema (continua branco no
+  // escuro, onde já funcionava).
+  limiteTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, textAlign: 'center', marginTop: 10 },
+  limiteSub: { fontSize: 12.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 18, marginTop: 6 },
+  limiteBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.plan, borderRadius: BorderRadius.full, paddingHorizontal: 18, paddingVertical: 10, marginTop: 14 },
   limiteBtnText: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
 
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
-  inputWrap: { flex: 1, backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },
-  input: { fontSize: 15, color: Colors.onSurface, maxHeight: 100 },
-  sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center', ...Shadow.glowBlue },
-  sendBtnDisabled: { backgroundColor: Colors.surfaceElevated, opacity: 0.6, shadowOpacity: 0 },
-  sendBtnPro: { backgroundColor: Colors.plan, shadowColor: Colors.plan },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
+  inputWrap: { flex: 1, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },
+  input: { fontSize: 15, color: c.onSurface, maxHeight: 100 },
+  sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).glowBlue },
+  sendBtnDisabled: { backgroundColor: c.surfaceElevated, opacity: 0.6, shadowOpacity: 0 },
+  sendBtnPro: { backgroundColor: c.plan, shadowColor: c.plan },
 });

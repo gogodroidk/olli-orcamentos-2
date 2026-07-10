@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { PieChart, LineChart } from 'react-native-gifted-charts';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { KpiCard } from '../../components/web/KpiCard';
 import { OlliSkeleton } from '../../components/OlliSkeleton';
@@ -37,6 +37,8 @@ function ultimosDozeMeses(): { chave: string; label: string }[] {
 
 export default function RelatoriosDesktopScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [larguraLinha, setLarguraLinha] = useState(0);
@@ -89,26 +91,26 @@ export default function RelatoriosDesktopScreen() {
           titulo="Faturamento aprovado"
           valor={carregando ? '—' : formatCurrency(faturamento)}
           icone="cash-multiple"
-          corIcone={Colors.success}
+          corIcone={cores.success}
         />
         <KpiCard
           titulo="Ticket médio"
           valor={carregando ? '—' : formatCurrency(ticketMedio)}
           icone="receipt"
-          corIcone={Colors.accent}
+          corIcone={cores.accentLight}
         />
         <KpiCard
           titulo="Taxa de conversão"
           valor={carregando ? '—' : `${conversao}%`}
           icone="chart-line"
-          corIcone={Colors.primaryLight}
+          corIcone={cores.primaryLight}
           rodape={orcamentos.length ? `${aprovados.length}/${orcamentos.length} aprovados` : 'sem histórico'}
         />
         <KpiCard
           titulo="Total de orçamentos"
           valor={carregando ? '—' : String(orcamentos.length)}
           icone="file-document-multiple-outline"
-          corIcone={Colors.warning}
+          corIcone={cores.warning}
         />
       </View>
 
@@ -133,7 +135,7 @@ export default function RelatoriosDesktopScreen() {
                     donut
                     radius={90}
                     innerRadius={58}
-                    innerCircleColor={Colors.surface}
+                    innerCircleColor={cores.surface}
                     centerLabelComponent={() => (
                       <View style={{ alignItems: 'center' }}>
                         <Text style={styles.pizzaCentroValor}>{orcamentos.length}</Text>
@@ -179,19 +181,19 @@ export default function RelatoriosDesktopScreen() {
                     height={200}
                     spacing={Math.max(24, (larguraLinha - 90) / 12)}
                     initialSpacing={16}
-                    color={Colors.accent}
+                    color={cores.accentLight}
                     thickness={2}
-                    dataPointsColor={Colors.accentLight}
+                    dataPointsColor={cores.accentLight}
                     dataPointsRadius={4}
                     noOfSections={4}
                     maxValue={maiorQtd * 1.2}
                     yAxisThickness={0}
                     xAxisThickness={1}
-                    xAxisColor={Colors.outline}
-                    rulesColor={Colors.outline}
+                    xAxisColor={cores.outline}
+                    rulesColor={cores.outline}
                     rulesType="dashed"
-                    yAxisTextStyle={{ color: Colors.onSurfaceMuted, fontSize: 10 }}
-                    xAxisLabelTextStyle={{ color: Colors.onSurfaceVariant, fontSize: 10 }}
+                    yAxisTextStyle={{ color: cores.onSurfaceMuted, fontSize: 10 }}
+                    xAxisLabelTextStyle={{ color: cores.onSurfaceVariant, fontSize: 10 }}
                     yAxisLabelWidth={30}
                     curved
                     isAnimated
@@ -214,20 +216,20 @@ export default function RelatoriosDesktopScreen() {
           haptic={false}
         >
           <View style={styles.cardRelatorioVozIcone}>
-            <MaterialCommunityIcons name="microphone-outline" size={24} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="microphone-outline" size={24} color={cores.accentLight} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.cardRelatorioVozTitulo}>Relatório do dia falado</Text>
             <Text style={styles.cardRelatorioVozSub}>Ouça um resumo falado de como foi o seu dia.</Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
         </OlliPressable>
       </GatePro>
     </LayoutDesktop>
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -241,10 +243,10 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   cartao: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.lg,
   },
   cartaoPizza: {
@@ -255,7 +257,7 @@ const styles = StyleSheet.create({
   },
   cartaoTitulo: {
     ...Typography.label,
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
     textTransform: 'uppercase',
   },
   pizzaConteudo: {
@@ -264,8 +266,8 @@ const styles = StyleSheet.create({
     minHeight: 180,
     justifyContent: 'center',
   },
-  pizzaCentroValor: { ...Typography.h3, color: Colors.onSurface },
-  pizzaCentroLabel: { ...Typography.caption, color: Colors.onSurfaceMuted },
+  pizzaCentroValor: { ...Typography.h3, color: c.onSurface },
+  pizzaCentroLabel: { ...Typography.caption, color: c.onSurfaceMuted },
   legenda: {
     width: '100%',
     marginTop: Spacing.lg,
@@ -273,9 +275,9 @@ const styles = StyleSheet.create({
   },
   legendaItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   legendaBolinha: { width: 9, height: 9, borderRadius: 5 },
-  legendaTexto: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, flex: 1 },
-  legendaQtd: { ...Typography.bodySmall, color: Colors.onSurface, fontWeight: '700' },
-  vazioTexto: { ...Typography.body, color: Colors.onSurfaceVariant },
+  legendaTexto: { ...Typography.bodySmall, color: c.onSurfaceVariant, flex: 1 },
+  legendaQtd: { ...Typography.bodySmall, color: c.onSurface, fontWeight: '700' },
+  vazioTexto: { ...Typography.body, color: c.onSurfaceVariant },
 
   linhaGraficoWrap: {
     marginTop: Spacing.md,
@@ -287,22 +289,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.strokeGlow,
+    borderColor: c.strokeGlow,
     padding: Spacing.lg,
   },
   cardRelatorioVozIcone: {
     width: 46,
     height: 46,
     borderRadius: BorderRadius.md,
-    backgroundColor: 'rgba(127,233,245,0.12)',
+    // rgba(127,233,245,...) era o cyan claro fixo do handoff (#7FE9F5) — agora
+    // acompanha o accentLight escolhido no tema via comAlfa.
+    backgroundColor: comAlfa(c.accentLight, 0.12),
     borderWidth: 1,
-    borderColor: 'rgba(127,233,245,0.3)',
+    borderColor: comAlfa(c.accentLight, 0.3),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardRelatorioVozTitulo: { ...Typography.h4, color: Colors.onSurface },
-  cardRelatorioVozSub: { ...Typography.caption, color: Colors.onSurfaceVariant, marginTop: 2 },
+  cardRelatorioVozTitulo: { ...Typography.h4, color: c.onSurface },
+  cardRelatorioVozSub: { ...Typography.caption, color: c.onSurfaceVariant, marginTop: 2 },
 });

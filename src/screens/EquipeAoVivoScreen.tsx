@@ -32,7 +32,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliCard } from '../components/OlliCard';
 import { OlliPressable } from '../components/OlliPressable';
@@ -64,6 +64,8 @@ export default function EquipeAoVivoScreen() {
 
 function EquipeAoVivoConteudo() {
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [itens, setItens] = useState<LocalizacaoMembro[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,7 +125,7 @@ function EquipeAoVivoConteudo() {
       <ScrollView
         contentContainerStyle={{ padding: Spacing.base, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.accent]} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
       >
         {/* Compartilhar minha localização — na web usa navigator.geolocation e
             funciona de verdade hoje (dá vida à tela sem esperar a Onda 8). No
@@ -141,7 +143,7 @@ function EquipeAoVivoConteudo() {
             accessibilityLabel="Compartilhar minha localização agora"
           >
             <View style={styles.shareIconWrap}>
-              <MaterialCommunityIcons name="crosshairs-gps" size={20} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="crosshairs-gps" size={20} color={cores.accentLight} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.shareTitle}>Compartilhar minha localização agora</Text>
@@ -150,13 +152,13 @@ function EquipeAoVivoConteudo() {
             {compartilhando ? (
               <OlliSkeleton width={20} height={20} radius={10} />
             ) : (
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             )}
           </TouchableOpacity>
         ) : (
           <View style={styles.shareCard}>
             <View style={styles.shareIconWrap}>
-              <MaterialCommunityIcons name="crosshairs-gps" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="crosshairs-gps" size={20} color={cores.onSurfaceMuted} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.shareTitle}>Compartilhamento automático de localização</Text>
@@ -196,6 +198,8 @@ function EquipeAoVivoConteudo() {
 }
 
 function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const recente = estaRecente(membro.capturadoEm);
   const papel = membro.papel ? PAPEL_LABEL[membro.papel] : null;
 
@@ -203,7 +207,7 @@ function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
     <OlliCard style={styles.card}>
       <View style={styles.row}>
         <View style={[styles.avatar, recente && styles.avatarRecente]}>
-          <MaterialCommunityIcons name="account" size={22} color={recente ? Colors.accentLight : Colors.onSurfaceMuted} />
+          <MaterialCommunityIcons name="account" size={22} color={recente ? cores.accentLight : cores.onSurfaceMuted} />
           {recente && <View style={styles.dot} />}
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
@@ -216,7 +220,7 @@ function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
             ) : null}
           </View>
           <View style={styles.metaRow}>
-            <MaterialCommunityIcons name="map-marker-outline" size={13} color={Colors.onSurfaceMuted} />
+            <MaterialCommunityIcons name="map-marker-outline" size={13} color={cores.onSurfaceMuted} />
             <Text style={styles.metaText}>
               {membro.lat.toFixed(4)}, {membro.lng.toFixed(4)} · {tempoRelativo(membro.capturadoEm)}
             </Text>
@@ -231,16 +235,18 @@ function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
         style={styles.mapBtn}
         accessibilityLabel={`Abrir no mapa a localização de ${membro.nome}`}
       >
-        <MaterialCommunityIcons name="map-outline" size={18} color={Colors.accentLight} />
+        <MaterialCommunityIcons name="map-outline" size={18} color={cores.accentLight} />
         <Text style={styles.mapBtnText}>Abrir no mapa</Text>
       </OlliPressable>
     </OlliCard>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
+  // Filho do GradientHeader: banner sempre colorido nos dois modos — branco
+  // fixo continua correto (ver `header` em theme/cores.ts).
   headerIconWrap: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.13)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
@@ -249,45 +255,49 @@ const styles = StyleSheet.create({
 
   shareCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.strokeGlow,
-    padding: Spacing.md, marginBottom: Spacing.lg, ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.strokeGlow,
+    padding: Spacing.md, marginBottom: Spacing.lg, ...sombrasDe(c).sm,
   },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   shareIconWrap: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(52,198,217,0.14)',
     alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
-  shareTitle: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  shareHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
+  shareTitle: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  shareHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
-  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, marginBottom: 10 },
+  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
 
   card: { marginBottom: 10 },
   row: { flexDirection: 'row', alignItems: 'center' },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarRecente: { borderColor: Colors.accent, backgroundColor: 'rgba(52,198,217,0.12)' },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
+  avatarRecente: { borderColor: c.accent, backgroundColor: 'rgba(52,198,217,0.12)' },
   dot: {
     position: 'absolute', right: -1, bottom: -1,
     width: 12, height: 12, borderRadius: 6,
-    backgroundColor: Colors.success, borderWidth: 2, borderColor: Colors.surface,
+    backgroundColor: c.success, borderWidth: 2, borderColor: c.surface,
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nome: { fontSize: 15, fontWeight: '700', color: Colors.onSurface, flexShrink: 1 },
-  papelChip: { backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  papelChipText: { fontSize: 10.5, fontWeight: '800', color: Colors.onSurfaceVariant },
+  nome: { fontSize: 15, fontWeight: '700', color: c.onSurface, flexShrink: 1 },
+  // Pílula sutil sobre o card: rgba(255,255,255,0.10) some no claro (rule 8) — usa c.outline.
+  papelChip: { backgroundColor: c.outline, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  papelChipText: { fontSize: 10.5, fontWeight: '800', color: c.onSurfaceVariant },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  metaText: { fontSize: 12, color: Colors.onSurfaceMuted },
+  metaText: { fontSize: 12, color: c.onSurfaceMuted },
 
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   mapBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     marginTop: Spacing.md, paddingVertical: 11,
     backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
     borderRadius: BorderRadius.md,
   },
-  mapBtnText: { fontSize: 13.5, fontWeight: '700', color: Colors.accentLight },
+  mapBtnText: { fontSize: 13.5, fontWeight: '700', color: c.accentLight },
 });

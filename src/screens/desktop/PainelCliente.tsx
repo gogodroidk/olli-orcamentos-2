@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliInput } from '../../components/OlliInput';
 import { OlliButton } from '../../components/OlliButton';
 import { PressableWebState } from '../../components/web/pressableWebState';
@@ -30,6 +30,8 @@ type Erros = { cpf?: string; cnpj?: string; telefone?: string };
  * (modal lateral em vez de bottom-sheet + tela cheia).
  */
 export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [form, setForm] = useState<Partial<Cliente>>({});
   const [erros, setErros] = useState<Erros>({});
   const [salvando, setSalvando] = useState(false);
@@ -121,7 +123,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={({ hovered, focused }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover, focused && styles.focoVisivel]}
             >
-              <MaterialCommunityIcons name="close" size={22} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
             </Pressable>
           </View>
 
@@ -203,7 +205,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
                 leftIcon="mailbox"
                 containerStyle={{ flex: 1, marginBottom: 0 }}
               />
-              {cepLoading && <ActivityIndicator size="small" color={Colors.primary} style={styles.cepSpinner} />}
+              {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
             </View>
           </ScrollView>
 
@@ -217,9 +219,9 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
                 style={({ hovered, focused }: PressableWebState) => [styles.botaoExcluir, hovered && styles.botaoExcluirHover, focused && styles.focoVisivel]}
               >
                 {excluindo ? (
-                  <ActivityIndicator size="small" color={Colors.danger} />
+                  <ActivityIndicator size="small" color={cores.danger} />
                 ) : (
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
+                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 )}
               </Pressable>
             )}
@@ -241,10 +243,10 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   focoVisivel: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   } as any,
@@ -252,6 +254,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
+  // Scrim do modal: navy translúcido fixo (mesmo padrão em toda a base), não
+  // segue o tema — um backdrop de modal fica escuro em claro e escuro.
   fundoClicavel: {
     flex: 1,
     backgroundColor: 'rgba(5,12,22,0.60)',
@@ -259,9 +263,9 @@ const styles = StyleSheet.create({
   painel: {
     width: 420,
     height: '100%',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderLeftWidth: 1,
-    borderLeftColor: Colors.outline,
+    borderLeftColor: c.outline,
   },
   cabecalho: {
     flexDirection: 'row',
@@ -270,11 +274,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outline,
+    borderBottomColor: c.outline,
   },
   titulo: {
     ...Typography.h3,
-    color: Colors.onSurface,
+    color: c.onSurface,
   },
   botaoFechar: {
     width: 34,
@@ -284,7 +288,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   botaoFecharHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
   },
   conteudo: {
     padding: Spacing.xl,
@@ -306,20 +310,20 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     padding: Spacing.xl,
     borderTopWidth: 1,
-    borderTopColor: Colors.outline,
+    borderTopColor: c.outline,
   },
   botaoExcluir: {
     width: 50,
     height: 50,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     alignItems: 'center',
     justifyContent: 'center',
   },
   botaoExcluirHover: {
-    backgroundColor: Colors.dangerLight,
-    borderColor: Colors.danger,
+    backgroundColor: c.dangerLight,
+    borderColor: c.danger,
   },
   botaoSalvar: {
     flex: 1,

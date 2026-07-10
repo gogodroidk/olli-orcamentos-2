@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -74,7 +74,9 @@ function formatarValor(v?: number): string {
 // Badge de status da OS (rótulo + cor do contrato).
 // ─────────────────────────────────────────────────────────────
 function StatusOSBadge({ status }: { status: StatusOS }) {
-  const cor = STATUS_OS_CORES[status] ?? Colors.onSurfaceVariant;
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const cor = STATUS_OS_CORES[status] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
       <Text style={[styles.statusBadgeText, { color: cor }]}>{STATUS_OS_LABELS[status] ?? status}</Text>
@@ -87,6 +89,8 @@ function StatusOSBadge({ status }: { status: StatusOS }) {
 // ─────────────────────────────────────────────────────────────
 export default function OrdemServicoScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { org, carregando: carregandoConta } = useTipoConta();
   const { pode, papel } = usePermissao();
 
@@ -183,19 +187,19 @@ export default function OrdemServicoScreen() {
             <Text style={styles.cardMeta} numberOfLines={1}>Nº {item.numero}</Text>
             {data ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="calendar-clock-outline" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="calendar-clock-outline" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText}>{data}</Text>
               </View>
             ) : null}
             {total > 0 ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="checkbox-marked-outline" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="checkbox-marked-outline" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText}>{feitos}/{total}</Text>
               </View>
             ) : null}
             {(item.fotos?.length ?? 0) > 0 ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="image-multiple-outline" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="image-multiple-outline" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText}>{item.fotos.length}</Text>
               </View>
             ) : null}
@@ -203,7 +207,7 @@ export default function OrdemServicoScreen() {
 
           {ehGestao && item.tecnicoNome ? (
             <View style={styles.tecnicoRow}>
-              <MaterialCommunityIcons name="account-hard-hat" size={13} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="account-hard-hat" size={13} color={cores.accentLight} />
               <Text style={styles.tecnicoText} numberOfLines={1}>{item.tecnicoNome}</Text>
             </View>
           ) : null}
@@ -246,17 +250,17 @@ export default function OrdemServicoScreen() {
         }
       >
         <View style={styles.searchRow}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} style={{ marginRight: 8 }} />
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar por cliente, título ou nº..."
             value={busca}
             onChangeText={setBusca}
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
           />
           {busca ? (
             <TouchableOpacity onPress={() => setBusca('')} accessibilityRole="button" accessibilityLabel="Limpar busca">
-              <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -299,7 +303,7 @@ export default function OrdemServicoScreen() {
           keyExtractor={(o) => o.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 8, paddingBottom: 90, flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.accentLight} />}
           ListEmptyComponent={
             <EmptyState
               icon="clipboard-check-outline"
@@ -358,6 +362,8 @@ function DetalheOS({
   onFechar: () => void;
   onMudou: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
@@ -543,7 +549,7 @@ function DetalheOS({
                 activeOpacity={0.85}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowAtribuir(true); }}
               >
-                <MaterialCommunityIcons name="account-arrow-right-outline" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="account-arrow-right-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.atribuirBtnText}>
                   {ordem.tecnicoNome ? 'Trocar técnico' : 'Atribuir técnico'}
                 </Text>
@@ -556,7 +562,7 @@ function DetalheOS({
               <View style={styles.statusGrid}>
                 {STATUS_OS_ORDEM.filter((s) => s !== 'cancelada' || ehGestao).map((s) => {
                   const ativo = ordem.status === s;
-                  const cor = STATUS_OS_CORES[s] ?? Colors.primary;
+                  const cor = STATUS_OS_CORES[s] ?? cores.primary;
                   const salvando = salvandoStatus === s;
                   return (
                     <TouchableOpacity
@@ -596,7 +602,7 @@ function DetalheOS({
                       <MaterialCommunityIcons
                         name={c.feito ? 'checkbox-marked' : 'checkbox-blank-outline'}
                         size={22}
-                        color={c.feito ? Colors.success : Colors.onSurfaceVariant}
+                        color={c.feito ? cores.success : cores.onSurfaceVariant}
                       />
                       <Text style={[styles.checkTexto, c.feito && styles.checkTextoFeito]} numberOfLines={2}>
                         {c.texto}
@@ -608,7 +614,7 @@ function DetalheOS({
                       accessibilityRole="button"
                       accessibilityLabel="Remover item"
                     >
-                      <MaterialCommunityIcons name="close" size={18} color={Colors.onSurfaceMuted} />
+                      <MaterialCommunityIcons name="close" size={18} color={cores.onSurfaceMuted} />
                     </TouchableOpacity>
                   </View>
                 ))
@@ -633,16 +639,16 @@ function DetalheOS({
               <View style={styles.fotoBtnRow}>
                 <TouchableOpacity style={styles.fotoBtn} activeOpacity={0.85} disabled={addingFoto} onPress={() => tirarFoto('camera')}>
                   {addingFoto ? (
-                    <ActivityIndicator size="small" color={Colors.accentLight} />
+                    <ActivityIndicator size="small" color={cores.accentLight} />
                   ) : (
                     <>
-                      <MaterialCommunityIcons name="camera-plus-outline" size={18} color={Colors.accentLight} />
+                      <MaterialCommunityIcons name="camera-plus-outline" size={18} color={cores.accentLight} />
                       <Text style={styles.fotoBtnText}>Câmera</Text>
                     </>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.fotoBtn} activeOpacity={0.85} disabled={addingFoto} onPress={() => tirarFoto('galeria')}>
-                  <MaterialCommunityIcons name="image-multiple-outline" size={18} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="image-multiple-outline" size={18} color={cores.accentLight} />
                   <Text style={styles.fotoBtnText}>Galeria</Text>
                 </TouchableOpacity>
               </View>
@@ -692,9 +698,11 @@ function DetalheOS({
 
 /** Linha ícone + label + valor no bloco de resumo. */
 function LinhaInfo({ icon, label, valor }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; valor: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.infoRow}>
-      <MaterialCommunityIcons name={icon} size={16} color={Colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={icon} size={16} color={cores.onSurfaceVariant} />
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValor} numberOfLines={1}>{valor}</Text>
     </View>
@@ -703,6 +711,8 @@ function LinhaInfo({ icon, label, valor }: { icon: keyof typeof MaterialCommunit
 
 /** Campo inline para adicionar um item ao checklist. */
 function AdicionarItemChecklist({ onAdicionar }: { onAdicionar: (texto: string) => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [texto, setTexto] = useState('');
   function confirmar() {
     if (!texto.trim()) return;
@@ -716,12 +726,12 @@ function AdicionarItemChecklist({ onAdicionar }: { onAdicionar: (texto: string) 
         value={texto}
         onChangeText={setTexto}
         placeholder="Adicionar item..."
-        placeholderTextColor={Colors.onSurfaceMuted}
+        placeholderTextColor={cores.onSurfaceMuted}
         onSubmitEditing={confirmar}
         returnKeyType="done"
       />
       <TouchableOpacity onPress={confirmar} style={styles.addItemBtn} accessibilityRole="button" accessibilityLabel="Adicionar item">
-        <MaterialCommunityIcons name="plus" size={20} color={Colors.accentLight} />
+        <MaterialCommunityIcons name="plus" size={20} color={cores.accentLight} />
       </TouchableOpacity>
     </View>
   );
@@ -739,6 +749,8 @@ function ModalAtribuir({
   onFechar: () => void;
   onAtribuido: (id: string, nome: string) => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [membros, setMembros] = useState<MembroEquipe[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
@@ -781,7 +793,7 @@ function ModalAtribuir({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Atribuir técnico</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
@@ -815,11 +827,11 @@ function ModalAtribuir({
                       <Text style={styles.membroPapel}>{m.papel === 'tecnico' ? 'Técnico' : m.papel}</Text>
                     </View>
                     {salvandoId === m.userId ? (
-                      <ActivityIndicator size="small" color={Colors.accent} />
+                      <ActivityIndicator size="small" color={cores.accentLight} />
                     ) : atual ? (
-                      <MaterialCommunityIcons name="check-circle" size={22} color={Colors.success} />
+                      <MaterialCommunityIcons name="check-circle" size={22} color={cores.success} />
                     ) : (
-                      <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+                      <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
                     )}
                   </TouchableOpacity>
                 );
@@ -836,6 +848,7 @@ function ModalAtribuir({
 // Modal — Nova OS (de orçamento aprovado OU manual).
 // ─────────────────────────────────────────────────────────────
 function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: string) => void }) {
+  const styles = useEstilos(criarEstilos);
   const [modo, setModo] = useState<'escolha' | 'orcamento' | 'manual'>('escolha');
   const [criando, setCriando] = useState(false);
 
@@ -910,22 +923,26 @@ function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: s
 function OpcaoNova({ icon, titulo, descricao, onPress }: {
   icon: keyof typeof MaterialCommunityIcons.glyphMap; titulo: string; descricao: string; onPress: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity style={styles.opcaoCard} activeOpacity={0.85} onPress={onPress}>
       <View style={styles.opcaoIcon}>
-        <MaterialCommunityIcons name={icon} size={24} color={Colors.accentLight} />
+        <MaterialCommunityIcons name={icon} size={24} color={cores.accentLight} />
       </View>
       <View style={{ flex: 1, marginLeft: 14 }}>
         <Text style={styles.opcaoTitulo}>{titulo}</Text>
         <Text style={styles.opcaoDesc}>{descricao}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name="chevron-right" size={24} color={cores.onSurfaceMuted} />
     </TouchableOpacity>
   );
 }
 
 /** Passo "de um orçamento aprovado" — lista orçamentos aprovados/convertidos. */
 function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (orcamentoId: string) => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [selecionado, setSelecionado] = useState<string | null>(null);
@@ -992,7 +1009,7 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={styles.orcValor}>{formatarValor(o.valorTotal)}</Text>
-                {sel ? <MaterialCommunityIcons name="check-circle" size={20} color={Colors.success} style={{ marginTop: 4 }} /> : null}
+                {sel ? <MaterialCommunityIcons name="check-circle" size={20} color={cores.success} style={{ marginTop: 4 }} /> : null}
               </View>
             </TouchableOpacity>
           );
@@ -1016,6 +1033,8 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
 
 /** Passo "manual" — form mínimo (cliente + título; descrição opcional). */
 function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcial: Partial<OrdemServico>) => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [clienteNome, setClienteNome] = useState('');
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -1046,7 +1065,7 @@ function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcia
         value={descricao}
         onChangeText={setDescricao}
         placeholder="Detalhes do que precisa ser feito..."
-        placeholderTextColor={Colors.onSurfaceMuted}
+        placeholderTextColor={cores.onSurfaceMuted}
         multiline
       />
       <OlliButton
@@ -1068,10 +1087,12 @@ function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcia
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  detalheContainer: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  detalheContainer: { flex: 1, backgroundColor: c.background },
 
+  // Dentro do GradientHeader (sempre colorido, nos dois modos) — glass branco
+  // fixo, mesma convenção do próprio GradientHeader.
   newBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -1081,136 +1102,147 @@ const styles = StyleSheet.create({
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline,
     marginTop: 14, borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.base, paddingVertical: 11,
   },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipLabel: { fontSize: 12, fontWeight: '600', color: Colors.onSurfaceVariant },
-  chipLabelActive: { color: '#fff' },
+  chipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  chipLabel: { fontSize: 12, fontWeight: '600', color: c.onSurfaceVariant },
+  // Era '#fff' fixo sobre fundo chapado c.primary — vira onPrimary (contraste
+  // calculado), correto pra qualquer cor de marca escolhida pelo usuário.
+  chipLabelActive: { color: c.onPrimary },
 
   // Card da OS
   card: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outlineDark,
-    marginHorizontal: Spacing.base, marginBottom: 10, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outlineDark,
+    marginHorizontal: Spacing.base, marginBottom: 10, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  cardTitulo: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
-  cardCliente: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  // Era '#fff' fixo — o card fica sobre a superfície da tela (c.surfaceGlass,
+  // quase branco no claro), ficava ilegível; vira onSurface do tema.
+  cardTitulo: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
+  cardCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  cardMeta: { fontSize: 12, color: Colors.onSurfaceMuted, fontWeight: '600' },
+  cardMeta: { fontSize: 12, color: c.onSurfaceMuted, fontWeight: '600' },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  metaChipText: { fontSize: 11.5, color: Colors.onSurfaceVariant, fontWeight: '600' },
+  metaChipText: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '600' },
   tecnicoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
-  tecnicoText: { fontSize: 12, color: Colors.accentLight, fontWeight: '700' },
+  tecnicoText: { fontSize: 12, color: c.accentLight, fontWeight: '700' },
 
   statusBadge: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
   statusBadgeText: { fontSize: 11, fontWeight: '800' },
 
   // Detalhe
   bloco: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   blocoHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  blocoTitulo: { fontSize: 15, fontWeight: '800', color: '#fff', marginBottom: 4 },
-  blocoContador: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
+  // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
+  blocoTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: 4 },
+  blocoContador: { fontSize: 13, fontWeight: '800', color: c.accentLight },
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
-  infoLabel: { fontSize: 13, color: Colors.onSurfaceVariant, width: 72 },
-  infoValor: { flex: 1, fontSize: 14, color: '#fff', fontWeight: '700', textAlign: 'right' },
-  descricao: { fontSize: 13.5, color: Colors.onSurfaceVariant, lineHeight: 20, marginTop: 8 },
+  infoLabel: { fontSize: 13, color: c.onSurfaceVariant, width: 72 },
+  // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
+  infoValor: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '700', textAlign: 'right' },
+  descricao: { fontSize: 13.5, color: c.onSurfaceVariant, lineHeight: 20, marginTop: 8 },
 
   atribuirBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.accentContainer, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.strokeGlow, paddingVertical: 13,
+    backgroundColor: c.accentContainer, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 13,
   },
-  atribuirBtnText: { fontSize: 14.5, fontWeight: '800', color: Colors.accentLight },
+  atribuirBtnText: { fontSize: 14.5, fontWeight: '800', color: c.accentLight },
 
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   statusOpt: {
     paddingHorizontal: 14, paddingVertical: 9, borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline, minWidth: 92, alignItems: 'center',
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline, minWidth: 92, alignItems: 'center',
   },
-  statusOptText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  statusOptText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
-  vazioTexto: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19, marginTop: 6 },
+  vazioTexto: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 19, marginTop: 6 },
 
-  checkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  checkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: c.outline },
   checkTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkTexto: { flex: 1, fontSize: 14, color: '#fff' },
-  checkTextoFeito: { color: Colors.onSurfaceMuted, textDecorationLine: 'line-through' },
+  // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
+  checkTexto: { flex: 1, fontSize: 14, color: c.onSurface },
+  checkTextoFeito: { color: c.onSurfaceMuted, textDecorationLine: 'line-through' },
 
   addItemRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   addItemInput: {
-    flex: 1, backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, color: Colors.onSurface,
+    flex: 1, backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.outline, paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 14, color: c.onSurface,
   },
   addItemBtn: {
     width: 44, height: 44, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.accentContainer, borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,
   },
 
-  foto: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline },
+  foto: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline },
   fotoBtnRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   fotoBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.strokeGlow, paddingVertical: 12,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 12,
   },
-  fotoBtnText: { fontSize: 13.5, fontWeight: '800', color: Colors.accentLight },
+  fotoBtnText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
 
   obsInput: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline,
-    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.onSurface,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: c.onSurface,
     minHeight: 88, textAlignVertical: 'top', marginTop: 4,
   },
-  manualLabel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant, marginTop: 6, marginBottom: 2 },
+  manualLabel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginTop: 6, marginBottom: 2 },
 
   // Sheets / modais
+  // Scrim padrão de modal — sempre escuro, convenção universal de overlay.
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(4,10,20,0.6)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: Platform.OS === 'ios' ? 24 : 8 },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  sheetTitle: { fontSize: 19, fontWeight: '800', color: Colors.onSurface },
+  sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: Platform.OS === 'ios' ? 24 : 8 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: c.outline },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface },
 
   membroRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass,
-    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10,
   },
-  membroRowAtual: { borderColor: Colors.success, backgroundColor: Colors.successLight },
-  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  membroAvatarText: { fontSize: 18, fontWeight: '800', color: Colors.accentLight },
-  membroNome: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  membroPapel: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  membroRowAtual: { borderColor: c.success, backgroundColor: c.successLight },
+  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  membroAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
+  // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
+  membroNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  membroPapel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
   // Nova OS
   opcaoCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass,
-    borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.base, ...Shadow.sm,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass,
+    borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm,
   },
-  opcaoIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: Colors.accentContainer, alignItems: 'center', justifyContent: 'center' },
-  opcaoTitulo: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  opcaoDesc: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
+  opcaoIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
+  opcaoTitulo: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  opcaoDesc: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
 
   orcRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass,
-    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.base,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base,
   },
-  orcRowSel: { borderColor: Colors.accent, backgroundColor: Colors.accentContainer },
-  orcCliente: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  orcMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
-  orcValor: { fontSize: 15, fontWeight: '800', color: Colors.primaryLight },
+  orcRowSel: { borderColor: c.accent, backgroundColor: c.accentContainer },
+  // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
+  orcCliente: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  orcMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+  orcValor: { fontSize: 15, fontWeight: '800', color: c.primaryLight },
 
   rodapeAcao: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
-    padding: Spacing.base, backgroundColor: Colors.background,
-    borderTopWidth: 1, borderTopColor: Colors.outline,
+    padding: Spacing.base, backgroundColor: c.background,
+    borderTopWidth: 1, borderTopColor: c.outline,
   },
 });

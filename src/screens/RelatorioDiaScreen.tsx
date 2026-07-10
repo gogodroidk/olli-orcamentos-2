@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
@@ -31,6 +31,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -43,7 +45,11 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons
+        name="cloud-sync-outline"
+        size={13}
+        color={cores.accent} // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — mesmo chip do texto abaixo, accent = 8.85:1
+      />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -59,6 +65,8 @@ function diaDaSemana(dataChave: string): string {
 
 /** Card de um dia do histórico (expansível ao toque). */
 function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [aberto, setAberto] = useState(false);
   const r = row.dados as RelatorioDia;
 
@@ -73,7 +81,7 @@ function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number 
       <OlliCard onPress={toggle} style={styles.histCard}>
         <View style={styles.histHead}>
           <View style={styles.histIcon}>
-            <MaterialCommunityIcons name="calendar-blank-outline" size={18} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="calendar-blank-outline" size={18} color={cores.accentLight} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.histData}>{diaDaSemana(row.data)}, {formatDateBR(row.data)}</Text>
@@ -81,7 +89,7 @@ function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number 
               {r.semMovimentos ? 'Sem movimentos' : `${r.orcamentos.criados} orçamento${r.orcamentos.criados === 1 ? '' : 's'} · ${r.agendamentos.total} na agenda`}
             </Text>
           </View>
-          <MaterialCommunityIcons name={aberto ? 'chevron-up' : 'chevron-down'} size={22} color={Colors.onSurfaceMuted} />
+          <MaterialCommunityIcons name={aberto ? 'chevron-up' : 'chevron-down'} size={22} color={cores.onSurfaceMuted} />
         </View>
 
         {aberto && (
@@ -105,6 +113,8 @@ export default function RelatorioDiaScreen() {
 
 function RelatorioDiaConteudo() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   const [relatorio, setRelatorio] = useState<RelatorioDia | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -195,7 +205,7 @@ function RelatorioDiaConteudo() {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.accent]} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
       >
         {carregando || !relatorio ? (
           <View style={{ gap: 12 }}>
@@ -218,7 +228,7 @@ function RelatorioDiaConteudo() {
             <View style={styles.kpiRow}>
               <AnimatedEntrance index={0} style={styles.kpiFlex}>
                 <OlliCard variant="metric" style={styles.kpiCard}>
-                  <MaterialCommunityIcons name="file-document-outline" size={20} color={Colors.accent} />
+                  <MaterialCommunityIcons name="file-document-outline" size={20} color={cores.accentLight} />
                   <CountUp value={relatorio.orcamentos.criados} format="int" style={styles.kpiValue} />
                   <Text style={styles.kpiLabel}>orçamentos</Text>
                   <CountUp value={relatorio.orcamentos.criadosValor} format="currency" style={styles.kpiSub} />
@@ -227,7 +237,7 @@ function RelatorioDiaConteudo() {
 
               <AnimatedEntrance index={1} style={styles.kpiFlex}>
                 <OlliCard variant="metric" style={styles.kpiCard}>
-                  <MaterialCommunityIcons name="check-decagram-outline" size={20} color={Colors.success} />
+                  <MaterialCommunityIcons name="check-decagram-outline" size={20} color={cores.success} />
                   <CountUp value={relatorio.orcamentos.aprovados} format="int" style={styles.kpiValue} />
                   <Text style={styles.kpiLabel}>aprovados</Text>
                   <CountUp value={relatorio.orcamentos.aprovadosValor} format="currency" style={styles.kpiSub} />
@@ -238,7 +248,7 @@ function RelatorioDiaConteudo() {
             <View style={styles.kpiRow}>
               <AnimatedEntrance index={2} style={styles.kpiFlex}>
                 <OlliCard variant="metric" style={styles.kpiCard}>
-                  <MaterialCommunityIcons name="cash-check" size={20} color={Colors.warning} />
+                  <MaterialCommunityIcons name="cash-check" size={20} color={cores.warning} />
                   <CountUp value={relatorio.recibos.emitidos} format="int" style={styles.kpiValue} />
                   <Text style={styles.kpiLabel}>recibos</Text>
                   <CountUp value={relatorio.recibos.totalRecebido} format="currency" style={styles.kpiSub} />
@@ -247,7 +257,7 @@ function RelatorioDiaConteudo() {
 
               <AnimatedEntrance index={3} style={styles.kpiFlex}>
                 <OlliCard variant="metric" style={styles.kpiCard}>
-                  <MaterialCommunityIcons name="calendar-check-outline" size={20} color={Colors.avatarLilac} />
+                  <MaterialCommunityIcons name="calendar-check-outline" size={20} color={cores.avatarLilac} />
                   <CountUp value={relatorio.agendamentos.total} format="int" style={styles.kpiValue} />
                   <Text style={styles.kpiLabel}>na agenda</Text>
                   <Text style={styles.kpiSub}>{relatorio.agendamentos.porStatus.concluido} concluído{relatorio.agendamentos.porStatus.concluido === 1 ? '' : 's'}</Text>
@@ -258,7 +268,7 @@ function RelatorioDiaConteudo() {
             {relatorio.clientesNovos > 0 && (
               <AnimatedEntrance index={4}>
                 <View style={styles.clientesNovos}>
-                  <MaterialCommunityIcons name="account-plus-outline" size={18} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="account-plus-outline" size={18} color={cores.accentLight} />
                   <Text style={styles.clientesNovosText}>
                     <CountUp value={relatorio.clientesNovos} format="int" style={styles.clientesNovosNum} /> cliente{relatorio.clientesNovos === 1 ? '' : 's'} novo{relatorio.clientesNovos === 1 ? '' : 's'} hoje
                   </Text>
@@ -275,7 +285,7 @@ function RelatorioDiaConteudo() {
               >
                 <View style={styles.narrativaWrap}>
                   <View style={styles.narrativaHead}>
-                    <MaterialCommunityIcons name="text-box-outline" size={16} color={Colors.onSurfaceVariant} />
+                    <MaterialCommunityIcons name="text-box-outline" size={16} color={cores.onSurfaceVariant} />
                     <Text style={styles.narrativaTitulo}>Resumo do dia</Text>
                   </View>
                   <Text style={styles.narrativaTexto}>{relatorioParaTexto(relatorio)}</Text>
@@ -296,7 +306,7 @@ function RelatorioDiaConteudo() {
                       variant="outline"
                       size="lg"
                       fullWidth
-                      icon={<MaterialCommunityIcons name="share-variant" size={18} color={Colors.accentLight} />}
+                      icon={<MaterialCommunityIcons name="share-variant" size={18} color={cores.accentLight} />}
                       style={styles.acaoBtn}
                     />
                   </View>
@@ -334,16 +344,18 @@ function RelatorioDiaConteudo() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  // Toast/pill flutuante — convenção de "chip escuro" fixa (snackbar),
+  // independente do tema. Mantido.
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.51:1, reprova texto 4.5 (accent = 8.85:1)
   scroll: { padding: Spacing.base, paddingBottom: Spacing.xxxl, gap: 12 },
 
   vazioWrap: { minHeight: 280, justifyContent: 'center' },
@@ -351,44 +363,47 @@ const styles = StyleSheet.create({
   kpiRow: { flexDirection: 'row', gap: 10 },
   kpiFlex: { flex: 1 },
   kpiCard: { alignItems: 'flex-start', gap: 4 },
-  kpiValue: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 6 },
-  kpiLabel: { fontSize: 12, color: Colors.onSurfaceVariant, fontWeight: '700' },
-  kpiSub: { fontSize: 12.5, color: Colors.onSurfaceMuted, marginTop: 2, fontWeight: '700' },
+  // Era '#fff' fixo sobre o card (superfície da tela) — ilegível no claro.
+  kpiValue: { fontSize: 24, fontWeight: '800', color: c.onSurface, marginTop: 6 },
+  kpiLabel: { fontSize: 12, color: c.onSurfaceVariant, fontWeight: '700' },
+  kpiSub: { fontSize: 12.5, color: c.onSurfaceMuted, marginTop: 2, fontWeight: '700' },
 
   clientesNovos: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.accentContainer, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: c.accentContainer, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.strokeGlow,
     paddingVertical: 10, paddingHorizontal: Spacing.md,
   },
-  clientesNovosText: { fontSize: 13.5, color: Colors.onSurface, fontWeight: '600' },
-  clientesNovosNum: { fontSize: 13.5, color: Colors.accentLight, fontWeight: '800' },
+  clientesNovosText: { fontSize: 13.5, color: c.onSurface, fontWeight: '600' },
+  clientesNovosNum: { fontSize: 13.5, color: c.accentLight, fontWeight: '800' },
 
   narrativaWrap: { padding: Spacing.md },
   narrativaHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  narrativaTitulo: { fontSize: 12.5, fontWeight: '800', color: Colors.onSurfaceVariant, letterSpacing: 0.3 },
-  narrativaTexto: { fontSize: 15, color: Colors.onSurface, lineHeight: 22 },
+  narrativaTitulo: { fontSize: 12.5, fontWeight: '800', color: c.onSurfaceVariant, letterSpacing: 0.3 },
+  narrativaTexto: { fontSize: 15, color: c.onSurface, lineHeight: 22 },
 
   acoes: { gap: 10, marginTop: 16 },
   acaoBtn: { borderRadius: BorderRadius.lg },
 
   sectionRow: { marginTop: Spacing.lg, marginBottom: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
 
   semHistorico: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.md,
   },
-  semHistoricoText: { fontSize: 13, color: Colors.onSurfaceMuted, lineHeight: 19, textAlign: 'center' },
+  semHistoricoText: { fontSize: 13, color: c.onSurfaceMuted, lineHeight: 19, textAlign: 'center' },
 
   histCard: { padding: Spacing.md },
   histHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   histIcon: {
     width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.accentContainer,
+    backgroundColor: c.accentContainer,
   },
-  histData: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  histResumo: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 1 },
-  histBody: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline },
-  histTexto: { fontSize: 13.5, color: Colors.onSurface, lineHeight: 20 },
+  // Era '#fff' fixo sobre o card (superfície da tela) — ilegível no claro.
+  histData: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  histResumo: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 1 },
+  histBody: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline },
+  histTexto: { fontSize: 13.5, color: c.onSurface, lineHeight: 20 },
 });

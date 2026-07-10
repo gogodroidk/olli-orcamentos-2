@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { Colors, BorderRadius, Shadow, Spacing } from '../theme';
+import { BorderRadius, Spacing, useEstilos, sombrasDe, type Cores } from '../theme';
 import { OlliPressable } from './OlliPressable';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function OlliCard({ children, onPress, style, padding = Spacing.base, variant = 'default' }: Props) {
+  const styles = useEstilos(criarEstilos);
   const variantStyle =
     variant === 'glass' ? styles.glass :
     variant === 'metric' ? styles.metric :
@@ -34,25 +35,28 @@ export function OlliCard({ children, onPress, style, padding = Spacing.base, var
   return inner;
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.outline,
-    overflow: 'hidden',
-    ...Shadow.md,
-  },
-  glass: {
-    backgroundColor: Colors.surfaceGlass,
-    borderColor: Colors.strokeGlow,
-  },
-  metric: {
-    backgroundColor: Colors.surfaceElevated,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  selected: {
-    backgroundColor: Colors.surfacePressed,
-    borderColor: Colors.accent,
-  },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1,
+      borderColor: c.outline,
+      overflow: 'hidden',
+      ...sombrasDe(c).md,
+    },
+    glass: {
+      backgroundColor: c.surfaceGlass,
+      borderColor: c.strokeGlow,
+    },
+    metric: {
+      backgroundColor: c.surfaceElevated,
+      // Hairline branca fixa antes (rgba(255,255,255,0.12)) — some no claro.
+      // `outlineDark` é a mesma hairline adaptada ao modo.
+      borderColor: c.outlineDark,
+    },
+    selected: {
+      backgroundColor: c.surfacePressed,
+      borderColor: c.accent,
+    },
+  });

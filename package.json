@@ -65,13 +65,14 @@
     "start:clear": "expo start --clear",
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor",
-    "preflight": "npm run typecheck && npm run doctor",
+    "preflight": "npm run typecheck && npm run check:contraste && npm run doctor",
     "qa:web": "node scripts/qa-web.mjs",
     "preview:iphone": "node scripts/iphone-lab.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "export:web": "expo export -p web && node scripts/fix-cf-assets.mjs"
+    "export:web": "expo export -p web && node scripts/fix-cf-assets.mjs",
+    "check:contraste": "node scripts/checar-contraste.mjs"
   },
   "private": true
 }

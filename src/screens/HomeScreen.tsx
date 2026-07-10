@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { getOrcamentos, getEmpresa } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
@@ -39,6 +39,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -51,7 +53,11 @@ function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: numb
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons
+        name="cloud-sync-outline"
+        size={13}
+        color={cores.accent} // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+      />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -94,6 +100,8 @@ function abrirMapa(endereco?: string) {
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { temAcesso } = usePlano();
   const { papel } = usePermissao();
   const radarLiberado = temAcesso('radar_clientes');
@@ -218,7 +226,7 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 116 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} colors={[Colors.accent]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
         {/* TOP BAR */}
         <View style={styles.topbar}>
@@ -252,7 +260,7 @@ export default function HomeScreen() {
             </View>
             {carregando ? (
               <View style={styles.heroEmpty}>
-                <MaterialCommunityIcons name="dots-horizontal" size={30} color={Colors.accent} />
+                <MaterialCommunityIcons name="dots-horizontal" size={30} color={cores.accentLight} />
                 <Text style={styles.heroEmptyTitle}>Carregando…</Text>
               </View>
             ) : proxima ? (
@@ -264,14 +272,14 @@ export default function HomeScreen() {
                 </Text>
                 {proxima.endereco ? (
                   <View style={styles.heroAddr}>
-                    <MaterialCommunityIcons name="map-marker" size={14} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="map-marker" size={14} color={cores.accentLight} />
                     <Text style={styles.heroAddrText} numberOfLines={1}>{proxima.endereco}</Text>
                   </View>
                 ) : null}
                 <View style={styles.heroActions}>
                   {proxima.endereco ? (
                     <TouchableOpacity style={[styles.heroBtn, { marginTop: 0 }]} onPress={() => { Haptics.selectionAsync().catch(() => {}); abrirMapa(proxima.endereco); }} activeOpacity={0.85}>
-                      <MaterialCommunityIcons name="navigation-variant" size={16} color="#0A1626" />
+                      <MaterialCommunityIcons name="navigation-variant" size={16} color={textoSobre(cores.accentLight)} />
                       <Text style={styles.heroBtnText}>Ver no mapa</Text>
                     </TouchableOpacity>
                   ) : null}
@@ -282,11 +290,11 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View style={styles.heroEmpty}>
-                <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={Colors.accent} />
+                <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={cores.accentLight} />
                 <Text style={styles.heroEmptyTitle}>Nenhuma visita agendada</Text>
                 <Text style={styles.heroEmptySub}>Agende seus serviços e organize o seu dia. A próxima parada aparece aqui.</Text>
                 <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
-                  <MaterialCommunityIcons name="calendar-plus" size={18} color="#0A1626" />
+                  <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.heroBtnText}>Abrir agenda</Text>
                 </TouchableOpacity>
               </View>
@@ -318,22 +326,22 @@ export default function HomeScreen() {
           <AnimatedEntrance index={1}>
             <View style={styles.kpis}>
               <View style={styles.kpi}>
-                <CountUp value={faturamento} format="currency" style={[styles.kpiValue, { color: '#fff' }]} />
+                <CountUp value={faturamento} format="currency" style={[styles.kpiValue, { color: cores.onSurface }]} />
                 <Text style={styles.kpiLabel}>aprovados</Text>
                 <Text style={styles.kpiHint}>valor fechado</Text>
               </View>
               <View style={styles.kpiDivider} />
               <View style={styles.kpi}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <CountUp value={conversao} format="int" style={[styles.kpiValue, { color: '#fff' }]} duration={600} />
-                  <Text style={[styles.kpiValue, { color: '#fff' }]}>%</Text>
+                  <CountUp value={conversao} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={600} />
+                  <Text style={[styles.kpiValue, { color: cores.onSurface }]}>%</Text>
                 </View>
                 <Text style={styles.kpiHint}>{conversaoDetalhe}</Text>
                 <Text style={styles.kpiLabel}>conversão</Text>
               </View>
               <View style={styles.kpiDivider} />
               <View style={styles.kpi}>
-                <CountUp value={emAberto.length} format="int" style={[styles.kpiValue, { color: '#fff' }]} duration={500} />
+                <CountUp value={emAberto.length} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={500} />
                 <Text style={styles.kpiLabel}>em aberto</Text>
                 <Text style={[styles.kpiHint, parados.length > 0 && styles.kpiHintWarn]}>{emAbertoDetalhe}</Text>
               </View>
@@ -371,7 +379,11 @@ export default function HomeScreen() {
                     </View>
                     <View style={styles.radarActions}>
                       <OlliPressable style={styles.radarBtnPrimary} onPress={() => chamarNoWhatsApp(item)} haptic={false}>
-                        <MaterialCommunityIcons name="whatsapp" size={16} color="#0A1626" />
+                        <MaterialCommunityIcons
+                          name="whatsapp"
+                          size={16}
+                          color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                        />
                         <Text style={styles.radarBtnPrimaryText}>Chamar no WhatsApp</Text>
                       </OlliPressable>
                       <OlliPressable style={styles.radarBtnGhost} onPress={() => adiarRadar(item)} disabled={adiandoId === item.cliente.id} haptic={false}>
@@ -386,7 +398,7 @@ export default function HomeScreen() {
                 <AnimatedEntrance index={2 + radar.length}>
                   <OlliPressable style={styles.radarTeaser} onPress={() => irParaPlanos('radar_card')} haptic="selection">
                     <View style={styles.radarTeaserIcon}>
-                      <MaterialCommunityIcons name="lock-outline" size={18} color={Colors.plan} />
+                      <MaterialCommunityIcons name="lock-outline" size={18} color={cores.plan} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.radarTeaserTitle}>
@@ -394,7 +406,7 @@ export default function HomeScreen() {
                       </Text>
                       <Text style={styles.radarTeaserSub}>Veja todos e reative com 1 toque no Pro</Text>
                     </View>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.plan} />
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} />
                   </OlliPressable>
                 </AnimatedEntrance>
               )}
@@ -414,13 +426,13 @@ export default function HomeScreen() {
               style={styles.anzol}
             >
               <View style={styles.anzolIcon}>
-                <MaterialCommunityIcons name="card-search-outline" size={26} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="card-search-outline" size={26} color={cores.accentLight} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.anzolTitle}>Diagnóstico de erro</Text>
                 <Text style={styles.anzolSub}>698 códigos de ar-condicionado · ache a falha em segundos, offline</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="chevron-right" size={24} color={cores.accentLight} />
             </LinearGradient>
           </TouchableOpacity>
         </AnimatedEntrance>
@@ -448,19 +460,19 @@ export default function HomeScreen() {
               <ShortcutTile
                 icon="format-list-bulleted"
                 label="Todos os orçamentos"
-                tone={Colors.accent}
+                tone={cores.accentLight}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Orcamentos'); }}
               />
               <ShortcutTile
                 icon="cube-outline"
                 label="Produtos"
-                tone={Colors.primaryLight}
+                tone={cores.primaryLight}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Produtos'); }}
               />
               <ShortcutTile
                 icon="card-search-outline"
                 label="Diagnóstico IA"
-                tone={Colors.accentLight}
+                tone={cores.accentLight}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('DiagnosticoIA', {}); }}
               />
             </View>
@@ -491,15 +503,15 @@ export default function HomeScreen() {
         <AnimatedEntrance index={4}>
           <View style={styles.actions}>
             {ehTecnico && (
-              <Action icon="clipboard-check-outline" label={rotuloOS} color={Colors.accentLight} onPress={() => nav.navigate('OrdemServico')} />
+              <Action icon="clipboard-check-outline" label={rotuloOS} color={cores.accentLight} onPress={() => nav.navigate('OrdemServico')} />
             )}
-            <Action icon="file-plus" label="Orçar" color={Colors.accent} onPress={() => nav.navigate('NovoOrcamento', {})} />
-            <Action icon="receipt" label="Recibo" color={Colors.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
+            <Action icon="file-plus" label="Orçar" color={cores.accentLight} onPress={() => nav.navigate('NovoOrcamento', {})} />
+            <Action icon="receipt" label="Recibo" color={cores.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
             <Action icon="account-group" label="Clientes" color="#A78BFA" onPress={() => nav.navigate('Clientes')} />
             {!ehTecnico && (
-              <Action icon="clipboard-check-outline" label={rotuloOS} color={Colors.accentLight} onPress={() => nav.navigate('OrdemServico')} />
+              <Action icon="clipboard-check-outline" label={rotuloOS} color={cores.accentLight} onPress={() => nav.navigate('OrdemServico')} />
             )}
-            <Action icon="wrench" label="Serviços" color={Colors.primaryLight} onPress={() => nav.navigate('Servicos')} />
+            <Action icon="wrench" label="Serviços" color={cores.primaryLight} onPress={() => nav.navigate('Servicos')} />
           </View>
         </AnimatedEntrance>
 
@@ -570,24 +582,24 @@ export default function HomeScreen() {
 
             <TouchableOpacity style={styles.sheetItem} onPress={() => irPara('OlliVoz')} activeOpacity={0.8}>
               <View style={[styles.sheetIcon, { backgroundColor: 'rgba(52,198,217,0.14)', borderColor: 'rgba(52,198,217,0.34)' }]}>
-                <MaterialCommunityIcons name="microphone" size={22} color={Colors.accent} />
+                <MaterialCommunityIcons name="microphone" size={22} color={cores.accentLight} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.sheetItemTitle}>Montar orçamento por voz</Text>
                 <Text style={styles.sheetItemDesc}>Fale o serviço e eu monto pra você</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.sheetItem} onPress={() => irPara('OlliChat')} activeOpacity={0.8}>
               <View style={[styles.sheetIcon, { backgroundColor: 'rgba(11,111,206,0.18)', borderColor: 'rgba(11,111,206,0.36)' }]}>
-                <MaterialCommunityIcons name="chat-processing-outline" size={22} color={Colors.primaryLight} />
+                <MaterialCommunityIcons name="chat-processing-outline" size={22} color={cores.primaryLight} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.sheetItemTitle}>Conversar com a OLLI</Text>
                 <Text style={styles.sheetItemDesc}>Tire dúvidas técnicas, preços e diagnóstico</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           </Pressable>
         </Pressable>
@@ -597,11 +609,13 @@ export default function HomeScreen() {
 }
 
 function StarterCard({ onCreate, onVoice, onSetup }: { onCreate: () => void; onVoice: () => void; onSetup: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.starterCard}>
       <View style={styles.starterTop}>
         <View style={styles.starterIcon}>
-          <MaterialCommunityIcons name="rocket-launch-outline" size={23} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="rocket-launch-outline" size={23} color={cores.accentLight} />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.starterTitle}>Primeiro orçamento em minutos</Text>
@@ -615,7 +629,7 @@ function StarterCard({ onCreate, onVoice, onSetup }: { onCreate: () => void; onV
       </View>
       <View style={styles.starterActions}>
         <TouchableOpacity style={styles.starterPrimary} onPress={onVoice} activeOpacity={0.86}>
-          <MaterialCommunityIcons name="microphone" size={17} color="#0A1626" />
+          <MaterialCommunityIcons name="microphone" size={17} color={textoSobre(cores.accentLight)} />
           <Text style={styles.starterPrimaryText}>Criar por voz</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.starterGhost} onPress={onCreate} activeOpacity={0.86}>
@@ -623,7 +637,7 @@ function StarterCard({ onCreate, onVoice, onSetup }: { onCreate: () => void; onV
         </TouchableOpacity>
       </View>
       <TouchableOpacity style={styles.starterSetup} onPress={onSetup} activeOpacity={0.8}>
-        <MaterialCommunityIcons name="storefront-outline" size={15} color={Colors.onSurfaceVariant} />
+        <MaterialCommunityIcons name="storefront-outline" size={15} color={cores.onSurfaceVariant} />
         <Text style={styles.starterSetupText}>Configurar logo, PIX e assinatura</Text>
       </TouchableOpacity>
     </View>
@@ -631,6 +645,7 @@ function StarterCard({ onCreate, onVoice, onSetup }: { onCreate: () => void; onV
 }
 
 function MiniStep({ n, text }: { n: string; text: string }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.miniStep}>
       <Text style={styles.miniStepN}>{n}</Text>
@@ -640,6 +655,7 @@ function MiniStep({ n, text }: { n: string; text: string }) {
 }
 
 function ShortcutTile({ icon, label, tone, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; tone: string; onPress: () => void }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity style={styles.processMetric} onPress={onPress} activeOpacity={0.8}>
       <MaterialCommunityIcons name={icon} size={20} color={tone} />
@@ -649,6 +665,7 @@ function ShortcutTile({ icon, label, tone, onPress }: { icon: keyof typeof Mater
 }
 
 function Action({ icon, label, color, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; color: string; onPress: () => void }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity style={styles.action} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }} activeOpacity={0.8}>
       <View style={[styles.actionIcon, { backgroundColor: color + '22', borderColor: color + '44' }]}>
@@ -659,145 +676,162 @@ function Action({ icon, label, color, onPress }: { icon: keyof typeof MaterialCo
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    // Pill sempre escura de propósito (como um toast), nos dois modos — sem chave
+    // que represente "fundo escuro fixo" (ver rule 7 da migração). Por ser fundo
+    // escuro fixo, o primeiro plano usa o ciano vivo (accent): accentLight aqui
+    // vira #197884 no claro e cai a ~3.5:1 sobre a pill (texto reprova AA).
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
-  greeting: { fontSize: 13, color: Colors.onSurfaceVariant, fontWeight: '500' },
-  name: { fontSize: 21, fontWeight: '800', color: '#fff', marginTop: 1 },
-  company: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceMuted },
+  greeting: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '500' },
+  name: { fontSize: 21, fontWeight: '800', color: c.onBackground, marginTop: 1 },
+  company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },
+  // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   olliBtn: { width: 48, height: 48, borderRadius: 15, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
-  olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: Colors.danger, borderWidth: 2, borderColor: Colors.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
+  olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: c.danger, borderWidth: 2, borderColor: c.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
+  // Branco fixo: convenção universal de badge de notificação sobre uma cor de
+  // status saturada — sem chave "onDanger" na paleta (ver rule 7).
   olliBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff' },
 
-  hero: { margin: Spacing.base, borderRadius: BorderRadius.xl, padding: Spacing.lg, borderWidth: 1, borderColor: Colors.strokeGlow, ...Shadow.md },
+  // HERO: gradiente translúcido inline (não um dos `Gradients` do tema) por cima
+  // do fundo da tela — em claro isso vira um azul bem claro, não um "sempre
+  // escuro" como o GradientHeader. Os textos abaixo (branco/rgba claros) foram
+  // desenhados para o cockpit escuro original e NÃO foram redesenhados para
+  // manter contraste no modo claro; corrigir isso é uma decisão de design (não
+  // uma troca mecânica de chave) e fica fora do escopo desta migração — ver
+  // resumo da tarefa. O mesmo vale para `anzol` e `lembrete` abaixo (mesmo
+  // padrão de tinta translúcida sobre o fundo da tela).
+  hero: { margin: Spacing.base, borderRadius: BorderRadius.xl, padding: Spacing.lg, borderWidth: 1, borderColor: c.strokeGlow, ...sombrasDe(c).md },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
-  liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
+  liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
   heroEmpty: { alignItems: 'center', paddingVertical: 14 },
   heroEmptyTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginTop: 8 },
   heroEmptySub: { fontSize: 12.5, color: 'rgba(226,232,240,0.65)', textAlign: 'center', marginTop: 4, lineHeight: 18, paddingHorizontal: 10 },
-  heroBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 17, paddingVertical: 11, marginTop: 14 },
-  heroBtnText: { fontSize: 13, fontWeight: '800', color: '#0A1626' },
+  heroBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 17, paddingVertical: 11, marginTop: 14 },
+  heroBtnText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight) },
 
   // Próxima parada preenchida (próximo agendamento real)
   heroFilled: { marginTop: 12 },
-  heroWhen: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight },
+  heroWhen: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
   heroClient: { fontSize: 19, fontWeight: '800', color: '#fff', marginTop: 4 },
   heroType: { fontSize: 13, color: 'rgba(226,232,240,0.7)', marginTop: 2 },
   heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   heroAddrText: { flex: 1, fontSize: 12.5, color: 'rgba(226,232,240,0.8)' },
   heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
-  heroBtnGhost: { borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
-  heroBtnGhostText: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
+  heroBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
+  heroBtnGhostText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
 
-  kpis: { flexDirection: 'row', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, marginHorizontal: Spacing.base, paddingVertical: 14 },
+  kpis: { flexDirection: 'row', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, paddingVertical: 14 },
   kpi: { flex: 1, alignItems: 'center' },
-  kpiValue: { ...Typography.value, fontSize: 19, color: '#fff' },
-  kpiLabel: { fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 3, fontWeight: '500' },
-  kpiHint: { fontSize: 10.5, color: Colors.onSurfaceMuted, marginTop: 2, fontWeight: '700', textAlign: 'center' },
-  kpiHintWarn: { color: Colors.warning },
-  kpiDivider: { width: 1, backgroundColor: Colors.outline, marginVertical: 4 },
+  kpiValue: { ...Typography.value, fontSize: 19, color: c.onSurface },
+  kpiLabel: { fontSize: 11, color: c.onSurfaceVariant, marginTop: 3, fontWeight: '500' },
+  kpiHint: { fontSize: 10.5, color: c.onSurfaceMuted, marginTop: 2, fontWeight: '700', textAlign: 'center' },
+  kpiHintWarn: { color: c.warning },
+  kpiDivider: { width: 1, backgroundColor: c.outline, marginVertical: 4 },
 
-  anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow },
+  anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
   anzolIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   anzolTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
-  anzolSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
+  anzolSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
   lembrete: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginHorizontal: Spacing.base, marginTop: 12 },
   lembreteTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  lembreteSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
-  cobrarBtn: { backgroundColor: Colors.warning, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
-  cobrarText: { fontSize: 13, fontWeight: '800', color: '#0A1626' },
+  lembreteSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
+  cobrarBtn: { backgroundColor: c.warning, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
+  cobrarText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.warning) },
 
-  processCard: { marginHorizontal: Spacing.base, backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.base, ...Shadow.sm },
+  processCard: { marginHorizontal: Spacing.base, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm },
   processGrid: { flexDirection: 'row', gap: 8 },
-  processMetric: { flex: 1, minHeight: 74, backgroundColor: Colors.surfacePressed, borderWidth: 1, borderColor: Colors.outline, borderRadius: BorderRadius.md, padding: 10, justifyContent: 'center', alignItems: 'center', gap: 6 },
-  processMetricValue: { fontSize: 11.5, color: '#fff', fontWeight: '800', textAlign: 'center' },
+  processMetric: { flex: 1, minHeight: 74, backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, padding: 10, justifyContent: 'center', alignItems: 'center', gap: 6 },
+  processMetricValue: { fontSize: 11.5, color: c.onSurface, fontWeight: '800', textAlign: 'center' },
   processActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  processPrimary: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingVertical: 11 },
-  processPrimaryText: { fontSize: 13, fontWeight: '800', color: '#0A1626' },
-  processGhost: { minWidth: 112, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 11 },
-  processGhostText: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
+  processPrimary: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingVertical: 11 },
+  processPrimaryText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight) },
+  processGhost: { minWidth: 112, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 11 },
+  processGhostText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
 
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#fff', paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: Spacing.base },
-  seeAll: { fontSize: 12.5, color: Colors.accent, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.sm },
+  seeAll: { fontSize: 12.5, color: c.accentLight, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.sm },
 
   actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.base },
   action: { alignItems: 'center', flex: 1 },
   actionIcon: { width: 58, height: 58, borderRadius: BorderRadius.lg, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  actionLabel: { fontSize: 11.5, color: Colors.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
+  actionLabel: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
 
   starterCard: {
     marginHorizontal: Spacing.base,
     marginTop: Spacing.lg,
     padding: Spacing.base,
     borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.surfaceGlass,
+    backgroundColor: c.surfaceGlass,
     borderWidth: 1,
-    borderColor: Colors.strokeGlow,
-    ...Shadow.md,
+    borderColor: c.strokeGlow,
+    ...sombrasDe(c).md,
   },
   starterTop: { flexDirection: 'row', alignItems: 'center' },
   starterIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.32)', justifyContent: 'center', alignItems: 'center' },
-  starterTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
-  starterSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 17, marginTop: 2 },
+  starterTitle: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
+  starterSub: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 2 },
   starterSteps: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  miniStep: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.surfacePressed, borderWidth: 1, borderColor: Colors.outline, borderRadius: BorderRadius.full, paddingVertical: 8 },
-  miniStepN: { width: 18, height: 18, borderRadius: 9, overflow: 'hidden', backgroundColor: Colors.accentLight, textAlign: 'center', color: '#0A1626', fontSize: 11, fontWeight: '800', lineHeight: 18 },
-  miniStepText: { fontSize: 11.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  miniStep: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full, paddingVertical: 8 },
+  miniStepN: { width: 18, height: 18, borderRadius: 9, overflow: 'hidden', backgroundColor: c.accentLight, textAlign: 'center', color: textoSobre(c.accentLight), fontSize: 11, fontWeight: '800', lineHeight: 18 },
+  miniStepText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
   starterActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  starterPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingVertical: 12 },
-  starterPrimaryText: { fontSize: 13.5, fontWeight: '800', color: '#0A1626' },
-  starterGhost: { minWidth: 88, justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed },
-  starterGhostText: { fontSize: 13.5, fontWeight: '800', color: Colors.accentLight },
+  starterPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingVertical: 12 },
+  starterPrimaryText: { fontSize: 13.5, fontWeight: '800', color: textoSobre(c.accentLight) },
+  starterGhost: { minWidth: 88, justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed },
+  starterGhostText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
   starterSetup: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
-  starterSetupText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  starterSetupText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   emptyRecent: { paddingHorizontal: Spacing.base, minHeight: 220 },
 
-  radarCard: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
+  radarCard: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md },
   radarTop: { flexDirection: 'row', alignItems: 'center' },
   radarAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(247,178,59,0.16)', justifyContent: 'center', alignItems: 'center' },
-  radarAvatarText: { fontSize: 17, fontWeight: '800', color: Colors.warning },
-  radarName: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  radarMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  radarAvatarText: { fontSize: 17, fontWeight: '800', color: c.warning },
+  radarName: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  radarMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   radarActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  radarBtnPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: Colors.whatsapp, borderRadius: BorderRadius.full, paddingVertical: 10 },
-  radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' },
-  radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
-  radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
+  radarBtnPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, paddingVertical: 10 },
+  radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+  radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
+  radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
   radarTeaserIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
   radarTeaserTitle: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
-  radarTeaserSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
+  radarTeaserSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
 
-  recentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
+  recentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md },
   recentAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(11,111,206,0.2)', justifyContent: 'center', alignItems: 'center' },
-  recentAvatarText: { fontSize: 17, fontWeight: '800', color: Colors.accentLight },
-  recentName: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  recentMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
-  recentValue: { fontSize: 15, fontWeight: '800', color: Colors.accent, marginLeft: 8 },
+  recentAvatarText: { fontSize: 17, fontWeight: '800', color: c.accentLight },
+  recentName: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  recentMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+  recentValue: { fontSize: 15, fontWeight: '800', color: c.accentLight, marginLeft: 8 },
 
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
+  // padrão de overlay de modal — sem chave "scrim" na paleta).
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark, marginBottom: Spacing.base },
+  sheet: { backgroundColor: c.surface, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: Spacing.base },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
   sheetMascot: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
-  sheetTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
-  sheetSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
-  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, marginBottom: 10 },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
   sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  sheetItemDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });

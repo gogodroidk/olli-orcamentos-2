@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Orcamento, FormaPagamento, Empresa } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
@@ -30,10 +30,12 @@ const PAYMENT_OPTIONS: Array<{ key: keyof FormaPagamento; label: string; icon: k
 ];
 
 function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; children: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.sectionTitleRow}>
       <View style={styles.sectionIconBg}>
-        <MaterialCommunityIcons name={icon} size={16} color={Colors.primary} />
+        <MaterialCommunityIcons name={icon} size={16} color={cores.primary} />
       </View>
       <Text style={styles.sectionTitle}>{children}</Text>
     </View>
@@ -41,6 +43,9 @@ function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunity
 }
 
 export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+
   // Pré-preenche a chave PIX do orçamento com a chave PIX cadastrada em "Meu
   // Negócio" quando o campo ainda estiver vazio — evita redigitar em todo
   // orçamento novo, mas nunca sobrescreve um valor que o usuário já digitou.
@@ -136,8 +141,8 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
             const on = orc.formasPagamento[opt.key];
             return (
               <TouchableOpacity key={opt.key} style={[styles.paymentChip, on && styles.paymentChipActive]} onPress={() => togglePagamento(opt.key)} activeOpacity={0.8}>
-                <MaterialCommunityIcons name={opt.icon} size={18} color={on ? '#fff' : Colors.onSurfaceVariant} />
-                <Text style={[styles.paymentLabel, on && { color: '#fff' }]}>{opt.label}</Text>
+                <MaterialCommunityIcons name={opt.icon} size={18} color={on ? cores.onPrimary : cores.onSurfaceVariant} />
+                <Text style={[styles.paymentLabel, on && { color: cores.onPrimary }]}>{opt.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -171,7 +176,7 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
         </View>
         {orc.sinalValor ? (
           <View style={styles.sinalInfo}>
-            <MaterialCommunityIcons name="information" size={15} color={Colors.primary} />
+            <MaterialCommunityIcons name="information" size={15} color={cores.primary} />
             <Text style={styles.sinalInfoText}>Sinal {formatCurrency(orc.sinalValor)} · Restante {formatCurrency(restante)}</Text>
           </View>
         ) : null}
@@ -205,7 +210,7 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel="Remover foto"
                 >
-                  <MaterialCommunityIcons name="close-circle" size={22} color={Colors.danger} />
+                  <MaterialCommunityIcons name="close-circle" size={22} color={cores.danger} />
                 </TouchableOpacity>
               </View>
             ))}
@@ -220,7 +225,7 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
             onPress={handleTirarFoto}
             disabled={limiteAtingido || processandoFoto !== null}
             loading={processandoFoto === 'camera'}
-            icon={processandoFoto === 'camera' ? undefined : <MaterialCommunityIcons name="camera" size={16} color={Colors.accentLight} />}
+            icon={processandoFoto === 'camera' ? undefined : <MaterialCommunityIcons name="camera" size={16} color={cores.accentLight} />}
             style={styles.fotoBotao}
           />
           <OlliButton
@@ -230,7 +235,7 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
             onPress={handleEscolherGaleria}
             disabled={limiteAtingido || processandoFoto !== null}
             loading={processandoFoto === 'galeria'}
-            icon={processandoFoto === 'galeria' ? undefined : <MaterialCommunityIcons name="image-multiple-outline" size={16} color={Colors.accentLight} />}
+            icon={processandoFoto === 'galeria' ? undefined : <MaterialCommunityIcons name="image-multiple-outline" size={16} color={cores.accentLight} />}
             style={styles.fotoBotao}
           />
         </View>
@@ -245,30 +250,30 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  card: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, ...Shadow.sm },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, ...sombrasDe(c).sm },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.base },
-  sectionIconBg: { width: 30, height: 30, borderRadius: 8, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  sectionIconBg: { width: 30, height: 30, borderRadius: 8, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
   paymentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  paymentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surface },
-  paymentChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  paymentLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  paymentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surface },
+  paymentChipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  paymentLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
-  sinalInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.md, padding: 10, marginTop: 4 },
-  sinalInfoText: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
+  sinalInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.primaryContainer, borderRadius: BorderRadius.md, padding: 10, marginTop: 4 },
+  sinalInfoText: { fontSize: 13, color: c.primary, fontWeight: '700' },
   sinalDataRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  hojeLink: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  hojeLink: { fontSize: 12, fontWeight: '700', color: c.primary },
 
-  fotosHint: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: -6, marginBottom: 14, lineHeight: 17 },
+  fotosHint: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: -6, marginBottom: 14, lineHeight: 17 },
   fotosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
   fotoThumbWrap: { position: 'relative' },
-  fotoThumb: { width: 78, height: 78, borderRadius: BorderRadius.md, backgroundColor: Colors.surfaceVariant },
-  fotoRemoveBtn: { position: 'absolute', top: -8, right: -8, backgroundColor: Colors.surface, borderRadius: 11 },
+  fotoThumb: { width: 78, height: 78, borderRadius: BorderRadius.md, backgroundColor: c.surfaceVariant },
+  fotoRemoveBtn: { position: 'absolute', top: -8, right: -8, backgroundColor: c.surface, borderRadius: 11 },
   fotosBotoes: { flexDirection: 'row', gap: 10 },
   fotoBotao: { flex: 1 },
-  fotosContagem: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 10, textAlign: 'center' },
-  fotosContagemCheia: { color: Colors.warning, fontWeight: '700' },
+  fotosContagem: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 10, textAlign: 'center' },
+  fotosContagemCheia: { color: c.warning, fontWeight: '700' },
 });

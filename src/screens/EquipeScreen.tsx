@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -28,13 +28,19 @@ import {
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-/** Cor do "chip" do papel — dá hierarquia visual (owner destaca). */
-const COR_PAPEL: Record<Papel, string> = {
-  owner: Colors.accentLight,
-  admin: Colors.primaryLight,
-  gestor: '#A78BFA',
-  tecnico: Colors.onSurfaceVariant,
-};
+/**
+ * Cor do "chip" do papel — dá hierarquia visual (owner destaca).
+ * Função (não Record de módulo): as cores vêm da paleta atual — um objeto fixo
+ * congelaria as cores no import, como o resto desta migração evita.
+ */
+function corPapel(c: Cores): Record<Papel, string> {
+  return {
+    owner: c.accentLight,
+    admin: c.primaryLight,
+    gestor: '#A78BFA',
+    tecnico: c.onSurfaceVariant,
+  };
+}
 
 /**
  * EquipeScreen — gestão da equipe da organização (Onda 2).
@@ -47,6 +53,8 @@ const COR_PAPEL: Record<Papel, string> = {
 export default function EquipeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { org, tipo, carregando: carregandoConta } = useTipoConta();
   const { pode } = usePermissao();
 
@@ -108,7 +116,7 @@ export default function EquipeScreen() {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top + 40 }]}>
         <View style={styles.emptyIcon}>
-          <MaterialCommunityIcons name="account-group-outline" size={40} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="account-group-outline" size={40} color={cores.accentLight} />
         </View>
         <Text style={styles.emptyTitle}>Equipe</Text>
         <Text style={styles.emptyText}>
@@ -140,7 +148,7 @@ export default function EquipeScreen() {
         <AnimatedEntrance index={0}>
           <View style={styles.orgCard}>
             <View style={styles.orgAvatar}>
-              <MaterialCommunityIcons name="office-building-outline" size={22} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="office-building-outline" size={22} color={cores.accentLight} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.orgNome} numberOfLines={1}>{org.nome}</Text>
@@ -158,7 +166,7 @@ export default function EquipeScreen() {
               activeOpacity={0.85}
               onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowConvite(true); }}
             >
-              <MaterialCommunityIcons name="account-plus-outline" size={20} color="#0A1626" />
+              <MaterialCommunityIcons name="account-plus-outline" size={20} color={textoSobre(cores.accentLight)} />
               <Text style={styles.convidarBtnText}>Convidar para a equipe</Text>
             </TouchableOpacity>
           </AnimatedEntrance>
@@ -219,6 +227,9 @@ function MembroRow({
   alterando: boolean;
   onToggle: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const CorPapel = corPapel(cores);
   const nome = membro.nome || membro.email || 'Membro da equipe';
   const inicial = nome.charAt(0).toUpperCase();
   const ehOwner = membro.papel === 'owner';
@@ -230,8 +241,8 @@ function MembroRow({
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={styles.membroNome} numberOfLines={1}>{nome}</Text>
         <View style={styles.membroMetaRow}>
-          <View style={[styles.papelChip, { borderColor: COR_PAPEL[membro.papel] + '55' }]}>
-            <Text style={[styles.papelChipText, { color: COR_PAPEL[membro.papel] }]}>
+          <View style={[styles.papelChip, { borderColor: CorPapel[membro.papel] + '55' }]}>
+            <Text style={[styles.papelChipText, { color: CorPapel[membro.papel] }]}>
               {PAPEL_LABEL[membro.papel]}
             </Text>
           </View>
@@ -244,17 +255,17 @@ function MembroRow({
       {/* O dono nunca é desativável por aqui; para os demais, só quem gerencia. */}
       {podeGerenciar && !ehOwner ? (
         alterando ? (
-          <ActivityIndicator size="small" color={Colors.accent} style={{ marginLeft: 8 }} />
+          <ActivityIndicator size="small" color={cores.accentLight} style={{ marginLeft: 8 }} />
         ) : (
           <Switch
             value={membro.ativo}
             onValueChange={onToggle}
-            trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
-            thumbColor={membro.ativo ? Colors.primary : '#fff'}
+            trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+            thumbColor={membro.ativo ? cores.primary : '#fff'}
           />
         )
       ) : ehOwner ? (
-        <MaterialCommunityIcons name="crown-outline" size={20} color={Colors.accentLight} style={{ marginLeft: 8 }} />
+        <MaterialCommunityIcons name="crown-outline" size={20} color={cores.accentLight} style={{ marginLeft: 8 }} />
       ) : null}
     </View>
   );
@@ -262,6 +273,8 @@ function MembroRow({
 
 // ─── modal de convite ────────────────────────────────────────
 function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [papel, setPapel] = useState<Exclude<Papel, 'owner'>>('tecnico');
   const [email, setEmail] = useState('');
   const [gerando, setGerando] = useState(false);
@@ -321,7 +334,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{resultado ? 'Convite pronto' : 'Convidar para a equipe'}</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
 
@@ -343,7 +356,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
                           {sel ? <View style={styles.papelRadioDot} /> : null}
                         </View>
                         <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text style={[styles.papelOpcaoTitulo, sel && { color: Colors.accentLight }]}>
+                          <Text style={[styles.papelOpcaoTitulo, sel && { color: cores.accentLight }]}>
                             {PAPEL_LABEL[p]}
                           </Text>
                           <Text style={styles.papelOpcaoDesc}>{PAPEL_DESCRICAO[p]}</Text>
@@ -358,7 +371,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
                   value={email}
                   onChangeText={setEmail}
                   placeholder="para lembrar quem você convidou"
-                  placeholderTextColor={Colors.onSurfaceMuted}
+                  placeholderTextColor={cores.onSurfaceMuted}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   style={styles.input}
@@ -381,7 +394,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
             ) : (
               <>
                 <View style={styles.sucessoIcon}>
-                  <MaterialCommunityIcons name="check-circle-outline" size={40} color={Colors.success} />
+                  <MaterialCommunityIcons name="check-circle-outline" size={40} color={cores.success} />
                 </View>
                 <Text style={styles.sucessoTitulo}>Link do convite gerado</Text>
                 <Text style={styles.sucessoSub}>
@@ -407,7 +420,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
                   size="lg"
                   fullWidth
                   onPress={compartilhar}
-                  icon={<MaterialCommunityIcons name="share-variant-outline" size={20} color={Colors.primary} />}
+                  icon={<MaterialCommunityIcons name="share-variant-outline" size={20} color={cores.primary} />}
                   style={{ marginTop: 10 }}
                 />
                 <OlliButton
@@ -429,10 +442,12 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
 
 // ─── cabeçalho ───────────────────────────────────────────────
 function Cabecalho({ onVoltar }: { onVoltar: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.headRow}>
       <TouchableOpacity onPress={onVoltar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Voltar">
-        <MaterialCommunityIcons name="arrow-left" size={24} color={Colors.onSurface} />
+        <MaterialCommunityIcons name="arrow-left" size={24} color={cores.onSurface} />
       </TouchableOpacity>
       <Text style={styles.screenTitle}>Equipe</Text>
       <View style={{ width: 24 }} />
@@ -440,65 +455,69 @@ function Cabecalho({ onVoltar }: { onVoltar: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
 
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
-  screenTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: 0 },
+  screenTitle: { fontSize: 22, fontWeight: '800', color: c.onBackground, letterSpacing: 0 },
 
-  emptyIcon: { width: 76, height: 76, borderRadius: 24, backgroundColor: Colors.accentContainer, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: Spacing.lg },
-  emptyText: { fontSize: 14, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
+  emptyIcon: { width: 76, height: 76, borderRadius: 24, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 22, fontWeight: '800', color: c.onBackground, marginTop: Spacing.lg },
+  emptyText: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
 
-  orgCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...Shadow.sm },
-  orgAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: Colors.accentContainer, justifyContent: 'center', alignItems: 'center' },
-  orgNome: { fontSize: 17, fontWeight: '800', color: '#fff' },
-  orgMeta: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  orgCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...sombrasDe(c).sm },
+  orgAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  orgNome: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  orgMeta: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
 
-  convidarBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.lg, paddingVertical: 14, marginHorizontal: Spacing.base, marginTop: Spacing.base },
-  convidarBtnText: { fontSize: 15, fontWeight: '800', color: '#0A1626' },
+  convidarBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.accentLight, borderRadius: BorderRadius.lg, paddingVertical: 14, marginHorizontal: Spacing.base, marginTop: Spacing.base },
+  convidarBtnText: { fontSize: 15, fontWeight: '800', color: textoSobre(c.accentLight) },
 
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#fff', paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
 
-  card: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, padding: Spacing.base, marginHorizontal: Spacing.base, borderWidth: 1, borderColor: Colors.outlineDark, ...Shadow.sm },
-  emptyListText: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 21 },
+  card: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, padding: Spacing.base, marginHorizontal: Spacing.base, borderWidth: 1, borderColor: c.outlineDark, ...sombrasDe(c).sm },
+  emptyListText: { fontSize: 14, color: c.onSurfaceVariant, lineHeight: 21 },
 
-  listCard: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, marginHorizontal: Spacing.base, paddingHorizontal: Spacing.base, ...Shadow.sm },
+  listCard: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, paddingHorizontal: Spacing.base, ...sombrasDe(c).sm },
   membroRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
-  membroDivider: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  membroDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
   membroInativo: { opacity: 0.55 },
-  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  membroAvatarText: { fontSize: 18, fontWeight: '800', color: Colors.accentLight },
-  membroNome: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  membroAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
+  membroNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   membroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   papelChip: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 2 },
   papelChipText: { fontSize: 11, fontWeight: '800' },
-  inativoTag: { fontSize: 11, fontWeight: '700', color: Colors.warning },
-  membroEmail: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 3 },
+  inativoTag: { fontSize: 11, fontWeight: '700', color: c.warning },
+  membroEmail: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 3 },
 
-  rodapeHint: { fontSize: 12.5, color: Colors.onSurfaceMuted, lineHeight: 18, paddingHorizontal: Spacing.base, marginTop: Spacing.lg },
+  rodapeHint: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, paddingHorizontal: Spacing.base, marginTop: Spacing.lg },
 
   // modal
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
+  // padrão de overlay de modal — sem chave "scrim" na paleta).
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(4,10,20,0.6)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%', paddingBottom: Platform.OS === 'ios' ? 24 : 8 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalTitle: { fontSize: 19, fontWeight: '800', color: Colors.onSurface },
-  modalLabel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 8, letterSpacing: 0.2 },
-  modalHint: { fontSize: 12.5, color: Colors.onSurfaceMuted, lineHeight: 18, marginTop: 8 },
+  modalSheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%', paddingBottom: Platform.OS === 'ios' ? 24 : 8 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface },
+  modalLabel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 8, letterSpacing: 0.2 },
+  modalHint: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, marginTop: 8 },
 
-  papelOpcao: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md },
-  papelOpcaoSel: { borderColor: Colors.accent, backgroundColor: Colors.accentContainer },
-  papelRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: Colors.accent, alignItems: 'center', justifyContent: 'center' },
-  papelRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.accent },
-  papelOpcaoTitulo: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  papelOpcaoDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 17 },
+  papelOpcao: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md },
+  papelOpcaoSel: { borderColor: c.accent, backgroundColor: c.accentContainer },
+  papelRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: c.accent, alignItems: 'center', justifyContent: 'center' },
+  papelRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.accent },
+  papelOpcaoTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  papelOpcaoDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 17 },
 
-  input: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: Colors.onSurface },
+  input: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: c.onSurface },
 
+  // Tom fixo de sucesso do handoff cockpit; próximo de `successLight` mas alfa/hex
+  // não batem exatamente — deixado como está (ver rule 7 da migração).
   sucessoIcon: { alignSelf: 'center', width: 72, height: 72, borderRadius: 24, backgroundColor: 'rgba(43,215,135,0.14)', alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm },
-  sucessoTitulo: { fontSize: 19, fontWeight: '800', color: '#fff', textAlign: 'center', marginTop: Spacing.base },
-  sucessoSub: { fontSize: 14, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: 6, paddingHorizontal: 6 },
-  linkBox: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: Colors.strokeGlow, padding: 14, marginTop: Spacing.base },
-  linkTexto: { fontSize: 13, color: Colors.accentLight, fontWeight: '600' },
+  sucessoTitulo: { fontSize: 19, fontWeight: '800', color: c.onSurface, textAlign: 'center', marginTop: Spacing.base },
+  sucessoSub: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: 6, paddingHorizontal: 6 },
+  linkBox: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: c.strokeGlow, padding: 14, marginTop: Spacing.base },
+  linkTexto: { fontSize: 13, color: c.accentLight, fontWeight: '600' },
 });

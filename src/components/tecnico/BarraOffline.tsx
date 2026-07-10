@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, StyleSheet, Animated, Platform, AppState } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing } from '../../theme';
+import { Spacing, useCores, comAlfa } from '../../theme';
 import { Motion, useReducedMotion } from '../../theme/motion';
 import { SUPABASE_URL } from '../../config';
 
@@ -93,6 +93,7 @@ type Fase = 'offline' | 'sincronizando' | 'tudo_salvo';
 export function BarraOffline() {
   const [online, setOnline] = useState(true);
   const [pendCount, setPendCount] = useState(0);
+  const cores = useCores();
   const reduzirMovimento = useReducedMotion();
   const opacity = useRef(new Animated.Value(1)).current;
 
@@ -159,20 +160,20 @@ export function BarraOffline() {
         pendCount > 0
           ? `Sem internet · ${pendCount} alteração${plural} salva${plural} no aparelho`
           : 'Sem internet · seu trabalho está salvo no aparelho',
-      cor: Colors.warning,
-      bg: 'rgba(247,178,59,0.14)',
+      cor: cores.warning,
+      bg: comAlfa(cores.warning, 0.14),
     },
     sincronizando: {
       icon: 'cloud-sync-outline',
       texto: `Sincronizando · ${pendCount} pendente${plural}`,
-      cor: Colors.accentLight,
-      bg: Colors.accentContainer,
+      cor: cores.accentLight,
+      bg: cores.accentContainer,
     },
     tudo_salvo: {
       icon: 'cloud-check-outline',
       texto: 'Tudo salvo na nuvem',
-      cor: Colors.success,
-      bg: Colors.successLight,
+      cor: cores.success,
+      bg: cores.successLight,
     },
   };
   const atual = CONFIG[fase];

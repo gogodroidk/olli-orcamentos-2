@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -82,6 +82,11 @@ export default function MeuNegocioScreen() {
 
 function MeuNegocioConteudo() {
   const nav = useNavigation<any>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  // Ink de contraste calculado para texto/ícone sobre `accentLight` (chip/botão
+  // ativo) — substitui o '#0A1626' fixo, que só era correto para o ciano padrão.
+  const textoSobreAccent = textoSobre(cores.accentLight);
     // Evita re-extrair a paleta a cada focus (closure de coresSugeridas fica stale).
   const extraiuCoresRef = React.useRef(false);
 const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -183,7 +188,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     setShowDep(false); setNewDep({ estrelas: 5 }); load();
   }
 
-  if (!empresa) return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+  if (!empresa) return <View style={{ flex: 1, backgroundColor: cores.background }} />;
 
   return (
     <View style={styles.container}>
@@ -199,7 +204,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             <Text style={styles.backupTitle}>Conta e Backup na nuvem</Text>
             <Text style={styles.backupSubtitle}>Proteja seus dados contra perda do celular</Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.primary} />
+          <MaterialCommunityIcons name="chevron-right" size={24} color={cores.primary} />
         </TouchableOpacity>
 
         {/* LOGO + ASSINATURA */}
@@ -209,7 +214,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             <View style={styles.brandItem}>
               <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} activeOpacity={0.8}>
                 {empresa.logoUri ? <Image source={{ uri: empresa.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
-                  <><MaterialCommunityIcons name="image-plus" size={28} color={Colors.primary} /><Text style={styles.imageHint}>Logo</Text></>
+                  <><MaterialCommunityIcons name="image-plus" size={28} color={cores.primary} /><Text style={styles.imageHint}>Logo</Text></>
                 )}
               </TouchableOpacity>
               <Text style={styles.brandLabel}>Logotipo</Text>
@@ -217,7 +222,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             <View style={styles.brandItem}>
               <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} activeOpacity={0.8}>
                 {empresa.assinaturaUri ? <Image source={{ uri: empresa.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
-                  <><MaterialCommunityIcons name="draw" size={28} color={Colors.primary} /><Text style={styles.imageHint}>Assinatura</Text></>
+                  <><MaterialCommunityIcons name="draw" size={28} color={cores.primary} /><Text style={styles.imageHint}>Assinatura</Text></>
                 )}
               </TouchableOpacity>
               <Text style={styles.brandLabel}>Assinatura</Text>
@@ -256,7 +261,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
                       <MaterialCommunityIcons
                         name="auto-fix"
                         size={12}
-                        color={Colors.onSurfaceMuted}
+                        color={cores.onSurfaceMuted}
                         style={styles.autoFixBadge}
                       />
                     </TouchableOpacity>
@@ -305,7 +310,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
               const active = empresa.segmento === s.id;
               return (
                 <TouchableOpacity key={s.id} style={[styles.segChip, active && styles.segChipActive]} onPress={() => chooseSegmento(s.id)} activeOpacity={0.85}>
-                  <MaterialCommunityIcons name={s.icon as any} size={16} color={active ? '#0A1626' : Colors.onSurfaceVariant} />
+                  <MaterialCommunityIcons name={s.icon as any} size={16} color={active ? textoSobreAccent : cores.onSurfaceVariant} />
                   <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{s.label}</Text>
                 </TouchableOpacity>
               );
@@ -395,7 +400,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           <View style={styles.depHeader}>
             <Text style={styles.cardTitle}>Depoimentos</Text>
             <TouchableOpacity style={styles.addDep} onPress={() => setShowDep(true)}>
-              <MaterialCommunityIcons name="plus" size={16} color={Colors.primary} />
+              <MaterialCommunityIcons name="plus" size={16} color={cores.primary} />
               <Text style={styles.addDepText}>Adicionar</Text>
             </TouchableOpacity>
           </View>
@@ -409,7 +414,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
                 {d.texto ? <Text style={styles.depText}>{d.texto}</Text> : null}
               </View>
               <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir depoimento de "${d.nomeCliente}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { await deleteDepoimento(d.id); load(); } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir depoimento de ${d.nomeCliente}`}>
-                <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
               </TouchableOpacity>
             </View>
           ))}
@@ -438,7 +443,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Novo Depoimento</Text>
             <TouchableOpacity onPress={() => { setShowDep(false); setNewDep({ estrelas: 5 }); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
@@ -468,51 +473,56 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  backupCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.primary + '40' },
-  backupIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-  backupTitle: { fontSize: 15, fontWeight: '800', color: Colors.primaryContainerText },
-  backupSubtitle: { fontSize: 12, color: Colors.primary, marginTop: 2 },
-  card: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, ...Shadow.sm },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginBottom: Spacing.base },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  backupCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primaryContainer, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.primary + '40' },
+  backupIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center' },
+  backupTitle: { fontSize: 15, fontWeight: '800', color: c.primaryContainerText },
+  backupSubtitle: { fontSize: 12, color: c.primary, marginTop: 2 },
+  card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, ...sombrasDe(c).sm },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginBottom: Spacing.base },
   brandRow: { flexDirection: 'row', gap: 16 },
   brandItem: { alignItems: 'center' },
-  imageBox: { width: 120, height: 90, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: Colors.primaryContainer + '40' },
+  imageBox: { width: 120, height: 90, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: c.primaryContainer + '40' },
   imageFull: { width: '100%', height: '100%' },
-  imageHint: { fontSize: 11, color: Colors.primary, fontWeight: '600', marginTop: 2 },
-  brandLabel: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
+  imageHint: { fontSize: 11, color: c.primary, fontWeight: '600', marginTop: 2 },
+  brandLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
   rowFields: { flexDirection: 'row' },
-  segLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 2 },
-  segHint: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginBottom: 10 },
+  segLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 2 },
+  segHint: { fontSize: 11.5, color: c.onSurfaceMuted, marginBottom: 10 },
   segRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
-  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },
-  segChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
-  segChipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
-  segChipTextActive: { color: '#0A1626' },
+  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
+  segChipActive: { backgroundColor: c.accentLight, borderColor: c.accentLight },
+  segChipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
+  // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight
+  // (ver `textoSobreAccent` no componente), correto pra qualquer cor de marca.
+  segChipTextActive: { color: textoSobre(c.accentLight) },
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: Spacing.sm },
   swatchCircleWrap: { alignItems: 'center', justifyContent: 'center' },
-  swatchCircle: { alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', ...Shadow.sm },
-  autoFixBadge: { position: 'absolute', right: -2, bottom: -2, backgroundColor: Colors.surface, borderRadius: 8, padding: 1 },
+  // Halo decorativo sobre o círculo de cor (que é ele mesmo arbitrário/qualquer
+  // matiz) — não é hairline de superfície do app, mantido fixo nos dois modos.
+  swatchCircle: { alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)', ...sombrasDe(c).sm },
+  autoFixBadge: { position: 'absolute', right: -2, bottom: -2, backgroundColor: c.surface, borderRadius: 8, padding: 1 },
   validadeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  validadeChip: { alignItems: 'center', borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 10 },
-  validadeChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
-  validadeText: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
-  validadeTextActive: { color: '#0A1626' },
+  validadeChip: { alignItems: 'center', borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 10 },
+  validadeChipActive: { backgroundColor: c.accentLight, borderColor: c.accentLight },
+  validadeText: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
+  validadeTextActive: { color: textoSobre(c.accentLight) },
   depHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   addDep: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  addDepText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
-  depEmpty: { fontSize: 13, color: Colors.onSurfaceMuted },
-  depItem: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, borderTopWidth: 1, borderTopColor: Colors.outline },
-  depName: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  addDepText: { color: c.primary, fontWeight: '700', fontSize: 13 },
+  depEmpty: { fontSize: 13, color: c.onSurfaceMuted },
+  depItem: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.outline },
+  depName: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  // Ouro fixo de avaliação (★) — convenção universal de "estrela", não segue tema.
   depStars: { fontSize: 15, color: '#F59E0B', marginTop: 2 },
-  depText: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 4 },
-  saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: Spacing.base, paddingBottom: 26, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline, ...Shadow.lg },
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
-  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
-  starLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  depText: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 4 },
+  saveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: Spacing.base, paddingBottom: 26, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline, ...sombrasDe(c).lg },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
+  starLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
   starsRow: { flexDirection: 'row', gap: 10, marginBottom: Spacing.base },
   star: { fontSize: 34 },
 });

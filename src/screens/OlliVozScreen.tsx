@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Typography, Gradients } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
@@ -50,6 +50,7 @@ type Fase = 'inicial' | 'ouvindo' | 'enviando' | 'revisao' | 'erro';
 
 /** Bloco de carregamento enquanto checamos se o aparelho tem serviço de voz instalado. */
 function CheckandoVozBloco() {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.checandoWrap}>
       <OlliSkeleton width={140} height={140} radius={70} />
@@ -142,6 +143,9 @@ function montarOrcamento(
 
 export default function OlliVozScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
   const { usosIaRestantes, consumirUsoIa } = usePlano();
   const iaEsgotada = usosIaRestantes <= 0;
 
@@ -545,7 +549,7 @@ export default function OlliVozScreen() {
 
               {Number.isFinite(usosIaRestantes) && !iaEsgotada && fase === 'inicial' && (
                 <View style={styles.usoPill}>
-                  <MaterialCommunityIcons name="creation" size={12} color={Colors.plan} />
+                  <MaterialCommunityIcons name="creation" size={12} color={cores.plan} />
                   <Text style={styles.usoPillText}>{usosIaRestantes} de {IA_USOS_GRATIS_MES} usos grátis este mês</Text>
                 </View>
               )}
@@ -556,7 +560,7 @@ export default function OlliVozScreen() {
                     <Animated.View
                       style={[
                         styles.micPulse,
-                        { backgroundColor: gravandoNuvem ? Colors.danger : Colors.accent },
+                        { backgroundColor: gravandoNuvem ? cores.danger : cores.accent },
                         { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
                       ]}
                       pointerEvents="none"
@@ -564,7 +568,7 @@ export default function OlliVozScreen() {
                     <Animated.View
                       style={[
                         styles.micPulseOuter,
-                        { backgroundColor: gravandoNuvem ? Colors.danger : Colors.accent },
+                        { backgroundColor: gravandoNuvem ? cores.danger : cores.accent },
                         { transform: [{ scale: pulseScaleOuter }], opacity: pulseOpacityOuter },
                       ]}
                       pointerEvents="none"
@@ -580,10 +584,10 @@ export default function OlliVozScreen() {
                   style={styles.micTouch}
                 >
                   <LinearGradient
-                    colors={gravandoNuvem ? GRADIENT_GRAVANDO : fase === 'ouvindo' ? Gradients.frost : Gradients.primaryDiagonal}
+                    colors={gravandoNuvem ? GRADIENT_GRAVANDO : fase === 'ouvindo' ? gradientes.frost : gradientes.primaryDiagonal}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={[styles.micGrad, fase === 'ouvindo' || gravandoNuvem ? Shadow.glowCyan : Shadow.glowBlue]}
+                    style={[styles.micGrad, fase === 'ouvindo' || gravandoNuvem ? sombrasDe(cores).glowCyan : sombrasDe(cores).glowBlue]}
                   >
                     {enviandoNuvem || fase === 'enviando' ? (
                       <ActivityIndicator size="large" color="#fff" />
@@ -619,7 +623,7 @@ export default function OlliVozScreen() {
 
               {modoVoz === 'nuvem' && fase !== 'ouvindo' && !enviandoNuvem && fase !== 'enviando' && (
                 <View style={styles.infoPill}>
-                  <MaterialCommunityIcons name="cloud-outline" size={14} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="cloud-outline" size={14} color={cores.accentLight} />
                   <Text style={styles.infoPillText}>Transcrição pela nuvem (usa internet)</Text>
                 </View>
               )}
@@ -663,7 +667,7 @@ export default function OlliVozScreen() {
           {fase === 'erro' && erro && (
             <AnimatedEntrance index={1}>
               <View style={styles.erroCard}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={Colors.warning} />
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.erroText}>{erro}</Text>
                   {permissaoNegadaPermanente ? (
@@ -673,7 +677,7 @@ export default function OlliVozScreen() {
                       size="sm"
                       onPress={voz.abrirConfiguracoes}
                       haptic={false}
-                      icon={<MaterialCommunityIcons name="cog-outline" size={15} color={Colors.accentLight} />}
+                      icon={<MaterialCommunityIcons name="cog-outline" size={15} color={cores.accentLight} />}
                       style={{ marginTop: 10, alignSelf: 'flex-start' }}
                     />
                   ) : transcript.trim().length > 0 ? (
@@ -683,7 +687,7 @@ export default function OlliVozScreen() {
                       size="sm"
                       onPress={enviar}
                       haptic={false}
-                      icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                      icon={<MaterialCommunityIcons name="refresh" size={15} color={cores.accentLight} />}
                       style={{ marginTop: 10, alignSelf: 'flex-start' }}
                     />
                   ) : (
@@ -693,7 +697,7 @@ export default function OlliVozScreen() {
                       size="sm"
                       onPress={onMicPress}
                       haptic={false}
-                      icon={<MaterialCommunityIcons name="microphone-outline" size={15} color={Colors.accentLight} />}
+                      icon={<MaterialCommunityIcons name="microphone-outline" size={15} color={cores.accentLight} />}
                       style={{ marginTop: 10, alignSelf: 'flex-start' }}
                     />
                   )}
@@ -711,7 +715,7 @@ export default function OlliVozScreen() {
                 value={transcript}
                 onChangeText={t => { setTranscript(t); if (fase === 'erro') setErro(null); }}
                 placeholder='Ex.: "Manutenção de 1 split 12.000 BTUs, recarga de gás e troca do capacitor para o João"'
-                placeholderTextColor={Colors.onSurfaceMuted}
+                placeholderTextColor={cores.onSurfaceMuted}
                 multiline
                 editable={fase !== 'enviando'}
                 textAlignVertical="top"
@@ -742,7 +746,7 @@ export default function OlliVozScreen() {
 
           {transcript.length > 0 && fase !== 'enviando' && (
             <TouchableOpacity style={styles.limparBtn} onPress={refazer} activeOpacity={0.7}>
-              <MaterialCommunityIcons name="close" size={16} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="close" size={16} color={cores.onSurfaceVariant} />
               <Text style={styles.limparText}>Limpar</Text>
             </TouchableOpacity>
           )}
@@ -768,6 +772,8 @@ function Revisao(props: {
   onCriar: () => void;
   onRefazer: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const total = props.itens.reduce((s, i) => s + (i.valorUnitario ?? 0) * i.quantidade, 0);
   const algumSemPreco = props.itens.some(i => i.valorUnitario == null);
 
@@ -790,7 +796,7 @@ function Revisao(props: {
             value={props.titulo}
             onChangeText={props.onTitulo}
             placeholder="Ex.: Manutenção preventiva"
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
           />
           <View style={{ height: 12 }} />
           <Text style={styles.fieldLabel}>Cliente (sugerido)</Text>
@@ -799,7 +805,7 @@ function Revisao(props: {
             value={props.clienteNome}
             onChangeText={props.onCliente}
             placeholder="Você confirma o cliente no próximo passo"
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
           />
         </View>
 
@@ -813,16 +819,16 @@ function Revisao(props: {
                   <MaterialCommunityIcons
                     name={item.tipo === 'peca' ? 'package-variant' : 'wrench'}
                     size={12}
-                    color={item.tipo === 'peca' ? '#0891B2' : Colors.accentLight}
+                    color={item.tipo === 'peca' ? '#0891B2' : cores.accentLight}
                   />
                   <TouchableOpacity onPress={() => props.onUpdateItem(item.id, { tipo: item.tipo === 'peca' ? 'servico' : 'peca' })}>
-                    <Text style={[styles.tipoChipText, { color: item.tipo === 'peca' ? '#0891B2' : Colors.accentLight }]}>
+                    <Text style={[styles.tipoChipText, { color: item.tipo === 'peca' ? '#0891B2' : cores.accentLight }]}>
                       {item.tipo === 'peca' ? 'Peça' : 'Serviço'}
                     </Text>
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity onPress={() => props.onRemoveItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
+                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
 
@@ -831,7 +837,7 @@ function Revisao(props: {
                 value={item.descricao}
                 onChangeText={t => props.onUpdateItem(item.id, { descricao: t })}
                 placeholder="Descrição do item"
-                placeholderTextColor={Colors.onSurfaceMuted}
+                placeholderTextColor={cores.onSurfaceMuted}
                 multiline
               />
 
@@ -844,7 +850,7 @@ function Revisao(props: {
                       onPress={() => props.onUpdateItem(item.id, { quantidade: Math.max(1, item.quantidade - 1) })}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <MaterialCommunityIcons name="minus" size={15} color={Colors.primary} />
+                      <MaterialCommunityIcons name="minus" size={15} color={cores.primary} />
                     </TouchableOpacity>
                     <Text style={styles.qtyValue}>{item.quantidade}</Text>
                     <TouchableOpacity
@@ -852,7 +858,7 @@ function Revisao(props: {
                       onPress={() => props.onUpdateItem(item.id, { quantidade: item.quantidade + 1 })}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <MaterialCommunityIcons name="plus" size={15} color={Colors.primary} />
+                      <MaterialCommunityIcons name="plus" size={15} color={cores.primary} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -866,7 +872,7 @@ function Revisao(props: {
                       value={item.valorUnitario != null ? String(item.valorUnitario).replace('.', ',') : ''}
                       onChangeText={t => props.onUpdateItem(item.id, { valorUnitario: t.trim() === '' ? null : parseNumber(t) })}
                       placeholder="definir"
-                      placeholderTextColor={Colors.warning}
+                      placeholderTextColor={cores.warning}
                       keyboardType="numeric"
                     />
                   </View>
@@ -877,7 +883,7 @@ function Revisao(props: {
         ))}
 
         <TouchableOpacity style={styles.addItemBtn} onPress={props.onAddItem} activeOpacity={0.8}>
-          <MaterialCommunityIcons name="plus" size={18} color={Colors.success} />
+          <MaterialCommunityIcons name="plus" size={18} color={cores.success} />
           <Text style={styles.addItemText}>Adicionar item</Text>
         </TouchableOpacity>
 
@@ -891,7 +897,7 @@ function Revisao(props: {
               onChangeText={props.onObservacao}
               multiline
               textAlignVertical="top"
-              placeholderTextColor={Colors.onSurfaceMuted}
+              placeholderTextColor={cores.onSurfaceMuted}
             />
           </View>
         )}
@@ -908,7 +914,7 @@ function Revisao(props: {
 
       {/* AÇÕES FIXAS */}
       <View style={styles.revFooter}>
-        <OlliButton label="Refazer" variant="outline" size="md" onPress={props.onRefazer} haptic={false} icon={<MaterialCommunityIcons name="restart" size={18} color={Colors.primary} />} />
+        <OlliButton label="Refazer" variant="outline" size="md" onPress={props.onRefazer} haptic={false} icon={<MaterialCommunityIcons name="restart" size={18} color={cores.primary} />} />
         <View style={{ flex: 1, marginLeft: 10 }}>
           <OlliButton
             label="Criar orçamento"
@@ -926,82 +932,98 @@ function Revisao(props: {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   hero: { alignItems: 'center', paddingVertical: Spacing.lg },
-  heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight, marginBottom: Spacing.lg },
-  usoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: Spacing.md, backgroundColor: 'rgba(124,58,237,0.12)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
-  usoPillText: { fontSize: 11.5, fontWeight: '800', color: Colors.plan },
-  limiteCard: { alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.xl, ...Shadow.sm },
-  limiteTitle: { fontSize: 17, fontWeight: '800', color: '#fff', textAlign: 'center', marginTop: 14 },
-  limiteSub: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: 8 },
+  heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: c.accentLight, marginBottom: Spacing.lg },
+  // rgba(124,58,237,x) era o roxo fixo do "plan" — vira c.plan (ajustado por contraste).
+  usoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: Spacing.md, backgroundColor: comAlfa(c.plan, 0.12), borderWidth: 1, borderColor: comAlfa(c.plan, 0.32), borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
+  usoPillText: { fontSize: 11.5, fontWeight: '800', color: c.plan },
+  limiteCard: { alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: comAlfa(c.plan, 0.32), padding: Spacing.xl, ...sombrasDe(c).sm },
+  // Era '#fff' fixo: o card fica sobre a superfície da tela, não sobre um
+  // gradiente — no claro (padrão do app) o texto branco já nascia ilegível
+  // sobre o tint claro do card; vira onSurface (continua branco no escuro).
+  limiteTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface, textAlign: 'center', marginTop: 14 },
+  limiteSub: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: 8 },
   micWrap: { width: 168, height: 168, justifyContent: 'center', alignItems: 'center' },
-  micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },
-  micPulseOuter: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: Colors.accent },
+  micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: c.accent },
+  micPulseOuter: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: c.accent },
   micTouch: { borderRadius: 70 },
-  micGrad: { width: 140, height: 140, borderRadius: 70, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: 'rgba(127,233,245,0.18)' },
-  heroHint: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: Spacing.lg, paddingHorizontal: 8 },
-  infoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: 'rgba(127,233,245,0.10)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
-  infoPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
+  micGrad: { width: 140, height: 140, borderRadius: 70, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: comAlfa(c.accentLight, 0.18) },
+  heroHint: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: Spacing.lg, paddingHorizontal: 8 },
+  infoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: comAlfa(c.accentLight, 0.10), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28), borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
+  infoPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
 
-  contadorPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 14, backgroundColor: Colors.dangerLight, borderWidth: 1, borderColor: 'rgba(255,107,107,0.35)', borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 7 },
-  contadorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.danger },
-  contadorText: { fontSize: 14, fontWeight: '800', color: Colors.danger, fontVariant: ['tabular-nums'] },
+  // rgba(255,107,107,x) era o danger estático — vira o danger do tema.
+  contadorPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 14, backgroundColor: c.dangerLight, borderWidth: 1, borderColor: comAlfa(c.danger, 0.35), borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 7 },
+  contadorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.danger },
+  contadorText: { fontSize: 14, fontWeight: '800', color: c.danger, fontVariant: ['tabular-nums'] },
 
   checandoWrap: { alignItems: 'center', paddingVertical: Spacing.lg },
 
-  transcriptCard: { backgroundColor: 'rgba(52,198,217,0.06)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', padding: Spacing.base, marginTop: Spacing.sm },
-  transcriptLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight, textTransform: 'uppercase', marginBottom: 6 },
-  transcriptText: { fontSize: 15.5, color: Colors.onSurface, lineHeight: 22 },
-  transcriptInterim: { color: Colors.onSurfaceMuted, fontStyle: 'italic' },
+  // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
+  transcriptCard: { backgroundColor: comAlfa(c.accent, 0.06), borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: comAlfa(c.accent, 0.30), padding: Spacing.base, marginTop: Spacing.sm },
+  transcriptLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight, textTransform: 'uppercase', marginBottom: 6 },
+  transcriptText: { fontSize: 15.5, color: c.onSurface, lineHeight: 22 },
+  transcriptInterim: { color: c.onSurfaceMuted, fontStyle: 'italic' },
 
-  erroCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: Colors.warningLight, borderWidth: 1, borderColor: 'rgba(247,178,59,0.35)', borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.base },
-  erroText: { flex: 1, fontSize: 13.5, color: Colors.onSurface, lineHeight: 20 },
+  // rgba(247,178,59,x) era o warning estático — vira o warning do tema.
+  erroCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: c.warningLight, borderWidth: 1, borderColor: comAlfa(c.warning, 0.35), borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.base },
+  erroText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 20 },
 
-  escreverCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, marginTop: Spacing.base, ...Shadow.sm },
-  escreverLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 8 },
-  escreverInput: { fontSize: 15, color: Colors.onSurface, minHeight: 84, lineHeight: 21 },
+  escreverCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
+  escreverLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
+  escreverInput: { fontSize: 15, color: c.onSurface, minHeight: 84, lineHeight: 21 },
 
   limparBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, marginTop: 4 },
-  limparText: { fontSize: 13.5, color: Colors.onSurfaceVariant, fontWeight: '600' },
+  limparText: { fontSize: 13.5, color: c.onSurfaceVariant, fontWeight: '600' },
 
   // Revisão
   revHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
-  revTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  revSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
+  // Era '#fff' fixo sobre o fundo da tela (c.background) — ilegível no claro.
+  revTitle: { fontSize: 18, fontWeight: '800', color: c.onSurface },
+  revSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
 
-  fieldCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, marginBottom: Spacing.base, ...Shadow.sm },
-  fieldLabel: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 8 },
-  fieldInput: { backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: Colors.onSurface },
+  fieldCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginBottom: Spacing.base, ...sombrasDe(c).sm },
+  fieldLabel: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
+  fieldInput: { backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: c.onSurface },
   obsInput: { minHeight: 70, lineHeight: 20 },
 
-  itensTitle: { fontSize: 15, fontWeight: '800', color: '#fff', marginBottom: Spacing.sm },
-  itemCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, marginBottom: 10, ...Shadow.sm },
+  // Era '#fff' fixo sobre o fundo da tela (c.background) — ilegível no claro.
+  itensTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: Spacing.sm },
+  itemCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginBottom: 10, ...sombrasDe(c).sm },
   itemTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   tipoChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1 },
-  tipoChipServico: { backgroundColor: 'rgba(52,198,217,0.12)', borderColor: 'rgba(52,198,217,0.3)' },
+  // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
+  tipoChipServico: { backgroundColor: comAlfa(c.accent, 0.12), borderColor: comAlfa(c.accent, 0.3) },
+  // '#0891B2' (e seu rgba) é um ciano fixo só pra diferenciar "peça" de
+  // "serviço" (que já usa accent) — não tem token semântico no tema, mantido.
   tipoChipPeca: { backgroundColor: 'rgba(8,145,178,0.14)', borderColor: 'rgba(8,145,178,0.35)' },
   tipoChipText: { fontSize: 11.5, fontWeight: '800' },
-  itemDescInput: { fontSize: 15, color: Colors.onSurface, lineHeight: 21, paddingVertical: 2, marginBottom: 10 },
+  itemDescInput: { fontSize: 15, color: c.onSurface, lineHeight: 21, paddingVertical: 2, marginBottom: 10 },
   itemFields: { flexDirection: 'row', gap: 12 },
   qtyField: { width: 118 },
   valorField: { flex: 1 },
-  miniLabel: { fontSize: 11, fontWeight: '700', color: Colors.onSurfaceMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 6, height: 44 },
-  qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-  qtyValue: { fontSize: 15, fontWeight: '800', color: Colors.onSurface, minWidth: 22, textAlign: 'center' },
-  valorInputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 12, height: 44 },
-  valorPrefix: { fontSize: 14, fontWeight: '700', color: Colors.onSurfaceMuted, marginRight: 6 },
-  valorInput: { flex: 1, fontSize: 15, color: Colors.onSurface, fontWeight: '600' },
+  miniLabel: { fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 6, height: 44 },
+  qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: c.primary, justifyContent: 'center', alignItems: 'center' },
+  qtyValue: { fontSize: 15, fontWeight: '800', color: c.onSurface, minWidth: 22, textAlign: 'center' },
+  valorInputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 12, height: 44 },
+  valorPrefix: { fontSize: 14, fontWeight: '700', color: c.onSurfaceMuted, marginRight: 6 },
+  valorInput: { flex: 1, fontSize: 15, color: c.onSurface, fontWeight: '600' },
 
-  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1.5, borderColor: 'rgba(43,215,135,0.5)', borderRadius: BorderRadius.md, paddingVertical: 13, backgroundColor: 'rgba(43,215,135,0.06)', marginBottom: Spacing.base },
-  addItemText: { fontSize: 14, fontWeight: '700', color: Colors.success },
+  // rgba(43,215,135,x) era o success estático — vira o success do tema.
+  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1.5, borderColor: comAlfa(c.success, 0.5), borderRadius: BorderRadius.md, paddingVertical: 13, backgroundColor: comAlfa(c.success, 0.06), marginBottom: Spacing.base },
+  addItemText: { fontSize: 14, fontWeight: '700', color: c.success },
 
-  totalBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, ...Shadow.md },
-  totalLabel: { fontSize: 13, color: 'rgba(255,255,255,0.82)', fontWeight: '600' },
-  totalHint: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  totalValue: { ...Typography.displaySerif, color: '#fff' },
+  // Barra sólida na cor da marca — texto usa onPrimary (contraste calculado),
+  // não branco fixo: uma marca clara escolhida pelo usuário exige tinta escura.
+  totalBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: c.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, ...sombrasDe(c).md },
+  totalLabel: { fontSize: 13, color: comAlfa(c.onPrimary, 0.82), fontWeight: '600' },
+  totalHint: { fontSize: 11, color: comAlfa(c.onPrimary, 0.7), marginTop: 2 },
+  totalValue: { ...Typography.displaySerif, color: c.onPrimary },
 
-  revFooter: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline, paddingHorizontal: Spacing.base, paddingTop: 12, paddingBottom: 26 },
+  revFooter: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 12, paddingBottom: 26 },
 });

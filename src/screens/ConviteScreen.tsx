@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
@@ -33,6 +33,8 @@ export default function ConviteScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Rota>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const tokenParam = route.params?.token ?? '';
 
   const [estado, setEstado] = useState<Estado>({ fase: 'processando' });
@@ -79,17 +81,17 @@ export default function ConviteScreen() {
         {estado.fase === 'processando' && (
           <>
             <View style={styles.iconWrap}>
-              <MaterialCommunityIcons name="account-multiple-plus-outline" size={44} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="account-multiple-plus-outline" size={44} color={cores.accentLight} />
             </View>
             <Text style={styles.titulo}>Entrando na equipe…</Text>
-            <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.lg }} />
+            <ActivityIndicator color={cores.accentLight} style={{ marginTop: Spacing.lg }} />
           </>
         )}
 
         {estado.fase === 'sucesso' && (
           <>
             <View style={[styles.iconWrap, styles.iconOk]}>
-              <MaterialCommunityIcons name="check-circle-outline" size={48} color={Colors.success} />
+              <MaterialCommunityIcons name="check-circle-outline" size={48} color={cores.success} />
             </View>
             <Text style={styles.titulo}>Bem-vindo à equipe!</Text>
             <Text style={styles.sub}>
@@ -111,7 +113,7 @@ export default function ConviteScreen() {
         {estado.fase === 'precisa_login' && (
           <>
             <View style={styles.iconWrap}>
-              <MaterialCommunityIcons name="login" size={44} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="login" size={44} color={cores.accentLight} />
             </View>
             <Text style={styles.titulo}>Entre para aceitar</Text>
             <Text style={styles.sub}>
@@ -131,7 +133,7 @@ export default function ConviteScreen() {
         {estado.fase === 'erro' && (
           <>
             <View style={[styles.iconWrap, styles.iconErro]}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={44} color={Colors.danger} />
+              <MaterialCommunityIcons name="alert-circle-outline" size={44} color={cores.danger} />
             </View>
             <Text style={styles.titulo}>Convite não aceito</Text>
             <Text style={styles.sub}>{estado.mensagem}</Text>
@@ -150,13 +152,15 @@ export default function ConviteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
   inner: { width: '100%', maxWidth: 420, alignItems: 'center' },
-  iconWrap: { width: 88, height: 88, borderRadius: 28, backgroundColor: Colors.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  iconWrap: { width: 88, height: 88, borderRadius: 28, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  // Tons fixos de sucesso/erro do handoff cockpit; próximos de `successLight`/`dangerLight`
+  // mas alfa/hex não batem exatamente — deixados como estão (ver rule 7 da migração).
   iconOk: { backgroundColor: 'rgba(43,215,135,0.14)' },
   iconErro: { backgroundColor: 'rgba(255,107,107,0.14)' },
-  titulo: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: Spacing.lg, textAlign: 'center' },
-  sub: { fontSize: 15, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22, marginTop: Spacing.sm },
-  forte: { color: Colors.accentLight, fontWeight: '800' },
+  titulo: { fontSize: 24, fontWeight: '800', color: c.onBackground, marginTop: Spacing.lg, textAlign: 'center' },
+  sub: { fontSize: 15, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 22, marginTop: Spacing.sm },
+  forte: { color: c.accentLight, fontWeight: '800' },
 });

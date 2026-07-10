@@ -13,7 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { BotaoApple } from '../components/BotaoApple';
 import { appleSignInDisponivel, signInWithApple } from '../services/appleAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Spacing, Gradients, BorderRadius } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, type Cores } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
@@ -49,6 +49,9 @@ export default function EntrarScreen() {
   const insets = useSafeAreaInsets();
   const configured = isSupabaseConfigured();
   const ehDesktop = useEhDesktop();
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
 
   const [modo, setModo] = useState<Modo>('login');
   const [nome, setNome] = useState('');
@@ -252,7 +255,7 @@ export default function EntrarScreen() {
       {/* BANNER DE MIGRAÇÃO — só quem já tem dados locais e está no cadastro */}
       {temLocais && modo === 'signup' && (
         <View style={styles.migrateCard}>
-          <MaterialCommunityIcons name="shield-check" size={22} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="shield-check" size={22} color={cores.accentLight} />
           <Text style={styles.migrateText}>
             Crie sua conta para proteger seus dados — tudo que você já fez será vinculado a ela.
           </Text>
@@ -298,7 +301,7 @@ export default function EntrarScreen() {
       <OlliButton
         label={modo === 'login' ? 'Entrar' : 'Criar conta'}
         variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy || appleBusy} onPress={handleAuth}
-        icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color="#fff" />}
+        icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color={gradientes.sobreBrand} />}
         style={{ marginTop: modo === 'login' ? 4 : 8 }}
       />
 
@@ -313,7 +316,7 @@ export default function EntrarScreen() {
       <OlliButton
         label="Continuar com o Google"
         variant="outline" size="lg" fullWidth loading={googleBusy} disabled={busy || appleBusy} haptic={false} onPress={handleGoogle}
-        icon={<MaterialCommunityIcons name="google" size={20} color={Colors.accentLight} />}
+        icon={<MaterialCommunityIcons name="google" size={20} color={cores.accentLight} />}
       />
 
       {/* APPLE — só monta no iOS (o componente devolve null nas outras plataformas).
@@ -365,11 +368,11 @@ export default function EntrarScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* HERO / CAPA (~45% da tela) */}
-        <LinearGradient colors={Gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 72 }]}>
+        <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 72 }]}>
           <View style={styles.glow1} />
           <View style={styles.glow2} />
           <OlliMascot size={88} onDark />
-          <Text style={styles.brand}>OLLI</Text>
+          <Text style={[styles.brand, { color: gradientes.sobrePrimary }]}>OLLI</Text>
           <Text style={styles.tagline}>Orçamentos que fecham negócio</Text>
         </LinearGradient>
 
@@ -383,13 +386,13 @@ export default function EntrarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   // DESKTOP — duas colunas (hero de valor | card de login)
-  desktopRoot: { flex: 1, flexDirection: 'row', backgroundColor: Colors.background },
+  desktopRoot: { flex: 1, flexDirection: 'row', backgroundColor: c.background },
   desktopHeroCol: { flex: 1.15, minWidth: 460 },
-  desktopLoginCol: { flex: 1, minWidth: 420, backgroundColor: Colors.background },
+  desktopLoginCol: { flex: 1, minWidth: 420, backgroundColor: c.background },
   desktopLoginScroll: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -400,46 +403,50 @@ const styles = StyleSheet.create({
   desktopCard: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.xl,
   },
-  desktopCardTitle: { fontSize: 22, fontFamily: Fonts.extraBold, color: '#fff', marginBottom: Spacing.lg },
+  desktopCardTitle: { fontSize: 22, fontFamily: Fonts.extraBold, color: c.onSurface, marginBottom: Spacing.lg },
 
+  // Hero: banner sempre colorido (gradiente da marca), nos dois modos — texto e
+  // brilhos brancos/ciano fixos continuam corretos (ver `header`/`primary` em
+  // theme/cores.ts). Sem chave semântica exata para os brilhos decorativos.
   hero: { alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: 56, overflow: 'hidden' },
   glow1: { position: 'absolute', top: -60, right: -40, width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(127,233,245,0.16)' },
   glow2: { position: 'absolute', bottom: -50, left: -50, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(52,198,217,0.12)' },
-  brand: { fontSize: 38, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 1, marginTop: 16, paddingLeft: 6 },
-  tagline: { fontSize: 14, fontFamily: Fonts.semiBold, color: Colors.accentLight, marginTop: 6 },
+  brand: { fontSize: 38, fontFamily: Fonts.extraBold, letterSpacing: 1, marginTop: 16, paddingLeft: 6 },
+  tagline: { fontSize: 14, fontFamily: Fonts.semiBold, color: c.accentLight, marginTop: 6 },
 
   body: {
     marginTop: -24,
-    backgroundColor: Colors.background,
+    backgroundColor: c.background,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     padding: Spacing.base,
     paddingTop: Spacing.lg,
   },
-  cardTitle: { fontSize: 20, fontFamily: Fonts.extraBold, color: '#fff', marginBottom: Spacing.base },
+  cardTitle: { fontSize: 20, fontFamily: Fonts.extraBold, color: c.onBackground, marginBottom: Spacing.base },
 
   migrateCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-    backgroundColor: Colors.accentContainer,
+    backgroundColor: c.accentContainer,
+    // Borda cyan fixa: decorativa, sem chave semântica exata (ver rule 7).
     borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
     borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: Spacing.base,
   },
-  migrateText: { flex: 1, fontSize: 13, color: Colors.onSurface, lineHeight: 19, fontWeight: '600' },
+  migrateText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 19, fontWeight: '600' },
 
   forgotWrap: { alignSelf: 'flex-end', paddingVertical: 4, marginBottom: 8 },
-  forgot: { fontSize: 13, fontWeight: '700', color: Colors.accentLight },
+  forgot: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.outline },
-  dividerText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  dividerLine: { flex: 1, height: 1, backgroundColor: c.outline },
+  dividerText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   switchWrap: { paddingVertical: 18, alignItems: 'center', marginTop: 8 },
-  switchText: { fontSize: 14, color: Colors.onSurfaceVariant },
-  switchLink: { color: Colors.accentLight, fontWeight: '800' },
+  switchText: { fontSize: 14, color: c.onSurfaceVariant },
+  switchLink: { color: c.accentLight, fontWeight: '800' },
 });

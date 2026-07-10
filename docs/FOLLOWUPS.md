@@ -5,7 +5,7 @@
 > ou atacá-los diretamente. Todos são melhorias fora do caminho crítico —
 > nenhum bloqueia o que já está no ar.
 
-## Pendentes (5)
+## Pendentes (25)
 
 1. **Badge financeiro na tabela desktop de orçamentos**
    - `src/screens/desktop/OrcamentosDesktopScreen.tsx` não recebeu o badge de estado
@@ -135,3 +135,55 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
    build precisa ser feito do zero.
 16. **Dica do técnico:** "Toque numa OS para ver os detalhes" navega para a tela de OS sem id, não
    para o detalhe daquela OS. Imprecisão leve de navegação, não promessa falsa.
+
+17. **Botão "premium" mudou de cor e o dono precisa ver.** `gradientes.brand` / `primaryDiagonal`
+    tinham a ponta `accent` em `#34C6D9`; rótulo branco por cima dava **2.05:1** — reprovado hoje,
+    em produção, antes de qualquer picker. `parLegivel` escureceu a ponta para `#1A808D` (4.65:1).
+    Alternativa de design, se ele achar que perdeu brilho: manter o gradiente e trocar o
+    preenchimento do botão por `cores.primary` sólido (5.02:1), deixando o ciano só no
+    `sombras.glowCyan`. Decisão do dono, não minha.
+
+18. **Telas mobile dentro da página desktop de 1100px ainda são de coluna única.** `comCentroDesktop`
+    deixou de desenhar um telefone, mas as telas que ele embrulha (Equipamentos, wizard de orçamento,
+    recibo) não usam a largura nova: continuam empilhando verticalmente. Não é bug — é a v5 do
+    desktop. Priorizar Equipamentos, que foi a tela que o dono citou.
+
+19. ~~**`accent` como cor de texto: varrer o resto do repo.**~~ **FEITO.** A regra está mecanizada em
+    `scripts/checar-contraste.mjs`, ligada ao `npm run preflight`. Ela faz duas coisas: (a) lint
+    estático dos dois defeitos, com exceção declarada na própria linha via `// contraste-ok: <motivo>`;
+    (b) prova da paleta — as 12 cores de marca do seletor medidas contra 2 modos × 4 superfícies ×
+    6 tokens + as duas pontas dos 3 gradientes que carregam texto. Falha o build abaixo de 4.5:1.
+
+20. **Toggle de tema e seletor de cor de marca ainda não estão expostos na `ContaScreen`.** A fundação
+    (provider, persistência em `olli.tema.v1`, paleta acessível para qualquer cor) está pronta e agora
+    a UI inteira responde a ela. Falta só o controle. Foi deixado para o fim de propósito: um
+    interruptor que acende metade da sala é pior que nenhum.
+
+21. **Vermelho destrutivo ficou mais claro no modo escuro.** `danger` era ajustado contra o
+    `background` (o fundo mais fácil) e usado como texto sobre cards, onde dava **3.43:1**. Agora é
+    ajustado contra a superfície mais difícil: `#E5484D` → `#EB7578`, e como texto sobe para 4.70:1.
+    O rótulo do botão destrutivo já era tinta escura antes (não branco), então não há regressão de
+    legibilidade — o contraste dele até sobe de 4.42 para 6.05. O que muda é o tom do preenchimento
+    em 4 lugares. Se o dono achar o salmão fraco, a saída é separar os papéis: `danger` como
+    preenchimento e um `dangerText` para texto sobre superfície. Isso toca ~58 sítios.
+
+22. **`OlliButton` obriga quem chama a saber o gradiente interno.** O rótulo o botão colore sozinho,
+    mas o `icon` é um `ReactNode` pronto — o chamador precisa passar `gradientes.sobreBrand` à mão e
+    acertar. Quatro sítios (`EntrarScreen`, `OnboardingScreen`) fazem isso hoje; um quinto vai errar.
+    Conserto: `React.cloneElement(icon, { color })` dentro do botão, guardado por `isValidElement`.
+    Cuidado: na web o `color` encaminhado a uma `View` vira aviso do React.
+
+23. **`variant="outline"` do `OlliButton` pinta ícone e rótulo com cores diferentes.** O rótulo usa
+    `cores.accentLight`; os call-sites passam ícone com `cores.primary`. Some junto com o item 22.
+
+24. **`SincronizandoPill` está copiada em seis telas.** Home, Hoje, Agenda, Orçamentos, Clientes e
+    RelatorioDia têm a mesma pílula (`rgba(10,22,38,0.92)`, ícone `cloud-sync-outline`, texto
+    "Sincronizando..."). As cópias derivaram: quatro foram consertadas por agentes diferentes e duas
+    ficaram com `accentLight` (2.88:1) até serem pegas por comparação. Extrair para
+    `src/components/SincronizandoPill.tsx` mata a classe inteira. O bug não é a cor — é a duplicação.
+
+25. **Os 92 `#fff` cravados prendem o seletor de cor a marcas escuras.** Estão corretos hoje: as 12
+    cores oferecidas resolvem `sobrePrimary`/`sobreHeader`/`sobreBrand` para `#FFFFFF`, e o passo [3]
+    de `scripts/checar-contraste.mjs` falha o build se alguém acrescentar uma cor clara. Para liberar
+    amarelo/ciano/verde-limão (todas já provadas acessíveis em [2]), é preciso antes eliminar os
+    brancos — a maior parte deles some junto com o item 22 (`OlliButton` colorindo o próprio ícone).

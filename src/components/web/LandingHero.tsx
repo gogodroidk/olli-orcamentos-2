@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, Gradients } from '../../theme';
+import { Spacing, BorderRadius, useCores, useGradientes } from '../../theme';
 import { Fonts } from '../../theme/fonts';
 import { OlliMascot } from '../OlliMascot';
 
@@ -50,9 +50,12 @@ const PROVAS: readonly string[] = [
 ] as const;
 
 export function LandingHero() {
+  const cores = useCores();
+  const gradientes = useGradientes();
+
   return (
     <LinearGradient
-      colors={Gradients.primary}
+      colors={gradientes.primary}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.fundo}
@@ -64,10 +67,12 @@ export function LandingHero() {
       <View style={styles.conteudo}>
         <View style={styles.marca}>
           <OlliMascot size={56} onDark />
-          <Text style={styles.marcaTexto}>OLLI</Text>
+          <Text style={[styles.marcaTexto, { color: gradientes.sobrePrimary }]}>OLLI</Text>
         </View>
 
-        <Text style={styles.headline}>Do orçamento ao recibo, sem planilha</Text>
+        <Text style={[styles.headline, { color: gradientes.sobrePrimary }]}>
+          Do orçamento ao recibo, sem planilha
+        </Text>
         <Text style={styles.subheadline}>
           A plataforma de campo para quem presta serviço: orçamento, ordem de
           serviço, equipe e financeiro no mesmo lugar.
@@ -77,10 +82,12 @@ export function LandingHero() {
           {BENEFICIOS.map((b) => (
             <View key={b.titulo} style={styles.beneficio}>
               <View style={styles.beneficioIcone}>
-                <MaterialCommunityIcons name={b.icone} size={22} color={Colors.accentLight} />
+                <MaterialCommunityIcons name={b.icone} size={22} color={cores.accentLight} />
               </View>
               <View style={styles.beneficioTextos}>
-                <Text style={styles.beneficioTitulo}>{b.titulo}</Text>
+                <Text style={[styles.beneficioTitulo, { color: gradientes.sobrePrimary }]}>
+                  {b.titulo}
+                </Text>
                 <Text style={styles.beneficioDescricao}>{b.descricao}</Text>
               </View>
             </View>
@@ -90,7 +97,7 @@ export function LandingHero() {
         <View style={styles.provas}>
           {PROVAS.map((p) => (
             <View key={p} style={styles.prova}>
-              <MaterialCommunityIcons name="check-circle" size={16} color={Colors.success} />
+              <MaterialCommunityIcons name="check-circle" size={16} color={cores.success} />
               <Text style={styles.provaTexto}>{p}</Text>
             </View>
           ))}
@@ -100,6 +107,13 @@ export function LandingHero() {
   );
 }
 
+// Estilos abaixo NÃO usam `Colors`: os textos translúcidos e os glows em rgba
+// vivem sobre `gradientes.primary`, que é fixo (marca → marca escura) e igual nos
+// dois modos — como o próprio `header` do tema (ver theme/index.ts), é um banner,
+// não uma superfície. Por isso ficam module-scope, sem `useEstilos`: nada aqui
+// congela por modo porque nada aqui depende do modo. As cores de texto sólido
+// (marcaTexto, headline, beneficioTitulo) saíram daqui e são aplicadas inline
+// com `gradientes.sobrePrimary`, pois dependem da marca customizável do usuário.
 const styles = StyleSheet.create({
   fundo: {
     flex: 1,
@@ -140,14 +154,12 @@ const styles = StyleSheet.create({
   marcaTexto: {
     fontSize: 30,
     fontFamily: Fonts.extraBold,
-    color: '#fff',
     letterSpacing: 1,
   },
   headline: {
     fontSize: 40,
     lineHeight: 48,
     fontFamily: Fonts.extraBold,
-    color: '#fff',
     letterSpacing: -0.5,
   },
   subheadline: {
@@ -183,7 +195,6 @@ const styles = StyleSheet.create({
   beneficioTitulo: {
     fontSize: 16,
     fontFamily: Fonts.bold,
-    color: '#fff',
   },
   beneficioDescricao: {
     fontSize: 14,

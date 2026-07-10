@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, StyleSheet, NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 
 interface Props {
   valor: string;
@@ -30,6 +30,8 @@ export function normalizarBusca(texto: string): string {
  */
 export function BarraBusca({ valor, aoMudar, placeholder = 'Buscar…', largura = 260 }: Props) {
   const [focado, setFocado] = useState(false);
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   function aoApertarTecla(e: NativeSyntheticEvent<TextInputKeyPressEventData>) {
     if (e.nativeEvent.key === 'Escape' && valor.length > 0) {
@@ -39,13 +41,13 @@ export function BarraBusca({ valor, aoMudar, placeholder = 'Buscar…', largura 
 
   return (
     <View style={[styles.container, { width: largura }, focado && styles.containerFocado]}>
-      <MaterialCommunityIcons name="magnify" size={18} color={Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name="magnify" size={18} color={cores.onSurfaceMuted} />
       <TextInput
         value={valor}
         onChangeText={aoMudar}
         onKeyPress={aoApertarTecla}
         placeholder={placeholder}
-        placeholderTextColor={Colors.onSurfaceMuted}
+        placeholderTextColor={cores.onSurfaceMuted}
         style={styles.input}
         onFocus={() => setFocado(true)}
         onBlur={() => setFocado(false)}
@@ -55,7 +57,7 @@ export function BarraBusca({ valor, aoMudar, placeholder = 'Buscar…', largura 
         <MaterialCommunityIcons
           name="close-circle"
           size={16}
-          color={Colors.onSurfaceMuted}
+          color={cores.onSurfaceMuted}
           onPress={() => aoMudar('')}
           suppressHighlighting
         />
@@ -64,25 +66,25 @@ export function BarraBusca({ valor, aoMudar, placeholder = 'Buscar…', largura 
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     height: 40,
   },
   containerFocado: {
-    borderColor: Colors.accent,
+    borderColor: c.accent,
   },
   input: {
     ...Typography.body,
     flex: 1,
-    color: Colors.onSurface,
+    color: c.onSurface,
     outlineStyle: 'none' as any,
   },
 });

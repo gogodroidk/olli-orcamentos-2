@@ -1,7 +1,7 @@
 # EXECUTION_LOG — OLLI Orçamentos
 
 > O que já foi ENTREGUE, com evidência (commit ou arquivo). Atualizar ao fim de cada onda.
-> Última atualização: 2026-07-08.
+> Última atualização: 2026-07-10.
 
 ## Ciclo v1–v8 (pré-roadmap atual)
 
@@ -184,6 +184,71 @@ Este repo já mentiu três vezes em copy. Voltou a mentir, duas delas por minha 
 - **LOW:** wrapper de dica com `paddingTop` deixava um vão permanente depois do "Entendi" (um `View` sem filho ainda ocupa o padding).
 
 **Lição registrada:** copy que descreve o produto tem que ser DERIVADA da fonte de verdade lida na hora (`PLANOS_BASE`, `types/index.ts`), nunca escrita de memória. E promover copy de posicionamento a `<meta name="description">` muda o padrão de qualidade dela: deixa de ser tom de marca e vira declaração factual ao Google.
+
+## Queda de produção (auto-infligida) + PDF que aprova (2026-07-10)
+
+### O incidente
+Depois de trazer o worker órfão `olli-site` para o repositório e publicar, **toda leitura de banco do `olli-diagnostico` passou a devolver 503**. Causa: o Workers Build por Git republica o worker a cada push na `main`, e `wrangler deploy` **apaga as vars de texto do painel** antes de aplicar as do `wrangler.jsonc` (`keep_vars` é `false` por padrão). Os segredos moravam como vars de texto. `wrangler secret list` devolveu `[]`.
+
+Restaurados como **secrets** (que deploy nenhum apaga), não como vars:
+
+| segredo | como voltou |
+| --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | Management API do Supabase, `?reveal=true` (exige `User-Agent` de navegador) |
+| `STRIPE_SECRET_KEY` | cofre local |
+| `ADMIN_EMAIL` | cofre local |
+| `GEMINI_API_KEY` | `gcloud services api-keys get-key-string` — chaves novas do Google começam com `AQ.A`, não `AIza` |
+| `STRIPE_WEBHOOK_SECRET` | **irrecuperável**: a Stripe só devolve o `secret` na criação. Endpoint recriado (`we_1TrWMD…`), o antigo apagado |
+
+Enquanto faltou o `STRIPE_WEBHOOK_SECRET`, `handleWebhook` rejeitava **todo** evento com `400 assinatura_invalida` — falha fechada, correta por desenho, mas o estado das assinaturas parou de ser atualizado em silêncio. Era um bug de dinheiro.
+
+**Verificação (5/5, contra produção):** assinatura válida → `200 {ok:true}`; segredo errado, timestamp fora dos 300s de replay, header ausente e `v1` truncado → `400 assinatura_invalida`. Vetor de teste: evento de tipo inexistente, que atravessa a verificação e cai fora de todos os `else if` sem escrever no banco. `GET /` responde `{"ia":"on"}`.
+
+**Conserto estrutural:** os 5 valores sensíveis são secrets; os 8 não-sensíveis vivem no `wrangler.jsonc`. Não sobrou nada no painel para ser apagado — o Workers Build por Git deixou de ser perigoso e **não deve ser desativado**. `keep_vars` foi rejeitado: preservar var de painel só faz a divergência painel↔repo crescer calada.
+
+### PDF que aprova — `1375de7`
+Botão de verdade dentro de PDF não é viável (AcroForm+JS bloqueado por WhatsApp, Quick Look do iOS, Gmail e visor do Chrome; e o `expo-print` no iOS descarta até hyperlink). Entregue: dois QR codes, "Aprovar" e "Recusar", em **SVG inline** (o iOS descarta `data:image/svg+xml` em `<img>`), gerados por `src/utils/qrcode.ts` — TS puro, sem dependência nova, funciona offline.
+
+`?acao=` **só pré-seleciona**. `GET` nunca muta estado: um fetcher de preview de link do WhatsApp ou do Slack aprovaria o orçamento sozinho. A URL vai impressa embaixo de cada QR, para papel fotocopiado e leitor que não lê SVG.
+
+### Tema: a fundação encostou na UI
+70 arquivos migrados de `Colors` estático para `useEstilos`/`useCores`. O gate adversarial da própria migração achou dois HIGH sistêmicos, ambos da mesma raiz — **a cor foi escolhida pelo nome, não pela pergunta "o que está atrás deste texto?"**:
+
+- **Tinta fixa sobre preenchimento que muda com o modo.** `#0A1626` cravado sobre `c.accentLight`. `accentLight` é token de *primeiro plano*: no claro ele escurece (`#34C6D9` → `#197884`) para contrastar com branco. Tinta escura por cima dá 3.51:1 no claro e 8.85:1 no escuro — por isso ninguém viu. Atingia CTAs primárias (FAB "Agendar visita", "Convidar para a equipe", selo "OLLI PRO").
+- **Token de preenchimento como primeiro plano.** `color: c.accent` (marca pura, sem ajuste) sobre superfície clara: 2.05:1.
+
+Achados meus, no mesmo gate:
+
+- **`OlliButton`** pintava o rótulo com `cores.onSurface` — o texto da *superfície do app*, não o do *botão*. No app dark-only os dois coincidiam; no modo claro todo botão preenchido caiu para 3.41–3.72:1. Agora `textoSobre(bg)`, e o gradiente traz a própria cor.
+- **`gradientes.header` no escuro** é azul-marinho fixo, mas o texto vinha de `onPrimary`, derivado da *marca*. Marca clara ⇒ tinta escura sobre marinho ⇒ **1.10:1**, invisível.
+- **Cor de marca personalizável quebrava o hero e o header.** `#fff` cravado sobre `gradientes.primary`: 1.05–2.53:1 para marcas claras (8 de 14 combinações medidas).
+
+Raiz consertada em `src/theme/cores.ts`: um gradiente é uma superfície **contínua**, então as duas pontas precisam do mesmo texto. `parLegivel(a, b)` ancora a decisão na primeira ponta (a identidade) e empurra as duas em luminosidade até 4.5:1; matiz e saturação não se movem. `Gradientes` ganhou `sobrePrimary`, `sobreHeader`, `sobreBrand`.
+
+**Prova:** 5 marcas × 2 modos × 3 gradientes ⇒ **0 pares abaixo de 4.5:1** (antes: 8 falhas só em `primary`). A marca padrão saiu **byte a byte idêntica** em `primary` e `header`. Único pixel que mudou: a ponta `accent` do gradiente dos botões, `#34C6D9` → `#1A808D` — dívida que já estava em produção (branco sobre ciano = **2.05:1**, reprovado hoje). O ciano segue vivo em `accent`, `frost`, aba ativa e `glowCyan`.
+
+### Web deixou de ser celular
+Dois culpados, ambos removidos:
+- `App.tsx` aplicava `maxWidth: 430` sempre que a janela tinha menos de 1024px — um telefone desenhado no meio do navegador.
+- `comCentroDesktop` embrulhava as telas em uma coluna de **560px com bordas laterais** — a largura e a moldura de um aparelho. Virou página web: 1100px, respiro lateral, sem bordas. As 29 telas do navigator seguem intactas (o nome exportado não mudou) e o pass-through no nativo continua sendo identidade — **zero efeito no APK**.
+
+### O gate mecânico, e os três defeitos que ele não via
+A regra virou código: `scripts/checar-contraste.mjs`, ligado ao `npm run preflight`.
+
+1. **Lint estático** dos defeitos [A] `accent` como cor de texto e [B] tinta cravada sobre fill do tema. Exceção legítima se declara **na própria linha** (`// contraste-ok: <fundo> — <razão> (<razão medida>:1)`); uma lista de exceções em arquivo separado apodrece, um comentário na linha some junto com a linha. Ficaram 14 exceções, todas com número medido — duas verificadas por mim de forma independente.
+2. **Prova da paleta**: as 12 cores do seletor × 2 modos × 4 superfícies × 6 tokens + as duas pontas dos 3 gradientes com texto. Pior par de todas: exatamente 4.50:1.
+3. **O acoplamento invisível**: existem 92 `#fff` cravados sobre gradientes de marca. Eles só estão corretos porque toda cor oferecida é escura o bastante para `textoSobre` devolver branco. O gate agora falha o build se alguém acrescentar uma cor clara ao seletor. Verifiquei injetando `#FFD700`: o gate rejeita e sai com 1.
+
+**Consertos de raiz na paleta:** `primaryLight`, `accentLight`, `success`, `danger`, `warning` e `plan` eram ajustados contra o `background` — o fundo mais **fácil**. São pintados sobre `surface` e `surfaceElevated`, que no escuro são mais **claras** que o fundo. `danger` como texto sobre um card dava 3.43:1. Agora o ajuste é contra a superfície mais difícil (a mais clara no escuro, a mais escura no claro): 15/15 cores candidatas passam, contra 11/15 antes.
+
+**Três defeitos que o gate não via, achados por outros meios:**
+- **Setas do cabeçalho da Agenda a 1.03:1.** `accentLight` (token de *superfície*) pintado sobre o gradiente de marca. O conserto do gate anterior tinha sido perdido quando um workflow foi morto; descobri comparando um `.tmp` que um agente esqueceu no disco. Nem `tsc` nem gate acusavam.
+- **`SincronizandoPill` divergiu em 6 cópias.** Quatro consertadas, duas esquecidas com 2.88:1. Achado por comparação entre as cópias, não por lint.
+- **Comentário depois de `/>` vira texto na tela.** Eu mesmo cometi ao anotar uma exceção: em posição de filho do JSX, `//` não é comentário. O `tsc` cala. Virou a terceira regra do lint, hoje em zero.
+
+**Adversarialidade que pagou por si:** os céticos acharam a **inversão** do defeito — aplicar `accent → accentLight` sobre uma pílula de fundo escuro fixo *cria* o bug que a regra existe para matar (no claro `accentLight` escurece para `#197884` e cai a 2.9:1). Quatro sítios corrigidos no sentido oposto.
+
+**Seletor entregue.** `ContaScreen` → "Aparência": interruptor de modo escuro (com anúncio para leitor de tela — trocar paleta não muda o foco nem a árvore de acessibilidade) e 12 amostras de cor. `OlliPressable` passou a encaminhar `accessibilityRole` e `accessibilityState`, que engolia: uma amostra selecionada era indistinguível para quem não enxerga a borda.
 
 ## Bloqueios externos ativos
 

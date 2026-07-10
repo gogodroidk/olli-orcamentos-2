@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
@@ -48,6 +48,8 @@ export default function EmitirReciboScreen() {
 function EmitirReciboConteudo() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const orcamentoId = route.params?.orcamentoId;
 
   const [aba, setAba] = useState<Aba>('novo');
@@ -400,11 +402,11 @@ function EmitirReciboConteudo() {
       {/* ABAS: Novo recibo / Emitidos (histórico) */}
       <View style={styles.tabsRow}>
         <TouchableOpacity style={[styles.tabBtn, aba === 'novo' && styles.tabBtnActive]} onPress={() => setAba('novo')} activeOpacity={0.85}>
-          <MaterialCommunityIcons name="file-plus-outline" size={16} color={aba === 'novo' ? '#fff' : Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="file-plus-outline" size={16} color={aba === 'novo' ? cores.onPrimary : cores.onSurfaceVariant} />
           <Text style={[styles.tabLabel, aba === 'novo' && styles.tabLabelActive]}>Novo</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, aba === 'emitidos' && styles.tabBtnActive]} onPress={() => setAba('emitidos')} activeOpacity={0.85}>
-          <MaterialCommunityIcons name="history" size={16} color={aba === 'emitidos' ? '#fff' : Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="history" size={16} color={aba === 'emitidos' ? cores.onPrimary : cores.onSurfaceVariant} />
           <Text style={[styles.tabLabel, aba === 'emitidos' && styles.tabLabelActive]}>Emitidos</Text>
         </TouchableOpacity>
       </View>
@@ -413,14 +415,14 @@ function EmitirReciboConteudo() {
         <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           {carregandoEmpresa && (
             <View style={styles.avisoCard}>
-              <ActivityIndicator color={Colors.primary} size="small" />
+              <ActivityIndicator color={cores.primary} size="small" />
               <Text style={styles.avisoText}>Carregando dados da sua empresa…</Text>
             </View>
           )}
 
           {semEmpresa && (
             <View style={styles.avisoCardWarn}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={22} color={Colors.warning} />
+              <MaterialCommunityIcons name="alert-circle-outline" size={22} color={cores.warning} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.avisoWarnTitle}>Cadastre sua empresa antes</Text>
                 <Text style={styles.avisoWarnText}>Sem esses dados o recibo sairia em branco para o cliente.</Text>
@@ -433,7 +435,7 @@ function EmitirReciboConteudo() {
 
           {orc && (
             <View style={styles.orcCard}>
-              <MaterialCommunityIcons name="file-document-check-outline" size={22} color={Colors.success} />
+              <MaterialCommunityIcons name="file-document-check-outline" size={22} color={cores.success} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.orcLabel}>Referente ao orçamento nº {orc.numero}</Text>
                 <Text style={styles.orcTotal}>{formatCurrency(orc.valorTotal)}</Text>
@@ -443,7 +445,7 @@ function EmitirReciboConteudo() {
 
           {reciboPendente && (
             <View style={styles.pendenteCard}>
-              <MaterialCommunityIcons name="cash-check" size={22} color={Colors.primary} />
+              <MaterialCommunityIcons name="cash-check" size={22} color={cores.primary} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.pendenteTitle}>Pagamento já registrado</Text>
                 <Text style={styles.pendenteText}>
@@ -464,7 +466,7 @@ function EmitirReciboConteudo() {
             <View style={styles.formasGrid}>
               {FORMAS.map(f => (
                 <TouchableOpacity key={f} style={[styles.formaChip, formaPagamento === f && styles.formaChipActive]} onPress={() => setFormaPagamento(f)} activeOpacity={0.8}>
-                  <Text style={[styles.formaLabel, formaPagamento === f && { color: '#fff' }]}>{f}</Text>
+                  <Text style={[styles.formaLabel, formaPagamento === f && { color: cores.onPrimary }]}>{f}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -492,7 +494,7 @@ function EmitirReciboConteudo() {
           ListEmptyComponent={
             carregandoEmitidos ? (
               <View style={{ paddingTop: 40, alignItems: 'center' }}>
-                <ActivityIndicator color={Colors.primary} />
+                <ActivityIndicator color={cores.primary} />
               </View>
             ) : (
               <EmptyState
@@ -522,9 +524,9 @@ function EmitirReciboConteudo() {
                 activeOpacity={0.85}
               >
                 {reenviandoId === item.id ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <ActivityIndicator size="small" color={cores.primary} />
                 ) : (
-                  <MaterialCommunityIcons name={item.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'} size={16} color={Colors.primary} />
+                  <MaterialCommunityIcons name={item.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'} size={16} color={cores.primary} />
                 )}
                 <Text style={styles.reenviarBtnText}>
                   {item.pdfEmitido === false ? 'Gerar e compartilhar PDF' : 'Reenviar / compartilhar'}
@@ -544,91 +546,93 @@ function EmitirReciboConteudo() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   tabsRow: {
     flexDirection: 'row', gap: 8,
     paddingHorizontal: Spacing.base, paddingVertical: 10,
-    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline,
+    backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline,
   },
   tabBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 9, borderRadius: BorderRadius.full,
-    borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant,
+    borderWidth: 1, borderColor: c.outline, backgroundColor: c.surfaceVariant,
   },
-  tabBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tabLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
-  tabLabelActive: { color: '#fff' },
+  tabBtnActive: { backgroundColor: c.primary, borderColor: c.primary },
+  tabLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
+  tabLabelActive: { color: c.onPrimary },
 
   avisoCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.surfaceVariant, marginBottom: Spacing.base,
+    backgroundColor: c.surfaceVariant, marginBottom: Spacing.base,
     borderRadius: BorderRadius.md, padding: Spacing.base,
-    borderWidth: 1, borderColor: Colors.outline,
+    borderWidth: 1, borderColor: c.outline,
   },
-  avisoText: { fontSize: 13, color: Colors.onSurfaceVariant },
+  avisoText: { fontSize: 13, color: c.onSurfaceVariant },
   avisoCardWarn: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.warningLight, marginBottom: Spacing.base,
+    backgroundColor: c.warningLight, marginBottom: Spacing.base,
     borderRadius: BorderRadius.md, padding: Spacing.base,
-    borderWidth: 1, borderColor: Colors.warning,
+    borderWidth: 1, borderColor: c.warning,
   },
-  avisoWarnTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
-  avisoWarnText: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  avisoWarnTitle: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  avisoWarnText: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   avisoWarnBtn: {
-    backgroundColor: Colors.warning, paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: c.warning, paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: BorderRadius.full, marginLeft: 8,
   },
-  avisoWarnBtnText: { fontSize: 12, fontWeight: '800', color: '#0A1626' },
+  avisoWarnBtnText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.warning) },
 
   reciboRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  reciboNumero: { fontSize: 14, fontWeight: '800', color: Colors.onSurface },
-  reciboCliente: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
-  reciboMeta: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 2 },
-  reciboPendenteTag: { fontSize: 11, fontWeight: '700', color: Colors.warning, marginTop: 4 },
-  reciboValor: { fontSize: 15, fontWeight: '800', color: Colors.success },
+  reciboNumero: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  reciboCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
+  reciboMeta: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 2 },
+  reciboPendenteTag: { fontSize: 11, fontWeight: '700', color: c.warning, marginTop: 4 },
+  reciboValor: { fontSize: 15, fontWeight: '800', color: c.success },
   reenviarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline,
+    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline,
   },
-  reenviarBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  reenviarBtnText: { fontSize: 13, fontWeight: '700', color: c.primary },
 
   orcCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.successLight, marginBottom: Spacing.base,
+    backgroundColor: c.successLight, marginBottom: Spacing.base,
     borderRadius: BorderRadius.md, padding: Spacing.base,
-    borderWidth: 1, borderColor: Colors.success,
+    borderWidth: 1, borderColor: c.success,
   },
-  orcLabel: { fontSize: 13, color: Colors.onSurface },
-  orcTotal: { fontSize: 16, fontWeight: '800', color: Colors.success },
+  orcLabel: { fontSize: 13, color: c.onSurface },
+  orcTotal: { fontSize: 16, fontWeight: '800', color: c.success },
+  // Azul fixo (base da marca padrão, não a cor de marca escolhida): próximo de
+  // `primaryContainer` mas alfa não bate exatamente — sem chave semântica exata (ver rule 7).
   pendenteCard: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(11,111,206,0.12)', marginBottom: Spacing.base,
     borderRadius: BorderRadius.md, padding: Spacing.base,
-    borderWidth: 1, borderColor: Colors.primary,
+    borderWidth: 1, borderColor: c.primary,
   },
-  pendenteTitle: { fontSize: 13, fontWeight: '800', color: Colors.onSurface },
-  pendenteText: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  pendenteTitle: { fontSize: 13, fontWeight: '800', color: c.onSurface },
+  pendenteText: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   card: {
-    backgroundColor: Colors.surface, marginBottom: Spacing.base,
-    borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm,
-    borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, marginBottom: Spacing.base,
+    borderRadius: BorderRadius.lg, padding: Spacing.base, ...sombrasDe(c).sm,
+    borderWidth: 1, borderColor: c.outline,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginBottom: Spacing.base },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginBottom: Spacing.base },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 4, marginTop: 8 },
   input: {
-    backgroundColor: Colors.background, borderRadius: BorderRadius.md,
-    padding: Spacing.base, fontSize: 14, color: Colors.onSurface,
-    borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.background, borderRadius: BorderRadius.md,
+    padding: Spacing.base, fontSize: 14, color: c.onSurface,
+    borderWidth: 1, borderColor: c.outline,
   },
   formasGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  formaChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface },
-  formaChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  formaLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant },
+  formaChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
+  formaChipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  formaLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant },
   gerarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.success, margin: Spacing.base,
+    backgroundColor: c.success, margin: Spacing.base,
     borderRadius: BorderRadius.lg, padding: Spacing.lg, gap: 10,
   },
   gerarBtnLabel: { color: '#fff', fontWeight: '800', fontSize: 16 },

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, StyleSheet, View, ViewStyle } from 'react-native';
+import { useTema } from '../theme';
 
 /**
  * Botão "Continuar com a Apple".
@@ -35,6 +36,9 @@ interface Props {
 }
 
 export function BotaoApple({ onPress, desabilitado, style }: Props) {
+  // Hook incondicional (regra dos hooks): mesmo quando `Apple` é null o hook
+  // precisa rodar sempre, então vem antes do return antecipado abaixo.
+  const { modo } = useTema();
   if (!Apple) return null;
 
   return (
@@ -46,8 +50,9 @@ export function BotaoApple({ onPress, desabilitado, style }: Props) {
     >
       <Apple.AppleAuthenticationButton
         buttonType={Apple.AppleAuthenticationButtonType.CONTINUE}
-        // Fundo do OLLI é escuro: a HIG da Apple pede o botão BRANCO sobre escuro.
-        buttonStyle={Apple.AppleAuthenticationButtonStyle.WHITE}
+        // A HIG da Apple pede o botão BRANCO sobre fundo escuro e PRETO sobre
+        // fundo claro — antes o app só existia em modo escuro; agora segue o tema.
+        buttonStyle={modo === 'escuro' ? Apple.AppleAuthenticationButtonStyle.WHITE : Apple.AppleAuthenticationButtonStyle.BLACK}
         cornerRadius={12}
         style={styles.botao}
         onPress={onPress}

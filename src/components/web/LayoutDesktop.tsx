@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { Colors, Spacing, Typography } from '../../theme';
+import { Spacing, Typography, useEstilos, type Cores } from '../../theme';
 
 interface Props {
   titulo: string;
@@ -18,6 +18,7 @@ interface Props {
  * Ferramentas desktop — nunca importado por telas mobile.
  */
 export function LayoutDesktop({ titulo, subtitulo, acoes, children, scroll = true }: Props) {
+  const styles = useEstilos(criarEstilos);
   const conteudo = (
     <View style={styles.coluna}>
       <View style={styles.header}>
@@ -48,10 +49,10 @@ export function LayoutDesktop({ titulo, subtitulo, acoes, children, scroll = tru
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   fundo: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: c.background,
     alignItems: 'center',
   },
   scroll: {
@@ -86,11 +87,11 @@ const styles = StyleSheet.create({
   },
   titulo: {
     ...Typography.h1,
-    color: Colors.onBackground,
+    color: c.onBackground,
   },
   subtitulo: {
     ...Typography.body,
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
   },
   acoes: {
     flexDirection: 'row',

@@ -8,7 +8,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -38,6 +38,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -50,7 +52,11 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons
+        name="cloud-sync-outline"
+        size={13}
+        color={cores.accent} // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.28:1 (8.27:1)
+      />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -58,6 +64,8 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 
 export default function ClientesScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filtered, setFiltered] = useState<Cliente[]>([]);
   const [query, setQuery] = useState('');
@@ -304,9 +312,9 @@ export default function ClientesScreen() {
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader title="Clientes" subtitle={`${clientes.length} cadastrado${clientes.length === 1 ? '' : 's'}`} onBack={() => goBackOrHome(nav)}>
         <View style={styles.searchBar}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
-          <TextInput style={styles.searchInput} placeholder="Buscar por nome ou telefone..." value={query} onChangeText={handleSearch} placeholderTextColor={Colors.onSurfaceMuted} />
-          {query ? <TouchableOpacity onPress={() => handleSearch('')} accessibilityRole="button" accessibilityLabel="Limpar busca"><MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} /></TouchableOpacity> : null}
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} />
+          <TextInput style={styles.searchInput} placeholder="Buscar por nome ou telefone..." value={query} onChangeText={handleSearch} placeholderTextColor={cores.onSurfaceMuted} />
+          {query ? <TouchableOpacity onPress={() => handleSearch('')} accessibilityRole="button" accessibilityLabel="Limpar busca"><MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} /></TouchableOpacity> : null}
         </View>
       </GradientHeader>
 
@@ -341,7 +349,7 @@ export default function ClientesScreen() {
         data={filtered}
         keyExtractor={c => c.id}
         contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: selecionando ? 100 : Spacing.base }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
         renderItem={({ item: c, index }) => {
           const marcado = selecionados.has(c.id);
           return (
@@ -359,7 +367,7 @@ export default function ClientesScreen() {
                 <MaterialCommunityIcons
                   name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
                   size={24}
-                  color={marcado ? Colors.accent : Colors.onSurfaceMuted}
+                  color={marcado ? cores.accentLight : cores.onSurfaceMuted}
                   style={{ marginRight: 10 }}
                 />
               )}
@@ -379,12 +387,12 @@ export default function ClientesScreen() {
               {!selecionando && (
                 <View style={styles.cardActions}>
                   <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
-                    <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} />
+                    <MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
                     {excluindoId === c.id
-                      ? <ActivityIndicator size="small" color={Colors.danger} />
-                      : <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />}
+                      ? <ActivityIndicator size="small" color={cores.danger} />
+                      : <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />}
                   </TouchableOpacity>
                 </View>
               )}
@@ -407,7 +415,7 @@ export default function ClientesScreen() {
                 </>
               ) : (
                 <TouchableOpacity style={styles.selEnter} onPress={() => entrarSelecao()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Selecionar para excluir vários">
-                  <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={cores.accentLight} />
                   <Text style={styles.selEnterLabel}>Selecionar</Text>
                 </TouchableOpacity>
               )}
@@ -420,7 +428,7 @@ export default function ClientesScreen() {
 
       {!selecionando && (
         <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Novo cliente">
-          <MaterialCommunityIcons name="plus" size={28} color="#fff" />
+          <MaterialCommunityIcons name="plus" size={28} color={cores.onPrimary} />
         </TouchableOpacity>
       )}
 
@@ -444,7 +452,7 @@ export default function ClientesScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{isNew ? 'Novo Cliente' : 'Editar Cliente'}</Text>
               <TouchableOpacity onPress={() => { setEditing(null); setErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-                <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+                <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
@@ -460,7 +468,7 @@ export default function ClientesScreen() {
               </View>
               <View style={styles.cepRow}>
                 <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => onCepChange(v, masked => setEditing(p => p ? { ...p, cep: masked } : p))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
-                {cepLoading && <ActivityIndicator size="small" color={Colors.primary} style={styles.cepSpinner} />}
+                {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
               </View>
             </ScrollView>
             <View style={styles.modalFooter}>
@@ -485,11 +493,18 @@ export default function ClientesScreen() {
                   </View>
                 </View>
 
-                <SheetAction icon="file-document-multiple-outline" color={Colors.primaryLight} label="Ver orçamentos" desc="Histórico deste cliente" onPress={() => verOrcamentos(acoes)} />
-                <SheetAction icon="file-plus-outline" color={Colors.accent} label="Novo orçamento" desc="Já com este cliente" onPress={() => novoOrcamento(acoes)} />
+                <SheetAction icon="file-document-multiple-outline" color={cores.primaryLight} label="Ver orçamentos" desc="Histórico deste cliente" onPress={() => verOrcamentos(acoes)} />
+                <SheetAction
+                  icon="file-plus-outline"
+                  color={cores.accent} // contraste-ok: prop só vira o fundo/borda translúcidos do chip (color+'1E'/'3A' sobre c.surface — não se toca); o ícone real usa iconColor=cores.accentLight, que já mede 4.73:1 no claro / 6.23:1 no escuro sobre esse fundo (4.73:1)
+                  iconColor={cores.accentLight}
+                  label="Novo orçamento"
+                  desc="Já com este cliente"
+                  onPress={() => novoOrcamento(acoes)}
+                />
                 <SheetAction icon="calendar-plus" color="#A78BFA" label="Agendar visita" desc="Adicionar à agenda" onPress={() => agendarVisita(acoes)} />
-                <SheetAction icon="whatsapp" color={Colors.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
-                <SheetAction icon="pencil-outline" color={Colors.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
+                <SheetAction icon="whatsapp" color={cores.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
+                <SheetAction icon="pencil-outline" color={cores.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
               </>
             )}
           </TouchableOpacity>
@@ -499,76 +514,91 @@ export default function ClientesScreen() {
   );
 }
 
-function SheetAction({ icon, color, label, desc, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; label: string; desc: string; onPress: () => void }) {
+function SheetAction({ icon, color, iconColor, label, desc, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; iconColor?: string; label: string; desc: string; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity style={styles.sheetItem} onPress={onPress} activeOpacity={0.8}>
       <View style={[styles.sheetIcon, { backgroundColor: color + '1E', borderColor: color + '3A' }]}>
-        <MaterialCommunityIcons name={icon} size={20} color={color} />
+        {/* `color` pinta a tinta/borda do chip (fundo — não se toca). O glifo pode precisar
+            de um tom mais escuro para passar contraste sobre esse chip claro: `iconColor`. */}
+        <MaterialCommunityIcons name={icon} size={20} color={iconColor ?? color} />
       </View>
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={styles.sheetItemTitle}>{label}</Text>
         <Text style={styles.sheetItemDesc}>{desc}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    // Pill sempre escura de propósito (como um toast): flutua sobre o header,
+    // que é sempre um banner colorido/escuro nos dois modos (ver GradientHeader).
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...Shadow.sm },
-  cardSelected: { backgroundColor: Colors.surfacePressed, borderWidth: 1, borderColor: Colors.accent },
+  // Pill escura FIXA (rgba(10,22,38,0.92)) nos dois modos: o primeiro plano tem que
+  // ficar CLARO nos dois. `accentLight` escurece no claro (#197884 → 3.28:1, reprova
+  // texto); `accent` fica #34C6D9 nos dois modos (8.27:1). No escuro os dois são iguais.
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.28:1 (8.27:1)
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...sombrasDe(c).sm },
+  cardSelected: { backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.accent },
   selToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 4 },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   selEnter: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
   },
-  selEnterLabel: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
-  selCancel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
-  selCount: { fontSize: 13, fontWeight: '800', color: Colors.onSurface },
-  selAll: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+  selEnterLabel: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  selCancel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
+  selCount: { fontSize: 13, fontWeight: '800', color: c.onSurface },
+  selAll: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   bulkBar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 22,
-    backgroundColor: 'rgba(7,17,31,0.98)', borderTopWidth: 1, borderTopColor: Colors.strokeGlow,
+    // Barra sempre escura de propósito (like a toast/bottom-bar): sem chave que
+    // represente "fundo escuro fixo" nos dois modos — ver rule 7 da migração.
+    backgroundColor: 'rgba(7,17,31,0.98)', borderTopWidth: 1, borderTopColor: c.strokeGlow,
   },
-  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 18, fontWeight: '800', color: Colors.primary },
+  avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 18, fontWeight: '800', color: c.primary },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: Colors.onSurface },
+  name: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: c.onSurface },
+  // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   radarBadge: { backgroundColor: 'rgba(247,178,59,0.14)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.34)', borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  radarBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.warning },
-  info: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
-  infoMuted: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 1 },
+  radarBadgeText: { fontSize: 10, fontWeight: '800', color: c.warning },
+  info: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
+  infoMuted: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 1 },
   cardActions: { flexDirection: 'row', gap: 16 },
-  fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center', ...Shadow.lg, shadowColor: Colors.primary, shadowOpacity: 0.4 },
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
-  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
+  fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).lg, shadowColor: c.primary, shadowOpacity: 0.4 },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   rowFields: { flexDirection: 'row' },
   cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
   cepSpinner: { marginLeft: 10, marginBottom: 14 },
 
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
+  // padrão de overlay de modal — sem chave "scrim" na paleta).
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark, marginBottom: Spacing.base },
+  sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: Spacing.base },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base, paddingHorizontal: 2 },
-  sheetName: { fontSize: 17, fontWeight: '800', color: Colors.onSurface },
-  sheetSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
-  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, marginBottom: 10 },
+  sheetName: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
+  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
   sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: Colors.onSurface },
-  sheetItemDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });

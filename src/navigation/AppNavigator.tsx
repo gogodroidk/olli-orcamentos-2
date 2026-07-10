@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, type NavigatorScreenParams } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { BorderRadius, Colors, Gradients } from '../theme';
+import { BorderRadius, comAlfa, sombrasDe, useCores, useEstilos, useGradientes, type Cores } from '../theme';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { SidebarNav } from '../components/web/SidebarNav';
@@ -202,12 +202,15 @@ const EmptyTab = () => null;
  * a sessão inteira quando ele está sem sinal, que é a rotina de campo.
  */
 function HomeCarregando() {
+  const styles = useEstilos(criarEstilos);
   return <View style={styles.homeCarregando} />;
 }
 
 /** Botão central elevado (＋ Orçamento). Não é uma tela — abre o stack NovoOrcamento. */
 function CenterButton(_props: BottomTabBarButtonProps) {
   const nav = useNavigation<any>();
+  const styles = useEstilos(criarEstilos);
+  const gradientes = useGradientes();
   return (
     <View style={styles.centerWrap} pointerEvents="box-none">
       <TouchableOpacity
@@ -221,7 +224,7 @@ function CenterButton(_props: BottomTabBarButtonProps) {
         style={styles.centerTouch}
       >
         <LinearGradient
-          colors={Gradients.primaryDiagonal}
+          colors={gradientes.primaryDiagonal}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.centerGrad}
@@ -240,6 +243,7 @@ function TabNavigator() {
   // comportamento mobile/APK EXATO de hoje. As diferenças (sidebar à esquerda,
   // telas desktop, 4 abas extras) só existem na web ≥ 1024px.
   const ehDesktop = useEhDesktop();
+  const cores = useCores();
   // Shell do técnico (papel === 'tecnico'): no MOBILE a Home vira a
   // TecnicoHomeScreen e o atalho central de orçamento some. Para desktop e para
   // os demais papéis (owner/admin/gestor/pessoal) nada muda — `papel` é null em
@@ -259,8 +263,8 @@ function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.tabActive,
-        tabBarInactiveTintColor: Colors.tabInactive,
+        tabBarActiveTintColor: cores.tabActive,
+        tabBarInactiveTintColor: cores.tabInactive,
         // Desktop: a barra vira uma sidebar à esquerda (SidebarNav custom, abaixo).
         // A posição lateral é API do bottom-tabs v7.
         ...(ehDesktop ? { tabBarPosition: 'left' as const } : null),
@@ -270,9 +274,13 @@ function TabNavigator() {
         tabBarStyle: ehDesktop
           ? { display: 'none' as const }
           : {
-              backgroundColor: 'rgba(7,17,31,0.98)',
+              // rgba(7,17,31,0.98) era o fundo do modo escuro (#07111F) quase
+              // opaco, cravado — no claro isso virava uma barra preta. `comAlfa`
+              // reproduz o mesmo efeito (fundo quase opaco) seguindo o tema/cor
+              // de marca atual.
+              backgroundColor: comAlfa(cores.background, 0.98),
               borderTopWidth: 1,
-              borderTopColor: Colors.strokeGlow,
+              borderTopColor: cores.strokeGlow,
               borderTopLeftRadius: BorderRadius.xl,
               borderTopRightRadius: BorderRadius.xl,
               height: 68 + insets.bottom,
@@ -407,6 +415,7 @@ function TabNavigator() {
 }
 
 export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof RootStackParamList } = {}) {
+  const cores = useCores();
   return (
     <Stack.Navigator
       initialRouteName={initialRouteName ?? 'Tabs'}
@@ -416,7 +425,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
         // suave. As "capas" (Entrar/Onboarding) usam fade (abaixo).
         animation: 'slide_from_right',
         animationDuration: 260,
-        contentStyle: { backgroundColor: Colors.background },
+        contentStyle: { backgroundColor: cores.background },
       }}
     >
       <Stack.Screen name="Tabs" component={TabNavigator} />
@@ -480,17 +489,25 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
   );
 }
 
-const styles = StyleSheet.create({
-  // Fundo liso (sem spinner): esta Home aparece por milissegundos no caso comum e
-  // um indicador piscando seria mais ruidoso que a espera.
-  homeCarregando: { flex: 1, backgroundColor: Colors.background },
-  centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
-  centerTouch: { alignItems: 'center', justifyContent: 'center', marginTop: -28 },
-  centerGrad: {
-    width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 4, borderColor: Colors.background,
-    shadowColor: '#34C6D9', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 14,
-    elevation: 8,
-  },
-  centerLabel: { fontSize: 11, fontWeight: '800', color: Colors.tabActive, marginTop: 3 },
-});
+const criarEstilos = (c: Cores) => {
+  // shadowColor do glow: '#34C6D9' era o ciano de acento cravado. No escuro o
+  // glow é a própria cor de acento; no claro `sombrasDe` já troca para uma
+  // sombra neutra (glow colorido sobre fundo claro suja o card em vez de
+  // destacar — ver comentário em cores.ts). Usamos só a cor daí; offset/
+  // opacity/radius/elevation seguem os valores originais deste botão.
+  const glowCyan = sombrasDe(c).glowCyan;
+  return StyleSheet.create({
+    // Fundo liso (sem spinner): esta Home aparece por milissegundos no caso comum e
+    // um indicador piscando seria mais ruidoso que a espera.
+    homeCarregando: { flex: 1, backgroundColor: c.background },
+    centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
+    centerTouch: { alignItems: 'center', justifyContent: 'center', marginTop: -28 },
+    centerGrad: {
+      width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 4, borderColor: c.background,
+      shadowColor: glowCyan.shadowColor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 14,
+      elevation: 8,
+    },
+    centerLabel: { fontSize: 11, fontWeight: '800', color: c.tabActive, marginTop: 3 },
+  });
+};

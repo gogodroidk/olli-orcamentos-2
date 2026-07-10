@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, FlatList, StyleSheet, DimensionValue, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliSkeleton } from '../OlliSkeleton';
 import { EmptyState } from '../EmptyState';
 import { PressableWebState } from './pressableWebState';
@@ -63,6 +63,7 @@ export function TabelaDados<T extends { id: string }>({
   vazio,
 }: Props<T>) {
   const [ordenacao, setOrdenacao] = useState(ordenacaoInicial ?? null);
+  const styles = useEstilos(criarEstilos);
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenacao) return dados;
@@ -165,6 +166,8 @@ function CelulaHeader<T>({
   ordenacao: { chave: string; direcao: 'asc' | 'desc' } | null;
   onPress?: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const ativa = ordenacao?.chave === coluna.chave;
   const conteudo = (
     <View
@@ -178,7 +181,7 @@ function CelulaHeader<T>({
         <MaterialCommunityIcons
           name={ativa && ordenacao?.direcao === 'asc' ? 'chevron-up' : 'chevron-down'}
           size={14}
-          color={ativa ? Colors.accent : Colors.onSurfaceMuted}
+          color={ativa ? cores.accent : cores.onSurfaceMuted}
           style={{ opacity: ativa ? 1 : 0.4 }}
         />
       )}
@@ -217,6 +220,7 @@ function LinhaTabela<T extends { id: string }>({
   colunas: Coluna<T>[];
   onPress?: (item: T) => void;
 }) {
+  const styles = useEstilos(criarEstilos);
   const conteudo = colunas.map((coluna) => (
     <View
       key={coluna.chave}
@@ -246,13 +250,13 @@ function LinhaTabela<T extends { id: string }>({
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   wrap: {
     width: '100%',
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     overflow: 'hidden',
   },
   tabela: {
@@ -260,9 +264,9 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outline,
+    borderBottomColor: c.outline,
   },
   corpoScroll: {
     maxHeight: ALTURA_LINHA * 10,
@@ -273,11 +277,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   celulaHeaderHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
   },
   celulaFocada: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: -2,
   } as any,
@@ -288,22 +292,22 @@ const styles = StyleSheet.create({
   },
   tituloHeader: {
     ...Typography.label,
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
     textTransform: 'uppercase',
     fontSize: 11,
   },
   tituloHeaderAtivo: {
-    color: Colors.onSurface,
+    color: c.onSurface,
   },
   linha: {
     flexDirection: 'row',
     alignItems: 'center',
     height: ALTURA_LINHA,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outline,
+    borderBottomColor: c.outline,
   },
   linhaHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
     cursor: 'pointer' as any,
   },
   celula: {

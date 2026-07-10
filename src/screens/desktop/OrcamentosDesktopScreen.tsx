@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
@@ -37,6 +37,8 @@ const FILTROS_STATUS: Array<{ chave: StatusOrcamento | 'todos'; label: string }>
 export default function OrcamentosDesktopScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const clienteId = route.params?.clienteId;
   const clienteNome = route.params?.clienteNome;
 
@@ -120,7 +122,7 @@ export default function OrcamentosDesktopScreen() {
         </View>
       ),
     },
-  ], [nav]);
+  ], [nav, styles]);
 
   return (
     <LayoutDesktop
@@ -135,7 +137,7 @@ export default function OrcamentosDesktopScreen() {
             accessibilityLabel="Novo orçamento"
             style={({ hovered, focused }: PressableWebState) => [styles.botaoNovo, hovered && styles.botaoNovoHover, focused && styles.focoVisivel]}
           >
-            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+            <MaterialCommunityIcons name="plus" size={18} color={cores.onPrimary} />
             <Text style={styles.botaoNovoLabel}>Novo orçamento</Text>
           </Pressable>
         </>
@@ -154,7 +156,7 @@ export default function OrcamentosDesktopScreen() {
 
       {clienteId && (
         <View style={styles.bannerCliente}>
-          <MaterialCommunityIcons name="account-filter-outline" size={18} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="account-filter-outline" size={18} color={cores.accentLight} />
           <Text style={styles.bannerClienteTexto} numberOfLines={1}>
             Mostrando orçamentos de {clienteNome || 'um cliente'}
           </Text>
@@ -182,6 +184,7 @@ export default function OrcamentosDesktopScreen() {
 }
 
 function Chip({ label, ativo, onPress }: { label: string; ativo: boolean; onPress: () => void }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <Pressable
       onPress={onPress}
@@ -200,6 +203,8 @@ function Chip({ label, ativo, onPress }: { label: string; ativo: boolean; onPres
 }
 
 function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCommunityIcons.glyphMap; rotulo: string; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <Pressable
       onPress={onPress}
@@ -208,15 +213,15 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
       style={({ hovered, focused }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover, focused && styles.focoVisivel]}
     >
-      <MaterialCommunityIcons name={icone} size={17} color={Colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={icone} size={17} color={cores.onSurfaceVariant} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   focoVisivel: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   } as any,
@@ -224,17 +229,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    backgroundColor: Colors.primary,
+    backgroundColor: c.primary,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
   },
   botaoNovoHover: {
-    backgroundColor: Colors.primaryLight,
+    backgroundColor: c.primaryLight,
   },
   botaoNovoLabel: {
     ...Typography.button,
-    color: '#fff',
+    color: c.onPrimary,
     fontSize: 13,
   },
   chips: {
@@ -247,33 +252,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
   },
   chipHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
   },
   chipAtivo: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: c.primary,
+    borderColor: c.primary,
   },
   chipLabel: {
     ...Typography.caption,
     fontSize: 12.5,
     fontWeight: '600',
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
   },
   chipLabelAtivo: {
-    color: '#fff',
+    color: c.onPrimary,
   },
   bannerCliente: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: 'rgba(52,198,217,0.10)',
+    // rgba(52,198,217,...) era o cyan de marca (#34C6D9) fixo — agora acompanha
+    // o accent escolhido no tema via comAlfa.
+    backgroundColor: comAlfa(c.accent, 0.10),
     borderWidth: 1,
-    borderColor: 'rgba(52,198,217,0.28)',
+    borderColor: comAlfa(c.accent, 0.28),
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
@@ -281,17 +288,17 @@ const styles = StyleSheet.create({
   },
   bannerClienteTexto: {
     ...Typography.bodySmall,
-    color: Colors.accentLight,
+    color: c.accentLight,
     fontWeight: '700',
     flexShrink: 1,
   },
   celulaTexto: {
     ...Typography.bodySmall,
-    color: Colors.onSurface,
+    color: c.onSurface,
   },
   celulaValor: {
     ...Typography.bodySmall,
-    color: Colors.onSurface,
+    color: c.onSurface,
     fontWeight: '700',
   },
   acoesLinha: {
@@ -306,6 +313,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   acaoIconeHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
   },
 });

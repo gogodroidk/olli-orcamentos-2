@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -47,6 +47,8 @@ const mesmoDia = (a: Date, b: Date) =>
 export default function TecnicoHomeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -159,7 +161,7 @@ export default function TecnicoHomeScreen() {
       <ScrollView
         contentContainerStyle={{ padding: Spacing.base, paddingBottom: insets.bottom + 40, gap: Spacing.lg }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.accentLight} />}
       >
         {/* Saudação — sem nada de dinheiro, plano, relatório ou equipe aqui. */}
         <AnimatedEntrance>
@@ -181,7 +183,7 @@ export default function TecnicoHomeScreen() {
             titulo="Em execução"
             valor={String(emExecucao.length)}
             icone="progress-wrench"
-            corIcone={Colors.warning}
+            corIcone={cores.warning}
             rodape={emExecucao.length ? 'em andamento agora' : 'nada rolando agora'}
             onPress={abrirOrdens}
           />
@@ -189,7 +191,7 @@ export default function TecnicoHomeScreen() {
             titulo="Hoje"
             valor={String(paraHoje.length)}
             icone="calendar-today"
-            corIcone={Colors.accent}
+            corIcone={cores.accent}
             rodape={paraHoje.length ? 'toque para abrir' : 'nada agendado'}
             onPress={abrirOrdens}
           />
@@ -197,7 +199,7 @@ export default function TecnicoHomeScreen() {
             titulo="Concluídas hoje"
             valor={String(concluidasHoje.length)}
             icone="check-decagram-outline"
-            corIcone={Colors.success}
+            corIcone={cores.success}
             rodape="serviços fechados"
             onPress={abrirOrdens}
           />
@@ -205,7 +207,7 @@ export default function TecnicoHomeScreen() {
 
         {/* EM EXECUÇÃO agora — destaque */}
         {emExecucao.length > 0 && (
-          <Secao titulo="Em execução agora" icon="progress-wrench" cor={Colors.warning}>
+          <Secao titulo="Em execução agora" icon="progress-wrench" cor={cores.warning}>
             {emExecucao.map((o, i) => (
               <CardOS
                 key={o.id}
@@ -221,7 +223,7 @@ export default function TecnicoHomeScreen() {
         )}
 
         {/* HOJE */}
-        <Secao titulo="Hoje" icon="calendar-clock-outline" cor={Colors.accent} onVerTodas={paraHoje.length ? abrirOrdens : undefined}>
+        <Secao titulo="Hoje" icon="calendar-clock-outline" cor={cores.accent} onVerTodas={paraHoje.length ? abrirOrdens : undefined}>
           {paraHoje.length === 0 ? (
             <TextoVazio texto="Nada agendado para hoje." />
           ) : (
@@ -239,7 +241,7 @@ export default function TecnicoHomeScreen() {
         </Secao>
 
         {/* ABERTAS — atribuídas a mim, sem data de hoje */}
-        <Secao titulo="Abertas" icon="clipboard-list-outline" cor={Colors.primaryLight} onVerTodas={abertas.length ? abrirOrdens : undefined}>
+        <Secao titulo="Abertas" icon="clipboard-list-outline" cor={cores.primaryLight} onVerTodas={abertas.length ? abrirOrdens : undefined}>
           {abertas.length === 0 ? (
             <TextoVazio texto="Nenhuma outra OS em aberto." />
           ) : (
@@ -282,6 +284,7 @@ function Secao({
   onVerTodas?: () => void;
   children: React.ReactNode;
 }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={{ gap: Spacing.sm }}>
       <View style={styles.secaoHeader}>
@@ -301,6 +304,7 @@ function Secao({
 }
 
 function TextoVazio({ texto }: { texto: string }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.vazioBox}>
       <Text style={styles.vazioTexto}>{texto}</Text>
@@ -308,22 +312,23 @@ function TextoVazio({ texto }: { texto: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
-  saudacao: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  subtitulo: { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: 2 },
+  // Eram '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.
+  saudacao: { fontSize: 22, fontWeight: '800', color: c.onSurface },
+  subtitulo: { fontSize: 14, color: c.onSurfaceVariant, marginTop: 2 },
 
   resumoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
 
   secaoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   secaoTituloRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  secaoTitulo: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  verTodas: { fontSize: 13, fontWeight: '700', color: Colors.accent },
+  secaoTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  verTodas: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   vazioBox: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.lg, alignItems: 'center',
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.lg, alignItems: 'center',
   },
-  vazioTexto: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  vazioTexto: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center' },
 });

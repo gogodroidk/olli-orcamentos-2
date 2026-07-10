@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -34,6 +34,7 @@ const FORMAS_PAGAMENTO_RAPIDO = ['PIX', 'Dinheiro', 'Cartão de crédito', 'Cart
 
 /** Badge compacto de estado financeiro — só aparece em orçamentos aprovados/convertidos. */
 function BadgeFinanceiroPill({ status }: { status: StatusFinanceiro }) {
+  const styles = useEstilos(criarEstilos);
   const b = getBadgeFinanceiro(status);
   return (
     <View style={[styles.finBadge, { backgroundColor: b.color + '20', borderColor: b.color + '55' }]}>
@@ -53,6 +54,8 @@ type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
  * vê a lista "piscar" sem entender por quê).
  */
 function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -65,7 +68,11 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons
+        name="cloud-sync-outline"
+        size={13}
+        color={cores.accent} // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+      />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -84,6 +91,8 @@ const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> =
 export default function OrcamentosScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   // Filtro por cliente (CRM): quando aberto a partir de um cliente.
   const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
   const clienteNome = route.params?.clienteNome;
@@ -314,7 +323,7 @@ export default function OrcamentosScreen() {
               <MaterialCommunityIcons
                 name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
                 size={22}
-                color={marcado ? Colors.accent : Colors.onSurfaceMuted}
+                color={marcado ? cores.accent : cores.onSurfaceMuted}
                 style={{ marginRight: 12, marginTop: 2 }}
               />
             )}
@@ -341,27 +350,27 @@ export default function OrcamentosScreen() {
           {!selecionando && (
             <View style={styles.itemActions}>
               <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
-                <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.primary} />
-                <Text style={[styles.actionLabel, { color: Colors.primary }]}>Editar</Text>
+                <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.primary} />
+                <Text style={[styles.actionLabel, { color: cores.primary }]}>Editar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
-                <MaterialCommunityIcons name="content-copy" size={16} color={Colors.secondary} />
-                <Text style={[styles.actionLabel, { color: Colors.secondary }]}>Clonar</Text>
+                <MaterialCommunityIcons name="content-copy" size={16} color={cores.secondary} />
+                <Text style={[styles.actionLabel, { color: cores.secondary }]}>Clonar</Text>
               </TouchableOpacity>
               {statusFinanceiro === 'aguardando_pagamento' ? (
                 <TouchableOpacity style={styles.actionBtn} onPress={() => abrirRegistrarPagamento(o)}>
-                  <MaterialCommunityIcons name="cash-plus" size={16} color={Colors.warning} />
-                  <Text style={[styles.actionLabel, { color: Colors.warning }]}>Pagamento</Text>
+                  <MaterialCommunityIcons name="cash-plus" size={16} color={cores.warning} />
+                  <Text style={[styles.actionLabel, { color: cores.warning }]}>Pagamento</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
-                  <MaterialCommunityIcons name="receipt" size={16} color={Colors.success} />
-                  <Text style={[styles.actionLabel, { color: Colors.success }]}>Recibo</Text>
+                  <MaterialCommunityIcons name="receipt" size={16} color={cores.success} />
+                  <Text style={[styles.actionLabel, { color: cores.success }]}>Recibo</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
-                <MaterialCommunityIcons name="trash-can-outline" size={16} color={Colors.danger} />
-                <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir</Text>
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color={cores.danger} />
+                <Text style={[styles.actionLabel, { color: cores.danger }]}>Excluir</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -385,17 +394,17 @@ export default function OrcamentosScreen() {
         }
       >
         <View style={styles.searchRow}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} style={{ marginRight: 8 }} />
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar por cliente ou número..."
             value={query}
             onChangeText={handleSearch}
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
           />
           {query ? (
             <TouchableOpacity onPress={() => handleSearch('')} accessibilityRole="button" accessibilityLabel="Limpar busca">
-              <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -444,7 +453,7 @@ export default function OrcamentosScreen() {
       {/* BANNER DE FILTRO POR CLIENTE (CRM) */}
       {clienteId && (
         <View style={styles.clienteBanner}>
-          <MaterialCommunityIcons name="account-filter-outline" size={18} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="account-filter-outline" size={18} color={cores.accentLight} />
           <Text style={styles.clienteBannerText} numberOfLines={1}>
             Mostrando orçamentos de {clienteNome || 'um cliente'}
           </Text>
@@ -469,7 +478,7 @@ export default function OrcamentosScreen() {
             </>
           ) : (
             <TouchableOpacity style={styles.selEnter} onPress={() => entrarSelecao()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Selecionar para excluir vários">
-              <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={cores.accentLight} />
               <Text style={styles.selEnterLabel}>Selecionar</Text>
             </TouchableOpacity>
           )}
@@ -493,7 +502,7 @@ export default function OrcamentosScreen() {
           keyExtractor={o => o.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 8, paddingBottom: selecionando ? 104 : 80, flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} />}
           ListEmptyComponent={
             <EmptyState
               icon="file-document-outline"
@@ -515,10 +524,10 @@ export default function OrcamentosScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <MaterialCommunityIcons name="cash-plus" size={22} color={Colors.warning} />
+              <MaterialCommunityIcons name="cash-plus" size={22} color={cores.warning} />
               <Text style={styles.modalTitle}>Registrar pagamento</Text>
               <TouchableOpacity onPress={fecharRegistrarPagamento} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <MaterialCommunityIcons name="close" size={20} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="close" size={20} color={cores.onSurfaceVariant} />
               </TouchableOpacity>
             </View>
 
@@ -535,7 +544,7 @@ export default function OrcamentosScreen() {
             <View style={styles.formasGrid}>
               {FORMAS_PAGAMENTO_RAPIDO.map(f => (
                 <TouchableOpacity key={f} style={[styles.formaChip, formaPagamento === f && styles.formaChipActive]} onPress={() => setFormaPagamento(f)} activeOpacity={0.8}>
-                  <Text style={[styles.formaLabel, formaPagamento === f && { color: '#fff' }]}>{f}</Text>
+                  <Text style={[styles.formaLabel, formaPagamento === f && { color: cores.onPrimary }]}>{f}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -576,17 +585,21 @@ export default function OrcamentosScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    // Toast/pill flutuante — convenção de "chip escuro" fixa (como um snackbar),
+    // independente do tema; não é uma superfície da tela. Mantido.
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   newBtn: {
+    // Botão dentro do GradientHeader (sempre colorido, nos dois modos) —
+    // glass branco translúcido, mesma convenção do próprio GradientHeader.
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 14, paddingVertical: 8,
@@ -596,37 +609,42 @@ const styles = StyleSheet.create({
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surfaceVariant,
-    borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surfaceVariant,
+    borderWidth: 1, borderColor: c.outline,
     marginTop: 14, borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.base, paddingVertical: 11,
   },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
 
+  // totalRow vive dentro do GradientHeader — texto branco fixo, mesma
+  // convenção do header (sempre colorido, independente do tema).
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
   totalLabel: { fontSize: 12.5, color: 'rgba(255,255,255,0.75)', fontWeight: '700' },
   totalValue: { fontSize: 17, color: '#fff', fontWeight: '800' },
 
-  skeletonCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base },
+  skeletonCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base },
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 6,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface,
+    borderWidth: 1, borderColor: c.outline,
   },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipLabel: { fontSize: 12, fontWeight: '600', color: Colors.onSurfaceVariant },
-  chipLabelActive: { color: '#fff' },
+  chipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  chipLabel: { fontSize: 12, fontWeight: '600', color: c.onSurfaceVariant },
+  // Era '#fff' fixo sobre fundo chapado c.primary — vira onPrimary (contraste
+  // calculado), correto pra qualquer cor de marca escolhida pelo usuário.
+  chipLabelActive: { color: c.onPrimary },
 
+  // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
   clienteBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.28)',
+    backgroundColor: comAlfa(c.accent, 0.10), borderWidth: 1, borderColor: comAlfa(c.accent, 0.28),
     borderRadius: BorderRadius.md, marginHorizontal: Spacing.base, marginBottom: 4,
     paddingHorizontal: 12, paddingVertical: 9,
   },
-  clienteBannerText: { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.accentLight },
-  clienteBannerClear: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+  clienteBannerText: { flex: 1, fontSize: 13, fontWeight: '700', color: c.accentLight },
+  clienteBannerClear: { fontSize: 13, fontWeight: '800', color: c.accentLight },
 
   // Toolbar / barra do modo de seleção múltipla
   selToolbar: {
@@ -636,25 +654,28 @@ const styles = StyleSheet.create({
   selEnter: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)',
+    backgroundColor: comAlfa(c.accent, 0.10), borderWidth: 1, borderColor: comAlfa(c.accent, 0.30),
   },
-  selEnterLabel: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
-  selCancel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
-  selCount: { fontSize: 13, fontWeight: '800', color: Colors.onSurface },
-  selAll: { fontSize: 13, fontWeight: '800', color: Colors.accent },
+  selEnterLabel: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  selCancel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
+  selCount: { fontSize: 13, fontWeight: '800', color: c.onSurface },
+  selAll: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   bulkBar: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 22,
-    backgroundColor: 'rgba(7,17,31,0.98)', borderTopWidth: 1, borderTopColor: Colors.strokeGlow,
+    // rgba(7,17,31,x) é um preto-azulado fixo (bandeja de ação sempre escura,
+    // como o rodapé de um bottom sheet); sem equivalente semântico direto no
+    // tema — mantido. borda continua no strokeGlow do tema.
+    backgroundColor: 'rgba(7,17,31,0.98)', borderTopWidth: 1, borderTopColor: c.strokeGlow,
   },
 
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  itemNome: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  itemMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
-  itemValor: { fontSize: 15, fontWeight: '700', color: Colors.primary, marginBottom: 4 },
+  itemNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  itemMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+  itemValor: { fontSize: 15, fontWeight: '700', color: c.primary, marginBottom: 4 },
 
   itemActions: {
-    flexDirection: 'row', borderTopWidth: 1, borderTopColor: Colors.outline,
+    flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.outline,
     marginTop: 10, paddingTop: 8, gap: 4,
   },
   actionBtn: {
@@ -671,27 +692,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
   },
   finBadgeText: { fontSize: 10.5, fontWeight: '800' },
-  finReciboRef: { flex: 1, fontSize: 11, color: Colors.onSurfaceMuted },
+  finReciboRef: { flex: 1, fontSize: 11, color: c.onSurfaceMuted },
 
   // Modal "Registrar pagamento"
   modalBackdrop: {
+    // Scrim padrão de modal — sempre escuro, convenção universal de overlay
+    // (independe do tema da tela por baixo). Mantido.
     flex: 1, backgroundColor: 'rgba(6,12,22,0.7)',
     justifyContent: 'center', alignItems: 'center', padding: Spacing.base,
   },
   modalCard: {
     width: '100%', maxWidth: 440,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline,
-    padding: Spacing.base, ...Shadow.md,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline,
+    padding: Spacing.base, ...sombrasDe(c).md,
   },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  modalTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: Colors.onSurface },
-  modalSubtitle: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginBottom: Spacing.base },
-  modalFieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 },
-  modalHint: { fontSize: 11.5, color: Colors.onSurfaceMuted, marginTop: 12, marginBottom: 4, lineHeight: 16 },
+  modalTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: c.onSurface },
+  modalSubtitle: { fontSize: 12.5, color: c.onSurfaceVariant, marginBottom: Spacing.base },
+  modalFieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 4, marginTop: 8 },
+  modalHint: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 12, marginBottom: 4, lineHeight: 16 },
 
   formasGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  formaChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface },
-  formaChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  formaLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant },
+  formaChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
+  formaChipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  formaLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant },
 });

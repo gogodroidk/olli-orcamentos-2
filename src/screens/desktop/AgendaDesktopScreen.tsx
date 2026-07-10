@@ -7,7 +7,7 @@ import {
   format, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, isToday, eachDayOfInterval,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Colors, Spacing, BorderRadius, Typography, Shadow } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { OlliInput } from '../../components/OlliInput';
@@ -78,6 +78,8 @@ interface EditState {
 export default function AgendaDesktopScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<AgendaRoute>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   const [semanaRef, setSemanaRef] = useState(new Date());
   const [itens, setItens] = useState<Agendamento[]>([]);
@@ -258,7 +260,7 @@ export default function AgendaDesktopScreen() {
             style={({ hovered, focused }: PressableWebState) => [styles.navBtn, hovered && styles.navBtnHover, focused && styles.focoVisivel]}
             accessibilityLabel="Semana anterior"
           >
-            <MaterialCommunityIcons name="chevron-left" size={20} color={Colors.onSurface} />
+            <MaterialCommunityIcons name="chevron-left" size={20} color={cores.onSurface} />
           </Pressable>
           <Pressable
             onPress={() => setSemanaRef(new Date())}
@@ -271,13 +273,13 @@ export default function AgendaDesktopScreen() {
             style={({ hovered, focused }: PressableWebState) => [styles.navBtn, hovered && styles.navBtnHover, focused && styles.focoVisivel]}
             accessibilityLabel="Próxima semana"
           >
-            <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurface} />
+            <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurface} />
           </Pressable>
           <Pressable
             onPress={() => abrirNovo()}
             style={({ hovered, focused }: PressableWebState) => [styles.novoBtn, hovered && styles.novoBtnHover, focused && styles.focoVisivel]}
           >
-            <MaterialCommunityIcons name="calendar-plus" size={18} color="#0A1626" />
+            <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accent)} />
             <Text style={styles.novoBtnText}>Novo agendamento</Text>
           </Pressable>
         </View>
@@ -315,7 +317,7 @@ export default function AgendaDesktopScreen() {
                       onPress={() => abrirNovo({ data: dia })}
                       style={({ hovered, focused }: PressableWebState) => [styles.colunaVazia, hovered && styles.colunaVaziaHover, focused && styles.focoVisivel]}
                     >
-                      <MaterialCommunityIcons name="plus" size={16} color={Colors.onSurfaceMuted} />
+                      <MaterialCommunityIcons name="plus" size={16} color={cores.onSurfaceMuted} />
                     </Pressable>
                   ) : (
                     doDia.map((a) => (
@@ -341,7 +343,7 @@ export default function AgendaDesktopScreen() {
                   </Text>
                 </View>
                 <Pressable onPress={() => setDetalhe(null)} hitSlop={10}>
-                  <MaterialCommunityIcons name="close" size={22} color={Colors.onSurface} />
+                  <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
                 </Pressable>
               </View>
 
@@ -349,7 +351,7 @@ export default function AgendaDesktopScreen() {
               <Text style={styles.modalCliente}>{detalhe.clienteNome}</Text>
 
               <View style={styles.modalLinha}>
-                <MaterialCommunityIcons name="clock-outline" size={16} color={Colors.onSurfaceMuted} />
+                <MaterialCommunityIcons name="clock-outline" size={16} color={cores.onSurfaceMuted} />
                 <Text style={styles.modalLinhaTexto}>
                   {capitalizeFirst(format(new Date(detalhe.inicio), "EEEE, d 'de' MMM", { locale: ptBR }))} · {hhmm(detalhe.inicio)}
                   {detalhe.fim ? ` – ${hhmm(detalhe.fim)}` : ''}
@@ -357,19 +359,19 @@ export default function AgendaDesktopScreen() {
               </View>
               {detalhe.endereco ? (
                 <View style={styles.modalLinha}>
-                  <MaterialCommunityIcons name="map-marker-outline" size={16} color={Colors.onSurfaceMuted} />
+                  <MaterialCommunityIcons name="map-marker-outline" size={16} color={cores.onSurfaceMuted} />
                   <Text style={styles.modalLinhaTexto}>{detalhe.endereco}</Text>
                 </View>
               ) : null}
               {detalhe.observacao ? (
                 <View style={styles.modalLinha}>
-                  <MaterialCommunityIcons name="note-text-outline" size={16} color={Colors.onSurfaceMuted} />
+                  <MaterialCommunityIcons name="note-text-outline" size={16} color={cores.onSurfaceMuted} />
                   <Text style={styles.modalLinhaTexto}>{detalhe.observacao}</Text>
                 </View>
               ) : null}
 
               {detalhe.status !== 'agendado' && (
-                <Text style={[styles.modalStatus, detalhe.status === 'concluido' ? { color: Colors.success } : { color: Colors.danger }]}>
+                <Text style={[styles.modalStatus, detalhe.status === 'concluido' ? { color: cores.success } : { color: cores.danger }]}>
                   {STATUS_AGENDAMENTO_LABELS[detalhe.status]}
                 </Text>
               )}
@@ -380,7 +382,7 @@ export default function AgendaDesktopScreen() {
                     onPress={() => { const id = detalhe.orcamentoId!; setDetalhe(null); nav.navigate('VisualizarOrcamento', { orcamentoId: id }); }}
                     style={({ hovered }: PressableWebState) => [styles.modalAcaoLink, hovered && styles.modalAcaoLinkHover]}
                   >
-                    <MaterialCommunityIcons name="file-document-outline" size={16} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="file-document-outline" size={16} color={cores.accentLight} />
                     <Text style={styles.modalAcaoLinkTexto}>Ver orçamento</Text>
                   </Pressable>
                 )}
@@ -389,7 +391,7 @@ export default function AgendaDesktopScreen() {
                     onPress={() => { const id = detalhe.clienteId!; const nome = detalhe.clienteNome; setDetalhe(null); (nav as any).navigate('Tabs', { screen: 'OrcamentosTab', params: { clienteId: id, clienteNome: nome } }); }}
                     style={({ hovered }: PressableWebState) => [styles.modalAcaoLink, hovered && styles.modalAcaoLinkHover]}
                   >
-                    <MaterialCommunityIcons name="account-search-outline" size={16} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="account-search-outline" size={16} color={cores.accentLight} />
                     <Text style={styles.modalAcaoLinkTexto}>Orçamentos do cliente</Text>
                   </Pressable>
                 )}
@@ -422,7 +424,7 @@ export default function AgendaDesktopScreen() {
                   style={({ hovered }: PressableWebState) => [styles.modalIconBtn, hovered && styles.modalIconBtnHover]}
                   accessibilityLabel="Editar"
                 >
-                  <MaterialCommunityIcons name="pencil-outline" size={18} color={Colors.onSurface} />
+                  <MaterialCommunityIcons name="pencil-outline" size={18} color={cores.onSurface} />
                 </Pressable>
                 <Pressable
                   onPress={() => remover(detalhe.id)}
@@ -430,7 +432,7 @@ export default function AgendaDesktopScreen() {
                   accessibilityLabel="Excluir"
                   disabled={salvando}
                 >
-                  <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
+                  <MaterialCommunityIcons name="trash-can-outline" size={18} color={cores.danger} />
                 </Pressable>
               </View>
             </View>
@@ -447,7 +449,7 @@ export default function AgendaDesktopScreen() {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitulo}>{editing.id ? 'Editar agendamento' : 'Novo agendamento'}</Text>
                   <Pressable onPress={() => setEditing(null)} hitSlop={10}>
-                    <MaterialCommunityIcons name="close" size={22} color={Colors.onSurface} />
+                    <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
                   </Pressable>
                 </View>
 
@@ -465,7 +467,7 @@ export default function AgendaDesktopScreen() {
                           !active && hovered && styles.tipoOptionHover,
                         ]}
                       >
-                        <MaterialCommunityIcons name={t.icon as any} size={16} color={active ? t.color : Colors.onSurfaceVariant} />
+                        <MaterialCommunityIcons name={t.icon as any} size={16} color={active ? t.color : cores.onSurfaceVariant} />
                         <Text style={[styles.tipoOptionText, active && { color: t.color }]}>{t.label}</Text>
                       </Pressable>
                     );
@@ -547,6 +549,8 @@ export default function AgendaDesktopScreen() {
 }
 
 function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const cor = TIPO_AGENDAMENTO_COLORS[item.tipo];
   const cancelado = item.status === 'cancelado';
   const concluido = item.status === 'concluido';
@@ -559,7 +563,7 @@ function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => 
       <Text style={[styles.cardTitulo, cancelado && styles.strike]} numberOfLines={1}>{item.titulo}</Text>
       <Text style={styles.cardCliente} numberOfLines={1}>{item.clienteNome}</Text>
       {(cancelado || concluido) && (
-        <Text style={[styles.cardStatus, concluido ? { color: Colors.success } : { color: Colors.danger }]}>
+        <Text style={[styles.cardStatus, concluido ? { color: cores.success } : { color: cores.danger }]}>
           {STATUS_AGENDAMENTO_LABELS[item.status]}
         </Text>
       )}
@@ -567,83 +571,87 @@ function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => 
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   focoVisivel: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   } as any,
   acoesRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   navBtn: {
     width: 36, height: 36, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  navBtnHover: { backgroundColor: Colors.surfacePressed },
+  navBtnHover: { backgroundColor: c.surfacePressed },
   hojeBtn: {
     paddingHorizontal: Spacing.md, height: 36, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  hojeBtnText: { ...Typography.body, color: Colors.onSurface, fontSize: 13 },
+  hojeBtnText: { ...Typography.body, color: c.onSurface, fontSize: 13 },
   novoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, height: 36, borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.md, backgroundColor: Colors.accent, marginLeft: Spacing.sm,
+    paddingHorizontal: Spacing.md, backgroundColor: c.accent, marginLeft: Spacing.sm,
   },
   novoBtnHover: { opacity: 0.9 },
-  novoBtnText: { ...Typography.button, fontSize: 13, color: '#0A1626' },
+  novoBtnText: { ...Typography.button, fontSize: 13, color: textoSobre(c.accent) },
 
   grade: { flexDirection: 'row', gap: Spacing.sm, width: '100%' },
   coluna: {
-    flex: 1, minWidth: 0, backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.sm, minHeight: 420,
+    flex: 1, minWidth: 0, backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.sm, minHeight: 420,
   },
-  colunaHoje: { backgroundColor: Colors.accentContainer, borderColor: Colors.accent + '55' },
-  colunaHeader: { alignItems: 'center', marginBottom: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  colunaDiaSemana: { ...Typography.label, color: Colors.onSurfaceVariant, fontSize: 11 },
-  colunaDiaNumero: { ...Typography.h3, color: Colors.onSurface, marginTop: 2 },
-  colunaHojeTexto: { color: Colors.accentLight },
+  colunaHoje: { backgroundColor: c.accentContainer, borderColor: c.accent + '55' },
+  colunaHeader: { alignItems: 'center', marginBottom: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: c.outline },
+  colunaDiaSemana: { ...Typography.label, color: c.onSurfaceVariant, fontSize: 11 },
+  colunaDiaNumero: { ...Typography.h3, color: c.onSurface, marginTop: 2 },
+  colunaHojeTexto: { color: c.accentLight },
   colunaScroll: { flex: 1 },
   colunaVazia: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.lg, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: 'transparent' },
-  colunaVaziaHover: { backgroundColor: Colors.surfacePressed, borderColor: Colors.outline },
+  colunaVaziaHover: { backgroundColor: c.surfacePressed, borderColor: c.outline },
 
   card: {
-    backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.sm, borderLeftWidth: 3,
+    backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.sm, borderLeftWidth: 3,
     padding: Spacing.sm, marginBottom: Spacing.xs,
   },
-  cardHover: { backgroundColor: Colors.surfacePressed },
-  cardHora: { fontSize: 11, fontWeight: '700', color: Colors.onSurfaceMuted },
-  cardTitulo: { ...Typography.bodySmall, color: Colors.onSurface, fontSize: 12.5, marginTop: 2 },
-  cardCliente: { ...Typography.caption, color: Colors.onSurfaceVariant, fontSize: 11, marginTop: 1 },
+  cardHover: { backgroundColor: c.surfacePressed },
+  cardHora: { fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted },
+  cardTitulo: { ...Typography.bodySmall, color: c.onSurface, fontSize: 12.5, marginTop: 2 },
+  cardCliente: { ...Typography.caption, color: c.onSurfaceVariant, fontSize: 11, marginTop: 1 },
   cardStatus: { fontSize: 10.5, fontWeight: '700', marginTop: 3 },
-  strike: { textDecorationLine: 'line-through', color: Colors.onSurfaceMuted },
+  strike: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
 
+  // Scrim do modal: preto translúcido fixo (mesmo padrão em toda a base), não
+  // segue o tema — um backdrop de modal fica escuro em claro e escuro.
   modalFundo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
   modalCard: {
-    width: '100%', maxWidth: 420, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.lg, ...Shadow.lg,
+    width: '100%', maxWidth: 420, backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.lg, ...sombrasDe(c).lg,
   },
   formCard: { maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
   tipoChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
   tipoChipText: { fontSize: 11, fontWeight: '800' },
-  modalTitulo: { ...Typography.h3, color: Colors.onSurface },
-  modalCliente: { ...Typography.body, color: Colors.onSurfaceVariant, marginTop: 2, marginBottom: Spacing.md },
+  modalTitulo: { ...Typography.h3, color: c.onSurface },
+  modalCliente: { ...Typography.body, color: c.onSurfaceVariant, marginTop: 2, marginBottom: Spacing.md },
   modalLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
-  modalLinhaTexto: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, flex: 1 },
+  modalLinhaTexto: { ...Typography.bodySmall, color: c.onSurfaceVariant, flex: 1 },
   modalStatus: { fontSize: 13, fontWeight: '700', marginTop: Spacing.xs },
   modalAcoes: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.sm },
-  modalAcaoLink: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 8 },
-  modalAcaoLinkHover: { backgroundColor: 'rgba(52,198,217,0.18)' },
-  modalAcaoLinkTexto: { fontSize: 12.5, fontWeight: '700', color: Colors.accentLight },
+  // rgba(52,198,217,...) era o cyan de marca (#34C6D9) fixo — agora acompanha o
+  // accent escolhido no tema via comAlfa.
+  modalAcaoLink: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: comAlfa(c.accent, 0.10), borderWidth: 1, borderColor: comAlfa(c.accent, 0.30), borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 8 },
+  modalAcaoLinkHover: { backgroundColor: comAlfa(c.accent, 0.18) },
+  modalAcaoLinkTexto: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
   modalBotoes: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.lg },
-  modalIconBtn: { width: 40, height: 40, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline },
-  modalIconBtnHover: { backgroundColor: Colors.surfacePressed },
+  modalIconBtn: { width: 40, height: 40, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
+  modalIconBtnHover: { backgroundColor: c.surfacePressed },
 
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: Spacing.sm },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: Spacing.sm },
   tipoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.md },
-  tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: BorderRadius.sm, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },
-  tipoOptionHover: { backgroundColor: Colors.surfacePressed },
-  tipoOptionText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: BorderRadius.sm, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
+  tipoOptionHover: { backgroundColor: c.surfacePressed },
+  tipoOptionText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
   modalFooterBtns: { marginTop: Spacing.md },
 });

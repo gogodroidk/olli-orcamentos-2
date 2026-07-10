@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Switch, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { ModeloPdfId, Orcamento, Empresa, Depoimento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { CORES_MARCA } from '../utils/coresMarca';
@@ -18,23 +18,30 @@ interface Props {
   empresa?: Empresa | null;
 }
 
-const SwitchRow = ({ label, hint, value, onValueChange }: {
+function SwitchRow({ label, hint, value, onValueChange }: {
   label: string; hint?: string; value: boolean; onValueChange: (v: boolean) => void;
-}) => (
-  <View style={styles.switchRow}>
-    <View style={{ flex: 1 }}>
-      <Text style={styles.switchLabel}>{label}</Text>
-      {hint && <Text style={styles.switchHint}>{hint}</Text>}
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  return (
+    <View style={styles.switchRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.switchLabel}>{label}</Text>
+        {hint && <Text style={styles.switchHint}>{hint}</Text>}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+        thumbColor={value ? cores.primary : '#fff'}
+      />
     </View>
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
-      thumbColor={value ? Colors.primary : '#fff'}
-    />
-  </View>
-);
+  );
+}
 
+// Cores dos modelos de PDF (documento) — NÃO seguem o tema do app: são a
+// identidade visual de cada modelo impresso, igual às chaves `pdf*` da
+// paleta. Ver cabeçalho de src/theme/cores.ts.
 const PDF_MODELS: Array<{ id: ModeloPdfId; nome: string; desc: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
   { id: 'editorial', nome: 'Editorial', desc: 'premium com marca d\'agua', color: '#0B6FCE', icon: 'file-document-edit-outline' },
   { id: 'premium_capa', nome: 'Premium com capa', desc: 'capa + pagina de detalhes', color: '#0A2547', icon: 'book-open-page-variant-outline' },
@@ -63,73 +70,77 @@ const CAPA_OPCOES: Array<{ id: NonNullable<Orcamento['capaEstilo']>; nome: strin
 /**
  * Miniatura honesta por modelo (sem imagem, sem lib) — cada uma imita a
  * estrutura real do PDF daquele modelo, não um mock genérico repetido.
+ *
+ * `estilos` é passado explicitamente (em vez de ler um `styles` de módulo)
+ * porque as cores da miniatura (papel/linhas) agora vêm da fábrica de estilos
+ * do tema — esta função não é componente e não pode chamar hooks.
  */
-function renderMiniatura(id: ModeloPdfId, cor: string) {
+function renderMiniatura(id: ModeloPdfId, cor: string, estilos: ReturnType<typeof criarEstilos>) {
   switch (id) {
     case 'premium_capa':
       return (
-        <View style={[styles.modelPaper, styles.miniCapaWrap, { backgroundColor: cor }]}>
-          <View style={styles.miniCapaDot} />
-          <View style={styles.miniCapaLine} />
+        <View style={[estilos.modelPaper, estilos.miniCapaWrap, { backgroundColor: cor }]}>
+          <View style={estilos.miniCapaDot} />
+          <View style={estilos.miniCapaLine} />
         </View>
       );
     case 'bold':
       return (
-        <View style={styles.modelPaper}>
-          <View style={[styles.miniBoldHeader, { backgroundColor: cor }]} />
-          <View style={styles.modelLine} />
-          <View style={[styles.modelLine, { width: '64%' }]} />
-          <View style={styles.modelTotal} />
+        <View style={estilos.modelPaper}>
+          <View style={[estilos.miniBoldHeader, { backgroundColor: cor }]} />
+          <View style={estilos.modelLine} />
+          <View style={[estilos.modelLine, { width: '64%' }]} />
+          <View style={estilos.modelTotal} />
         </View>
       );
     case 'classico':
       return (
-        <View style={[styles.modelPaper, styles.miniClassicoBorder]}>
-          <View style={[styles.modelLineStrong, styles.miniCentered]} />
-          <View style={[styles.modelLine, styles.miniCentered, { width: '70%' }]} />
-          <View style={[styles.modelLine, styles.miniCentered, { width: '50%' }]} />
-          <View style={[styles.modelTotal, { alignSelf: 'center' }]} />
+        <View style={[estilos.modelPaper, estilos.miniClassicoBorder]}>
+          <View style={[estilos.modelLineStrong, estilos.miniCentered]} />
+          <View style={[estilos.modelLine, estilos.miniCentered, { width: '70%' }]} />
+          <View style={[estilos.modelLine, estilos.miniCentered, { width: '50%' }]} />
+          <View style={[estilos.modelTotal, { alignSelf: 'center' }]} />
         </View>
       );
     case 'faixa_lateral':
       return (
-        <View style={[styles.modelPaper, styles.miniFaixaWrap]}>
-          <View style={[styles.miniFaixaBar, { backgroundColor: cor }]} />
-          <View style={styles.miniFaixaContent}>
-            <View style={styles.modelLineStrong} />
-            <View style={styles.modelLine} />
-            <View style={styles.modelTotal} />
+        <View style={[estilos.modelPaper, estilos.miniFaixaWrap]}>
+          <View style={[estilos.miniFaixaBar, { backgroundColor: cor }]} />
+          <View style={estilos.miniFaixaContent}>
+            <View style={estilos.modelLineStrong} />
+            <View style={estilos.modelLine} />
+            <View style={estilos.modelTotal} />
           </View>
         </View>
       );
     case 'minimalista':
       return (
-        <View style={styles.modelPaper}>
-          <View style={styles.modelLineStrong} />
-          <View style={styles.modelLine} />
-          <View style={[styles.modelLine, { width: '64%' }]} />
-          <View style={[styles.modelLine, { width: '40%' }]} />
+        <View style={estilos.modelPaper}>
+          <View style={estilos.modelLineStrong} />
+          <View style={estilos.modelLine} />
+          <View style={[estilos.modelLine, { width: '64%' }]} />
+          <View style={[estilos.modelLine, { width: '40%' }]} />
         </View>
       );
     case 'recibo_compacto':
       return (
-        <View style={[styles.modelPaper, styles.miniRecibo]}>
-          <View style={[styles.modelAccent, { backgroundColor: cor }]} />
-          <View style={styles.modelLineStrong} />
-          <View style={styles.modelTotal} />
+        <View style={[estilos.modelPaper, estilos.miniRecibo]}>
+          <View style={[estilos.modelAccent, { backgroundColor: cor }]} />
+          <View style={estilos.modelLineStrong} />
+          <View style={estilos.modelTotal} />
         </View>
       );
     case 'editorial':
     default:
       return (
-        <View style={styles.modelPaper}>
-          <View style={styles.miniEditorialSpine} />
-          <View style={[styles.modelAccent, { backgroundColor: cor }]} />
-          <View style={styles.modelLineStrong} />
-          <View style={styles.modelLine} />
-          <View style={[styles.modelLine, { width: '64%' }]} />
-          <View style={styles.modelTotal} />
-          <View style={styles.miniEditorialWatermark} />
+        <View style={estilos.modelPaper}>
+          <View style={estilos.miniEditorialSpine} />
+          <View style={[estilos.modelAccent, { backgroundColor: cor }]} />
+          <View style={estilos.modelLineStrong} />
+          <View style={estilos.modelLine} />
+          <View style={[estilos.modelLine, { width: '64%' }]} />
+          <View style={estilos.modelTotal} />
+          <View style={estilos.miniEditorialWatermark} />
         </View>
       );
   }
@@ -142,11 +153,13 @@ function validadeEmDias(days: number): string {
 }
 
 export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const modeloAtual = orc.modeloPdf ?? 'editorial';
   // Default da cor: a marca do orçamento, senão a cor padrão salva em "Meu
   // Negócio", senão a cor do tema — o usuário ainda pode trocar livremente
   // pelos swatches abaixo (isso só decide o valor inicial sugerido).
-  const corAtual = orc.corMarca ?? empresa?.corMarca ?? Colors.primary;
+  const corAtual = orc.corMarca ?? empresa?.corMarca ?? cores.primary;
 
   // Capa: padrão 'logo' (o documento começa com a marca). Só a logo continua
   // sendo a protagonista até o usuário escolher foto de capa ou nenhuma.
@@ -260,7 +273,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
       <View style={styles.summaryRow}><Text style={styles.summaryKey}>Modelo</Text><Text style={styles.summaryVal}>{orc.modeloNome ?? 'Editorial'}</Text></View>
       {orc.subtotalServicos > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Serviços</Text><Text style={styles.summaryVal}>{formatCurrency(orc.subtotalServicos)}</Text></View>}
       {orc.subtotalProdutos > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Produtos</Text><Text style={styles.summaryVal}>{formatCurrency(orc.subtotalProdutos)}</Text></View>}
-      {orc.subtotal - orc.valorTotal > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Desconto</Text><Text style={[styles.summaryVal, { color: Colors.danger }]}>-{formatCurrency(orc.subtotal - orc.valorTotal)}</Text></View>}
+      {orc.subtotal - orc.valorTotal > 0 && <View style={styles.summaryRow}><Text style={styles.summaryKey}>Desconto</Text><Text style={[styles.summaryVal, { color: cores.danger }]}>-{formatCurrency(orc.subtotal - orc.valorTotal)}</Text></View>}
       <View style={[styles.summaryRow, styles.summaryTotal]}>
         <Text style={styles.summaryTotalKey}>Total</Text>
         <Text style={styles.summaryTotalVal}>{formatCurrency(orc.valorTotal)}</Text>
@@ -284,9 +297,9 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               onPress={() => escolherModelo(model)}
               activeOpacity={0.85}
             >
-              {renderMiniatura(model.id, model.color)}
+              {renderMiniatura(model.id, model.color, styles)}
               <View style={styles.modelLabelRow}>
-                <MaterialCommunityIcons name={model.icon} size={14} color={active ? Colors.accentLight : Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name={model.icon} size={14} color={active ? cores.accentLight : cores.onSurfaceVariant} />
                 <Text style={[styles.modelName, active && styles.modelNameActive]} numberOfLines={1}>{model.nome}</Text>
               </View>
               <Text style={styles.modelDesc} numberOfLines={1}>{model.desc}</Text>
@@ -312,7 +325,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               <MaterialCommunityIcons
                 name={op.icon}
                 size={22}
-                color={active ? Colors.accentLight : Colors.onSurfaceVariant}
+                color={active ? cores.accentLight : cores.onSurfaceVariant}
               />
               <Text style={[styles.capaName, active && styles.capaNameActive]} numberOfLines={1}>{op.nome}</Text>
               <Text style={styles.capaDesc} numberOfLines={1}>{op.desc}</Text>
@@ -343,7 +356,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
                   <Image source={{ uri }} style={styles.fotoImg} />
                   {selecionada && (
                     <View style={styles.capaFotoCheck}>
-                      <MaterialCommunityIcons name="check-circle" size={22} color={Colors.accentLight} />
+                      <MaterialCommunityIcons name="check-circle" size={22} color={cores.accentLight} />
                     </View>
                   )}
                 </TouchableOpacity>
@@ -356,7 +369,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               accessibilityRole="button"
               accessibilityLabel="Adicionar foto de capa"
             >
-              <MaterialCommunityIcons name="image-plus" size={26} color={Colors.primary} />
+              <MaterialCommunityIcons name="image-plus" size={26} color={cores.primary} />
               <Text style={styles.addFotoLabel}>{adicionandoCapa ? 'Aguarde...' : 'Adicionar'}</Text>
             </TouchableOpacity>
           </View>
@@ -370,7 +383,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
         onPress={abrirPreview}
         loading={carregandoPreview}
         disabled={carregandoPreview}
-        icon={<MaterialCommunityIcons name="eye-outline" size={16} color={Colors.accentLight} />}
+        icon={<MaterialCommunityIcons name="eye-outline" size={16} color={cores.accentLight} />}
         style={styles.previewBtn}
       />
 
@@ -444,18 +457,18 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
           <View key={idx} style={styles.fotoItem}>
             <Image source={{ uri }} style={styles.fotoImg} />
             <TouchableOpacity style={styles.fotoRemove} onPress={() => removeFoto(idx)}>
-              <MaterialCommunityIcons name="close-circle" size={20} color={Colors.danger} />
+              <MaterialCommunityIcons name="close-circle" size={20} color={cores.danger} />
             </TouchableOpacity>
           </View>
         ))}
         <TouchableOpacity style={styles.addFotoBtn} onPress={pickFoto}>
-          <MaterialCommunityIcons name="camera-plus-outline" size={28} color={Colors.primary} />
+          <MaterialCommunityIcons name="camera-plus-outline" size={28} color={cores.primary} />
           <Text style={styles.addFotoLabel}>Adicionar</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.previewNote}>
-        <MaterialCommunityIcons name="information-outline" size={18} color={Colors.primary} />
+        <MaterialCommunityIcons name="information-outline" size={18} color={cores.primary} />
         <Text style={styles.previewNoteText}>
           Toque em "Gerar Orçamento" para criar o PDF profissional com todas as informações preenchidas.
         </Text>
@@ -473,35 +486,40 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: Spacing.base },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background, padding: Spacing.base },
   summaryCard: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    padding: Spacing.base, marginBottom: Spacing.lg, ...Shadow.md,
-    borderLeftWidth: 4, borderLeftColor: Colors.primary,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.base, marginBottom: Spacing.lg, ...sombrasDe(c).md,
+    borderLeftWidth: 4, borderLeftColor: c.primary,
   },
-  summaryTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary, marginBottom: Spacing.sm },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  summaryKey: { fontSize: 13, color: Colors.onSurfaceVariant },
-  summaryVal: { fontSize: 13, fontWeight: '600', color: Colors.onSurface },
+  summaryTitle: { fontSize: 15, fontWeight: '800', color: c.primary, marginBottom: Spacing.sm },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.outline },
+  summaryKey: { fontSize: 13, color: c.onSurfaceVariant },
+  summaryVal: { fontSize: 13, fontWeight: '600', color: c.onSurface },
   summaryTotal: { borderBottomWidth: 0, marginTop: 4 },
-  summaryTotalKey: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  summaryTotalVal: { ...Typography.value, color: Colors.accentLight },
+  summaryTotalKey: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  summaryTotalVal: { ...Typography.value, color: c.accentLight },
 
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginTop: Spacing.lg, marginBottom: Spacing.sm },
-  sectionHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginBottom: Spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  sectionHint: { fontSize: 12, color: c.onSurfaceVariant, marginBottom: Spacing.sm },
   modelsRow: { gap: 10, paddingRight: Spacing.base },
-  modelCard: { width: 128, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: 10, ...Shadow.sm },
-  modelCardActive: { borderColor: Colors.accentLight, backgroundColor: 'rgba(52,198,217,0.09)' },
+  modelCard: { width: 128, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: 10, ...sombrasDe(c).sm },
+  // rgba(52,198,217,...) era o cyan de marca (#34C6D9) fixo — agora acompanha o
+  // accent escolhido no tema via comAlfa.
+  modelCardActive: { borderColor: c.accentLight, backgroundColor: comAlfa(c.accent, 0.09) },
+  // Miniatura do PDF: sempre "papel claro" — é o preview de um documento
+  // impresso, que não deve escurecer junto com o app (mesmo raciocínio das
+  // chaves `pdf*` da paleta). Cores fixas, propositalmente fora do tema.
   modelPaper: { height: 118, borderRadius: BorderRadius.md, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#DCE7F5', padding: 10, overflow: 'hidden' },
   modelAccent: { width: 34, height: 5, borderRadius: 3, marginBottom: 13 },
   modelLineStrong: { width: '82%', height: 7, borderRadius: 4, backgroundColor: '#16202E', opacity: 0.9, marginBottom: 9 },
   modelLine: { width: '100%', height: 4, borderRadius: 3, backgroundColor: '#CBD5E1', marginBottom: 6 },
   modelTotal: { width: '72%', height: 15, borderRadius: 5, backgroundColor: '#EAF2FC', marginTop: 8, alignSelf: 'flex-end' },
   modelLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9 },
-  modelName: { flex: 1, fontSize: 12.5, fontWeight: '800', color: Colors.onSurface },
-  modelNameActive: { color: Colors.accentLight },
-  modelDesc: { fontSize: 10.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  modelName: { flex: 1, fontSize: 12.5, fontWeight: '800', color: c.onSurface },
+  modelNameActive: { color: c.accentLight },
+  modelDesc: { fontSize: 10.5, color: c.onSurfaceVariant, marginTop: 2 },
 
   previewBtn: { alignSelf: 'flex-start', marginTop: 4, marginBottom: Spacing.sm },
 
@@ -509,24 +527,27 @@ const styles = StyleSheet.create({
   capaRow: { flexDirection: 'row', gap: 8 },
   capaCard: {
     flex: 1, alignItems: 'center', gap: 4,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, paddingVertical: 12, paddingHorizontal: 6,
-    ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, paddingVertical: 12, paddingHorizontal: 6,
+    ...sombrasDe(c).sm,
   },
-  capaCardActive: { borderColor: Colors.accentLight, backgroundColor: 'rgba(52,198,217,0.09)' },
-  capaName: { fontSize: 12.5, fontWeight: '800', color: Colors.onSurface, textAlign: 'center' },
-  capaNameActive: { color: Colors.accentLight },
-  capaDesc: { fontSize: 10.5, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  capaCardActive: { borderColor: c.accentLight, backgroundColor: comAlfa(c.accent, 0.09) },
+  capaName: { fontSize: 12.5, fontWeight: '800', color: c.onSurface, textAlign: 'center' },
+  capaNameActive: { color: c.accentLight },
+  capaDesc: { fontSize: 10.5, color: c.onSurfaceVariant, textAlign: 'center' },
   capaFotoBlock: { marginTop: Spacing.sm },
-  capaFotoHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginBottom: Spacing.sm },
+  capaFotoHint: { fontSize: 12, color: c.onSurfaceVariant, marginBottom: Spacing.sm },
   capaFotoItem: { position: 'relative', borderRadius: BorderRadius.md, borderWidth: 2, borderColor: 'transparent' },
-  capaFotoItemActive: { borderColor: Colors.accentLight },
+  capaFotoItemActive: { borderColor: c.accentLight },
+  // Selo "capa selecionada" sobre uma FOTO (não sobre superfície do app) — fica
+  // escuro fixo em qualquer tema, para garantir contraste contra foto qualquer.
   capaFotoCheck: {
     position: 'absolute', top: 2, right: 2,
     backgroundColor: 'rgba(10,22,38,0.7)', borderRadius: 12,
   },
 
-  // Miniaturas honestas por modelo (Step4 — sem imagem, sem lib)
+  // Miniaturas honestas por modelo (Step4 — sem imagem, sem lib). Mesmas cores
+  // fixas de "papel" do modelPaper — ver comentário acima.
   miniCapaWrap: { alignItems: 'center', justifyContent: 'center', gap: 8 },
   miniCapaDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.85)' },
   miniCapaLine: { width: '55%', height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.6)' },
@@ -537,30 +558,32 @@ const styles = StyleSheet.create({
   miniFaixaBar: { width: 12, height: '100%' },
   miniFaixaContent: { flex: 1, padding: 10, justifyContent: 'center' },
   miniRecibo: { justifyContent: 'center' },
-  miniEditorialSpine: { position: 'absolute', top: 0, left: 0, bottom: 0, width: 3, backgroundColor: Colors.primary, opacity: 0.5 },
+  miniEditorialSpine: { position: 'absolute', top: 0, left: 0, bottom: 0, width: 3, backgroundColor: c.primary, opacity: 0.5 },
   miniEditorialWatermark: { position: 'absolute', bottom: -10, right: -10, width: 40, height: 40, borderRadius: 20, borderWidth: 6, borderColor: 'rgba(11,111,206,0.08)' },
 
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  colorPick: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, paddingHorizontal: 10, paddingVertical: 8 },
-  colorPickActive: { borderColor: Colors.accentLight, backgroundColor: Colors.surfacePressed },
+  colorPick: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface, paddingHorizontal: 10, paddingVertical: 8 },
+  colorPickActive: { borderColor: c.accentLight, backgroundColor: c.surfacePressed },
   colorDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)' },
-  colorLabel: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  colorLabelActive: { color: Colors.accentLight },
+  colorLabel: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  colorLabelActive: { color: c.accentLight },
 
   validadeRow: { flexDirection: 'row', gap: 8 },
-  validadeChip: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface, borderRadius: BorderRadius.full, paddingVertical: 10 },
-  validadeChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
-  validadeText: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant },
-  validadeTextActive: { color: '#0A1626' },
-  validadeHint: { fontSize: 12.5, fontWeight: '700', color: Colors.accentLight, marginTop: 8 },
+  validadeChip: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface, borderRadius: BorderRadius.full, paddingVertical: 10 },
+  validadeChipActive: { backgroundColor: c.accentLight, borderColor: c.accentLight },
+  validadeText: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
+  // #0A1626: tinta fixa para texto sobre accentLight — sem token "onAccentLight"
+  // na paleta (só onPrimary existe); ver relatório da migração.
+  validadeTextActive: { color: textoSobre(c.accentLight) },
+  validadeHint: { fontSize: 12.5, fontWeight: '700', color: c.accentLight, marginTop: 8 },
 
   switchRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    padding: Spacing.base, marginBottom: 8, ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    padding: Spacing.base, marginBottom: 8, ...sombrasDe(c).sm,
   },
-  switchLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  switchHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  switchLabel: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  switchHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
   fotosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   fotoItem: { position: 'relative' },
@@ -568,15 +591,15 @@ const styles = StyleSheet.create({
   fotoRemove: { position: 'absolute', top: -8, right: -8 },
   addFotoBtn: {
     width: 80, height: 80, borderRadius: BorderRadius.md,
-    borderWidth: 1.5, borderColor: Colors.primary, borderStyle: 'dashed',
+    borderWidth: 1.5, borderColor: c.primary, borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center',
   },
-  addFotoLabel: { fontSize: 10, color: Colors.primary, fontWeight: '600', marginTop: 2 },
+  addFotoLabel: { fontSize: 10, color: c.primary, fontWeight: '600', marginTop: 2 },
 
   previewNote: {
     flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.md,
+    backgroundColor: c.primaryContainer, borderRadius: BorderRadius.md,
     padding: Spacing.base, marginTop: Spacing.xl, gap: 8,
   },
-  previewNoteText: { flex: 1, fontSize: 13, color: Colors.primary, lineHeight: 18 },
+  previewNoteText: { flex: 1, fontSize: 13, color: c.primary, lineHeight: 18 },
 });

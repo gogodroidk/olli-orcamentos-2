@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { OlliPressable } from './OlliPressable';
 import { usePlano } from '../hooks/usePlano';
 import type { Recurso, PlanoId } from '../services/planos';
@@ -116,6 +116,8 @@ interface MuroProps {
 
 function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) {
   const nav = useNavigation<any>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   // Registra a exposição do gate uma vez, só depois do plano confirmado.
   useEffect(() => {
@@ -134,7 +136,10 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
         <View style={[styles.preview, estiloBorrado()]}>{children}</View>
       </View>
 
-      {/* Véu de contraste + cartão de conversão. */}
+      {/* Véu de contraste + cartão de conversão. Ink fixa (rgba(7,17,31,...)),
+          não a superfície do tema: é um véu de escurecimento sobre o preview
+          borrado, não um fundo do app — precisa continuar escuro nos dois modos
+          para o cartão claro por cima manter contraste. */}
       <LinearGradient
         colors={['rgba(7,17,31,0.35)', 'rgba(7,17,31,0.82)']}
         style={StyleSheet.absoluteFill}
@@ -144,7 +149,7 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.card}>
           <View style={styles.selo}>
-            <MaterialCommunityIcons name="crown-outline" size={13} color="#0A1626" />
+            <MaterialCommunityIcons name="crown-outline" size={13} color={textoSobre(cores.accentLight)} />
             <Text style={styles.seloTxt}>{ROTULO_PLANO[plano]}</Text>
           </View>
 
@@ -153,13 +158,16 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
           </Text>
 
           <OlliPressable onPress={irParaPlanos} haptic="light" style={styles.cta}>
+            {/* Gradiente fixo (ciano→azul de marca) — o CTA de conversão mantém
+                sempre a mesma cor de assinatura, independente da marca escolhida
+                pelo usuário no tema. */}
             <LinearGradient
               colors={['#34C6D9', '#0B6FCE']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.ctaBg}
             >
-              <MaterialCommunityIcons name="lock-open-variant-outline" size={16} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="lock-open-variant-outline" size={16} color={cores.onSurface} />
               <Text style={styles.ctaTxt}>Ver planos</Text>
             </LinearGradient>
           </OlliPressable>
@@ -169,81 +177,84 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    position: 'relative',
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.strokeGlow,
-    backgroundColor: Colors.surfaceVariant,
-  },
-  previewLayer: {
-    // O preview define a altura do muro: ocupa o fluxo, mas sem interação.
-    width: '100%',
-  },
-  preview: {
-    width: '100%',
-  },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.lg,
-  },
-  card: {
-    alignItems: 'center',
-    maxWidth: 340,
-    backgroundColor: Colors.surfaceGlass,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.strokeGlow,
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
-    ...Shadow.md,
-  },
-  selo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.accentLight,
-    borderRadius: BorderRadius.full,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    marginBottom: Spacing.md,
-  },
-  seloTxt: {
-    ...Typography.label,
-    color: '#0A1626',
-    letterSpacing: 0.5,
-  },
-  beneficio: {
-    ...Typography.h4,
-    color: Colors.onSurface,
-    textAlign: 'center',
-    marginBottom: Spacing.base,
-  },
-  cta: {
-    alignSelf: 'stretch',
-  },
-  ctaBg: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    borderRadius: BorderRadius.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    ...Shadow.glowCyan,
-  },
-  ctaTxt: {
-    ...Typography.button,
-    color: Colors.onSurface,
-  },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    wrap: {
+      position: 'relative',
+      borderRadius: BorderRadius.lg,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: c.strokeGlow,
+      backgroundColor: c.surfaceVariant,
+    },
+    previewLayer: {
+      // O preview define a altura do muro: ocupa o fluxo, mas sem interação.
+      width: '100%',
+    },
+    preview: {
+      width: '100%',
+    },
+    overlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: Spacing.lg,
+    },
+    card: {
+      alignItems: 'center',
+      maxWidth: 340,
+      backgroundColor: c.surfaceGlass,
+      borderRadius: BorderRadius.md,
+      borderWidth: 1,
+      borderColor: c.strokeGlow,
+      paddingVertical: Spacing.lg,
+      paddingHorizontal: Spacing.xl,
+      ...sombrasDe(c).md,
+    },
+    selo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.accentLight,
+      borderRadius: BorderRadius.full,
+      paddingVertical: 3,
+      paddingHorizontal: 10,
+      marginBottom: Spacing.md,
+    },
+    seloTxt: {
+      ...Typography.label,
+      // accentLight clareia no escuro (pede tinta escura) e escurece no claro
+      // (pediria tinta clara) — textoSobre() escolhe a certa nos dois casos.
+      color: textoSobre(c.accentLight),
+      letterSpacing: 0.5,
+    },
+    beneficio: {
+      ...Typography.h4,
+      color: c.onSurface,
+      textAlign: 'center',
+      marginBottom: Spacing.base,
+    },
+    cta: {
+      alignSelf: 'stretch',
+    },
+    ctaBg: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      borderRadius: BorderRadius.lg,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      ...sombrasDe(c).glowCyan,
+    },
+    ctaTxt: {
+      ...Typography.button,
+      color: c.onSurface,
+    },
+  });
 
 export default GatePro;

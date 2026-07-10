@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { capitalizeFirst } from '../utils/date';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Motion } from '../theme/motion';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliPressable } from '../components/OlliPressable';
@@ -63,6 +63,8 @@ function animarLayoutChecklist() {
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -75,7 +77,11 @@ function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: numb
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons
+        name="cloud-sync-outline"
+        size={13}
+        color={cores.accent} // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+      />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -116,6 +122,8 @@ function hhmm(iso?: string | null): string {
 const CheckRow = React.memo(function CheckRow(
   { item, onToggle, onRemove }: { item: ChecklistItem; onToggle: (id: string) => void; onRemove: (id: string) => void },
 ) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   // `scale` guarda diretamente o fator de escala do checkbox (1 = normal).
   const scale = useRef(new Animated.Value(1)).current;
   const primeiraRender = useRef(true);
@@ -151,7 +159,7 @@ const CheckRow = React.memo(function CheckRow(
           <MaterialCommunityIcons
             name={item.feito ? 'checkbox-marked' : 'checkbox-blank-outline'}
             size={22}
-            color={item.feito ? Colors.success : Colors.onSurfaceMuted}
+            color={item.feito ? cores.success : cores.onSurfaceMuted}
           />
         </Animated.View>
         <Text style={[styles.checkText, item.feito && styles.checkTextDone]} numberOfLines={2}>{item.texto}</Text>
@@ -162,7 +170,7 @@ const CheckRow = React.memo(function CheckRow(
         accessibilityRole="button"
         accessibilityLabel={`Remover tarefa ${item.texto}`}
       >
-        <MaterialCommunityIcons name="close" size={18} color={Colors.onSurfaceMuted} />
+        <MaterialCommunityIcons name="close" size={18} color={cores.onSurfaceMuted} />
       </TouchableOpacity>
     </View>
   );
@@ -171,6 +179,8 @@ const CheckRow = React.memo(function CheckRow(
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { temAcesso } = usePlano();
   const relatorioLiberado = temAcesso('relatorio_dia');
 
@@ -259,7 +269,7 @@ export default function HojeScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} colors={[Colors.accent]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
         {/* CABEÇALHO */}
         <AnimatedEntrance index={0} from="bottom">
@@ -289,8 +299,8 @@ export default function HojeScreen() {
                   haptic="selection"
                   accessibilityLabel="Ver orçamentos parados"
                 >
-                  <View style={[styles.lembreteIcon, { backgroundColor: Colors.warningLight }]}>
-                    <MaterialCommunityIcons name="clock-alert-outline" size={18} color={Colors.warning} />
+                  <View style={[styles.lembreteIcon, { backgroundColor: cores.warningLight }]}>
+                    <MaterialCommunityIcons name="clock-alert-outline" size={18} color={cores.warning} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.lembreteText}>
@@ -298,7 +308,7 @@ export default function HojeScreen() {
                     </Text>
                     <Text style={styles.lembreteSub}>Que tal dar um toque no cliente?</Text>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
                 </OlliPressable>
               )}
 
@@ -310,7 +320,7 @@ export default function HojeScreen() {
                   accessibilityLabel="Ver orçamentos aguardando assinatura"
                 >
                   <View style={[styles.lembreteIcon, { backgroundColor: 'rgba(52,198,217,0.14)' }]}>
-                    <MaterialCommunityIcons name="draw-pen" size={18} color={Colors.accent} />
+                    <MaterialCommunityIcons name="draw-pen" size={18} color={cores.accentLight} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.lembreteText}>
@@ -318,7 +328,7 @@ export default function HojeScreen() {
                     </Text>
                     <Text style={styles.lembreteSub}>Toque para acompanhar.</Text>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
                 </OlliPressable>
               )}
             </View>
@@ -344,7 +354,7 @@ export default function HojeScreen() {
                     <OlliSkeleton width={38} height={15} radius={6} />
                     <OlliSkeleton width={30} height={10} radius={5} style={{ marginTop: 4 }} />
                   </View>
-                  <View style={[styles.agendaBar, { backgroundColor: Colors.surfaceVariant }]} />
+                  <View style={[styles.agendaBar, { backgroundColor: cores.surfaceVariant }]} />
                   <View style={{ flex: 1, gap: 7 }}>
                     <OlliSkeleton width="70%" height={14} />
                     <OlliSkeleton width="45%" height={12} />
@@ -396,10 +406,10 @@ export default function HojeScreen() {
                         accessibilityRole="button"
                         accessibilityLabel="Traçar rota no Google Maps"
                       >
-                        <MaterialCommunityIcons name="navigation-variant" size={18} color={Colors.accent} />
+                        <MaterialCommunityIcons name="navigation-variant" size={18} color={cores.accentLight} />
                       </TouchableOpacity>
                     ) : null}
-                    {a.status === 'concluido' && <MaterialCommunityIcons name="check-circle" size={20} color={Colors.success} />}
+                    {a.status === 'concluido' && <MaterialCommunityIcons name="check-circle" size={20} color={cores.success} />}
                   </OlliPressable>
                 </AnimatedEntrance>
               );
@@ -415,7 +425,7 @@ export default function HojeScreen() {
 
         <View style={styles.checklistCard}>
           <View style={styles.addRow}>
-            <MaterialCommunityIcons name="plus-circle-outline" size={20} color={Colors.accent} />
+            <MaterialCommunityIcons name="plus-circle-outline" size={20} color={cores.accentLight} />
             <TextInput
               style={styles.addInput}
               value={novo}
@@ -423,18 +433,18 @@ export default function HojeScreen() {
               onSubmitEditing={addItem}
               returnKeyType="done"
               placeholder="Adicionar tarefa…"
-              placeholderTextColor={Colors.onSurfaceMuted}
+              placeholderTextColor={cores.onSurfaceMuted}
             />
             {novo.trim() ? (
               <OlliPressable onPress={addItem} haptic={false} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Adicionar tarefa">
-                <MaterialCommunityIcons name="arrow-up-circle" size={24} color={Colors.accent} />
+                <MaterialCommunityIcons name="arrow-up-circle" size={24} color={cores.accentLight} />
               </OlliPressable>
             ) : null}
           </View>
 
           {checklist.length === 0 ? (
             <View style={styles.checklistEmptyWrap}>
-              <MaterialCommunityIcons name="checkbox-marked-circle-outline" size={26} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="checkbox-marked-circle-outline" size={26} color={cores.onSurfaceMuted} />
               <Text style={styles.checklistEmpty}>Sem tarefas por aqui. Anote o que precisa fazer hoje.</Text>
             </View>
           ) : (
@@ -445,7 +455,7 @@ export default function HojeScreen() {
 
           {/* Nota discreta: checklist agora sincroniza com a nuvem (extras_sync) */}
           <View style={styles.checklistNota}>
-            <MaterialCommunityIcons name="cloud-check-outline" size={12} color={Colors.onSurfaceMuted} />
+            <MaterialCommunityIcons name="cloud-check-outline" size={12} color={cores.onSurfaceMuted} />
             <Text style={styles.checklistNotaText}>Sua lista fica salva na nuvem e acompanha você em qualquer aparelho.</Text>
           </View>
         </View>
@@ -463,17 +473,17 @@ export default function HojeScreen() {
             }}
           >
             <View style={styles.relatorioIcon}>
-              <MaterialCommunityIcons name="volume-high" size={20} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
               <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
             </View>
             {relatorioLiberado ? (
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             ) : (
               <View style={styles.relatorioProBadge}>
-                <MaterialCommunityIcons name="lock-outline" size={11} color={Colors.plan} />
+                <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
                 <Text style={styles.relatorioProBadgeText}>Pro</Text>
               </View>
             )}
@@ -495,76 +505,80 @@ export default function HojeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    // Pill sempre escura de propósito (como um toast) — sem chave que represente
+    // "fundo escuro fixo" nos dois modos (ver rule 7 da migração).
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
-  kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: Colors.accentLight },
-  title: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 3 },
-  date: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
+  title: { fontSize: 24, fontWeight: '800', color: c.onBackground, marginTop: 3 },
+  date: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
 
-  lembretes: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...Shadow.sm },
+  lembretes: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...sombrasDe(c).sm },
   lembretesHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  lembretesTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  lembretesTitle: { fontSize: 14, fontWeight: '800', color: c.onSurface },
   lembreteRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   lembreteIcon: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  lembreteText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  lembreteSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
+  lembreteText: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  lembreteSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
 
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  seeAll: { fontSize: 12.5, color: Colors.accent, fontWeight: '700' },
-  checkCount: { fontSize: 13, color: Colors.onSurfaceVariant, fontWeight: '700' },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground },
+  seeAll: { fontSize: 12.5, color: c.accentLight, fontWeight: '700' },
+  checkCount: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '700' },
 
-  emptyDay: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, minHeight: 220 },
+  emptyDay: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, marginHorizontal: Spacing.base, minHeight: 220 },
 
-  agendaCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, ...Shadow.sm },
+  agendaCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   agendaTime: { width: 46, marginRight: 10 },
-  agendaHour: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  agendaHourEnd: { fontSize: 11, color: Colors.onSurfaceMuted, marginTop: 1 },
+  agendaHour: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  agendaHourEnd: { fontSize: 11, color: c.onSurfaceMuted, marginTop: 1 },
   agendaBar: { width: 4, alignSelf: 'stretch', borderRadius: 4, marginRight: 12 },
-  agendaTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  agendaClient: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },
+  agendaTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  agendaClient: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   tipoChip: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2, marginTop: 6 },
   tipoChipText: { fontSize: 11, fontWeight: '800' },
-  rotaBtn: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.accentContainer, marginLeft: 6 },
+  rotaBtn: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: c.accentContainer, marginLeft: 6 },
 
-  checklistCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...Shadow.sm },
-  addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  addInput: { flex: 1, fontSize: 14, color: Colors.onSurface, paddingVertical: 6 },
+  checklistCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...sombrasDe(c).sm },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c.outline },
+  addInput: { flex: 1, fontSize: 14, color: c.onSurface, paddingVertical: 6 },
   checklistEmptyWrap: { alignItems: 'center', gap: 6, paddingVertical: 16 },
-  checklistEmpty: { fontSize: 13, color: Colors.onSurfaceMuted, textAlign: 'center' },
-  checkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  checklistEmpty: { fontSize: 13, color: c.onSurfaceMuted, textAlign: 'center' },
+  checkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.outline },
   checkTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkText: { flex: 1, fontSize: 14, color: Colors.onSurface },
-  checkTextDone: { textDecorationLine: 'line-through', color: Colors.onSurfaceMuted },
-  checklistNota: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline },
-  checklistNotaText: { flex: 1, fontSize: 10.5, color: Colors.onSurfaceMuted },
+  checkText: { flex: 1, fontSize: 14, color: c.onSurface },
+  checkTextDone: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
+  checklistNota: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline },
+  checklistNotaText: { flex: 1, fontSize: 10.5, color: c.onSurfaceMuted },
 
   relatorioCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline,
-    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline,
+    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...sombrasDe(c).sm,
   },
   relatorioIcon: {
     width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: Colors.accentContainer,
+    backgroundColor: c.accentContainer,
   },
-  relatorioTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  relatorioSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 1 },
+  relatorioTitle: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  relatorioSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
+  // Roxo fixo (base #7C3AED, mesma família de `c.plan`, mas sem "container" no
+  // tema): decorativo, sem chave semântica exata (ver rule 7).
   relatorioProBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(124,58,237,0.14)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.36)', borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 4 },
-  relatorioProBadgeText: { fontSize: 11, fontWeight: '800', color: Colors.plan },
+  relatorioProBadgeText: { fontSize: 11, fontWeight: '800', color: c.plan },
 
   allClear: { alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.lg },
-  allClearTitle: { fontSize: 17, fontWeight: '800', color: '#fff', marginTop: 10 },
-  allClearSub: { fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 19, paddingHorizontal: 12 },
+  allClearTitle: { fontSize: 17, fontWeight: '800', color: c.onBackground, marginTop: 10 },
+  allClearSub: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 19, paddingHorizontal: 12 },
 });

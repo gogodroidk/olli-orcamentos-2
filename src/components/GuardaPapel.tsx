@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from './GradientHeader';
 import { OlliButton } from './OlliButton';
 import { usePermissao, type Acao } from '../hooks/usePermissao';
@@ -34,13 +34,15 @@ interface Props {
 
 export function GuardaPapel({ acao, area, children }: Props) {
   const { pode, carregando } = usePermissao();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   // Papel ainda desconhecido: segura a tela num estado neutro. Fail-closed —
   // jamais deixamos o conteúdo protegido piscar antes da permissão resolver.
   if (carregando) {
     return (
       <View style={styles.carregando}>
-        <ActivityIndicator color={Colors.accent} />
+        <ActivityIndicator color={cores.accentLight} />
       </View>
     );
   }
@@ -54,6 +56,8 @@ export function GuardaPapel({ acao, area, children }: Props) {
 
 function AcessoNegado({ area }: { area?: string }) {
   const nav = useNavigation();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const voltar = () => goBackOrHome(nav);
 
   return (
@@ -61,7 +65,7 @@ function AcessoNegado({ area }: { area?: string }) {
       <GradientHeader title="Acesso restrito" subtitle="Permissão insuficiente" onBack={voltar} />
       <View style={styles.body}>
         <View style={styles.iconWrap}>
-          <MaterialCommunityIcons name="lock-outline" size={40} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="lock-outline" size={40} color={cores.accentLight} />
         </View>
         <Text style={styles.titulo}>Área restrita</Text>
         <Text style={styles.descricao}>
@@ -75,7 +79,7 @@ function AcessoNegado({ area }: { area?: string }) {
           variant="outline"
           size="lg"
           fullWidth
-          icon={<MaterialCommunityIcons name="arrow-left" size={18} color={Colors.accentLight} />}
+          icon={<MaterialCommunityIcons name="arrow-left" size={18} color={cores.accentLight} />}
           style={styles.btn}
         />
       </View>
@@ -83,26 +87,27 @@ function AcessoNegado({ area }: { area?: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  carregando: {
-    flex: 1, backgroundColor: Colors.background,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xxl },
-  iconWrap: {
-    width: 86, height: 86, borderRadius: BorderRadius.xl,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.surfaceGlass,
-    borderWidth: 1, borderColor: Colors.strokeGlow,
-    ...Shadow.sm,
-  },
-  titulo: { fontSize: 20, fontWeight: '800', color: Colors.onSurface, marginTop: Spacing.md, textAlign: 'center' },
-  descricao: {
-    fontSize: 14, color: Colors.onSurfaceVariant, marginTop: Spacing.sm,
-    textAlign: 'center', lineHeight: 20, maxWidth: 340,
-  },
-  btn: { marginTop: Spacing.xl },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background },
+    carregando: {
+      flex: 1, backgroundColor: c.background,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xxl },
+    iconWrap: {
+      width: 86, height: 86, borderRadius: BorderRadius.xl,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: c.surfaceGlass,
+      borderWidth: 1, borderColor: c.strokeGlow,
+      ...sombrasDe(c).sm,
+    },
+    titulo: { fontSize: 20, fontWeight: '800', color: c.onSurface, marginTop: Spacing.md, textAlign: 'center' },
+    descricao: {
+      fontSize: 14, color: c.onSurfaceVariant, marginTop: Spacing.sm,
+      textAlign: 'center', lineHeight: 20, maxWidth: 340,
+    },
+    btn: { marginTop: Spacing.xl },
+  });
 
 export default GuardaPapel;

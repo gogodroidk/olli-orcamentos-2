@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -58,13 +58,19 @@ const SITUACOES_ORDEM: SituacaoEquipamento[] = [
   'desativado', 'retirado', 'substituido', 'descartado',
 ];
 
-/** Criticidades (id + rótulo + cor) para o seletor no form e o chip no detalhe. */
-const CRITICIDADES: { id: CriticidadeEquipamento; label: string; cor: string }[] = [
-  { id: 'baixa', label: 'Baixa', cor: Colors.onSurfaceVariant },
-  { id: 'media', label: 'Média', cor: Colors.warning },
-  { id: 'alta', label: 'Alta', cor: '#F97316' },
-  { id: 'critica', label: 'Crítica', cor: Colors.danger },
-];
+/**
+ * Criticidades (id + rótulo + cor) para o seletor no form e o chip no detalhe.
+ * Função (não array de módulo): as cores vêm da paleta atual — um array fixo
+ * congelaria as cores no import, como o resto desta migração evita.
+ */
+function criarCriticidades(c: Cores): { id: CriticidadeEquipamento; label: string; cor: string }[] {
+  return [
+    { id: 'baixa', label: 'Baixa', cor: c.onSurfaceVariant },
+    { id: 'media', label: 'Média', cor: c.warning },
+    { id: 'alta', label: 'Alta', cor: '#F97316' },
+    { id: 'critica', label: 'Crítica', cor: c.danger },
+  ];
+}
 
 /** Rótulo curto da categoria a partir do id (texto livre → melhor esforço). */
 function labelCategoria(id?: string): string {
@@ -89,7 +95,9 @@ function formatarBtu(v?: number): string {
 // Badge de situação (rótulo + cor do contrato).
 // ─────────────────────────────────────────────────────────────
 function SituacaoBadge({ situacao }: { situacao: SituacaoEquipamento }) {
-  const cor = STATUS_EQUIP_CORES[situacao] ?? Colors.onSurfaceVariant;
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const cor = STATUS_EQUIP_CORES[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
       <Text style={[styles.statusBadgeText, { color: cor }]}>
@@ -104,6 +112,8 @@ function SituacaoBadge({ situacao }: { situacao: SituacaoEquipamento }) {
 // ═════════════════════════════════════════════════════════════
 export default function EquipamentoScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   // Atalho para os Planos PMOC (Fase 2): só quem gerencia planos vê (o técnico não).
   const { pode } = usePermissao();
 
@@ -177,7 +187,7 @@ export default function EquipamentoScreen() {
         >
           <View style={styles.cardHeader}>
             <View style={styles.cardIcon}>
-              <MaterialCommunityIcons name={iconeCategoria(item.categoria)} size={22} color={Colors.accentLight} />
+              <MaterialCommunityIcons name={iconeCategoria(item.categoria)} size={22} color={cores.accentLight} />
             </View>
             <View style={{ flex: 1, paddingHorizontal: 10 }}>
               <Text style={styles.cardTitulo} numberOfLines={1}>{titulo}</Text>
@@ -189,26 +199,26 @@ export default function EquipamentoScreen() {
           <View style={styles.cardMetaRow}>
             {item.numeroSerie ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="barcode" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="barcode" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText} numberOfLines={1}>{item.numeroSerie}</Text>
               </View>
             ) : null}
             {item.localizacao ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="map-marker-outline" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="map-marker-outline" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText} numberOfLines={1}>{item.localizacao}</Text>
               </View>
             ) : null}
             {(item.fotos?.length ?? 0) > 0 ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="image-multiple-outline" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="image-multiple-outline" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText}>{item.fotos.length}</Text>
               </View>
             ) : null}
             {item.qrRevogadoEm ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="qrcode-remove" size={12} color={Colors.danger} />
-                <Text style={[styles.metaChipText, { color: Colors.danger }]}>QR revogado</Text>
+                <MaterialCommunityIcons name="qrcode-remove" size={12} color={cores.danger} />
+                <Text style={[styles.metaChipText, { color: cores.danger }]}>QR revogado</Text>
               </View>
             ) : null}
           </View>
@@ -235,17 +245,17 @@ export default function EquipamentoScreen() {
         }
       >
         <View style={styles.searchRow}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} style={{ marginRight: 8 }} />
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar por código, série, marca ou local..."
             value={busca}
             onChangeText={setBusca}
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
           />
           {busca ? (
             <TouchableOpacity onPress={() => setBusca('')} accessibilityRole="button" accessibilityLabel="Limpar busca">
-              <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -313,7 +323,7 @@ export default function EquipamentoScreen() {
           keyExtractor={(e) => e.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 8, paddingBottom: 90, flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.accentLight} />}
           ListEmptyComponent={
             <EmptyState
               icon="air-conditioner"
@@ -371,6 +381,9 @@ function DetalheEquipamento({
   onMudou: () => void;
   onRemovido: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const CRITICIDADES = criarCriticidades(cores);
   const [eq, setEq] = useState<Equipamento | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [addingFoto, setAddingFoto] = useState(false);
@@ -522,7 +535,7 @@ function DetalheEquipamento({
               {eq.localizacao ? <LinhaInfo icon="map-marker-outline" label="Local" valor={eq.localizacao} /> : null}
               {criticidade ? (
                 <View style={styles.infoRow}>
-                  <MaterialCommunityIcons name="alert-outline" size={16} color={Colors.onSurfaceVariant} />
+                  <MaterialCommunityIcons name="alert-outline" size={16} color={cores.onSurfaceVariant} />
                   <Text style={styles.infoLabel}>Criticidade</Text>
                   <View style={{ flex: 1, alignItems: 'flex-end' }}>
                     <View style={[styles.critChip, { backgroundColor: criticidade.cor + '22', borderColor: criticidade.cor + '66' }]}>
@@ -535,7 +548,7 @@ function DetalheEquipamento({
 
             {/* Caveat legal PMOC — nunca declarar conformidade automática. */}
             <View style={styles.caveat}>
-              <MaterialCommunityIcons name="information-outline" size={15} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="information-outline" size={15} color={cores.onSurfaceVariant} />
               <Text style={styles.caveatText}>
                 A situação indica o estado operacional do equipamento — não é uma
                 declaração de conformidade com o PMOC nem com norma legal.
@@ -558,11 +571,11 @@ function DetalheEquipamento({
               )}
               <View style={styles.fotoBtnRow}>
                 <TouchableOpacity style={styles.fotoBtn} activeOpacity={0.85} disabled={addingFoto} onPress={() => tirarFoto('camera')}>
-                  <MaterialCommunityIcons name="camera-plus-outline" size={18} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="camera-plus-outline" size={18} color={cores.accentLight} />
                   <Text style={styles.fotoBtnText}>Câmera</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.fotoBtn} activeOpacity={0.85} disabled={addingFoto} onPress={() => tirarFoto('galeria')}>
-                  <MaterialCommunityIcons name="image-multiple-outline" size={18} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="image-multiple-outline" size={18} color={cores.accentLight} />
                   <Text style={styles.fotoBtnText}>Galeria</Text>
                 </TouchableOpacity>
               </View>
@@ -573,7 +586,7 @@ function DetalheEquipamento({
               <Text style={styles.blocoTitulo}>Etiqueta / QR</Text>
               {eq.qrRevogadoEm ? (
                 <View style={styles.qrRevogadoBox}>
-                  <MaterialCommunityIcons name="qrcode-remove" size={20} color={Colors.danger} />
+                  <MaterialCommunityIcons name="qrcode-remove" size={20} color={cores.danger} />
                   <Text style={styles.qrRevogadoText}>
                     QR revogado. Gere uma nova etiqueta com a equipe responsável para voltar a usar o scan.
                   </Text>
@@ -588,9 +601,9 @@ function DetalheEquipamento({
                     activeOpacity={0.85}
                     onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowEtiqueta(true); }}
                   >
-                    <MaterialCommunityIcons name="qrcode" size={20} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="qrcode" size={20} color={cores.accentLight} />
                     <Text style={styles.acaoLinhaText}>Ver etiqueta / QR</Text>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
                   </TouchableOpacity>
                 </>
               ) : (
@@ -618,7 +631,7 @@ function DetalheEquipamento({
                   fullWidth
                   loading={revogando}
                   onPress={confirmarRevogar}
-                  icon={<MaterialCommunityIcons name="qrcode-remove" size={20} color={Colors.danger} />}
+                  icon={<MaterialCommunityIcons name="qrcode-remove" size={20} color={cores.danger} />}
                 />
               ) : null}
               <TouchableOpacity
@@ -628,7 +641,7 @@ function DetalheEquipamento({
                 accessibilityRole="button"
                 accessibilityLabel="Excluir equipamento"
               >
-                <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
+                <MaterialCommunityIcons name="trash-can-outline" size={18} color={cores.danger} />
                 <Text style={styles.excluirBtnText}>Excluir equipamento</Text>
               </TouchableOpacity>
             </View>
@@ -658,6 +671,8 @@ function EtiquetaSheet({
   qrToken: string;
   onFechar: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const url = urlEtiqueta(qrToken);
 
   async function compartilhar() {
@@ -696,12 +711,12 @@ function EtiquetaSheet({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Etiqueta / QR</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base, gap: Spacing.base }}>
             <View style={styles.qrIconWrap}>
-              <MaterialCommunityIcons name="qrcode" size={64} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="qrcode" size={64} color={cores.accentLight} />
             </View>
             <Text style={styles.etiquetaHint}>
               Este é o endereço que o QR da porta aponta. Imprima a etiqueta a partir
@@ -712,11 +727,11 @@ function EtiquetaSheet({
             </View>
             <View style={styles.etiquetaBtnRow}>
               <TouchableOpacity style={styles.etiquetaBtn} activeOpacity={0.85} onPress={copiar}>
-                <MaterialCommunityIcons name="content-copy" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="content-copy" size={18} color={cores.accentLight} />
                 <Text style={styles.etiquetaBtnText}>{Platform.OS === 'web' ? 'Copiar link' : 'Copiar'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.etiquetaBtn} activeOpacity={0.85} onPress={compartilhar}>
-                <MaterialCommunityIcons name="share-variant" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="share-variant" size={18} color={cores.accentLight} />
                 <Text style={styles.etiquetaBtnText}>Compartilhar</Text>
               </TouchableOpacity>
             </View>
@@ -738,6 +753,9 @@ function FormEquipamento({
   /** id da linha salva (vazio se o service não devolveu id — ver salvar()). */
   onSalvo: (id: string) => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const CRITICIDADES = criarCriticidades(cores);
   const [categoria, setCategoria] = useState<CategoriaHvac | undefined>(
     (inicial?.categoria as CategoriaHvac | undefined) ?? undefined,
   );
@@ -893,7 +911,7 @@ function FormEquipamento({
                     <MaterialCommunityIcons
                       name={c.icon as keyof typeof MaterialCommunityIcons.glyphMap}
                       size={15}
-                      color={ativo ? Colors.accentLight : Colors.onSurfaceVariant}
+                      color={ativo ? cores.accentLight : cores.onSurfaceVariant}
                     />
                     <Text style={[styles.catChipText, ativo && styles.catChipTextActive]}>{c.label}</Text>
                   </TouchableOpacity>
@@ -938,7 +956,7 @@ function FormEquipamento({
             <View style={styles.chipsWrap}>
               {SITUACOES_ORDEM.map((s) => {
                 const ativo = situacao === s;
-                const cor = STATUS_EQUIP_CORES[s] ?? Colors.primary;
+                const cor = STATUS_EQUIP_CORES[s] ?? cores.primary;
                 return (
                   <TouchableOpacity
                     key={s}
@@ -958,7 +976,7 @@ function FormEquipamento({
             <Text style={styles.formLabel}>Cliente (opcional)</Text>
             {clienteId ? (
               <View style={styles.clienteSel}>
-                <MaterialCommunityIcons name="account-check" size={18} color={Colors.success} />
+                <MaterialCommunityIcons name="account-check" size={18} color={cores.success} />
                 <Text style={styles.clienteSelNome} numberOfLines={1}>{clienteNome || 'Cliente vinculado'}</Text>
                 <TouchableOpacity
                   onPress={() => { setClienteId(undefined); setClienteNome(''); }}
@@ -966,12 +984,12 @@ function FormEquipamento({
                   accessibilityRole="button"
                   accessibilityLabel="Remover cliente"
                 >
-                  <MaterialCommunityIcons name="close-circle" size={20} color={Colors.danger} />
+                  <MaterialCommunityIcons name="close-circle" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity style={styles.clienteBtn} activeOpacity={0.85} onPress={() => setShowCliente(true)}>
-                <MaterialCommunityIcons name="account-search-outline" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="account-search-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.clienteBtnText}>Vincular a um cliente</Text>
               </TouchableOpacity>
             )}
@@ -1003,11 +1021,11 @@ function FormEquipamento({
             )}
             <View style={styles.fotoBtnRow}>
               <TouchableOpacity style={styles.fotoBtn} activeOpacity={0.85} disabled={addingFoto} onPress={() => anexarFotos('camera')}>
-                <MaterialCommunityIcons name="camera-plus-outline" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="camera-plus-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.fotoBtnText}>Câmera</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.fotoBtn} activeOpacity={0.85} disabled={addingFoto} onPress={() => anexarFotos('galeria')}>
-                <MaterialCommunityIcons name="image-multiple-outline" size={18} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="image-multiple-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.fotoBtnText}>Galeria</Text>
               </TouchableOpacity>
             </View>
@@ -1050,6 +1068,8 @@ function SeletorCliente({
   onFechar: () => void;
   onSelecionar: (c: Cliente) => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [query, setQuery] = useState('');
   const [resultados, setResultados] = useState<Cliente[]>([]);
   const [buscou, setBuscou] = useState(false);
@@ -1080,18 +1100,18 @@ function SeletorCliente({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Vincular cliente</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <View style={{ padding: Spacing.base }}>
             <View style={styles.searchRowSheet}>
-              <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} style={{ marginRight: 8 }} />
+              <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Buscar cliente pelo nome..."
                 value={query}
                 onChangeText={setQuery}
-                placeholderTextColor={Colors.onSurfaceMuted}
+                placeholderTextColor={cores.onSurfaceMuted}
                 autoFocus
               />
             </View>
@@ -1106,7 +1126,7 @@ function SeletorCliente({
                   <Text style={styles.clienteRowNome} numberOfLines={1}>{c.nome}</Text>
                   <Text style={styles.clienteRowSub} numberOfLines={1}>{c.telefone || 'Sem telefone'}</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+                <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
               </TouchableOpacity>
             ))}
             {buscou && resultados.length === 0 ? (
@@ -1126,19 +1146,23 @@ function SeletorCliente({
 function LinhaInfo({ icon, label, valor }: {
   icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; valor: string;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.infoRow}>
-      <MaterialCommunityIcons name={icon} size={16} color={Colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={icon} size={16} color={cores.onSurfaceVariant} />
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValor} numberOfLines={1}>{valor}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  detalheContainer: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  detalheContainer: { flex: 1, backgroundColor: c.background },
 
+  // Pílula "Novo" e afins: filhos do GradientHeader, banner sempre colorido nos
+  // dois modos — branco fixo continua correto (ver `header` em theme/cores.ts).
   newBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -1148,15 +1172,15 @@ const styles = StyleSheet.create({
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline,
     marginTop: 14, borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.base, paddingVertical: 11,
   },
   searchRowSheet: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
     borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.base, paddingVertical: 11,
   },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
 
   // Atalho PMOC (Fase 2) — pílula de vidro sobre o header, alinhada à esquerda.
   pmocAtalho: {
@@ -1168,158 +1192,162 @@ const styles = StyleSheet.create({
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipLabel: { fontSize: 12, fontWeight: '600', color: Colors.onSurfaceVariant },
-  chipLabelActive: { color: '#fff' },
+  chipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  chipLabel: { fontSize: 12, fontWeight: '600', color: c.onSurfaceVariant },
+  chipLabelActive: { color: c.onPrimary },
 
   // Card
   card: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outlineDark,
-    marginHorizontal: Spacing.base, marginBottom: 10, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outlineDark,
+    marginHorizontal: Spacing.base, marginBottom: 10, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardIcon: {
     width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.accentContainer, borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,
   },
-  cardTitulo: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
-  cardSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  cardTitulo: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
+  cardSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '48%' },
-  metaChipText: { fontSize: 11.5, color: Colors.onSurfaceVariant, fontWeight: '600' },
+  metaChipText: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '600' },
 
   statusBadge: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
   statusBadgeText: { fontSize: 11, fontWeight: '800' },
 
   // Detalhe
   bloco: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm,
   },
-  blocoTitulo: { fontSize: 15, fontWeight: '800', color: '#fff', marginBottom: 6 },
+  blocoTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: 6 },
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
-  infoLabel: { fontSize: 13, color: Colors.onSurfaceVariant, width: 92 },
-  infoValor: { flex: 1, fontSize: 14, color: '#fff', fontWeight: '700', textAlign: 'right' },
+  infoLabel: { fontSize: 13, color: c.onSurfaceVariant, width: 92 },
+  infoValor: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '700', textAlign: 'right' },
 
   critChip: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
   critChipText: { fontSize: 11.5, fontWeight: '800' },
 
   caveat: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.md,
   },
-  caveatText: { flex: 1, fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 17 },
+  caveatText: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17 },
 
-  vazioTexto: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19, marginTop: 6 },
+  vazioTexto: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 19, marginTop: 6 },
 
-  foto: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline },
+  foto: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline },
   fotoThumbWrap: { position: 'relative' },
+  // Botão de remover foto: sempre escuro de propósito (contraste do "x" sobre a
+  // miniatura, nos dois modos) — sem chave "fundo escuro fixo" na paleta.
   fotoRemover: {
     position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11,
     backgroundColor: 'rgba(4,10,20,0.72)', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: Colors.outlineDark,
+    borderWidth: 1, borderColor: c.outlineDark,
   },
   fotoBtnRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   fotoBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.strokeGlow, paddingVertical: 12,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 12,
   },
-  fotoBtnText: { fontSize: 13.5, fontWeight: '800', color: Colors.accentLight },
+  fotoBtnText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
 
   qrRevogadoBox: {
     flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-    backgroundColor: Colors.dangerLight, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.danger + '55', padding: Spacing.md, marginTop: 6,
+    backgroundColor: c.dangerLight, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.danger + '55', padding: Spacing.md, marginTop: 6,
   },
-  qrRevogadoText: { flex: 1, fontSize: 13, color: '#fff', lineHeight: 18 },
+  qrRevogadoText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 18 },
 
   acaoLinha: {
     flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.strokeGlow, paddingHorizontal: 14, paddingVertical: 13,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.strokeGlow, paddingHorizontal: 14, paddingVertical: 13,
   },
-  acaoLinhaText: { flex: 1, fontSize: 14.5, fontWeight: '800', color: Colors.accentLight },
+  acaoLinhaText: { flex: 1, fontSize: 14.5, fontWeight: '800', color: c.accentLight },
 
   excluirBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 12, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.danger + '55', backgroundColor: Colors.dangerLight,
+    borderWidth: 1, borderColor: c.danger + '55', backgroundColor: c.dangerLight,
   },
-  excluirBtnText: { fontSize: 14, fontWeight: '800', color: Colors.danger },
+  excluirBtnText: { fontSize: 14, fontWeight: '800', color: c.danger },
 
   // Etiqueta sheet
   qrIconWrap: {
     alignSelf: 'center', width: 108, height: 108, borderRadius: BorderRadius.xl,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.surfaceGlass, borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: c.surfaceGlass, borderWidth: 1, borderColor: c.strokeGlow,
   },
-  etiquetaHint: { fontSize: 13.5, color: Colors.onSurfaceVariant, lineHeight: 20, textAlign: 'center' },
+  etiquetaHint: { fontSize: 13.5, color: c.onSurfaceVariant, lineHeight: 20, textAlign: 'center' },
   urlBox: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.md,
   },
-  urlText: { fontSize: 13.5, color: Colors.accentLight, fontWeight: '600' },
+  urlText: { fontSize: 13.5, color: c.accentLight, fontWeight: '600' },
   etiquetaBtnRow: { flexDirection: 'row', gap: 10 },
   etiquetaBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.strokeGlow, paddingVertical: 13,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 13,
   },
-  etiquetaBtnText: { fontSize: 13.5, fontWeight: '800', color: Colors.accentLight },
+  etiquetaBtnText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
 
   // Form
-  formLabel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  formLabel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 8 },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   catChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  catChipActive: { backgroundColor: Colors.accentContainer, borderColor: Colors.accent },
-  catChipText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  catChipTextActive: { color: Colors.accentLight },
+  catChipActive: { backgroundColor: c.accentContainer, borderColor: c.accent },
+  catChipText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  catChipTextActive: { color: c.accentLight },
   selChip: {
     paddingHorizontal: 13, paddingVertical: 8, borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  selChipText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  selChipText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   clienteBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.strokeGlow, borderStyle: 'dashed', paddingVertical: 13,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.strokeGlow, borderStyle: 'dashed', paddingVertical: 13,
   },
-  clienteBtnText: { fontSize: 14, fontWeight: '800', color: Colors.accentLight },
+  clienteBtnText: { fontSize: 14, fontWeight: '800', color: c.accentLight },
   clienteSel: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.success, paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: c.success, paddingHorizontal: 14, paddingVertical: 12,
   },
-  clienteSelNome: { flex: 1, fontSize: 14.5, fontWeight: '700', color: '#fff' },
+  clienteSelNome: { flex: 1, fontSize: 14.5, fontWeight: '700', color: c.onSurface },
 
   // Sheets
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
+  // padrão de overlay de modal — sem chave "scrim" na paleta).
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(4,10,20,0.6)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     maxHeight: '80%', paddingBottom: Platform.OS === 'ios' ? 24 : 8,
   },
   sheetHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.base, paddingVertical: Spacing.base,
-    borderBottomWidth: 1, borderBottomColor: Colors.outline,
+    borderBottomWidth: 1, borderBottomColor: c.outline,
   },
-  sheetTitle: { fontSize: 19, fontWeight: '800', color: Colors.onSurface },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface },
 
   clienteRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass,
-    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md, marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10,
   },
-  clienteAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  clienteAvatarText: { fontSize: 18, fontWeight: '800', color: Colors.accentLight },
-  clienteRowNome: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  clienteRowSub: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  clienteAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  clienteAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
+  clienteRowNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  clienteRowSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 });

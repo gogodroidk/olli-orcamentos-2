@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -48,6 +48,10 @@ const STATUS_ACTIONS: Array<{ status: StatusOrcamento; label: string; color: str
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  // Ink de contraste sobre `accentLight` (botão principal de fechar negócio).
+  const textoSobreAccent = textoSobre(cores.accentLight);
   const { orcamentoId } = route.params;
   const { temAcesso } = usePlano();
 
@@ -206,7 +210,7 @@ export default function VisualizarOrcamentoScreen() {
 
   if (naoEncontrado) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <View style={{ flex: 1, backgroundColor: cores.background }}>
         <GradientHeader title="Orçamento" onBack={() => goBackOrHome(nav)} compact />
         <EmptyState
           icon="file-remove-outline"
@@ -219,7 +223,7 @@ export default function VisualizarOrcamentoScreen() {
     );
   }
 
-  if (!orc || carregando) return <View style={{ flex: 1, backgroundColor: Colors.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={Colors.primary} /></View>;
+  if (!orc || carregando) return <View style={{ flex: 1, backgroundColor: cores.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={cores.primary} /></View>;
 
   const Row = ({ label, value }: { label: string; value?: string }) =>
     value ? (
@@ -239,7 +243,7 @@ export default function VisualizarOrcamentoScreen() {
   const fechamentoOk = fechamentoChecks.filter(c => c.ok).length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+    <View style={{ flex: 1, backgroundColor: cores.background }}>
       <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
         <View style={styles.actionBar}>
           <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
@@ -284,7 +288,7 @@ export default function VisualizarOrcamentoScreen() {
         <OlliCard style={styles.closeCard}>
           <View style={styles.closeTop}>
             <View style={styles.closeIcon}>
-              <MaterialCommunityIcons name="handshake-outline" size={24} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="handshake-outline" size={24} color={cores.accentLight} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.closeEyebrow}>Fechar negócio</Text>
@@ -296,7 +300,7 @@ export default function VisualizarOrcamentoScreen() {
           </View>
 
           <OlliPressable style={styles.closePrimary} onPress={handleWhatsApp} haptic="light">
-            <MaterialCommunityIcons name="whatsapp" size={20} color="#0A1626" />
+            <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />
             <Text style={styles.closePrimaryText}>Enviar no WhatsApp</Text>
           </OlliPressable>
 
@@ -312,7 +316,7 @@ export default function VisualizarOrcamentoScreen() {
                 <MaterialCommunityIcons
                   name={check.ok ? 'check-circle' : 'alert-circle-outline'}
                   size={15}
-                  color={check.ok ? Colors.success : Colors.warning}
+                  color={check.ok ? cores.success : cores.warning}
                 />
                 <Text style={[styles.closeCheckText, !check.ok && styles.closeCheckTextWarn]}>{check.label}</Text>
               </View>
@@ -327,7 +331,7 @@ export default function VisualizarOrcamentoScreen() {
             {orc.clienteId ? (
               <View style={styles.clientLink}>
                 <Text style={styles.clientLinkText}>ver orçamentos</Text>
-                <MaterialCommunityIcons name="chevron-right" size={16} color={Colors.accent} />
+                <MaterialCommunityIcons name="chevron-right" size={16} color={cores.accentLight} />
               </View>
             ) : null}
           </View>
@@ -421,7 +425,7 @@ export default function VisualizarOrcamentoScreen() {
               <MaterialCommunityIcons
                 name={versoesAbertas ? 'chevron-up' : 'chevron-down'}
                 size={22}
-                color={Colors.onSurfaceVariant}
+                color={cores.onSurfaceVariant}
               />
             </TouchableOpacity>
             {versoesAbertas && versoes.map(v => (
@@ -462,6 +466,7 @@ const TRILHA_META: Record<EventoTrilhaCliente['tipo'], { icon: keyof typeof Mate
 };
 
 function TrilhaLinha({ evento, ultimo }: { evento: EventoTrilhaCliente; ultimo: boolean }) {
+  const styles = useEstilos(criarEstilos);
   const meta = TRILHA_META[evento.tipo];
   return (
     <View style={styles.trilhaRow}>
@@ -486,6 +491,7 @@ function TrilhaLinha({ evento, ultimo }: { evento: EventoTrilhaCliente; ultimo: 
 }
 
 function ActionBtn({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <OlliPressable style={styles.actionBarBtn} onPress={onPress} disabled={loading}>
       {loading ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name={icon} size={22} color="#fff" />}
@@ -495,15 +501,19 @@ function ActionBtn({ icon, label, onPress, loading }: { icon: keyof typeof Mater
 }
 
 function CloseAction({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <OlliPressable style={styles.closeActionBtn} onPress={onPress} disabled={loading}>
-      {loading ? <ActivityIndicator size="small" color={Colors.accentLight} /> : <MaterialCommunityIcons name={icon} size={19} color={Colors.accentLight} />}
+      {loading ? <ActivityIndicator size="small" color={cores.accentLight} /> : <MaterialCommunityIcons name={icon} size={19} color={cores.accentLight} />}
       <Text style={styles.closeActionText}>{label}</Text>
     </OlliPressable>
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  // Dentro do GradientHeader (sempre colorido, nos dois modos) — glass branco
+  // fixo, mesma convenção do próprio GradientHeader.
   actionBar: {
     flexDirection: 'row', paddingTop: 14, gap: 8,
   },
@@ -517,110 +527,114 @@ const styles = StyleSheet.create({
 
   statusRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    padding: Spacing.base, marginBottom: 12, ...Shadow.sm,
-    borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.base, marginBottom: 12, ...sombrasDe(c).sm,
+    borderWidth: 1, borderColor: c.outline,
   },
-  numLabel: { fontSize: 18, fontWeight: '800', color: Colors.onSurface },
-  dateLabel: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  numLabel: { fontSize: 18, fontWeight: '800', color: c.onSurface },
+  dateLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
-  menuTitle: { fontSize: 12, color: Colors.onSurfaceVariant, fontWeight: '600', padding: 8 },
+  menuTitle: { fontSize: 12, color: c.onSurfaceVariant, fontWeight: '600', padding: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, borderRadius: BorderRadius.md },
   menuDot: { width: 10, height: 10, borderRadius: 5 },
-  menuLabel: { flex: 1, fontSize: 14, color: Colors.onSurface },
+  menuLabel: { flex: 1, fontSize: 14, color: c.onSurface },
 
-  closeCard: { padding: Spacing.base, marginBottom: 12, borderColor: Colors.strokeGlow },
+  closeCard: { padding: Spacing.base, marginBottom: 12, borderColor: c.strokeGlow },
   closeTop: { flexDirection: 'row', alignItems: 'center' },
+  // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
   closeIcon: {
     width: 48, height: 48, borderRadius: 16,
-    backgroundColor: 'rgba(127,233,245,0.12)',
-    borderWidth: 1, borderColor: 'rgba(127,233,245,0.28)',
+    backgroundColor: comAlfa(c.accentLight, 0.12),
+    borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28),
     alignItems: 'center', justifyContent: 'center',
   },
-  closeEyebrow: { fontSize: 11, fontWeight: '800', color: Colors.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
-  closeTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginTop: 2 },
-  closeSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  closeEyebrow: { fontSize: 11, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
+  closeTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: 2 },
+  closeSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   closePrimary: {
     marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.accentLight,
+    backgroundColor: c.accentLight,
     borderRadius: BorderRadius.full,
     paddingVertical: 13,
   },
-  closePrimaryText: { fontSize: 14.5, fontWeight: '800', color: '#0A1626' },
+  // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
+  closePrimaryText: { fontSize: 14.5, fontWeight: '800', color: textoSobre(c.accentLight) },
   closeActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   closeActionBtn: {
     flex: 1,
     minHeight: 44,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.strokeGlow,
-    backgroundColor: Colors.surfacePressed,
+    borderColor: c.strokeGlow,
+    backgroundColor: c.surfacePressed,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
   },
-  closeActionText: { fontSize: 11.5, fontWeight: '800', color: Colors.accentLight },
+  closeActionText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
   closeChecklist: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  closeCheck: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 6 },
-  closeCheckText: { fontSize: 11.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  closeCheckTextWarn: { color: Colors.warning },
+  closeCheck: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 6 },
+  closeCheckText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
+  closeCheckTextWarn: { color: c.warning },
 
-  cardTitle: { fontSize: 14, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cardTitle: { fontSize: 14, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   clientHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   clientLink: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  clientLinkText: { fontSize: 12, fontWeight: '700', color: Colors.accent },
-  clientName: { fontSize: 16, fontWeight: '700', color: Colors.onSurface },
-  clientInfo: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 3 },
+  clientLinkText: { fontSize: 12, fontWeight: '700', color: c.accentLight },
+  clientName: { fontSize: 16, fontWeight: '700', color: c.onSurface },
+  clientInfo: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 3 },
 
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  itemName: { fontSize: 14, fontWeight: '600', color: Colors.onSurface },
-  itemQty: { fontSize: 12, color: Colors.onSurfaceVariant },
-  itemSubtotal: { fontSize: 14, fontWeight: '700', color: Colors.primary },
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.outline },
+  itemName: { fontSize: 14, fontWeight: '600', color: c.onSurface },
+  itemQty: { fontSize: 12, color: c.onSurfaceVariant },
+  itemSubtotal: { fontSize: 14, fontWeight: '700', color: c.primary },
 
   fotosRow: { gap: 10, paddingRight: 4 },
-  fotoStrip: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: Colors.surfaceVariant },
+  fotoStrip: { width: 96, height: 96, borderRadius: BorderRadius.md, backgroundColor: c.surfaceVariant },
 
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  rowLabel: { fontSize: 13, color: Colors.onSurfaceVariant },
-  rowValue: { fontSize: 13, fontWeight: '600', color: Colors.onSurface, maxWidth: '60%', textAlign: 'right' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.outline },
+  rowLabel: { fontSize: 13, color: c.onSurfaceVariant },
+  rowValue: { fontSize: 13, fontWeight: '600', color: c.onSurface, maxWidth: '60%', textAlign: 'right' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8 },
-  totalLabel: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  totalValue: { ...Typography.valueLarge, color: Colors.accentLight },
+  totalLabel: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  totalValue: { ...Typography.valueLarge, color: c.accentLight },
 
   textBlock: { paddingTop: 8 },
-  textBlockContent: { fontSize: 13, color: Colors.onSurface, lineHeight: 20, marginTop: 4 },
+  textBlockContent: { fontSize: 13, color: c.onSurface, lineHeight: 20, marginTop: 4 },
 
-  // Trilha do cliente (timeline)
+  // Trilha do cliente (timeline) — cores dos eventos (TRILHA_META) são fixas
+  // por design, iguais nos dois modos (mesma lógica de "cor de evento" que um
+  // diff de git), não seguem o tema. Mantidas.
   trilhaRow: { flexDirection: 'row', gap: 12 },
   trilhaGutter: { alignItems: 'center', width: 24 },
   trilhaDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  trilhaLine: { width: 2, flex: 1, backgroundColor: Colors.outline, marginTop: 2 },
-  trilhaLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  trilhaData: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  trilhaLine: { width: 2, flex: 1, backgroundColor: c.outline, marginTop: 2 },
+  trilhaLabel: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  trilhaData: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   trilhaMotivo: {
     marginTop: 8, padding: 10, borderRadius: BorderRadius.md,
     backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.22)',
   },
   trilhaMotivoLabel: { fontSize: 10.5, fontWeight: '800', color: '#EF4444', textTransform: 'uppercase', letterSpacing: 0.4 },
-  trilhaMotivoText: { fontSize: 13, color: Colors.onSurface, lineHeight: 19, marginTop: 3 },
+  trilhaMotivoText: { fontSize: 13, color: c.onSurface, lineHeight: 19, marginTop: 3 },
 
   // Histórico de versões
   versoesHeader: { flexDirection: 'row', alignItems: 'center' },
-  versoesHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: -4, marginBottom: 2 },
+  versoesHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: -4, marginBottom: 2 },
   versaoItem: {
-    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.outline,
+    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline,
   },
   versaoTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   versaoBadge: {
-    backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.full,
+    backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full,
     paddingHorizontal: 8, paddingVertical: 2,
   },
-  versaoBadgeText: { fontSize: 11, fontWeight: '800', color: Colors.onSurfaceVariant },
-  versaoData: { flex: 1, fontSize: 12.5, color: Colors.onSurfaceVariant },
-  versaoValor: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurface },
-  versaoResumo: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 4 },
+  versaoBadgeText: { fontSize: 11, fontWeight: '800', color: c.onSurfaceVariant },
+  versaoData: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  versaoValor: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
+  versaoResumo: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 4 },
 });

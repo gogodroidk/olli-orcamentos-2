@@ -6,12 +6,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliPressable } from '../components/OlliPressable';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliSkeleton } from '../components/OlliSkeleton';
+import { SeletorTema } from '../components/SeletorTema';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
 import { usePlano } from '../hooks/usePlano';
@@ -51,6 +52,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -63,7 +66,7 @@ function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: numb
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={cores.accentLight} />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -94,8 +97,8 @@ const PLANO_LABEL: Record<'gratis' | 'pro' | 'empresa', string> = {
   empresa: 'Empresa',
 };
 
-// Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
-const FERRAMENTAS: {
+/** Metadados de uma ferramenta listada em Conta (ver `criarFerramentas`). */
+interface Ferramenta {
   key: string;
   icon: string;
   label: string;
@@ -109,21 +112,30 @@ const FERRAMENTAS: {
    * lista mesmo com a sidebar escondendo os mesmos itens.
    */
   ocultarTecnico?: boolean;
-}[] = [
-  { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: Colors.accent, route: 'OlliVoz' },
-  { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: Colors.primaryLight, route: 'OlliChat' },
-  { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: Colors.primary, route: 'Servicos', ocultarTecnico: true },
-  { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: Colors.primary, route: 'Produtos', ocultarTecnico: true },
-  { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
-  { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: Colors.accent, route: 'Diagnostico' },
-  { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: Colors.success, route: 'EmitirRecibo', ocultarTecnico: true },
-  { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
-];
+}
+
+// Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
+// Função (não array de módulo) porque as cores vêm da paleta atual — um array
+// fixo congelaria as cores no import, como o resto desta migração evita.
+function criarFerramentas(c: Cores): Ferramenta[] {
+  return [
+    { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: c.accentLight, route: 'OlliVoz' },
+    { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: c.primaryLight, route: 'OlliChat' },
+    { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
+    { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos', ocultarTecnico: true },
+    { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
+    { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico' },
+    { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
+    { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
+  ];
+}
 
 export default function ContaScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const configured = isSupabaseConfigured();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   // Onda 2 — tipo de conta (pessoal vs empresa) e permissão de gerenciar equipe.
   const { tipo, org, carregando: carregandoConta } = useTipoConta();
@@ -131,6 +143,7 @@ export default function ContaScreen() {
   // Fail-closed: enquanto o papel ainda carrega, trata como se pudesse ser
   // técnico — evita o flash de um item de dono (Serviços/Produtos/Recibos/
   // Meu Negócio) antes da permissão real chegar.
+  const FERRAMENTAS = criarFerramentas(cores);
   const ferramentasVisiveis = FERRAMENTAS.filter(
     (f) => !(f.ocultarTecnico && (papel === 'tecnico' || carregandoPermissao)),
   );
@@ -368,7 +381,7 @@ export default function ContaScreen() {
     );
   }
 
-  function abrirFerramenta(f: typeof FERRAMENTAS[number]) {
+  function abrirFerramenta(f: Ferramenta) {
     Haptics.selectionAsync().catch(() => {});
     if (f.route === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
     else nav.navigate(f.route as never);
@@ -525,7 +538,7 @@ export default function ContaScreen() {
         contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} colors={[Colors.accent]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
         <View style={styles.headRow}>
           <Text style={styles.screenTitle}>Conta</Text>
@@ -575,7 +588,7 @@ export default function ContaScreen() {
               accessibilityLabel="Trocar foto de perfil"
             >
               {salvandoFoto ? (
-                <ActivityIndicator color={Colors.accentLight} />
+                <ActivityIndicator color={cores.accentLight} />
               ) : avatarUri ? (
                 <Image
                   source={{ uri: avatarUri }}
@@ -586,7 +599,7 @@ export default function ContaScreen() {
                 <Text style={styles.avatarText}>{primeiroNome.charAt(0).toUpperCase()}</Text>
               )}
               <View style={styles.avatarBadge}>
-                <MaterialCommunityIcons name="camera" size={12} color="#0A1626" />
+                <MaterialCommunityIcons name="camera" size={12} color={textoSobre(cores.accentLight)} />
               </View>
             </TouchableOpacity>
             <View style={{ flex: 1, marginLeft: 14 }}>
@@ -604,7 +617,7 @@ export default function ContaScreen() {
               ) : null}
             </View>
             <View style={styles.editBtn}>
-              <MaterialCommunityIcons name="pencil-outline" size={16} color={Colors.accent} />
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.accentLight} />
               <Text style={styles.editBtnText}>editar</Text>
             </View>
           </OlliPressable>
@@ -626,19 +639,19 @@ export default function ContaScreen() {
               onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Assinatura' as never); }}
             >
               <View style={styles.assinaturaIcon}>
-                <MaterialCommunityIcons name="check-decagram" size={20} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="check-decagram" size={20} color={cores.accentLight} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.assinaturaTitle}>Sua assinatura</Text>
                 <Text style={styles.assinaturaSub}>Plano {PLANO_LABEL[plano]} · faturas, cobrança e cancelamento</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             </OlliPressable>
           ) : (
             <View style={styles.proCard}>
               <View style={styles.proHead}>
                 <View style={styles.proBadge}>
-                  <MaterialCommunityIcons name="crown-outline" size={16} color="#0A1626" />
+                  <MaterialCommunityIcons name="crown-outline" size={16} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.proBadgeText}>OLLI PRO</Text>
                 </View>
                 <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
@@ -653,7 +666,7 @@ export default function ContaScreen() {
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
               >
                 <Text style={styles.proBtnText}>Ver planos e assinar</Text>
-                <MaterialCommunityIcons name="arrow-right" size={16} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
               </OlliPressable>
             </View>
           )}
@@ -666,7 +679,7 @@ export default function ContaScreen() {
               <View style={styles.empresaCard}>
                 <View style={styles.empresaHead}>
                   <View style={styles.empresaIcon}>
-                    <MaterialCommunityIcons name="office-building-outline" size={18} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="office-building-outline" size={18} color={cores.accentLight} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.empresaNome} numberOfLines={1}>{org.nome}</Text>
@@ -680,9 +693,9 @@ export default function ContaScreen() {
                     accessibilityLabel="Gerenciar equipe"
                     onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Equipe'); }}
                   >
-                    <MaterialCommunityIcons name="account-group-outline" size={18} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="account-group-outline" size={18} color={cores.accentLight} />
                     <Text style={styles.empresaBtnText}>Gerenciar equipe</Text>
-                    <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
+                    <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
                   </OlliPressable>
                 )}
               </View>
@@ -690,7 +703,7 @@ export default function ContaScreen() {
               <View style={styles.empresaCard}>
                 <View style={styles.empresaHead}>
                   <View style={styles.empresaIcon}>
-                    <MaterialCommunityIcons name="account-group-outline" size={18} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="account-group-outline" size={18} color={cores.accentLight} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.empresaNome}>Trabalha com uma equipe?</Text>
@@ -703,9 +716,9 @@ export default function ContaScreen() {
                   accessibilityLabel="Criar conta empresa"
                   onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowCriarEmpresa(true); }}
                 >
-                  <MaterialCommunityIcons name="rocket-launch-outline" size={18} color={Colors.accentLight} />
+                  <MaterialCommunityIcons name="rocket-launch-outline" size={18} color={cores.accentLight} />
                   <Text style={styles.empresaBtnText}>Criar conta empresa</Text>
-                  <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
                 </OlliPressable>
                 <OlliPressable
                   style={[styles.empresaBtn, styles.empresaBtnGhost]}
@@ -714,7 +727,7 @@ export default function ContaScreen() {
                   accessibilityLabel="Tenho um código de convite"
                   onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowEntrarEquipe(true); }}
                 >
-                  <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={Colors.onSurfaceVariant} />
+                  <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={cores.onSurfaceVariant} />
                   <Text style={styles.empresaBtnGhostText}>Tenho um código de convite</Text>
                 </OlliPressable>
               </View>
@@ -736,20 +749,30 @@ export default function ContaScreen() {
                 accessibilityLabel={f.label}
               >
                 <View style={[styles.toolIcon, { backgroundColor: f.color + '1E', borderColor: f.color + '3A' }]}>
-                  <MaterialCommunityIcons name={f.icon as any} size={20} color={f.color} />
+                  <MaterialCommunityIcons name={f.icon as any} size={20} color={f.color === cores.accent ? cores.accentLight : f.color} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.toolLabel}>{f.label}</Text>
                   <Text style={styles.toolDesc}>{f.desc}</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
               </OlliPressable>
             ))}
           </View>
         </AnimatedEntrance>
 
-        {/* AJUDA E PREFERÊNCIAS — suporte, lixeira (gestão) e controle das dicas. */}
+        {/* APARÊNCIA — modo claro/escuro e cor da marca. O app abre SEMPRE no claro
+            (TemaProvider não lê `useColorScheme()` de propósito); esta é a única porta
+            para o escuro. As 12 cores oferecidas passam pelo gate `check:contraste`. */}
         <AnimatedEntrance index={4}>
+          <Text style={styles.sectionTitle}>Aparência</Text>
+          <View style={styles.blocoAparencia}>
+            <SeletorTema />
+          </View>
+        </AnimatedEntrance>
+
+        {/* AJUDA E PREFERÊNCIAS — suporte, lixeira (gestão) e controle das dicas. */}
+        <AnimatedEntrance index={5}>
           <Text style={styles.sectionTitle}>Ajuda e preferências</Text>
           <View style={styles.toolsCard}>
             {/* Ajuda e suporte — disponível para todos os papéis. */}
@@ -760,14 +783,14 @@ export default function ContaScreen() {
               scaleTo={0.985}
               accessibilityLabel="Ajuda e suporte"
             >
-              <View style={[styles.toolIcon, { backgroundColor: Colors.accent + '1E', borderColor: Colors.accent + '3A' }]}>
-                <MaterialCommunityIcons name="help-circle-outline" size={20} color={Colors.accent} />
+              <View style={[styles.toolIcon, { backgroundColor: cores.accent + '1E', borderColor: cores.accent + '3A' }]}>
+                <MaterialCommunityIcons name="help-circle-outline" size={20} color={cores.accentLight} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.toolLabel}>Ajuda e suporte</Text>
                 <Text style={styles.toolDesc}>Dúvidas, tutoriais e falar com a gente</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             </OlliPressable>
 
             {/* Lixeira — ação de GESTÃO: o técnico não vê. */}
@@ -779,22 +802,22 @@ export default function ContaScreen() {
                 scaleTo={0.985}
                 accessibilityLabel="Lixeira"
               >
-                <View style={[styles.toolIcon, { backgroundColor: Colors.onSurfaceVariant + '1E', borderColor: Colors.onSurfaceVariant + '3A' }]}>
-                  <MaterialCommunityIcons name="delete-outline" size={20} color={Colors.onSurfaceVariant} />
+                <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
+                  <MaterialCommunityIcons name="delete-outline" size={20} color={cores.onSurfaceVariant} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.toolLabel}>Lixeira</Text>
                   <Text style={styles.toolDesc}>Recupere itens excluídos nos últimos 30 dias</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
               </OlliPressable>
             )}
 
             {/* Toggle "Mostrar dicas contextuais" — só controla DicaContextual (onboarding.ts);
                 a Central de Ajuda abaixo continua acessível independente deste switch. */}
             <View style={[styles.toolRow, styles.toolDivider]}>
-              <View style={[styles.toolIcon, { backgroundColor: Colors.primaryLight + '1E', borderColor: Colors.primaryLight + '3A' }]}>
-                <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color={Colors.primaryLight} />
+              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
+                <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color={cores.primaryLight} />
               </View>
               <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
                 <Text style={styles.toolLabel}>Mostrar dicas contextuais</Text>
@@ -803,8 +826,8 @@ export default function ContaScreen() {
               <Switch
                 value={ajudaAtiva}
                 onValueChange={handleToggleAjuda}
-                trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
-                thumbColor={ajudaAtiva ? Colors.primary : '#fff'}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ajudaAtiva ? cores.primary : '#fff'}
               />
             </View>
 
@@ -823,7 +846,7 @@ export default function ContaScreen() {
                 <Text style={styles.toolLabel}>Rever apresentação e dicas</Text>
                 <Text style={styles.toolDesc}>Mostra a introdução e as dicas de novo</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             </OlliPressable>
           </View>
         </AnimatedEntrance>
@@ -837,7 +860,7 @@ export default function ContaScreen() {
           <AnimatedEntrance index={5}>
             <View style={styles.card}>
               <View style={styles.iconHeader}>
-                <MaterialCommunityIcons name="cloud-cog-outline" size={24} color={Colors.warning} />
+                <MaterialCommunityIcons name="cloud-cog-outline" size={24} color={cores.warning} />
                 <Text style={styles.cardTitle}>Backup ainda não ativado</Text>
               </View>
               <Text style={styles.text}>
@@ -856,7 +879,7 @@ export default function ContaScreen() {
           <AnimatedEntrance index={5}>
             <View style={styles.card}>
               <View style={styles.userRow}>
-                <View style={styles.avatarSm}><MaterialCommunityIcons name="account" size={24} color={Colors.primary} /></View>
+                <View style={styles.avatarSm}><MaterialCommunityIcons name="account" size={24} color={cores.primary} /></View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.userEmail}>{user.email}</Text>
                   <View style={styles.connected}>
@@ -866,7 +889,7 @@ export default function ContaScreen() {
                 </View>
               </View>
               <View style={styles.backupStatus}>
-                <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={20} color={lastBackup ? Colors.success : Colors.warning} />
+                <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={20} color={lastBackup ? cores.success : cores.warning} />
                 <Text style={styles.backupText}>
                   {autoBackupAtivo
                     ? (lastBackup ? `Backup automático: ativo — última cópia ${formatDateTime(lastBackup)}` : 'Backup automático: ativo — ainda sem cópias')
@@ -882,16 +905,16 @@ export default function ContaScreen() {
                 <Switch
                   value={autoBackupAtivo}
                   onValueChange={handleToggleAutoBackup}
-                  trackColor={{ false: Colors.outline, true: Colors.primary + '80' }}
-                  thumbColor={autoBackupAtivo ? Colors.primary : '#fff'}
+                  trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                  thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
                 />
               </View>
 
               <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
-              <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={Colors.primary} />} />
+              <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={cores.primary} />} />
             </View>
 
-            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={Colors.danger} />} textStyle={{ color: Colors.danger }} />
+            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={cores.danger} />} textStyle={{ color: cores.danger }} />
 
             {/* ZONA DE PERIGO — exclusão de conta (requisito Apple + LGPD) */}
             <TouchableOpacity
@@ -901,7 +924,7 @@ export default function ContaScreen() {
               accessibilityRole="button"
               accessibilityLabel="Excluir minha conta"
             >
-              <MaterialCommunityIcons name="account-remove-outline" size={16} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="account-remove-outline" size={16} color={cores.onSurfaceMuted} />
               <Text style={styles.excluirLinkText}>Excluir minha conta</Text>
             </TouchableOpacity>
           </AnimatedEntrance>
@@ -918,15 +941,15 @@ export default function ContaScreen() {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Cópias de segurança</Text>
             <TouchableOpacity onPress={() => setShowBackups(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
             {carregandoBackups ? (
-              <ActivityIndicator color={Colors.primary} style={{ marginTop: 24 }} />
+              <ActivityIndicator color={cores.primary} style={{ marginTop: 24 }} />
             ) : backups.length === 0 ? (
               <View style={styles.backupsEmpty}>
-                <MaterialCommunityIcons name="cloud-off-outline" size={32} color={Colors.onSurfaceMuted} />
+                <MaterialCommunityIcons name="cloud-off-outline" size={32} color={cores.onSurfaceMuted} />
                 <Text style={styles.backupsEmptyText}>Nenhuma cópia de segurança ainda. Elas aparecem aqui assim que o primeiro backup automático ou manual for feito.</Text>
               </View>
             ) : (
@@ -936,7 +959,7 @@ export default function ContaScreen() {
                     <MaterialCommunityIcons
                       name={b.tipo === 'manual' ? 'content-save-outline' : b.tipo === 'semanal' ? 'calendar-week' : 'calendar-today'}
                       size={20}
-                      color={Colors.primary}
+                      color={cores.primary}
                     />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
@@ -990,7 +1013,7 @@ export default function ContaScreen() {
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Foto de perfil</Text>
               <TouchableOpacity onPress={() => setShowFotoOpcoes(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-                <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+                <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
             <View style={{ padding: Spacing.base }}>
@@ -998,17 +1021,17 @@ export default function ContaScreen() {
                 Esta é a sua foto pessoal — diferente da logo da empresa (que fica em Meu Negócio e aparece nos PDFs).
               </Text>
               <OlliPressable style={styles.fotoOpcao} haptic={false} accessibilityLabel="Tirar foto" onPress={() => handleEscolherFoto('camera')}>
-                <MaterialCommunityIcons name="camera-outline" size={22} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="camera-outline" size={22} color={cores.accentLight} />
                 <Text style={styles.fotoOpcaoText}>Tirar foto</Text>
               </OlliPressable>
               <OlliPressable style={styles.fotoOpcao} haptic={false} accessibilityLabel="Escolher da galeria" onPress={() => handleEscolherFoto('galeria')}>
-                <MaterialCommunityIcons name="image-outline" size={22} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="image-outline" size={22} color={cores.accentLight} />
                 <Text style={styles.fotoOpcaoText}>Escolher da galeria</Text>
               </OlliPressable>
               {user?.avatarUrl ? (
                 <OlliPressable style={[styles.fotoOpcao, styles.fotoOpcaoRemover]} haptic={false} accessibilityLabel="Remover foto" onPress={handleRemoverFoto}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={22} color={Colors.danger} />
-                  <Text style={[styles.fotoOpcaoText, { color: Colors.danger }]}>Remover foto</Text>
+                  <MaterialCommunityIcons name="trash-can-outline" size={22} color={cores.danger} />
+                  <Text style={[styles.fotoOpcaoText, { color: cores.danger }]}>Remover foto</Text>
                 </OlliPressable>
               ) : null}
             </View>
@@ -1036,6 +1059,8 @@ export default function ContaScreen() {
 function ModalExcluirConta({
   busy, onFechar, onConfirmar,
 }: { busy: boolean; onFechar: () => void; onConfirmar: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [texto, setTexto] = useState('');
   const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
 
@@ -1046,12 +1071,12 @@ function ModalExcluirConta({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Excluir minha conta</Text>
             <TouchableOpacity onPress={onFechar} disabled={busy} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
             <View style={styles.perigoBanner}>
-              <MaterialCommunityIcons name="alert-octagon-outline" size={22} color={Colors.danger} />
+              <MaterialCommunityIcons name="alert-octagon-outline" size={22} color={cores.danger} />
               <Text style={styles.perigoBannerText}>Esta ação é permanente e não pode ser desfeita.</Text>
             </View>
 
@@ -1063,7 +1088,7 @@ function ModalExcluirConta({
               'Backups e dados guardados na nuvem',
             ].map(item => (
               <View key={item} style={styles.excluirItem}>
-                <MaterialCommunityIcons name="close-circle-outline" size={16} color={Colors.danger} />
+                <MaterialCommunityIcons name="close-circle-outline" size={16} color={cores.danger} />
                 <Text style={styles.excluirItemText}>{item}</Text>
               </View>
             ))}
@@ -1077,7 +1102,7 @@ function ModalExcluirConta({
               value={texto}
               onChangeText={setTexto}
               placeholder="EXCLUIR"
-              placeholderTextColor={Colors.onSurfaceMuted}
+              placeholderTextColor={cores.onSurfaceMuted}
               autoCapitalize="characters"
               autoCorrect={false}
               editable={!busy}
@@ -1109,6 +1134,8 @@ function ModalExcluirConta({
 function ModalCriarEmpresa({
   nomeSugerido, onFechar, onCriada,
 }: { nomeSugerido: string; onFechar: () => void; onCriada: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [nome, setNome] = useState(nomeSugerido);
   const [criando, setCriando] = useState(false);
 
@@ -1133,7 +1160,7 @@ function ModalCriarEmpresa({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Criar conta empresa</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
@@ -1145,7 +1172,7 @@ function ModalCriarEmpresa({
               value={nome}
               onChangeText={setNome}
               placeholder="Ex.: Refrigeração Silva"
-              placeholderTextColor={Colors.onSurfaceMuted}
+              placeholderTextColor={cores.onSurfaceMuted}
               style={styles.sheetInput}
               autoFocus
             />
@@ -1168,6 +1195,8 @@ function ModalCriarEmpresa({
 
 /** Modal "Entrar na equipe": cola o código/link do convite e aceita. */
 function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAceito: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [codigo, setCodigo] = useState('');
   const [aceitando, setAceitando] = useState(false);
 
@@ -1197,7 +1226,7 @@ function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAce
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Entrar na equipe</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
@@ -1209,7 +1238,7 @@ function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAce
               value={codigo}
               onChangeText={setCodigo}
               placeholder="cole aqui o código ou o link"
-              placeholderTextColor={Colors.onSurfaceMuted}
+              placeholderTextColor={cores.onSurfaceMuted}
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.sheetInput}
@@ -1232,141 +1261,150 @@ function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAce
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    // Pill sempre escura de propósito (como um toast): sem chave que represente
+    // "fundo escuro fixo" nos dois modos — ver rule 7 da migração.
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
 
   guardWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
-  guardTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: Spacing.lg },
-  guardText: { fontSize: 14, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
+  guardTitle: { fontSize: 22, fontWeight: '800', color: c.onBackground, marginTop: Spacing.lg },
+  guardText: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
 
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
-  screenTitle: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: 0 },
+  screenTitle: { fontSize: 24, fontWeight: '800', color: c.onBackground, letterSpacing: 0 },
 
-  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...Shadow.sm },
-  avatar: { width: 56, height: 56, borderRadius: 18, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 24, fontWeight: '800', color: Colors.accentLight },
-  avatarImg: { width: 56, height: 56, borderRadius: 18, backgroundColor: Colors.surfaceElevated },
+  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...sombrasDe(c).sm },
+  avatar: { width: 56, height: 56, borderRadius: 18, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 24, fontWeight: '800', color: c.accentLight },
+  avatarImg: { width: 56, height: 56, borderRadius: 18, backgroundColor: c.surfaceElevated },
   avatarBadge: {
     position: 'absolute', right: -3, bottom: -3, width: 22, height: 22, borderRadius: 11,
-    backgroundColor: Colors.accentLight, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: Colors.surface,
+    backgroundColor: c.accentLight, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: c.surface,
   },
-  identidadeHint: { fontSize: 12, color: Colors.onSurfaceMuted, lineHeight: 17, marginHorizontal: Spacing.base, marginTop: 8 },
-  identidadeHintForte: { color: Colors.onSurfaceVariant, fontWeight: '700' },
-  identidadeLink: { color: Colors.accentLight, fontWeight: '700' },
+  identidadeHint: { fontSize: 12, color: c.onSurfaceMuted, lineHeight: 17, marginHorizontal: Spacing.base, marginTop: 8 },
+  identidadeHintForte: { color: c.onSurfaceVariant, fontWeight: '700' },
+  identidadeLink: { color: c.accentLight, fontWeight: '700' },
 
   // Card discreto "Sua assinatura" (pagante)
   assinaturaCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated,
-    borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow,
-    padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...Shadow.sm,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceElevated,
+    borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow,
+    padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm,
   },
-  assinaturaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.accentContainer, justifyContent: 'center', alignItems: 'center' },
-  assinaturaTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  assinaturaSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  assinaturaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  assinaturaTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  assinaturaSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 
   // Excluir conta
   excluirLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 4 },
-  excluirLinkText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceMuted },
+  excluirLinkText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted },
 
-  fotoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 16, paddingVertical: 14, marginTop: 10 },
-  fotoOpcaoText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  fotoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 16, paddingVertical: 14, marginTop: 10 },
+  fotoOpcaoText: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  // Borda no tom fixo do danger do handoff cockpit; sem chave semântica exata (ver rule 7).
   fotoOpcaoRemover: { borderColor: 'rgba(255,107,107,0.35)' },
 
-  perigoBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.dangerLight, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,107,107,0.35)', padding: Spacing.base },
-  perigoBannerText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: Colors.onSurface },
-  excluirSub: { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: Spacing.base, marginBottom: 6 },
+  perigoBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.dangerLight, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,107,107,0.35)', padding: Spacing.base },
+  perigoBannerText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: c.onSurface },
+  excluirSub: { fontSize: 14, color: c.onSurfaceVariant, marginTop: Spacing.base, marginBottom: 6 },
   excluirItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
-  excluirItemText: { flex: 1, fontSize: 13.5, color: Colors.onSurface, lineHeight: 19 },
-  excluirNota: { fontSize: 12.5, color: Colors.onSurfaceMuted, lineHeight: 18, marginTop: Spacing.base },
+  excluirItemText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
+  excluirNota: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, marginTop: Spacing.base },
   excluirCancelar: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
-  excluirCancelarText: { fontSize: 14, fontWeight: '700', color: Colors.onSurfaceVariant },
-  profileName: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  profileCompany: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
-  profilePhone: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },
+  excluirCancelarText: { fontSize: 14, fontWeight: '700', color: c.onSurfaceVariant },
+  profileName: { fontSize: 18, fontWeight: '800', color: c.onSurface },
+  profileCompany: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
+  profilePhone: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   segChip: { alignSelf: 'flex-start', backgroundColor: 'rgba(52,198,217,0.14)', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3, marginTop: 6 },
-  segChipText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
+  segChipText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
   editBtn: { alignItems: 'center', gap: 2 },
-  editBtnText: { fontSize: 11, fontWeight: '700', color: Colors.accent },
+  editBtnText: { fontSize: 11, fontWeight: '700', color: c.accentLight },
 
-  proCard: { backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...Shadow.sm },
+  proCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   proHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  proBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  proBadgeText: { fontSize: 12, fontWeight: '800', color: '#0A1626', letterSpacing: 0 },
-  soonPill: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  soonPillText: { fontSize: 11, fontWeight: '700', color: Colors.onSurfaceVariant },
-  proTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  proSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
+  proBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  proBadgeText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0 },
+  soonPill: { backgroundColor: comAlfa(c.onSurface, 0.06), borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  soonPillText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
+  proTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  proSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
   proBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
-  proBtnText: { fontSize: 14, fontWeight: '800', color: Colors.accentLight },
+  proBtnText: { fontSize: 14, fontWeight: '800', color: c.accentLight },
 
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#fff', paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
 
-  toolsCard: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.outlineDark, marginHorizontal: Spacing.base, paddingHorizontal: Spacing.base, ...Shadow.sm },
+  toolsCard: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, paddingHorizontal: Spacing.base, ...sombrasDe(c).sm },
+  // O SeletorTema traz o próprio cartão (borda, fundo, padding); aqui só o alinhamento
+  // horizontal com os outros blocos da tela.
+  blocoAparencia: { marginHorizontal: Spacing.base },
   toolRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
-  toolDivider: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  toolDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
   toolIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  toolLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  toolDesc: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 1 },
-  card: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, padding: Spacing.base, marginHorizontal: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.outlineDark, ...Shadow.sm },
+  toolLabel: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  toolDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 1 },
+  card: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, padding: Spacing.base, marginHorizontal: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.outlineDark, ...sombrasDe(c).sm },
   iconHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.base },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface },
-  text: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 21, marginBottom: Spacing.base },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  text: { fontSize: 14, color: c.onSurfaceVariant, lineHeight: 21, marginBottom: Spacing.base },
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  stepNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primaryContainer, color: Colors.primary, fontWeight: '800', textAlign: 'center', lineHeight: 24, fontSize: 13 },
-  stepText: { flex: 1, fontSize: 13, color: Colors.onSurface },
+  stepNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: c.primaryContainer, color: c.primary, fontWeight: '800', textAlign: 'center', lineHeight: 24, fontSize: 13 },
+  stepText: { flex: 1, fontSize: 13, color: c.onSurface },
 
   userRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
-  avatarSm: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  userEmail: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
+  avatarSm: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  userEmail: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   connected: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
-  connectedText: { fontSize: 12, color: Colors.success, fontWeight: '600' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
+  connectedText: { fontSize: 12, color: c.success, fontWeight: '600' },
   backupStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.base },
-  backupText: { fontSize: 13, color: Colors.onSurfaceVariant, flex: 1 },
+  backupText: { fontSize: 13, color: c.onSurfaceVariant, flex: 1 },
 
-  autoBackupRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md, marginBottom: Spacing.base },
-  autoBackupLabel: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  autoBackupHint: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
+  autoBackupRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: Spacing.base },
+  autoBackupLabel: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  autoBackupHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
 
   backupsEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: Spacing.lg, gap: 12 },
-  backupsEmptyText: { fontSize: 13.5, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
-  backupItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outlineDark, padding: Spacing.md, marginBottom: 10 },
-  backupItemIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  backupItemDate: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  backupItemMeta: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  backupsEmptyText: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  backupItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10 },
+  backupItemIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  backupItemDate: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  backupItemMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
-  version: { textAlign: 'center', fontSize: 12, color: Colors.onSurfaceMuted, marginTop: Spacing.xl },
+  version: { textAlign: 'center', fontSize: 12, color: c.onSurfaceMuted, marginTop: Spacing.xl },
 
   // Empresa / Equipe (Onda 2)
-  empresaCard: { backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...Shadow.sm },
+  empresaCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   empresaHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  empresaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: Colors.accentContainer, justifyContent: 'center', alignItems: 'center' },
-  empresaNome: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  empresaPapel: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
-  empresaBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 14, paddingVertical: 12 },
-  empresaBtnText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#fff' },
+  empresaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  empresaNome: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  empresaPapel: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
+  empresaBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 14, paddingVertical: 12 },
+  empresaBtnText: { flex: 1, fontSize: 14, fontWeight: '700', color: c.onSurface },
   empresaBtnGhost: { backgroundColor: 'transparent', borderColor: 'transparent', marginTop: 4, paddingVertical: 10 },
-  empresaBtnGhostText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: Colors.onSurfaceVariant },
+  empresaBtnGhostText: { flex: 1, fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   // Bottom sheets (criar empresa / entrar na equipe)
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
+  // padrão de overlay de modal — sem chave "scrim" na paleta).
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(4,10,20,0.6)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '88%', paddingBottom: 16 },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  sheetTitle: { fontSize: 19, fontWeight: '800', color: Colors.onSurface },
-  sheetSub: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 21, marginBottom: Spacing.base },
-  sheetLabel: { fontSize: 13, fontWeight: '800', color: Colors.onSurfaceVariant, marginBottom: 8, letterSpacing: 0.2 },
-  sheetInput: { backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outlineDark, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: Colors.onSurface },
+  sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '88%', paddingBottom: 16 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, borderBottomWidth: 1, borderBottomColor: c.outline },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface },
+  sheetSub: { fontSize: 14, color: c.onSurfaceVariant, lineHeight: 21, marginBottom: Spacing.base },
+  sheetLabel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 8, letterSpacing: 0.2 },
+  sheetInput: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: c.onSurface },
 });

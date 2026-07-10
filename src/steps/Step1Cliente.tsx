@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Orcamento, Cliente } from '../types';
 import { searchClientes, saveCliente } from '../database/database';
 import { generateId } from '../utils/id';
@@ -22,6 +22,8 @@ interface Props {
 }
 
 export default function Step1Cliente({ orc, onChange }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Cliente[]>([]);
   const [showResults, setShowResults] = useState(false);
@@ -128,17 +130,17 @@ export default function Step1Cliente({ orc, onChange }: Props) {
 
       {/* BUSCA */}
       <View style={styles.searchBox}>
-        <MaterialCommunityIcons name="magnify" size={22} color={Colors.onSurfaceVariant} />
+        <MaterialCommunityIcons name="magnify" size={22} color={cores.onSurfaceVariant} />
         <TextInput
           style={styles.searchInput}
           placeholder="Buscar cliente pelo nome..."
           value={query}
           onChangeText={handleSearch}
-          placeholderTextColor={Colors.onSurfaceMuted}
+          placeholderTextColor={cores.onSurfaceMuted}
         />
         {query ? (
           <TouchableOpacity onPress={() => { setQuery(''); setResults([]); setShowResults(false); }}>
-            <MaterialCommunityIcons name="close-circle" size={20} color={Colors.onSurfaceMuted} />
+            <MaterialCommunityIcons name="close-circle" size={20} color={cores.onSurfaceMuted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -155,7 +157,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
                 <Text style={styles.dropName}>{c.nome}</Text>
                 <Text style={styles.dropPhone}>{c.telefone || 'Sem telefone'}</Text>
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           ))}
         </View>
@@ -170,6 +172,8 @@ export default function Step1Cliente({ orc, onChange }: Props) {
         <AnimatedEntrance from="scale">
           <View style={styles.selectedCard}>
             <View style={styles.selectedAvatar}>
+              {/* #fff: ícone sobre o verde de sucesso — sem token "onSuccess" na
+                  paleta; ver relatório da migração. */}
               <MaterialCommunityIcons name="account-check" size={26} color="#fff" />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
@@ -182,7 +186,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
               onPress={() => { onChange({ clienteId: '', clienteNome: '', clienteTelefone: '', clienteCpfCnpj: undefined, clienteEndereco: undefined }); setQuery(''); }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <MaterialCommunityIcons name="close-circle" size={24} color={Colors.danger} />
+              <MaterialCommunityIcons name="close-circle" size={24} color={cores.danger} />
             </TouchableOpacity>
           </View>
         </AnimatedEntrance>
@@ -191,7 +195,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
       {/* NOVO CLIENTE */}
       {!selected && (
         <TouchableOpacity style={styles.newBtn} onPress={() => setShowNew(true)} activeOpacity={0.8}>
-          <MaterialCommunityIcons name="account-plus" size={22} color={Colors.primary} />
+          <MaterialCommunityIcons name="account-plus" size={22} color={cores.primary} />
           <Text style={styles.newBtnLabel}>Cadastrar novo cliente</Text>
         </TouchableOpacity>
       )}
@@ -202,7 +206,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Novo Cliente</Text>
             <TouchableOpacity onPress={() => { setShowNew(false); setNcErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
@@ -218,7 +222,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
             </View>
             <View style={styles.cepRow}>
               <OlliInput label="CEP" mask="cep" value={nc.cep ?? ''} onChangeText={v => onCepChange(v, masked => setNc(p => ({ ...p, cep: masked })))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
-              {cepLoading && <ActivityIndicator size="small" color={Colors.primary} style={styles.cepSpinner} />}
+              {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
             </View>
           </ScrollView>
           <View style={styles.modalFooter}>
@@ -230,58 +234,58 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  stepTitle: { fontSize: 22, fontWeight: '800', color: Colors.onSurface, letterSpacing: 0 },
-  stepHint: { fontSize: 14, color: Colors.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.lg },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  stepTitle: { fontSize: 22, fontWeight: '800', color: c.onSurface, letterSpacing: 0 },
+  stepHint: { fontSize: 14, color: c.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.lg },
   searchBox: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.base, paddingVertical: 14,
-    gap: 10, ...Shadow.sm,
-    borderWidth: 1, borderColor: Colors.outline,
+    gap: 10, ...sombrasDe(c).sm,
+    borderWidth: 1, borderColor: c.outline,
   },
-  searchInput: { flex: 1, fontSize: 16, color: Colors.onSurface },
+  searchInput: { flex: 1, fontSize: 16, color: c.onSurface },
   dropdown: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    marginTop: 8, ...Shadow.md, overflow: 'hidden',
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    marginTop: 8, ...sombrasDe(c).md, overflow: 'hidden',
   },
   dropItem: {
     flexDirection: 'row', alignItems: 'center',
-    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.outline,
+    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: c.outline,
   },
-  dropAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  dropAvatarText: { fontSize: 16, fontWeight: '800', color: Colors.primary },
-  dropName: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  dropPhone: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 1 },
-  noResults: { fontSize: 13, color: Colors.onSurfaceMuted, marginTop: 12, textAlign: 'center' },
+  dropAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  dropAvatarText: { fontSize: 16, fontWeight: '800', color: c.primary },
+  dropName: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  dropPhone: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
+  noResults: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 12, textAlign: 'center' },
   selectedCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
     padding: Spacing.base, marginTop: Spacing.base,
-    borderWidth: 1.5, borderColor: Colors.success,
-    ...Shadow.md,
+    borderWidth: 1.5, borderColor: c.success,
+    ...sombrasDe(c).md,
   },
-  selectedAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.success, justifyContent: 'center', alignItems: 'center' },
-  selectedName: { fontSize: 17, fontWeight: '800', color: Colors.onSurface },
-  selectedInfo: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  selectedAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: c.success, justifyContent: 'center', alignItems: 'center' },
+  selectedName: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  selectedInfo: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   newBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     marginTop: Spacing.base, paddingVertical: 16,
     borderRadius: BorderRadius.lg, borderWidth: 1.5,
-    borderColor: Colors.primary, borderStyle: 'dashed',
-    backgroundColor: Colors.primaryContainer + '60',
+    borderColor: c.primary, borderStyle: 'dashed',
+    backgroundColor: c.primaryContainer + '60',
     gap: 8,
   },
-  newBtnLabel: { fontSize: 15, color: Colors.primary, fontWeight: '700' },
-  modal: { flex: 1, backgroundColor: Colors.background },
+  newBtnLabel: { fontSize: 15, color: c.primary, fontWeight: '700' },
+  modal: { flex: 1, backgroundColor: c.background },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56,
-    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline,
+    backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline,
   },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
-  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   rowFields: { flexDirection: 'row' },
   cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
   cepSpinner: { marginLeft: 10, marginBottom: 14 },

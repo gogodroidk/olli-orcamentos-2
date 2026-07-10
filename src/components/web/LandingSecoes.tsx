@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Linking, Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, Shadow, Gradients } from '../../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, type Cores } from '../../theme';
 import { Fonts } from '../../theme/fonts';
 import { useReducedMotion } from '../../theme/motion';
 import { OlliMascot } from '../OlliMascot';
@@ -62,6 +62,7 @@ function falarNoWhatsApp() {
 
 // ─── Cabeçalho reutilizado pelas seções de conteúdo ──────────────────────────
 function CabecalhoSecao({ kicker, titulo, subtitulo }: { kicker: string; titulo: string; subtitulo?: string }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.cabecalho}>
       <Text style={styles.kicker}>{kicker}</Text>
@@ -80,6 +81,7 @@ interface TopoProps {
 }
 
 export function TopoLanding({ onEntrar, onCriarConta }: TopoProps) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.topoWrap}>
       <View style={styles.topoConteudo}>
@@ -114,13 +116,16 @@ const PROVAS_HERO: readonly string[] = [
 ] as const;
 
 export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps) {
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
   return (
-    <LinearGradient colors={Gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroFundo}>
+    <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroFundo}>
       <View style={styles.heroGlow1} pointerEvents="none" />
       <View style={styles.heroGlow2} pointerEvents="none" />
       <View style={[styles.heroConteudo, ehDesktop && styles.heroConteudoDesktop]}>
         <AnimatedEntrance index={0}>
-          <Text style={styles.heroHeadline}>Do orçamento ao recibo, sem planilha</Text>
+          <Text style={[styles.heroHeadline, { color: gradientes.sobrePrimary }]}>Do orçamento ao recibo, sem planilha</Text>
         </AnimatedEntrance>
         <AnimatedEntrance index={1}>
           <Text style={styles.heroSubheadline}>
@@ -136,7 +141,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
               variant="gradient"
               size="lg"
               haptic={false}
-              icon={<MaterialCommunityIcons name="rocket-launch-outline" size={19} color="#fff" />}
+              icon={<MaterialCommunityIcons name="rocket-launch-outline" size={19} color={gradientes.sobreBrand} />}
             />
             <OlliButton
               label="Ver planos e preços"
@@ -144,7 +149,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
               variant="outline"
               size="lg"
               haptic={false}
-              icon={<MaterialCommunityIcons name="tag-outline" size={18} color={Colors.accentLight} />}
+              icon={<MaterialCommunityIcons name="tag-outline" size={18} color={cores.accentLight} />}
             />
           </View>
         </AnimatedEntrance>
@@ -152,7 +157,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
           <View style={styles.heroProvas}>
             {PROVAS_HERO.map((p) => (
               <View key={p} style={styles.heroProva}>
-                <MaterialCommunityIcons name="check-circle" size={15} color={Colors.success} />
+                <MaterialCommunityIcons name="check-circle" size={15} color={cores.success} />
                 <Text style={styles.heroProvaTexto}>{p}</Text>
               </View>
             ))}
@@ -185,6 +190,8 @@ const PILARES = [
 ];
 
 export function PilaresLanding() {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.secao}>
       <CabecalhoSecao
@@ -197,7 +204,7 @@ export function PilaresLanding() {
           <AnimatedEntrance key={p.titulo} index={i} style={styles.cartaoFlex}>
             <View style={styles.pilarCartao}>
               <View style={styles.pilarIconeWrap}>
-                <MaterialCommunityIcons name={p.icone} size={24} color={Colors.accentLight} />
+                <MaterialCommunityIcons name={p.icone} size={24} color={cores.accentLight} />
               </View>
               <Text style={styles.pilarTitulo}>{p.titulo}</Text>
               <Text style={styles.pilarDescricao}>{p.descricao}</Text>
@@ -231,6 +238,8 @@ const PASSOS = [
 ];
 
 export function ComoFuncionaLanding() {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.faixaAlt}>
       <View style={styles.secao}>
@@ -242,7 +251,7 @@ export function ComoFuncionaLanding() {
                 <View style={styles.passoNumero}>
                   <Text style={styles.passoNumeroTexto}>{i + 1}</Text>
                 </View>
-                <MaterialCommunityIcons name={p.icone} size={26} color={Colors.accentLight} style={{ marginTop: Spacing.sm }} />
+                <MaterialCommunityIcons name={p.icone} size={26} color={cores.accentLight} style={{ marginTop: Spacing.sm }} />
                 <Text style={styles.pilarTitulo}>{p.titulo}</Text>
                 <Text style={styles.pilarDescricao}>{p.descricao}</Text>
               </View>
@@ -258,6 +267,8 @@ export function ComoFuncionaLanding() {
 // MOCK DO PRODUTO — sem imagem externa, só tema + componentes existentes
 // ═══════════════════════════════════════════════════════════════════════════
 export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.secao}>
       <CabecalhoSecao
@@ -269,6 +280,10 @@ export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
         {/* Mock 1: orçamento aprovado */}
         <View style={[styles.mockJanela, styles.cartaoFlex]}>
           <View style={styles.mockBarra}>
+            {/* Bolinhas de janela (estilo macOS) — convenção fixa de semáforo
+                vermelho/amarelo/verde, não status do app: NÃO mapeadas para
+                c.danger/warning/success (mudariam de tom por contraste e
+                quebrariam a semelhança com a barra de título real). */}
             <View style={[styles.mockBolinha, { backgroundColor: '#FF6B6B' }]} />
             <View style={[styles.mockBolinha, { backgroundColor: '#F7B23B' }]} />
             <View style={[styles.mockBolinha, { backgroundColor: '#2BD787' }]} />
@@ -307,9 +322,9 @@ export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
             <Text style={styles.mockBarraTitulo}>Painel</Text>
           </View>
           <View style={[styles.mockCorpo, styles.mockKpiGrade]}>
-            <KpiCard titulo="Receita do mês" valor="R$ 8.420" icone="cash-multiple" corIcone={Colors.success} />
-            <KpiCard titulo="Em aberto" valor="R$ 2.180" icone="clock-outline" corIcone={Colors.warning} />
-            <KpiCard titulo="Taxa de aprovação" valor="78%" icone="chart-line" corIcone={Colors.primaryLight} />
+            <KpiCard titulo="Receita do mês" valor="R$ 8.420" icone="cash-multiple" corIcone={cores.success} />
+            <KpiCard titulo="Em aberto" valor="R$ 2.180" icone="clock-outline" corIcone={cores.warning} />
+            <KpiCard titulo="Taxa de aprovação" valor="78%" icone="chart-line" corIcone={cores.primaryLight} />
           </View>
         </View>
       </View>
@@ -373,6 +388,8 @@ interface PlanosProps {
 }
 
 export function PlanosLanding({ onEscolherGratis, onVerPlano }: PlanosProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.faixaAlt}>
       <View style={styles.secao}>
@@ -389,7 +406,7 @@ export function PlanosLanding({ onEscolherGratis, onVerPlano }: PlanosProps) {
                 <View style={styles.planoPopular}><Text style={styles.planoPopularTexto}>MAIS POPULAR</Text></View>
               ) : null}
               <View style={styles.pilarIconeWrap}>
-                <MaterialCommunityIcons name={p.icone} size={22} color={Colors.accentLight} />
+                <MaterialCommunityIcons name={p.icone} size={22} color={cores.accentLight} />
               </View>
               <Text style={styles.planoNome}>{p.nome}</Text>
               <Text style={styles.planoTagline}>{p.tagline}</Text>
@@ -400,7 +417,7 @@ export function PlanosLanding({ onEscolherGratis, onVerPlano }: PlanosProps) {
               <View style={styles.planoBullets}>
                 {p.bullets.map((b) => (
                   <View key={b} style={styles.planoBulletLinha}>
-                    <MaterialCommunityIcons name="check-circle" size={15} color={p.destaque ? Colors.accentLight : Colors.success} />
+                    <MaterialCommunityIcons name="check-circle" size={15} color={p.destaque ? cores.accentLight : cores.success} />
                     <Text style={styles.planoBulletTexto}>{b}</Text>
                   </View>
                 ))}
@@ -434,16 +451,18 @@ const CREDIBILIDADE = [
 ];
 
 export function ProvaLanding() {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.secao}>
       <CabecalhoSecao kicker="CONFIANÇA" titulo="Feito pra rotina de quem presta serviço" />
       <View style={styles.grade4}>
-        {CREDIBILIDADE.map((c, i) => (
-          <AnimatedEntrance key={c.titulo} index={i} style={styles.cartaoFlex4}>
+        {CREDIBILIDADE.map((item, i) => (
+          <AnimatedEntrance key={item.titulo} index={i} style={styles.cartaoFlex4}>
             <View style={styles.credCartao}>
-              <MaterialCommunityIcons name={c.icone} size={22} color={Colors.accentLight} />
-              <Text style={styles.credTitulo}>{c.titulo}</Text>
-              <Text style={styles.credDescricao}>{c.descricao}</Text>
+              <MaterialCommunityIcons name={item.icone} size={22} color={cores.accentLight} />
+              <Text style={styles.credTitulo}>{item.titulo}</Text>
+              <Text style={styles.credDescricao}>{item.descricao}</Text>
             </View>
           </AnimatedEntrance>
         ))}
@@ -492,6 +511,8 @@ export const FAQ_LANDING: readonly { pergunta: string; resposta: string }[] = [
 
 function ItemFaq({ pergunta, resposta }: { pergunta: string; resposta: string }) {
   const [aberto, setAberto] = useState(false);
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const reduzirMovimento = useReducedMotion();
 
   function alternar() {
@@ -509,7 +530,7 @@ function ItemFaq({ pergunta, resposta }: { pergunta: string; resposta: string })
     <OlliPressable onPress={alternar} haptic={false} style={styles.faqItem}>
       <View style={styles.faqPergunta}>
         <Text style={styles.faqPerguntaTexto}>{pergunta}</Text>
-        <MaterialCommunityIcons name={aberto ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.accentLight} />
+        <MaterialCommunityIcons name={aberto ? 'chevron-up' : 'chevron-down'} size={20} color={cores.accentLight} />
       </View>
       {aberto ? <Text style={styles.faqResposta}>{resposta}</Text> : null}
     </OlliPressable>
@@ -517,6 +538,7 @@ function ItemFaq({ pergunta, resposta }: { pergunta: string; resposta: string })
 }
 
 export function FaqLanding() {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.faixaAlt}>
       <View style={styles.secao}>
@@ -539,9 +561,12 @@ interface CtaFinalProps {
 }
 
 export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
   return (
-    <LinearGradient colors={Gradients.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaFinalFundo}>
-      <Text style={styles.ctaFinalTitulo}>Pronto pra tirar sua empresa da planilha?</Text>
+    <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ctaFinalFundo}>
+      <Text style={[styles.ctaFinalTitulo, { color: gradientes.sobreBrand }]}>Pronto pra tirar sua empresa da planilha?</Text>
       <Text style={styles.ctaFinalSub}>Crie sua conta grátis agora — leva menos de 2 minutos.</Text>
       <OlliButton
         label="Criar conta grátis"
@@ -550,8 +575,8 @@ export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
         size="lg"
         haptic={false}
         style={styles.ctaFinalBotao}
-        textStyle={{ color: Colors.primaryDark }}
-        icon={<MaterialCommunityIcons name="arrow-right" size={19} color={Colors.primaryDark} />}
+        textStyle={{ color: cores.primaryDark }}
+        icon={<MaterialCommunityIcons name="arrow-right" size={19} color={cores.primaryDark} />}
       />
 
       <Text style={styles.ctaFinalBaixe}>ou baixe o app</Text>
@@ -562,8 +587,8 @@ export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
           style={styles.downloadBtn}
           accessibilityLabel="Baixar na Google Play"
         >
-          <MaterialCommunityIcons name="google-play" size={18} color="#fff" />
-          <Text style={styles.downloadBtnTexto}>Google Play</Text>
+          <MaterialCommunityIcons name="google-play" size={18} color={gradientes.sobreBrand} />
+          <Text style={[styles.downloadBtnTexto, { color: gradientes.sobreBrand }]}>Google Play</Text>
         </OlliPressable>
         <OlliPressable
           onPress={() => abrirDownload(APP_STORE_URL, 'App Store')}
@@ -571,8 +596,8 @@ export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
           style={styles.downloadBtn}
           accessibilityLabel="Baixar na App Store"
         >
-          <MaterialCommunityIcons name="apple" size={19} color="#fff" />
-          <Text style={styles.downloadBtnTexto}>App Store</Text>
+          <MaterialCommunityIcons name="apple" size={19} color={gradientes.sobreBrand} />
+          <Text style={[styles.downloadBtnTexto, { color: gradientes.sobreBrand }]}>App Store</Text>
         </OlliPressable>
         <OlliPressable
           onPress={() => abrirDownload(APK_DOWNLOAD_URL, 'APK direto')}
@@ -580,8 +605,8 @@ export function CtaFinalLanding({ onCriarConta }: CtaFinalProps) {
           style={styles.downloadBtn}
           accessibilityLabel="Baixar o APK"
         >
-          <MaterialCommunityIcons name="android" size={19} color="#fff" />
-          <Text style={styles.downloadBtnTexto}>Baixar APK</Text>
+          <MaterialCommunityIcons name="android" size={19} color={gradientes.sobreBrand} />
+          <Text style={[styles.downloadBtnTexto, { color: gradientes.sobreBrand }]}>Baixar APK</Text>
         </OlliPressable>
       </View>
     </LinearGradient>
@@ -598,6 +623,8 @@ interface FooterProps {
 }
 
 export function FooterLanding({ onAjuda, onPrivacidade, onTermos }: FooterProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.footer}>
       <View style={styles.footerTopo}>
@@ -610,19 +637,19 @@ export function FooterLanding({ onAjuda, onPrivacidade, onTermos }: FooterProps)
 
       <View style={styles.footerLinks}>
         <OlliPressable onPress={onAjuda} haptic={false} style={styles.footerLink}>
-          <MaterialCommunityIcons name="help-circle-outline" size={15} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="help-circle-outline" size={15} color={cores.onSurfaceVariant} />
           <Text style={styles.footerLinkTexto}>Ajuda</Text>
         </OlliPressable>
         <OlliPressable onPress={onPrivacidade} haptic={false} style={styles.footerLink}>
-          <MaterialCommunityIcons name="lock-outline" size={15} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="lock-outline" size={15} color={cores.onSurfaceVariant} />
           <Text style={styles.footerLinkTexto}>Política de Privacidade</Text>
         </OlliPressable>
         <OlliPressable onPress={onTermos} haptic={false} style={styles.footerLink}>
-          <MaterialCommunityIcons name="file-document-outline" size={15} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="file-document-outline" size={15} color={cores.onSurfaceVariant} />
           <Text style={styles.footerLinkTexto}>Termos</Text>
         </OlliPressable>
         <OlliPressable onPress={falarNoWhatsApp} haptic={false} style={styles.footerLink}>
-          <MaterialCommunityIcons name="whatsapp" size={15} color={Colors.whatsapp} />
+          <MaterialCommunityIcons name="whatsapp" size={15} color={cores.whatsapp} />
           <Text style={styles.footerLinkTexto}>Suporte (WhatsApp)</Text>
         </OlliPressable>
       </View>
@@ -635,7 +662,20 @@ export function FooterLanding({ onAjuda, onPrivacidade, onTermos }: FooterProps)
 // ─── Estilos ─────────────────────────────────────────────────────────────────
 const LARGURA_MAXIMA = 1120;
 
-const styles = StyleSheet.create({
+/**
+ * HERO e CTA FINAL ficam sobre `gradientes.primary`/`primaryDiagonal` (marca →
+ * marca escura), que — como o `header` do próprio tema (ver theme/index.ts) —
+ * é igual nos dois modos. O texto/ícone principal (headline, título do CTA,
+ * ícone e rótulo dos botões de download) usa `gradientes.sobrePrimary`/
+ * `sobreBrand`, aplicado inline no ponto de uso (a folha de estilo de escopo
+ * de módulo não enxerga o tema). Os elementos translúcidos — `ctaFinalSub`,
+ * `ctaFinalBaixe`, a borda de `downloadBtn` — continuam com rgba(255,255,255,
+ * alpha) fixo de propósito: são véus/hairlines, não texto sólido, e por isso
+ * não precisam (nem devem) seguir a cor de contraste calculada. `ctaFinalBotao`
+ * também: o pill branco sobre o gradiente é um `backgroundColor`, não texto, e
+ * é o mesmo nos dois modos.
+ */
+const criarEstilos = (c: Cores) => StyleSheet.create({
   // Layout base de seção
   secao: {
     width: '100%',
@@ -649,7 +689,7 @@ const styles = StyleSheet.create({
   // ocupa a largura toda da viewport.
   faixaAlt: {
     width: '100%',
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
   },
   cabecalho: {
     alignItems: 'center',
@@ -660,7 +700,7 @@ const styles = StyleSheet.create({
   kicker: {
     fontSize: 12.5,
     fontFamily: Fonts.extraBold,
-    color: Colors.accentLight,
+    color: c.accentLight,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
     marginBottom: Spacing.sm,
@@ -669,14 +709,14 @@ const styles = StyleSheet.create({
     fontSize: 26,
     lineHeight: 32,
     fontFamily: Fonts.extraBold,
-    color: Colors.onBackground,
+    color: c.onBackground,
     textAlign: 'center',
   },
   subtituloSecao: {
     fontSize: 14.5,
     lineHeight: 21,
     fontFamily: Fonts.regular,
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
     textAlign: 'center',
     marginTop: Spacing.sm,
   },
@@ -689,8 +729,8 @@ const styles = StyleSheet.create({
   topoWrap: {
     width: '100%',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outline,
-    backgroundColor: Colors.background,
+    borderBottomColor: c.outline,
+    backgroundColor: c.background,
   },
   topoConteudo: {
     width: '100%',
@@ -705,12 +745,12 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   topoMarca: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  topoMarcaTexto: { fontSize: 18, fontFamily: Fonts.extraBold, color: Colors.onBackground, letterSpacing: 1 },
+  topoMarcaTexto: { fontSize: 18, fontFamily: Fonts.extraBold, color: c.onBackground, letterSpacing: 1 },
   topoAcoes: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   topoEntrarBtn: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
-  topoEntrarTexto: { fontSize: 14.5, fontFamily: Fonts.bold, color: Colors.onSurface },
+  topoEntrarTexto: { fontSize: 14.5, fontFamily: Fonts.bold, color: c.onSurface },
 
-  // HERO
+  // HERO (banner — ver comentário acima; glows e texto ficam hardcoded)
   heroFundo: { width: '100%', overflow: 'hidden', paddingVertical: Spacing.xxxl, alignItems: 'center' },
   heroGlow1: { position: 'absolute', top: -100, right: -80, width: 340, height: 340, borderRadius: 170, backgroundColor: 'rgba(127,233,245,0.14)' },
   heroGlow2: { position: 'absolute', bottom: -110, left: -90, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(52,198,217,0.10)' },
@@ -720,7 +760,6 @@ const styles = StyleSheet.create({
     fontSize: 42,
     lineHeight: 50,
     fontFamily: Fonts.extraBold,
-    color: '#fff',
     textAlign: 'center',
     letterSpacing: -0.5,
   },
@@ -742,10 +781,10 @@ const styles = StyleSheet.create({
 
   // PILARES / PASSOS (cartões)
   pilarCartao: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.xl,
     height: '100%',
     gap: Spacing.sm,
@@ -754,21 +793,21 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.accentContainer,
+    backgroundColor: c.accentContainer,
     borderWidth: 1,
-    borderColor: Colors.strokeGlow,
+    borderColor: c.strokeGlow,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.xs,
   },
-  pilarTitulo: { fontSize: 16.5, fontFamily: Fonts.bold, color: Colors.onSurface },
-  pilarDescricao: { fontSize: 13.5, lineHeight: 20, fontFamily: Fonts.regular, color: Colors.onSurfaceVariant },
+  pilarTitulo: { fontSize: 16.5, fontFamily: Fonts.bold, color: c.onSurface },
+  pilarDescricao: { fontSize: 13.5, lineHeight: 20, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
 
   passoCartao: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.xl,
     height: '100%',
     gap: Spacing.sm,
@@ -777,22 +816,24 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  passoNumeroTexto: { fontSize: 14, fontFamily: Fonts.extraBold, color: '#fff' },
+  // Sobre `c.primary` sólido (não gradiente) — `onPrimary` é a tinta correta,
+  // calculada por contraste real contra a marca escolhida.
+  passoNumeroTexto: { fontSize: 14, fontFamily: Fonts.extraBold, color: c.onPrimary },
 
   // MOCK DO PRODUTO
   mockLinha: { gap: Spacing.lg },
   mockLinhaDesktop: { flexDirection: 'row' },
   mockJanela: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     overflow: 'hidden',
-    ...Shadow.md,
+    ...sombrasDe(c).md,
   },
   mockBarra: {
     flexDirection: 'row',
@@ -800,84 +841,89 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.outline,
+    borderBottomColor: c.outline,
   },
   mockBolinha: { width: 9, height: 9, borderRadius: 5 },
-  mockBarraTitulo: { fontSize: 12, fontFamily: Fonts.semiBold, color: Colors.onSurfaceVariant, marginLeft: Spacing.sm },
+  mockBarraTitulo: { fontSize: 12, fontFamily: Fonts.semiBold, color: c.onSurfaceVariant, marginLeft: Spacing.sm },
   mockCorpo: { padding: Spacing.lg, gap: Spacing.sm },
   mockOrcamentoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.xs },
-  mockOrcamentoCliente: { fontSize: 15, fontFamily: Fonts.bold, color: Colors.onSurface },
-  mockItemLinha: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  mockItemTexto: { fontSize: 13, fontFamily: Fonts.regular, color: Colors.onSurfaceVariant, flex: 1 },
-  mockItemValor: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.onSurface },
+  mockOrcamentoCliente: { fontSize: 15, fontFamily: Fonts.bold, color: c.onSurface },
+  mockItemLinha: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.outline },
+  mockItemTexto: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, flex: 1 },
+  mockItemValor: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.onSurface },
   mockTotalLinha: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: Spacing.sm },
-  mockTotalTexto: { fontSize: 14, fontFamily: Fonts.bold, color: Colors.onSurface },
-  mockTotalValor: { fontSize: 18, fontFamily: Fonts.serifBold, color: Colors.accentLight },
+  mockTotalTexto: { fontSize: 14, fontFamily: Fonts.bold, color: c.onSurface },
+  mockTotalValor: { fontSize: 18, fontFamily: Fonts.serifBold, color: c.accentLight },
   mockKpiGrade: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
 
   // PLANOS
   planoCartao: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.xl,
     height: '100%',
   },
   planoCartaoDestaque: {
-    borderColor: Colors.accentLight,
+    borderColor: c.accentLight,
     borderWidth: 1.5,
-    ...Shadow.glowCyan,
+    ...sombrasDe(c).glowCyan,
   },
   planoPopular: {
     alignSelf: 'flex-start',
-    backgroundColor: Colors.accentLight,
+    backgroundColor: c.accentLight,
     borderRadius: BorderRadius.full,
     paddingHorizontal: 10,
     paddingVertical: 3,
     marginBottom: Spacing.sm,
   },
-  planoPopularTexto: { fontSize: 10, fontFamily: Fonts.extraBold, color: '#0A1626', letterSpacing: 0.5 },
-  planoNome: { fontSize: 20, fontFamily: Fonts.extraBold, color: Colors.onSurface, marginTop: Spacing.sm },
-  planoTagline: { fontSize: 13, fontFamily: Fonts.regular, color: Colors.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
+  // Era '#0A1626' fixo — falha AA no claro (3.51:1), porque `accentLight` no
+  // claro é um teal ESCURO (ajustado pra contrastar com o fundo da página, não
+  // pra servir de fundo de badge). `textoSobre` escolhe branco/tinta pela
+  // razão de contraste real contra o próprio `accentLight`: 5.17:1 no claro,
+  // 8.42:1 no escuro — os dois passam AA.
+  planoPopularTexto: { fontSize: 10, fontFamily: Fonts.extraBold, color: textoSobre(c.accentLight), letterSpacing: 0.5 },
+  planoNome: { fontSize: 20, fontFamily: Fonts.extraBold, color: c.onSurface, marginTop: Spacing.sm },
+  planoTagline: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
   planoPrecoLinha: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.lg },
-  planoPreco: { fontSize: 30, fontFamily: Fonts.serifBold, color: Colors.onSurface },
-  planoPeriodo: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.onSurfaceVariant, marginLeft: 6, marginBottom: 6 },
+  planoPreco: { fontSize: 30, fontFamily: Fonts.serifBold, color: c.onSurface },
+  planoPeriodo: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.onSurfaceVariant, marginLeft: 6, marginBottom: 6 },
   planoBullets: { marginTop: Spacing.lg, gap: Spacing.sm },
   planoBulletLinha: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  planoBulletTexto: { flex: 1, fontSize: 13, lineHeight: 19, fontFamily: Fonts.regular, color: Colors.onSurface },
+  planoBulletTexto: { flex: 1, fontSize: 13, lineHeight: 19, fontFamily: Fonts.regular, color: c.onSurface },
 
   // PROVA / CREDIBILIDADE
   credCartao: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.lg,
     gap: 6,
     height: '100%',
   },
-  credTitulo: { fontSize: 14.5, fontFamily: Fonts.bold, color: Colors.onSurface, marginTop: 4 },
-  credDescricao: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.regular, color: Colors.onSurfaceVariant },
+  credTitulo: { fontSize: 14.5, fontFamily: Fonts.bold, color: c.onSurface, marginTop: 4 },
+  credDescricao: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
 
   // FAQ
   faqLista: { gap: Spacing.sm, maxWidth: 760, alignSelf: 'center', width: '100%' },
   faqItem: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.lg,
   },
   faqPergunta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
-  faqPerguntaTexto: { flex: 1, fontSize: 14.5, fontFamily: Fonts.bold, color: Colors.onSurface },
-  faqResposta: { fontSize: 13.5, lineHeight: 20, fontFamily: Fonts.regular, color: Colors.onSurfaceVariant, marginTop: Spacing.sm },
+  faqPerguntaTexto: { flex: 1, fontSize: 14.5, fontFamily: Fonts.bold, color: c.onSurface },
+  faqResposta: { fontSize: 13.5, lineHeight: 20, fontFamily: Fonts.regular, color: c.onSurfaceVariant, marginTop: Spacing.sm },
 
-  // CTA FINAL
+  // CTA FINAL (banner — ver comentário acima)
   ctaFinalFundo: { width: '100%', alignItems: 'center', paddingVertical: Spacing.xxxl, paddingHorizontal: Spacing.xl },
-  ctaFinalTitulo: { fontSize: 26, lineHeight: 32, fontFamily: Fonts.extraBold, color: '#fff', textAlign: 'center', maxWidth: 520 },
+  ctaFinalTitulo: { fontSize: 26, lineHeight: 32, fontFamily: Fonts.extraBold, textAlign: 'center', maxWidth: 520 },
   ctaFinalSub: { fontSize: 14.5, fontFamily: Fonts.medium, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: Spacing.sm },
   ctaFinalBotao: { marginTop: Spacing.xxl, backgroundColor: '#fff' },
   ctaFinalBaixe: { fontSize: 12.5, fontFamily: Fonts.semiBold, color: 'rgba(255,255,255,0.75)', marginTop: Spacing.xl, textTransform: 'uppercase', letterSpacing: 0.8 },
@@ -892,24 +938,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
-  downloadBtnTexto: { fontSize: 13, fontFamily: Fonts.bold, color: '#fff' },
+  downloadBtnTexto: { fontSize: 13, fontFamily: Fonts.bold },
 
   // RODAPÉ
   footer: {
     width: '100%',
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderTopWidth: 1,
-    borderTopColor: Colors.outline,
+    borderTopColor: c.outline,
     paddingVertical: Spacing.xxl,
     paddingHorizontal: Spacing.xl,
     alignItems: 'center',
     gap: Spacing.lg,
   },
   footerTopo: { alignItems: 'center', gap: Spacing.xs },
-  footerMarcaTexto: { fontSize: 16, fontFamily: Fonts.extraBold, color: Colors.onBackground, letterSpacing: 1 },
-  footerTagline: { fontSize: 12.5, fontFamily: Fonts.regular, color: Colors.onSurfaceVariant },
+  footerMarcaTexto: { fontSize: 16, fontFamily: Fonts.extraBold, color: c.onBackground, letterSpacing: 1 },
+  footerTagline: { fontSize: 12.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
   footerLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.lg, justifyContent: 'center' },
   footerLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  footerLinkTexto: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.onSurfaceVariant },
-  footerCopy: { fontSize: 11.5, fontFamily: Fonts.regular, color: Colors.onSurfaceMuted, textAlign: 'center' },
+  footerLinkTexto: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.onSurfaceVariant },
+  footerCopy: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceMuted, textAlign: 'center' },
 });

@@ -6,7 +6,7 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -53,16 +53,21 @@ const SIT_PMOC_LABEL: Record<SituacaoPmoc, string> = {
   suspenso: 'Suspenso',
   encerrado: 'Encerrado',
 };
-const SIT_PMOC_COR: Record<SituacaoPmoc, string> = {
-  rascunho: Colors.onSurfaceVariant,
-  em_revisao: Colors.warning,
-  aguardando_aprovacao_tecnica: Colors.warning,
-  aprovado: Colors.primaryLight,
-  vigente: Colors.success,
-  substituido: Colors.onSurfaceMuted,
-  suspenso: '#F97316',
-  encerrado: Colors.onSurfaceMuted,
-};
+function criarSitPmocCor(c: Cores): Record<SituacaoPmoc, string> {
+  return {
+    rascunho: c.onSurfaceVariant,
+    em_revisao: c.warning,
+    aguardando_aprovacao_tecnica: c.warning,
+    aprovado: c.primaryLight,
+    vigente: c.success,
+    substituido: c.onSurfaceMuted,
+    // Laranja fixo: precisa continuar distinto de "em_revisao"/"aguardando_..."
+    // (que já usam c.warning) para diferenciar "suspenso" na lista — sem
+    // equivalente semântico no tema, mantido.
+    suspenso: '#F97316',
+    encerrado: c.onSurfaceMuted,
+  };
+}
 
 /** Rótulo PT-BR da frequência a partir do id (texto livre → melhor esforço). */
 function labelFrequencia(id: string): string {
@@ -131,6 +136,9 @@ export default function PmocPlanoScreen() {
 function PmocPlanoConteudo() {
   const nav = useNavigation<Nav>();
   const route = useRoute<PmocRoute>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const sitPmocCor = criarSitPmocCor(cores);
   const { id } = route.params;
   const { pode } = usePermissao();
   // A ação já passou pelo GuardaPapel; aqui reconfirmamos com o predicado do
@@ -218,7 +226,7 @@ function PmocPlanoConteudo() {
       <View style={styles.container}>
         <GradientHeader onBack={() => goBackOrHome(nav)} title="Plano PMOC" />
         <View style={styles.centered}>
-          <MaterialCommunityIcons name="file-remove-outline" size={44} color={Colors.onSurfaceMuted} />
+          <MaterialCommunityIcons name="file-remove-outline" size={44} color={cores.onSurfaceMuted} />
           <Text style={styles.vazioTitulo}>Plano não encontrado</Text>
           <Text style={styles.vazioSub}>Ele pode ter sido excluído ou ainda não sincronizou neste aparelho.</Text>
           <OlliButton label="Voltar" variant="outline" onPress={() => goBackOrHome(nav)} style={{ marginTop: Spacing.lg }} />
@@ -254,7 +262,7 @@ function PmocPlanoConteudo() {
         {/* CAVEAT LEGAL — sóbrio, sempre visível. NUNCA diz "conforme". */}
         <AnimatedEntrance index={0}>
           <View style={styles.caveat}>
-            <MaterialCommunityIcons name="scale-balance" size={18} color={Colors.warning} style={{ marginTop: 1 }} />
+            <MaterialCommunityIcons name="scale-balance" size={18} color={cores.warning} style={{ marginTop: 1 }} />
             <Text style={styles.caveatText}>
               As periodicidades, atividades e referências normativas deste plano são configuráveis e
               definidas pelo responsável técnico habilitado. Este aplicativo não avalia nem declara
@@ -273,7 +281,7 @@ function PmocPlanoConteudo() {
               icone="progress-check"
               rotulo="Situação (operacional)"
               valor={SIT_PMOC_LABEL[plano.situacao]}
-              valorCor={SIT_PMOC_COR[plano.situacao]}
+              valorCor={sitPmocCor[plano.situacao]}
             />
             <LinhaInfo
               icone="source-branch"
@@ -287,7 +295,7 @@ function PmocPlanoConteudo() {
         {rascunhoPendente && (
           <AnimatedEntrance index={2}>
             <View style={styles.aviso}>
-              <MaterialCommunityIcons name="information-outline" size={18} color={Colors.primaryLight} />
+              <MaterialCommunityIcons name="information-outline" size={18} color={cores.primaryLight} />
               <Text style={styles.avisoText}>
                 Existe uma versão em revisão (v{trabalho?.numeroVersao}) ainda não aprovada. O plano em
                 vigor é a v{vigente?.numeroVersao} — é ela que a geração de ordens usa.
@@ -326,7 +334,7 @@ function PmocPlanoConteudo() {
                     variant="outline"
                     size="sm"
                     onPress={() => setAprovando(true)}
-                    icon={<MaterialCommunityIcons name="certificate-outline" size={16} color={Colors.accentLight} />}
+                    icon={<MaterialCommunityIcons name="certificate-outline" size={16} color={cores.accentLight} />}
                     style={{ marginTop: Spacing.sm, alignSelf: 'flex-start' }}
                   />
                 )}
@@ -382,7 +390,7 @@ function PmocPlanoConteudo() {
                       <MaterialCommunityIcons
                         name={e ? 'air-conditioner' : 'help-circle-outline'}
                         size={18}
-                        color={e ? Colors.accentLight : Colors.onSurfaceMuted}
+                        color={e ? cores.accentLight : cores.onSurfaceMuted}
                       />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.equipTitulo} numberOfLines={1}>
@@ -440,7 +448,7 @@ function PmocPlanoConteudo() {
         <AnimatedEntrance index={7}>
           <View style={styles.card}>
             <View style={styles.gerarHeader}>
-              <MaterialCommunityIcons name="calendar-sync-outline" size={20} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="calendar-sync-outline" size={20} color={cores.accentLight} />
               <Text style={styles.gerarTitulo}>Gerar ordens do período</Text>
             </View>
             <Text style={styles.gerarDesc}>
@@ -465,9 +473,9 @@ function PmocPlanoConteudo() {
 
             {resultado && <ResultadoGeracao resultado={resultado} />}
             {erroGeracao && (
-              <View style={[styles.aviso, { marginTop: Spacing.md, borderColor: Colors.danger + '55', backgroundColor: Colors.dangerLight }]}>
-                <MaterialCommunityIcons name="alert-outline" size={18} color={Colors.danger} />
-                <Text style={[styles.avisoText, { color: Colors.danger }]}>{erroGeracao}</Text>
+              <View style={[styles.aviso, { marginTop: Spacing.md, borderColor: cores.danger + '55', backgroundColor: cores.dangerLight }]}>
+                <MaterialCommunityIcons name="alert-outline" size={18} color={cores.danger} />
+                <Text style={[styles.avisoText, { color: cores.danger }]}>{erroGeracao}</Text>
               </View>
             )}
           </View>
@@ -502,7 +510,9 @@ function PmocPlanoConteudo() {
 // Componentes de apresentação
 // ─────────────────────────────────────────────────────────────
 function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
-  const cor = SIT_PMOC_COR[situacao] ?? Colors.onSurfaceVariant;
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const cor = criarSitPmocCor(cores)[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '88' }]}>
       <Text style={[styles.statusBadgeText, { color: '#fff' }]}>{SIT_PMOC_LABEL[situacao] ?? situacao}</Text>
@@ -519,9 +529,11 @@ function LinhaInfo({
   valorCor?: string;
   ultima?: boolean;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={[styles.linha, !ultima && styles.linhaBorda]}>
-      <MaterialCommunityIcons name={icone} size={17} color={Colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={icone} size={17} color={cores.onSurfaceVariant} />
       <Text style={styles.linhaRotulo}>{rotulo}</Text>
       <Text style={[styles.linhaValor, valorCor && { color: valorCor }]} numberOfLines={2}>{valor || '—'}</Text>
     </View>
@@ -537,10 +549,12 @@ function Secao({
   acao?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.card}>
       <View style={styles.secaoHeader}>
-        <MaterialCommunityIcons name={icone} size={18} color={Colors.accentLight} />
+        <MaterialCommunityIcons name={icone} size={18} color={cores.accentLight} />
         <Text style={styles.secaoTitulo}>{titulo}</Text>
         {typeof contagem === 'number' && (
           <View style={styles.contagemPill}><Text style={styles.contagemText}>{contagem}</Text></View>
@@ -560,15 +574,19 @@ function BotaoTextoIcone({
   icone: keyof typeof MaterialCommunityIcons.glyphMap;
   onPress: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity onPress={onPress} style={styles.botaoTexto} accessibilityRole="button" accessibilityLabel={label} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-      <MaterialCommunityIcons name={icone} size={15} color={Colors.accentLight} />
+      <MaterialCommunityIcons name={icone} size={15} color={cores.accentLight} />
       <Text style={styles.botaoTextoLabel}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 function PeriodicidadeCard({ per }: { per: PmocPeriodicidade }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const periodoAtual = periodoDe(new Date(), per.frequencia);
   const vencAtual = periodoAtual ? vencimentoDe(periodoAtual, per.frequencia) : '';
   const atividades = (per.atividades ?? []).filter((a) => a && a.trim());
@@ -580,19 +598,19 @@ function PeriodicidadeCard({ per }: { per: PmocPeriodicidade }) {
       </View>
 
       <View style={styles.perMetaRow}>
-        <MaterialCommunityIcons name="target" size={13} color={Colors.onSurfaceVariant} />
+        <MaterialCommunityIcons name="target" size={13} color={cores.onSurfaceVariant} />
         <Text style={styles.perMeta} numberOfLines={2}>{escopoLabel(per)}</Text>
       </View>
 
       {periodoAtual ? (
         <View style={styles.perMetaRow}>
-          <MaterialCommunityIcons name="calendar-clock-outline" size={13} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="calendar-clock-outline" size={13} color={cores.onSurfaceVariant} />
           <Text style={styles.perMeta}>Período atual: {periodoAtual}{vencAtual ? ` · vence ${formatarData(vencAtual)}` : ''}</Text>
         </View>
       ) : (
         <View style={styles.perMetaRow}>
-          <MaterialCommunityIcons name="calendar-alert" size={13} color={Colors.warning} />
-          <Text style={[styles.perMeta, { color: Colors.warning }]}>Frequência não reconhecida pelo cálculo do app.</Text>
+          <MaterialCommunityIcons name="calendar-alert" size={13} color={cores.warning} />
+          <Text style={[styles.perMeta, { color: cores.warning }]}>Frequência não reconhecida pelo cálculo do app.</Text>
         </View>
       )}
 
@@ -600,7 +618,7 @@ function PeriodicidadeCard({ per }: { per: PmocPeriodicidade }) {
         <View style={styles.atividadesWrap}>
           {atividades.map((a, i) => (
             <View key={i} style={styles.atividadeItem}>
-              <MaterialCommunityIcons name="checkbox-blank-circle-outline" size={11} color={Colors.accentLight} style={{ marginTop: 3 }} />
+              <MaterialCommunityIcons name="checkbox-blank-circle-outline" size={11} color={cores.accentLight} style={{ marginTop: 3 }} />
               <Text style={styles.atividadeText}>{a.trim()}</Text>
             </View>
           ))}
@@ -609,7 +627,7 @@ function PeriodicidadeCard({ per }: { per: PmocPeriodicidade }) {
 
       {per.referencia ? (
         <View style={styles.referenciaWrap}>
-          <MaterialCommunityIcons name="book-open-variant" size={12} color={Colors.onSurfaceMuted} />
+          <MaterialCommunityIcons name="book-open-variant" size={12} color={cores.onSurfaceMuted} />
           <Text style={styles.referenciaText} numberOfLines={2}>
             Referência informada pelo responsável técnico: {per.referencia}
           </Text>
@@ -626,27 +644,29 @@ function PeriodicidadeCard({ per }: { per: PmocPeriodicidade }) {
  * número calado leva o usuário a achar que o plano cobriu tudo.
  */
 function ResultadoGeracao({ resultado }: { resultado: ResultadoGeracaoPmoc }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { criadas, recuperadas, jaExistiam, naLixeira, removidas, ignoradas, omitidas } = resultado;
   return (
     <View style={styles.resultado}>
       <View style={styles.resultadoLinha}>
-        <Contador n={criadas} label="criadas" cor={Colors.success} icone="plus-circle-outline" />
-        <Contador n={jaExistiam} label="já existiam" cor={Colors.primaryLight} icone="check-circle-outline" />
-        <Contador n={ignoradas} label="ignoradas" cor={Colors.onSurfaceVariant} icone="minus-circle-outline" />
+        <Contador n={criadas} label="criadas" cor={cores.success} icone="plus-circle-outline" />
+        <Contador n={jaExistiam} label="já existiam" cor={cores.primaryLight} icone="check-circle-outline" />
+        <Contador n={ignoradas} label="ignoradas" cor={cores.onSurfaceVariant} icone="minus-circle-outline" />
       </View>
       {(recuperadas > 0 || naLixeira > 0 || removidas > 0 || omitidas > 0) && (
         <View style={styles.resultadoLinha}>
           {recuperadas > 0 && (
-            <Contador n={recuperadas} label="recuperadas" cor={Colors.success} icone="backup-restore" />
+            <Contador n={recuperadas} label="recuperadas" cor={cores.success} icone="backup-restore" />
           )}
           {naLixeira > 0 && (
-            <Contador n={naLixeira} label="na lixeira" cor={Colors.warning} icone="delete-outline" />
+            <Contador n={naLixeira} label="na lixeira" cor={cores.warning} icone="delete-outline" />
           )}
           {removidas > 0 && (
-            <Contador n={removidas} label="removidas" cor={Colors.onSurfaceVariant} icone="delete-forever-outline" />
+            <Contador n={removidas} label="removidas" cor={cores.onSurfaceVariant} icone="delete-forever-outline" />
           )}
           {omitidas > 0 && (
-            <Contador n={omitidas} label="omitidas" cor={Colors.warning} icone="alert-outline" />
+            <Contador n={omitidas} label="omitidas" cor={cores.warning} icone="alert-outline" />
           )}
         </View>
       )}
@@ -664,6 +684,7 @@ function ResultadoGeracao({ resultado }: { resultado: ResultadoGeracaoPmoc }) {
 }
 
 function Contador({ n, label, cor, icone }: { n: number; label: string; cor: string; icone: keyof typeof MaterialCommunityIcons.glyphMap }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.contador}>
       <MaterialCommunityIcons name={icone} size={18} color={cor} />
@@ -697,6 +718,8 @@ function EditorPeriodicidadesModal({
   onFechar: () => void;
   onSalvo: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [pers, setPers] = useState<PerEdit[]>([]);
   const [equipSel, setEquipSel] = useState<string[]>([]);
   const [busca, setBusca] = useState('');
@@ -786,7 +809,7 @@ function EditorPeriodicidadesModal({
         />
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: Spacing.base, paddingBottom: Spacing.xxxl, gap: 14 }}>
           <View style={styles.caveat}>
-            <MaterialCommunityIcons name="scale-balance" size={16} color={Colors.warning} style={{ marginTop: 1 }} />
+            <MaterialCommunityIcons name="scale-balance" size={16} color={cores.warning} style={{ marginTop: 1 }} />
             <Text style={styles.caveatText}>
               O conteúdo abaixo é definido pelo responsável técnico. O app apenas registra e calcula os
               períodos — não declara conformidade com norma alguma.
@@ -796,7 +819,7 @@ function EditorPeriodicidadesModal({
           {/* PERIODICIDADES */}
           <View style={styles.card}>
             <View style={styles.secaoHeader}>
-              <MaterialCommunityIcons name="repeat-variant" size={18} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="repeat-variant" size={18} color={cores.accentLight} />
               <Text style={styles.secaoTitulo}>Rotinas de manutenção</Text>
               <View style={{ flex: 1 }} />
               <BotaoTextoIcone label="Adicionar" icone="plus" onPress={addPer} />
@@ -811,7 +834,7 @@ function EditorPeriodicidadesModal({
                     <View style={styles.perEditHeader}>
                       <Text style={styles.perEditNum}>Rotina {idx + 1}</Text>
                       <TouchableOpacity onPress={() => removePer(p.id)} accessibilityRole="button" accessibilityLabel={`Remover rotina ${idx + 1}`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.danger} />
+                        <MaterialCommunityIcons name="trash-can-outline" size={18} color={cores.danger} />
                       </TouchableOpacity>
                     </View>
                     <OlliInput
@@ -861,7 +884,7 @@ function EditorPeriodicidadesModal({
           {/* ESCOPO — EQUIPAMENTOS DO PLANO */}
           <View style={styles.card}>
             <View style={styles.secaoHeader}>
-              <MaterialCommunityIcons name="air-conditioner" size={18} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="air-conditioner" size={18} color={cores.accentLight} />
               <Text style={styles.secaoTitulo}>Equipamentos do plano</Text>
               <View style={styles.contagemPill}><Text style={styles.contagemText}>{equipSel.length}</Text></View>
             </View>
@@ -887,7 +910,7 @@ function EditorPeriodicidadesModal({
                         <MaterialCommunityIcons
                           name={sel ? 'checkbox-marked' : 'checkbox-blank-outline'}
                           size={20}
-                          color={sel ? Colors.accent : Colors.onSurfaceMuted}
+                          color={sel ? cores.accent : cores.onSurfaceMuted}
                         />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.equipTitulo} numberOfLines={1}>{descreverEquip(e)}</Text>
@@ -935,6 +958,8 @@ function AprovacaoModal({
   onFechar: () => void;
   onAprovado: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [responsavel, setResponsavel] = useState('');
   const [doc, setDoc] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -968,13 +993,13 @@ function AprovacaoModal({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitulo}>Aprovação técnica · v{numeroVersao}</Text>
             <TouchableOpacity onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <MaterialCommunityIcons name="close" size={24} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="close" size={24} color={cores.onSurfaceVariant} />
             </TouchableOpacity>
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: Spacing.base }}>
             <View style={[styles.caveat, { marginBottom: Spacing.md }]}>
-              <MaterialCommunityIcons name="scale-balance" size={16} color={Colors.warning} style={{ marginTop: 1 }} />
+              <MaterialCommunityIcons name="scale-balance" size={16} color={cores.warning} style={{ marginTop: 1 }} />
               <Text style={styles.caveatText}>
                 Ao registrar, você confirma que um responsável técnico habilitado validou o conteúdo desta
                 versão. O app apenas registra a responsabilidade informada — não valida nem declara
@@ -1015,118 +1040,120 @@ function AprovacaoModal({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xxl },
-  vazioTitulo: { fontSize: 18, fontWeight: '800', color: Colors.onSurface, marginTop: Spacing.md, textAlign: 'center' },
-  vazioSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 6, textAlign: 'center', lineHeight: 19, maxWidth: 320 },
+  vazioTitulo: { fontSize: 18, fontWeight: '800', color: c.onSurface, marginTop: Spacing.md, textAlign: 'center' },
+  vazioSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 6, textAlign: 'center', lineHeight: 19, maxWidth: 320 },
 
   card: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base,
-    ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.base,
+    ...sombrasDe(c).sm,
   },
 
+  // rgba(247,178,59,x) era o warning estático — vira o warning do tema.
   caveat: {
     flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-    backgroundColor: Colors.warningLight, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: 'rgba(247,178,59,0.32)', padding: Spacing.md,
+    backgroundColor: c.warningLight, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: comAlfa(c.warning, 0.32), padding: Spacing.md,
   },
-  caveatText: { flex: 1, fontSize: 12.5, color: Colors.onSurface, lineHeight: 18 },
+  caveatText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 18 },
 
+  // rgba(11,111,206,x) era o primary estático — vira o primary do tema.
   aviso: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-    backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: 'rgba(11,111,206,0.32)', padding: Spacing.md,
+    backgroundColor: c.primaryContainer, borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: comAlfa(c.primary, 0.32), padding: Spacing.md,
   },
-  avisoText: { flex: 1, fontSize: 12.5, color: Colors.primaryContainerText, lineHeight: 18 },
+  avisoText: { flex: 1, fontSize: 12.5, color: c.primaryContainerText, lineHeight: 18 },
 
   // Linha de info (dado do plano)
   linha: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 },
-  linhaBorda: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  linhaRotulo: { fontSize: 13, color: Colors.onSurfaceVariant, width: 118 },
-  linhaValor: { flex: 1, fontSize: 13.5, color: Colors.onSurface, fontWeight: '600', textAlign: 'right' },
+  linhaBorda: { borderBottomWidth: 1, borderBottomColor: c.outline },
+  linhaRotulo: { fontSize: 13, color: c.onSurfaceVariant, width: 118 },
+  linhaValor: { flex: 1, fontSize: 13.5, color: c.onSurface, fontWeight: '600', textAlign: 'right' },
 
   // Seção genérica
   secaoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.md },
-  secaoTitulo: { fontSize: 15, fontWeight: '800', color: Colors.onSurface },
-  contagemPill: { backgroundColor: Colors.accentContainer, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 1, minWidth: 22, alignItems: 'center' },
-  contagemText: { fontSize: 11, fontWeight: '800', color: Colors.accentLight },
-  botaoTexto: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: BorderRadius.full, backgroundColor: Colors.surfacePressed },
-  botaoTextoLabel: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
+  secaoTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  contagemPill: { backgroundColor: c.accentContainer, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 1, minWidth: 22, alignItems: 'center' },
+  contagemText: { fontSize: 11, fontWeight: '800', color: c.accentLight },
+  botaoTexto: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: BorderRadius.full, backgroundColor: c.surfacePressed },
+  botaoTextoLabel: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   vazioInline: { paddingVertical: 4 },
-  vazioInlineText: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19 },
+  vazioInlineText: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 19 },
 
   // Periodicidade (leitura)
-  perCard: { backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md, gap: 7 },
+  perCard: { backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, gap: 7 },
   perHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  perNome: { flex: 1, fontSize: 14.5, fontWeight: '800', color: Colors.onSurface },
-  freqPill: { backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  freqPillText: { fontSize: 11, fontWeight: '800', color: Colors.primaryContainerText },
+  perNome: { flex: 1, fontSize: 14.5, fontWeight: '800', color: c.onSurface },
+  freqPill: { backgroundColor: c.primaryContainer, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
+  freqPillText: { fontSize: 11, fontWeight: '800', color: c.primaryContainerText },
   perMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  perMeta: { flex: 1, fontSize: 12.5, color: Colors.onSurfaceVariant },
-  atividadesWrap: { marginTop: 2, gap: 4, borderTopWidth: 1, borderTopColor: Colors.outline, paddingTop: 8 },
+  perMeta: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  atividadesWrap: { marginTop: 2, gap: 4, borderTopWidth: 1, borderTopColor: c.outline, paddingTop: 8 },
   atividadeItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
-  atividadeText: { flex: 1, fontSize: 13, color: Colors.onSurface, lineHeight: 18 },
+  atividadeText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 18 },
   referenciaWrap: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 4 },
-  referenciaText: { flex: 1, fontSize: 11.5, color: Colors.onSurfaceMuted, fontStyle: 'italic', lineHeight: 16 },
+  referenciaText: { flex: 1, fontSize: 11.5, color: c.onSurfaceMuted, fontStyle: 'italic', lineHeight: 16 },
 
   // Equipamentos
-  equipRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, paddingVertical: 9, paddingHorizontal: 11 },
-  equipTitulo: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurface },
-  equipSub: { fontSize: 11.5, color: Colors.onSurfaceVariant, marginTop: 1 },
+  equipRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingVertical: 9, paddingHorizontal: 11 },
+  equipTitulo: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
+  equipSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },
 
   // Versões
   versaoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-  versaoNum: { width: 38, height: 38, borderRadius: 12, backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline, alignItems: 'center', justifyContent: 'center' },
-  versaoNumText: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
-  versaoTitulo: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurface },
-  versaoSub: { fontSize: 11.5, color: Colors.onSurfaceVariant, marginTop: 1 },
-  vigorTag: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  vigorTagText: { fontSize: 10.5, fontWeight: '800', color: Colors.success },
+  versaoNum: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline, alignItems: 'center', justifyContent: 'center' },
+  versaoNumText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
+  versaoTitulo: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
+  versaoSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },
+  vigorTag: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
+  vigorTagText: { fontSize: 10.5, fontWeight: '800', color: c.success },
 
   // Gerar
   gerarHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  gerarTitulo: { fontSize: 15, fontWeight: '800', color: Colors.onSurface },
-  gerarDesc: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19, marginTop: 6 },
-  gerarHint: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 8, textAlign: 'center' },
+  gerarTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  gerarDesc: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 19, marginTop: 6 },
+  gerarHint: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 8, textAlign: 'center' },
 
-  resultado: { marginTop: Spacing.md, backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.md },
+  resultado: { marginTop: Spacing.md, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
   resultadoLinha: { flexDirection: 'row', justifyContent: 'space-around' },
   contador: { alignItems: 'center', gap: 2, flex: 1 },
   contadorNum: { fontSize: 22, fontWeight: '800' },
-  contadorLabel: { fontSize: 11, color: Colors.onSurfaceVariant, fontWeight: '600' },
-  resultadoNota: { fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
+  contadorLabel: { fontSize: 11, color: c.onSurfaceVariant, fontWeight: '600' },
+  resultadoNota: { fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
 
   statusBadge: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
   statusBadgeText: { fontSize: 11, fontWeight: '800' },
 
   // Editor
-  editorContainer: { flex: 1, backgroundColor: Colors.background },
-  miniLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  editorContainer: { flex: 1, backgroundColor: c.background },
+  miniLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
   freqChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
-  freqChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: BorderRadius.full, backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline },
-  freqChipAtivo: { backgroundColor: Colors.accentContainer, borderColor: Colors.accent },
-  freqChipText: { fontSize: 12.5, fontWeight: '700', color: Colors.onSurfaceVariant },
-  freqChipTextAtivo: { color: Colors.accentLight },
-  perEdit: { backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.md },
+  freqChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: BorderRadius.full, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
+  freqChipAtivo: { backgroundColor: c.accentContainer, borderColor: c.accent },
+  freqChipText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  freqChipTextAtivo: { color: c.accentLight },
+  perEdit: { backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, padding: Spacing.md },
   perEditHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.sm },
-  perEditNum: { fontSize: 12, fontWeight: '800', color: Colors.accentLight, letterSpacing: 0.5 },
-  equipPick: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, backgroundColor: Colors.surface },
-  equipPickAtivo: { borderColor: Colors.accent, backgroundColor: Colors.surfacePressed },
-  editorNota: { fontSize: 11.5, color: Colors.onSurfaceMuted, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
+  perEditNum: { fontSize: 12, fontWeight: '800', color: c.accentLight, letterSpacing: 0.5 },
+  equipPick: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
+  equipPickAtivo: { borderColor: c.accent, backgroundColor: c.surfacePressed },
+  editorNota: { fontSize: 11.5, color: c.onSurfaceMuted, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
 
-  // Modais em sheet (aprovação)
+  // Modais em sheet (aprovação) — scrim padrão de modal, sempre escuro.
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   modalSheet: {
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl,
     padding: Spacing.base, paddingTop: Spacing.sm, maxHeight: '88%',
-    borderTopWidth: 1, borderColor: Colors.strokeGlow,
+    borderTopWidth: 1, borderColor: c.strokeGlow,
   },
-  modalHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark, alignSelf: 'center', marginBottom: Spacing.sm },
+  modalHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, alignSelf: 'center', marginBottom: Spacing.sm },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
-  modalTitulo: { fontSize: 17, fontWeight: '800', color: Colors.onSurface },
-  erroTexto: { color: Colors.danger, fontSize: 13, marginTop: 8 },
+  modalTitulo: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  erroTexto: { color: c.danger, fontSize: 13, marginTop: 8 },
 });

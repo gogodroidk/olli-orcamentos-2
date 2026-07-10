@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { aplicarSeo } from '../utils/seoWeb';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -35,6 +35,8 @@ export default function LegalScreen() {
   const nav = useNavigation<any>();
   const route = useRoute();
   const ehDesktop = useEhDesktop();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   const paramDoc = (route.params as { doc?: unknown } | undefined)?.doc;
   const docKey = useMemo(() => resolverDoc(route.name, paramDoc), [route.name, paramDoc]);
@@ -87,7 +89,7 @@ export default function LegalScreen() {
         subtitle={`Atualizado em ${doc.atualizadoEm}`}
         right={
           <TouchableOpacity style={styles.switchBtn} onPress={irParaOutro} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="swap-horizontal" size={14} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="swap-horizontal" size={14} color={cores.accentLight} />
             <Text style={styles.switchText} numberOfLines={1}>{outroCurto}</Text>
           </TouchableOpacity>
         }
@@ -101,7 +103,7 @@ export default function LegalScreen() {
           {/* Aviso obrigatório — modelo a revisar com advogado */}
           <AnimatedEntrance index={0}>
             <View style={styles.aviso}>
-              <MaterialCommunityIcons name="scale-balance" size={18} color={Colors.warning} />
+              <MaterialCommunityIcons name="scale-balance" size={18} color={cores.warning} />
               <Text style={styles.avisoText}>{doc.aviso}</Text>
             </View>
           </AnimatedEntrance>
@@ -126,7 +128,7 @@ export default function LegalScreen() {
 
           {/* Contato / suporte */}
           <TouchableOpacity style={styles.contatoBox} onPress={falarComSuporte} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="whatsapp" size={22} color={Colors.whatsapp} />
+            <MaterialCommunityIcons name="whatsapp" size={22} color={cores.whatsapp} />
             <View style={{ flex: 1 }}>
               <Text style={styles.contatoTitle}>Falar com a gente</Text>
               <Text style={styles.contatoText}>
@@ -134,12 +136,12 @@ export default function LegalScreen() {
                 WhatsApp (11) 94172-7487
               </Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+            <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
           </TouchableOpacity>
 
           {/* Link para o outro documento */}
           <TouchableOpacity style={styles.outroBtn} onPress={irParaOutro} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="file-document-outline" size={18} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="file-document-outline" size={18} color={cores.accentLight} />
             <Text style={styles.outroText}>Ler também: {outroDoc.titulo}</Text>
           </TouchableOpacity>
         </View>
@@ -150,6 +152,7 @@ export default function LegalScreen() {
 
 /** Renderiza uma seção: título + parágrafos + itens (marcadores) + tabela de dados. */
 function Secao({ secao }: { secao: LegalSection }) {
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{secao.titulo}</Text>
@@ -192,21 +195,22 @@ function Secao({ secao }: { secao: LegalSection }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   switchBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(127,233,245,0.12)',
+    // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
+    backgroundColor: comAlfa(c.accentLight, 0.12),
     borderWidth: 1,
-    borderColor: 'rgba(127,233,245,0.3)',
+    borderColor: comAlfa(c.accentLight, 0.3),
     borderRadius: BorderRadius.full,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  switchText: { fontSize: 12, fontWeight: '800', color: Colors.accentLight },
+  switchText: { fontSize: 12, fontWeight: '800', color: c.accentLight },
 
   scroll: { padding: Spacing.base, paddingBottom: 40 },
   inner: { width: '100%' },
@@ -216,35 +220,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: 'rgba(247,178,59,0.10)',
+    // rgba(247,178,59,x) era o warning estático — vira o warning do tema.
+    backgroundColor: comAlfa(c.warning, 0.10),
     borderWidth: 1,
-    borderColor: 'rgba(247,178,59,0.3)',
+    borderColor: comAlfa(c.warning, 0.3),
     borderRadius: BorderRadius.lg,
     padding: Spacing.base,
     marginBottom: Spacing.base,
   },
-  avisoText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: Colors.onSurfaceVariant },
+  avisoText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant },
 
   introBox: { marginBottom: Spacing.sm },
 
   section: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.base,
     marginTop: Spacing.md,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
   sectionTitle: {
     fontSize: 15.5,
     fontWeight: '800',
-    color: Colors.onSurface,
+    color: c.onSurface,
     marginBottom: 10,
     letterSpacing: 0.2,
   },
 
-  paragraph: { fontSize: 14, lineHeight: 21, color: Colors.onSurfaceVariant },
+  paragraph: { fontSize: 14, lineHeight: 21, color: c.onSurfaceVariant },
   paragraphSpaced: { marginTop: 10 },
 
   itens: { marginTop: 10, gap: 9 },
@@ -253,58 +258,59 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.accent,
+    backgroundColor: c.accent,
     marginTop: 8,
   },
-  itemText: { flex: 1, fontSize: 13.5, lineHeight: 20, color: Colors.onSurfaceVariant },
+  itemText: { flex: 1, fontSize: 13.5, lineHeight: 20, color: c.onSurfaceVariant },
 
   tabela: { marginTop: 12, gap: 10 },
   dataCard: {
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.md,
   },
-  dataDado: { fontSize: 13.5, fontWeight: '800', color: Colors.onSurface, marginBottom: 8, lineHeight: 19 },
+  dataDado: { fontSize: 13.5, fontWeight: '800', color: c.onSurface, marginBottom: 8, lineHeight: 19 },
   dataLinha: { flexDirection: 'row', gap: 8, marginTop: 5 },
   dataLabel: {
     width: 74,
     fontSize: 10.5,
     fontWeight: '800',
-    color: Colors.onSurfaceMuted,
+    color: c.onSurfaceMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginTop: 2,
   },
-  dataValor: { flex: 1, fontSize: 12.5, lineHeight: 18, color: Colors.onSurfaceVariant },
-  dataBase: { color: Colors.accentLight, fontWeight: '600' },
+  dataValor: { flex: 1, fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant },
+  dataBase: { color: c.accentLight, fontWeight: '600' },
 
   contatoBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: 'rgba(37,211,102,0.08)',
+    // rgba(37,211,102,x) era o whatsapp estático — vira o whatsapp do tema.
+    backgroundColor: comAlfa(c.whatsapp, 0.08),
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(37,211,102,0.28)',
+    borderColor: comAlfa(c.whatsapp, 0.28),
     padding: Spacing.base,
     marginTop: Spacing.lg,
   },
-  contatoTitle: { fontSize: 14.5, fontWeight: '800', color: Colors.onSurface, marginBottom: 2 },
-  contatoText: { fontSize: 12.5, lineHeight: 18, color: Colors.onSurfaceVariant },
+  contatoTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface, marginBottom: 2 },
+  contatoText: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant },
 
   outroBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     paddingVertical: 14,
     marginTop: Spacing.md,
   },
-  outroText: { fontSize: 13.5, fontWeight: '800', color: Colors.accentLight },
+  outroText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
 });

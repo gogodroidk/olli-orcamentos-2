@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliPressable } from '../OlliPressable';
 
 interface Props {
@@ -23,13 +23,19 @@ interface Props {
  * clicável com feedback de hover/press e uma seta de "abrir" no rodapé — cada
  * número do dashboard leva à lista que o explica.
  */
-export function KpiCard({ titulo, valor, icone, corIcone = Colors.accent, rodape, onPress }: Props) {
+export function KpiCard({ titulo, valor, icone, corIcone, rodape, onPress }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  // Default do prop precisa do hook — não dá pra usar `cores.accent` direto na
+  // desestruturação (roda antes do corpo da função).
+  const corIconeFinal = corIcone ?? cores.accent;
+
   const conteudo = (
     <>
       <View style={styles.linhaTopo}>
         <Text style={styles.titulo} numberOfLines={1}>{titulo}</Text>
-        <View style={[styles.iconeWrap, { backgroundColor: corIcone + '20' }]}>
-          <MaterialCommunityIcons name={icone} size={18} color={corIcone} />
+        <View style={[styles.iconeWrap, { backgroundColor: corIconeFinal + '20' }]}>
+          <MaterialCommunityIcons name={icone} size={18} color={corIconeFinal} />
         </View>
       </View>
       <Text style={styles.valor} numberOfLines={1}>{valor}</Text>
@@ -37,7 +43,7 @@ export function KpiCard({ titulo, valor, icone, corIcone = Colors.accent, rodape
         <View style={styles.rodapeLinha}>
           {rodape ? <Text style={styles.rodape} numberOfLines={1}>{rodape}</Text> : <View style={{ flex: 1 }} />}
           {onPress ? (
-            <MaterialCommunityIcons name="arrow-right" size={14} color={Colors.onSurfaceMuted} />
+            <MaterialCommunityIcons name="arrow-right" size={14} color={cores.onSurfaceMuted} />
           ) : null}
         </View>
       )}
@@ -55,19 +61,19 @@ export function KpiCard({ titulo, valor, icone, corIcone = Colors.accent, rodape
   return <View style={styles.card}>{conteudo}</View>;
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 220,
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.lg,
     gap: Spacing.sm,
   },
   cardClicavel: {
-    borderColor: Colors.strokeGlow,
+    borderColor: c.strokeGlow,
   },
   linhaTopo: {
     flexDirection: 'row',
@@ -77,7 +83,7 @@ const styles = StyleSheet.create({
   },
   titulo: {
     ...Typography.label,
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
     textTransform: 'uppercase',
     flexShrink: 1,
   },
@@ -90,7 +96,7 @@ const styles = StyleSheet.create({
   },
   valor: {
     ...Typography.value,
-    color: Colors.onSurface,
+    color: c.onSurface,
   },
   rodapeLinha: {
     flexDirection: 'row',
@@ -100,7 +106,7 @@ const styles = StyleSheet.create({
   },
   rodape: {
     ...Typography.caption,
-    color: Colors.onSurfaceMuted,
+    color: c.onSurfaceMuted,
     flexShrink: 1,
   },
 });

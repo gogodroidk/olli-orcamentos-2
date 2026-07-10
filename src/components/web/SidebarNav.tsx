@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Colors, Spacing, BorderRadius, Typography, Gradients, Fonts } from '../../theme';
+import { Spacing, BorderRadius, Typography, Fonts, useCores, useGradientes, useEstilos, type Cores } from '../../theme';
 import { OlliLogo } from '../OlliLogo';
 import { getCurrentUser } from '../../services/supabase';
 import { usePermissao, type Acao } from '../../hooks/usePermissao';
@@ -96,6 +96,9 @@ const ITEM_CONTA: ItemMenu = { rota: 'Conta', label: 'Conta', icon: 'account-cir
 
 export function SidebarNav({ state, navigation }: BottomTabBarProps) {
   const [email, setEmail] = useState<string | null>(null);
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
   const { papel, pode, ehEmpresa } = usePermissao();
   const { tipo } = useTipoConta();
   const { temAcesso } = usePlano();
@@ -178,13 +181,13 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
           ]}
         >
           <LinearGradient
-            colors={Gradients.primaryDiagonal}
+            colors={gradientes.primaryDiagonal}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.botaoNovo}
           >
-            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-            <Text style={styles.botaoNovoLabel}>Novo orçamento</Text>
+            <MaterialCommunityIcons name="plus" size={18} color={gradientes.sobreBrand} />
+            <Text style={[styles.botaoNovoLabel, { color: gradientes.sobreBrand }]}>Novo orçamento</Text>
           </LinearGradient>
         </Pressable>
       </View>
@@ -238,6 +241,8 @@ function ItemSidebar({
   trancado: boolean;
   onPress: () => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <Pressable
       onPress={onPress}
@@ -254,7 +259,7 @@ function ItemSidebar({
       <MaterialCommunityIcons
         name={item.icon}
         size={20}
-        color={ativo ? Colors.tabActive : Colors.tabInactive}
+        color={ativo ? cores.tabActive : cores.tabInactive}
       />
       <Text style={[styles.itemLabel, ativo && styles.itemLabelAtivo, trancado && styles.itemLabelTrancado]}>
         {item.label}
@@ -263,7 +268,7 @@ function ItemSidebar({
         <MaterialCommunityIcons
           name="lock-outline"
           size={15}
-          color={Colors.plan}
+          color={cores.plan}
           style={styles.cadeado}
         />
       )}
@@ -271,13 +276,18 @@ function ItemSidebar({
   );
 }
 
-const styles = StyleSheet.create({
+// `botaoNovoLabel`/o ícone "plus" usam `gradientes.sobreBrand` (aplicado inline no
+// ponto de uso, onde `useGradientes()` está em escopo): o botão usa
+// `gradientes.primaryDiagonal` (marca → acento) e a cor de marca é escolhida pelo
+// usuário, então branco fixo nem sempre é legível — `sobreBrand` cobre as duas
+// pontas do gradiente.
+const criarEstilos = (c: Cores) => StyleSheet.create({
   container: {
     width: 248,
     height: '100%',
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderRightWidth: 1,
-    borderRightColor: Colors.outline,
+    borderRightColor: c.outline,
     flexDirection: 'column',
   },
   topo: {
@@ -293,7 +303,7 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     ...Typography.h3,
-    color: Colors.onSurface,
+    color: c.onSurface,
     letterSpacing: 1,
   },
   botaoNovoWrap: {
@@ -305,7 +315,7 @@ const styles = StyleSheet.create({
   },
   botaoNovoWrapFocado: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   } as any,
@@ -322,7 +332,6 @@ const styles = StyleSheet.create({
   },
   botaoNovoLabel: {
     ...Typography.button,
-    color: '#fff',
     fontSize: 13,
   },
   menu: {
@@ -343,11 +352,11 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
   },
   itemHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
   },
   itemFocado: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: -2,
   } as any,
@@ -355,40 +364,40 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   itemAtivo: {
-    backgroundColor: Colors.accentContainer,
-    borderLeftColor: Colors.accent,
+    backgroundColor: c.accentContainer,
+    borderLeftColor: c.accent,
   },
   itemLabel: {
     ...Typography.body,
-    color: Colors.tabInactive,
+    color: c.tabInactive,
     fontSize: 14,
     flex: 1,
   },
   itemLabelAtivo: {
-    color: Colors.tabActive,
+    color: c.tabActive,
     fontFamily: Fonts.bold,
   },
   itemLabelTrancado: {
-    color: Colors.onSurfaceMuted,
+    color: c.onSurfaceMuted,
   },
   cadeado: {
     marginLeft: Spacing.xs,
   },
   rodape: {
     borderTopWidth: 1,
-    borderTopColor: Colors.outline,
+    borderTopColor: c.outline,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     gap: Spacing.xs,
   },
   email: {
     ...Typography.caption,
-    color: Colors.onSurfaceMuted,
+    color: c.onSurfaceMuted,
     paddingHorizontal: Spacing.md,
   },
   tipoConta: {
     ...Typography.caption,
-    color: Colors.onSurfaceMuted,
+    color: c.onSurfaceMuted,
     paddingHorizontal: Spacing.md,
   },
 });

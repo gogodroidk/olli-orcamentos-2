@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { Orcamento, ItemOrcamento, ServicoItem, ProdutoItem, UNIDADES } from '../types';
 import { searchServicos, searchProdutos } from '../database/database';
 import { formatCurrency, formatQty, parseNumber, parseNumberPositive } from '../utils/currency';
@@ -27,6 +27,8 @@ interface Props {
 type Tab = 'servico' | 'produto';
 
 export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroConfirmados, onConfirmarItemZero }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState<(ServicoItem | ProdutoItem)[]>([]);
@@ -153,7 +155,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   const prodCount = orc.itens.filter(i => i.tipo === 'produto').length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+    <View style={{ flex: 1, backgroundColor: cores.background }}>
       {/* TABS */}
       <View style={styles.tabs}>
         <TabButton label="Serviços" count={servCount} icon="wrench" active={activeTab === 'servico'} onPress={() => setActiveTab('servico')} />
@@ -164,7 +166,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
         {/* LISTA */}
         {tabItens.length === 0 ? (
           <View style={styles.emptyBox}>
-            <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench-outline' : 'package-variant-closed'} size={44} color={Colors.onSurfaceMuted} />
+            <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench-outline' : 'package-variant-closed'} size={44} color={cores.onSurfaceMuted} />
             <Text style={styles.emptyText}>Nenhum {activeTab === 'servico' ? 'serviço' : 'produto'} adicionado</Text>
           </View>
         ) : tabItens.map((item, idx) => (
@@ -177,7 +179,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                   <Text style={[styles.itemPrice, item.preco <= 0 && styles.itemPriceZero]}>{formatCurrency(item.preco)} / {item.unidade}</Text>
                   {item.preco <= 0 && (
                     <View style={styles.zeroBadge}>
-                      <MaterialCommunityIcons name="alert-circle-outline" size={12} color={Colors.warning} />
+                      <MaterialCommunityIcons name="alert-circle-outline" size={12} color={cores.warning} />
                       <Text style={styles.zeroBadgeText}>cortesia</Text>
                     </View>
                   )}
@@ -185,11 +187,11 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                 <View style={styles.itemBottom}>
                   <View style={styles.qtyRow}>
                     <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade - 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <MaterialCommunityIcons name="minus" size={16} color={Colors.primary} />
+                      <MaterialCommunityIcons name="minus" size={16} color={cores.primary} />
                     </TouchableOpacity>
                     <Text style={styles.qtyValue}>{formatQty(item.quantidade)}</Text>
                     <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade + 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <MaterialCommunityIcons name="plus" size={16} color={Colors.primary} />
+                      <MaterialCommunityIcons name="plus" size={16} color={cores.primary} />
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.itemSubtotal}>{formatCurrency(item.subtotal)}</Text>
@@ -197,10 +199,10 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
               </View>
               <View style={styles.itemActions}>
                 <TouchableOpacity onPress={() => { setIsNewItem(false); setQtyText(null); setEditingItem(item); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.onSurfaceVariant} />
+                  <MaterialCommunityIcons name="pencil-outline" size={20} color={cores.onSurfaceVariant} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
+                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -217,19 +219,19 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
         {/* AÇÕES */}
         <View style={styles.actionsRow}>
           <TouchableOpacity style={styles.actionBtn} onPress={() => setShowCatalog(true)} activeOpacity={0.8}>
-            <MaterialCommunityIcons name="magnify" size={20} color={Colors.primary} />
+            <MaterialCommunityIcons name="magnify" size={20} color={cores.primary} />
             <Text style={styles.actionBtnLabel}>Do catálogo</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { borderColor: Colors.success }]} onPress={addManual} activeOpacity={0.8}>
-            <MaterialCommunityIcons name="plus" size={20} color={Colors.success} />
-            <Text style={[styles.actionBtnLabel, { color: Colors.success }]}>Adicionar manual</Text>
+          <TouchableOpacity style={[styles.actionBtn, { borderColor: cores.success }]} onPress={addManual} activeOpacity={0.8}>
+            <MaterialCommunityIcons name="plus" size={20} color={cores.success} />
+            <Text style={[styles.actionBtnLabel, { color: cores.success }]}>Adicionar manual</Text>
           </TouchableOpacity>
         </View>
 
         {/* DESCONTO — agora funcional */}
         <View style={styles.descontoCard}>
           <View style={styles.descontoHeader}>
-            <MaterialCommunityIcons name="tag-outline" size={18} color={Colors.onSurfaceVariant} />
+            <MaterialCommunityIcons name="tag-outline" size={18} color={cores.onSurfaceVariant} />
             <Text style={styles.descontoTitle}>Desconto</Text>
           </View>
           <View style={styles.descontoRow}>
@@ -268,7 +270,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                   onBlur={() => setDescontoPercentText(null)}
                   keyboardType="numeric"
                   placeholder="0"
-                  placeholderTextColor={Colors.onSurfaceMuted}
+                  placeholderTextColor={cores.onSurfaceMuted}
                 />
                 <Text style={styles.percentSign}>%</Text>
               </View>
@@ -296,19 +298,19 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{activeTab === 'servico' ? 'Serviços' : 'Produtos'}</Text>
             <TouchableOpacity onPress={closeCatalog} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
           <View style={{ padding: Spacing.base }}>
             <View style={styles.searchBox}>
-              <MaterialCommunityIcons name="magnify" size={22} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="magnify" size={22} color={cores.onSurfaceVariant} />
               <TextInput
                 style={styles.searchInput}
                 placeholder={`Buscar ${activeTab === 'servico' ? 'serviço' : 'produto'}...`}
                 value={catalogQuery}
                 onChangeText={handleCatalogSearch}
                 autoFocus
-                placeholderTextColor={Colors.onSurfaceMuted}
+                placeholderTextColor={cores.onSurfaceMuted}
               />
             </View>
           </View>
@@ -323,7 +325,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                   <Image source={{ uri: item.fotoUri }} style={styles.catalogThumb} />
                 ) : (
                   <View style={[styles.catalogThumb, styles.catalogThumbPlaceholder]}>
-                    <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench' : 'package-variant'} size={20} color={Colors.primary} />
+                    <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench' : 'package-variant'} size={20} color={cores.primary} />
                   </View>
                 )}
                 <View style={{ flex: 1, marginLeft: 10 }}>
@@ -331,7 +333,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
                   {item.descricao ? <Text style={styles.catalogDesc} numberOfLines={1}>{item.descricao}</Text> : null}
                 </View>
                 <Text style={styles.catalogPrice}>{formatCurrency(item.preco)}</Text>
-                <MaterialCommunityIcons name="plus-circle" size={24} color={Colors.success} style={{ marginLeft: 8 }} />
+                <MaterialCommunityIcons name="plus-circle" size={24} color={cores.success} style={{ marginLeft: 8 }} />
               </TouchableOpacity>
             )}
             ListEmptyComponent={
@@ -350,7 +352,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{isNewItem ? 'Novo item' : 'Editar item'}</Text>
               <TouchableOpacity onPress={() => setEditingItem(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+                <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
@@ -385,7 +387,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
               <View style={styles.unidadesRow}>
                 {UNIDADES.map(u => (
                   <TouchableOpacity key={u} style={[styles.unidade, editingItem.unidade === u && styles.unidadeActive]} onPress={() => setEditingItem(p => p ? { ...p, unidade: u } : p)}>
-                    <Text style={[styles.unidadeText, editingItem.unidade === u && { color: '#fff' }]}>{u}</Text>
+                    <Text style={[styles.unidadeText, editingItem.unidade === u && { color: cores.onPrimary }]}>{u}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -402,97 +404,102 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
 }
 
 function TabButton({ label, count, icon, active, onPress }: { label: string; count: number; icon: keyof typeof MaterialCommunityIcons.glyphMap; active: boolean; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <TouchableOpacity style={[styles.tab, active && styles.tabActive]} onPress={onPress} activeOpacity={0.7}>
-      <MaterialCommunityIcons name={icon} size={18} color={active ? Colors.primary : Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name={icon} size={18} color={active ? cores.primary : cores.onSurfaceMuted} />
       <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
       {count > 0 && (
         <View style={[styles.tabBadge, active && styles.tabBadgeActive]}>
-          <Text style={[styles.tabBadgeText, active && { color: '#fff' }]}>{count}</Text>
+          <Text style={[styles.tabBadgeText, active && { color: cores.onPrimary }]}>{count}</Text>
         </View>
       )}
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  tabs: { flexDirection: 'row', backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
   tab: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 14, gap: 6 },
-  tabActive: { borderBottomWidth: 2.5, borderBottomColor: Colors.primary },
-  tabLabel: { fontSize: 14, fontWeight: '600', color: Colors.onSurfaceMuted },
-  tabLabelActive: { color: Colors.primary },
-  tabBadge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: Colors.outline, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 },
-  tabBadgeActive: { backgroundColor: Colors.primary },
-  tabBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.onSurfaceVariant },
+  tabActive: { borderBottomWidth: 2.5, borderBottomColor: c.primary },
+  tabLabel: { fontSize: 14, fontWeight: '600', color: c.onSurfaceMuted },
+  tabLabelActive: { color: c.primary },
+  tabBadge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.outline, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 },
+  tabBadgeActive: { backgroundColor: c.primary },
+  tabBadgeText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
 
   emptyBox: { alignItems: 'center', paddingVertical: 36 },
-  emptyText: { fontSize: 14, color: Colors.onSurfaceMuted, marginTop: 8 },
+  emptyText: { fontSize: 14, color: c.onSurfaceMuted, marginTop: 8 },
 
   itemCard: {
-    flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    padding: Spacing.base, marginBottom: 10, ...Shadow.sm,
+    flexDirection: 'row', backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    padding: Spacing.base, marginBottom: 10, ...sombrasDe(c).sm,
   },
-  itemCardZero: { borderWidth: 1.5, borderColor: Colors.warning, backgroundColor: Colors.warningLight },
-  itemName: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  itemDesc: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  itemCardZero: { borderWidth: 1.5, borderColor: c.warning, backgroundColor: c.warningLight },
+  itemName: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  itemDesc: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   itemPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  itemPrice: { fontSize: 12, color: Colors.primary, marginTop: 4, fontWeight: '600' },
-  itemPriceZero: { color: Colors.warning },
-  zeroBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: BorderRadius.full, backgroundColor: Colors.warningLight, borderWidth: 1, borderColor: Colors.warning },
-  zeroBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.warning },
+  itemPrice: { fontSize: 12, color: c.primary, marginTop: 4, fontWeight: '600' },
+  itemPriceZero: { color: c.warning },
+  zeroBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: BorderRadius.full, backgroundColor: c.warningLight, borderWidth: 1, borderColor: c.warning },
+  zeroBadgeText: { fontSize: 10, fontWeight: '700', color: c.warning },
   itemBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-  qtyValue: { fontSize: 15, fontWeight: '800', color: Colors.onSurface, minWidth: 24, textAlign: 'center' },
-  itemSubtotal: { fontSize: 16, fontWeight: '800', color: Colors.primary },
-  itemActions: { justifyContent: 'space-between', alignItems: 'center', marginLeft: 12, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: Colors.outline },
+  qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: c.primary, justifyContent: 'center', alignItems: 'center' },
+  qtyValue: { fontSize: 15, fontWeight: '800', color: c.onSurface, minWidth: 24, textAlign: 'center' },
+  itemSubtotal: { fontSize: 16, fontWeight: '800', color: c.primary },
+  itemActions: { justifyContent: 'space-between', alignItems: 'center', marginLeft: 12, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: c.outline },
 
-  tabTotalBar: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: Colors.primaryContainer, borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: Spacing.base },
-  tabTotalLabel: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
-  tabTotalValue: { fontSize: 15, fontWeight: '800', color: Colors.primary },
+  tabTotalBar: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: c.primaryContainer, borderRadius: BorderRadius.md, padding: Spacing.md, marginBottom: Spacing.base },
+  tabTotalLabel: { fontSize: 13, color: c.primary, fontWeight: '600' },
+  tabTotalValue: { fontSize: 15, fontWeight: '800', color: c.primary },
 
   actionsRow: { flexDirection: 'row', gap: 10 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: Colors.primary, borderRadius: BorderRadius.md, paddingVertical: 14, backgroundColor: Colors.surface },
-  actionBtnLabel: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: c.primary, borderRadius: BorderRadius.md, paddingVertical: 14, backgroundColor: c.surface },
+  actionBtnLabel: { fontSize: 13, color: c.primary, fontWeight: '700' },
 
-  descontoCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.base, ...Shadow.sm },
+  descontoCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   descontoHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-  descontoTitle: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
+  descontoTitle: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   descontoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   descontoToggle: { flexDirection: 'row', gap: 6 },
-  descontoType: { width: 44, height: 50, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.outline, justifyContent: 'center', alignItems: 'center' },
-  descontoTypeActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  descontoTypeLabel: { fontSize: 15, fontWeight: '800', color: Colors.onSurfaceVariant },
-  descontoTypeLabelActive: { color: '#fff' },
-  percentField: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: Colors.outline, borderRadius: BorderRadius.md, paddingHorizontal: 14, backgroundColor: Colors.surfaceVariant, minHeight: 50 },
-  percentInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
-  percentSign: { fontSize: 15, fontWeight: '700', color: Colors.onSurfaceMuted },
+  descontoType: { width: 44, height: 50, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.outline, justifyContent: 'center', alignItems: 'center' },
+  descontoTypeActive: { backgroundColor: c.primary, borderColor: c.primary },
+  descontoTypeLabel: { fontSize: 15, fontWeight: '800', color: c.onSurfaceVariant },
+  descontoTypeLabelActive: { color: c.onPrimary },
+  percentField: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: c.outline, borderRadius: BorderRadius.md, paddingHorizontal: 14, backgroundColor: c.surfaceVariant, minHeight: 50 },
+  percentInput: { flex: 1, fontSize: 15, color: c.onSurface },
+  percentSign: { fontSize: 15, fontWeight: '700', color: c.onSurfaceMuted },
 
-  grandTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: Spacing.base, ...Shadow.md },
-  grandTotalLabel: { fontSize: 13, color: 'rgba(255,255,255,0.82)', fontWeight: '600' },
-  grandTotalDiscount: { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
-  grandTotalValue: { ...Typography.displaySerif, color: '#fff' },
+  grandTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: c.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: Spacing.base, ...sombrasDe(c).md },
+  // Branco fixo com alfa (0.82/0.75) sobre o preenchimento primary — agora
+  // deriva de onPrimary (branco OU tinta escura, conforme o contraste exigir)
+  // via comAlfa, em vez de assumir que o texto sobre a marca é sempre branco.
+  grandTotalLabel: { fontSize: 13, color: comAlfa(c.onPrimary, 0.82), fontWeight: '600' },
+  grandTotalDiscount: { fontSize: 11, color: comAlfa(c.onPrimary, 0.75), marginTop: 2 },
+  grandTotalValue: { ...Typography.displaySerif, color: c.onPrimary },
 
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
-  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
-  editSubtotal: { textAlign: 'right', fontSize: 16, fontWeight: '800', color: Colors.primary, marginBottom: 12 },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
+  editSubtotal: { textAlign: 'right', fontSize: 16, fontWeight: '800', color: c.primary, marginBottom: 12 },
 
-  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.base, paddingVertical: 12, gap: 10, borderWidth: 1, borderColor: Colors.outline },
-  searchInput: { flex: 1, fontSize: 16, color: Colors.onSurface },
-  catalogItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.base, paddingVertical: 12, gap: 10, borderWidth: 1, borderColor: c.outline },
+  searchInput: { flex: 1, fontSize: 16, color: c.onSurface },
+  catalogItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.outline },
   catalogThumb: { width: 46, height: 46, borderRadius: BorderRadius.md },
-  catalogThumbPlaceholder: { backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  catalogName: { fontSize: 14, fontWeight: '700', color: Colors.onSurface },
-  catalogDesc: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
-  catalogPrice: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  catalogEmpty: { textAlign: 'center', color: Colors.onSurfaceMuted, padding: 32, fontSize: 14 },
+  catalogThumbPlaceholder: { backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  catalogName: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  catalogDesc: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+  catalogPrice: { fontSize: 14, fontWeight: '700', color: c.primary },
+  catalogEmpty: { textAlign: 'center', color: c.onSurfaceMuted, padding: 32, fontSize: 14 },
 
   rowFields: { flexDirection: 'row' },
-  unidadeLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  unidadeLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
   unidadesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline },
-  unidadeActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  unidadeText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline },
+  unidadeActive: { backgroundColor: c.primary, borderColor: c.primary },
+  unidadeText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
 });

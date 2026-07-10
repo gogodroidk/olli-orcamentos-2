@@ -4,7 +4,7 @@ import {
   TextInputProps, ViewStyle,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, Spacing, Fonts } from '../theme';
+import { BorderRadius, Spacing, Fonts, useCores, useEstilos, type Cores } from '../theme';
 import {
   maskPhone, maskCPF, maskCNPJ, maskCpfCnpj, maskCEP, maskDate,
   maskCurrencyInput, currencyToMask,
@@ -61,6 +61,8 @@ function OlliInputBase({
   label, value, onChangeText, mask = 'none', error, helper, required,
   leftIcon, rightIcon, onRightIconPress, rightIconLabel, containerStyle, multiline, keyboardType, ...rest
 }: OlliInputProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [focused, setFocused] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -74,7 +76,7 @@ function OlliInputBase({
 
   const borderColor = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [error ? Colors.danger : Colors.outline, error ? Colors.danger : Colors.primary],
+    outputRange: [error ? cores.danger : cores.outline, error ? cores.danger : cores.primary],
   });
 
   return (
@@ -88,14 +90,14 @@ function OlliInputBase({
       <Animated.View style={[
         styles.field,
         multiline && styles.fieldMultiline,
-        { borderColor, backgroundColor: focused ? Colors.surfaceElevated : Colors.surfaceVariant },
+        { borderColor, backgroundColor: focused ? cores.surfaceElevated : cores.surfaceVariant },
         focused && styles.fieldFocused,
       ]}>
         {leftIcon ? (
           <MaterialCommunityIcons
             name={leftIcon}
             size={20}
-            color={focused ? Colors.primary : Colors.onSurfaceMuted}
+            color={focused ? cores.primary : cores.onSurfaceMuted}
             style={styles.icon}
           />
         ) : null}
@@ -105,7 +107,7 @@ function OlliInputBase({
           onChangeText={handleChange}
           onFocus={(e) => { setFocused(true); animateTo(1); rest.onFocus?.(e); }}
           onBlur={(e) => { setFocused(false); animateTo(0); rest.onBlur?.(e); }}
-          placeholderTextColor={Colors.onSurfaceMuted}
+          placeholderTextColor={cores.onSurfaceMuted}
           keyboardType={keyboardType ?? KEYBOARD_BY_MASK[mask]}
           multiline={multiline}
           {...rest}
@@ -113,10 +115,10 @@ function OlliInputBase({
         {rightIcon ? (
           onRightIconPress ? (
             <TouchableOpacity onPress={onRightIconPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={rightIconLabel}>
-              <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? Colors.primary : Colors.onSurfaceMuted} style={styles.rightIcon} />
+              <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? cores.primary : cores.onSurfaceMuted} style={styles.rightIcon} />
             </TouchableOpacity>
           ) : (
-            <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? Colors.primary : Colors.onSurfaceMuted} style={styles.rightIcon} />
+            <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? cores.primary : cores.onSurfaceMuted} style={styles.rightIcon} />
           )
         ) : null}
       </Animated.View>
@@ -148,6 +150,8 @@ interface OlliMoneyInputProps {
 function OlliMoneyInputBase({
   label, value, onChangeValue, required, error, helper, placeholder, containerStyle,
 }: OlliMoneyInputProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [focused, setFocused] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -162,7 +166,7 @@ function OlliMoneyInputBase({
 
   const borderColor = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [error ? Colors.danger : Colors.outline, error ? Colors.danger : Colors.primary],
+    outputRange: [error ? cores.danger : cores.outline, error ? cores.danger : cores.primary],
   });
 
   const display = value ? currencyToMask(value) : '';
@@ -176,10 +180,10 @@ function OlliMoneyInputBase({
       ) : null}
       <Animated.View style={[
         styles.field,
-        { borderColor, backgroundColor: focused ? Colors.surfaceElevated : Colors.surfaceVariant },
+        { borderColor, backgroundColor: focused ? cores.surfaceElevated : cores.surfaceVariant },
         focused && styles.fieldFocused,
       ]}>
-        <Text style={[styles.currencyPrefix, focused && { color: Colors.primary }]}>R$</Text>
+        <Text style={[styles.currencyPrefix, focused && { color: cores.primary }]}>R$</Text>
         <TextInput
           style={styles.input}
           value={display}
@@ -187,7 +191,7 @@ function OlliMoneyInputBase({
           onFocus={() => { setFocused(true); animateTo(1); }}
           onBlur={() => { setFocused(false); animateTo(0); }}
           placeholder={placeholder ?? '0,00'}
-          placeholderTextColor={Colors.onSurfaceMuted}
+          placeholderTextColor={cores.onSurfaceMuted}
           keyboardType="numeric"
         />
       </Animated.View>
@@ -202,36 +206,37 @@ function OlliMoneyInputBase({
 
 export const OlliMoneyInput = React.memo(OlliMoneyInputBase);
 
-const styles = StyleSheet.create({
-  container: { marginBottom: Spacing.base },
-  label: { fontSize: 13, fontFamily: Fonts.extraBold, color: Colors.onSurfaceVariant, marginBottom: 7 },
-  req: { color: Colors.danger },
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.3,
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: 15,
-    minHeight: 52,
-  },
-  fieldMultiline: { alignItems: 'flex-start', paddingVertical: 10, minHeight: 88 },
-  fieldFocused: {
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.24,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  icon: { marginRight: 10 },
-  rightIcon: { marginLeft: 10 },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: Colors.onSurface,
-    paddingVertical: 12,
-  },
-  inputMultiline: { textAlignVertical: 'top', minHeight: 68 },
-  currencyPrefix: { fontSize: 15, fontFamily: Fonts.bold, color: Colors.onSurfaceMuted, marginRight: 8 },
-  error: { fontSize: 12, color: Colors.danger, marginTop: 4, fontFamily: Fonts.medium },
-  helper: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 4 },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    container: { marginBottom: Spacing.base },
+    label: { fontSize: 13, fontFamily: Fonts.extraBold, color: c.onSurfaceVariant, marginBottom: 7 },
+    req: { color: c.danger },
+    field: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1.3,
+      borderRadius: BorderRadius.lg,
+      paddingHorizontal: 15,
+      minHeight: 52,
+    },
+    fieldMultiline: { alignItems: 'flex-start', paddingVertical: 10, minHeight: 88 },
+    fieldFocused: {
+      shadowColor: c.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.24,
+      shadowRadius: 12,
+      elevation: 4,
+    },
+    icon: { marginRight: 10 },
+    rightIcon: { marginLeft: 10 },
+    input: {
+      flex: 1,
+      fontSize: 15,
+      color: c.onSurface,
+      paddingVertical: 12,
+    },
+    inputMultiline: { textAlignVertical: 'top', minHeight: 68 },
+    currencyPrefix: { fontSize: 15, fontFamily: Fonts.bold, color: c.onSurfaceMuted, marginRight: 8 },
+    error: { fontSize: 12, color: c.danger, marginTop: 4, fontFamily: Fonts.medium },
+    helper: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 4 },
+  });

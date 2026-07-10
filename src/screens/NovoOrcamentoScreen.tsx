@@ -7,7 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing } from '../theme';
+import { Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
 import { Motion } from '../theme/motion';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
@@ -129,6 +129,8 @@ export default function NovoOrcamentoScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const isEdit = (route.name as string) === 'EditarOrcamento';
   const orcamentoId = (route.params as any)?.orcamentoId;
 
@@ -349,7 +351,7 @@ export default function NovoOrcamentoScreen() {
   }
 
   if (!orc) {
-    return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+    return <View style={{ flex: 1, backgroundColor: cores.background }} />;
   }
 
   const clienteResumo = orc.clienteNome.trim() || 'sem cliente';
@@ -426,16 +428,16 @@ export default function NovoOrcamentoScreen() {
 
         <View style={styles.summaryMeta}>
           <View style={styles.summaryChip}>
-            <MaterialCommunityIcons name="format-list-bulleted" size={13} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="format-list-bulleted" size={13} color={cores.accentLight} />
             <Text style={styles.summaryChipText} numberOfLines={1}>{itemResumo}</Text>
           </View>
           <View style={[styles.summaryChip, styles.summaryChipFlex]}>
-            <MaterialCommunityIcons name="account-outline" size={13} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="account-outline" size={13} color={cores.accentLight} />
             <Text style={styles.summaryChipText} numberOfLines={1}>{clienteResumo}</Text>
           </View>
           {modeloResumo ? (
             <View style={styles.summaryChip}>
-              <MaterialCommunityIcons name="file-document-outline" size={13} color={Colors.accentLight} />
+              <MaterialCommunityIcons name="file-document-outline" size={13} color={cores.accentLight} />
               <Text style={styles.summaryChipText} numberOfLines={1}>{modeloResumo}</Text>
             </View>
           ) : null}
@@ -445,7 +447,7 @@ export default function NovoOrcamentoScreen() {
       {/* BOTTOM ACTIONS */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.7}>
-          <MaterialCommunityIcons name="chevron-left" size={22} color={Colors.primary} />
+          <MaterialCommunityIcons name="chevron-left" size={22} color={cores.primary} />
           <Text style={styles.backLabel}>{step === 0 ? 'Cancelar' : 'Voltar'}</Text>
         </TouchableOpacity>
 
@@ -481,12 +483,15 @@ export default function NovoOrcamentoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   content: { flex: 1 },
   progressTrack: {
     height: 4,
     borderRadius: 2,
+    // Trilho translúcido branco DENTRO do GradientHeader (que é sempre um
+    // gradiente colorido, nos dois modos) — mesma convenção de glass do
+    // próprio GradientHeader, por isso fica fixo em vez de seguir o tema.
     backgroundColor: 'rgba(255,255,255,0.16)',
     marginTop: 10,
     overflow: 'hidden',
@@ -494,12 +499,12 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 2,
-    backgroundColor: Colors.accentLight,
+    backgroundColor: c.accentLight,
   },
   quoteSummary: {
-    backgroundColor: Colors.surfaceGlass,
+    backgroundColor: c.surfaceGlass,
     borderTopWidth: 1,
-    borderTopColor: Colors.outline,
+    borderTopColor: c.outline,
     paddingHorizontal: Spacing.base,
     paddingTop: 10,
     paddingBottom: 8,
@@ -511,8 +516,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  summaryLabel: { fontSize: 12, color: Colors.onSurfaceVariant, fontWeight: '700' },
-  summaryTotal: { fontSize: 22, fontWeight: '900', color: Colors.onSurface },
+  summaryLabel: { fontSize: 12, color: c.onSurfaceVariant, fontWeight: '700' },
+  summaryTotal: { fontSize: 22, fontWeight: '900', color: c.onSurface },
   summaryMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -526,29 +531,32 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.strokeGlow,
-    backgroundColor: 'rgba(52,198,217,0.08)',
+    borderColor: c.strokeGlow,
+    // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
+    backgroundColor: comAlfa(c.accent, 0.08),
     paddingHorizontal: 9,
     paddingVertical: 5,
   },
   summaryChipFlex: { flex: 1, maxWidth: 168 },
-  summaryChipText: { flexShrink: 1, fontSize: 11.5, fontWeight: '800', color: Colors.onSurface },
+  summaryChipText: { flexShrink: 1, fontSize: 11.5, fontWeight: '800', color: c.onSurface },
   footer: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: Colors.surfaceGlass,
-    borderTopWidth: 1, borderTopColor: Colors.outline,
+    backgroundColor: c.surfaceGlass,
+    borderTopWidth: 1, borderTopColor: c.outline,
     paddingHorizontal: Spacing.base,
     paddingVertical: 12,
     gap: 8,
   },
   backBtn: { flexDirection: 'row', alignItems: 'center', paddingRight: 4 },
-  backLabel: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
+  backLabel: { fontSize: 14, color: c.primary, fontWeight: '600' },
   voiceBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: Colors.voice,
+    backgroundColor: c.voice,
     borderRadius: 13,
+    // Borda translúcida branca — mesma convenção de glass do GradientHeader
+    // (este botão vive dentro do header, sempre colorido); fixa nos dois modos.
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
     maxWidth: 154,

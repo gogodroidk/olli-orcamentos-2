@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, Typography } from '../theme';
+import { Spacing, Typography, useCores, useEstilos, type Cores } from '../theme';
 import { OlliSkeleton } from './OlliSkeleton';
 import { montarHtmlOrcamentoCompleto } from '../utils/pdfGenerator';
 import { Orcamento, Empresa, Depoimento } from '../types';
@@ -67,6 +67,8 @@ function PreviewWeb({ html }: { html: string }) {
  */
 export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca }: Props) {
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [html, setHtml] = useState<string | null>(null);
   const [erro, setErro] = useState(false);
 
@@ -98,14 +100,14 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
         <View style={styles.header}>
           <Text style={styles.title}>Prévia do orçamento</Text>
           <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar prévia" hitSlop={10}>
-            <MaterialCommunityIcons name="close" size={24} color={Colors.onSurface} />
+            <MaterialCommunityIcons name="close" size={24} color={cores.onSurface} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.body}>
           {erro ? (
             <View style={styles.centerMsg}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={32} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="alert-circle-outline" size={32} color={cores.onSurfaceVariant} />
               <Text style={styles.erroText}>Não consegui montar a prévia agora.</Text>
             </View>
           ) : !html ? (
@@ -131,21 +133,24 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.outline,
-  },
-  title: { ...Typography.h4, color: Colors.onSurface },
-  body: { flex: 1, backgroundColor: '#fff' },
-  webview: { flex: 1, backgroundColor: '#fff' },
-  loadingWrap: { flex: 1, padding: Spacing.xl, backgroundColor: Colors.background },
-  centerMsg: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xxl, gap: Spacing.sm },
-  erroText: { color: Colors.onSurfaceVariant, fontSize: 14, textAlign: 'center' },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.background },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: Spacing.base,
+      paddingVertical: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: c.outline,
+    },
+    title: { ...Typography.h4, color: c.onSurface },
+    // Área do documento: sempre branca — é o "papel" do PDF (mesmo contrato de
+    // pdfGenerator.ts, que não lê o tema do app), não uma superfície temável.
+    body: { flex: 1, backgroundColor: '#fff' },
+    webview: { flex: 1, backgroundColor: '#fff' },
+    loadingWrap: { flex: 1, padding: Spacing.xl, backgroundColor: c.background },
+    centerMsg: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xxl, gap: Spacing.sm },
+    erroText: { color: c.onSurfaceVariant, fontSize: 14, textAlign: 'center' },
+  });

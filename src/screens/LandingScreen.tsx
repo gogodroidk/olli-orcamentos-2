@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../theme';
+import { useEstilos, type Cores } from '../theme';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { aplicarSeo } from '../utils/seoWeb';
@@ -38,6 +38,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function LandingScreen() {
   const nav = useNavigation<Nav>();
   const ehDesktop = useEhDesktop();
+  const styles = useEstilos(criarEstilos);
 
   // Rota pública "/" — sem isso, a home fica com o <title>/canonical fixos do
   // index.html estático (mesmo problema das demais rotas públicas; ver
@@ -81,7 +82,7 @@ export default function LandingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   scrollConteudo: { flexGrow: 1 },
 });

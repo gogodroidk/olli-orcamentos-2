@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -42,16 +42,21 @@ const SIT_PMOC_LABEL: Record<SituacaoPmoc, string> = {
   encerrado: 'Encerrado',
 };
 
-const SIT_PMOC_COR: Record<SituacaoPmoc, string> = {
-  rascunho: Colors.onSurfaceVariant,
-  em_revisao: Colors.warning,
-  aguardando_aprovacao_tecnica: Colors.warning,
-  aprovado: Colors.primaryLight,
-  vigente: Colors.success,
-  substituido: Colors.onSurfaceMuted,
-  suspenso: '#F97316',
-  encerrado: Colors.onSurfaceMuted,
-};
+function criarSitPmocCor(c: Cores): Record<SituacaoPmoc, string> {
+  return {
+    rascunho: c.onSurfaceVariant,
+    em_revisao: c.warning,
+    aguardando_aprovacao_tecnica: c.warning,
+    aprovado: c.primaryLight,
+    vigente: c.success,
+    substituido: c.onSurfaceMuted,
+    // Laranja fixo: precisa continuar distinto de "em_revisao"/"aguardando_..."
+    // (que já usam c.warning) para diferenciar "suspenso" na lista — sem
+    // equivalente semântico no tema, mantido.
+    suspenso: '#F97316',
+    encerrado: c.onSurfaceMuted,
+  };
+}
 
 /** Ordem de exibição das situações no filtro (mesma ordem lógica do type). */
 const SIT_PMOC_ORDEM: SituacaoPmoc[] = [
@@ -83,7 +88,9 @@ function formatarData(iso?: string | null): string {
 }
 
 function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
-  const cor = SIT_PMOC_COR[situacao] ?? Colors.onSurfaceVariant;
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const cor = criarSitPmocCor(cores)[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
       <Text style={[styles.statusBadgeText, { color: cor }]}>{SIT_PMOC_LABEL[situacao] ?? situacao}</Text>
@@ -106,6 +113,8 @@ export default function PmocPlanosScreen() {
 
 function PmocPlanosConteudo() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   const [planos, setPlanos] = useState<PmocPlano[]>([]);
   const [resumos, setResumos] = useState<Record<string, ResumoPlano>>({});
@@ -200,16 +209,16 @@ function PmocPlanosConteudo() {
           <View style={styles.cardMetaRow}>
             {item.numero ? (
               <View style={styles.metaChip}>
-                <MaterialCommunityIcons name="pound" size={12} color={Colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="pound" size={12} color={cores.onSurfaceVariant} />
                 <Text style={styles.metaChipText}>{item.numero}</Text>
               </View>
             ) : null}
             <View style={styles.metaChip}>
-              <MaterialCommunityIcons name="air-conditioner" size={12} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="air-conditioner" size={12} color={cores.onSurfaceVariant} />
               <Text style={styles.metaChipText}>{r?.equipamentos ?? 0} equip.</Text>
             </View>
             <View style={styles.metaChip}>
-              <MaterialCommunityIcons name="repeat-variant" size={12} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="repeat-variant" size={12} color={cores.onSurfaceVariant} />
               <Text style={styles.metaChipText}>
                 {r?.periodicidades ?? 0} periodicidade{(r?.periodicidades ?? 0) === 1 ? '' : 's'}
               </Text>
@@ -220,9 +229,9 @@ function PmocPlanosConteudo() {
             <MaterialCommunityIcons
               name="calendar-clock-outline"
               size={14}
-              color={proxima ? Colors.accentLight : Colors.onSurfaceMuted}
+              color={proxima ? cores.accentLight : cores.onSurfaceMuted}
             />
-            <Text style={[styles.cardProximaText, !proxima && { color: Colors.onSurfaceMuted }]} numberOfLines={1}>
+            <Text style={[styles.cardProximaText, !proxima && { color: cores.onSurfaceMuted }]} numberOfLines={1}>
               {proxima
                 ? `Próxima visita: ${proxima}`
                 : (r?.periodicidades ? 'Sem data calculável' : 'Defina as periodicidades')}
@@ -306,7 +315,7 @@ function PmocPlanosConteudo() {
           keyExtractor={(p) => p.id}
           renderItem={renderItem}
           contentContainerStyle={{ padding: Spacing.base, paddingBottom: Spacing.xxl, gap: 12 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} />}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -333,6 +342,8 @@ function NovoPlanoModal({
   onFechar: () => void;
   onCriado: (plano: PmocPlano) => void;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [titulo, setTitulo] = useState('');
   const [clienteId, setClienteId] = useState<string | undefined>(undefined);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -379,7 +390,7 @@ function NovoPlanoModal({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitulo}>Novo plano de manutenção</Text>
             <TouchableOpacity onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <MaterialCommunityIcons name="close" size={24} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="close" size={24} color={cores.onSurfaceVariant} />
             </TouchableOpacity>
           </View>
 
@@ -408,9 +419,9 @@ function NovoPlanoModal({
               accessibilityRole="button"
               accessibilityState={{ selected: !clienteId }}
             >
-              <MaterialCommunityIcons name="account-off-outline" size={18} color={Colors.onSurfaceVariant} />
+              <MaterialCommunityIcons name="account-off-outline" size={18} color={cores.onSurfaceVariant} />
               <Text style={styles.clienteRowText}>Sem cliente vinculado</Text>
-              {!clienteId && <MaterialCommunityIcons name="check" size={18} color={Colors.accent} />}
+              {!clienteId && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
             </TouchableOpacity>
 
             {filtrados.slice(0, 30).map((c) => {
@@ -423,9 +434,9 @@ function NovoPlanoModal({
                   accessibilityRole="button"
                   accessibilityState={{ selected: sel }}
                 >
-                  <MaterialCommunityIcons name="account-outline" size={18} color={sel ? Colors.accent : Colors.onSurfaceVariant} />
-                  <Text style={[styles.clienteRowText, sel && { color: Colors.onSurface }]} numberOfLines={1}>{c.nome}</Text>
-                  {sel && <MaterialCommunityIcons name="check" size={18} color={Colors.accent} />}
+                  <MaterialCommunityIcons name="account-outline" size={18} color={sel ? cores.accentLight : cores.onSurfaceVariant} />
+                  <Text style={[styles.clienteRowText, sel && { color: cores.onSurface }]} numberOfLines={1}>{c.nome}</Text>
+                  {sel && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
                 </TouchableOpacity>
               );
             })}
@@ -448,8 +459,10 @@ function NovoPlanoModal({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  // Dentro do GradientHeader (sempre colorido, nos dois modos) — glass branco
+  // fixo, mesma convenção do próprio GradientHeader.
   newBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.16)',
@@ -460,57 +473,57 @@ const styles = StyleSheet.create({
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.outline,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
   },
-  chipActive: { backgroundColor: Colors.accentContainer, borderColor: Colors.accent },
-  chipLabel: { color: Colors.onSurfaceVariant, fontSize: 12, fontWeight: '700' },
-  chipLabelActive: { color: Colors.accentLight },
+  chipActive: { backgroundColor: c.accentContainer, borderColor: c.accent },
+  chipLabel: { color: c.onSurfaceVariant, fontSize: 12, fontWeight: '700' },
+  chipLabelActive: { color: c.accentLight },
 
   card: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, gap: 10,
-    ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.base, gap: 10,
+    ...sombrasDe(c).sm,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start' },
-  cardTitulo: { fontSize: 16, fontWeight: '800', color: Colors.onSurface },
-  cardCliente: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 2 },
+  cardTitulo: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  cardCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   metaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.full,
+    backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full,
     paddingHorizontal: 9, paddingVertical: 4,
   },
-  metaChipText: { fontSize: 11, color: Colors.onSurfaceVariant, fontWeight: '600' },
+  metaChipText: { fontSize: 11, color: c.onSurfaceVariant, fontWeight: '600' },
   cardProxima: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderTopWidth: 1, borderTopColor: Colors.outline, paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: c.outline, paddingTop: 8,
   },
-  cardProximaText: { fontSize: 13, color: Colors.accentLight, fontWeight: '600', flex: 1 },
+  cardProximaText: { fontSize: 13, color: c.accentLight, fontWeight: '600', flex: 1 },
 
   statusBadge: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
   statusBadgeText: { fontSize: 11, fontWeight: '800' },
 
-  // Modal novo plano
+  // Modal novo plano — scrim padrão de modal, sempre escuro.
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   modalSheet: {
-    backgroundColor: Colors.surfaceVariant,
+    backgroundColor: c.surfaceVariant,
     borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl,
     padding: Spacing.base, paddingTop: Spacing.sm, maxHeight: '86%',
-    borderTopWidth: 1, borderColor: Colors.strokeGlow,
+    borderTopWidth: 1, borderColor: c.strokeGlow,
   },
   modalHandle: {
-    width: 42, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark,
+    width: 42, height: 4, borderRadius: 2, backgroundColor: c.outlineDark,
     alignSelf: 'center', marginBottom: Spacing.sm,
   },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
-  modalTitulo: { fontSize: 18, fontWeight: '800', color: Colors.onSurface },
-  modalLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginTop: Spacing.sm, marginBottom: 6 },
+  modalTitulo: { fontSize: 18, fontWeight: '800', color: c.onSurface },
+  modalLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginTop: Spacing.sm, marginBottom: 6 },
   clienteRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 11, paddingHorizontal: 12, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: Colors.outline, marginBottom: 6, backgroundColor: Colors.surface,
+    borderWidth: 1, borderColor: c.outline, marginBottom: 6, backgroundColor: c.surface,
   },
-  clienteRowAtivo: { borderColor: Colors.accent, backgroundColor: Colors.surfacePressed },
-  clienteRowText: { flex: 1, fontSize: 14, color: Colors.onSurfaceVariant },
-  erroTexto: { color: Colors.danger, fontSize: 13, marginTop: 8 },
+  clienteRowAtivo: { borderColor: c.accent, backgroundColor: c.surfacePressed },
+  clienteRowText: { flex: 1, fontSize: 14, color: c.onSurfaceVariant },
+  erroTexto: { color: c.danger, fontSize: 13, marginTop: 8 },
 });

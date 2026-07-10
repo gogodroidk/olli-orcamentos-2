@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliPressable } from '../components/OlliPressable';
@@ -35,27 +35,27 @@ const PLANO_ICONE: Record<PlanoId, string> = {
 };
 
 /** Rótulo + cor de um status bruto da Stripe, em pt-BR. */
-function statusInfo(status?: string): { label: string; cor: string } {
+function statusInfo(status: string | undefined, c: Cores): { label: string; cor: string } {
   switch (status) {
-    case 'active': return { label: 'Ativa', cor: Colors.success };
-    case 'trialing': return { label: 'Em teste', cor: Colors.accentLight };
-    case 'past_due': return { label: 'Pagamento pendente', cor: Colors.warning };
-    case 'canceled': return { label: 'Cancelada', cor: Colors.onSurfaceMuted };
-    case 'unpaid': return { label: 'Não paga', cor: Colors.danger };
+    case 'active': return { label: 'Ativa', cor: c.success };
+    case 'trialing': return { label: 'Em teste', cor: c.accentLight };
+    case 'past_due': return { label: 'Pagamento pendente', cor: c.warning };
+    case 'canceled': return { label: 'Cancelada', cor: c.onSurfaceMuted };
+    case 'unpaid': return { label: 'Não paga', cor: c.danger };
     case 'incomplete':
-    case 'incomplete_expired': return { label: 'Incompleta', cor: Colors.warning };
-    default: return { label: status ? status : 'Sem assinatura', cor: Colors.onSurfaceMuted };
+    case 'incomplete_expired': return { label: 'Incompleta', cor: c.warning };
+    default: return { label: status ? status : 'Sem assinatura', cor: c.onSurfaceMuted };
   }
 }
 
 /** Rótulo pt-BR do status de uma fatura. */
-function statusFaturaInfo(f: Fatura): { label: string; cor: string } {
-  if (f.pago || f.status === 'paid') return { label: 'Paga', cor: Colors.success };
-  if (f.status === 'open') return { label: 'Em aberto', cor: Colors.warning };
-  if (f.status === 'void') return { label: 'Anulada', cor: Colors.onSurfaceMuted };
-  if (f.status === 'uncollectible') return { label: 'Não recebida', cor: Colors.danger };
-  if (f.status === 'draft') return { label: 'Rascunho', cor: Colors.onSurfaceMuted };
-  return { label: f.status ?? '—', cor: Colors.onSurfaceMuted };
+function statusFaturaInfo(f: Fatura, c: Cores): { label: string; cor: string } {
+  if (f.pago || f.status === 'paid') return { label: 'Paga', cor: c.success };
+  if (f.status === 'open') return { label: 'Em aberto', cor: c.warning };
+  if (f.status === 'void') return { label: 'Anulada', cor: c.onSurfaceMuted };
+  if (f.status === 'uncollectible') return { label: 'Não recebida', cor: c.danger };
+  if (f.status === 'draft') return { label: 'Rascunho', cor: c.onSurfaceMuted };
+  return { label: f.status ?? '—', cor: c.onSurfaceMuted };
 }
 
 /** Formata centavos numa moeda ISO como valor pt-BR (ex.: 3900,'brl' → "R$ 39,00"). */
@@ -116,6 +116,8 @@ const CACHE_TTL_MS = 30_000;
 
 export default function AssinaturaScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
 
   const [resumo, setResumo] = useState<ResumoAssinatura | null>(null);
   const [faturas, setFaturas] = useState<Fatura[]>([]);
@@ -202,7 +204,7 @@ export default function AssinaturaScreen() {
   const planoEfetivo = resumo?.planoEfetivo ?? 'gratis';
   const ativo = resumo?.ativo ?? false;
   const ehPagante = planoEfetivo !== 'gratis';
-  const sInfo = statusInfo(resumo?.status);
+  const sInfo = statusInfo(resumo?.status, cores);
   const ultimaFatura = faturas.length > 0 ? faturas[0] : null;
   const ultimoPagamento = faturas.find(f => f.pago) ?? null;
 
@@ -225,7 +227,7 @@ export default function AssinaturaScreen() {
       <ScrollView
         contentContainerStyle={{ padding: Spacing.base, paddingBottom: 48 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.accent} colors={[Colors.accent]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
         {carregando ? (
           <>
@@ -247,7 +249,7 @@ export default function AssinaturaScreen() {
               <View style={styles.planCard}>
                 <View style={styles.planHead}>
                   <View style={styles.planIcon}>
-                    <MaterialCommunityIcons name={PLANO_ICONE[planoEfetivo] as any} size={22} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name={PLANO_ICONE[planoEfetivo] as any} size={22} color={cores.accentLight} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.planLabel}>Seu plano</Text>
@@ -313,7 +315,7 @@ export default function AssinaturaScreen() {
               <AnimatedEntrance index={1}>
                 {resumo?.planoContratado && resumo.planoContratado !== 'gratis' ? (
                   <View style={styles.avisoCard}>
-                    <MaterialCommunityIcons name="information-outline" size={20} color={Colors.warning} />
+                    <MaterialCommunityIcons name="information-outline" size={20} color={cores.warning} />
                     <Text style={styles.avisoText}>
                       Sua assinatura {PLANO_LABEL[resumo.planoContratado]} foi encerrada. Você voltou ao plano Grátis — seus dados continuam com você.
                     </Text>
@@ -322,7 +324,7 @@ export default function AssinaturaScreen() {
 
                 <View style={styles.upsellCard}>
                   <View style={styles.upsellBadge}>
-                    <MaterialCommunityIcons name="crown-outline" size={16} color="#0A1626" />
+                    <MaterialCommunityIcons name="crown-outline" size={16} color={textoSobre(cores.accentLight)} />
                     <Text style={styles.upsellBadgeText}>OLLI PRO</Text>
                   </View>
                   <Text style={styles.upsellTitle}>Você está no plano Grátis</Text>
@@ -338,7 +340,7 @@ export default function AssinaturaScreen() {
                       'Suporte prioritário no WhatsApp',
                     ].map((b) => (
                       <View key={b} style={styles.beneficioRow}>
-                        <MaterialCommunityIcons name="check-circle" size={17} color={Colors.success} />
+                        <MaterialCommunityIcons name="check-circle" size={17} color={cores.success} />
                         <Text style={styles.beneficioText}>{b}</Text>
                       </View>
                     ))}
@@ -362,7 +364,7 @@ export default function AssinaturaScreen() {
                 <Text style={styles.sectionTitle}>Histórico de faturas</Text>
                 <View style={styles.faturasCard}>
                   {faturas.map((f, i) => {
-                    const st = statusFaturaInfo(f);
+                    const st = statusFaturaInfo(f, cores);
                     return (
                       <View key={f.id} style={[styles.faturaRow, i < faturas.length - 1 && styles.faturaDivider]}>
                         <View style={{ flex: 1 }}>
@@ -380,7 +382,7 @@ export default function AssinaturaScreen() {
                           accessibilityLabel="Ver recibo"
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <MaterialCommunityIcons name="receipt" size={18} color={f.recibo ? Colors.accentLight : Colors.onSurfaceMuted} />
+                          <MaterialCommunityIcons name="receipt" size={18} color={f.recibo ? cores.accentLight : cores.onSurfaceMuted} />
                         </TouchableOpacity>
                       </View>
                     );
@@ -400,88 +402,91 @@ export default function AssinaturaScreen() {
 function LinhaDetalhe({
   icon, label, valor, semDivisor,
 }: { icon: string; label: string; valor: string; semDivisor?: boolean }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={[styles.detalheRow, !semDivisor && styles.detalheDivider]}>
-      <MaterialCommunityIcons name={icon as any} size={18} color={Colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={icon as any} size={18} color={cores.onSurfaceVariant} />
       <Text style={styles.detalheLabel}>{label}</Text>
       <Text style={styles.detalheValor} numberOfLines={1}>{valor}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   planCard: {
-    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1,
-    borderColor: Colors.strokeGlow, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1,
+    borderColor: c.strokeGlow, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   planHead: { flexDirection: 'row', alignItems: 'center' },
   planIcon: {
-    width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.accentContainer,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.strokeGlow,
+    width: 44, height: 44, borderRadius: 14, backgroundColor: c.accentContainer,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: c.strokeGlow,
   },
-  planLabel: { fontSize: 12, fontWeight: '700', color: Colors.onSurfaceVariant },
-  planName: { fontSize: 20, fontWeight: '800', color: '#fff', marginTop: 1 },
+  planLabel: { fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },
+  planName: { fontSize: 20, fontWeight: '800', color: c.onSurface, marginTop: 1 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 11.5, fontWeight: '800' },
 
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.base },
-  priceValue: { fontSize: 26, fontWeight: '800', color: Colors.accentLight },
-  pricePeriod: { fontSize: 14, color: Colors.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 4 },
+  priceValue: { fontSize: 26, fontWeight: '800', color: c.accentLight },
+  pricePeriod: { fontSize: 14, color: c.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 4 },
 
   card: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1,
-    borderColor: Colors.outlineDark, padding: Spacing.base, marginTop: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1,
+    borderColor: c.outlineDark, padding: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm,
   },
-  cardTitle: { fontSize: 15, fontWeight: '800', color: '#fff', marginBottom: 6 },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: 6 },
 
   detalheRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
-  detalheDivider: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  detalheLabel: { flex: 1, fontSize: 13.5, color: Colors.onSurfaceVariant },
-  detalheValor: { fontSize: 14, fontWeight: '700', color: '#fff', maxWidth: '55%', textAlign: 'right' },
+  detalheDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
+  detalheLabel: { flex: 1, fontSize: 13.5, color: c.onSurfaceVariant },
+  detalheValor: { fontSize: 14, fontWeight: '700', color: c.onSurface, maxWidth: '55%', textAlign: 'right' },
 
-  gerenciarHint: { fontSize: 12, color: Colors.onSurfaceMuted, lineHeight: 17, marginTop: 10, paddingHorizontal: 4 },
+  gerenciarHint: { fontSize: 12, color: c.onSurfaceMuted, lineHeight: 17, marginTop: 10, paddingHorizontal: 4 },
 
   // Upsell (grátis)
   avisoCard: {
     flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-    backgroundColor: Colors.warningLight, borderRadius: BorderRadius.lg, borderWidth: 1,
+    backgroundColor: c.warningLight, borderRadius: BorderRadius.lg, borderWidth: 1,
+    // Borda no tom fixo do warning do handoff cockpit; sem chave semântica exata (ver rule 7).
     borderColor: 'rgba(247,178,59,0.35)', padding: Spacing.base, marginBottom: Spacing.base,
   },
-  avisoText: { flex: 1, fontSize: 13, color: Colors.onSurface, lineHeight: 19 },
+  avisoText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 19 },
   upsellCard: {
-    backgroundColor: Colors.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1,
-    borderColor: Colors.strokeGlow, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1,
+    borderColor: c.strokeGlow, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   upsellBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
-    backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4,
   },
-  upsellBadgeText: { fontSize: 12, fontWeight: '800', color: '#0A1626' },
-  upsellTitle: { fontSize: 17, fontWeight: '800', color: '#fff', marginTop: 12 },
-  upsellSub: { fontSize: 13.5, color: Colors.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
+  upsellBadgeText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.accentLight) },
+  upsellTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface, marginTop: 12 },
+  upsellSub: { fontSize: 13.5, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
   beneficios: { marginTop: Spacing.base, gap: 10 },
   beneficioRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
-  beneficioText: { flex: 1, fontSize: 13.5, color: Colors.onSurface, lineHeight: 19 },
+  beneficioText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
 
   // Faturas
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#fff', marginTop: Spacing.xl, marginBottom: Spacing.sm },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, marginTop: Spacing.xl, marginBottom: Spacing.sm },
   faturasCard: {
-    backgroundColor: Colors.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1,
-    borderColor: Colors.outlineDark, paddingHorizontal: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1,
+    borderColor: c.outlineDark, paddingHorizontal: Spacing.base, ...sombrasDe(c).sm,
   },
   faturaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13 },
-  faturaDivider: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  faturaValor: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  faturaData: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  faturaDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
+  faturaValor: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  faturaData: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   faturaStatus: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
   faturaStatusText: { fontSize: 11.5, fontWeight: '800' },
   reciboBtn: {
     width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: Colors.accentContainer, borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,
   },
-  reciboBtnOff: { backgroundColor: 'transparent', borderColor: Colors.outline },
-  faturasHint: { fontSize: 12, color: Colors.onSurfaceMuted, marginTop: 10, paddingHorizontal: 4 },
+  reciboBtnOff: { backgroundColor: 'transparent', borderColor: c.outline },
+  faturasHint: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 10, paddingHorizontal: 4 },
 });

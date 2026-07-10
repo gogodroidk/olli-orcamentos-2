@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Shadow, Gradients } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliMascot } from '../components/OlliMascot';
@@ -78,6 +78,11 @@ type Errors = Partial<Record<string, string>>;
 export default function OnboardingScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
+  // Ink de contraste sobre `accentLight` (chip ativo) — substitui '#0A1626' fixo.
+  const textoSobreAccent = textoSobre(cores.accentLight);
 
   const [welcomed, setWelcomed] = useState(false);
 
@@ -292,17 +297,17 @@ export default function OnboardingScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* HEADER COM GRADIENTE DA MARCA */}
-      <LinearGradient colors={Gradients.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      <LinearGradient colors={gradientes.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerTop}>
           <View style={styles.brandRow}>
             <OlliMascot size={40} onDark float={false} />
             <View style={{ marginLeft: 10, flex: 1 }}>
-              <Text style={styles.brand}>Bem-vindo ao OLLI</Text>
+              <Text style={[styles.brand, { color: gradientes.sobreHeader }]}>Bem-vindo ao OLLI</Text>
               <Text style={styles.brandSub} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
             </View>
           </View>
           <TouchableOpacity onPress={pular} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Pular configuração">
-            <Text style={styles.skip}>Pular</Text>
+            <Text style={[styles.skip, { color: gradientes.sobreHeader }]}>Pular</Text>
           </TouchableOpacity>
         </View>
         <StepIndicator steps={STEPS} current={step} />
@@ -340,7 +345,7 @@ export default function OnboardingScreen() {
                   const active = emp.segmento === s.id;
                   return (
                     <TouchableOpacity key={s.id} style={[styles.segChip, active && styles.segChipActive]} onPress={() => chooseSegmento(s.id)} activeOpacity={0.85}>
-                      <MaterialCommunityIcons name={s.icon as any} size={16} color={active ? '#0A1626' : Colors.onSurfaceVariant} />
+                      <MaterialCommunityIcons name={s.icon as any} size={16} color={active ? textoSobreAccent : cores.onSurfaceVariant} />
                       <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{s.label}</Text>
                     </TouchableOpacity>
                   );
@@ -386,7 +391,7 @@ export default function OnboardingScreen() {
               <View style={styles.cepRow}>
                 <OlliInput label="CEP" mask="cep" value={end.cep} onChangeText={onCepChange}
                   placeholder="00000-000" leftIcon="map-marker-radius" containerStyle={{ flex: 1, marginBottom: 0 }} />
-                {cepLoading && <ActivityIndicator size="small" color={Colors.accent} style={styles.cepSpinner} />}
+                {cepLoading && <ActivityIndicator size="small" color={cores.accentLight} style={styles.cepSpinner} />}
               </View>
               {cepInfo ? <Text style={styles.cepInfo}>{cepInfo}</Text> : null}
 
@@ -434,7 +439,7 @@ export default function OnboardingScreen() {
                 <View style={styles.brandItem}>
                   <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} activeOpacity={0.8}>
                     {emp.logoUri ? <Image source={{ uri: emp.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
-                      <><MaterialCommunityIcons name="image-plus" size={28} color={Colors.primaryLight} /><Text style={styles.imageHint}>Logo</Text></>
+                      <><MaterialCommunityIcons name="image-plus" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Logo</Text></>
                     )}
                   </TouchableOpacity>
                   <Text style={styles.brandLabel}>Logotipo</Text>
@@ -442,7 +447,7 @@ export default function OnboardingScreen() {
                 <View style={styles.brandItem}>
                   <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} activeOpacity={0.8}>
                     {emp.assinaturaUri ? <Image source={{ uri: emp.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
-                      <><MaterialCommunityIcons name="draw" size={28} color={Colors.primaryLight} /><Text style={styles.imageHint}>Assinatura</Text></>
+                      <><MaterialCommunityIcons name="draw" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Assinatura</Text></>
                     )}
                   </TouchableOpacity>
                   <Text style={styles.brandLabel}>Assinatura</Text>
@@ -477,11 +482,11 @@ export default function OnboardingScreen() {
             label="Continuar"
             variant="gradient" size="lg" fullWidth
             onPress={avancar}
-            icon={<MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />}
+            icon={<MaterialCommunityIcons name="arrow-right" size={20} color={gradientes.sobreBrand} />}
           />
         ) : (
           <View style={styles.footerRow}>
-            <OlliButton label="Voltar" variant="outline" size="lg" onPress={voltar} haptic={false} icon={<MaterialCommunityIcons name="chevron-left" size={18} color={Colors.primary} />} />
+            <OlliButton label="Voltar" variant="outline" size="lg" onPress={voltar} haptic={false} icon={<MaterialCommunityIcons name="chevron-left" size={18} color={cores.primary} />} />
             <View style={{ flex: 1, marginLeft: 10 }}>
               {step === ULTIMO ? (
                 <OlliButton
@@ -489,14 +494,14 @@ export default function OnboardingScreen() {
                   variant="gradient" size="lg" fullWidth
                   loading={saving}
                   onPress={concluir}
-                  icon={<MaterialCommunityIcons name="check-circle" size={20} color="#fff" />}
+                  icon={<MaterialCommunityIcons name="check-circle" size={20} color={gradientes.sobreBrand} />}
                 />
               ) : (
                 <OlliButton
                   label="Continuar"
                   variant="gradient" size="lg" fullWidth
                   onPress={avancar}
-                  icon={<MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />}
+                  icon={<MaterialCommunityIcons name="arrow-right" size={20} color={gradientes.sobreBrand} />}
                 />
               )}
             </View>
@@ -509,9 +514,11 @@ export default function OnboardingScreen() {
 
 /** Linha de tranquilização (ícone + texto) reutilizada em todas as etapas. */
 function Assure({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.assure}>
-      <MaterialCommunityIcons name={icon} size={15} color={Colors.accentLight} />
+      <MaterialCommunityIcons name={icon} size={15} color={cores.accentLight} />
       <Text style={styles.assureText}>{text}</Text>
     </View>
   );
@@ -522,12 +529,15 @@ function BoasVindas({ onStart, insets }: {
   onStart: () => void;
   insets: { top: number; bottom: number };
 }) {
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
   return (
-    <LinearGradient colors={Gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.wcRoot}>
+    <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.wcRoot}>
       <View style={{ height: insets.top + 10 }} />
       <View style={styles.wcCenter}>
         <OlliMascot size={104} onDark />
-        <Text style={styles.wcHi}>Olá! Eu sou a OLLI 👋</Text>
+        <Text style={[styles.wcHi, { color: gradientes.sobrePrimary }]}>Olá! Eu sou a OLLI 👋</Text>
         <Text style={styles.wcSub}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular, e você organiza a execução em campo até fechar com o recibo — tudo funciona mesmo sem internet.</Text>
         <View style={styles.wcFeatures}>
           <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
@@ -539,7 +549,7 @@ function BoasVindas({ onStart, insets }: {
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>
         <TouchableOpacity style={styles.wcStart} onPress={onStart} activeOpacity={0.9} accessibilityRole="button">
           <Text style={styles.wcStartText}>Começar</Text>
-          <MaterialCommunityIcons name="arrow-right" size={20} color={Colors.primaryDark} />
+          <MaterialCommunityIcons name="arrow-right" size={20} color={cores.primaryDark} />
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -547,66 +557,88 @@ function BoasVindas({ onStart, insets }: {
 }
 
 function WcFeature({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }) {
+  const cores = useCores();
+  const gradientes = useGradientes();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.wcFeat}>
       <View style={styles.wcFeatIcon}>
-        <MaterialCommunityIcons name={icon} size={18} color={Colors.accentLight} />
+        {/* Sobre gradientes.primary (marca, escuro e fixo nos dois modos): o ciano
+            BRILHANTE (accent) é a cor certa. No escuro accent === accentLight: no-op. */}
+        <MaterialCommunityIcons
+          name={icon}
+          size={18}
+          color={cores.accent} // contraste-ok: gradientes.primary #0B6FCE→#042646 (marca, escuro e fixo nos dois modos) — accentLight cairia a 1.03:1 na ponta mais clara (2.45:1)
+        />
       </View>
-      <Text style={styles.wcFeatText}>{text}</Text>
+      <Text style={[styles.wcFeatText, { color: gradientes.sobrePrimary }]}>{text}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
-  // Boas-vindas (protótipo 04)
+  // Boas-vindas (protótipo 04) — vive inteira sobre gradientes.primary
+  // (sempre colorido, nos dois modos), por isso texto/glass ficam fixos aqui,
+  // como no GradientHeader.
   wcRoot: { flex: 1 },
   wcCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
-  wcHi: { fontSize: 26, fontWeight: '800', color: '#fff', marginTop: 22, textAlign: 'center', letterSpacing: 0 },
+  // Cor de texto aplicada inline no ponto de uso (gradientes.sobrePrimary) — StyleSheet
+  // de escopo de módulo não enxerga o tema.
+  wcHi: { fontSize: 26, fontWeight: '800', marginTop: 22, textAlign: 'center', letterSpacing: 0 },
   wcSub: { fontSize: 15, color: 'rgba(255,255,255,0.82)', textAlign: 'center', marginTop: 10, lineHeight: 22 },
   wcFeatures: { alignSelf: 'stretch', marginTop: 28, gap: 12 },
-  wcFeat: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.25)', borderRadius: BorderRadius.md, padding: 12 },
-  wcFeatIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: 'rgba(127,233,245,0.14)', justifyContent: 'center', alignItems: 'center' },
-  wcFeatText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#fff' },
+  // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema
+  // (o branco translúcido do glass em si continua fixo, é o próprio efeito).
+  wcFeat: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.25), borderRadius: BorderRadius.md, padding: 12 },
+  wcFeatIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: comAlfa(c.accentLight, 0.14), justifyContent: 'center', alignItems: 'center' },
+  // Idem: cor aplicada inline (gradientes.sobrePrimary) em WcFeature.
+  wcFeatText: { flex: 1, fontSize: 14, fontWeight: '600' },
   wcFooter: { paddingHorizontal: Spacing.base, paddingTop: 12 },
-  wcStart: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.accentLight, borderRadius: 16, paddingVertical: 16, ...Shadow.glowCyan },
-  wcStartText: { fontSize: 16, fontWeight: '800', color: Colors.primaryDark },
+  wcStart: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.accentLight, borderRadius: 16, paddingVertical: 16, ...sombrasDe(c).glowCyan },
+  wcStartText: { fontSize: 16, fontWeight: '800', color: c.primaryDark },
   header: { paddingHorizontal: Spacing.base, paddingBottom: Spacing.base },
   headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
-  brand: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  // Idem: cor aplicada inline (gradientes.sobreHeader) no ponto de uso.
+  brand: { fontSize: 18, fontWeight: '800' },
   brandSub: { fontSize: 12.5, color: 'rgba(255,255,255,0.78)', marginTop: 2 },
-  skip: { fontSize: 14, fontWeight: '700', color: Colors.accentLight },
+  // Cor aplicada inline (gradientes.sobreHeader) no ponto de uso — mesmo padrão de
+  // `brand`. Era c.accentLight, que no claro escurece e some sobre o header (1.03:1).
+  skip: { fontSize: 14, fontWeight: '700' },
 
-  title: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: 0, marginTop: Spacing.sm },
-  hint: { fontSize: 13.5, color: Colors.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.lg, lineHeight: 19 },
+  // Era '#fff' fixo, mas este título fica sobre o fundo da PÁGINA (c.background),
+  // não sobre o header em gradiente — no claro (padrão do app) ficava ilegível.
+  title: { fontSize: 22, fontWeight: '800', color: c.onSurface, letterSpacing: 0, marginTop: Spacing.sm },
+  hint: { fontSize: 13.5, color: c.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.lg, lineHeight: 19 },
 
-  card: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, ...Shadow.sm },
+  card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, ...sombrasDe(c).sm },
 
   rowFields: { flexDirection: 'row' },
 
-  segLabel: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  segLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
   segRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
-  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surfaceVariant },
-  segChipActive: { backgroundColor: Colors.accentLight, borderColor: Colors.accentLight },
-  segChipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
-  segChipTextActive: { color: '#0A1626' },
+  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
+  segChipActive: { backgroundColor: c.accentLight, borderColor: c.accentLight },
+  segChipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
+  // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
+  segChipTextActive: { color: textoSobre(c.accentLight) },
 
   cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
   cepSpinner: { marginLeft: 10, marginBottom: 14 },
-  cepInfo: { fontSize: 12.5, color: Colors.accentLight, marginTop: 8, fontWeight: '600' },
+  cepInfo: { fontSize: 12.5, color: c.accentLight, marginTop: 8, fontWeight: '600' },
 
   brandPickRow: { flexDirection: 'row', justifyContent: 'center', gap: 24 },
   brandItem: { alignItems: 'center' },
-  imageBox: { width: 130, height: 96, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: Colors.primaryContainer },
+  imageBox: { width: 130, height: 96, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: c.primaryContainer },
   imageFull: { width: '100%', height: '100%' },
-  imageHint: { fontSize: 11, color: Colors.primaryLight, fontWeight: '600', marginTop: 2 },
-  brandLabel: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
+  imageHint: { fontSize: 11, color: c.primaryLight, fontWeight: '600', marginTop: 2 },
+  brandLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
 
   assure: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: Spacing.base, paddingHorizontal: 4 },
-  assureText: { flex: 1, fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18 },
+  assureText: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
 
-  footer: { paddingHorizontal: Spacing.base, paddingTop: 12, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
+  footer: { paddingHorizontal: Spacing.base, paddingTop: 12, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   footerRow: { flexDirection: 'row', alignItems: 'center' },
 });

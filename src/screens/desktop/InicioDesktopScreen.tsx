@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BarChart } from 'react-native-gifted-charts';
 import * as Haptics from 'expo-haptics';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, textoSobre, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { KpiCard } from '../../components/web/KpiCard';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
@@ -80,6 +80,8 @@ function ultimosSeisMeses(): { chave: string; label: string }[] {
 
 export default function InicioDesktopScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const { ehEmpresa, papel, pode, carregando: permCarregando } = usePermissao();
   const { temAcesso } = usePlano();
 
@@ -204,7 +206,7 @@ export default function InicioDesktopScreen() {
             titulo="Minhas OS de hoje"
             valor={carregando ? '—' : String(minhasHoje.length)}
             icone="calendar-today"
-            corIcone={Colors.accent}
+            corIcone={cores.accentLight}
             rodape={minhasHoje.length ? 'toque para abrir' : 'nada agendado para hoje'}
             onPress={irParaOrdens}
           />
@@ -212,7 +214,7 @@ export default function InicioDesktopScreen() {
             titulo="Em execução"
             valor={carregando ? '—' : String(emExecucao.length)}
             icone="progress-wrench"
-            corIcone={Colors.warning}
+            corIcone={cores.warning}
             rodape={emExecucao.length ? 'em andamento agora' : 'nenhuma em andamento'}
             onPress={irParaOrdens}
           />
@@ -220,7 +222,7 @@ export default function InicioDesktopScreen() {
             titulo="Minhas OS abertas"
             valor={carregando ? '—' : String(minhasAbertas.length)}
             icone="clipboard-list-outline"
-            corIcone={Colors.primaryLight}
+            corIcone={cores.primaryLight}
             rodape={`${minhas.length} no total atribuídas a mim`}
             onPress={irParaOrdens}
           />
@@ -251,7 +253,7 @@ export default function InicioDesktopScreen() {
           </View>
           {!carregando && minhasAbertas.length === 0 ? (
             <View style={[styles.cartao, styles.vazioCartao]}>
-              <MaterialCommunityIcons name="clipboard-check-outline" size={30} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="clipboard-check-outline" size={30} color={cores.onSurfaceMuted} />
               <Text style={styles.vazioTitulo}>Nenhuma OS aberta no momento</Text>
               <Text style={styles.vazioSub}>Quando a gestão te atribuir um serviço, ele aparece aqui.</Text>
             </View>
@@ -326,7 +328,7 @@ export default function InicioDesktopScreen() {
       const k = `${d.getFullYear()}-${d.getMonth()}`;
       return k === chave ? s + (r.valorRecebido || 0) : s;
     }, 0);
-    return { value: total, label, frontColor: Colors.accent };
+    return { value: total, label, frontColor: cores.accent };
   });
   const maiorValor = Math.max(1, ...dadosGrafico.map(d => d.value));
 
@@ -350,7 +352,7 @@ export default function InicioDesktopScreen() {
           titulo="Receita do mês"
           valor={carregando ? '—' : formatCurrency(receitaNoMes)}
           icone="cash-multiple"
-          corIcone={Colors.success}
+          corIcone={cores.success}
           rodape={recibosNoMes.length ? `${recibosNoMes.length} pagamento${recibosNoMes.length === 1 ? '' : 's'} recebido${recibosNoMes.length === 1 ? '' : 's'}` : 'nenhum ainda este mês'}
           onPress={irParaRelatorios}
         />
@@ -358,7 +360,7 @@ export default function InicioDesktopScreen() {
           titulo="Em aberto"
           valor={carregando ? '—' : formatCurrency(valorEmAberto)}
           icone="clock-outline"
-          corIcone={Colors.warning}
+          corIcone={cores.warning}
           rodape={`${emAberto.length} orçamento${emAberto.length === 1 ? '' : 's'} enviado${emAberto.length === 1 ? '' : 's'}`}
           onPress={irParaOrcamentos}
         />
@@ -366,7 +368,7 @@ export default function InicioDesktopScreen() {
           titulo="Contas a receber"
           valor={carregando ? '—' : formatCurrency(valorAReceber)}
           icone="cash-clock"
-          corIcone={Colors.accent}
+          corIcone={cores.accentLight}
           rodape={contasAReceber.length ? `${contasAReceber.length} aprovado${contasAReceber.length === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
           onPress={irParaOrcamentos}
         />
@@ -374,7 +376,7 @@ export default function InicioDesktopScreen() {
           titulo="Taxa de aprovação"
           valor={carregando ? '—' : `${taxaAprovacao}%`}
           icone="chart-line"
-          corIcone={Colors.primaryLight}
+          corIcone={cores.primaryLight}
           rodape={enviados.length ? `${aprovados.length}/${enviados.length} enviados` : 'sem envios ainda'}
           onPress={irParaRelatorios}
         />
@@ -387,7 +389,7 @@ export default function InicioDesktopScreen() {
             titulo="OS em andamento"
             valor={carregando ? '—' : String(osEmAndamento.length)}
             icone="clipboard-list-outline"
-            corIcone={Colors.accent}
+            corIcone={cores.accentLight}
             rodape={osEmAndamento.length ? 'toque para gerenciar' : 'nenhuma ativa'}
             onPress={irParaOrdens}
           />
@@ -395,7 +397,7 @@ export default function InicioDesktopScreen() {
             titulo="Em execução agora"
             valor={carregando ? '—' : String(ordens.filter(o => o.status === 'em_execucao').length)}
             icone="progress-wrench"
-            corIcone={Colors.warning}
+            corIcone={cores.warning}
             rodape="serviços na rua"
             onPress={irParaOrdens}
           />
@@ -403,7 +405,7 @@ export default function InicioDesktopScreen() {
             titulo="Concluídas no mês"
             valor={carregando ? '—' : String(ordens.filter(o => o.status === 'concluida' && noMesAtual(o.atualizadoEm)).length)}
             icone="check-decagram-outline"
-            corIcone={Colors.success}
+            corIcone={cores.success}
             rodape="ordens finalizadas"
             onPress={irParaOrdens}
           />
@@ -411,7 +413,7 @@ export default function InicioDesktopScreen() {
             titulo="Clientes ativos"
             valor={carregando ? '—' : String(clientesCount)}
             icone="account-group-outline"
-            corIcone={Colors.primaryLight}
+            corIcone={cores.primaryLight}
           />
         </View>
       )}
@@ -439,11 +441,11 @@ export default function InicioDesktopScreen() {
                 maxValue={maiorValor * 1.15}
                 yAxisThickness={0}
                 xAxisThickness={1}
-                xAxisColor={Colors.outline}
-                rulesColor={Colors.outline}
+                xAxisColor={cores.outline}
+                rulesColor={cores.outline}
                 rulesType="dashed"
-                yAxisTextStyle={{ color: Colors.onSurfaceMuted, fontSize: 10 }}
-                xAxisLabelTextStyle={{ color: Colors.onSurfaceVariant, fontSize: 11 }}
+                yAxisTextStyle={{ color: cores.onSurfaceMuted, fontSize: 10 }}
+                xAxisLabelTextStyle={{ color: cores.onSurfaceVariant, fontSize: 11 }}
                 yAxisLabelWidth={44}
                 formatYLabel={(v: string) => {
                   const n = Number(v);
@@ -488,7 +490,11 @@ export default function InicioDesktopScreen() {
                       <Text style={styles.radarMeta}>há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'} sem contato</Text>
                     </View>
                     <OlliPressable style={styles.radarBtn} onPress={() => chamarNoWhatsApp(item)} haptic={false}>
-                      <MaterialCommunityIcons name="whatsapp" size={15} color="#0A1626" />
+                      <MaterialCommunityIcons
+                        name="whatsapp"
+                        size={15}
+                        color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                      />
                     </OlliPressable>
                   </View>
                 ))}
@@ -509,7 +515,7 @@ export default function InicioDesktopScreen() {
           </View>
           {!carregando && osPorTecnico.length === 0 ? (
             <View style={[styles.cartao, styles.vazioCartao]}>
-              <MaterialCommunityIcons name="clipboard-check-outline" size={30} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="clipboard-check-outline" size={30} color={cores.onSurfaceMuted} />
               <Text style={styles.vazioTitulo}>Nenhuma OS em andamento</Text>
               <Text style={styles.vazioSub}>Gere uma OS a partir de um orçamento aprovado para começar.</Text>
             </View>
@@ -521,7 +527,7 @@ export default function InicioDesktopScreen() {
                     <MaterialCommunityIcons
                       name={linha.chave === '__sem__' ? 'account-question-outline' : 'account-hard-hat'}
                       size={16}
-                      color={Colors.accentLight}
+                      color={cores.accentLight}
                     />
                   </View>
                   <Text style={styles.tecnicoNome} numberOfLines={1}>{linha.nome}</Text>
@@ -529,7 +535,7 @@ export default function InicioDesktopScreen() {
                     <Text style={styles.tecnicoContagemTexto}>{linha.total}</Text>
                     <Text style={styles.tecnicoContagemLabel}>OS</Text>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" size={18} color={Colors.onSurfaceMuted} />
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
                 </OlliPressable>
               ))}
             </View>
@@ -541,14 +547,14 @@ export default function InicioDesktopScreen() {
       {podeValores && !temAcesso('relatorios') && (
         <OlliPressable style={styles.gateCartao} onPress={() => nav.navigate('Planos')} haptic={false}>
           <View style={styles.gateIcone}>
-            <MaterialCommunityIcons name="chart-box-outline" size={20} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="chart-box-outline" size={20} color={cores.accentLight} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.gateTitulo}>Relatórios avançados</Text>
             <Text style={styles.gateSub}>Desbloqueie margem por serviço, ranking de clientes e evolução por período.</Text>
           </View>
           <View style={styles.gateBadge}>
-            <MaterialCommunityIcons name="lock-outline" size={12} color="#0A1626" />
+            <MaterialCommunityIcons name="lock-outline" size={12} color={textoSobre(cores.accentLight)} />
             <Text style={styles.gateBadgeTexto}>PRO</Text>
           </View>
         </OlliPressable>
@@ -591,6 +597,8 @@ function agruparOSPorTecnico(ordens: OrdemServico[]): LinhaTecnico[] {
 }
 
 function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irParaAgenda: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={{ marginTop: 10, gap: 4 }}>
       <Text style={styles.visitaQuando}>{quandoLabel(proxima.inicio)}</Text>
@@ -600,14 +608,14 @@ function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irPara
       </Text>
       {proxima.endereco ? (
         <View style={styles.visitaEndereco}>
-          <MaterialCommunityIcons name="map-marker" size={13} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="map-marker" size={13} color={cores.accentLight} />
           <Text style={styles.visitaEnderecoTexto} numberOfLines={1}>{proxima.endereco}</Text>
         </View>
       ) : null}
       <View style={styles.visitaAcoes}>
         {proxima.endereco ? (
           <OlliPressable style={styles.visitaBtn} onPress={() => abrirMapa(proxima.endereco)} haptic={false}>
-            <MaterialCommunityIcons name="navigation-variant" size={14} color="#0A1626" />
+            <MaterialCommunityIcons name="navigation-variant" size={14} color={textoSobre(cores.accentLight)} />
             <Text style={styles.visitaBtnTexto}>Ver no mapa</Text>
           </OlliPressable>
         ) : null}
@@ -620,18 +628,20 @@ function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irPara
 }
 
 function VazioAgenda({ irParaAgenda }: { irParaAgenda: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={{ marginTop: 10 }}>
       <Text style={styles.visitaVazioTexto}>Nenhuma visita agendada.</Text>
       <OlliPressable style={[styles.visitaBtn, { alignSelf: 'flex-start', marginTop: 10 }]} onPress={irParaAgenda} haptic={false}>
-        <MaterialCommunityIcons name="calendar-plus" size={14} color="#0A1626" />
+        <MaterialCommunityIcons name="calendar-plus" size={14} color={textoSobre(cores.accentLight)} />
         <Text style={styles.visitaBtnTexto}>Abrir agenda</Text>
       </OlliPressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -649,10 +659,10 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   cartao: {
-    backgroundColor: Colors.surface,
+    backgroundColor: c.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.outline,
+    borderColor: c.outline,
     padding: Spacing.lg,
   },
   cartaoGrafico: {
@@ -664,7 +674,7 @@ const styles = StyleSheet.create({
   },
   cartaoTitulo: {
     ...Typography.label,
-    color: Colors.onSurfaceVariant,
+    color: c.onSurfaceVariant,
     textTransform: 'uppercase',
   },
   graficoWrap: {
@@ -673,53 +683,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  visitaQuando: { ...Typography.label, color: Colors.accentLight },
-  visitaCliente: { ...Typography.h4, color: Colors.onSurface, marginTop: 2 },
-  visitaTipo: { ...Typography.caption, color: Colors.onSurfaceVariant, marginTop: 2 },
+  visitaQuando: { ...Typography.label, color: c.accentLight },
+  visitaCliente: { ...Typography.h4, color: c.onSurface, marginTop: 2 },
+  visitaTipo: { ...Typography.caption, color: c.onSurfaceVariant, marginTop: 2 },
   visitaEndereco: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  visitaEnderecoTexto: { ...Typography.caption, color: Colors.onSurfaceVariant, flex: 1 },
+  visitaEnderecoTexto: { ...Typography.caption, color: c.onSurfaceVariant, flex: 1 },
   visitaAcoes: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
-  visitaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 9 },
-  visitaBtnTexto: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' },
-  visitaBtnGhost: { borderWidth: 1, borderColor: Colors.strokeGlow, backgroundColor: Colors.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 9 },
-  visitaBtnGhostTexto: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
-  visitaVazioTexto: { ...Typography.body, color: Colors.onSurfaceVariant, marginTop: 10 },
+  visitaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 9 },
+  visitaBtnTexto: { fontSize: 12.5, fontWeight: '800', color: textoSobre(c.accentLight) },
+  visitaBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 9 },
+  visitaBtnGhostTexto: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  visitaVazioTexto: { ...Typography.body, color: c.onSurfaceVariant, marginTop: 10 },
 
-  radarLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.outline, paddingTop: Spacing.sm },
-  radarNome: { ...Typography.bodySmall, color: Colors.onSurface, fontWeight: '700' },
-  radarMeta: { ...Typography.caption, color: Colors.onSurfaceVariant, marginTop: 1 },
-  radarBtn: { width: 30, height: 30, borderRadius: BorderRadius.full, backgroundColor: Colors.whatsapp, alignItems: 'center', justifyContent: 'center' },
+  radarLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderTopWidth: 1, borderTopColor: c.outline, paddingTop: Spacing.sm },
+  radarNome: { ...Typography.bodySmall, color: c.onSurface, fontWeight: '700' },
+  radarMeta: { ...Typography.caption, color: c.onSurfaceVariant, marginTop: 1 },
+  radarBtn: { width: 30, height: 30, borderRadius: BorderRadius.full, backgroundColor: c.whatsapp, alignItems: 'center', justifyContent: 'center' },
 
   // OS por técnico
-  tecnicoLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.outline, paddingTop: Spacing.sm, marginTop: 0 },
-  tecnicoAvatar: { width: 32, height: 32, borderRadius: BorderRadius.full, backgroundColor: Colors.accentContainer, alignItems: 'center', justifyContent: 'center' },
-  tecnicoNome: { ...Typography.bodySmall, color: Colors.onSurface, fontWeight: '700', flex: 1 },
+  tecnicoLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderTopWidth: 1, borderTopColor: c.outline, paddingTop: Spacing.sm, marginTop: 0 },
+  tecnicoAvatar: { width: 32, height: 32, borderRadius: BorderRadius.full, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  tecnicoNome: { ...Typography.bodySmall, color: c.onSurface, fontWeight: '700', flex: 1 },
   tecnicoContagem: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  tecnicoContagemTexto: { ...Typography.h4, color: Colors.accentLight },
-  tecnicoContagemLabel: { ...Typography.caption, color: Colors.onSurfaceMuted },
+  tecnicoContagemTexto: { ...Typography.h4, color: c.accentLight },
+  tecnicoContagemLabel: { ...Typography.caption, color: c.onSurfaceMuted },
 
   // status de OS (badge inline no dashboard do técnico)
   osBadge: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
   osBadgeTexto: { fontSize: 11.5, fontWeight: '800' },
 
   // gate PRO
-  gateCartao: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.strokeGlow, padding: Spacing.lg, marginBottom: Spacing.lg },
-  gateIcone: { width: 40, height: 40, borderRadius: BorderRadius.md, backgroundColor: Colors.accentContainer, alignItems: 'center', justifyContent: 'center' },
-  gateTitulo: { ...Typography.h4, color: Colors.onSurface },
-  gateSub: { ...Typography.caption, color: Colors.onSurfaceVariant, marginTop: 2 },
-  gateBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 5 },
-  gateBadgeTexto: { fontSize: 11, fontWeight: '900', color: '#0A1626', letterSpacing: 0.5 },
+  gateCartao: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.lg, marginBottom: Spacing.lg },
+  gateIcone: { width: 40, height: 40, borderRadius: BorderRadius.md, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  gateTitulo: { ...Typography.h4, color: c.onSurface },
+  gateSub: { ...Typography.caption, color: c.onSurfaceVariant, marginTop: 2 },
+  gateBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 5 },
+  gateBadgeTexto: { fontSize: 11, fontWeight: '900', color: textoSobre(c.accentLight), letterSpacing: 0.5 },
 
   // estados vazios
   vazioCartao: { alignItems: 'center', gap: 6, paddingVertical: Spacing.xl },
-  vazioTitulo: { ...Typography.h4, color: Colors.onSurface, marginTop: 4 },
-  vazioSub: { ...Typography.caption, color: Colors.onSurfaceVariant, textAlign: 'center' },
+  vazioTitulo: { ...Typography.h4, color: c.onSurface, marginTop: 4 },
+  vazioSub: { ...Typography.caption, color: c.onSurfaceVariant, textAlign: 'center' },
 
   secaoTabela: { gap: Spacing.sm, marginBottom: Spacing.lg },
   secaoTabelaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  secaoTabelaTitulo: { ...Typography.h4, color: Colors.onSurface },
-  verTodos: { ...Typography.bodySmall, color: Colors.accent, fontWeight: '700' },
+  secaoTabelaTitulo: { ...Typography.h4, color: c.onSurface },
+  verTodos: { ...Typography.bodySmall, color: c.accentLight, fontWeight: '700' },
 
-  celulaTexto: { ...Typography.bodySmall, color: Colors.onSurface },
-  celulaValor: { ...Typography.bodySmall, color: Colors.accent, fontWeight: '700' },
+  celulaTexto: { ...Typography.bodySmall, color: c.onSurface },
+  celulaValor: { ...Typography.bodySmall, color: c.accentLight, fontWeight: '700' },
 });

@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -26,27 +26,29 @@ import { goBackOrHome } from '../navigation/safeBack';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** Cor da severidade da falha. */
-function sevColor(s: string): string {
+function sevColor(s: string, c: Cores): string {
   const v = (s || '').toLowerCase();
-  if (v.startsWith('crít') || v.startsWith('crit')) return Colors.danger;
-  if (v.startsWith('alta')) return Colors.danger;
-  if (v.startsWith('méd') || v.startsWith('med')) return Colors.warning;
-  return Colors.primaryLight; // Info / desconhecido
+  if (v.startsWith('crít') || v.startsWith('crit')) return c.danger;
+  if (v.startsWith('alta')) return c.danger;
+  if (v.startsWith('méd') || v.startsWith('med')) return c.warning;
+  return c.primaryLight; // Info / desconhecido
 }
 
 /** Chips de severidade — valores exatamente como gravados na base (SQL casa por igualdade). */
 const SEVERIDADES = ['Crítica', 'Alta', 'Média', 'Info'] as const;
 
 /** Cor do nível de confiança da fonte. */
-function confColor(c: string): string {
-  const v = (c || '').toLowerCase();
-  if (v.startsWith('baix')) return Colors.danger;
-  if (v.startsWith('méd') || v.startsWith('med')) return Colors.warning;
-  return Colors.success; // Alta / Média-Alta
+function confColor(conf: string, c: Cores): string {
+  const v = (conf || '').toLowerCase();
+  if (v.startsWith('baix')) return c.danger;
+  if (v.startsWith('méd') || v.startsWith('med')) return c.warning;
+  return c.success; // Alta / Média-Alta
 }
 
 export default function CodigosErroScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [marcas, setMarcas] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [marca, setMarca] = useState<string | null>(null);
@@ -163,25 +165,25 @@ export default function CodigosErroScreen() {
         subtitle={total ? `${total} códigos de erro · ${marcas.length} marcas` : 'Códigos de erro'}
         right={
           <TouchableOpacity style={styles.olliHeaderBtn} onPress={() => pedirDiagnostico({})} activeOpacity={0.85}>
-            <MaterialCommunityIcons name="robot-happy-outline" size={16} color={Colors.accentLight} />
+            <MaterialCommunityIcons name="robot-happy-outline" size={16} color={cores.accentLight} />
             <Text style={styles.olliHeaderText}>OLLI</Text>
           </TouchableOpacity>
         }
       >
         <View style={styles.searchBar}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} />
           <TextInput
             style={styles.searchInput}
             placeholder='Código, marca ou sintoma (ex: "E4", "LED piscando")'
             value={query}
             onChangeText={setQuery}
-            placeholderTextColor={Colors.onSurfaceMuted}
+            placeholderTextColor={cores.onSurfaceMuted}
             autoCapitalize="characters"
             autoCorrect={false}
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="close-circle" size={18} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -189,7 +191,7 @@ export default function CodigosErroScreen() {
 
       {/* REGRA DE OURO — sempre visível (feature + blindagem jurídica) */}
       <View style={styles.ouro}>
-        <MaterialCommunityIcons name="shield-alert-outline" size={16} color={Colors.warning} />
+        <MaterialCommunityIcons name="shield-alert-outline" size={16} color={cores.warning} />
         <Text style={styles.ouroText}>
           Regra de ouro: peça <Text style={styles.ouroBold}>marca + modelo</Text>, veja a confiança e
           <Text style={styles.ouroBold}> nunca troque a placa sem testar</Text>. Código genérico não é diagnóstico.
@@ -218,19 +220,19 @@ export default function CodigosErroScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
           {SEVERIDADES.map(s => {
             const active = severidade === s;
-            const cor = sevColor(s);
+            const cor = sevColor(s, cores);
             return (
               <TouchableOpacity
                 key={s}
                 style={[
                   styles.sevChip,
-                  { borderColor: active ? cor : Colors.outline, backgroundColor: active ? cor + '22' : Colors.surface },
+                  { borderColor: active ? cor : cores.outline, backgroundColor: active ? cor + '22' : cores.surface },
                 ]}
                 onPress={() => pickSeveridade(s)}
                 activeOpacity={0.85}
               >
                 <View style={[styles.sevDot, { backgroundColor: cor }]} />
-                <Text style={[styles.chipText, { color: active ? cor : Colors.onSurfaceVariant }]}>{s}</Text>
+                <Text style={[styles.chipText, { color: active ? cor : cores.onSurfaceVariant }]}>{s}</Text>
               </TouchableOpacity>
             );
           })}
@@ -254,25 +256,25 @@ export default function CodigosErroScreen() {
                 <Text style={styles.cardFalha} numberOfLines={2}>{c.falha || 'Falha não descrita'}</Text>
                 <View style={styles.badgesRow}>
                   {!!c.severidade && (
-                    <View style={[styles.badge, { backgroundColor: sevColor(c.severidade) + '22' }]}>
-                      <Text style={[styles.badgeText, { color: sevColor(c.severidade) }]}>{c.severidade}</Text>
+                    <View style={[styles.badge, { backgroundColor: sevColor(c.severidade, cores) + '22' }]}>
+                      <Text style={[styles.badgeText, { color: sevColor(c.severidade, cores) }]}>{c.severidade}</Text>
                     </View>
                   )}
                   {!!c.confianca && (
-                    <View style={[styles.badge, { backgroundColor: confColor(c.confianca) + '22' }]}>
-                      <MaterialCommunityIcons name="shield-check" size={11} color={confColor(c.confianca)} />
-                      <Text style={[styles.badgeText, { color: confColor(c.confianca) }]}>{c.confianca}</Text>
+                    <View style={[styles.badge, { backgroundColor: confColor(c.confianca, cores) + '22' }]}>
+                      <MaterialCommunityIcons name="shield-check" size={11} color={confColor(c.confianca, cores)} />
+                      <Text style={[styles.badgeText, { color: confColor(c.confianca, cores) }]}>{c.confianca}</Text>
                     </View>
                   )}
                 </View>
                 {!!c.acao && (
                   <View style={styles.acaoRow}>
-                    <MaterialCommunityIcons name="hand-pointing-right" size={13} color={Colors.accentLight} />
+                    <MaterialCommunityIcons name="hand-pointing-right" size={13} color={cores.accentLight} />
                     <Text style={styles.acaoText} numberOfLines={1}>{c.acao}</Text>
                   </View>
                 )}
               </View>
-              <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           </AnimatedEntrance>
         )}
@@ -283,17 +285,17 @@ export default function CodigosErroScreen() {
             </View>
           ) : erroBusca ? (
             <View style={styles.noResult}>
-              <MaterialCommunityIcons name="database-alert-outline" size={44} color={Colors.danger} />
+              <MaterialCommunityIcons name="database-alert-outline" size={44} color={cores.danger} />
               <Text style={styles.noResultTitle}>Não consegui buscar agora</Text>
               <Text style={styles.noResultSub}>Deu um erro lendo a base local. Tente de novo.</Text>
-              <OlliButton label="Tentar de novo" variant="outline" size="md" onPress={executarBusca} icon={<MaterialCommunityIcons name="refresh" size={18} color={Colors.primary} />} style={{ marginTop: 14 }} />
+              <OlliButton label="Tentar de novo" variant="outline" size="md" onPress={executarBusca} icon={<MaterialCommunityIcons name="refresh" size={18} color={cores.primary} />} style={{ marginTop: 14 }} />
             </View>
           ) : buscando ? (
             <View style={styles.noResult}>
-              <MaterialCommunityIcons name="magnify-close" size={44} color={Colors.onSurfaceMuted} />
+              <MaterialCommunityIcons name="magnify-close" size={44} color={cores.onSurfaceMuted} />
               <Text style={styles.noResultTitle}>Nenhum código encontrado</Text>
               <Text style={styles.noResultSub}>Tente outra marca, o código exato ou descreva o sintoma.</Text>
-              <OlliButton label="Não achei meu erro" variant="outline" size="md" onPress={abrirNaoAchei} icon={<MaterialCommunityIcons name="help-circle-outline" size={18} color={Colors.primary} />} style={{ marginTop: 14 }} />
+              <OlliButton label="Não achei meu erro" variant="outline" size="md" onPress={abrirNaoAchei} icon={<MaterialCommunityIcons name="help-circle-outline" size={18} color={cores.primary} />} style={{ marginTop: 14 }} />
               {query.trim().length > 0 && (
                 <OlliButton
                   label="Perguntar pra OLLI mesmo assim"
@@ -318,7 +320,7 @@ export default function CodigosErroScreen() {
       {/* botão flutuante "não achei" quando há busca ativa */}
       {buscando && results.length > 0 && (
         <TouchableOpacity style={styles.naoAcheiFab} onPress={abrirNaoAchei} activeOpacity={0.9}>
-          <MaterialCommunityIcons name="help-circle-outline" size={16} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="help-circle-outline" size={16} color={cores.accentLight} />
           <Text style={styles.naoAcheiFabText}>Não achei meu erro</Text>
         </TouchableOpacity>
       )}
@@ -333,7 +335,7 @@ export default function CodigosErroScreen() {
                 <Text style={styles.modalBrand}>{[selected.marca, selected.familia].filter(Boolean).join(' · ')}</Text>
               </View>
               <TouchableOpacity onPress={() => setSelected(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} />
+                <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
 
@@ -342,15 +344,15 @@ export default function CodigosErroScreen() {
 
               <View style={styles.detBadges}>
                 {!!selected.severidade && (
-                  <View style={[styles.badge, { backgroundColor: sevColor(selected.severidade) + '22' }]}>
-                    <MaterialCommunityIcons name="alert-outline" size={12} color={sevColor(selected.severidade)} />
-                    <Text style={[styles.badgeText, { color: sevColor(selected.severidade) }]}>Severidade {selected.severidade}</Text>
+                  <View style={[styles.badge, { backgroundColor: sevColor(selected.severidade, cores) + '22' }]}>
+                    <MaterialCommunityIcons name="alert-outline" size={12} color={sevColor(selected.severidade, cores)} />
+                    <Text style={[styles.badgeText, { color: sevColor(selected.severidade, cores) }]}>Severidade {selected.severidade}</Text>
                   </View>
                 )}
                 {!!selected.confianca && (
-                  <View style={[styles.badge, { backgroundColor: confColor(selected.confianca) + '22' }]}>
-                    <MaterialCommunityIcons name="shield-check" size={12} color={confColor(selected.confianca)} />
-                    <Text style={[styles.badgeText, { color: confColor(selected.confianca) }]}>Confiança {selected.confianca}</Text>
+                  <View style={[styles.badge, { backgroundColor: confColor(selected.confianca, cores) + '22' }]}>
+                    <MaterialCommunityIcons name="shield-check" size={12} color={confColor(selected.confianca, cores)} />
+                    <Text style={[styles.badgeText, { color: confColor(selected.confianca, cores) }]}>Confiança {selected.confianca}</Text>
                   </View>
                 )}
               </View>
@@ -377,7 +379,7 @@ export default function CodigosErroScreen() {
               {/* Regra de ouro / "não faça ainda" */}
               <View style={styles.warnBox}>
                 <View style={styles.warnHead}>
-                  <MaterialCommunityIcons name="alert-octagon-outline" size={18} color={Colors.warning} />
+                  <MaterialCommunityIcons name="alert-octagon-outline" size={18} color={cores.warning} />
                   <Text style={styles.warnTitle}>Antes de trocar a placa</Text>
                 </View>
                 <Text style={styles.warnText}>
@@ -392,7 +394,7 @@ export default function CodigosErroScreen() {
 
               {!!selected.url && (
                 <TouchableOpacity style={styles.fonteBtn} onPress={() => Linking.openURL(selected.url).catch(() => Alert.alert('Link', 'Não consegui abrir a fonte.'))} activeOpacity={0.85}>
-                  <MaterialCommunityIcons name="open-in-new" size={16} color={Colors.accent} />
+                  <MaterialCommunityIcons name="open-in-new" size={16} color={cores.accentLight} />
                   <Text style={styles.fonteText} numberOfLines={1}>Fonte auditável{selected.fonteId ? ` (${selected.fonteId})` : ''}</Text>
                 </TouchableOpacity>
               )}
@@ -403,12 +405,12 @@ export default function CodigosErroScreen() {
                 activeOpacity={0.85}
                 onPress={() => pedirDiagnostico({ marca: selected.marca, codigo: selected.codigo, sintoma: selected.falha })}
               >
-                <MaterialCommunityIcons name="robot-happy-outline" size={22} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="robot-happy-outline" size={22} color={cores.accentLight} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.olliTitle}>Perguntar pra OLLI</Text>
                   <Text style={styles.olliText}>resposta com citação de manual e página — testes em ordem, o que não fazer ainda e mensagem pro cliente.</Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={22} color={Colors.accentLight} />
+                <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
               </TouchableOpacity>
 
               {/* CTA — transforma o diagnóstico em orçamento (ciclo do dinheiro) */}
@@ -453,11 +455,13 @@ export default function CodigosErroScreen() {
 }
 
 function Section({ icon, title, text, accent }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; text: string; accent?: boolean }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={[styles.section, accent && styles.sectionAccent]}>
       <View style={styles.sectionHead}>
-        <MaterialCommunityIcons name={icon} size={16} color={accent ? Colors.accentLight : Colors.onSurfaceVariant} />
-        <Text style={[styles.sectionTitle, accent && { color: Colors.accentLight }]}>{title}</Text>
+        <MaterialCommunityIcons name={icon} size={16} color={accent ? cores.accentLight : cores.onSurfaceVariant} />
+        <Text style={[styles.sectionTitle, accent && { color: cores.accentLight }]}>{title}</Text>
       </View>
       <Text style={styles.sectionText}>{text}</Text>
     </View>
@@ -465,9 +469,11 @@ function Section({ icon, title, text, accent }: { icon: keyof typeof MaterialCom
 }
 
 function Meta({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.meta}>
-      <MaterialCommunityIcons name={icon} size={14} color={Colors.onSurfaceMuted} />
+      <MaterialCommunityIcons name={icon} size={14} color={cores.onSurfaceMuted} />
       <View style={{ marginLeft: 8, flex: 1 }}>
         <Text style={styles.metaLabel}>{label}</Text>
         <Text style={styles.metaValue}>{value}</Text>
@@ -476,84 +482,92 @@ function Meta({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcon
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   olliHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 7 },
-  olliHeaderText: { fontSize: 12.5, fontWeight: '800', color: Colors.accentLight },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: Colors.outline },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+  olliHeaderText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
 
+  // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   ouro: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(247,178,59,0.10)', borderBottomWidth: 1, borderBottomColor: 'rgba(247,178,59,0.22)', paddingHorizontal: Spacing.base, paddingVertical: 10 },
-  ouroText: { flex: 1, fontSize: 11.5, lineHeight: 16, color: Colors.onSurfaceVariant },
-  ouroBold: { fontWeight: '800', color: Colors.onSurface },
+  ouroText: { flex: 1, fontSize: 11.5, lineHeight: 16, color: c.onSurfaceVariant },
+  ouroBold: { fontWeight: '800', color: c.onSurface },
 
-  chipsWrap: { borderBottomWidth: 1, borderBottomColor: Colors.outline },
+  chipsWrap: { borderBottomWidth: 1, borderBottomColor: c.outline },
   chipsRow: { paddingHorizontal: Spacing.base, paddingVertical: 10, gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline, backgroundColor: Colors.surface },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
-  chipTextActive: { color: '#fff' },
+  chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surface },
+  chipActive: { backgroundColor: c.primary, borderColor: c.primary },
+  chipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
+  chipTextActive: { color: c.onPrimary },
   sevChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: BorderRadius.full, borderWidth: 1.5 },
   sevDot: { width: 7, height: 7, borderRadius: 4 },
 
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.outline, ...Shadow.sm },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
+  // Azul fixo (base da marca padrão, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   codeBox: { minWidth: 58, maxWidth: 96, paddingHorizontal: 10, paddingVertical: 10, borderRadius: BorderRadius.md, backgroundColor: 'rgba(11,111,206,0.18)', alignItems: 'center', justifyContent: 'center' },
-  codeText: { fontSize: 16, fontWeight: '800', color: Colors.accentLight, letterSpacing: 0.5 },
-  cardMarca: { fontSize: 11.5, fontWeight: '700', color: Colors.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
-  cardFalha: { fontSize: 14.5, fontWeight: '700', color: Colors.onSurface, marginTop: 2 },
+  codeText: { fontSize: 16, fontWeight: '800', color: c.accentLight, letterSpacing: 0.5 },
+  cardMarca: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  cardFalha: { fontSize: 14.5, fontWeight: '700', color: c.onSurface, marginTop: 2 },
   badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
   badgeText: { fontSize: 11, fontWeight: '800' },
   acaoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  acaoText: { flex: 1, fontSize: 12, color: Colors.accentLight, fontWeight: '600' },
+  acaoText: { flex: 1, fontSize: 12, color: c.accentLight, fontWeight: '600' },
 
-  skeletonCard: { height: 78, borderRadius: BorderRadius.lg, backgroundColor: Colors.surfaceVariant, borderWidth: 1, borderColor: Colors.outline, opacity: 0.6 },
+  skeletonCard: { height: 78, borderRadius: BorderRadius.lg, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline, opacity: 0.6 },
 
   noResult: { alignItems: 'center', paddingTop: 40, paddingHorizontal: 24 },
-  noResultTitle: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, marginTop: 10 },
-  noResultSub: { fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 19 },
+  noResultTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: 10 },
+  noResultSub: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 19 },
 
-  naoAcheiFab: { position: 'absolute', alignSelf: 'center', bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: Colors.surfaceElevated, borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 11, ...Shadow.lg },
-  naoAcheiFabText: { fontSize: 13, fontWeight: '800', color: Colors.accentLight },
+  naoAcheiFab: { position: 'absolute', alignSelf: 'center', bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.surfaceElevated, borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 11, ...sombrasDe(c).lg },
+  naoAcheiFabText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
 
   // detalhe
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalCode: { fontSize: 24, fontWeight: '800', color: Colors.accentLight, letterSpacing: 0.5 },
-  modalBrand: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
-  detFalha: { fontSize: 19, fontWeight: '800', color: Colors.onSurface, lineHeight: 25 },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalCode: { fontSize: 24, fontWeight: '800', color: c.accentLight, letterSpacing: 0.5 },
+  modalBrand: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
+  detFalha: { fontSize: 19, fontWeight: '800', color: c.onSurface, lineHeight: 25 },
   detBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12, marginBottom: 4 },
 
-  section: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, marginTop: 12 },
+  section: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginTop: 12 },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   sectionAccent: { borderColor: 'rgba(52,198,217,0.35)', backgroundColor: 'rgba(52,198,217,0.06)' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 6 },
-  sectionTitle: { fontSize: 12.5, fontWeight: '800', color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sectionText: { fontSize: 14.5, color: Colors.onSurface, lineHeight: 21 },
+  sectionTitle: { fontSize: 12.5, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionText: { fontSize: 14.5, color: c.onSurface, lineHeight: 21 },
 
   metaRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  meta: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, padding: 12 },
-  metaLabel: { fontSize: 10.5, fontWeight: '700', color: Colors.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
-  metaValue: { fontSize: 13.5, fontWeight: '700', color: Colors.onSurface, marginTop: 1 },
+  meta: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, padding: 12 },
+  metaLabel: { fontSize: 10.5, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  metaValue: { fontSize: 13.5, fontWeight: '700', color: c.onSurface, marginTop: 1 },
 
+  // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   warnBox: { backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: 16 },
   warnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  warnTitle: { fontSize: 14, fontWeight: '800', color: Colors.warning },
-  warnText: { fontSize: 13, color: Colors.onSurfaceVariant, lineHeight: 19 },
+  warnTitle: { fontSize: 14, fontWeight: '800', color: c.warning },
+  warnText: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 19 },
 
-  obs: { fontSize: 12.5, fontStyle: 'italic', color: Colors.onSurfaceMuted, marginTop: 14, lineHeight: 18 },
-  fonteBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.outline, paddingHorizontal: 14, paddingVertical: 12, marginTop: 16 },
-  fonteText: { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.accent },
+  obs: { fontSize: 12.5, fontStyle: 'italic', color: c.onSurfaceMuted, marginTop: 14, lineHeight: 18 },
+  fonteBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 14, paddingVertical: 12, marginTop: 16 },
+  fonteText: { flex: 1, fontSize: 13, fontWeight: '700', color: c.accentLight },
 
+  // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   olliBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(127,233,245,0.08)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(127,233,245,0.22)', padding: Spacing.base, marginTop: 16 },
-  olliTitle: { fontSize: 14.5, fontWeight: '800', color: Colors.onSurface, marginBottom: 2 },
-  olliText: { fontSize: 12.5, color: Colors.onSurfaceVariant, lineHeight: 18 },
+  olliTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface, marginBottom: 2 },
+  olliText: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
 
   // sheet "não achei"
   rowFields: { flexDirection: 'row' },
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
+  // padrão de overlay de modal — sem chave "scrim" na paleta).
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 28, maxHeight: '88%' },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.outlineDark, marginBottom: 12 },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: Colors.onSurface },
-  sheetSub: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 3, marginBottom: 14 },
+  sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 28, maxHeight: '88%' },
+  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: 12 },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: c.onSurface },
+  sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 3, marginBottom: 14 },
   sheetActions: { flexDirection: 'row', gap: 10, marginTop: 6 },
 });

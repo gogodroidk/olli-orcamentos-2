@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
@@ -29,6 +29,8 @@ type LinhaCliente = Cliente & { ultimoOrcamentoData?: string };
  */
 export default function ClientesDesktopScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [busca, setBusca] = useState('');
@@ -163,7 +165,7 @@ export default function ClientesDesktopScreen() {
         </View>
       ),
     },
-  ], [nav]);
+  ], [nav, styles]);
 
   return (
     <LayoutDesktop
@@ -178,7 +180,7 @@ export default function ClientesDesktopScreen() {
             accessibilityLabel="Novo cliente"
             style={({ hovered, focused }: PressableWebState) => [styles.botaoNovo, hovered && styles.botaoNovoHover, focused && styles.focoVisivel]}
           >
-            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+            <MaterialCommunityIcons name="plus" size={18} color={cores.onPrimary} />
             <Text style={styles.botaoNovoLabel}>Novo cliente</Text>
           </Pressable>
         </>
@@ -212,6 +214,8 @@ export default function ClientesDesktopScreen() {
 }
 
 function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCommunityIcons.glyphMap; rotulo: string; onPress: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <Pressable
       onPress={onPress}
@@ -220,15 +224,15 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
       style={({ hovered, focused }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover, focused && styles.focoVisivel]}
     >
-      <MaterialCommunityIcons name={icone} size={17} color={Colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={icone} size={17} color={cores.onSurfaceVariant} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const criarEstilos = (c: Cores) => StyleSheet.create({
   focoVisivel: {
     outlineWidth: 2,
-    outlineColor: Colors.accent,
+    outlineColor: c.accent,
     outlineStyle: 'solid',
     outlineOffset: 2,
   } as any,
@@ -236,22 +240,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    backgroundColor: Colors.primary,
+    backgroundColor: c.primary,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
   },
   botaoNovoHover: {
-    backgroundColor: Colors.primaryLight,
+    backgroundColor: c.primaryLight,
   },
   botaoNovoLabel: {
     ...Typography.button,
-    color: '#fff',
+    color: c.onPrimary,
     fontSize: 13,
   },
   celulaTexto: {
     ...Typography.bodySmall,
-    color: Colors.onSurface,
+    color: c.onSurface,
   },
   acoesLinha: {
     flexDirection: 'row',
@@ -265,6 +269,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   acaoIconeHover: {
-    backgroundColor: Colors.surfacePressed,
+    backgroundColor: c.surfacePressed,
   },
 });

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, BorderRadius, Spacing } from '../theme';
+import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../theme';
 import { AnimatedEntrance } from './AnimatedEntrance';
 import { OlliPressable } from './OlliPressable';
 import { estaAtiva, dicaFoiVista, marcarDicaVista } from '../services/onboarding';
@@ -29,6 +29,8 @@ interface Props {
  * dica não deve aparecer, o componente não ocupa espaço nenhum (retorna null).
  */
 export function DicaContextual({ id, texto, icon = 'lightbulb-on-outline', style }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [visivel, setVisivel] = useState(false);
 
   // Reavalia SEMPRE que a tela ganha foco (useFocusEffect), não só no mount: se o
@@ -59,7 +61,7 @@ export function DicaContextual({ id, texto, icon = 'lightbulb-on-outline', style
   return (
     <AnimatedEntrance from="scale" style={style}>
       <View style={styles.card}>
-        <MaterialCommunityIcons name={icon} size={16} color={Colors.accentLight} style={styles.icon} />
+        <MaterialCommunityIcons name={icon} size={16} color={cores.accentLight} style={styles.icon} />
         <Text style={styles.texto}>{texto}</Text>
         <OlliPressable onPress={entendi} haptic={false} style={styles.btn} accessibilityLabel="Entendi, não mostrar esta dica de novo">
           <Text style={styles.btnText}>Entendi</Text>
@@ -69,21 +71,26 @@ export function DicaContextual({ id, texto, icon = 'lightbulb-on-outline', style
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(52,198,217,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(127,233,245,0.30)',
-    borderRadius: BorderRadius.md,
-    paddingVertical: 9,
-    paddingHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
-  },
-  icon: { marginTop: 1 },
-  texto: { flex: 1, fontSize: 12.5, color: Colors.onSurface, lineHeight: 17 },
-  btn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, backgroundColor: 'rgba(127,233,245,0.18)' },
-  btnText: { fontSize: 11.5, fontWeight: '800', color: Colors.accentLight },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      // rgba(52,198,217,0.10) era o accent em baixa opacidade — é exatamente
+      // o que `accentContainer` já representa.
+      backgroundColor: c.accentContainer,
+      borderWidth: 1,
+      // rgba(127,233,245,0.30) era o accentLight legado como borda-brilho —
+      // o mesmo papel de `strokeGlow`.
+      borderColor: c.strokeGlow,
+      borderRadius: BorderRadius.md,
+      paddingVertical: 9,
+      paddingHorizontal: Spacing.md,
+      marginTop: Spacing.sm,
+    },
+    icon: { marginTop: 1 },
+    texto: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 17 },
+    btn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, backgroundColor: c.accentContainer },
+    btnText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
+  });

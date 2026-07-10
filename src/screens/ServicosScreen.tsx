@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -34,6 +34,8 @@ function margemPct(preco?: number, custo?: number): string | null {
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone }: { onDone: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -46,7 +48,7 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.syncPill, { opacity }]}>
-      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={Colors.accentLight} />
+      <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={cores.accentLight} />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
   );
@@ -63,6 +65,8 @@ export default function ServicosScreen() {
 
 function ServicosConteudo() {
   const nav = useNavigation();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const [items, setItems] = useState<ServicoItem[]>([]);
   const [filtered, setFiltered] = useState<ServicoItem[]>([]);
   const [query, setQuery] = useState('');
@@ -147,8 +151,8 @@ function ServicosConteudo() {
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader title="Serviços" subtitle={`${items.length} no catálogo`} onBack={() => goBackOrHome(nav)}>
         <View style={styles.searchBar}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.onSurfaceVariant} />
-          <TextInput style={styles.searchInput} placeholder="Buscar serviço..." value={query} onChangeText={q => { setQuery(q); applyFilter(items, q); }} placeholderTextColor={Colors.onSurfaceMuted} />
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} />
+          <TextInput style={styles.searchInput} placeholder="Buscar serviço..." value={query} onChangeText={q => { setQuery(q); applyFilter(items, q); }} placeholderTextColor={cores.onSurfaceMuted} />
         </View>
       </GradientHeader>
 
@@ -169,12 +173,12 @@ function ServicosConteudo() {
         data={filtered}
         keyExtractor={s => s.id}
         contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
         renderItem={({ item: s, index }) => (
           <AnimatedEntrance index={index}>
             <View style={styles.card}>
               {s.fotoUri ? <Image source={{ uri: s.fotoUri }} style={styles.thumb} /> : (
-                <View style={[styles.thumb, styles.thumbPlaceholder]}><MaterialCommunityIcons name="wrench" size={22} color={Colors.primary} /></View>
+                <View style={[styles.thumb, styles.thumbPlaceholder]}><MaterialCommunityIcons name="wrench" size={22} color={cores.primary} /></View>
               )}
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.name}>{s.nome}</Text>
@@ -187,9 +191,9 @@ function ServicosConteudo() {
                 </View>
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => setEditing({ ...s })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={Colors.primary} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => setEditing({ ...s })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} /></TouchableOpacity>
                 <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${s.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteServico(s.id); load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o serviço agora. Tente novamente.'); } } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={Colors.danger} />
+                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -208,12 +212,12 @@ function ServicosConteudo() {
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editing.id ? 'Editar Serviço' : 'Novo Serviço'}</Text>
-              <TouchableOpacity onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><MaterialCommunityIcons name="close" size={26} color={Colors.onSurface} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><MaterialCommunityIcons name="close" size={26} color={cores.onSurface} /></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <TouchableOpacity style={styles.fotoBtn} onPress={pickFoto} activeOpacity={0.8}>
                 {editing.fotoUri ? <Image source={{ uri: editing.fotoUri }} style={styles.fotoPreview} /> : (
-                  <><MaterialCommunityIcons name="camera-plus-outline" size={30} color={Colors.primary} /><Text style={styles.fotoBtnLabel}>Adicionar foto</Text></>
+                  <><MaterialCommunityIcons name="camera-plus-outline" size={30} color={cores.primary} /><Text style={styles.fotoBtnLabel}>Adicionar foto</Text></>
                 )}
               </TouchableOpacity>
               <OlliInput label="Nome do serviço" required value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: Instalação de ar condicionado" />
@@ -224,13 +228,13 @@ function ServicosConteudo() {
               </View>
               {margemPct(editing.preco, editing.custo) && (
                 <View style={styles.margemBanner}>
-                  <MaterialCommunityIcons name="trending-up" size={18} color={Colors.success} />
+                  <MaterialCommunityIcons name="trending-up" size={18} color={cores.success} />
                   <Text style={styles.margemBannerText}>Margem de {margemPct(editing.preco, editing.custo)} · Lucro {formatCurrency((editing.preco ?? 0) - (editing.custo ?? 0))}</Text>
                 </View>
               )}
               {!editing.preco && (
                 <View style={styles.avisoBanner}>
-                  <MaterialCommunityIcons name="alert-outline" size={18} color={Colors.danger} />
+                  <MaterialCommunityIcons name="alert-outline" size={18} color={cores.danger} />
                   <Text style={styles.avisoBannerText}>Preço zerado — este serviço entrará de graça em qualquer orçamento.</Text>
                 </View>
               )}
@@ -238,7 +242,7 @@ function ServicosConteudo() {
               <View style={styles.unidadesRow}>
                 {UNIDADES.map(u => (
                   <TouchableOpacity key={u} style={[styles.unidade, editing.unidade === u && styles.unidadeActive]} onPress={() => setEditing(p => p ? { ...p, unidade: u } : p)}>
-                    <Text style={[styles.unidadeText, editing.unidade === u && { color: Colors.onSurface }]}>{u}</Text>
+                    <Text style={[styles.unidadeText, editing.unidade === u && { color: cores.onSurface }]}>{u}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -253,44 +257,46 @@ function ServicosConteudo() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
+  // Toast/pill flutuante — convenção de "chip escuro" fixa (snackbar),
+  // independente do tema. Mantido.
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: Colors.strokeGlow,
+    backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
-    ...Shadow.sm,
+    ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: Colors.accentLight },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14 },
-  searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, ...Shadow.sm },
+  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14 },
+  searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, ...sombrasDe(c).sm },
   thumb: { width: 52, height: 52, borderRadius: BorderRadius.md },
-  thumbPlaceholder: { backgroundColor: Colors.primaryContainer, justifyContent: 'center', alignItems: 'center' },
-  name: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  desc: { fontSize: 12, color: Colors.onSurfaceVariant, marginTop: 2 },
+  thumbPlaceholder: { backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  name: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  desc: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   tagsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
-  price: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
-  margemTag: { backgroundColor: Colors.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  margemText: { fontSize: 11, color: Colors.success, fontWeight: '700' },
+  price: { fontSize: 13, color: c.primary, fontWeight: '700' },
+  margemTag: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  margemText: { fontSize: 11, color: c.success, fontWeight: '700' },
   cardActions: { flexDirection: 'row', gap: 16, marginLeft: 8 },
-  fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center', ...Shadow.lg, shadowColor: Colors.primary, shadowOpacity: 0.4 },
-  modal: { flex: 1, backgroundColor: Colors.background },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.outline },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.onSurface },
-  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: Colors.surface, borderTopWidth: 1, borderTopColor: Colors.outline },
-  fotoBtn: { height: 120, borderRadius: BorderRadius.lg, borderWidth: 1.5, borderColor: Colors.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.base, overflow: 'hidden', backgroundColor: Colors.primaryContainer + '40' },
+  fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).lg, shadowColor: c.primary, shadowOpacity: 0.4 },
+  modal: { flex: 1, backgroundColor: c.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
+  modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
+  fotoBtn: { height: 120, borderRadius: BorderRadius.lg, borderWidth: 1.5, borderColor: c.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.base, overflow: 'hidden', backgroundColor: c.primaryContainer + '40' },
   fotoPreview: { width: '100%', height: '100%' },
-  fotoBtnLabel: { fontSize: 13, color: Colors.primary, fontWeight: '700', marginTop: 4 },
-  margemBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.successLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base },
-  margemBannerText: { fontSize: 13, color: Colors.success, fontWeight: '700' },
-  avisoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.danger + '1A', borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base, borderWidth: 1, borderColor: Colors.danger + '40' },
-  avisoBannerText: { fontSize: 13, color: Colors.danger, fontWeight: '700', flex: 1 },
-  unidadeLabel: { fontSize: 13, fontWeight: '600', color: Colors.onSurfaceVariant, marginBottom: 8 },
+  fotoBtnLabel: { fontSize: 13, color: c.primary, fontWeight: '700', marginTop: 4 },
+  margemBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.successLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base },
+  margemBannerText: { fontSize: 13, color: c.success, fontWeight: '700' },
+  avisoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.danger + '1A', borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.danger + '40' },
+  avisoBannerText: { fontSize: 13, color: c.danger, fontWeight: '700', flex: 1 },
+  unidadeLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
   unidadesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.outline },
-  unidadeActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  unidadeText: { fontSize: 13, fontWeight: '700', color: Colors.onSurfaceVariant },
+  unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline },
+  unidadeActive: { backgroundColor: c.primary, borderColor: c.primary },
+  unidadeText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
 });

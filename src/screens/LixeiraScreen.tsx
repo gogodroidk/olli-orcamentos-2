@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -23,18 +23,24 @@ import {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** Cor de destaque por tipo — dá vida ao ícone de cada família na lixeira. */
-const COR_TIPO: Record<TipoLixeira, string> = {
-  cliente: Colors.accent,
-  servico: Colors.primaryLight,
-  produto: '#A78BFA',
-  orcamento: Colors.primary,
-  recibo: Colors.success,
-  modelo: Colors.warning,
-  depoimento: '#F7B23B',
-  agendamento: '#A78BFA',
-  ordem_servico: Colors.accentLight,
-  equipamento: Colors.accent,
-};
+function criarCorTipo(c: Cores): Record<TipoLixeira, string> {
+  return {
+    cliente: c.accent,
+    servico: c.primaryLight,
+    // Lavanda decorativa sem token semântico no tema (não é `plan`/`voice`, que são
+    // um roxo mais saturado) — mantida fixa nos dois modos.
+    produto: '#A78BFA',
+    orcamento: c.primary,
+    recibo: c.success,
+    modelo: c.warning,
+    // Âmbar fixo: precisa continuar distinto de "modelo" (que já usa `c.warning`)
+    // para diferenciar as categorias na lista — não pode virar o mesmo tom.
+    depoimento: '#F7B23B',
+    agendamento: '#A78BFA',
+    ordem_servico: c.accentLight,
+    equipamento: c.accent,
+  };
+}
 
 interface Secao {
   tipo: TipoLixeira;
@@ -44,8 +50,10 @@ interface Secao {
 
 /** Badge do prazo restante até o expurgo (verde → âmbar → vermelho ao vencer). */
 function PrazoBadge({ excluidoEm }: { excluidoEm: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const dias = diasRestantes(excluidoEm);
-  const cor = dias <= 0 ? Colors.danger : dias <= 5 ? Colors.warning : Colors.onSurfaceVariant;
+  const cor = dias <= 0 ? cores.danger : dias <= 5 ? cores.warning : cores.onSurfaceVariant;
   const label = dias <= 0 ? 'Expira em breve' : `Expira em ${dias} dia${dias === 1 ? '' : 's'}`;
   return (
     <View style={[styles.prazoBadge, { borderColor: cor + '55', backgroundColor: cor + '18' }]}>
@@ -57,6 +65,9 @@ function PrazoBadge({ excluidoEm }: { excluidoEm: string }) {
 
 export default function LixeiraScreen() {
   const nav = useNavigation<Nav>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const corTipo = criarCorTipo(cores);
   const [itens, setItens] = useState<ItemLixeira[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -152,7 +163,7 @@ export default function LixeiraScreen() {
   }
 
   const renderItem = ({ item, index }: { item: ItemLixeira; index: number }) => {
-    const cor = COR_TIPO[item.tipo];
+    const cor = corTipo[item.tipo];
     const ocupado = busyId === item.id;
     return (
       <AnimatedEntrance index={index} style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}>
@@ -183,11 +194,11 @@ export default function LixeiraScreen() {
               accessibilityLabel={`Restaurar ${item.titulo}`}
             >
               {ocupado ? (
-                <ActivityIndicator size="small" color={Colors.accentLight} />
+                <ActivityIndicator size="small" color={cores.accentLight} />
               ) : (
                 <>
-                  <MaterialCommunityIcons name="restore" size={16} color={Colors.accentLight} />
-                  <Text style={[styles.actionLabel, { color: Colors.accentLight }]}>Restaurar</Text>
+                  <MaterialCommunityIcons name="restore" size={16} color={cores.accentLight} />
+                  <Text style={[styles.actionLabel, { color: cores.accentLight }]}>Restaurar</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -199,8 +210,8 @@ export default function LixeiraScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Excluir ${item.titulo} definitivamente`}
             >
-              <MaterialCommunityIcons name="delete-forever-outline" size={16} color={Colors.danger} />
-              <Text style={[styles.actionLabel, { color: Colors.danger }]}>Excluir de vez</Text>
+              <MaterialCommunityIcons name="delete-forever-outline" size={16} color={cores.danger} />
+              <Text style={[styles.actionLabel, { color: cores.danger }]}>Excluir de vez</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -232,7 +243,7 @@ export default function LixeiraScreen() {
         }
       >
         <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="information-outline" size={15} color={Colors.accentLight} />
+          <MaterialCommunityIcons name="information-outline" size={15} color={cores.accentLight} />
           <Text style={styles.infoText}>
             Itens excluídos ficam aqui por {DIAS_RETENCAO_LIXEIRA} dias e depois são apagados automaticamente.
           </Text>
@@ -260,14 +271,14 @@ export default function LixeiraScreen() {
               <MaterialCommunityIcons
                 name={TIPO_LIXEIRA_META[(section as Secao).tipo].icone as any}
                 size={15}
-                color={Colors.onSurfaceVariant}
+                color={cores.onSurfaceVariant}
               />
               <Text style={styles.sectionTitle}>{section.title}</Text>
               <Text style={styles.sectionCount}>{(section as Secao).data.length}</Text>
             </View>
           )}
           contentContainerStyle={{ paddingVertical: 10, paddingBottom: 80, flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[Colors.primary]} tintColor={Colors.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
           ListEmptyComponent={
             <EmptyState
               icon="delete-empty-outline"
@@ -281,45 +292,49 @@ export default function LixeiraScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
 
   esvaziarBtn: {
     width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,107,107,0.22)',
-    borderWidth: 1, borderColor: 'rgba(255,107,107,0.4)',
+    // rgba(255,107,107,x) era o danger estático — vira o danger do tema.
+    backgroundColor: comAlfa(c.danger, 0.22),
+    borderWidth: 1, borderColor: comAlfa(c.danger, 0.4),
   },
 
   infoRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(52,198,217,0.10)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.24)',
+    // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
+    backgroundColor: comAlfa(c.accent, 0.10), borderWidth: 1, borderColor: comAlfa(c.accent, 0.24),
     borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 9, marginTop: 14,
   },
-  infoText: { flex: 1, fontSize: 12, color: 'rgba(255,255,255,0.85)', fontWeight: '600', lineHeight: 16 },
+  // rgba(255,255,255,0.85) era texto branco fixo (só existia no escuro); no claro
+  // ficaria ilegível sobre o tint do infoRow — vira onSurfaceVariant do tema.
+  infoText: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, fontWeight: '600', lineHeight: 16 },
 
   skeletonCard: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.base,
   },
 
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: Spacing.base, paddingTop: 12, paddingBottom: 6,
   },
-  sectionTitle: { flex: 1, fontSize: 12.5, fontWeight: '800', color: Colors.onSurfaceVariant, letterSpacing: 0.3, textTransform: 'uppercase' },
-  sectionCount: { fontSize: 12, fontWeight: '800', color: Colors.onSurfaceMuted },
+  sectionTitle: { flex: 1, fontSize: 12.5, fontWeight: '800', color: c.onSurfaceVariant, letterSpacing: 0.3, textTransform: 'uppercase' },
+  sectionCount: { fontSize: 12, fontWeight: '800', color: c.onSurfaceMuted },
 
   card: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.lg,
-    borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, ...Shadow.sm,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start' },
   iconBubble: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: Colors.onSurface },
-  cardSub: { fontSize: 12.5, color: Colors.onSurfaceVariant, marginTop: 2 },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  cardSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  cardMeta: { fontSize: 11.5, color: Colors.onSurfaceMuted },
+  cardMeta: { fontSize: 11.5, color: c.onSurfaceMuted },
 
   prazoBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -327,12 +342,12 @@ const styles = StyleSheet.create({
   },
   prazoText: { fontSize: 10.5, fontWeight: '800' },
 
-  actions: { flexDirection: 'row', gap: 10, borderTopWidth: 1, borderTopColor: Colors.outline, marginTop: 12, paddingTop: 10 },
+  actions: { flexDirection: 'row', gap: 10, borderTopWidth: 1, borderTopColor: c.outline, marginTop: 12, paddingTop: 10 },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 9, borderRadius: BorderRadius.md, borderWidth: 1,
   },
-  restaurarBtn: { backgroundColor: 'rgba(52,198,217,0.10)', borderColor: 'rgba(52,198,217,0.34)' },
-  excluirBtn: { backgroundColor: 'rgba(255,107,107,0.08)', borderColor: 'rgba(255,107,107,0.30)' },
+  restaurarBtn: { backgroundColor: comAlfa(c.accent, 0.10), borderColor: comAlfa(c.accent, 0.34) },
+  excluirBtn: { backgroundColor: comAlfa(c.danger, 0.08), borderColor: comAlfa(c.danger, 0.30) },
   actionLabel: { fontSize: 12.5, fontWeight: '800' },
 });

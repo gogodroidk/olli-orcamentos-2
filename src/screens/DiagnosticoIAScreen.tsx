@@ -6,7 +6,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -28,6 +28,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function DiagnosticoIAScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const p = route.params ?? {};
 
   const [marca, setMarca] = useState(p.marca ?? '');
@@ -158,7 +160,7 @@ export default function DiagnosticoIAScreen() {
         {d && avisoCota && (
           <AnimatedEntrance index={0}>
             <View style={styles.cotaCard}>
-              <MaterialCommunityIcons name="creation" size={18} color={Colors.plan} />
+              <MaterialCommunityIcons name="creation" size={18} color={cores.plan} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.cotaTitulo}>Você usou seus 3 diagnósticos com IA do mês</Text>
                 <Text style={styles.cotaTexto}>
@@ -178,14 +180,14 @@ export default function DiagnosticoIAScreen() {
                   <MaterialCommunityIcons
                     name={res!.fonte === 'base' ? 'database-search-outline' : res!.fonte === 'cache' ? 'lightning-bolt-outline' : 'robot-happy-outline'}
                     size={13}
-                    color={res!.fonte === 'base' ? Colors.warning : Colors.accentLight}
+                    color={res!.fonte === 'base' ? cores.warning : cores.accentLight}
                   />
-                  <Text style={[styles.originText, { color: res!.fonte === 'base' ? Colors.warning : Colors.accentLight }]}>
+                  <Text style={[styles.originText, { color: res!.fonte === 'base' ? cores.warning : cores.accentLight }]}>
                     {res!.fonte === 'base' ? 'Base de códigos' : res!.fonte === 'cache' ? 'Cache' : `OLLI Técnica${res!.modelo ? ` · ${res!.modelo}` : ''}`}
                   </Text>
                 </View>
-                <View style={[styles.confBadge, { backgroundColor: confColor(d.nivelConfianca) + '22' }]}>
-                  <Text style={[styles.confText, { color: confColor(d.nivelConfianca) }]}>Confiança {d.nivelConfianca}</Text>
+                <View style={[styles.confBadge, { backgroundColor: confColor(d.nivelConfianca, cores) + '22' }]}>
+                  <Text style={[styles.confText, { color: confColor(d.nivelConfianca, cores) }]}>Confiança {d.nivelConfianca}</Text>
                 </View>
               </View>
             </AnimatedEntrance>
@@ -193,7 +195,7 @@ export default function DiagnosticoIAScreen() {
             {res!.aviso && (
               <AnimatedEntrance index={1}>
                 <View style={styles.aviso}>
-                  <MaterialCommunityIcons name="information-outline" size={15} color={Colors.warning} />
+                  <MaterialCommunityIcons name="information-outline" size={15} color={cores.warning} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.avisoText}>{res!.aviso}</Text>
                     {falhouIA && (
@@ -203,7 +205,7 @@ export default function DiagnosticoIAScreen() {
                         size="sm"
                         onPress={pedirDiagnostico}
                         haptic={false}
-                        icon={<MaterialCommunityIcons name="refresh" size={15} color={Colors.accentLight} />}
+                        icon={<MaterialCommunityIcons name="refresh" size={15} color={cores.accentLight} />}
                         style={{ marginTop: 10, alignSelf: 'flex-start' }}
                       />
                     )}
@@ -231,7 +233,7 @@ export default function DiagnosticoIAScreen() {
               <AnimatedEntrance index={6}>
                 <View style={styles.warnBox}>
                   <View style={styles.warnHead}>
-                    <MaterialCommunityIcons name="alert-octagon-outline" size={18} color={Colors.warning} />
+                    <MaterialCommunityIcons name="alert-octagon-outline" size={18} color={cores.warning} />
                     <Text style={styles.warnTitle}>Não faça ainda</Text>
                   </View>
                   {d.naoFacaAinda.map((t, i) => <Text key={i} style={styles.warnItem}>• {t}</Text>)}
@@ -273,20 +275,22 @@ export default function DiagnosticoIAScreen() {
   );
 }
 
-function confColor(c: string): string {
-  const v = (c || '').toLowerCase();
-  if (v.startsWith('baix')) return Colors.danger;
-  if (v.startsWith('méd') || v.startsWith('med')) return Colors.warning;
-  return Colors.success;
+function confColor(nivel: string, c: Cores): string {
+  const v = (nivel || '').toLowerCase();
+  if (v.startsWith('baix')) return c.danger;
+  if (v.startsWith('méd') || v.startsWith('med')) return c.warning;
+  return c.success;
 }
 
 function ListSection({ icon, title, items, accent }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; items: string[]; accent?: boolean }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   if (!items || items.length === 0) return null;
   return (
     <View style={[styles.section, accent && styles.sectionAccent]}>
       <View style={styles.sectionHead}>
-        <MaterialCommunityIcons name={icon} size={16} color={accent ? Colors.accentLight : Colors.onSurfaceVariant} />
-        <Text style={[styles.sectionTitle, accent && { color: Colors.accentLight }]}>{title}</Text>
+        <MaterialCommunityIcons name={icon} size={16} color={accent ? cores.accentLight : cores.onSurfaceVariant} />
+        <Text style={[styles.sectionTitle, accent && { color: cores.accentLight }]}>{title}</Text>
       </View>
       {items.map((t, i) => <Text key={i} style={styles.sectionItem}>{/^\s*\d/.test(t) ? '' : '• '}{t}</Text>)}
     </View>
@@ -294,10 +298,12 @@ function ListSection({ icon, title, items, accent }: { icon: keyof typeof Materi
 }
 
 function Block({ icon, title, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; text: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
-        <MaterialCommunityIcons name={icon} size={16} color={Colors.onSurfaceVariant} />
+        <MaterialCommunityIcons name={icon} size={16} color={cores.onSurfaceVariant} />
         <Text style={styles.sectionTitle}>{title}</Text>
       </View>
       <Text style={styles.blockText}>{text}</Text>
@@ -305,41 +311,45 @@ function Block({ icon, title, text }: { icon: keyof typeof MaterialCommunityIcon
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const criarEstilos = (c: Cores) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   rowFields: { flexDirection: 'row' },
-  card: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, borderWidth: 1, borderColor: Colors.outline, ...Shadow.sm },
+  card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
 
   loadingBox: { alignItems: 'center', paddingVertical: 28 },
-  loadingText: { fontSize: 13, color: Colors.onSurfaceVariant, marginTop: 10, textAlign: 'center', paddingHorizontal: 24 },
+  loadingText: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 10, textAlign: 'center', paddingHorizontal: 24 },
 
-  cotaCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: Colors.plan + '14', borderWidth: 1, borderColor: Colors.plan + '33', borderRadius: BorderRadius.md, padding: 12, marginTop: 16 },
-  cotaTitulo: { color: Colors.onSurface, fontWeight: '700', fontSize: 13.5 },
-  cotaTexto: { color: Colors.onSurfaceVariant, fontSize: 12.5, marginTop: 3, lineHeight: 17 },
-  cotaLink: { color: Colors.plan, fontWeight: '700', fontSize: 13, marginTop: 6 },
+  cotaCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.plan + '14', borderWidth: 1, borderColor: c.plan + '33', borderRadius: BorderRadius.md, padding: 12, marginTop: 16 },
+  cotaTitulo: { color: c.onSurface, fontWeight: '700', fontSize: 13.5 },
+  cotaTexto: { color: c.onSurfaceVariant, fontSize: 12.5, marginTop: 3, lineHeight: 17 },
+  cotaLink: { color: c.plan, fontWeight: '700', fontSize: 13, marginTop: 6 },
   originRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 10 },
   originPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, borderWidth: 1 },
+  // Cyan/amarelo fixos (base #7FE9F5 / warning do handoff): decorativos, sem chave semântica exata.
   originIa: { backgroundColor: 'rgba(127,233,245,0.10)', borderColor: 'rgba(127,233,245,0.3)' },
   originBase: { backgroundColor: 'rgba(247,178,59,0.10)', borderColor: 'rgba(247,178,59,0.3)' },
   originText: { fontSize: 11.5, fontWeight: '800' },
   confBadge: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 5 },
   confText: { fontSize: 11.5, fontWeight: '800' },
 
+  // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   aviso: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.25)', borderRadius: BorderRadius.md, padding: 10, marginBottom: 12 },
-  avisoText: { flex: 1, fontSize: 12, color: Colors.onSurfaceVariant, lineHeight: 17 },
+  avisoText: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17 },
 
-  resumo: { fontSize: 18, fontWeight: '800', color: Colors.onSurface, lineHeight: 24 },
-  significado: { fontSize: 14, color: Colors.onSurfaceVariant, lineHeight: 20, marginTop: 4 },
+  resumo: { fontSize: 18, fontWeight: '800', color: c.onSurface, lineHeight: 24 },
+  significado: { fontSize: 14, color: c.onSurfaceVariant, lineHeight: 20, marginTop: 4 },
 
-  section: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.outline, padding: Spacing.base, marginTop: 12 },
+  section: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginTop: 12 },
+  // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   sectionAccent: { borderColor: 'rgba(52,198,217,0.35)', backgroundColor: 'rgba(52,198,217,0.06)' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
-  sectionTitle: { fontSize: 12.5, fontWeight: '800', color: Colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.6 },
-  sectionItem: { fontSize: 14.5, color: Colors.onSurface, lineHeight: 22 },
-  blockText: { fontSize: 14.5, color: Colors.onSurface, lineHeight: 21 },
+  sectionTitle: { fontSize: 12.5, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionItem: { fontSize: 14.5, color: c.onSurface, lineHeight: 22 },
+  blockText: { fontSize: 14.5, color: c.onSurface, lineHeight: 21 },
 
+  // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   warnBox: { backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: 12 },
   warnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  warnTitle: { fontSize: 14, fontWeight: '800', color: Colors.warning },
-  warnItem: { fontSize: 13.5, color: Colors.onSurface, lineHeight: 20 },
+  warnTitle: { fontSize: 14, fontWeight: '800', color: c.warning },
+  warnItem: { fontSize: 13.5, color: c.onSurface, lineHeight: 20 },
 });

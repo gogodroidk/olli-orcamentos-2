@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { Animated, Pressable, StyleProp, StyleSheet, ViewStyle, GestureResponderEvent, Platform } from 'react-native';
+import { Animated, Pressable, StyleProp, StyleSheet, ViewStyle, GestureResponderEvent, Platform, AccessibilityRole, AccessibilityState } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Motion } from '../theme/motion';
 
@@ -14,6 +14,14 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   accessibilityLabel?: string;
+  /** Padrão `'button'`. Um switch, uma aba ou uma amostra selecionável não é botão. */
+  accessibilityRole?: AccessibilityRole;
+  /**
+   * Estado anunciado ao leitor de tela (`selected`, `checked`, `expanded`…). Sem
+   * isto, uma amostra de cor selecionada é indistinguível das outras para quem não
+   * enxerga a borda: a seleção existe só no pixel.
+   */
+  accessibilityState?: AccessibilityState;
   hitSlop?: number | { top?: number; bottom?: number; left?: number; right?: number };
 }
 
@@ -63,6 +71,8 @@ export function OlliPressable({
   style,
   children,
   accessibilityLabel,
+  accessibilityRole = 'button',
+  accessibilityState,
   hitSlop,
 }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -100,8 +110,11 @@ export function OlliPressable({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={disabled}
-      accessibilityRole="button"
+      accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      // `disabled` já vai para o Pressable, mas o leitor de tela lê o ESTADO, não a
+      // prop: sem isto, um botão desabilitado é anunciado como acionável.
+      accessibilityState={{ disabled, ...accessibilityState }}
       hitSlop={hitSlop}
       style={layoutStyle}
     >

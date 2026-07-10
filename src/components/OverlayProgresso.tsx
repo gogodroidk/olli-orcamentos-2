@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Platform, ActivityIndicator } from 'react-native';
-import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Motion } from '../theme/motion';
 import { OlliMascot } from './OlliMascot';
 
@@ -42,6 +42,8 @@ export function OverlayProgresso({
   titulo = 'Gerando seu orçamento...',
   subtitulo = 'Deixando bonito para o cliente...',
 }: Props) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
   const opacity = useRef(new Animated.Value(0)).current;
   const [montado, setMontado] = useState(visible);
   const [msgIndex, setMsgIndex] = useState(-1); // -1 = título/subtítulo originais ainda valem
@@ -104,7 +106,7 @@ export function OverlayProgresso({
         <View style={styles.mascotWrap}>
           <OlliMascot size={56} float pulse />
         </View>
-        <ActivityIndicator size="small" color={Colors.accentLight} style={styles.spinner} />
+        <ActivityIndicator size="small" color={cores.accentLight} style={styles.spinner} />
         <Text style={styles.titulo} numberOfLines={2}>{textoAtual.titulo}</Text>
         {textoAtual.subtitulo ? (
           <Text style={styles.subtitulo} numberOfLines={2}>{textoAtual.subtitulo}</Text>
@@ -114,28 +116,31 @@ export function OverlayProgresso({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: 'rgba(7,17,31,0.86)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-    elevation: 1000,
-  },
-  card: {
-    width: '80%',
-    maxWidth: 320,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.strokeGlow,
-    paddingVertical: Spacing.xl,
-    paddingHorizontal: Spacing.lg,
-    ...Shadow.lg,
-  },
-  mascotWrap: { marginBottom: Spacing.sm },
-  spinner: { marginBottom: Spacing.md },
-  titulo: { fontSize: 16, fontWeight: '800', color: Colors.onSurface, textAlign: 'center' },
-  subtitulo: { fontSize: 13, color: Colors.onSurfaceVariant, textAlign: 'center', marginTop: 6, lineHeight: 18 },
-});
+const criarEstilos = (c: Cores) =>
+  StyleSheet.create({
+    backdrop: {
+      // Véu do modal sempre escuro (ink fixa), não a superfície do tema: é
+      // um scrim de contraste atrás do cartão, igual ao véu do GatePro.
+      backgroundColor: 'rgba(7,17,31,0.86)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      elevation: 1000,
+    },
+    card: {
+      width: '80%',
+      maxWidth: 320,
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      borderRadius: BorderRadius.xl,
+      borderWidth: 1,
+      borderColor: c.strokeGlow,
+      paddingVertical: Spacing.xl,
+      paddingHorizontal: Spacing.lg,
+      ...sombrasDe(c).lg,
+    },
+    mascotWrap: { marginBottom: Spacing.sm },
+    spinner: { marginBottom: Spacing.md },
+    titulo: { fontSize: 16, fontWeight: '800', color: c.onSurface, textAlign: 'center' },
+    subtitulo: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 6, lineHeight: 18 },
+  });
