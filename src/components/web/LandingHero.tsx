@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { AuroraBackground } from '../AuroraBackground';
 import { Spacing, BorderRadius, useCores, useGradientes, sobreSecundario } from '../../theme';
 import { Fonts } from '../../theme/fonts';
 import { OlliMascot } from '../OlliMascot';
@@ -60,9 +61,13 @@ export function LandingHero() {
       end={{ x: 1, y: 1 }}
       style={styles.fundo}
     >
-      {/* brilhos da marca (mesma linguagem do hero mobile) */}
-      <View style={styles.glow1} pointerEvents="none" />
-      <View style={styles.glow2} pointerEvents="none" />
+      {/* Fundo AURORA: orbes da marca derivando devagar atras do conteudo. Substitui
+          os dois glows estaticos — mesmo lugar, agora com vida. Intensidade baixa
+          para nao roubar contraste do texto (que ja e 4.5:1 sobre gradientes.primary). */}
+      <AuroraBackground
+        cores={[cores.accent, cores.accentLight, cores.primaryLight, cores.accent]}
+        intensidade={0.14}
+      />
 
       <View style={styles.conteudo}>
         <View style={styles.marca}>

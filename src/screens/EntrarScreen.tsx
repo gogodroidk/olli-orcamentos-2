@@ -18,6 +18,7 @@ import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
+import { AuroraBackground } from '../components/AuroraBackground';
 import { LandingHero } from '../components/web/LandingHero';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import {
@@ -369,8 +370,13 @@ export default function EntrarScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* HERO / CAPA (~45% da tela) */}
         <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 72 }]}>
-          <View style={styles.glow1} />
-          <View style={styles.glow2} />
+          {/* Fundo AURORA animado (substitui os dois glows estaticos) — primeira
+              tela do app, o "uau" aqui importa. Intensidade baixa: a tagline ja e
+              medida em 4.5:1 sobre este gradiente e nao pode perder contraste. */}
+          <AuroraBackground
+            cores={[cores.accent, cores.accentLight, cores.primaryLight, cores.accent]}
+            intensidade={0.13}
+          />
           <OlliMascot size={88} onDark />
           <Text style={[styles.brand, { color: gradientes.sobrePrimary }]}>OLLI</Text>
           {/* A tagline vive sobre o gradiente da marca, não sobre uma superfície.
