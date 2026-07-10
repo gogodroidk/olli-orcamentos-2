@@ -18,6 +18,7 @@ import {
   CtaFinalLanding,
   FooterLanding,
 } from '../components/web/LandingSecoes';
+import { RevealProvider, Revelar, useRevealScrollHandler } from '../components/Revelar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -66,19 +67,57 @@ export default function LandingScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollConteudo}>
-        <TopoLanding onEntrar={irParaEntrar} onCriarConta={irParaEntrar} />
-        <HeroLanding ehDesktop={ehDesktop} onCriarConta={irParaEntrar} onVerPlanos={irParaPlanos} />
-        <PilaresLanding />
-        <ComoFuncionaLanding />
-        <MockProdutoLanding ehDesktop={ehDesktop} />
-        <PlanosLanding onEscolherGratis={irParaEntrar} onVerPlano={irParaPlanos} />
-        <ProvaLanding />
-        <FaqLanding />
-        <CtaFinalLanding onCriarConta={irParaEntrar} />
-        <FooterLanding onAjuda={irParaAjuda} onPrivacidade={irParaPrivacidade} onTermos={irParaTermos} />
-      </ScrollView>
+      {/* RevealProvider: as secoes abaixo da dobra se revelam ao rolar ate elas
+          (em vez de animarem no mount, antes de estarem visiveis). O conteudo real
+          vive em ConteudoLanding para o onScroll poder ler o contexto. */}
+      <RevealProvider>
+        <ConteudoLanding
+          ehDesktop={ehDesktop}
+          irParaEntrar={irParaEntrar}
+          irParaPlanos={irParaPlanos}
+          irParaAjuda={irParaAjuda}
+          irParaPrivacidade={irParaPrivacidade}
+          irParaTermos={irParaTermos}
+          styles={styles}
+        />
+      </RevealProvider>
     </View>
+  );
+}
+
+/**
+ * Conteudo da landing. Separado do LandingScreen so para poder chamar
+ * useRevealScrollHandler() DENTRO do RevealProvider (o hook le o contexto).
+ */
+function ConteudoLanding({
+  ehDesktop, irParaEntrar, irParaPlanos, irParaAjuda, irParaPrivacidade, irParaTermos, styles,
+}: {
+  ehDesktop: boolean;
+  irParaEntrar: () => void; irParaPlanos: () => void; irParaAjuda: () => void;
+  irParaPrivacidade: () => void; irParaTermos: () => void;
+  styles: ReturnType<typeof criarEstilos>;
+}) {
+  const onScroll = useRevealScrollHandler();
+  return (
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollConteudo}
+      onScroll={onScroll}
+      scrollEventThrottle={32}
+    >
+      {/* Topo + Hero ficam acima da dobra: ja aparecem/animam no load (o Hero
+          tem a propria entrada + o fundo Aurora). Do Pilares pra baixo, revela ao rolar. */}
+      <TopoLanding onEntrar={irParaEntrar} onCriarConta={irParaEntrar} />
+      <HeroLanding ehDesktop={ehDesktop} onCriarConta={irParaEntrar} onVerPlanos={irParaPlanos} />
+      <Revelar><PilaresLanding /></Revelar>
+      <Revelar><ComoFuncionaLanding /></Revelar>
+      <Revelar><MockProdutoLanding ehDesktop={ehDesktop} /></Revelar>
+      <Revelar><PlanosLanding onEscolherGratis={irParaEntrar} onVerPlano={irParaPlanos} /></Revelar>
+      <Revelar><ProvaLanding /></Revelar>
+      <Revelar><FaqLanding /></Revelar>
+      <Revelar><CtaFinalLanding onCriarConta={irParaEntrar} /></Revelar>
+      <FooterLanding onAjuda={irParaAjuda} onPrivacidade={irParaPrivacidade} onTermos={irParaTermos} />
+    </ScrollView>
   );
 }
 

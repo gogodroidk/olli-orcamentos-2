@@ -14,6 +14,7 @@ import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, 
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliMascot } from '../components/OlliMascot';
+import { AuroraBackground } from '../components/AuroraBackground';
 import { StepIndicator } from '../components/StepIndicator';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { saveEmpresa, saveServico } from '../database/database';
@@ -537,6 +538,12 @@ function BoasVindas({ onStart, insets }: {
   const styles = useEstilos(criarEstilos);
   return (
     <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.wcRoot}>
+      {/* Aurora animado atras da tela de boas-vindas — mesma linguagem do login.
+          Intensidade baixa: o subtitulo secundario ja e medido em 4.5:1 aqui. */}
+      <AuroraBackground
+        cores={[cores.accent, cores.accentLight, cores.primaryLight, cores.accent]}
+        intensidade={0.13}
+      />
       <View style={{ height: insets.top + 10 }} />
       <View style={styles.wcCenter}>
         <OlliMascot size={104} onDark />
@@ -587,7 +594,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Boas-vindas (protótipo 04) — vive inteira sobre gradientes.primary
   // (sempre colorido, nos dois modos), por isso texto/glass ficam fixos aqui,
   // como no GradientHeader.
-  wcRoot: { flex: 1 },
+  wcRoot: { flex: 1, overflow: 'hidden' },
   wcCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
   // Cor de texto aplicada inline no ponto de uso (gradientes.sobrePrimary) — StyleSheet
   // de escopo de módulo não enxerga o tema.
