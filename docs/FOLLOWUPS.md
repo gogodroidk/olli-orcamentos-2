@@ -201,10 +201,10 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     Não é bug de contraste — é coerência visual. Ou o mascote vira SVG parametrizado pelo `primary`,
     ou ele é declarado neutro por decisão de marca.
 
-28. **Recibo só tem um layout; falta multi-template de recibo.** O dono pediu "vários templates de
-    orçamento E de recibo". Orçamento ganhou os 7 modelos + a tela de padrão (`ModelosDocumentoScreen`,
-    `empresa.modeloPdfPadrao`). O recibo monta HTML próprio em `EmitirReciboScreen.buildHtml` — layout
-    único, sem `modeloPdf`. Para paridade: dar ao `Recibo` um `modeloPdf?: ModeloPdfId` (ou uma união
-    própria de estilos de recibo), variar o `buildHtml` por modelo, adicionar `empresa.modeloReciboPadrao`
-    e uma segunda seção em `ModelosDocumentoScreen`. A tela já avisa o dono ("modelos de recibo a
-    caminho"), então a expectativa está setada, não quebrada.
+28. ~~**Recibo só tem um layout; falta multi-template de recibo.**~~ **FEITO (2026-07-10).** O recibo
+    virou `utils/reciboPdf.ts` (`montarHtmlRecibo`), brand-aware, com 3 modelos (`ModeloReciboId` =
+    clássico/compacto/faixa) via classe no `<body>`; `empresa.modeloReciboPadrao`; seção de recibo em
+    `ModelosDocumentoScreen` com prévia real (`PdfPreviewModal` generalizado com `construirHtml`). De
+    quebra corrigiu o `#0B6FCE` cravado — o recibo NÃO seguia a marca (nota falsa na tela, agora
+    verdadeira). Restam ideias futuras: mais modelos, e um `modeloRecibo` por-recibo (hoje é só padrão
+    global).

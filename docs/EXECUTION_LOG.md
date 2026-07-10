@@ -308,6 +308,26 @@ Seis frentes a partir de um pedido único, cada uma commitada e provada (tsc 0, 
 
 **Modelos de documento em Conta → Ferramentas.** Os 7 templates já existiam (escolha por-orçamento no Step4); faltava o **padrão global**. `empresa.modeloPdfPadrao` (schema-less), herdado por `emptyOrcamento`. Tela nova com os 7 modelos e **prévia REAL** (mesmo `PdfPreviewModal`/HTML do envio, orçamento fictício na cor de marca do dono). Salvamento otimista com reversão em falha. Recibo segue com layout compacto próprio — modelos alternativos ficaram em `FOLLOWUPS` (#28).
 
+## Entrega: recibo multi-template, revisão adversarial, main no ar, APK testado (2026-07-10)
+
+O dono pediu "faça tudo e me entrega o app pronto, força total". Fechei o pedido inteiro.
+
+**Recibo multi-template (FOLLOWUP #28, fechado).** O recibo cravava `#0B6FCE` — NÃO seguia a marca (a nota que a tela de Modelos dizia o contrário era falsa). Extraí `montarHtmlRecibo` para `utils/reciboPdf.ts`, brand-aware, 3 modelos (clássico/compacto/faixa), e a tela de Modelos ganhou a seção de recibo com prévia real (via `PdfPreviewModal` generalizado com `construirHtml`).
+
+**Revisão adversarial antes do merge** (workflow de 13 agentes: revisar por dimensão → cético refuta cada achado; 1.5M tokens, ~14 min). 5 confirmados, todos corrigidos e reverificados:
+- **[HIGH] Perda silenciosa da nota do dia entre aparelhos** (bug classe e). A nota autoral vivia no snapshot recomputado e re-salvo com `criado_em=now()` a cada foco; um aparelho que só VISUALIZA gerava um carimbo mais novo (sem nota) que vencia o LWW e apagava a nota escrita em outro. Fix: carimbo autoral próprio (`notaEm`), separado do `criado_em` do snapshot; a visualização preserva `criado_em`; o pull faz MERGE POR CAMPO (números por `criado_em`, nota por `notaEm`).
+- **[HIGH] XSS no recibo.** `recibo-${modelo}` interpolava `modeloReciboPadrao` cru (um registro sincronizado adulterado, escrito direto na API, injetaria atributos no `<body>` — a prévia roda em `<iframe srcDoc>` same-origin na web); as data URIs de logo/assinatura também entravam sem escape. Fix: `modeloSeguro()` (whitelist runtime) + `escapeHtml` nas data URIs.
+- **[MEDIUM] Recibo ilegível com marca clara.** Branco sobre `gradiente(marca→navy)`: a ponta CLARA é a marca crua, então Ciano dava 1.83:1. Fix: `ajustarParaContraste(cor,#FFF,4.5)`. Provado: pior caso 4.61:1 nas 10 marcas.
+- **[MEDIUM] Badge de severidade/confiança < 4.5:1 no claro** (bug d). Texto sobre o tint de 13% da própria cor. Fix: `corCategoriaEmChip` no texto. Provado: antes 4.02–4.38, depois ≥4.55:1.
+
+Um bug meu no meio: `sev*/status` num JSDoc — o `*/` fechou o comentário. `tsc` pegou.
+
+**No ar.** `git push origin HEAD:main` (fast-forward, 10 commits). O Pages `olli-app` fez o deploy do web; o Workers Build clobberou o `olli-diagnostico` e `reparar.mjs` restaurou os 5 secrets. Provado o caminho do dinheiro: `GET /`→`ia:on`, `/o/<inexistente>`→404, e **`POST /stripe/webhook`→400** (rota viva validando assinatura, não 404 clobberado).
+
+**APK testado no emulador** (regra dura da memória). Build de `C:\olli` no `origin/main` (100.8 MB). Provado que o bundle tem meu código (`modeloReciboPadrao`, `Modelos de documento`, `Como foi o dia`, `notaEm`, `sevCritica` no `index.android.bundle`). Smoke test no `olli_phone`: instala, sobe, renderiza a Home (dark, dados GR Tech, nav acima da barra de gestos), navega para Conta/Ferramentas e rola a Home — **zero FATAL** no logcat. O `errorReport.ts` (ErrorUtils/globalThis, específico de Hermes) não derruba o boot.
+
+APK: `C:\olli\android\app\build\outputs\apk\release\app-release.apk`.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
