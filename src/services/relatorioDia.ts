@@ -42,10 +42,18 @@ export interface RelatorioDia {
   semMovimentos: boolean;
   /**
    * Nota manual do dono ("como foi o dia / problemas"). Fica DENTRO do snapshot
-   * (blob `dados`), então sincroniza junto pelo mesmo caminho LWW — sem coluna
-   * nova. A regeração automática do dia preserva a nota já escrita.
+   * (blob `dados`), então sincroniza junto pelo mesmo caminho — sem coluna nova.
+   * A regeração automática do dia preserva a nota já escrita.
    */
   nota?: string;
+  /**
+   * Carimbo AUTORAL da nota (ISO de quando foi escrita/apagada). É o LWW PRÓPRIO
+   * da nota, separado do `criado_em` do snapshot: o snapshot é cache derivado e
+   * recomputado por aparelho, mas a nota é autorada. Sem isto, uma simples
+   * visualização (criado_em novo, sem nota) apagava a nota escrita em outro
+   * aparelho. O merge por campo em cloudSync usa este carimbo.
+   */
+  notaEm?: string;
 }
 
 /**
@@ -106,12 +114,17 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
   // reescreve sozinho (o usuário revisita o passado, não o recalcula).
   if (dataChave === hoje) {
     try {
-      // PRESERVA a nota manual já escrita: a regeração recomputa os números, mas
-      // a nota do dono não pode ser apagada por um foco de tela ou por um sync.
+      // PRESERVA a nota manual já escrita (nota + carimbo autoral): a regeração
+      // recomputa os números, mas a nota do dono não pode ser apagada por um foco
+      // de tela nem por um sync.
       const anterior = await getRelatorioDiaRow(dataChave);
-      const notaAnterior = (anterior?.dados as RelatorioDia | undefined)?.nota;
-      if (notaAnterior) relatorio.nota = notaAnterior;
-      await saveRelatorioDia(dataChave, relatorio);
+      const prev = anterior?.dados as RelatorioDia | undefined;
+      if (prev?.nota) relatorio.nota = prev.nota;
+      if (prev?.notaEm) relatorio.notaEm = prev.notaEm;
+      // PRESERVA o criado_em anterior: uma simples VISUALIZAÇÃO não pode gerar um
+      // carimbo mais novo que a nota autorada em outro aparelho (senão o LWW do
+      // sync a apagaria). Só a autoria (salvarNotaDia) avança o carimbo.
+      await saveRelatorioDia(dataChave, relatorio, anterior?.criadoEm);
     } catch {
       // salvar o snapshot é best-effort: nunca deve quebrar a geração/leitura do relatório
     }
@@ -129,7 +142,9 @@ export async function salvarNotaDia(data: string, nota: string): Promise<void> {
   const row = await getRelatorioDiaRow(data);
   const base = (row?.dados as RelatorioDia | undefined) ?? await gerarRelatorioDia(data);
   const limpa = nota.trim();
-  await saveRelatorioDia(data, { ...base, nota: limpa || undefined });
+  // Autoria da nota: carimba notaEm=agora (LWW próprio da nota) E deixa o
+  // saveRelatorioDia avançar o criado_em (sem passar criadoEm) — a autoria vence.
+  await saveRelatorioDia(data, { ...base, nota: limpa || undefined, notaEm: new Date().toISOString() });
 }
 
 /** Nota manual formatada como parágrafo pra colar no fim do texto falado/compartilhado. */

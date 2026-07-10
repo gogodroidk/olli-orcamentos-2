@@ -4,6 +4,7 @@ import { formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { escapeHtml, safeHexColor } from './html';
 import { footerSeloOlliHtml, DEFAULT_ACCENT } from './pdfGenerator';
+import { ajustarParaContraste } from '../theme/cores';
 
 /** Normaliza para #RRGGBB — `safeHexColor` aceita 3 dígitos, e `${cor}0F` (o tint
  *  do PIX) só é CSS válido com 6 dígitos (#RRGGBBAA). Sem isso o fundo do PIX some. */
@@ -11,6 +12,13 @@ function hex6(cor: string): string {
   return /^#[0-9a-fA-F]{3}$/.test(cor)
     ? '#' + cor.slice(1).split('').map(c => c + c).join('')
     : cor;
+}
+
+/** Só os ids conhecidos podem virar classe no body — um `modeloReciboPadrao`
+ *  adulterado (escrito direto na API, fora da UI) não pode injetar atributos no
+ *  <body> via `recibo-${modelo}`. Ver revisão adversarial (xss_pdf). */
+function modeloSeguro(m?: ModeloReciboId): ModeloReciboId {
+  return m === 'compacto' || m === 'faixa' ? m : 'classico';
 }
 
 /**
@@ -29,8 +37,12 @@ export async function montarHtmlRecibo(
   empresa: Empresa,
   opts?: { modelo?: ModeloReciboId; corMarca?: string },
 ): Promise<string> {
-  const modelo: ModeloReciboId = opts?.modelo ?? 'classico';
-  const cor = hex6(safeHexColor(opts?.corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT));
+  const modelo = modeloSeguro(opts?.modelo);
+  // Escurece a marca até TEXTO BRANCO passar 4.5:1 sobre ela. Isso resolve os dois
+  // usos de uma vez: (a) a cor como texto sobre o papel branco fica legível, e
+  // (b) o branco sobre a ponta CLARA do gradiente do valor-box/faixa também — antes
+  // uma marca clara (ex. Ciano) deixava o "Valor recebido" ilegível (~1.8:1).
+  const cor = ajustarParaContraste(hex6(safeHexColor(opts?.corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT)), '#FFFFFF', 4.5);
 
   // Converte as imagens em data URI ANTES de montar o HTML. Em qualquer falha a
   // conversão devolve null e a imagem é omitida — nunca quebra o documento.
@@ -102,7 +114,7 @@ export async function montarHtmlRecibo(
 <div class="page">
   <div class="header">
     <div>
-      ${logoData ? `<img src="${logoData}" class="brand-logo" />` : ''}
+      ${logoData ? `<img src="${escapeHtml(logoData)}" class="brand-logo" />` : ''}
       <div class="empresa-nome">${empresaNome}</div>
       <div class="empresa-info">${empresaEspecialidade}<br/>CNPJ: ${empresaCnpj}<br/>${empresaTelefone}</div>
     </div>
@@ -138,7 +150,7 @@ export async function montarHtmlRecibo(
 
   <div class="assinatura-row">
     <div class="assinatura-block">
-      ${assinaturaData ? `<img src="${assinaturaData}" class="sign-img" />` : ''}
+      ${assinaturaData ? `<img src="${escapeHtml(assinaturaData)}" class="sign-img" />` : ''}
       <div class="assinatura-line">
         <strong>${empresaPrestador}</strong><br/>
         ${empresaNome}<br/>

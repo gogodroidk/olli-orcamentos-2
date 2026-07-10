@@ -1782,11 +1782,13 @@ export interface RelatorioDiaRow {
 }
 
 /** Cria ou substitui (upsert) o snapshot do dia — idempotente por `data`. */
-export async function saveRelatorioDia(data: string, dados: unknown): Promise<void> {
+export async function saveRelatorioDia(data: string, dados: unknown, criadoEm?: string): Promise<void> {
   const db = await getDb();
+  // criadoEm é o carimbo de LWW do snapshot. Passe-o para PRESERVAR (visualização
+  // não deve avançar o relógio); omita para carimbar agora (autoria/1ª gravação).
   await db.runAsync(
     'INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
-    [data, JSON.stringify(dados), new Date().toISOString()]
+    [data, JSON.stringify(dados), criadoEm ?? new Date().toISOString()]
   );
 }
 

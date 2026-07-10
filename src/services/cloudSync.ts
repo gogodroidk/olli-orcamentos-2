@@ -1861,19 +1861,49 @@ async function pushRelatoriosDiarios(geracao?: number): Promise<void> {
   }
 }
 
-/** Grava um relatório diário direto no SQLite (silencioso, sem push). NUNCA lança. */
+/**
+ * Grava um relatório diário direto no SQLite (silencioso, sem push). NUNCA lança.
+ *
+ * Merge POR CAMPO, não LWW do blob inteiro: o snapshot (números) é cache derivado
+ * e segue o `criado_em` mais novo; a NOTA é autoral e segue o `notaEm` mais novo,
+ * independente do snapshot. Sem isso, um aparelho que só VISUALIZA o dia gerava um
+ * criado_em novo (sem nota) que, no LWW do blob, apagava a nota escrita em outro
+ * aparelho — perda permanente e silenciosa de dado autoral.
+ */
 async function localUpsertRelatorio(data: string, dados: unknown, criadoEm: string): Promise<void> {
   try {
     if (!data) return;
     const db = await getDb();
-    // Anti-perda: se o relatório local for mais novo, preserva a versão local.
-    const local = await db.getFirstAsync<{ ts: string | null }>(
-      'SELECT criado_em AS ts FROM relatorios_diarios WHERE data = ?', [data],
+    const localRow = await db.getFirstAsync<{ dados: string; ts: string | null }>(
+      'SELECT dados, criado_em AS ts FROM relatorios_diarios WHERE data = ?', [data],
     );
-    if (tsMaisNovo(local?.ts, criadoEm)) return;
+    const incoming = (dados && typeof dados === 'object') ? (dados as Record<string, unknown>) : {};
+    let local: Record<string, unknown> | null = null;
+    if (localRow?.dados) { try { local = JSON.parse(localRow.dados) as Record<string, unknown>; } catch { local = null; } }
+
+    // Snapshot (números): a versão com criado_em ESTRITAMENTE mais novo.
+    const incomingMaisNovo = tsMaisNovo(criadoEm, localRow?.ts ?? undefined);
+    const base = incomingMaisNovo ? incoming : (local ?? incoming);
+    const baseTs = incomingMaisNovo ? criadoEm : (localRow?.ts ?? criadoEm);
+
+    // Nota (autoral): a de notaEm mais novo. O clause extra cobre "local nunca teve
+    // nota" (tsMaisNovo devolve false quando um dos lados falta).
+    const notaLocalEm = local?.notaEm as string | undefined;
+    const notaRemotaEm = incoming.notaEm as string | undefined;
+    const usaRemota = tsMaisNovo(notaRemotaEm, notaLocalEm) || (!notaLocalEm && !!notaRemotaEm);
+
+    // Local já vence nos dois eixos (e existe) → nada muda; evita reescrita/push.
+    if (!incomingMaisNovo && !usaRemota && local) return;
+
+    const merged: Record<string, unknown> = { ...base };
+    const nota = usaRemota ? incoming.nota : local?.nota;
+    const notaEm = usaRemota ? notaRemotaEm : notaLocalEm;
+    if (nota !== undefined) merged.nota = nota; else delete merged.nota;
+    if (notaEm !== undefined) merged.notaEm = notaEm; else delete merged.notaEm;
+
     await db.runAsync(
       'INSERT OR REPLACE INTO relatorios_diarios (data, dados, criado_em) VALUES (?,?,?)',
-      [data, JSON.stringify(dados), criadoEm || new Date().toISOString()],
+      [data, JSON.stringify(merged), baseTs || new Date().toISOString()],
     );
   } catch {
     // best-effort

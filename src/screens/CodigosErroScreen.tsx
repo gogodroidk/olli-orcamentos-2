@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -45,6 +45,20 @@ function confColor(conf: string, c: Cores): string {
   if (v.startsWith('baix')) return c.danger;
   if (v.startsWith('méd') || v.startsWith('med')) return c.warning;
   return c.success; // Alta / Média-Alta
+}
+
+/**
+ * Cor do TEXTO da severidade/confiança legível sobre o PRÓPRIO tint. Os tokens de
+ * severidade e status são ajustados contra a superfície neutra; sobre o tint de
+ * ~13% da própria cor (o fundo do badge/chip) reprovam AA no claro — Crítica caía
+ * a 4.28:1. corCategoriaEmChip reajusta a luminosidade da matiz contra o tint
+ * real, preservando o matiz (o significado). `sup` = superfície do badge/chip.
+ */
+function sevTexto(s: string, c: Cores, sup: string): string {
+  return corCategoriaEmChip(sevColor(s, c), sup);
+}
+function confTexto(conf: string, c: Cores, sup: string): string {
+  return corCategoriaEmChip(confColor(conf, c), sup);
 }
 
 export default function CodigosErroScreen() {
@@ -239,6 +253,7 @@ export default function CodigosErroScreen() {
           {SEVERIDADES.map(s => {
             const active = severidade === s;
             const cor = sevColor(s, cores);
+            const corTxt = sevTexto(s, cores, cores.background); // legível sobre o tint do chip
             const n = sevCounts[s] ?? 0;
             const vazio = n === 0 && !active; // sem casos neste contexto: apaga, não some
             return (
@@ -253,10 +268,10 @@ export default function CodigosErroScreen() {
                 activeOpacity={0.85}
               >
                 <View style={[styles.sevDot, { backgroundColor: cor }]} />
-                <Text style={[styles.sevLabel, { color: active ? cor : cores.onSurfaceVariant }]}>{s}</Text>
+                <Text style={[styles.sevLabel, { color: active ? corTxt : cores.onSurfaceVariant }]}>{s}</Text>
                 {n > 0 && (
                   <View style={[styles.sevCount, { backgroundColor: cor + (active ? '2E' : '1F') }]}>
-                    <Text style={[styles.sevCountText, { color: cor }]}>{n}</Text>
+                    <Text style={[styles.sevCountText, { color: corTxt }]}>{n}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -297,13 +312,13 @@ export default function CodigosErroScreen() {
                 <View style={styles.badgesRow}>
                   {!!c.severidade && (
                     <View style={[styles.badge, { backgroundColor: sevColor(c.severidade, cores) + '22' }]}>
-                      <Text style={[styles.badgeText, { color: sevColor(c.severidade, cores) }]}>{c.severidade}</Text>
+                      <Text style={[styles.badgeText, { color: sevTexto(c.severidade, cores, cores.surface) }]}>{c.severidade}</Text>
                     </View>
                   )}
                   {!!c.confianca && (
                     <View style={[styles.badge, { backgroundColor: confColor(c.confianca, cores) + '22' }]}>
-                      <MaterialCommunityIcons name="shield-check" size={11} color={confColor(c.confianca, cores)} />
-                      <Text style={[styles.badgeText, { color: confColor(c.confianca, cores) }]}>{c.confianca}</Text>
+                      <MaterialCommunityIcons name="shield-check" size={11} color={confTexto(c.confianca, cores, cores.surface)} />
+                      <Text style={[styles.badgeText, { color: confTexto(c.confianca, cores, cores.surface) }]}>{c.confianca}</Text>
                     </View>
                   )}
                 </View>
@@ -388,14 +403,14 @@ export default function CodigosErroScreen() {
               <View style={styles.detBadges}>
                 {!!selected.severidade && (
                   <View style={[styles.badge, { backgroundColor: sevColor(selected.severidade, cores) + '22' }]}>
-                    <MaterialCommunityIcons name="alert-outline" size={12} color={sevColor(selected.severidade, cores)} />
-                    <Text style={[styles.badgeText, { color: sevColor(selected.severidade, cores) }]}>Severidade {selected.severidade}</Text>
+                    <MaterialCommunityIcons name="alert-outline" size={12} color={sevTexto(selected.severidade, cores, cores.background)} />
+                    <Text style={[styles.badgeText, { color: sevTexto(selected.severidade, cores, cores.background) }]}>Severidade {selected.severidade}</Text>
                   </View>
                 )}
                 {!!selected.confianca && (
                   <View style={[styles.badge, { backgroundColor: confColor(selected.confianca, cores) + '22' }]}>
-                    <MaterialCommunityIcons name="shield-check" size={12} color={confColor(selected.confianca, cores)} />
-                    <Text style={[styles.badgeText, { color: confColor(selected.confianca, cores) }]}>Confiança {selected.confianca}</Text>
+                    <MaterialCommunityIcons name="shield-check" size={12} color={confTexto(selected.confianca, cores, cores.background)} />
+                    <Text style={[styles.badgeText, { color: confTexto(selected.confianca, cores, cores.background) }]}>Confiança {selected.confianca}</Text>
                   </View>
                 )}
               </View>
