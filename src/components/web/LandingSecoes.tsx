@@ -11,6 +11,7 @@ import { OlliPressable } from '../OlliPressable';
 import { AnimatedEntrance } from '../AnimatedEntrance';
 import { StatusBadge } from '../StatusBadge';
 import { KpiCard } from './KpiCard';
+import { Tilt3D } from './Tilt3D';
 import { abrirWhatsApp } from '../../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE } from '../../config';
 
@@ -129,12 +130,12 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
       <View style={styles.heroGlow2} pointerEvents="none" />
       <View style={[styles.heroConteudo, ehDesktop && styles.heroConteudoDesktop]}>
         <AnimatedEntrance index={0}>
-          <Text style={[styles.heroHeadline, { color: gradientes.sobrePrimary }]}>Do orçamento ao recibo, sem planilha</Text>
+          <Text style={[styles.heroHeadline, { color: gradientes.sobrePrimary }]}>O sistema de quem trabalha na rua</Text>
         </AnimatedEntrance>
         <AnimatedEntrance index={1}>
           <Text style={[styles.heroSubheadline, { color: corSecundariaHero }]}>
-            A plataforma de campo para quem presta serviço: monte o orçamento, transforme em ordem de
-            serviço, cobre e gerencie a equipe — tudo no mesmo lugar, no celular ou no computador.
+            Do chamado ao recibo assinado, sem voltar pra base — orçamento, ordem de serviço, agenda e
+            cobrança no celular, funcionando até sem sinal. Nascido na refrigeração, feito pra todo prestador de campo.
           </Text>
         </AnimatedEntrance>
         <AnimatedEntrance index={2}>
@@ -291,8 +292,9 @@ export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
         subtitulo="Exemplo ilustrativo com os mesmos componentes do app — os números do seu negócio aparecem aqui assim que você começa a usar."
       />
       <View style={[styles.mockLinha, ehDesktop && styles.mockLinhaDesktop]}>
-        {/* Mock 1: orçamento aprovado */}
-        <View style={[styles.mockJanela, styles.cartaoFlex]}>
+        {/* Mock 1: orçamento aprovado — janela com tilt 3D (só web, brilho da marca) */}
+        <Tilt3D style={styles.cartaoFlex} intensidade={7}>
+        <View style={[styles.mockJanela, ehDesktop && styles.mockJanelaGlow]}>
           <View style={styles.mockBarra}>
             {/* Bolinhas de janela (estilo macOS) — convenção fixa de semáforo
                 vermelho/amarelo/verde, não status do app: NÃO mapeadas para
@@ -326,9 +328,11 @@ export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
             </View>
           </View>
         </View>
+        </Tilt3D>
 
-        {/* Mock 2: painel com KPIs reais do produto */}
-        <View style={[styles.mockJanela, styles.cartaoFlex]}>
+        {/* Mock 2: painel com KPIs reais do produto — janela com tilt 3D */}
+        <Tilt3D style={styles.cartaoFlex} intensidade={7}>
+        <View style={[styles.mockJanela, ehDesktop && styles.mockJanelaGlow]}>
           <View style={styles.mockBarra}>
             <View style={[styles.mockBolinha, { backgroundColor: '#FF6B6B' }]} />
             <View style={[styles.mockBolinha, { backgroundColor: '#F7B23B' }]} />
@@ -341,6 +345,7 @@ export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
             <KpiCard titulo="Taxa de aprovação" valor="78%" icone="chart-line" corIcone={cores.primaryLight} />
           </View>
         </View>
+        </Tilt3D>
       </View>
     </View>
   );
@@ -464,6 +469,10 @@ const CREDIBILIDADE = [
   { icone: 'wifi-off' as const, titulo: 'Funciona sem internet', descricao: 'Orçamento, recibo, cliente e agenda seguem funcionando offline; sincroniza quando a rede volta.' },
 ];
 
+// Segmentos atendidos — a prova de que o OLLI passou de "app de refrigeração"
+// para "sistema de todo prestador de campo" (pedido do dono).
+const SEGMENTOS = ['Refrigeração', 'Elétrica', 'Energia solar', 'Portões e automação', 'Manutenção predial', 'Dedetização'];
+
 export function ProvaLanding() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -481,6 +490,20 @@ export function ProvaLanding() {
           </AnimatedEntrance>
         ))}
       </View>
+
+      <AnimatedEntrance index={4}>
+        <View style={styles.segmentosWrap}>
+          <Text style={styles.segmentosTitulo}>Nasceu na refrigeração. Serve pra todo serviço de campo.</Text>
+          <View style={styles.segmentosChips}>
+            {SEGMENTOS.map((s) => (
+              <View key={s} style={styles.segmentoChip}>
+                <Text style={styles.segmentoTexto}>{s}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.segmentosRodape}>Se o serviço acontece na casa do cliente, o OLLI serve.</Text>
+        </View>
+      </AnimatedEntrance>
     </View>
   );
 }
@@ -492,6 +515,10 @@ export const FAQ_LANDING: readonly { pergunta: string; resposta: string }[] = [
   {
     pergunta: 'O OLLI é pago?',
     resposta: 'Não. O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados, sem cartão de crédito e sem prazo de teste. Os planos Pro e Empresa liberam relatórios, metas e outros recursos avançados, mas o essencial do dia a dia é gratuito para sempre.',
+  },
+  {
+    pergunta: 'Serve pra quem não é de refrigeração?',
+    resposta: 'Serve. O OLLI nasceu na climatização — por isso tem PMOC, 698 códigos de defeito e diagnóstico por IA —, mas orçamento, ordem de serviço, agenda, rotas, equipe no mapa e cobrança valem pra qualquer serviço de campo: elétrica, energia solar, portões e automação, manutenção predial, dedetização e mais. Se o serviço acontece na casa do cliente, o OLLI serve.',
   },
   {
     pergunta: 'Como o cliente aprova o orçamento?',
@@ -866,6 +893,15 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     overflow: 'hidden',
     ...sombrasDe(c).md,
   },
+  // Brilho ciano da marca sob as janelas do produto (só desktop) — a profundidade
+  // que o tilt 3D pede, dentro da identidade do app (nada de sombra industrial).
+  mockJanelaGlow: {
+    shadowColor: c.accent,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 34,
+    elevation: 14,
+  },
   mockBarra: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -938,6 +974,20 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   credTitulo: { fontSize: 14.5, fontFamily: Fonts.bold, color: c.onSurface, marginTop: 4 },
   credDescricao: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
+
+  segmentosWrap: { alignItems: 'center', marginTop: Spacing.xxl, gap: Spacing.md },
+  segmentosTitulo: { fontSize: 18, fontFamily: Fonts.bold, color: c.onSurface, textAlign: 'center' },
+  segmentosChips: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, maxWidth: 720 },
+  segmentoChip: {
+    backgroundColor: c.accentContainer,
+    borderWidth: 1,
+    borderColor: c.strokeGlow,
+    borderRadius: BorderRadius.full,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  segmentoTexto: { fontSize: 13.5, fontFamily: Fonts.semiBold, color: c.accentLight },
+  segmentosRodape: { fontSize: 13.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
 
   // FAQ
   faqLista: { gap: Spacing.sm, maxWidth: 760, alignSelf: 'center', width: '100%' },
