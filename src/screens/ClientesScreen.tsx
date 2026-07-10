@@ -8,6 +8,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
@@ -66,6 +67,7 @@ export default function ClientesScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filtered, setFiltered] = useState<Cliente[]>([]);
   const [query, setQuery] = useState('');
@@ -348,7 +350,7 @@ export default function ClientesScreen() {
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
-        contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: selecionando ? 100 : Spacing.base }}
+        contentContainerStyle={{ paddingTop: Spacing.base, paddingHorizontal: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: (selecionando ? 100 : Spacing.base + 80) + insets.bottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
         renderItem={({ item: c, index }) => {
           const marcado = selecionados.has(c.id);
@@ -427,14 +429,14 @@ export default function ClientesScreen() {
       )}
 
       {!selecionando && (
-        <TouchableOpacity style={styles.fab} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Novo cliente">
+        <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => { setEditing({}); setIsNew(true); setErrors({}); }} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Novo cliente">
           <MaterialCommunityIcons name="plus" size={28} color={cores.onPrimary} />
         </TouchableOpacity>
       )}
 
       {/* BARRA DE AÇÃO — excluir selecionados (vai para a Lixeira) */}
       {selecionando && selecionados.size > 0 && (
-        <View style={styles.bulkBar}>
+        <View style={[styles.bulkBar, { paddingBottom: insets.bottom + 16 }]}>
           <OlliButton
             label={`Excluir ${selecionados.size} para a Lixeira`}
             variant="danger"
@@ -471,7 +473,7 @@ export default function ClientesScreen() {
                 {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
               </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: insets.bottom + Spacing.base }]}>
               <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
           </KeyboardAvoidingView>
@@ -481,7 +483,7 @@ export default function ClientesScreen() {
       {/* MENU DE AÇÕES DO CLIENTE (CRM) */}
       <Modal visible={!!acoes} transparent animationType="fade" onRequestClose={() => setAcoes(null)}>
         <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setAcoes(null)}>
-          <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={() => {}}>
+          <TouchableOpacity style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} activeOpacity={1} onPress={() => {}}>
             <View style={styles.sheetHandle} />
             {acoes && (
               <>

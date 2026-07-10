@@ -6,6 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -93,6 +94,7 @@ export default function OrdemServicoScreen() {
   const styles = useEstilos(criarEstilos);
   const { org, carregando: carregandoConta } = useTipoConta();
   const { pode, papel } = usePermissao();
+  const insets = useSafeAreaInsets();
 
   // GESTÃO = quem pode ver a agenda/relatórios da equipe (owner/admin/gestor) ou
   // conta pessoal (dono de si). TÉCNICO = papel 'tecnico' numa organização.
@@ -302,7 +304,7 @@ export default function OrdemServicoScreen() {
           data={filtradas}
           keyExtractor={(o) => o.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 90, flexGrow: 1 }}
+          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 90 + insets.bottom, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.accentLight} />}
           ListEmptyComponent={
             <EmptyState
@@ -364,6 +366,7 @@ function DetalheOS({
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
@@ -521,7 +524,10 @@ function DetalheOS({
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={{ padding: Spacing.base, paddingBottom: 120, gap: Spacing.base }}
+            contentContainerStyle={{
+              paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+              gap: Spacing.base, paddingBottom: 120 + insets.bottom,
+            }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -751,6 +757,7 @@ function ModalAtribuir({
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [membros, setMembros] = useState<MembroEquipe[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
@@ -789,7 +796,7 @@ function ModalAtribuir({
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
       <View style={styles.sheetBackdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Atribuir técnico</Text>
             <TouchableOpacity onPress={onFechar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar">
@@ -849,6 +856,7 @@ function ModalAtribuir({
 // ─────────────────────────────────────────────────────────────
 function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: string) => void }) {
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [modo, setModo] = useState<'escolha' | 'orcamento' | 'manual'>('escolha');
   const [criando, setCriando] = useState(false);
 
@@ -862,7 +870,10 @@ function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: s
         />
 
         {modo === 'escolha' && (
-          <ScrollView contentContainerStyle={{ padding: Spacing.base, gap: Spacing.md }}>
+          <ScrollView contentContainerStyle={{
+            paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+            gap: Spacing.md, paddingBottom: Spacing.base + insets.bottom,
+          }}>
             <OpcaoNova
               icon="file-check-outline"
               titulo="De um orçamento aprovado"
@@ -943,6 +954,7 @@ function OpcaoNova({ icon, titulo, descricao, onPress }: {
 function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (orcamentoId: string) => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [selecionado, setSelecionado] = useState<string | null>(null);
@@ -994,7 +1006,10 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
       <FlatList
         data={orcamentos}
         keyExtractor={(o) => o.id}
-        contentContainerStyle={{ padding: Spacing.base, paddingBottom: 100, gap: 10 }}
+        contentContainerStyle={{
+          paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+          gap: 10, paddingBottom: 100 + insets.bottom,
+        }}
         renderItem={({ item: o }) => {
           const sel = selecionado === o.id;
           return (
@@ -1015,7 +1030,7 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
           );
         }}
       />
-      <View style={styles.rodapeAcao}>
+      <View style={[styles.rodapeAcao, { paddingBottom: insets.bottom + Spacing.base }]}>
         <OlliButton
           label="Gerar ordem de serviço"
           variant="gradient"
@@ -1035,6 +1050,7 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
 function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcial: Partial<OrdemServico>) => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [clienteNome, setClienteNome] = useState('');
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -1042,7 +1058,13 @@ function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcia
   const valido = clienteNome.trim().length > 0 && titulo.trim().length > 0;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 120, gap: Spacing.sm }} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={{
+        paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+        gap: Spacing.sm, paddingBottom: 120 + insets.bottom,
+      }}
+      keyboardShouldPersistTaps="handled"
+    >
       <OlliInput
         label="Cliente"
         required

@@ -6,6 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -115,6 +116,7 @@ export default function EquipamentoScreen() {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   // Atalho para os Planos PMOC (Fase 2): só quem gerencia planos vê (o técnico não).
   const { pode } = usePermissao();
 
@@ -323,7 +325,7 @@ export default function EquipamentoScreen() {
           data={filtrados}
           keyExtractor={(e) => e.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 90, flexGrow: 1 }}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 + insets.bottom, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.accentLight} />}
           ListEmptyComponent={
             <EmptyState
@@ -384,6 +386,7 @@ function DetalheEquipamento({
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const CRITICIDADES = criarCriticidades(cores);
   const [eq, setEq] = useState<Equipamento | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -519,7 +522,12 @@ function DetalheEquipamento({
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={{ padding: Spacing.base, paddingBottom: 120, gap: Spacing.base }}
+            contentContainerStyle={{
+              paddingTop: Spacing.base,
+              paddingHorizontal: Spacing.base,
+              gap: Spacing.base,
+              paddingBottom: Spacing.base + insets.bottom,
+            }}
             showsVerticalScrollIndicator={false}
           >
             {/* Ficha técnica */}
@@ -756,6 +764,7 @@ function FormEquipamento({
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const CRITICIDADES = criarCriticidades(cores);
   const [categoria, setCategoria] = useState<CategoriaHvac | undefined>(
     (inicial?.categoria as CategoriaHvac | undefined) ?? undefined,
@@ -892,7 +901,12 @@ function FormEquipamento({
         />
 
         <ScrollView
-          contentContainerStyle={{ padding: Spacing.base, paddingBottom: 130, gap: Spacing.md }}
+          contentContainerStyle={{
+            paddingTop: Spacing.base,
+            paddingHorizontal: Spacing.base,
+            gap: Spacing.md,
+            paddingBottom: Spacing.base + insets.bottom,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

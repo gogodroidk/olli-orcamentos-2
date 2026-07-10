@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
@@ -49,6 +50,7 @@ export default function CodigosErroScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [marcas, setMarcas] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [marca, setMarca] = useState<string | null>(null);
@@ -242,7 +244,10 @@ export default function CodigosErroScreen() {
       <FlatList
         data={results}
         keyExtractor={c => String(c.id)}
-        contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
+        contentContainerStyle={{
+          paddingTop: Spacing.base, paddingHorizontal: Spacing.base, gap: 10, flexGrow: 1,
+          paddingBottom: Spacing.base + insets.bottom + (buscando && results.length > 0 ? 80 : 0),
+        }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         renderItem={({ item: c, index }) => (
@@ -319,7 +324,7 @@ export default function CodigosErroScreen() {
 
       {/* botão flutuante "não achei" quando há busca ativa */}
       {buscando && results.length > 0 && (
-        <TouchableOpacity style={styles.naoAcheiFab} onPress={abrirNaoAchei} activeOpacity={0.9}>
+        <TouchableOpacity style={[styles.naoAcheiFab, { bottom: insets.bottom + 18 }]} onPress={abrirNaoAchei} activeOpacity={0.9}>
           <MaterialCommunityIcons name="help-circle-outline" size={16} color={cores.accentLight} />
           <Text style={styles.naoAcheiFabText}>Não achei meu erro</Text>
         </TouchableOpacity>
@@ -339,7 +344,10 @@ export default function CodigosErroScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 32 }}>
+            <ScrollView contentContainerStyle={{
+              paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+              paddingBottom: 32 + insets.bottom,
+            }}>
               <Text style={styles.detFalha}>{selected.falha || 'Falha não descrita'}</Text>
 
               <View style={styles.detBadges}>
@@ -431,7 +439,7 @@ export default function CodigosErroScreen() {
       {/* ─── NÃO ACHEI MEU ERRO ─── */}
       <Modal visible={!!naoAchei} animationType="slide" transparent onRequestClose={() => setNaoAchei(null)}>
         <View style={styles.sheetBackdrop}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Não achei meu erro</Text>
             <Text style={styles.sheetSub}>Conta o que aparece — isso enriquece a base e ensina a OLLI.</Text>

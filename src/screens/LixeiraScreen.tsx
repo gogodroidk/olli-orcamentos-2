@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -67,6 +68,7 @@ export default function LixeiraScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const corTipo = criarCorTipo(cores);
   const [itens, setItens] = useState<ItemLixeira[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -277,7 +279,7 @@ export default function LixeiraScreen() {
               <Text style={styles.sectionCount}>{(section as Secao).data.length}</Text>
             </View>
           )}
-          contentContainerStyle={{ paddingVertical: 10, paddingBottom: 80, flexGrow: 1 }}
+          contentContainerStyle={{ paddingTop: 10, paddingBottom: 80 + insets.bottom, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
           ListEmptyComponent={
             <EmptyState

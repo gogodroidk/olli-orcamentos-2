@@ -6,6 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, sobreSecundario, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
@@ -94,6 +95,7 @@ export default function OrcamentosScreen() {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   // Filtro por cliente (CRM): quando aberto a partir de um cliente.
   const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
   const clienteNome = route.params?.clienteNome;
@@ -502,7 +504,7 @@ export default function OrcamentosScreen() {
           data={filtered}
           keyExtractor={o => o.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingVertical: 8, paddingBottom: selecionando ? 104 : 80, flexGrow: 1 }}
+          contentContainerStyle={{ paddingVertical: 8, paddingBottom: (selecionando ? 104 : 80) + insets.bottom, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} />}
           ListEmptyComponent={
             <EmptyState
@@ -571,7 +573,7 @@ export default function OrcamentosScreen() {
 
       {/* BARRA DE AÇÃO — excluir selecionados (vai para a Lixeira) */}
       {selecionando && selecionados.size > 0 && (
-        <View style={styles.bulkBar}>
+        <View style={[styles.bulkBar, { paddingBottom: insets.bottom + 16 }]}>
           <OlliButton
             label={`Excluir ${selecionados.size} para a Lixeira`}
             variant="danger"

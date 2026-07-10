@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, Modal, ScrollView, Image, RefreshControl, Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -67,6 +68,7 @@ function ProdutosConteudo() {
   const nav = useNavigation();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ProdutoItem[]>([]);
   const [filtered, setFiltered] = useState<ProdutoItem[]>([]);
   const [query, setQuery] = useState('');
@@ -175,7 +177,7 @@ function ProdutosConteudo() {
       <FlatList
         data={filtered}
         keyExtractor={p => p.id}
-        contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
+        contentContainerStyle={{ paddingTop: Spacing.base, paddingHorizontal: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: Spacing.base + insets.bottom + 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
         renderItem={({ item: p, index }) => (
           <AnimatedEntrance index={index}>
@@ -206,7 +208,7 @@ function ProdutosConteudo() {
       />
       )}
 
-      <TouchableOpacity style={styles.fab} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
+      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
 
@@ -254,7 +256,7 @@ function ProdutosConteudo() {
                 ))}
               </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: insets.bottom + Spacing.base }]}>
               <OlliButton label="Salvar produto" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
           </View>

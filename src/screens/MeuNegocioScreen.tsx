@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, Image, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -84,6 +85,9 @@ function MeuNegocioConteudo() {
   const nav = useNavigation<any>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Altura da barra de navegação do sistema (gestos/3 botões virtuais) —
+  // some no fundo do scroll e nas barras fixas para nada ficar por baixo dela.
+  const insets = useSafeAreaInsets();
   // Ink de contraste calculado para texto/ícone sobre `accentLight` (chip/botão
   // ativo) — substitui o '#0A1626' fixo, que só era correto para o ciano padrão.
   const textoSobreAccent = textoSobre(cores.accentLight);
@@ -194,7 +198,16 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     <View style={styles.container}>
       <GradientHeader title="Meu Negócio" subtitle="Aparece no cabeçalho dos seus PDFs" onBack={() => goBackOrHome(nav)} />
 
-      <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: Spacing.base,
+          paddingHorizontal: Spacing.base,
+          // 80 de folga pro último card não ficar atrás da saveBar fixa
+          // (mesmo motivo do FAB: barra flutuante sobrepõe o fim do scroll).
+          paddingBottom: Spacing.base + insets.bottom + 80,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* CONTA E BACKUP */}
         <TouchableOpacity style={styles.backupCard} onPress={() => nav.navigate('Tabs', { screen: 'Conta' })} activeOpacity={0.85}>
           <View style={styles.backupIcon}>
@@ -423,7 +436,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
 
       {/* SAVE BAR */}
       {dirty && (
-        <View style={styles.saveBar}>
+        <View style={[styles.saveBar, { paddingBottom: insets.bottom + 16 }]}>
           <OlliButton
             label="Salvar alterações"
             variant="gradient"
@@ -464,7 +477,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             </View>
             <OlliInput label="Depoimento (opcional)" value={newDep.texto ?? ''} onChangeText={v => setNewDep(p => ({ ...p, texto: v }))} placeholder="O que o cliente falou..." multiline />
           </ScrollView>
-          <View style={styles.modalFooter}>
+          <View style={[styles.modalFooter, { paddingBottom: insets.bottom + Spacing.base }]}>
             <OlliButton label="Salvar depoimento" variant="gradient" size="lg" fullWidth onPress={handleSaveDep} disabled={!newDep.nomeCliente?.trim()} />
           </View>
         </KeyboardAvoidingView>

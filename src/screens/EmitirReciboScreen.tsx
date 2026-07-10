@@ -6,6 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
@@ -50,6 +51,7 @@ function EmitirReciboConteudo() {
   const route = useRoute<Route>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const orcamentoId = route.params?.orcamentoId;
 
   const [aba, setAba] = useState<Aba>('novo');
@@ -412,7 +414,13 @@ function EmitirReciboConteudo() {
       </View>
 
       {aba === 'novo' ? (
-        <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={{
+            paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+            paddingBottom: 40 + insets.bottom,
+          }}
+          keyboardShouldPersistTaps="handled"
+        >
           {carregandoEmpresa && (
             <View style={styles.avisoCard}>
               <ActivityIndicator color={cores.primary} size="small" />
@@ -488,7 +496,10 @@ function EmitirReciboConteudo() {
         <FlatList
           data={emitidos}
           keyExtractor={r => r.id}
-          contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40, flexGrow: 1 }}
+          contentContainerStyle={{
+            paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+            paddingBottom: 40 + insets.bottom, flexGrow: 1,
+          }}
           refreshing={carregandoEmitidos}
           onRefresh={carregarEmitidos}
           ListEmptyComponent={

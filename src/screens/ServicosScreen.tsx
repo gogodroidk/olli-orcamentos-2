@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, Modal, ScrollView, Image, RefreshControl, Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -67,6 +68,7 @@ function ServicosConteudo() {
   const nav = useNavigation();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ServicoItem[]>([]);
   const [filtered, setFiltered] = useState<ServicoItem[]>([]);
   const [query, setQuery] = useState('');
@@ -172,7 +174,7 @@ function ServicosConteudo() {
       <FlatList
         data={filtered}
         keyExtractor={s => s.id}
-        contentContainerStyle={{ padding: Spacing.base, gap: 10, flexGrow: 1 }}
+        contentContainerStyle={{ paddingTop: Spacing.base, paddingHorizontal: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: Spacing.base + insets.bottom + 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
         renderItem={({ item: s, index }) => (
           <AnimatedEntrance index={index}>
@@ -203,7 +205,7 @@ function ServicosConteudo() {
       />
       )}
 
-      <TouchableOpacity style={styles.fab} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
+      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
 
@@ -247,7 +249,7 @@ function ServicosConteudo() {
                 ))}
               </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: insets.bottom + Spacing.base }]}>
               <OlliButton label="Salvar serviço" variant="gradient" size="lg" fullWidth loading={salvando} onPress={handleSave} disabled={!editing.nome?.trim() || salvando} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
           </View>

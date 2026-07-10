@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -146,6 +147,7 @@ export default function OlliVozScreen() {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const { usosIaRestantes, consumirUsoIa } = usePlano();
   const iaEsgotada = usosIaRestantes <= 0;
 
@@ -503,7 +505,11 @@ export default function OlliVozScreen() {
         />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: Spacing.base, paddingBottom: 48 }}
+          contentContainerStyle={{
+            paddingTop: Spacing.base,
+            paddingHorizontal: Spacing.base,
+            paddingBottom: 48 + insets.bottom,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -774,6 +780,7 @@ function Revisao(props: {
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const total = props.itens.reduce((s, i) => s + (i.valorUnitario ?? 0) * i.quantidade, 0);
   const algumSemPreco = props.itens.some(i => i.valorUnitario == null);
 
@@ -913,7 +920,7 @@ function Revisao(props: {
       </ScrollView>
 
       {/* AÇÕES FIXAS */}
-      <View style={styles.revFooter}>
+      <View style={[styles.revFooter, { paddingBottom: insets.bottom + 16 }]}>
         <OlliButton label="Refazer" variant="outline" size="md" onPress={props.onRefazer} haptic={false} icon={<MaterialCommunityIcons name="restart" size={18} color={cores.primary} />} />
         <View style={{ flex: 1, marginLeft: 10 }}>
           <OlliButton
