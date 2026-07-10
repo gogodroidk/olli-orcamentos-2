@@ -100,3 +100,17 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
    Quem tem Pro 12x e assina Empresa passa a ser cobrado pelos dois. O worker preserva o
    maior nível e a maior vigência (não entrega menos do que foi pago), mas o ideal comercial
    é a `PlanosScreen` avisar/creditar o saldo do 12x antes de deixar assinar.
+
+## PMOC Fase 2 (2026-07-09) — notas LOW não bloqueantes
+
+8. **`houveExclusaoDefinitiva` retorna `true` no catch.** É a direção segura (não ressuscita), mas
+   se a leitura de `exclusoes` falhar isoladamente, uma reserva órfã é rotulada "removida de vez"
+   em vez de "recuperada". Auto-cura na geração seguinte. Para precisão, devolver um terceiro
+   estado ("indeterminado") em vez de colapsar erro em `true`.
+9. **Read-view do plano mostra a versão VIGENTE, mas "Editar" salva na versão de TRABALHO.** Em
+   plano já aprovado, salvar cria uma v2 rascunho e a seção de periodicidades continua exibindo a
+   v1. Há banner de rascunho pendente; falta rotular a seção.
+10. **Se um dia existir soft-delete de reserva** (`pmoc_ordens_geradas.excluido_em`), o
+   reconciliador fica cego: `getOrdensGeradas` filtra ativos, a reserva soft-deletada some do
+   snapshot mas continua ocupando o índice único → bloqueia a regeração em silêncio. Não é bug
+   hoje (nada soft-deleta reserva); é um convite a cuidado.

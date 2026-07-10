@@ -143,6 +143,23 @@ Dois bugs eu achei nas minhas próprias correções antes do gate: `auth.getUser
 ### Verificações
 `npx tsc --noEmit` exit 0 · `node --check` nos 4 arquivos do worker · migrations aplicadas e idempotentes (backfill `atualizado_em = criado_em`, zero nulos) · semântica de soft-delete testada na nuvem (exclusão offline sobrevive ao pull; restaurar mais novo vence) · varredura confirmando que toda escrita nas 5 tabelas de coluna carimba o relógio · 7 cenários de webhook Stripe simulados contra a lógica real · worker deployado (`705a60c7`) e smoke verde (4 rotas novas em 401 sem auth).
 
+## Track PMOC — Fase 2: periodicidade + ordens recorrentes (CONCLUÍDA)
+
+Migration `20260715_pmoc_fase2.sql` **aplicada** (idempotente; RLS 4 policies; isolamento entre donos testado). SQLite ganhou `pmoc_planos`, `pmoc_plano_versoes`, `pmoc_ordens_geradas`; as três sincronizam pelo `cloudSync` (guards de relógio + injeção do tenant do dono).
+
+- **A idempotência mora no BANCO.** Índice `UNIQUE (plano, equipamento, período, periodicidade)` nas duas pontas. Testado 5/5 na nuvem: a 2ª geração do mesmo período é barrada; período e periodicidade distintos passam. Sem isso, dois aparelhos gerando "a manutenção de julho" mandariam o técnico duas vezes ao mesmo endereço.
+- **Períodos alinhados ao calendário, sem âncora.** `2026-07` / `2026-B4` / `2026-T3` / `2026-S2` / `2026`, extraídos em UTC. Se o rótulo dependesse de uma data de início, dois aparelhos calculariam rótulos diferentes para a mesma visita e a chave de idempotência não casaria. 17/17 testes da matemática pura (bissexto, virada de ano, ano cruzado, frequência desconhecida → `[]` sem lançar).
+- **Reserve, depois construa.** A OS só nasce se a reserva no livro-caixa pegou. O caminho ingênuo (criar OS → registrar) deixaria OS órfã quando a reserva colidisse.
+- **Caveat legal respeitado.** Periodicidades, atividades e referências normativas vivem no jsonb versionado da versão do plano, nunca em coluna ou constante. `frequencia` é `string` validada em runtime (uma union type seria constante de código disfarçada: mudar a norma exigiria republicar o app). A dimensão legal/permissão do gate voltou **limpa** — nenhuma afirmação de conformidade, técnico barrado por `GuardaPapel` em tela e rota.
+
+### Gate (3 dimensões) — 1 HIGH + 2 MEDIUM + 2 LOW, todos tratados
+- **HIGH — reserva órfã (crítica ao MEU desenho).** `registrarOrdemGerada` faz commit e espelha na nuvem ANTES de `criarOSManual`. Se a criação da OS falhasse depois (SQLITE_BUSY com o sync concorrente, ou o SO matando o app em background), sobrava reserva sem OS — e a tentativa seguinte via `false`, contava "já existia", e a visita **nunca** ganhava ordem. Eu tinha trocado um órfão por outro. Corrigido com um **reconciliador**: snapshot das reservas antes do laço e, no `false`, pergunta o estado real (OS ativa → já existia; na lixeira → não ressuscita; tombstone → não recria; ausente → reconstrói com o id reservado). Reusar o id é seguro justamente porque não há tombstone — e é o token que faz dois aparelhos convergirem para uma única OS.
+- MEDIUM: teto de 24 períodos truncava em silêncio (agora conta `omitidas` e a tela avisa); OS excluída bloqueava a regeração para sempre (agora distingue lixeira de exclusão definitiva).
+- LOW: rótulo do read-view vs versão de trabalho; copy "nunca cria visita futura" contradizia a OS do período em andamento.
+
+### Re-gate sobre as próprias correções — **PASSA**
+Nenhum critical/high/medium. Confirmou o ponto que mais importava: `getOrdemServico(id)` não filtra soft-delete, então o reconciliador enxerga a OS na lixeira e **não** desfaz uma exclusão deliberada. Restaram 3 notas LOW de robustez (uma delas — guarda de `ordemId` vazio, o velho `?? vs ||` — foi fechada na hora).
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.

@@ -98,6 +98,10 @@ export function criarLinkingConfig(
         OrdemServico: 'ordens',
         // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). URL /equipamentos.
         Equipamento: 'equipamentos',
+        // PMOC Fase 2 — planos de manutenção. ORDEM: 'pmoc' (lista) ANTES de
+        // 'pmoc/:id' (detalhe) — o segmento fixo vem antes do parametrizado.
+        Pmoc: 'pmoc',
+        PmocPlano: 'pmoc/:id',
 
         // ─── Frentes novas ──────────────────────────────────────────────
         Ajuda: 'ajuda',

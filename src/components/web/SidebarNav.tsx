@@ -76,6 +76,9 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   // Equipamentos HVAC (PMOC Fase 1): inventário + etiqueta QR. Sem gate de plano
   // (não há Recurso PMOC no mapa) — recurso de campo visível para todos os papéis.
   { rota: 'Equipamento', label: 'Equipamentos', icon: 'air-conditioner', stack: true },
+  // Planos PMOC (Fase 2): manutenção programada. Ação de gestão/dono — gateada por
+  // 'ver_valores_agregados', então o técnico (que não gera nem edita plano) não a vê.
+  { rota: 'Pmoc', label: 'Planos PMOC', icon: 'calendar-sync-outline', stack: true, acao: 'ver_valores_agregados' },
   // Recibos (financeiro). Técnico não emite recibos no menu enxuto → oculto.
   { rota: 'EmitirRecibo', label: 'Recibos', icon: 'receipt', stack: true, acao: 'criar_orcamento', ocultarTecnico: true },
   // Relatórios: permissão (ver_relatorios) + recurso pago (relatorios → cadeado).

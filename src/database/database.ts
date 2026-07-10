@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, propostaJaEnviada } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, propostaJaEnviada } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
@@ -324,6 +324,60 @@ async function initDb(database: SQLite.SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_equipamentos_cliente ON equipamentos (cliente_id);
     CREATE INDEX IF NOT EXISTS idx_equipamentos_situacao ON equipamentos (situacao);
     CREATE INDEX IF NOT EXISTS idx_equipamentos_qr_token ON equipamentos (qr_token);
+
+    -- PMOC Fase 2 — plano de manutenção, periodicidade e ordens recorrentes.
+    -- Espelha supabase/migrations/20260715_pmoc_fase2.sql.
+    -- 'situacao' é OPERACIONAL (rascunho/vigente/...), NUNCA conformidade legal.
+    CREATE TABLE IF NOT EXISTS pmoc_planos (
+      id TEXT PRIMARY KEY,
+      cliente_id TEXT,
+      contrato_id TEXT,
+      numero TEXT,
+      titulo TEXT NOT NULL,
+      situacao TEXT NOT NULL DEFAULT 'rascunho',
+      versao_vigente INTEGER,
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL,
+      excluido_em TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pmoc_planos_cliente ON pmoc_planos (cliente_id);
+
+    -- Append-only. 'dados' (JSON) guarda periodicidades, atividades e referências
+    -- normativas: são DADOS versionados e configuráveis, nunca constantes de
+    -- código -- prazo de norma muda, e quem valida é o responsável habilitado.
+    CREATE TABLE IF NOT EXISTS pmoc_plano_versoes (
+      id TEXT PRIMARY KEY,
+      plano_id TEXT NOT NULL,
+      numero_versao INTEGER NOT NULL,
+      dados TEXT NOT NULL,
+      responsavel_tecnico TEXT,
+      doc_responsabilidade TEXT,
+      aprovado_em TEXT,
+      criado_em TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pmoc_versoes_plano ON pmoc_plano_versoes (plano_id, numero_versao);
+
+    -- Livro-caixa da geração recorrente: "o plano P, no equipamento E, no período
+    -- 2026-07, já virou a ordem O".
+    CREATE TABLE IF NOT EXISTS pmoc_ordens_geradas (
+      id TEXT PRIMARY KEY,
+      plano_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      periodo TEXT NOT NULL,
+      periodicidade_id TEXT NOT NULL DEFAULT '',
+      ordem_id TEXT NOT NULL,
+      vencimento TEXT,
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL,
+      excluido_em TEXT
+    );
+    -- A CHAVE DE IDEMPOTÊNCIA, igual à da nuvem. A geração roda no boot e em vários
+    -- aparelhos; sem esta restrição, dois aparelhos gerando "a manutenção de julho"
+    -- criam DUAS ordens e o técnico vai duas vezes ao mesmo endereço. A idempotência
+    -- mora no BANCO, não na lógica que gera.
+    CREATE UNIQUE INDEX IF NOT EXISTS pmoc_ordens_geradas_unica
+      ON pmoc_ordens_geradas (plano_id, asset_id, periodo, periodicidade_id);
+    CREATE INDEX IF NOT EXISTS idx_pmoc_geradas_plano ON pmoc_ordens_geradas (plano_id, periodo);
 
     -- Relatório do dia falado — snapshot diário compilado (orçamentos, recibos,
     -- agendamentos, clientes novos) para reler/ouvir depois. Local-only (não
@@ -2075,4 +2129,224 @@ export async function getStats() {
     faturamentoMes: recentes.filter(o => o.status === 'aprovado').reduce((sum, o) => sum + o.valorTotal, 0),
     ticketMedio: recentes.length > 0 ? recentes.reduce((sum, o) => sum + o.valorTotal, 0) / recentes.length : 0,
   };
+}
+
+// ─── PMOC Fase 2 — plano, versões (append-only) e livro-caixa das ordens ─────
+//
+// CAVEAT LEGAL: `situacao` é OPERACIONAL. Periodicidades e referências normativas
+// vivem no JSON da VERSÃO (dado configurável), nunca em coluna ou constante.
+
+function rowToPmocPlanoDb(r: any): PmocPlano {
+  return {
+    id: r.id,
+    clienteId: r.cliente_id ?? undefined,
+    contratoId: r.contrato_id ?? undefined,
+    numero: r.numero ?? undefined,
+    titulo: r.titulo,
+    situacao: r.situacao,
+    versaoVigente: r.versao_vigente ?? undefined,
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em ?? undefined,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
+}
+
+export async function savePmocPlano(p: PmocPlano): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  const salvo: PmocPlano = { ...p, atualizadoEm: agora };
+  await db.runAsync(
+    `INSERT OR REPLACE INTO pmoc_planos
+       (id, cliente_id, contrato_id, numero, titulo, situacao, versao_vigente, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [salvo.id, salvo.clienteId ?? null, salvo.contratoId ?? null, salvo.numero ?? null,
+     salvo.titulo, salvo.situacao, salvo.versaoVigente ?? null, salvo.criadoEm, agora,
+     salvo.excluidoEm ?? null],
+  );
+  mirrorPush('pmoc_planos', salvo);
+}
+
+/** Planos ATIVOS (fora da lixeira), do mais recente ao mais antigo. */
+export async function getPmocPlanos(): Promise<PmocPlano[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_planos WHERE excluido_em IS NULL ORDER BY criado_em DESC',
+  );
+  return rows.map(rowToPmocPlanoDb);
+}
+
+/** Um plano por id. NÃO filtra soft-delete (a Lixeira precisa ler o item excluído). */
+export async function getPmocPlano(id: string): Promise<PmocPlano | null> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<any>('SELECT * FROM pmoc_planos WHERE id = ?', [id]);
+  return r ? rowToPmocPlanoDb(r) : null;
+}
+
+/** SOFT DELETE → LIXEIRA. Bumpa o relógio de sync (ver deleteCliente). */
+export async function deletePmocPlano(id: string): Promise<void> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  await db.runAsync('UPDATE pmoc_planos SET excluido_em = ?, atualizado_em = ? WHERE id = ?', [agora, agora, id]);
+  const p = await getPmocPlano(id);
+  if (p) mirrorPush('pmoc_planos', p);
+}
+
+export async function restaurarPmocPlano(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE pmoc_planos SET excluido_em = NULL, atualizado_em = ? WHERE id = ?', [new Date().toISOString(), id]);
+  const p = await getPmocPlano(id);
+  if (p) mirrorPush('pmoc_planos', p);
+}
+
+export async function excluirPmocPlanoDefinitivo(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM pmoc_planos WHERE id = ?', [id]);
+  mirrorRemove('pmoc_planos', id);
+  registrarExclusao('pmoc_planos', id);
+}
+
+export async function getLixeiraPmocPlanos(): Promise<PmocPlano[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_planos WHERE excluido_em IS NOT NULL ORDER BY excluido_em DESC',
+  );
+  return rows.map(rowToPmocPlanoDb);
+}
+
+function rowToPmocVersaoDb(r: any): PmocPlanoVersao {
+  const d = JSON.parse(r.dados || '{}');
+  return {
+    id: r.id,
+    planoId: r.plano_id,
+    numeroVersao: r.numero_versao,
+    periodicidades: Array.isArray(d.periodicidades) ? d.periodicidades : [],
+    equipamentoIds: Array.isArray(d.equipamentoIds) ? d.equipamentoIds : [],
+    referencias: Array.isArray(d.referencias) ? d.referencias : [],
+    responsavelTecnico: r.responsavel_tecnico ?? undefined,
+    docResponsabilidade: r.doc_responsabilidade ?? undefined,
+    aprovadoEm: r.aprovado_em ?? undefined,
+    criadoEm: r.criado_em,
+  };
+}
+
+/**
+ * APPEND-ONLY. Uma versão APROVADA nunca é reescrita: o snapshot é a prova do que
+ * o responsável técnico assinou. A nuvem tem trigger que recusa alterá-la; aqui
+ * recusamos antes de gastar rede, e falhamos alto (não silenciosamente).
+ */
+export async function savePmocVersao(v: PmocPlanoVersao): Promise<void> {
+  const db = await getDb();
+  const existente = await db.getFirstAsync<{ aprovado_em: string | null }>(
+    'SELECT aprovado_em FROM pmoc_plano_versoes WHERE id = ?', [v.id],
+  );
+  if (existente?.aprovado_em) {
+    throw new Error('Versão já aprovada não pode ser alterada. Crie uma nova versão do plano.');
+  }
+  await db.runAsync(
+    `INSERT OR REPLACE INTO pmoc_plano_versoes
+       (id, plano_id, numero_versao, dados, responsavel_tecnico, doc_responsabilidade, aprovado_em, criado_em)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [v.id, v.planoId, v.numeroVersao,
+     JSON.stringify({ periodicidades: v.periodicidades ?? [], equipamentoIds: v.equipamentoIds ?? [], referencias: v.referencias ?? [] }),
+     v.responsavelTecnico ?? null, v.docResponsabilidade ?? null, v.aprovadoEm ?? null, v.criadoEm],
+  );
+  mirrorPush('pmoc_plano_versoes', v);
+}
+
+export async function getPmocVersoes(planoId: string): Promise<PmocPlanoVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_plano_versoes WHERE plano_id = ? ORDER BY numero_versao DESC', [planoId],
+  );
+  return rows.map(rowToPmocVersaoDb);
+}
+
+/** A versão vigente do plano (a apontada por `versao_vigente`), ou a mais recente. */
+export async function getPmocVersaoVigente(planoId: string): Promise<PmocPlanoVersao | null> {
+  const plano = await getPmocPlano(planoId);
+  const versoes = await getPmocVersoes(planoId);
+  if (!versoes.length) return null;
+  if (plano?.versaoVigente != null) {
+    const v = versoes.find((x) => x.numeroVersao === plano.versaoVigente);
+    if (v) return v;
+  }
+  return versoes[0];
+}
+
+/** Próximo número de versão do plano. Considera TODAS as versões (nunca reusa). */
+export async function proximoNumeroVersaoPmoc(planoId: string): Promise<number> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ maior: number | null }>(
+    'SELECT MAX(numero_versao) AS maior FROM pmoc_plano_versoes WHERE plano_id = ?', [planoId],
+  );
+  return (r?.maior ?? 0) + 1;
+}
+
+function rowToPmocGeradaDb(r: any): PmocOrdemGerada {
+  return {
+    id: r.id,
+    planoId: r.plano_id,
+    equipamentoId: r.asset_id,
+    periodo: r.periodo,
+    periodicidadeId: r.periodicidade_id ?? '',
+    ordemId: r.ordem_id,
+    vencimento: r.vencimento ?? undefined,
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em ?? undefined,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
+}
+
+/**
+ * Registra que uma visita do período virou ordem de serviço.
+ *
+ * `INSERT OR IGNORE` + índice único (plano, equipamento, período, periodicidade):
+ * retorna `false` quando a visita JÁ existia. É assim que a geração vira segura de
+ * repetir — a idempotência mora no BANCO, não em quem chama. Quem recebe `false`
+ * deve DESFAZER a ordem que acabou de criar, senão sobra uma OS órfã.
+ */
+export async function registrarOrdemGerada(g: PmocOrdemGerada): Promise<boolean> {
+  const db = await getDb();
+  const agora = new Date().toISOString();
+  const r = await db.runAsync(
+    `INSERT OR IGNORE INTO pmoc_ordens_geradas
+       (id, plano_id, asset_id, periodo, periodicidade_id, ordem_id, vencimento, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [g.id, g.planoId, g.equipamentoId, g.periodo, g.periodicidadeId ?? '', g.ordemId,
+     g.vencimento ?? null, g.criadoEm, agora, null],
+  );
+  const inserida = (r?.changes ?? 0) > 0;
+  if (inserida) mirrorPush('pmoc_ordens_geradas', { ...g, atualizadoEm: agora });
+  return inserida;
+}
+
+/** Todas as visitas já geradas para um plano (para saber o que NÃO regerar). */
+export async function getOrdensGeradas(planoId: string): Promise<PmocOrdemGerada[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_ordens_geradas WHERE plano_id = ? AND excluido_em IS NULL ORDER BY periodo DESC', [planoId],
+  );
+  return rows.map(rowToPmocGeradaDb);
+}
+
+/**
+ * `true` se o item foi excluído DEFINITIVAMENTE (hard delete + tombstone), e não
+ * apenas mandado para a lixeira. É o que distingue "essa OS nunca chegou a ser
+ * criada" de "o usuário a apagou de vez" — sem isso, um reconciliador que recria
+ * a OS pelo id ressuscitaria justamente o que foi apagado de propósito, e o
+ * tombstone a mataria de novo no próximo sync (ping-pong).
+ */
+export async function houveExclusaoDefinitiva(tabela: string, itemId: string): Promise<boolean> {
+  try {
+    const db = await getDb();
+    const r = await db.getFirstAsync<{ n: number }>(
+      'SELECT 1 AS n FROM exclusoes WHERE tabela = ? AND item_id = ? LIMIT 1',
+      [tabela, itemId],
+    );
+    return !!r;
+  } catch {
+    // Na dúvida, NÃO recria: preferimos deixar o usuário regerar de propósito a
+    // ressuscitar algo que ele apagou.
+    return true;
+  }
 }

@@ -16,6 +16,7 @@ import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { usePermissao } from '../hooks/usePermissao';
 // Contrato da FRENTE A — ÚNICA superfície de import desta frente (além de types).
 import {
   getEquipamentos,
@@ -102,6 +103,8 @@ function SituacaoBadge({ situacao }: { situacao: SituacaoEquipamento }) {
 // ═════════════════════════════════════════════════════════════
 export default function EquipamentoScreen() {
   const nav = useNavigation<Nav>();
+  // Atalho para os Planos PMOC (Fase 2): só quem gerencia planos vê (o técnico não).
+  const { pode } = usePermissao();
 
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -245,6 +248,18 @@ export default function EquipamentoScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+        {pode('ver_valores_agregados') && (
+          <TouchableOpacity
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Pmoc'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Planos de manutenção PMOC"
+            style={styles.pmocAtalho}
+          >
+            <MaterialCommunityIcons name="calendar-sync-outline" size={16} color="#fff" />
+            <Text style={styles.pmocAtalhoText}>Planos de manutenção (PMOC)</Text>
+            <MaterialCommunityIcons name="chevron-right" size={16} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+        )}
       </GradientHeader>
 
       {/* Filtro por situação. */}
@@ -1126,6 +1141,14 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.base, paddingVertical: 11,
   },
   searchInput: { flex: 1, fontSize: 15, color: Colors.onSurface },
+
+  // Atalho PMOC (Fase 2) — pílula de vidro sobre o header, alinhada à esquerda.
+  pmocAtalho: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)',
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full,
+  },
+  pmocAtalhoText: { color: '#fff', fontWeight: '800', fontSize: 12.5 },
 
   chip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: BorderRadius.full,

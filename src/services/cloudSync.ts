@@ -25,6 +25,9 @@ import {
   EMPRESA_STAMP_KEY,
 } from './storageKeys';
 import type {
+  PmocPlano,
+  PmocPlanoVersao,
+  PmocOrdemGerada,
   Cliente,
   ServicoItem,
   ProdutoItem,
@@ -51,7 +54,10 @@ export type SyncTable =
   | 'depoimentos'
   | 'agendamentos'
   | 'ordens_servico'
-  | 'equipamentos';
+  | 'equipamentos'
+  | 'pmoc_planos'
+  | 'pmoc_plano_versoes'
+  | 'pmoc_ordens_geradas';
 
 /** Alvo de conflito do upsert por tabela. `empresa` é uma linha por usuário. */
 const ON_CONFLICT: Record<SyncTable, string> = {
@@ -66,6 +72,9 @@ const ON_CONFLICT: Record<SyncTable, string> = {
   agendamentos: 'id',
   ordens_servico: 'id',
   equipamentos: 'id',
+  pmoc_planos: 'id',
+  pmoc_plano_versoes: 'id',
+  pmoc_ordens_geradas: 'id',
 };
 
 // Mapa SyncTable → nome da tabela na NUVEM quando diferem. Padrão: nome igual à
@@ -74,6 +83,8 @@ const ON_CONFLICT: Record<SyncTable, string> = {
 // operações LOCAIS seguem usando o nome local 'equipamentos'.
 const REMOTE_TABLE: Partial<Record<SyncTable, string>> = {
   equipamentos: 'assets',
+  pmoc_planos: 'pmoc_plans',
+  pmoc_plano_versoes: 'pmoc_plan_versions',
 };
 function remoteNome(table: SyncTable): string {
   return REMOTE_TABLE[table] ?? table;
@@ -267,6 +278,9 @@ const TO_ROW: Record<SyncTable, (obj: any) => Record<string, unknown>> = {
   agendamentos: agendamentoToRow,
   ordens_servico: ordemServicoToRow,
   equipamentos: equipamentoToRow,
+  pmoc_planos: pmocPlanoToRow,
+  pmoc_plano_versoes: pmocVersaoToRow,
+  pmoc_ordens_geradas: pmocGeradaToRow,
 };
 
 // ─── Mapeadores linha da nuvem → local (fromRow) ─────────────────────────────
@@ -563,9 +577,16 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       return;
     }
     const row = TO_ROW[table](objLocal);
-    // Membro não-dono: orçamento/agendamento/OS é gravado no tenant do dono da org
-    // (empresa/clientes/etc. permanecem escrita só do dono — não injetar aqui).
-    if (contextoEquipeOwner && (table === 'orcamentos' || table === 'agendamentos' || table === 'ordens_servico' || table === 'equipamentos')) {
+    // Membro não-dono: orçamento/agendamento/OS/equipamento e o plano PMOC (com suas
+    // versões e ordens geradas) são gravados no tenant do DONO da org. Sem isto, uma
+    // linha nova empurrada do aparelho do técnico nasceria com user_id dele e o dono
+    // nunca a veria. (empresa/clientes/etc. seguem escrita só do dono — não injetar.)
+    if (
+      contextoEquipeOwner &&
+      (table === 'orcamentos' || table === 'agendamentos' || table === 'ordens_servico' ||
+       table === 'equipamentos' || table === 'pmoc_planos' || table === 'pmoc_plano_versoes' ||
+       table === 'pmoc_ordens_geradas')
+    ) {
       (row as Record<string, unknown>).user_id = contextoEquipeOwner;
     }
     await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] });
@@ -1210,6 +1231,9 @@ export async function pullAll(geracao?: number): Promise<void> {
     await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento, geracao);
     await pullTable<OrdemServico>('ordens_servico', rowToOrdemServico, localUpsertOrdemServico, geracao);
     await pullTable<Equipamento>('equipamentos', rowToEquipamentoCloud, localUpsertEquipamento, geracao);
+    await pullTable<PmocPlano>('pmoc_planos', rowToPmocPlano, localUpsertPmocPlano, geracao);
+    await pullTable<PmocPlanoVersao>('pmoc_plano_versoes', rowToPmocVersao, localUpsertPmocVersao, geracao);
+    await pullTable<PmocOrdemGerada>('pmoc_ordens_geradas', rowToPmocGerada, localUpsertPmocGerada, geracao);
     if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.
@@ -1242,6 +1266,187 @@ async function pullTable<T>(
   } catch {
     // tabela indisponível = ignora
   }
+}
+
+// ─── PMOC Fase 2: plano, versões (append-only) e livro-caixa das ordens ──────
+// `pmoc_plano_versoes` não tem `atualizado_em`: é APPEND-ONLY, e a nuvem tem um
+// trigger que congela versão já aprovada. O upsert por id é idempotente — reenviar
+// a mesma versão não muda nada, e alterar uma aprovada é recusado pelo banco.
+
+function pmocPlanoToRow(p: PmocPlano): Record<string, unknown> {
+  return {
+    id: p.id,
+    cliente_id: p.clienteId ?? null,
+    contract_id: p.contratoId ?? null,
+    numero: p.numero ?? null,
+    titulo: p.titulo,
+    situacao: p.situacao,
+    versao_vigente: p.versaoVigente ?? null,
+    criado_em: p.criadoEm,
+    excluido_em: p.excluidoEm ?? null,
+    atualizado_em: p.atualizadoEm ?? p.criadoEm, // NOT NULL na nuvem
+  };
+}
+
+function rowToPmocPlano(row: any): PmocPlano | null {
+  if (!row?.id || !row?.titulo) return null;
+  return {
+    id: row.id,
+    clienteId: row.cliente_id ?? undefined,
+    contratoId: row.contract_id ?? undefined,
+    numero: row.numero ?? undefined,
+    titulo: row.titulo,
+    situacao: row.situacao ?? 'rascunho',
+    versaoVigente: row.versao_vigente ?? undefined,
+    criadoEm: row.criado_em ?? new Date().toISOString(),
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
+    excluidoEm: row.excluido_em ?? undefined,
+  };
+}
+
+async function localUpsertPmocPlano(p: PmocPlano): Promise<void> {
+  if (await localMaisNovoColuna('pmoc_planos', p.id, p.atualizadoEm)) return;
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO pmoc_planos
+       (id, cliente_id, contrato_id, numero, titulo, situacao, versao_vigente, criado_em, atualizado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [p.id, p.clienteId ?? null, p.contratoId ?? null, p.numero ?? null, p.titulo,
+     p.situacao, p.versaoVigente ?? null, p.criadoEm, p.atualizadoEm ?? p.criadoEm, p.excluidoEm ?? null],
+  );
+}
+
+function pmocVersaoToRow(v: PmocPlanoVersao): Record<string, unknown> {
+  return {
+    id: v.id,
+    plan_id: v.planoId,
+    numero_versao: v.numeroVersao,
+    // Periodicidades e referências normativas vivem AQUI (jsonb versionado), nunca
+    // como coluna ou constante: são dados configuráveis, revisáveis pelo responsável.
+    dados: {
+      periodicidades: v.periodicidades ?? [],
+      equipamentoIds: v.equipamentoIds ?? [],
+      referencias: v.referencias ?? [],
+    },
+    responsavel_tecnico: v.responsavelTecnico ?? null,
+    doc_responsabilidade: v.docResponsabilidade ?? null,
+    aprovado_em: v.aprovadoEm ?? null,
+    criado_em: v.criadoEm,
+  };
+}
+
+function rowToPmocVersao(row: any): PmocPlanoVersao | null {
+  if (!row?.id || !row?.plan_id) return null;
+  const d = row.dados && typeof row.dados === 'object' ? row.dados : {};
+  return {
+    id: row.id,
+    planoId: row.plan_id,
+    numeroVersao: row.numero_versao ?? 1,
+    periodicidades: Array.isArray(d.periodicidades) ? d.periodicidades : [],
+    equipamentoIds: Array.isArray(d.equipamentoIds) ? d.equipamentoIds : [],
+    referencias: Array.isArray(d.referencias) ? d.referencias : [],
+    responsavelTecnico: row.responsavel_tecnico ?? undefined,
+    docResponsabilidade: row.doc_responsabilidade ?? undefined,
+    aprovadoEm: row.aprovado_em ?? undefined,
+    criadoEm: row.criado_em ?? new Date().toISOString(),
+  };
+}
+
+async function localUpsertPmocVersao(v: PmocPlanoVersao): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO pmoc_plano_versoes
+       (id, plano_id, numero_versao, dados, responsavel_tecnico, doc_responsabilidade, aprovado_em, criado_em)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [v.id, v.planoId, v.numeroVersao,
+     JSON.stringify({ periodicidades: v.periodicidades ?? [], equipamentoIds: v.equipamentoIds ?? [], referencias: v.referencias ?? [] }),
+     v.responsavelTecnico ?? null, v.docResponsabilidade ?? null, v.aprovadoEm ?? null, v.criadoEm],
+  );
+}
+
+function pmocGeradaToRow(g: PmocOrdemGerada): Record<string, unknown> {
+  return {
+    id: g.id,
+    plano_id: g.planoId,
+    asset_id: g.equipamentoId,
+    periodo: g.periodo,
+    // NUNCA null: entra no índice único, e no Postgres dois NULLs não colidem —
+    // a chave de idempotência viraria decorativa.
+    periodicidade_id: g.periodicidadeId ?? '',
+    ordem_id: g.ordemId,
+    vencimento: g.vencimento ?? null,
+    criado_em: g.criadoEm,
+    excluido_em: g.excluidoEm ?? null,
+    atualizado_em: g.atualizadoEm ?? g.criadoEm,
+  };
+}
+
+function rowToPmocGerada(row: any): PmocOrdemGerada | null {
+  if (!row?.id || !row?.plano_id || !row?.ordem_id) return null;
+  return {
+    id: row.id,
+    planoId: row.plano_id,
+    equipamentoId: row.asset_id,
+    periodo: row.periodo,
+    periodicidadeId: row.periodicidade_id ?? '',
+    ordemId: row.ordem_id,
+    vencimento: row.vencimento ?? undefined,
+    criadoEm: row.criado_em ?? new Date().toISOString(),
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
+    excluidoEm: row.excluido_em ?? undefined,
+  };
+}
+
+async function localUpsertPmocGerada(g: PmocOrdemGerada): Promise<void> {
+  if (await localMaisNovoColuna('pmoc_ordens_geradas', g.id, g.atualizadoEm)) return;
+  const db = await getDb();
+  // INSERT OR REPLACE por `id`. A chave lógica (plano, equipamento, período,
+  // periodicidade) é UNIQUE: se a nuvem trouxer uma linha com id DIFERENTE para a
+  // MESMA visita, o índice recusa — e é exatamente o que queremos, porque a visita
+  // já existe neste aparelho. O catch transforma a recusa em no-op.
+  try {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO pmoc_ordens_geradas
+         (id, plano_id, asset_id, periodo, periodicidade_id, ordem_id, vencimento, criado_em, atualizado_em, excluido_em)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [g.id, g.planoId, g.equipamentoId, g.periodo, g.periodicidadeId ?? '', g.ordemId,
+       g.vencimento ?? null, g.criadoEm, g.atualizadoEm ?? g.criadoEm, g.excluidoEm ?? null],
+    );
+  } catch {
+    // Colisão da chave única: a visita já foi gerada aqui. No-op.
+  }
+}
+
+// Leitores locais (usados pelo pushAllLocal).
+function rowToPmocPlanoLocal(r: any): PmocPlano {
+  return {
+    id: r.id, clienteId: r.cliente_id ?? undefined, contratoId: r.contrato_id ?? undefined,
+    numero: r.numero ?? undefined, titulo: r.titulo, situacao: r.situacao,
+    versaoVigente: r.versao_vigente ?? undefined, criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em ?? r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
+}
+function rowToPmocVersaoLocal(r: any): PmocPlanoVersao {
+  const d = JSON.parse(r.dados || '{}');
+  return {
+    id: r.id, planoId: r.plano_id, numeroVersao: r.numero_versao,
+    periodicidades: Array.isArray(d.periodicidades) ? d.periodicidades : [],
+    equipamentoIds: Array.isArray(d.equipamentoIds) ? d.equipamentoIds : [],
+    referencias: Array.isArray(d.referencias) ? d.referencias : [],
+    responsavelTecnico: r.responsavel_tecnico ?? undefined,
+    docResponsabilidade: r.doc_responsabilidade ?? undefined,
+    aprovadoEm: r.aprovado_em ?? undefined, criadoEm: r.criado_em,
+  };
+}
+function rowToPmocGeradaLocal(r: any): PmocOrdemGerada {
+  return {
+    id: r.id, planoId: r.plano_id, equipamentoId: r.asset_id, periodo: r.periodo,
+    periodicidadeId: r.periodicidade_id ?? '', ordemId: r.ordem_id,
+    vencimento: r.vencimento ?? undefined, criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em ?? r.criado_em,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
 }
 
 // ─── PUSH ALL LOCAL (SQLite → nuvem) ─────────────────────────────────────────
@@ -1315,6 +1520,17 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
       (o) => remoteMaisNovoNoMapa(tsOrdens, o.id, o.atualizadoEm), geracao);
     await pushTable<Equipamento>('equipamentos', 'SELECT * FROM equipamentos', rowToEquipamentoCloud,
       (e) => remoteMaisNovoNoMapa(tsEquip, e.id, e.atualizadoEm), geracao);
+
+    const tsPlanos = await carregarTimestampsRemotos('pmoc_planos', 'atualizado_em');
+    const tsGeradas = await carregarTimestampsRemotos('pmoc_ordens_geradas', 'atualizado_em');
+    await pushTable<PmocPlano>('pmoc_planos', 'SELECT * FROM pmoc_planos', rowToPmocPlanoLocal,
+      (p) => remoteMaisNovoNoMapa(tsPlanos, p.id, p.atualizadoEm), geracao);
+    // Versoes: append-only, sem relogio. O upsert por id e idempotente e a nuvem
+    // recusa alterar versao ja aprovada (trigger pmoc_bloquear_versao_congelada).
+    await pushTable<PmocPlanoVersao>('pmoc_plano_versoes', 'SELECT * FROM pmoc_plano_versoes', rowToPmocVersaoLocal,
+      undefined, geracao);
+    await pushTable<PmocOrdemGerada>('pmoc_ordens_geradas', 'SELECT * FROM pmoc_ordens_geradas', rowToPmocGeradaLocal,
+      (g) => remoteMaisNovoNoMapa(tsGeradas, g.id, g.atualizadoEm), geracao);
     if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.

@@ -38,6 +38,8 @@ import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
+import PmocPlanosScreen from '../screens/PmocPlanosScreen';
+import PmocPlanoScreen from '../screens/PmocPlanoScreen';
 // Frentes novas — landing pública, lixeira, assinatura, ajuda/suporte, legal
 // (Privacidade/Termos = mesmo componente) e o shell do técnico (Home dele).
 import LandingScreen from '../screens/LandingScreen';
@@ -109,6 +111,10 @@ export type RootStackParamList = {
   OrdemServico: undefined;
   // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR da porta física).
   Equipamento: undefined;
+  // PMOC Fase 2 — planos de manutenção programada (lista) e o detalhe do plano,
+  // que gera as ordens de serviço recorrentes. `PmocPlano` recebe o id do plano.
+  Pmoc: undefined;
+  PmocPlano: { id: string };
   // ─── Frentes novas ────────────────────────────────────────────────────────
   // Landing pública (web deslogado) — full-bleed, sem wrap desktop nem path.
   Landing: undefined;
@@ -176,6 +182,8 @@ const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
 const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
 const EquipamentoCentro = comCentroDesktop(EquipamentoScreen);
+const PmocCentro = comCentroDesktop(PmocPlanosScreen);
+const PmocPlanoCentro = comCentroDesktop(PmocPlanoScreen);
 // Frentes novas: telas mobile-like centralizadas no desktop (pass-through no
 // nativo). Landing e TecnicoHome NÃO entram aqui — são full-bleed por conta
 // própria. Privacidade e Termos compartilham o LegalCentro (mesmo componente).
@@ -453,6 +461,9 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />
       {/* PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). */}
       <Stack.Screen name="Equipamento" component={EquipamentoCentro} />
+      {/* PMOC Fase 2 — planos de manutenção (/pmoc) e o detalhe (/pmoc/:id). */}
+      <Stack.Screen name="Pmoc" component={PmocCentro} />
+      <Stack.Screen name="PmocPlano" component={PmocPlanoCentro} />
       {/* ─── Frentes novas ──────────────────────────────────────────────────
           Lixeira e Assinatura (gestão), Ajuda/suporte e os documentos legais.
           Privacidade e Termos apontam para o MESMO LegalCentro — a tela decide

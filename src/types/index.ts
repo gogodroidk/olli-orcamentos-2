@@ -716,3 +716,108 @@ export const CATEGORIAS_HVAC: { id: CategoriaHvac; label: string; icon: string }
   { id: 'condensadora', label: 'Condensadora', icon: 'radiator' },
   { id: 'outro', label: 'Outro', icon: 'dots-horizontal' },
 ];
+
+// ─── PMOC Fase 2 — plano de manutenção, periodicidade, ordens recorrentes ─────
+//
+// CAVEAT LEGAL (herdado de 20260709_pmoc_fundacao.sql): nada aqui declara
+// conformidade legal. `situacao` do plano é OPERACIONAL. As periodicidades, as
+// atividades e as referências normativas são DADOS versionados (vivem em
+// `PmocPlanoVersao.dados`), nunca constantes de código: prazo de norma muda, e
+// quem valida é o responsável técnico habilitado — não o app.
+
+/**
+ * Uma periodicidade do plano: "trocar filtro a cada 3 meses nos splits".
+ *
+ * `frequencia` é `string`, não union type, DE PROPÓSITO. Uma union seria uma
+ * constante de código disfarçada — mudar a norma exigiria republicar o app. O
+ * valor é validado em runtime contra `FREQUENCIAS_PMOC`, que é só o vocabulário
+ * que o app sabe calcular hoje; o plano pode carregar outros.
+ */
+export interface PmocPeriodicidade {
+  id: string;
+  nome: string;
+  /** 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' — ver FREQUENCIAS_PMOC. */
+  frequencia: string;
+  /** Atividades a executar na visita (viram o checklist da OS gerada). */
+  atividades: string[];
+  /** Escopo: categorias de equipamento (vazio = todos os do plano). */
+  categorias?: string[];
+  /** Escopo fino: ids de equipamento (vence `categorias` quando presente). */
+  equipamentoIds?: string[];
+  /** Referência normativa citada pelo responsável técnico. Texto livre, nunca afirmação do app. */
+  referencia?: string;
+}
+
+/** Frequências que o app sabe transformar em períodos. Meses por ciclo. */
+export const FREQUENCIAS_PMOC: ReadonlyArray<{ id: string; label: string; meses: number }> = [
+  { id: 'mensal', label: 'Mensal', meses: 1 },
+  { id: 'bimestral', label: 'Bimestral', meses: 2 },
+  { id: 'trimestral', label: 'Trimestral', meses: 3 },
+  { id: 'semestral', label: 'Semestral', meses: 6 },
+  { id: 'anual', label: 'Anual', meses: 12 },
+];
+
+/** Situação OPERACIONAL do plano (jamais "conforme com a norma X"). */
+export type SituacaoPmoc =
+  | 'rascunho'
+  | 'em_revisao'
+  | 'aguardando_aprovacao_tecnica'
+  | 'aprovado'
+  | 'vigente'
+  | 'substituido'
+  | 'suspenso'
+  | 'encerrado';
+
+export interface PmocPlano {
+  id: string;
+  clienteId?: string;
+  contratoId?: string;
+  numero?: string;
+  titulo: string;
+  situacao: SituacaoPmoc;
+  /** Aponta para `PmocPlanoVersao.numeroVersao` vigente. */
+  versaoVigente?: number;
+  criadoEm: string;
+  atualizadoEm?: string;
+  /** LIXEIRA: ISO do soft delete. Ausente = ATIVO. */
+  excluidoEm?: string;
+}
+
+/** Conteúdo versionado do plano. APPEND-ONLY: versão aprovada nunca é reescrita. */
+export interface PmocPlanoVersao {
+  id: string;
+  planoId: string;
+  numeroVersao: number;
+  periodicidades: PmocPeriodicidade[];
+  /** Equipamentos cobertos pelo plano (ids de `Equipamento`). */
+  equipamentoIds: string[];
+  /** Referências normativas que o responsável técnico registrou. Dados, não afirmação. */
+  referencias?: string[];
+  responsavelTecnico?: string;
+  /** Número/referência do documento de responsabilidade (ART/TRT/RRT — o conselho varia). */
+  docResponsabilidade?: string;
+  /** Aprovação TÉCNICA (operacional), não declaração de conformidade legal. */
+  aprovadoEm?: string;
+  criadoEm: string;
+}
+
+/**
+ * Uma linha do livro-caixa da geração recorrente. A chave lógica
+ * (planoId, equipamentoId, periodo, periodicidadeId) é UNIQUE no banco — é o que
+ * impede dois aparelhos de gerarem a mesma visita duas vezes.
+ */
+export interface PmocOrdemGerada {
+  id: string;
+  planoId: string;
+  equipamentoId: string;
+  /** '2026-07' (mensal) | '2026-T3' (trimestral) | '2026-S1' | '2026' (anual). */
+  periodo: string;
+  periodicidadeId: string;
+  /** `OrdemServico.id` criada para esta visita. */
+  ordemId: string;
+  /** Data (ISO curta) em que a manutenção do período vence. */
+  vencimento?: string;
+  criadoEm: string;
+  atualizadoEm?: string;
+  excluidoEm?: string;
+}
