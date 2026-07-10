@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -19,7 +19,7 @@ import {
   Spectral_700Bold,
 } from '@expo-google-fonts/spectral';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppTheme, Colors } from './src/theme';
+import { criarAppTheme, Colors, TemaProvider, useTema } from './src/theme';
 import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -107,7 +107,22 @@ function BrandSplash() {
   );
 }
 
+/**
+ * Raiz do app. O TemaProvider tem de ficar ACIMA de tudo que lê cor — inclusive do
+ * PaperProvider, cujo tema deriva da nossa paleta.
+ */
 export default function App() {
+  return (
+    <TemaProvider>
+      <AppConteudo />
+    </TemaProvider>
+  );
+}
+
+function AppConteudo() {
+  const { modo, cores } = useTema();
+  // O tema do Paper é recalculado só quando o modo ou a cor de marca mudam.
+  const paperTheme = useMemo(() => criarAppTheme(modo, cores), [modo, cores]);
   const [dbReady, setDbReady] = useState(false);
   // Layout desktop REATIVO (v4): controla só o frame externo (aplicar ou não o
   // webFrame de 430px). No nativo é sempre false → frame mobile inalterado.
@@ -224,12 +239,18 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <PaperProvider theme={AppTheme}>
-          <StatusBar backgroundColor="transparent" translucent barStyle="light-content" />
+        <PaperProvider theme={paperTheme}>
+          {/* barStyle segue o MODO, não a marca: 'light-content' num app claro
+              deixa os ícones do sistema brancos sobre branco — somem. */}
+          <StatusBar
+            backgroundColor="transparent"
+            translucent
+            barStyle={modo === 'escuro' ? 'light-content' : 'dark-content'}
+          />
           {/* webFrame (430px centrado) SÓ na web mobile: no desktop o app ocupa
               a tela toda (o shell da sidebar cuida do layout). No nativo o frame
               nunca se aplica — comportamento do APK intacto. */}
-          <View style={[styles.appFrame, Platform.OS === 'web' && !ehDesktop && styles.webFrame]}>
+          <View style={[styles.appFrame, { backgroundColor: cores.background }, Platform.OS === 'web' && !ehDesktop && styles.webFrame]}>
             {ready ? (
               // linking com URLs reais (v4): o mapa é fixado no boot (linkingConfig).
               <NavigationContainer

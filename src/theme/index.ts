@@ -1,13 +1,30 @@
-import { MD3DarkTheme } from 'react-native-paper';
+import { MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
 import { Fonts } from './fonts';
+import { criarGradientes, criarPaleta, criarSombras, COR_MARCA_PADRAO, type Cores, type ModoTema } from './cores';
 
 export { Fonts };
+export * from './cores';
+export { TemaProvider, useTema, useCores, useGradientes, useEstilos } from './TemaProvider';
 
 /**
- * Tema ESCURO "cockpit" — do design handoff OLLI.
- * O app é escuro; documentos (PDF) e o link do cliente são claros (à parte).
+ * `Colors` — paleta ESTÁTICA do modo CLARO (o padrão do app).
+ *
+ * COMPATIBILIDADE, NÃO FONTE DE VERDADE. Setenta arquivos ainda fazem
+ * `StyleSheet.create` no escopo do módulo, e isso congela a cor no import: nem
+ * remontar a árvore reexecuta aquela linha. Enquanto a migração para `useCores()`
+ * não termina, este objeto mantém esses arquivos compilando e coerentes no modo
+ * claro — e só nele.
+ *
+ * NÃO use em código novo. Use `useCores()`; para estilos, `useEstilos(criarEstilos)`.
+ * O modo escuro só alcança um arquivo depois que ele migra.
  */
-export const Colors = {
+export const Colors: Cores = criarPaleta('claro', COR_MARCA_PADRAO);
+
+/** Idem: gradientes estáticos do modo claro. Em código novo, `useGradientes()`. */
+export const Gradients = criarGradientes('claro', COR_MARCA_PADRAO);
+
+/** Paleta legada do handoff (cockpit escuro), preservada para referência de design. */
+export const CoresCockpitLegado = {
   // Marca
   primary: '#0B6FCE',          // Azul OLLI
   primaryLight: '#3B8FE0',
@@ -70,8 +87,8 @@ export const Colors = {
   pdfBorderColor: '#E2E8F0',
 };
 
-// Gradientes da marca
-export const Gradients = {
+// Gradientes do handoff escuro (referência; use `useGradientes()`).
+const GradientesCockpitLegado = {
   primary: ['#0B6FCE', '#0A2547'] as const,
   primaryDiagonal: ['#0B6FCE', '#34C6D9'] as const,
   brand: ['#0B6FCE', '#34C6D9'] as const,
@@ -86,24 +103,35 @@ export const Gradients = {
   surface: ['#16304D', '#102238'] as const,
 };
 
-export const AppTheme = {
-  ...MD3DarkTheme,
-  colors: {
-    ...MD3DarkTheme.colors,
-    primary: Colors.primary,
-    primaryContainer: Colors.primaryContainer,
-    secondary: Colors.accent,
-    secondaryContainer: Colors.accentContainer,
-    background: Colors.background,
-    surface: Colors.surface,
-    surfaceVariant: Colors.surfaceVariant,
-    error: Colors.danger,
-    onPrimary: Colors.onPrimary,
-    onBackground: Colors.onBackground,
-    onSurface: Colors.onSurface,
-    outline: Colors.outline,
-  },
-};
+/**
+ * Tema do react-native-paper derivado da nossa paleta. O PaperProvider precisa do
+ * tema CERTO por modo: usar MD3DarkTheme com cores claras deixaria os componentes
+ * internos do Paper (ripple, menu, snackbar) com o contraste invertido.
+ */
+export function criarAppTheme(modo: ModoTema, cores: Cores) {
+  const base = modo === 'escuro' ? MD3DarkTheme : MD3LightTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: cores.primary,
+      primaryContainer: cores.primaryContainer,
+      secondary: cores.accent,
+      secondaryContainer: cores.accentContainer,
+      background: cores.background,
+      surface: cores.surface,
+      surfaceVariant: cores.surfaceVariant,
+      error: cores.danger,
+      onPrimary: cores.onPrimary,
+      onBackground: cores.onBackground,
+      onSurface: cores.onSurface,
+      outline: cores.outline,
+    },
+  };
+}
+
+/** Legado: tema claro estático. Em código novo use `criarAppTheme(modo, cores)`. */
+export const AppTheme = criarAppTheme('claro', Colors);
 
 export const Spacing = {
   xs: 4,
@@ -141,8 +169,12 @@ export const Typography = {
   displaySerif: { fontFamily: Fonts.serifBold, fontSize: 26 },
 };
 
-// Sombras escuras (cockpit)
-export const Shadow = {
+// `criarSombras` vive em cores.ts (módulo folha) e é reexportada por `export * from './cores'`.
+/** Legado: sombras do modo claro. Em código novo use `criarSombras(modo, cores)`. */
+export const Shadow = criarSombras('claro', Colors);
+
+// Sombras do handoff escuro (referência).
+const SombrasCockpitLegado = {
   sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 },
   md: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.32, shadowRadius: 16, elevation: 6 },
   lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.38, shadowRadius: 28, elevation: 10 },
@@ -151,3 +183,6 @@ export const Shadow = {
   glowBlue: { shadowColor: '#0B6FCE', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 20, elevation: 8 },
   focusRing: { shadowColor: '#7FE9F5', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
 };
+
+// Referências de design; não são consumidas pelo app.
+void CoresCockpitLegado; void GradientesCockpitLegado; void SombrasCockpitLegado;
