@@ -37,18 +37,35 @@ function novoToken(): string {
   return base64url(bytes);
 }
 
-/** Converte bytes em base64url (A–Z a–z 0–9 - _) sem padding `=`. */
+const ALFABETO_B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/**
+ * Converte bytes em base64url (A–Z a–z 0–9 - _) sem padding `=`.
+ *
+ * Implementado em ES puro, de propósito. A versão anterior tentava `btoa`, depois
+ * `Buffer`, e — se nenhum existisse — devolvia a string BINÁRIA CRUA como se fosse
+ * base64: sem lançar, sem avisar, gerando um token corrompido. Nem o React Native
+ * 0.85 nem nenhuma dependência instalam `btoa` ou `Buffer` como global (verificado
+ * varrendo `node_modules`), então esse ramo dependia do motor. Este token é a ÚNICA
+ * proteção do link que expõe dados do orçamento ao cliente: ele não pode depender de
+ * o Hermes expor uma função. Base64 é aritmética de bits — trinta linhas resolvem, e
+ * a pergunta "o ambiente tem btoa?" deixa de existir.
+ */
 function base64url(bytes: Uint8Array): string {
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  const b64 =
-    typeof btoa === 'function'
-      ? btoa(bin)
-      : // RN/Hermes pode não ter btoa: usa Buffer se existir.
-        (globalThis as any)?.Buffer
-        ? (globalThis as any).Buffer.from(bytes).toString('base64')
-        : bin;
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  let saida = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : undefined;
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : undefined;
+
+    saida += ALFABETO_B64URL[b0 >> 2];
+    saida += ALFABETO_B64URL[((b0 & 0x03) << 4) | (b1 === undefined ? 0 : b1 >> 4)];
+    if (b1 === undefined) break; // 1 byte restante → 2 chars, sem padding
+    saida += ALFABETO_B64URL[((b1 & 0x0f) << 2) | (b2 === undefined ? 0 : b2 >> 6)];
+    if (b2 === undefined) break; // 2 bytes restantes → 3 chars, sem padding
+    saida += ALFABETO_B64URL[b2 & 0x3f];
+  }
+  return saida;
 }
 
 function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
