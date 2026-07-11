@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corStatusOS, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -77,9 +77,11 @@ function formatarValor(v?: number): string {
 function StatusOSBadge({ status }: { status: StatusOS }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = STATUS_OS_CORES[status] ?? cores.onSurfaceVariant;
+  const corBase = STATUS_OS_CORES[status];
+  const cor = corBase ? corStatusOS(corBase, cores.surface) : cores.onSurfaceVariant;
+  const fundo = corBase ?? cores.onSurfaceVariant;
   return (
-    <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
+    <View style={[styles.statusBadge, { backgroundColor: fundo + '22', borderColor: fundo + '66' }]}>
       <Text style={[styles.statusBadgeText, { color: cor }]}>{STATUS_OS_LABELS[status] ?? status}</Text>
     </View>
   );
@@ -568,12 +570,14 @@ function DetalheOS({
               <View style={styles.statusGrid}>
                 {STATUS_OS_ORDEM.filter((s) => s !== 'cancelada' || ehGestao).map((s) => {
                   const ativo = ordem.status === s;
-                  const cor = STATUS_OS_CORES[s] ?? cores.primary;
+                  const corBase = STATUS_OS_CORES[s];
+                  const cor = corBase ? corStatusOS(corBase, cores.surface) : cores.primary;
+                  const fundo = corBase ?? cores.primary;
                   const salvando = salvandoStatus === s;
                   return (
                     <TouchableOpacity
                       key={s}
-                      style={[styles.statusOpt, ativo && { backgroundColor: cor + '22', borderColor: cor }]}
+                      style={[styles.statusOpt, ativo && { backgroundColor: fundo + '22', borderColor: cor }]}
                       activeOpacity={0.85}
                       disabled={salvando}
                       onPress={() => mudarStatus(s)}

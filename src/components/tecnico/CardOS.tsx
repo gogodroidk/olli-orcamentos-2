@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, corStatusOS, achatarVeu, type Cores } from '../../theme';
 import { AnimatedEntrance } from '../AnimatedEntrance';
 import { OlliButton } from '../OlliButton';
 import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
@@ -71,7 +71,13 @@ function proximaAcao(status: StatusOS): {
 export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvancar }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = STATUS_OS_CORES[ordem.status] ?? cores.onSurfaceVariant;
+  const corBase = STATUS_OS_CORES[ordem.status];
+  // O card senta sobre `surfaceGlass` (véu translúcido), NÃO sobre `surface` puro.
+  // O contraste do texto tem que ser calculado contra o fundo REAL do chip (o
+  // véu achatado sobre o background), senão marginais como 'agendada' no escuro
+  // ficam abaixo de 4,5:1 (achado da auditoria).
+  const fundoCard = achatarVeu(cores.background, cores.surfaceGlass);
+  const cor = corBase ? corStatusOS(corBase, fundoCard) : cores.onSurfaceVariant;
   const acao = proximaAcao(ordem.status);
   const quando = quandoLabel(ordem.dataAgendada);
   const feitos = ordem.checklist?.filter((c) => c.feito).length ?? 0;
@@ -96,7 +102,7 @@ export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvanc
               <Text style={styles.cliente} numberOfLines={1}>{ordem.clienteNome || 'Sem cliente'}</Text>
               <Text style={styles.titulo} numberOfLines={2}>{ordem.titulo || 'Ordem de serviço'}</Text>
             </View>
-            <View style={[styles.badge, { backgroundColor: cor + '26', borderColor: cor + '77' }]}>
+            <View style={[styles.badge, { backgroundColor: (corBase ?? cores.onSurfaceVariant) + '22', borderColor: (corBase ?? cores.onSurfaceVariant) + '77' }]}>
               <Text style={[styles.badgeText, { color: cor }]}>{STATUS_OS_LABELS[ordem.status]}</Text>
             </View>
           </View>

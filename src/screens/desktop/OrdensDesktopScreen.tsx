@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, type GestureResponderEvent } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, corStatusOS, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
@@ -118,10 +118,11 @@ export default function OrdensDesktopScreen() {
     ...STATUS_OS_ORDEM.map((s) => ({
       chave: s as FiltroStatus,
       rotulo: STATUS_OS_LABELS[s],
-      cor: STATUS_OS_CORES[s],
+      cor: corStatusOS(STATUS_OS_CORES[s], cores.surface),
+      corFundo: STATUS_OS_CORES[s],
       contagem: contagensPorStatus.get(s) ?? 0,
     })),
-  ], [buscadas.length, contagensPorStatus]);
+  ], [buscadas.length, contagensPorStatus, cores.surface]);
 
   const linhas = useMemo(() => {
     if (!ehGestao || filtroStatus === 'todas') return buscadas;
@@ -332,9 +333,11 @@ export default function OrdensDesktopScreen() {
 function StatusChipTabela({ status }: { status: StatusOS }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = STATUS_OS_CORES[status] ?? cores.onSurfaceVariant;
+  const corBase = STATUS_OS_CORES[status];
+  const cor = corBase ? corStatusOS(corBase, cores.surface) : cores.onSurfaceVariant;
+  const fundo = corBase ?? cores.onSurfaceVariant;
   return (
-    <View style={[styles.statusChip, { backgroundColor: `${cor}22`, borderColor: `${cor}66` }]}>
+    <View style={[styles.statusChip, { backgroundColor: `${fundo}22`, borderColor: `${fundo}66` }]}>
       <Text style={[styles.statusChipTexto, { color: cor }]} numberOfLines={1}>{STATUS_OS_LABELS[status] ?? status}</Text>
     </View>
   );

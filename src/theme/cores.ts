@@ -236,8 +236,40 @@ export function corCategoria(matiz: string, fundo: string, alvo = 4.5): string {
  *
  * Sem isto, 8 dos 12 pares tipo×modo reprovavam — dois deles no modo ESCURO.
  */
-export function corCategoriaEmChip(matiz: string, superficie: string, tintAlfa = 0.13, alvo = 4.5): string {
+// `tintAlfa` default = 34/255 ≈ 0,1333: bate EXATAMENTE com o alfa hex '22' que
+// os chips de status/categoria pintam no fundo (backgroundColor: matiz + '22').
+// Calibrar o texto pro mesmo véu que é renderizado fecha o gap de contraste que
+// derrubava 'pausada' no escuro (0,13 calibrado vs 0,1333 pintado = 4,492:1).
+// Quem pinta MENOS véu (ex.: StatusBadge com '20') só ganha contraste — seguro.
+export function corCategoriaEmChip(matiz: string, superficie: string, tintAlfa = 34 / 255, alvo = 4.5): string {
   return corCategoria(matiz, achatarVeu(superficie, comAlfa(matiz, tintAlfa)), alvo);
+}
+
+/**
+ * Cor de status do ORÇAMENTO com contraste garantido — mesmo mecanismo de
+ * `corCategoriaEmChip` acima, só que nomeada para o caso de uso.
+ *
+ * `STATUS_COLORS` (`types/index.ts`) foi calibrado num app dark-only: o
+ * cinza de `rascunho` (`#9CA3AF`) mede 2,54:1 sobre branco — falha AA
+ * (4,5:1) no badge mais visto do app. Um hex estático não resolve os dois
+ * modos ao mesmo tempo (a luminosidade que passa no claro reprova no
+ * escuro, e vice-versa: são exigências opostas). Por isso ninguém deve ler
+ * `STATUS_COLORS[status]` puro para pintar texto — sempre por aqui, contra
+ * a superfície real do chip.
+ */
+export function corStatusOrcamento(matiz: string, superficie: string): string {
+  return corCategoriaEmChip(matiz, superficie);
+}
+
+/**
+ * Idem para o status de ORDEM DE SERVIÇO (`STATUS_OS_CORES`). O badge de OS
+ * não tem um componente único — é remontado em 5 telas (mobile e desktop) —
+ * então cada uma deriva a cor por aqui em vez de ler a constante crua; isso
+ * já basta para as cinco ficarem acessíveis sem duplicar o cálculo de
+ * contraste em cada uma.
+ */
+export function corStatusOS(matiz: string, superficie: string): string {
+  return corCategoriaEmChip(matiz, superficie);
 }
 
 /** `#RRGGBB` + alfa → `rgba(r,g,b,a)`. Usado nos containers e hairlines. */

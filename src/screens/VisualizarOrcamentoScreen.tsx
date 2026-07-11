@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Alert, Share, ActivityIndicator, Image,
@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corStatusOrcamento, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
@@ -42,14 +42,23 @@ const STATUS_MANUAIS: StatusOrcamento[] = [
   'rascunho', 'enviado', 'em_negociacao', 'aguardando_assinatura',
   'aprovado', 'recusado', 'expirado', 'cancelado', 'convertido',
 ];
-const STATUS_ACTIONS: Array<{ status: StatusOrcamento; label: string; color: string }> =
-  STATUS_MANUAIS.map(status => ({ status, label: STATUS_LABELS[status], color: STATUS_COLORS[status] }));
-
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Contraste garantido contra a superfície real do menu (ver corStatusOrcamento
+  // em StatusBadge) — precisa de `cores`, por isso vive no componente e não como
+  // constante de módulo.
+  const STATUS_ACTIONS: Array<{ status: StatusOrcamento; label: string; corBase: string; color: string }> = useMemo(
+    () => STATUS_MANUAIS.map(status => ({
+      status,
+      label: STATUS_LABELS[status],
+      corBase: STATUS_COLORS[status],
+      color: corStatusOrcamento(STATUS_COLORS[status], cores.surface),
+    })),
+    [cores.surface],
+  );
   // Ink de contraste sobre `accentLight` (botão principal de fechar negócio).
   const textoSobreAccent = textoSobre(cores.accentLight);
   const { orcamentoId } = route.params;
@@ -274,10 +283,10 @@ export default function VisualizarOrcamentoScreen() {
             {STATUS_ACTIONS.map(a => (
               <TouchableOpacity
                 key={a.status}
-                style={[styles.menuItem, orc.status === a.status && { backgroundColor: a.color + '15' }]}
+                style={[styles.menuItem, orc.status === a.status && { backgroundColor: a.corBase + '15' }]}
                 onPress={() => updateStatus(a.status)}
               >
-                <View style={[styles.menuDot, { backgroundColor: a.color }]} />
+                <View style={[styles.menuDot, { backgroundColor: a.corBase }]} />
                 <Text style={[styles.menuLabel, orc.status === a.status && { color: a.color, fontWeight: '700' }]}>{a.label}</Text>
                 {orc.status === a.status && <MaterialCommunityIcons name="check" size={16} color={a.color} />}
               </TouchableOpacity>

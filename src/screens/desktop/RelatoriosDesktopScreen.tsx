@@ -10,11 +10,11 @@ import { KpiCard } from '../../components/web/KpiCard';
 import { OlliSkeleton } from '../../components/OlliSkeleton';
 import { OlliPressable } from '../../components/OlliPressable';
 import { GatePro } from '../../components/GatePro';
-import { getOrcamentos } from '../../database/database';
+import { getOrcamentosResumoPorStatus, getOrcamentosTotalAtivos, getOrcamentosDatasCriacao } from '../../database/database';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { formatCurrency } from '../../utils/currency';
 import { RootStackParamList } from '../../navigation/AppNavigator';
-import { Orcamento, StatusOrcamento, STATUS_LABELS, STATUS_COLORS } from '../../types';
+import { StatusOrcamento, STATUS_LABELS, STATUS_COLORS } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -22,6 +22,10 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 // ordem do type) — assim os 4 status novos (visualizado/em_negociação/expirado/
 // convertido) entram automaticamente e nenhum orçamento fica fora da distribuição.
 const ORDEM_STATUS = Object.keys(STATUS_LABELS) as StatusOrcamento[];
+
+/** Resumo agregado (contagem + soma) de um recorte de orçamentos — vem pronto do SQLite. */
+interface ResumoStatus { contagem: number; valorTotal: number }
+const RESUMO_VAZIO: ResumoStatus = { contagem: 0, valorTotal: 0 };
 
 /** Nomes curtos dos últimos 12 meses (incluindo o atual), na ordem cronológica. */
 function ultimosDozeMeses(): { chave: string; label: string }[] {
@@ -39,29 +43,41 @@ export default function RelatoriosDesktopScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  // dashboard-agg: os KPIs e a pizza chegam PRONTOS do SQLite (agregados por
+  // status, GROUP BY), e a linha usa só as datas de criação (não o registro
+  // inteiro) — no lugar de `getOrcamentos()` completo (SELECT * + JSON.parse
+  // do histórico inteiro) reduzido em JS a cada foco/sync.
+  const [resumoPorStatus, setResumoPorStatus] = useState<Partial<Record<StatusOrcamento, ResumoStatus>>>({});
+  const [totalAtivos, setTotalAtivos] = useState(0);
+  const [datasCriacao, setDatasCriacao] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [larguraLinha, setLarguraLinha] = useState(0);
 
   const load = useCallback(async () => {
-    const all = await getOrcamentos();
-    setOrcamentos(all);
+    const [porStatus, total, datas] = await Promise.all([
+      getOrcamentosResumoPorStatus(),
+      getOrcamentosTotalAtivos(),
+      getOrcamentosDatasCriacao(),
+    ]);
+    setResumoPorStatus(porStatus);
+    setTotalAtivos(total);
+    setDatasCriacao(datas);
     setCarregando(false);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   useEffect(() => onSyncAplicado(() => { load(); }), [load]);
 
-  const aprovados = orcamentos.filter(o => o.status === 'aprovado');
-  const faturamento = aprovados.reduce((s, o) => s + o.valorTotal, 0);
-  const ticketMedio = aprovados.length ? faturamento / aprovados.length : 0;
-  const conversao = orcamentos.length ? Math.round((aprovados.length / orcamentos.length) * 100) : 0;
+  const aprovadosResumo = resumoPorStatus.aprovado ?? RESUMO_VAZIO;
+  const faturamento = aprovadosResumo.valorTotal;
+  const ticketMedio = aprovadosResumo.contagem ? faturamento / aprovadosResumo.contagem : 0;
+  const conversao = totalAtivos ? Math.round((aprovadosResumo.contagem / totalAtivos) * 100) : 0;
 
   // ── pizza: contagem por status ──
   const dadosPizza = ORDEM_STATUS
     .map((status) => ({
       status,
-      qtd: orcamentos.filter(o => o.status === status).length,
+      qtd: resumoPorStatus[status]?.contagem ?? 0,
     }))
     .filter((d) => d.qtd > 0)
     .map((d) => ({
@@ -75,8 +91,8 @@ export default function RelatoriosDesktopScreen() {
   // ── linha: contagem de orçamentos criados por mês (12 meses) ──
   const meses = ultimosDozeMeses();
   const dadosLinha = meses.map(({ chave, label }) => {
-    const qtd = orcamentos.reduce((s, o) => {
-      const d = new Date(o.criadoEm);
+    const qtd = datasCriacao.reduce((s, iso) => {
+      const d = new Date(iso);
       const k = `${d.getFullYear()}-${d.getMonth()}`;
       return k === chave ? s + 1 : s;
     }, 0);
@@ -104,11 +120,11 @@ export default function RelatoriosDesktopScreen() {
           valor={carregando ? '—' : `${conversao}%`}
           icone="chart-line"
           corIcone={cores.primaryLight}
-          rodape={orcamentos.length ? `${aprovados.length}/${orcamentos.length} aprovados` : 'sem histórico'}
+          rodape={totalAtivos ? `${aprovadosResumo.contagem}/${totalAtivos} aprovados` : 'sem histórico'}
         />
         <KpiCard
           titulo="Total de orçamentos"
-          valor={carregando ? '—' : String(orcamentos.length)}
+          valor={carregando ? '—' : String(totalAtivos)}
           icone="file-document-multiple-outline"
           corIcone={cores.warning}
         />
@@ -138,7 +154,7 @@ export default function RelatoriosDesktopScreen() {
                     innerCircleColor={cores.surface}
                     centerLabelComponent={() => (
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={styles.pizzaCentroValor}>{orcamentos.length}</Text>
+                        <Text style={styles.pizzaCentroValor}>{totalAtivos}</Text>
                         <Text style={styles.pizzaCentroLabel}>total</Text>
                       </View>
                     )}

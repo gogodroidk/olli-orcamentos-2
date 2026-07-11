@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BarChart } from 'react-native-gifted-charts';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, textoSobre, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, textoSobre, corStatusOS, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { KpiCard } from '../../components/web/KpiCard';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
@@ -268,11 +268,15 @@ export default function InicioDesktopScreen() {
       { chave: 'numero', titulo: 'OS', largura: 100, render: (o) => <Text style={styles.celulaTexto}>{o.numero}</Text> },
       { chave: 'cliente', titulo: 'Cliente', largura: '34%', render: (o) => <Text style={styles.celulaTexto} numberOfLines={1}>{o.clienteNome || o.titulo}</Text>, tituloCompleto: (o) => o.clienteNome || o.titulo },
       { chave: 'titulo', titulo: 'Serviço', largura: '30%', render: (o) => <Text style={styles.celulaTexto} numberOfLines={1}>{o.titulo}</Text>, tituloCompleto: (o) => o.titulo },
-      { chave: 'status', titulo: 'Status', largura: 150, render: (o) => (
-        <View style={[styles.osBadge, { backgroundColor: STATUS_OS_CORES[o.status] + '22' }]}>
-          <Text style={[styles.osBadgeTexto, { color: STATUS_OS_CORES[o.status] }]}>{STATUS_OS_LABELS[o.status]}</Text>
-        </View>
-      ) },
+      { chave: 'status', titulo: 'Status', largura: 150, render: (o) => {
+        const corBase = STATUS_OS_CORES[o.status];
+        const cor = corStatusOS(corBase, cores.surface);
+        return (
+          <View style={[styles.osBadge, { backgroundColor: corBase + '22' }]}>
+            <Text style={[styles.osBadgeTexto, { color: cor }]}>{STATUS_OS_LABELS[o.status]}</Text>
+          </View>
+        );
+      } },
     ];
 
     return (

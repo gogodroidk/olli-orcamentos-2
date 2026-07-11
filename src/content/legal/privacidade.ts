@@ -123,7 +123,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Localização da equipe em campo',
-          finalidade: 'Coordenar rotas e o andamento do expediente — mostrar a posição dos técnicos e o trajeto até o cliente SOMENTE durante o horário de trabalho, nunca fora do expediente.',
+          finalidade: 'Coordenar rotas e o andamento do expediente — mostrar a posição dos técnicos e o trajeto até o cliente, para fins de gestão operacional em serviço. A captura só acontece quando você ativa a localização no aparelho (ou autoriza o navegador, na versão web); o app não liga isso sozinho, e você controla quando ligar ou desligar nas permissões do seu dispositivo.',
           base: 'Legítimo interesse do empregador/contratante na gestão operacional da equipe em campo (art. 7º, IX), com uso restrito à finalidade de coordenação de rota/expediente. Você pode se opor a este tratamento a qualquer momento pelos canais de atendimento.',
         },
         {

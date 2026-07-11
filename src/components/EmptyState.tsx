@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Text, StyleSheet, Animated, Easing } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../theme';
+import { useReducedMotion } from '../theme/motion';
 import { OlliButton } from './OlliButton';
 import { AnimatedEntrance } from './AnimatedEntrance';
 
@@ -17,8 +18,15 @@ function FloatingIcon({ icon }: { icon: keyof typeof MaterialCommunityIcons.glyp
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const translateY = useRef(new Animated.Value(0)).current;
+  const reduzirMovimento = useReducedMotion();
 
   useEffect(() => {
+    // Acessibilidade: com "Reduzir movimento" ligado, o ícone fica parado
+    // no estado final — sem o loop infinito de flutuação.
+    if (reduzirMovimento) {
+      translateY.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(translateY, { toValue: -5, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -27,7 +35,7 @@ function FloatingIcon({ icon }: { icon: keyof typeof MaterialCommunityIcons.glyp
     );
     loop.start();
     return () => loop.stop();
-  }, []);
+  }, [reduzirMovimento]);
 
   return (
     <Animated.View style={[styles.iconWrap, { transform: [{ translateY }] }]}>

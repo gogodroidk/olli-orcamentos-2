@@ -6,8 +6,19 @@ import { PressableWebState } from './pressableWebState';
 export interface ItemChipFiltro<K extends string = string> {
   chave: K;
   rotulo: string;
-  /** Cor de destaque do chip quando ativo (dot + texto + fundo tintado). Sem cor = neutro (tema). */
+  /**
+   * Cor do TEXTO/ícone quando ativo — precisa vir ajustada por contraste
+   * (ex.: `corStatusOS`/`corStatusOrcamento`), nunca a matiz crua.
+   */
   cor?: string;
+  /**
+   * Cor do FUNDO tintado + dot + borda quando ativo — é sobre ELA que `cor`
+   * é calculada, então tem que ser a matiz CRUA (`STATUS_COLORS[x]`), não a
+   * ajustada; ajustada aqui quebra a suposição de contraste (ver
+   * `corCategoriaEmChip` em theme/cores.ts). Sem `corFundo`, cai em `cor`
+   * (compatível com quem já passa uma cor só seguramente crua/de tema).
+   */
+  corFundo?: string;
   /** Contagem exibida num badge ao lado do rótulo (ex.: nº de itens naquele status). */
   contagem?: number;
 }
@@ -38,6 +49,9 @@ export function ChipsFiltro<K extends string>({ itens, selecionado, aoSelecionar
       {itens.map((item) => {
         const ativo = item.chave === selecionado;
         const cor = item.cor;
+        // Fundo/dot/borda usam a matiz crua (`corFundo`); sem ela, cai na
+        // mesma `cor` recebida (compatibilidade com quem já passa algo seguro).
+        const fundo = item.corFundo ?? cor;
         return (
           <Pressable
             key={item.chave}
@@ -47,12 +61,12 @@ export function ChipsFiltro<K extends string>({ itens, selecionado, aoSelecionar
             accessibilityState={{ selected: ativo }}
             style={({ hovered, focused }: PressableWebState) => [
               styles.chip,
-              ativo && (cor ? { backgroundColor: `${cor}1c`, borderColor: cor } : styles.chipAtivoNeutro),
+              ativo && (fundo ? { backgroundColor: `${fundo}1c`, borderColor: fundo } : styles.chipAtivoNeutro),
               !ativo && hovered && styles.chipHover,
               focused && styles.focoVisivel,
             ]}
           >
-            {cor && <View style={[styles.dot, { backgroundColor: cor }]} />}
+            {fundo && <View style={[styles.dot, { backgroundColor: fundo }]} />}
             <Text style={[styles.rotulo, ativo && (cor ? { color: cor } : styles.rotuloAtivoNeutro)]}>
               {item.rotulo}
             </Text>
@@ -60,7 +74,7 @@ export function ChipsFiltro<K extends string>({ itens, selecionado, aoSelecionar
               <View
                 style={[
                   styles.contador,
-                  ativo && (cor ? { backgroundColor: `${cor}2a` } : styles.contadorAtivoNeutro),
+                  ativo && (fundo ? { backgroundColor: `${fundo}2a` } : styles.contadorAtivoNeutro),
                 ]}
               >
                 <Text style={[styles.contadorTexto, ativo && (cor ? { color: cor } : styles.rotuloAtivoNeutro)]}>

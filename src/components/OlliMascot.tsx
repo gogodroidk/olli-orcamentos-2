@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
 import { OlliLogo } from './OlliLogo';
+import { useReducedMotion } from '../theme/motion';
 
 interface Props {
   size?: number;
@@ -24,9 +25,15 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
   const translateY = useRef(new Animated.Value(0)).current;
   const breath = useRef(new Animated.Value(1)).current;
   const blinkOpacity = useRef(new Animated.Value(1)).current;
+  const reduzirMovimento = useReducedMotion();
 
   useEffect(() => {
-    if (!float) return;
+    // Acessibilidade: com "Reduzir movimento" ligado, a OLLI fica parada no
+    // estado final (sem flutuação) — mesmo símbolo, sem o loop infinito.
+    if (!float || reduzirMovimento) {
+      translateY.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(translateY, { toValue: -size * 0.06, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -35,11 +42,14 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
     );
     loop.start();
     return () => loop.stop();
-  }, [float, size]);
+  }, [float, size, reduzirMovimento]);
 
   // Respiração: escala sutil em loop contínuo.
   useEffect(() => {
-    if (!pulse) return;
+    if (!pulse || reduzirMovimento) {
+      breath.setValue(1);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(breath, { toValue: 1.035, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -48,11 +58,14 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse]);
+  }, [pulse, reduzirMovimento]);
 
   // Piscada: a cada 4-7s, um pulso rápido de opacidade — timers com cleanup rigoroso.
   useEffect(() => {
-    if (!pulse) return;
+    if (!pulse || reduzirMovimento) {
+      blinkOpacity.setValue(1);
+      return;
+    }
     let timeoutId: ReturnType<typeof setTimeout>;
     let cancelado = false;
 
@@ -74,7 +87,7 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
       cancelado = true;
       clearTimeout(timeoutId);
     };
-  }, [pulse]);
+  }, [pulse, reduzirMovimento]);
 
   return (
     <Animated.View style={{ transform: [{ translateY }, { scale: breath }], opacity: blinkOpacity }}>

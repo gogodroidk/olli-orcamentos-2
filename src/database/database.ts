@@ -908,6 +908,47 @@ export async function getUltimosOrcamentos(limite: number): Promise<Orcamento[]>
   return rows.map(r => JSON.parse(r.data));
 }
 
+/**
+ * Contagem + soma de valorTotal por status, de TODOS os orçamentos ATIVOS,
+ * numa ÚNICA query agregada (GROUP BY) — usada pela pizza e pelos KPIs de
+ * "Relatórios" (RelatoriosDesktopScreen) no lugar de `getOrcamentos()`
+ * completo (SELECT * + JSON.parse do histórico inteiro) reduzido em JS. Só os
+ * status com pelo menos 1 orçamento aparecem no mapa — mesmo corte que a tela
+ * já fazia com `.filter(d => d.qtd > 0)`.
+ */
+export async function getOrcamentosResumoPorStatus(): Promise<Partial<Record<StatusOrcamento, { contagem: number; valorTotal: number }>>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ status: StatusOrcamento; contagem: number; soma: number | null }>(
+    `SELECT json_extract(data, '$.status') as status, COUNT(*) as contagem,
+            COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma
+     FROM orcamentos
+     WHERE json_extract(data, '$.excluidoEm') IS NULL
+     GROUP BY json_extract(data, '$.status')`,
+  );
+  const mapa: Partial<Record<StatusOrcamento, { contagem: number; valorTotal: number }>> = {};
+  for (const r of rows) mapa[r.status] = { contagem: r.contagem, valorTotal: r.soma ?? 0 };
+  return mapa;
+}
+
+/**
+ * Datas de criação (`criadoEm`, ISO) de todos os orçamentos ATIVOS — só a
+ * data, não o registro inteiro (itens, fotos, assinaturas, formas de
+ * pagamento etc. ficam de fora). Usada pelo gráfico de linha de "Relatórios"
+ * para agrupar por mês. O agrupamento em si continua em JS (mesma regra de
+ * sempre: `new Date(iso).getFullYear()/getMonth()`, MÊS LOCAL do aparelho) —
+ * fazer isso em SQL (`strftime`) trataria o fuso como UTC e podia deslocar de
+ * mês orçamentos criados perto da virada do dia, quebrando "números idênticos".
+ */
+export async function getOrcamentosDatasCriacao(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ criadoEm: string }>(
+    `SELECT json_extract(data, '$.criadoEm') as criadoEm
+     FROM orcamentos
+     WHERE json_extract(data, '$.excluidoEm') IS NULL`,
+  );
+  return rows.map(r => r.criadoEm);
+}
+
 /** Filtro compartilhado pela lista paginada de orçamentos (OrcamentosScreen). */
 export interface FiltroOrcamentos {
   clienteId?: string;

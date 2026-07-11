@@ -33,6 +33,16 @@ const FILTROS_STATUS: Array<{ chave: StatusOrcamento | 'todos'; label: string }>
  * Orçamentos desktop (v4) — tabela com busca, filtro de status e ações por
  * linha. Vive dentro do shell (tab `OrcamentosTab`), reaproveitando os mesmos
  * dados/serviços da tela mobile (`getOrcamentos`), mas sem tocar nela.
+ *
+ * SEM paginação de propósito (P1-13, revertido): as colunas da TabelaDados
+ * são ordenáveis (Número/Cliente/Valor/Status) e o sort é client-side sobre
+ * o array recebido — paginar aqui faria "Valor" ordenar só a primeira
+ * página carregada, não o total. O volume local é pequeno (histórico de uma
+ * empresa, não multi-tenant), então getOrcamentos() completo + filtro em
+ * memória é seguro. O ganho de perf vem de cache-then-revalidate, não de
+ * paginação: `carregando` só liga no MOUNT (nada em tela ainda); foco/sync
+ * subsequentes recarregam em segundo plano sem apagar a tabela pra "piscar"
+ * de novo (mesmo padrão de ClientesDesktopScreen/ProdutosDesktopScreen).
  */
 export default function OrcamentosDesktopScreen() {
   const nav = useNavigation<Nav>();
@@ -127,7 +137,11 @@ export default function OrcamentosDesktopScreen() {
   return (
     <LayoutDesktop
       titulo="Orçamentos"
-      subtitulo={clienteId && clienteNome ? `de ${clienteNome}` : undefined}
+      subtitulo={
+        clienteId && clienteNome
+          ? `de ${clienteNome}`
+          : `${filtrados.length} orçamento${filtrados.length === 1 ? '' : 's'}`
+      }
       acoes={
         <>
           <BarraBusca valor={busca} aoMudar={setBusca} placeholder="Buscar por cliente ou número…" />

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, Image, StyleSheet, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, corStatusOS, type Cores } from '../../theme';
 import { OlliButton } from '../../components/OlliButton';
 import { PressableWebState } from '../../components/web/pressableWebState';
 // Contrato da ONDA 4 — mesmas funções de serviço usadas pela OrdemServicoScreen
@@ -296,7 +296,9 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                   {/* Técnico não cancela OS — mesmo filtro do DetalheOS mobile. */}
                   {STATUS_OS_ORDEM.filter((s) => s !== 'cancelada' || ehGestao).map((s) => {
                     const ativo = ordem.status === s;
-                    const cor = STATUS_OS_CORES[s] ?? cores.primary;
+                    const corBase = STATUS_OS_CORES[s];
+                    const cor = corBase ? corStatusOS(corBase, cores.surface) : cores.primary;
+                    const fundo = corBase ?? cores.primary;
                     const salvando = salvandoStatus === s;
                     return (
                       <Pressable
@@ -307,7 +309,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                         accessibilityLabel={`Mudar status para ${STATUS_OS_LABELS[s]}`}
                         style={({ hovered, focused }: PressableWebState) => [
                           styles.statusOpt,
-                          ativo && { backgroundColor: `${cor}22`, borderColor: cor },
+                          ativo && { backgroundColor: `${fundo}22`, borderColor: cor },
                           !ativo && hovered && styles.statusOptHover,
                           focused && styles.focoVisivel,
                         ]}
@@ -420,9 +422,11 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
 function StatusChip({ status }: { status: StatusOS }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = STATUS_OS_CORES[status] ?? cores.onSurfaceVariant;
+  const corBase = STATUS_OS_CORES[status];
+  const cor = corBase ? corStatusOS(corBase, cores.surface) : cores.onSurfaceVariant;
+  const fundo = corBase ?? cores.onSurfaceVariant;
   return (
-    <View style={[styles.statusChip, { backgroundColor: `${cor}22`, borderColor: `${cor}66` }]}>
+    <View style={[styles.statusChip, { backgroundColor: `${fundo}22`, borderColor: `${fundo}66` }]}>
       <Text style={[styles.statusChipTexto, { color: cor }]}>{STATUS_OS_LABELS[status] ?? status}</Text>
     </View>
   );

@@ -43,6 +43,16 @@ interface Props<T extends { id: string }> {
   aoClicarLinha?: (item: T) => void;
   ordenacaoInicial?: { chave: string; direcao: 'asc' | 'desc' };
   vazio?: React.ReactNode;
+  /**
+   * Chamado quando o usuário rola perto do fim da lista — opcional, usada só
+   * pelas telas com paginação incremental (ex.: Orçamentos desktop, que pede
+   * mais páginas ao SQLite em vez de carregar o histórico inteiro de uma vez).
+   * Sem paginação (maioria das telas), simplesmente não é passada — sem
+   * mudança de comportamento (`onEndReached` undefined não faz nada no FlatList).
+   */
+  aoFimDaLista?: () => void;
+  /** true enquanto uma página adicional está sendo buscada — mostra um rodapé de carregamento sem esconder as linhas já carregadas. */
+  carregandoMais?: boolean;
 }
 
 const ALTURA_LINHA = 52;
@@ -50,9 +60,11 @@ const LINHAS_SKELETON = 6;
 
 /**
  * Tabela genérica do kit desktop (v4) — substitui os cards em Orçamentos e
- * Clientes desktop. Ordenação client-side, header sticky, sem paginação
- * (decisão firme da v4 — volume local é pequeno). Não importada por nenhuma
- * tela mobile.
+ * Clientes desktop. Ordenação client-side (sobre os dados JÁ carregados) e
+ * header sticky. Continua SEM paginação própria por padrão — decisão firme da
+ * v4, volume local é pequeno na maioria das telas — mas aceita `aoFimDaLista`
+ * opcional para as poucas telas que pedem mais dados ao SQLite conforme o
+ * usuário rola (ex.: Orçamentos desktop). Não importada por nenhuma tela mobile.
  */
 export function TabelaDados<T extends { id: string }>({
   colunas,
@@ -61,6 +73,8 @@ export function TabelaDados<T extends { id: string }>({
   aoClicarLinha,
   ordenacaoInicial,
   vazio,
+  aoFimDaLista,
+  carregandoMais = false,
 }: Props<T>) {
   const [ordenacao, setOrdenacao] = useState(ordenacaoInicial ?? null);
   const styles = useEstilos(criarEstilos);
@@ -159,6 +173,15 @@ export function TabelaDados<T extends { id: string }>({
               getItemLayout={(_, index) => ({ length: ALTURA_LINHA, offset: ALTURA_LINHA * index, index })}
               initialNumToRender={20}
               windowSize={8}
+              onEndReached={aoFimDaLista}
+              onEndReachedThreshold={0.4}
+              ListFooterComponent={
+                carregandoMais ? (
+                  <View style={styles.rodapeCarregandoMais}>
+                    <OlliSkeleton width={120} height={12} />
+                  </View>
+                ) : null
+              }
             />
           )}
         </View>
@@ -335,5 +358,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   celula: {
     paddingHorizontal: Spacing.md,
     justifyContent: 'center',
+  },
+  rodapeCarregandoMais: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
   },
 });

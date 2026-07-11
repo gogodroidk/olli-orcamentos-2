@@ -24,9 +24,14 @@ export function LayoutDesktop({ titulo, subtitulo, acoes, children, scroll = tru
       <View style={styles.header}>
         <View style={styles.headerTextos}>
           <Text style={styles.titulo}>{titulo}</Text>
-          {subtitulo && <Text style={styles.subtitulo}>{subtitulo}</Text>}
+          {/* !!subtitulo (não `subtitulo &&`): `subtitulo` é string, e uma
+              empresa recém-criada pode ter `nome: ''` — sem o `!!`, a
+              expressão cai pro lado esquerdo (`''`), virando um nó de texto
+              solto filho direto da View (violação da regra de ouro/warning
+              "Unexpected text node" no react-native-web). */}
+          {!!subtitulo && <Text style={styles.subtitulo}>{subtitulo}</Text>}
         </View>
-        {acoes && <View style={styles.acoes}>{acoes}</View>}
+        {!!acoes && <View style={styles.acoes}>{acoes}</View>}
       </View>
       {children}
     </View>
