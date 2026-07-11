@@ -18,6 +18,8 @@ import {
   CtaFinalLanding,
   FooterLanding,
 } from '../components/web/LandingSecoes';
+import { ComparadorLanding } from '../components/web/ComparadorLanding';
+import { TeatroOffline } from '../components/web/TeatroOffline';
 import { RevealProvider, Revelar, useRevealScrollHandler } from '../components/Revelar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -110,8 +112,10 @@ function ConteudoLanding({
       <TopoLanding onEntrar={irParaEntrar} onCriarConta={irParaEntrar} />
       <HeroLanding ehDesktop={ehDesktop} onCriarConta={irParaEntrar} onVerPlanos={irParaPlanos} />
       <Revelar><PilaresLanding /></Revelar>
+      <Revelar><ComparadorLanding /></Revelar>
       <Revelar><ComoFuncionaLanding /></Revelar>
       <Revelar><MockProdutoLanding ehDesktop={ehDesktop} /></Revelar>
+      <Revelar><TeatroOffline /></Revelar>
       <Revelar><PlanosLanding onEscolherGratis={irParaEntrar} onVerPlano={irParaPlanos} /></Revelar>
       <Revelar><ProvaLanding /></Revelar>
       <Revelar><FaqLanding /></Revelar>
