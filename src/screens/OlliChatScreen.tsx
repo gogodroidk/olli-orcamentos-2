@@ -13,6 +13,7 @@ import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, 
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { EstadoIA } from '../components/EstadoIA';
 import { enviarChat, ChatMensagem } from '../services/olliAssistente';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -256,19 +257,15 @@ export default function OlliChatScreen() {
         )}
 
         {iaEsgotada && !digitando && (
-          <AnimatedEntrance from="bottom">
-            <View style={styles.limiteCard}>
-              <OlliMascot size={40} onDark float={false} />
-              <Text style={styles.limiteTitle}>Você usou seus {IA_USOS_GRATIS_MES} papos grátis este mês</Text>
-              <Text style={styles.limiteSub}>
-                Volta mês que vem com {IA_USOS_GRATIS_MES} novos, ou continue sem limite agora mesmo no plano Pro.
-              </Text>
-              <TouchableOpacity style={styles.limiteBtn} onPress={() => irParaPlanos('chat_card')} activeOpacity={0.85}>
-                <MaterialCommunityIcons name="crown-outline" size={16} color="#fff" />
-                <Text style={styles.limiteBtnText}>Ver planos</Text>
-              </TouchableOpacity>
-            </View>
-          </AnimatedEntrance>
+          <EstadoIA
+            variante="erro"
+            tipoErro="cota"
+            titulo={`Você usou seus ${IA_USOS_GRATIS_MES} papos grátis este mês`}
+            mensagem={`Volta mês que vem com ${IA_USOS_GRATIS_MES} novos, ou continue sem limite agora mesmo no plano Pro.`}
+            onDark
+            onAcao={() => irParaPlanos('chat_card')}
+            style={{ marginTop: 8 }}
+          />
         )}
       </ScrollView>
 
@@ -418,17 +415,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
   sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: comAlfa(c.accent, 0.07), borderWidth: 1, borderColor: comAlfa(c.accent, 0.28), borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
   sugestaoText: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '600' },
-
-  // rgba(124,58,237,x) era o roxo fixo do "plan" — vira c.plan (ajustado por contraste).
-  limiteCard: { alignItems: 'center', backgroundColor: comAlfa(c.plan, 0.08), borderWidth: 1, borderColor: comAlfa(c.plan, 0.3), borderRadius: BorderRadius.lg, padding: Spacing.lg, marginTop: 8 },
-  // Era '#fff' fixo: card fica sobre a superfície da tela (não sobre o header
-  // colorido), então no claro (padrão do app) o texto branco já nascia
-  // ilegível sobre o tint claro — vira onSurface do tema (continua branco no
-  // escuro, onde já funcionava).
-  limiteTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, textAlign: 'center', marginTop: 10 },
-  limiteSub: { fontSize: 12.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 18, marginTop: 6 },
-  limiteBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.plan, borderRadius: BorderRadius.full, paddingHorizontal: 18, paddingVertical: 10, marginTop: 14 },
-  limiteBtnText: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
 
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   inputWrap: { flex: 1, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },

@@ -14,6 +14,7 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { EmptyState } from '../components/EmptyState';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { EstadoIA } from '../components/EstadoIA';
 import {
   getMarcasErro, countCodigosErro, searchCodigosErro, saveCasoErro,
   countCodigosErroPorSeveridade,
@@ -172,6 +173,11 @@ export default function CodigosErroScreen() {
     });
   }
 
+  // Item 1.14 — a copy antiga prometia "enriquecer a base" e citava uma "IA que
+  // vai chegar": falso nos dois pontos. `casos_erro` é local-only (não sincroniza
+  // com a nuvem, some no logout — ver USER_DATA_TABLES em database.ts) e a IA
+  // (diagnóstico por IA) já existe hoje. A cópia agora diz a verdade e oferece o
+  // caminho real: perguntar pra OLLI Técnica com o que já foi digitado.
   async function salvarCaso() {
     const caso: CasoErro = {
       id: generateId(),
@@ -185,7 +191,14 @@ export default function CodigosErroScreen() {
     track(Eventos.errorCodeNotFound, { marca: caso.marca, modelo: caso.modelo, codigo: caso.codigo });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setNaoAchei(null);
-    Alert.alert('Anotado! 🙏', 'Registramos seu caso pra enriquecer a base. Quando a OLLI Técnica (IA) chegar, ela ajuda com casos como esse.');
+    Alert.alert(
+      'Anotado!',
+      'Fica guardado só neste aparelho, pra você lembrar depois — não sincroniza com servidor nenhum. Já dá pra perguntar pra OLLI Técnica agora mesmo com o que você digitou.',
+      [
+        { text: 'Agora não', style: 'cancel' },
+        { text: 'Perguntar pra OLLI', onPress: () => pedirDiagnostico({ marca: caso.marca, codigo: caso.codigo, sintoma: caso.sintoma }) },
+      ],
+    );
   }
 
   const buscando = !!marca || !!severidade || query.trim().length > 0;
@@ -339,12 +352,14 @@ export default function CodigosErroScreen() {
               {[0, 1, 2].map(i => <View key={i} style={styles.skeletonCard} />)}
             </View>
           ) : erroBusca ? (
-            <View style={styles.noResult}>
-              <MaterialCommunityIcons name="database-alert-outline" size={44} color={cores.danger} />
-              <Text style={styles.noResultTitle}>Não consegui buscar agora</Text>
-              <Text style={styles.noResultSub}>Deu um erro lendo a base local. Tente de novo.</Text>
-              <OlliButton label="Tentar de novo" variant="outline" size="md" onPress={executarBusca} icon={<MaterialCommunityIcons name="refresh" size={18} color={cores.primary} />} style={{ marginTop: 14 }} />
-            </View>
+            <EstadoIA
+              variante="erro"
+              tipoErro="desconhecido"
+              titulo="Não consegui buscar agora"
+              mensagem="Deu um erro lendo a base local. Tente de novo."
+              onAcao={executarBusca}
+              style={{ marginTop: 30 }}
+            />
           ) : buscando ? (
             <View style={styles.noResult}>
               <MaterialCommunityIcons name="magnify-close" size={44} color={cores.onSurfaceMuted} />
@@ -492,7 +507,7 @@ export default function CodigosErroScreen() {
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Não achei meu erro</Text>
-            <Text style={styles.sheetSub}>Conta o que aparece — isso enriquece a base e ensina a OLLI.</Text>
+            <Text style={styles.sheetSub}>Conta o que aparece — fica salvo só neste aparelho, pra você lembrar depois.</Text>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 6 }}>
               <View style={styles.rowFields}>
                 <OlliInput label="Marca" value={naoAchei?.marca ?? ''} onChangeText={v => setNaoAchei(p => ({ ...p, marca: v }))} placeholder="Ex: Fujitsu" containerStyle={{ flex: 1, marginRight: 10 }} />

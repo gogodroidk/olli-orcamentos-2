@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
+  View, Text, ScrollView, StyleSheet, Linking,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,10 +10,11 @@ import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } fr
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
-import { OlliMascot } from '../components/OlliMascot';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
-import { diagnosticarCaso, motivoFalhaDiagnostico } from '../services/olliIA';
+import { EstadoIA } from '../components/EstadoIA';
+import { diagnosticarCaso, motivoFalhaDiagnostico, type MotivoFalhaIA } from '../services/olliIA';
+import { buscaExternaUrl, confiancaBaixa, type TipoErroIA } from '../services/erroIA';
 import { DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -39,7 +40,7 @@ export default function DiagnosticoIAScreen() {
   const [loading, setLoading] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const [res, setRes] = useState<DiagnosticoResultado | null>(null);
-  const [falhouIA, setFalhouIA] = useState(false);
+  const [motivoErro, setMotivoErro] = useState<MotivoFalhaIA>(null);
   const [avisoCota, setAvisoCota] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,7 +69,7 @@ export default function DiagnosticoIAScreen() {
     setLoading(true);
     setPodeCancelar(false);
     setRes(null);
-    setFalhouIA(false);
+    setMotivoErro(null);
     setAvisoCota(iaNuvemEsgotada);
     cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
     try {
@@ -79,7 +80,7 @@ export default function DiagnosticoIAScreen() {
         sintoma: sintoma.trim() || undefined,
       }, controller.signal, { forcarOffline: iaNuvemEsgotada });
       setRes(r);
-      setFalhouIA(!!motivoFalhaDiagnostico());
+      setMotivoErro(motivoFalhaDiagnostico());
       // Só consome cota quando a NUVEM realmente respondeu (fonte 'ia').
       // A base offline (fonte 'base') e o cache são sempre livres.
       if (r.fonte === 'ia') await consumirUsoIa();
@@ -97,6 +98,26 @@ export default function DiagnosticoIAScreen() {
   }
 
   const d = res?.diagnostico;
+
+  // Taxonomia única de erro (erroIA.ts): decide UM motivo pra mostrar, nunca dois
+  // avisos concorrentes (cota esgotada tinha prioridade visual, mas o aviso
+  // genérico da nuvem também aparecia por baixo — agora só um, com cópia certa).
+  const tipoErroAtual: TipoErroIA | undefined = avisoCota
+    ? 'cota'
+    : motivoErro
+      ? motivoErro
+      : res?.aviso
+        ? 'desconhecido'
+        : undefined;
+  const onAcaoErro = avisoCota
+    ? () => nav.navigate('Planos')
+    : motivoErro
+      ? pedirDiagnostico
+      : undefined;
+  // Fora da taxonomia (timeout/offline/servidor/auth/cota) o único aviso restante é
+  // "IA não configurada" — mantém o texto exato do serviço, mais preciso que a
+  // cópia genérica de 'desconhecido'.
+  const mensagemErroAtual = !avisoCota && !motivoErro ? res?.aviso : undefined;
 
   // Cria um novo orçamento já com um item-serviço descrevendo o reparo do caso.
   // O técnico só ajusta preço/quantidade no fluxo do orçamento.
@@ -141,36 +162,18 @@ export default function DiagnosticoIAScreen() {
         </View>
 
         {loading && (
-          <View style={styles.loadingBox}>
-            <OlliMascot size={44} onDark />
-            <Text style={styles.loadingText}>A OLLI está cruzando código, marca e a base…</Text>
+          <EstadoIA
+            variante="carregando"
+            titulo="A OLLI está pensando"
+            mensagem="Cruzando código, marca e a base…"
+            onDark
+            onAcaoSecundaria={podeCancelar ? cancelarDiagnostico : undefined}
+            acaoSecundariaLabel="Cancelar"
+          >
             <OlliSkeleton.Lines count={4} style={{ width: '100%', marginTop: 16 }} />
-            {podeCancelar && (
-              <OlliButton
-                label="Cancelar"
-                variant="outline"
-                size="sm"
-                onPress={cancelarDiagnostico}
-                style={{ marginTop: 16 }}
-              />
-            )}
-          </View>
+          </EstadoIA>
         )}
 
-        {d && avisoCota && (
-          <AnimatedEntrance index={0}>
-            <View style={styles.cotaCard}>
-              <MaterialCommunityIcons name="creation" size={18} color={cores.plan} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.cotaTitulo}>Você usou seus 3 diagnósticos com IA do mês</Text>
-                <Text style={styles.cotaTexto}>
-                  Esta resposta veio da nossa base offline de 698 códigos. No Pro, a análise da OLLI por IA é ilimitada.
-                </Text>
-                <Text style={styles.cotaLink} onPress={() => nav.navigate('Planos')}>Ver planos →</Text>
-              </View>
-            </View>
-          </AnimatedEntrance>
-        )}
         {d && (
           <View>
             {/* origem do diagnóstico */}
@@ -192,25 +195,16 @@ export default function DiagnosticoIAScreen() {
               </View>
             </AnimatedEntrance>
 
-            {res!.aviso && (
+            {!!tipoErroAtual && (
               <AnimatedEntrance index={1}>
-                <View style={styles.aviso}>
-                  <MaterialCommunityIcons name="information-outline" size={15} color={cores.warning} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.avisoText}>{res!.aviso}</Text>
-                    {falhouIA && (
-                      <OlliButton
-                        label="Tentar de novo"
-                        variant="outline"
-                        size="sm"
-                        onPress={pedirDiagnostico}
-                        haptic={false}
-                        icon={<MaterialCommunityIcons name="refresh" size={15} color={cores.accentLight} />}
-                        style={{ marginTop: 10, alignSelf: 'flex-start' }}
-                      />
-                    )}
-                  </View>
-                </View>
+                <EstadoIA
+                  variante="erro"
+                  tipoErro={tipoErroAtual}
+                  mensagem={mensagemErroAtual}
+                  onAcao={onAcaoErro}
+                  tamanho={34}
+                  style={styles.avisoCard}
+                />
               </AnimatedEntrance>
             )}
 
@@ -218,6 +212,40 @@ export default function DiagnosticoIAScreen() {
               <Text style={styles.resumo}>{d.resumo}</Text>
               {!!d.significadoProvavel && <Text style={styles.significado}>{d.significadoProvavel}</Text>}
             </AnimatedEntrance>
+
+            {/* Item 1.15 — recuperação honesta: confiança baixa também abre uma
+                busca REAL (Google/YouTube) com o que já se sabe do aparelho. Zero
+                IA nova, zero alucinação. */}
+            {confiancaBaixa(d.nivelConfianca) && (
+              <AnimatedEntrance index={2}>
+                <View style={styles.buscaExterna}>
+                  <MaterialCommunityIcons name="magnify" size={15} color={cores.onSurfaceVariant} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.buscaExternaText}>
+                      Confiança baixa — vale buscar por fora com o que você já sabe do aparelho.
+                    </Text>
+                    <View style={styles.buscaExternaBtns}>
+                      <OlliButton
+                        label="Buscar no Google"
+                        variant="outline"
+                        size="sm"
+                        haptic={false}
+                        icon={<MaterialCommunityIcons name="google" size={15} color={cores.accentLight} />}
+                        onPress={() => Linking.openURL(buscaExternaUrl('google', { marca, modelo, codigo, sintoma })).catch(() => {})}
+                      />
+                      <OlliButton
+                        label="Buscar no YouTube"
+                        variant="outline"
+                        size="sm"
+                        haptic={false}
+                        icon={<MaterialCommunityIcons name="youtube" size={15} color={cores.accentLight} />}
+                        onPress={() => Linking.openURL(buscaExternaUrl('youtube', { marca, modelo, codigo, sintoma })).catch(() => {})}
+                      />
+                    </View>
+                  </View>
+                </View>
+              </AnimatedEntrance>
+            )}
 
             <AnimatedEntrance index={3}>
               <ListSection icon="format-list-numbered" title="Testes em ordem" items={d.testesEmOrdem} accent />
@@ -316,13 +344,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   rowFields: { flexDirection: 'row' },
   card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
 
-  loadingBox: { alignItems: 'center', paddingVertical: 28 },
-  loadingText: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 10, textAlign: 'center', paddingHorizontal: 24 },
-
-  cotaCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.plan + '14', borderWidth: 1, borderColor: c.plan + '33', borderRadius: BorderRadius.md, padding: 12, marginTop: 16 },
-  cotaTitulo: { color: c.onSurface, fontWeight: '700', fontSize: 13.5 },
-  cotaTexto: { color: c.onSurfaceVariant, fontSize: 12.5, marginTop: 3, lineHeight: 17 },
-  cotaLink: { color: c.plan, fontWeight: '700', fontSize: 13, marginTop: 6 },
   originRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 10 },
   originPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, borderWidth: 1 },
   // Cyan/amarelo fixos (base #7FE9F5 / warning do handoff): decorativos, sem chave semântica exata.
@@ -332,9 +353,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   confBadge: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 5 },
   confText: { fontSize: 11.5, fontWeight: '800' },
 
-  // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
-  aviso: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.25)', borderRadius: BorderRadius.md, padding: 10, marginBottom: 12 },
-  avisoText: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17 },
+  avisoCard: { marginBottom: 12, paddingVertical: Spacing.base },
+
+  buscaExterna: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, padding: 10, marginBottom: 12 },
+  buscaExternaText: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17 },
+  buscaExternaBtns: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
 
   resumo: { fontSize: 18, fontWeight: '800', color: c.onSurface, lineHeight: 24 },
   significado: { fontSize: 14, color: c.onSurfaceVariant, lineHeight: 20, marginTop: 4 },

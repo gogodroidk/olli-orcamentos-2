@@ -13,6 +13,8 @@ import { OlliSkeleton } from '../../components/OlliSkeleton';
 import { OlliPressable } from '../../components/OlliPressable';
 import { EtaChip } from '../../components/EtaChip';
 import { StatusBadge } from '../../components/StatusBadge';
+import { GatePro } from '../../components/GatePro';
+import { EmptyState } from '../../components/EmptyState';
 import { getOrcamentos, getEmpresa, getClientes, getRecibos } from '../../database/database';
 import { getProximoAgendamento } from '../../services/agenda';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../../services/eta';
@@ -23,7 +25,6 @@ import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../
 import { getCurrentUser } from '../../services/supabase';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { usePermissao } from '../../hooks/usePermissao';
-import { usePlano } from '../../hooks/usePlano';
 import { abrirWhatsApp } from '../../utils/pdfGenerator';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
@@ -86,7 +87,6 @@ export default function InicioDesktopScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { ehEmpresa, papel, pode, carregando: permCarregando } = usePermissao();
-  const { temAcesso } = usePlano();
 
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
@@ -298,10 +298,12 @@ export default function InicioDesktopScreen() {
             </OlliPressable>
           </View>
           {!carregando && minhasAbertas.length === 0 ? (
-            <View style={[styles.cartao, styles.vazioCartao]}>
-              <MaterialCommunityIcons name="clipboard-check-outline" size={30} color={cores.onSurfaceMuted} />
-              <Text style={styles.vazioTitulo}>Nenhuma OS aberta no momento</Text>
-              <Text style={styles.vazioSub}>Quando a gestão te atribuir um serviço, ele aparece aqui.</Text>
+            <View style={styles.cartao}>
+              <EmptyState
+                icon="clipboard-check-outline"
+                title="Nenhuma OS aberta no momento"
+                subtitle="Quando a gestão te atribuir um serviço, ele aparece aqui."
+              />
             </View>
           ) : (
             <TabelaDados<OrdemServico>
@@ -602,10 +604,12 @@ export default function InicioDesktopScreen() {
             </OlliPressable>
           </View>
           {!carregando && osPorTecnico.length === 0 ? (
-            <View style={[styles.cartao, styles.vazioCartao]}>
-              <MaterialCommunityIcons name="clipboard-check-outline" size={30} color={cores.onSurfaceMuted} />
-              <Text style={styles.vazioTitulo}>Nenhuma OS em andamento</Text>
-              <Text style={styles.vazioSub}>Gere uma OS a partir de um orçamento aprovado para começar.</Text>
+            <View style={styles.cartao}>
+              <EmptyState
+                icon="clipboard-check-outline"
+                title="Nenhuma OS em andamento"
+                subtitle="Gere uma OS a partir de um orçamento aprovado para começar."
+              />
             </View>
           ) : (
             <View style={[styles.cartao, { gap: Spacing.sm }]}>
@@ -631,21 +635,27 @@ export default function InicioDesktopScreen() {
         </View>
       )}
 
-      {/* Relatórios avançados — recurso pago (gate por plano) */}
-      {podeValores && !temAcesso('relatorios') && (
-        <OlliPressable style={styles.gateCartao} onPress={() => nav.navigate('Planos')} haptic={false}>
-          <View style={styles.gateIcone}>
-            <MaterialCommunityIcons name="chart-box-outline" size={20} color={cores.accentLight} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.gateTitulo}>Relatórios avançados</Text>
-            <Text style={styles.gateSub}>Desbloqueie margem por serviço, ranking de clientes e evolução por período.</Text>
-          </View>
-          <View style={styles.gateBadge}>
-            <MaterialCommunityIcons name="lock-outline" size={12} color={textoSobre(cores.accentLight)} />
-            <Text style={styles.gateBadgeTexto}>PRO</Text>
-          </View>
-        </OlliPressable>
+      {/* Relatórios avançados — recurso pago; GatePro é a identidade única de
+          paywall do app (mesmo padrão de RelatoriosDesktopScreen/RelatorioDiaScreen).
+          Com acesso, o cartão navega direto pros relatórios; sem acesso, o
+          próprio GatePro borra o cartão e mostra o muro "Ver planos". */}
+      {podeValores && (
+        <GatePro
+          recurso="relatorios"
+          plano="pro"
+          beneficio="Desbloqueie margem por serviço, ranking de clientes e evolução por período."
+        >
+          <OlliPressable style={styles.gateCartao} onPress={irParaRelatorios} haptic={false}>
+            <View style={styles.gateIcone}>
+              <MaterialCommunityIcons name="chart-box-outline" size={20} color={cores.accentLight} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.gateTitulo}>Relatórios avançados</Text>
+              <Text style={styles.gateSub}>Desbloqueie margem por serviço, ranking de clientes e evolução por período.</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
+          </OlliPressable>
+        </GatePro>
       )}
 
       {/* Últimos orçamentos */}
@@ -757,16 +767,13 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
 }
 
 function VazioAgenda({ irParaAgenda }: { irParaAgenda: () => void }) {
-  const cores = useCores();
-  const styles = useEstilos(criarEstilos);
   return (
-    <View style={{ marginTop: 10 }}>
-      <Text style={styles.visitaVazioTexto}>Nenhuma visita agendada.</Text>
-      <OlliPressable style={[styles.visitaBtn, { alignSelf: 'flex-start', marginTop: 10 }]} onPress={irParaAgenda} haptic={false}>
-        <MaterialCommunityIcons name="calendar-plus" size={14} color={textoSobre(cores.accentLight)} />
-        <Text style={styles.visitaBtnTexto}>Abrir agenda</Text>
-      </OlliPressable>
-    </View>
+    <EmptyState
+      icon="calendar-blank-outline"
+      title="Nenhuma visita agendada"
+      actionLabel="Abrir agenda"
+      onAction={irParaAgenda}
+    />
   );
 }
 
@@ -845,18 +852,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   osBadge: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
   osBadgeTexto: { fontSize: 11.5, fontWeight: '800' },
 
-  // gate PRO
+  // gate PRO (cartão real, borrado pelo GatePro quando o plano não libera)
   gateCartao: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.lg, marginBottom: Spacing.lg },
   gateIcone: { width: 40, height: 40, borderRadius: BorderRadius.md, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
   gateTitulo: { ...Typography.h4, color: c.onSurface },
   gateSub: { ...Typography.caption, color: c.onSurfaceVariant, marginTop: 2 },
-  gateBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 5 },
-  gateBadgeTexto: { fontSize: 11, fontWeight: '900', color: textoSobre(c.accentLight), letterSpacing: 0.5 },
-
-  // estados vazios
-  vazioCartao: { alignItems: 'center', gap: 6, paddingVertical: Spacing.xl },
-  vazioTitulo: { ...Typography.h4, color: c.onSurface, marginTop: 4 },
-  vazioSub: { ...Typography.caption, color: c.onSurfaceVariant, textAlign: 'center' },
 
   secaoTabela: { gap: Spacing.sm, marginBottom: Spacing.lg },
   secaoTabelaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

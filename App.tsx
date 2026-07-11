@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { criarAppTheme, Colors, TemaProvider, useTema } from './src/theme';
 import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { instalarCapturaDeErro } from './src/services/errorReport';
@@ -289,7 +290,13 @@ function AppConteudo() {
                   }
                 }}
               >
-                <AppNavigator initialRouteName={initialRoute} />
+                {/* Boundary de topo (item 1.12): envolve só o navegador de telas —
+                    uma exceção de render em qualquer tela cai aqui em vez de
+                    branquear o app, sem desmontar o NavigationContainer (navigationRef
+                    continua válido) nem exigir um boundary por tela. */}
+                <ErrorBoundary>
+                  <AppNavigator initialRouteName={initialRoute} />
+                </ErrorBoundary>
               </NavigationContainer>
             ) : (
               <BrandSplash />
