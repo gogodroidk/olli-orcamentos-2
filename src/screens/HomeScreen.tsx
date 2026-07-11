@@ -10,6 +10,7 @@ import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, tex
 import { getOrcamentos, getEmpresa } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
+import { getEtaAgendamento, temDestinoEta, type ResultadoEta } from '../services/eta';
 import { clientesParaReconquistar, mensagemReconquista, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
@@ -17,6 +18,7 @@ import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
+import { EtaChip } from '../components/EtaChip';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
@@ -97,6 +99,7 @@ function abrirMapa(endereco?: string) {
   Linking.openURL(url).catch(() => {});
 }
 
+
 /**
  * Véu do hero: cor de marca translúcida POR CIMA de `background`. Não é um gradiente
  * do tema, então não tem companheira `sobre*` — o que o olho vê é a composição, e ela
@@ -146,6 +149,46 @@ export default function HomeScreen() {
   const [radarCarregando, setRadarCarregando] = useState(true);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
+
+  // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra
+  // shimmer). O destino vem de coordenada salva OU do endereço (o serviço
+  // geocodifica sob demanda, cacheado); `temEta` é o gate síncrono de exibição.
+  const [etaResultado, setEtaResultado] = useState<ResultadoEta | null>(null);
+  const ultimaBuscaEtaRef = useRef(0);
+  const paradaKeyRef = useRef('');
+  const temEta = useMemo(() => temDestinoEta(proxima), [proxima]);
+  // Identidade da parada: id + endereço. Muda quando a próxima parada troca (ou
+  // seu endereço é editado) — força re-busca mesmo dentro da janela de 5 min.
+  const paradaKey = useMemo(
+    () => (proxima ? `${proxima.id}|${(proxima.endereco ?? '').trim().toLowerCase()}` : ''),
+    [proxima],
+  );
+
+  const buscarEta = useCallback(async () => {
+    ultimaBuscaEtaRef.current = Date.now();
+    setEtaResultado(null); // shimmer enquanto busca (inclui o geocoding, se preciso)
+    const r = await getEtaAgendamento(proxima);
+    setEtaResultado(r);
+  }, [proxima]);
+
+  // Dispara ao focar a tela (com destino disponível); re-busca no máximo a cada
+  // 5 min — reabrir a Home logo em seguida não bate o worker de novo. Exceção:
+  // se a parada mudou, busca já (a estimativa antiga é de outro endereço).
+  useFocusEffect(
+    useCallback(() => {
+      if (!temEta) return;
+      const mudouParada = paradaKey !== paradaKeyRef.current;
+      const decorridoMs = Date.now() - ultimaBuscaEtaRef.current;
+      if (mudouParada || decorridoMs > 5 * 60 * 1000) {
+        paradaKeyRef.current = paradaKey;
+        buscarEta();
+      }
+    }, [temEta, paradaKey, buscarEta]),
+  );
+
+  const tentarEtaNovamente = useCallback(() => {
+    if (temEta) buscarEta();
+  }, [temEta, buscarEta]);
 
   const load = useCallback(async () => {
     const [all, emp, prox] = await Promise.all([getOrcamentos(), getEmpresa(), getProximoAgendamento()]);
@@ -299,6 +342,15 @@ export default function HomeScreen() {
                   <View style={styles.heroAddr}>
                     <MaterialCommunityIcons name="map-marker" size={14} color={heroAcento} />
                     <Text style={[styles.heroAddrText, { color: heroTextoSec }]} numberOfLines={1}>{proxima.endereco}</Text>
+                  </View>
+                ) : null}
+                {temEta ? (
+                  <View style={styles.heroEta}>
+                    <EtaChip
+                      resultado={etaResultado}
+                      horario={!isNaN(new Date(proxima.inicio).getTime()) ? new Date(proxima.inicio) : undefined}
+                      onTentarNovamente={tentarEtaNovamente}
+                    />
                   </View>
                 ) : null}
                 <View style={styles.heroActions}>
@@ -753,6 +805,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroType: { fontSize: 13, marginTop: 2 },
   heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   heroAddrText: { flex: 1, fontSize: 12.5 },
+  heroEta: { marginTop: 8, alignItems: 'flex-start' },
   heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   heroBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
   heroBtnGhostText: { fontSize: 13, fontWeight: '800' },

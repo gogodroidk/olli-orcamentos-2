@@ -427,6 +427,35 @@ async function handleEta(request, env) {
   }
 }
 
+// Geocodificação (endereço em texto → lat/lng). Serve o ETA: o `Agendamento`
+// guarda só `endereco` (texto), e o /eta exige coordenadas. Mesma chave restrita
+// do /eta (agora liberada p/ Routes + Geocoding), sempre server-side — o app
+// manda o texto, nunca vê a chave. Enviesado ao Brasil (region=br) p/ desambiguar.
+async function handleGeocode(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
+  if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
+  const raw = await request.json().catch(() => ({}));
+  const endereco = raw && typeof raw.endereco === 'string' ? raw.endereco.trim() : '';
+  if (endereco.length < 3) return json({ ok: false, erro: 'endereco_invalido' }, 400);
+  try {
+    const alvo = 'https://maps.googleapis.com/maps/api/geocode/json?address='
+      + encodeURIComponent(endereco)
+      + '&region=br&language=pt-BR&key=' + env.OLLI_ROUTES_API_KEY;
+    const resp = await fetch(alvo);
+    if (!resp.ok) return json({ ok: false, erro: 'geocode_indisponivel' }, 502);
+    const data = await resp.json().catch(() => ({}));
+    const r0 = data && data.status === 'OK' && Array.isArray(data.results) ? data.results[0] : null;
+    const loc = r0 && r0.geometry && r0.geometry.location;
+    if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) {
+      return json({ ok: false, erro: 'nao_encontrado' });
+    }
+    return json({ ok: true, lat: loc.lat, lng: loc.lng, formatado: r0.formatted_address || null });
+  } catch (e) {
+    return json({ ok: false, erro: 'geocode_falhou' });
+  }
+}
+
 // ─── VOZ → ITENS ─────────────────────────────────────────────
 const VOZ_SYSTEM = `Você é a OLLI, assistente de um prestador de serviços (ar-condicionado e afins) no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
 
@@ -694,6 +723,12 @@ export default {
     // app. Barato por design: o app chama só a próxima parada, com cache.
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEta(request, env);
+    }
+
+    // Geocodificação (endereço → coordenada) — alimenta o /eta. Mesma proteção:
+    // exige login, chave server-side. O app cacheia por endereço p/ segurar cota.
+    if (url.pathname === '/geocodificar' && request.method === 'POST') {
+      return handleGeocode(request, env);
     }
 
     // Health check público (abrir no navegador mostra que está online). GET '/'
