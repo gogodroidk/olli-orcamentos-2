@@ -50,3 +50,7 @@ qa-artifacts/
 # Credenciais de assinatura (NUNCA no repositorio)
 credentials.json
 *.keystore
+
+# QC screenshots da sessao (nao sao deliverables)
+/*.png
+.claude/launch.json

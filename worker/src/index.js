@@ -375,6 +375,58 @@ async function handleDiag(request, env) {
   return json({ ok: true, diagnostico: diag, fonte: 'ia', modelo: env.GEMINI_MODEL || 'gemini-2.5-flash', baseConsultada });
 }
 
+// ─── ETA COM TRÂNSITO (Routes API) ───────────────────────────
+// Recebe {origem:{lat,lng}, destino:{lat,lng}} e devolve os minutos com trânsito
+// e a distância. A "chegada" é calculada no APP (fuso do aparelho), não aqui. A
+// chave é secret do Worker (OLLI_ROUTES_API_KEY), restrita ao Routes API.
+function coordOk(p) {
+  return p && Number.isFinite(p.lat) && Number.isFinite(p.lng)
+    && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
+}
+async function handleEta(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
+  if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
+  const raw = await request.json().catch(() => ({}));
+  const origem = raw && raw.origem;
+  const destino = raw && raw.destino;
+  if (!coordOk(origem) || !coordOk(destino)) {
+    return json({ ok: false, erro: 'coordenadas_invalidas' }, 400);
+  }
+  try {
+    const resp = await fetch(
+      'https://routes.googleapis.com/directions/v2:computeRoutes?key=' + env.OLLI_ROUTES_API_KEY,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: { latitude: origem.lat, longitude: origem.lng } } },
+          destination: { location: { latLng: { latitude: destino.lat, longitude: destino.lng } } },
+          travelMode: 'DRIVE',
+          routingPreference: 'TRAFFIC_AWARE',
+          languageCode: 'pt-BR',
+          units: 'METRIC',
+        }),
+      },
+    );
+    if (!resp.ok) return json({ ok: false, erro: 'rota_indisponivel' }, 502);
+    const data = await resp.json().catch(() => ({}));
+    const rota = data && Array.isArray(data.routes) ? data.routes[0] : null;
+    if (!rota || !rota.duration) return json({ ok: false, erro: 'sem_rota' });
+    const seg = parseInt(String(rota.duration).replace('s', ''), 10) || 0;
+    const minutos = Math.max(1, Math.round(seg / 60));
+    const distanciaKm = Number.isFinite(rota.distanceMeters)
+      ? Math.round(rota.distanceMeters / 100) / 10
+      : null;
+    return json({ ok: true, minutos, distanciaKm, comTransito: true });
+  } catch (e) {
+    return json({ ok: false, erro: 'eta_falhou' });
+  }
+}
+
 // ─── VOZ → ITENS ─────────────────────────────────────────────
 const VOZ_SYSTEM = `Você é a OLLI, assistente de um prestador de serviços (ar-condicionado e afins) no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
 
@@ -635,6 +687,13 @@ export default {
         }
       }
       return renderEtiqueta(resto, env, request);
+    }
+
+    // ETA com trânsito (Routes API). Não é rota de IA — não exige Gemini, mas
+    // exige login (protege a chave/cota). A chave vive só aqui (secret), nunca no
+    // app. Barato por design: o app chama só a próxima parada, com cache.
+    if (url.pathname === '/eta' && request.method === 'POST') {
+      return handleEta(request, env);
     }
 
     // Health check público (abrir no navegador mostra que está online). GET '/'

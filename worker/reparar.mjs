@@ -59,6 +59,7 @@ const secrets = [
   ['STRIPE_WEBHOOK_SECRET', env.OLLI_STRIPE_WEBHOOK_SECRET],
   ['GEMINI_API_KEY', env.OLLI_GEMINI_API_KEY],
   ['ADMIN_EMAIL', env.OLLI_ADMIN_EMAIL || 'igoreluisa@gmail.com'],
+  ['OLLI_ROUTES_API_KEY', env.OLLI_ROUTES_API_KEY],
 ];
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {
