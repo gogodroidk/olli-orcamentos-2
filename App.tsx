@@ -24,6 +24,7 @@ import { criarAppTheme, Colors, TemaProvider, useTema } from './src/theme';
 import { Fonts, applyFontPatch } from './src/theme/fonts';
 import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { instalarCapturaDeErro } from './src/services/errorReport';
@@ -309,6 +310,10 @@ function AppConteudo() {
               <BrandSplash />
             )}
           </View>
+          {/* Host único de avisar()/confirmar() das telas desktop (dialogo.ts).
+              Fica dentro do PaperProvider pra herdar o tema, mas fora do
+              NavigationContainer/appFrame — não pode fechar junto com uma tela. */}
+          <DialogoDesktopHost />
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

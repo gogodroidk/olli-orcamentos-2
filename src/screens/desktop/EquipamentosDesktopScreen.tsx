@@ -489,7 +489,7 @@ function EtiquetaModal({ equipamento, onFechar, onRevogado }: {
   }
 
   async function revogar() {
-    if (!confirmar('Revogar QR?', 'A etiqueta atual deixa de funcionar: quem escanear verá que foi revogado. Esta ação não pode ser desfeita pelo app.')) return;
+    if (!(await confirmar('Revogar QR?', 'A etiqueta atual deixa de funcionar: quem escanear verá que foi revogado. Esta ação não pode ser desfeita pelo app.'))) return;
     setRevogando(true);
     try {
       await revogarQr(equipamento.id);
@@ -659,7 +659,7 @@ function PainelEquipamento({ equipamento, clientes, visivel, aoFechar, aoSalvar 
 
   async function handleExcluir() {
     if (!equipamento) return;
-    if (!confirmar('Excluir equipamento', `Excluir "${nomeEquipamento(equipamento)}"? Ele vai para a lixeira — dá para restaurar por lá.`)) return;
+    if (!(await confirmar('Excluir equipamento', `Excluir "${nomeEquipamento(equipamento)}"? Ele vai para a lixeira — dá para restaurar por lá.`))) return;
     setExcluindo(true);
     try {
       await removerEquipamento(equipamento.id);

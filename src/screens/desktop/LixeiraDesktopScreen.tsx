@@ -139,7 +139,7 @@ export default function LixeiraDesktopScreen() {
   }
 
   async function handleExcluirDefinitivo(linha: LinhaLixeira) {
-    if (!confirmar('Excluir definitivamente', `"${linha.titulo}" será apagado para sempre. Esta ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Excluir definitivamente', `"${linha.titulo}" será apagado para sempre. Esta ação não pode ser desfeita.`))) return;
     setBusyId(linha.id);
     try {
       await excluirDefinitivo(linha.tipo, linha.itemId);
@@ -153,7 +153,7 @@ export default function LixeiraDesktopScreen() {
 
   async function handleEsvaziar() {
     if (!itens.length) return;
-    if (!confirmar('Esvaziar lixeira', `Todos os ${itens.length} item${itens.length === 1 ? '' : 's'} serão apagados para sempre. Esta ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Esvaziar lixeira', `Todos os ${itens.length} item${itens.length === 1 ? '' : 's'} serão apagados para sempre. Esta ação não pode ser desfeita.`))) return;
     setEsvaziando(true);
     try {
       await esvaziarLixeira();

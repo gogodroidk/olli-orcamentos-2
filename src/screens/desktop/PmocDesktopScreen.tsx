@@ -200,10 +200,10 @@ export default function PmocDesktopScreen() {
 
   async function gerarOrdens(plano: PmocPlano) {
     if (!podeGerar) return;
-    if (!confirmar(
+    if (!(await confirmar(
       'Gerar ordens do período',
       `Gerar as ordens de serviço devidas até hoje para "${plano.titulo}"? Visitas que já têm ordem não são duplicadas.`,
-    )) return;
+    ))) return;
     setGerandoId(plano.id);
     try {
       const r = await gerarOrdensDoPlano(plano.id);

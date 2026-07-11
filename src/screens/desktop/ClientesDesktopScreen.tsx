@@ -16,7 +16,7 @@ import { formatDate } from '../../utils/date';
 import { abrirWhatsApp } from '../../utils/pdfGenerator';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Cliente, Orcamento } from '../../types';
-import { avisar, confirmar } from './dialogo';
+import { avisar } from './dialogo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 

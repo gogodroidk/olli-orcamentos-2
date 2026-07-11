@@ -94,7 +94,7 @@ function ServicosConteudo() {
   }
 
   async function excluir(s: ServicoItem) {
-    if (!confirmar('Excluir serviço', `Excluir "${s.nome}"? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Excluir serviço', `Excluir "${s.nome}"? Essa ação não pode ser desfeita.`))) return;
     try {
       await deleteServico(s.id);
       carregar();

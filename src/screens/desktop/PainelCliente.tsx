@@ -96,7 +96,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
 
   async function handleExcluir() {
     if (!cliente) return;
-    if (!confirmar('Excluir cliente', `Excluir "${cliente.nome}"? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Excluir cliente', `Excluir "${cliente.nome}"? Essa ação não pode ser desfeita.`))) return;
     setExcluindo(true);
     try {
       await deleteCliente(cliente.id);

@@ -65,7 +65,7 @@ export function PainelServico({ servico, visivel, aoFechar, aoSalvar }: Props) {
     };
 
     if (s.preco <= 0) {
-      const confirmaMesmoAssim = confirmar(
+      const confirmaMesmoAssim = await confirmar(
         'Preço zerado',
         'Este serviço está com preço R$ 0,00. Se for adicionado a um orçamento assim, o cliente não pagará nada por ele. Salvar mesmo assim?'
       );
@@ -91,7 +91,7 @@ export function PainelServico({ servico, visivel, aoFechar, aoSalvar }: Props) {
 
   async function handleExcluir() {
     if (!servico) return;
-    if (!confirmar('Excluir serviço', `Excluir "${servico.nome}"? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Excluir serviço', `Excluir "${servico.nome}"? Essa ação não pode ser desfeita.`))) return;
     setExcluindo(true);
     try {
       await deleteServico(servico.id);

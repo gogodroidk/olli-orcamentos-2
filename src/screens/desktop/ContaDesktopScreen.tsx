@@ -274,14 +274,14 @@ export default function ContaDesktopScreen() {
   }
 
   async function handleRestaurarBackup(item: BackupVersionadoResumo) {
-    if (!confirmar(
+    if (!(await confirmar(
       'Restaurar esta cópia?',
       `Isso vai SUBSTITUIR os dados atuais deste navegador pelos da cópia de ${formatDateTime(item.criadoEm)} (${TIPO_BACKUP_LABEL[item.tipo]}). Essa ação não pode ser desfeita.`,
-    )) return;
-    if (!confirmar(
+    ))) return;
+    if (!(await confirmar(
       'Tem certeza?',
       'Todos os orçamentos, clientes, produtos e serviços salvos neste navegador agora serão substituídos pelos dessa cópia. Não é possível desfazer.',
-    )) return;
+    ))) return;
     setRestaurandoId(item.id);
     try {
       const when = await restoreBackupById(item.id);
@@ -338,49 +338,45 @@ export default function ContaDesktopScreen() {
   }
 
   // ─── Zona de perigo ──────────────────────────────────────────────────────
-  function handleSairMantendoDados() {
-    if (!confirmar('Sair da conta', 'Você continua com os dados salvos neste navegador. É só entrar de novo quando quiser.')) return;
-    void (async () => {
-      setSaindo(true);
-      try {
-        await signOut();
-      } catch (e: any) {
-        avisar('Erro', e?.message ?? 'Não foi possível sair agora.');
-      }
-      setSaindo(false);
-    })();
+  async function handleSairMantendoDados() {
+    if (!(await confirmar('Sair da conta', 'Você continua com os dados salvos neste navegador. É só entrar de novo quando quiser.'))) return;
+    setSaindo(true);
+    try {
+      await signOut();
+    } catch (e: any) {
+      avisar('Erro', e?.message ?? 'Não foi possível sair agora.');
+    }
+    setSaindo(false);
   }
 
-  function handleApagarDadosLocais() {
-    if (!confirmar(
+  async function handleApagarDadosLocais() {
+    if (!(await confirmar(
       'Apagar dados deste navegador?',
       'Isso vai apagar todos os orçamentos, clientes, produtos e serviços salvos NESTE navegador. Seus dados na nuvem (se houver backup) não são afetados — voltam no próximo sync.',
-    )) return;
-    if (!confirmar('Tem certeza?', 'Essa ação não pode ser desfeita. Confirma a limpeza dos dados locais?')) return;
-    void (async () => {
-      setApagandoLocal(true);
-      try {
-        // Interrompe qualquer sync em andamento ANTES de apagar — mesma ordem da mobile.
-        abortarSyncEmAndamento();
-        await clearAllLocalData();
-        setEmpresa(null);
-        avisar('Pronto', 'Os dados locais deste navegador foram apagados.');
-        await load();
-      } catch (e: any) {
-        avisar('Erro', e?.message ?? 'Não foi possível apagar os dados agora.');
-      }
-      setApagandoLocal(false);
-    })();
+    ))) return;
+    if (!(await confirmar('Tem certeza?', 'Essa ação não pode ser desfeita. Confirma a limpeza dos dados locais?'))) return;
+    setApagandoLocal(true);
+    try {
+      // Interrompe qualquer sync em andamento ANTES de apagar — mesma ordem da mobile.
+      abortarSyncEmAndamento();
+      await clearAllLocalData();
+      setEmpresa(null);
+      avisar('Pronto', 'Os dados locais deste navegador foram apagados.');
+      await load();
+    } catch (e: any) {
+      avisar('Erro', e?.message ?? 'Não foi possível apagar os dados agora.');
+    }
+    setApagandoLocal(false);
   }
 
   const confirmadoExcluir = textoExcluir.trim().toUpperCase() === 'EXCLUIR';
 
   async function handleExcluirConta() {
     if (!confirmadoExcluir || excluindoConta) return;
-    if (!confirmar(
+    if (!(await confirmar(
       'Excluir a conta agora?',
       'Esta é a última confirmação. Sua conta e todos os dados serão apagados para sempre. Não há como desfazer.',
-    )) return;
+    ))) return;
     setExcluindoConta(true);
     try {
       const res = await excluirConta();

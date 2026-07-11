@@ -272,7 +272,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function remover(id: string) {
-    if (!confirmar('Excluir agendamento', 'Essa ação não pode ser desfeita.')) return;
+    if (!(await confirmar('Excluir agendamento', 'Essa ação não pode ser desfeita.'))) return;
     setSalvando(true);
     try {
       await deleteAgendamento(id);

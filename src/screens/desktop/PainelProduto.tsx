@@ -62,7 +62,7 @@ export function PainelProduto({ produto, visivel, aoFechar, aoSalvar }: Props) {
     };
 
     if (p.preco <= 0) {
-      const ok = confirmar(
+      const ok = await confirmar(
         'Preço zerado',
         'Este produto está com preço R$ 0,00. Se for adicionado a um orçamento assim, o cliente não pagará nada por ele. Deseja salvar mesmo assim?'
       );
@@ -88,7 +88,7 @@ export function PainelProduto({ produto, visivel, aoFechar, aoSalvar }: Props) {
 
   async function handleExcluir() {
     if (!produto) return;
-    if (!confirmar('Excluir produto', `Excluir "${produto.nome}"? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Excluir produto', `Excluir "${produto.nome}"? Essa ação não pode ser desfeita.`))) return;
     setExcluindo(true);
     try {
       await deleteProduto(produto.id);

@@ -98,7 +98,7 @@ function ProdutosDesktopConteudo() {
   }
 
   async function excluir(p: ProdutoItem) {
-    if (!confirmar('Excluir produto', `Excluir "${p.nome}"? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirmar('Excluir produto', `Excluir "${p.nome}"? Essa ação não pode ser desfeita.`))) return;
     try {
       await deleteProduto(p.id);
       carregar();
