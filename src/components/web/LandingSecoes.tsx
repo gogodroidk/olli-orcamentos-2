@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Linking, Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Linking, Alert, Animated, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, sobreSecundario, type Cores } from '../../theme';
 import { Fonts } from '../../theme/fonts';
-import { useReducedMotion } from '../../theme/motion';
+import { Motion, useReducedMotion } from '../../theme/motion';
 import { OlliMascot } from '../OlliMascot';
 import { OlliButton } from '../OlliButton';
 import { OlliPressable } from '../OlliPressable';
@@ -12,8 +12,13 @@ import { AnimatedEntrance } from '../AnimatedEntrance';
 import { StatusBadge } from '../StatusBadge';
 import { KpiCard } from './KpiCard';
 import { Tilt3D } from './Tilt3D';
+import { Flutuar } from './Flutuar';
+import { Parallax } from './Parallax';
+import { useDefinirLimiarLanding, useLandingScrollY, useLimiarLandingRef } from './LandingScroll';
 import { abrirWhatsApp } from '../../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE } from '../../config';
+
+const useNativeAnimations = Platform.OS !== 'web';
 
 /**
  * Seções da LandingScreen (página de produto para quem chega deslogado no
@@ -124,21 +129,43 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
   // as DUAS pontas do gradiente ainda passam 4.5:1 (ver comentário no rodapé do
   // arquivo). Calculado uma vez e reaproveitado no subheadline e nas provas.
   const corSecundariaHero = sobreSecundario(gradientes.sobrePrimary, gradientes.primary);
+  // Registra a altura acumulada de Topo+Hero — é o limiar que a CTA fixa usa pra
+  // saber quando o visitante "passou do hero" (ver CtaFixaLanding). `layout.y` já
+  // vem relativo ao topo do conteúdo da ScrollView (o Topo é o irmão anterior).
+  const definirLimiar = useDefinirLimiarLanding();
   return (
-    <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroFundo}>
+    <LinearGradient
+      colors={gradientes.primary}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.heroFundo}
+      onLayout={(e) => definirLimiar(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+    >
       <View style={styles.heroGlow1} pointerEvents="none" />
       <View style={styles.heroGlow2} pointerEvents="none" />
       <View style={[styles.heroConteudo, ehDesktop && styles.heroConteudoDesktop]}>
-        <AnimatedEntrance index={0}>
-          <Text style={[styles.heroHeadline, { color: gradientes.sobrePrimary }]}>O sistema de quem trabalha na rua</Text>
+        <AnimatedEntrance index={0} from="scale">
+          {/* Mascote do hero: parallax sutil ao rolar (por fora) + float infinito
+              (por dentro) — os dois só na WEB (ver Parallax.web.tsx/Flutuar.web.tsx;
+              no nativo ambos são View pass-through). `float={false}` no OlliMascot
+              evita dois "translateY" competindo no mesmo nó: a respiração/piscada
+              dele continuam (scale/opacity), o deslize vertical fica só com o Flutuar. */}
+          <Parallax fator={Motion.web.parallax.fator} style={styles.heroMascoteWrap}>
+            <Flutuar>
+              <OlliMascot size={72} float={false} />
+            </Flutuar>
+          </Parallax>
         </AnimatedEntrance>
         <AnimatedEntrance index={1}>
+          <Text style={[styles.heroHeadline, { color: gradientes.sobrePrimary }]}>O sistema de quem trabalha na rua</Text>
+        </AnimatedEntrance>
+        <AnimatedEntrance index={2}>
           <Text style={[styles.heroSubheadline, { color: corSecundariaHero }]}>
             Do chamado ao recibo assinado, sem voltar pra base — orçamento, ordem de serviço, agenda e
             cobrança no celular, funcionando até sem sinal. Nascido na refrigeração, feito pra todo prestador de campo.
           </Text>
         </AnimatedEntrance>
-        <AnimatedEntrance index={2}>
+        <AnimatedEntrance index={3}>
           <View style={[styles.heroCtas, ehDesktop && styles.heroCtasDesktop]}>
             <OlliButton
               label="Criar conta grátis"
@@ -168,7 +195,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
             />
           </View>
         </AnimatedEntrance>
-        <AnimatedEntrance index={3}>
+        <AnimatedEntrance index={4}>
           <View style={styles.heroProvas}>
             {PROVAS_HERO.map((p) => (
               <View key={p} style={styles.heroProva}>
@@ -704,6 +731,113 @@ export function FooterLanding({ onAjuda, onPrivacidade, onTermos }: FooterProps)
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CTA FIXA — barra fina que aparece ao rolar para além do hero
+// ═══════════════════════════════════════════════════════════════════════════
+interface CtaFixaProps {
+  onCriarConta: () => void;
+}
+
+/**
+ * Barra fina fixa no topo com a MESMA CTA do hero ("Criar conta grátis" →
+ * `onCriarConta`), revelada só depois que o visitante rola para além do
+ * Topo+Hero (limiar registrado por `HeroLanding` via `useDefinirLimiarLanding`,
+ * lido aqui por `useLandingScrollY` — ver LandingScroll.tsx).
+ *
+ * Fica FORA da ScrollView: `LandingScreen` a posiciona como irmã absoluta
+ * dentro do contêiner de tela cheia, então "fixa" aqui é `position: 'absolute'`
+ * ancorado nesse contêiner (RN não tem `position: 'fixed'` tipado) — na
+ * prática se comporta como uma barra fixa porque só a ScrollView por baixo
+ * rola, não o contêiner.
+ *
+ * Entra/sai por opacity+translateY (Animated, respeita reduced-motion) e
+ * DESMONTA de verdade quando escondida — não fica um botão focável e invisível
+ * boiando na árvore de foco/leitor de tela.
+ */
+export function CtaFixaLanding({ onCriarConta }: CtaFixaProps) {
+  const styles = useEstilos(criarEstilos);
+  const reduzirMovimento = useReducedMotion();
+  const limiarRef = useLimiarLandingRef();
+  const [visivel, setVisivel] = useState(false);
+  const [montada, setMontada] = useState(false);
+  const progresso = useRef(new Animated.Value(0)).current;
+
+  const aoRolar = useCallback((y: number) => {
+    const limiar = limiarRef?.current ?? Number.POSITIVE_INFINITY;
+    // -80: aparece um pouco antes do fim exato do hero — mais responsivo que
+    // esperar o último pixel do gradiente sumir da tela.
+    setVisivel(y > Math.max(limiar - 80, 0));
+  }, [limiarRef]);
+  useLandingScrollY(aoRolar);
+
+  // Desmonta com atraso (mesma duração da saída) pra a transição de opacidade
+  // terminar antes de sumir de vez; sem reduced-motion some junto.
+  useEffect(() => {
+    if (visivel) { setMontada(true); return; }
+    if (reduzirMovimento) { setMontada(false); return; }
+    const id = setTimeout(() => setMontada(false), Motion.dur.base);
+    return () => clearTimeout(id);
+  }, [visivel, reduzirMovimento]);
+
+  useEffect(() => {
+    if (reduzirMovimento) { progresso.setValue(visivel ? 1 : 0); return; }
+    Animated.timing(progresso, {
+      toValue: visivel ? 1 : 0,
+      duration: Motion.dur.base,
+      easing: Motion.easing.standard,
+      useNativeDriver: useNativeAnimations,
+    }).start();
+  }, [visivel, reduzirMovimento, progresso]);
+
+  if (!montada) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visivel ? 'auto' : 'none'}
+      style={[
+        styles.ctaFixaWrap,
+        {
+          opacity: progresso,
+          transform: [{ translateY: progresso.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
+        },
+      ]}
+    >
+      <View style={styles.ctaFixaConteudo}>
+        <View style={styles.topoMarca}>
+          <OlliMascot size={26} float={false} pulse={false} />
+          <Text style={styles.ctaFixaMarcaTexto}>OLLI</Text>
+        </View>
+        <OlliButton label="Começar grátis" onPress={onCriarConta} variant="gradient" size="sm" haptic={false} />
+      </View>
+    </Animated.View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WHATSAPP FLUTUANTE — sempre visível, canto inferior direito
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Botão flutuante discreto que abre o MESMO WhatsApp de suporte já usado no
+ * rodapé desta tela (`falarNoWhatsApp`/`WHATSAPP_LANDING`, topo do arquivo) —
+ * nenhum número novo. Sempre visível (não depende de scroll).
+ */
+export function WhatsAppFlutuante() {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  return (
+    <AnimatedEntrance index={0} from="scale" style={styles.whatsappFlutuanteWrap}>
+      <OlliPressable
+        onPress={falarNoWhatsApp}
+        haptic={false}
+        style={[styles.whatsappFlutuante, { backgroundColor: cores.whatsapp }]}
+        accessibilityLabel="Falar no WhatsApp"
+      >
+        <MaterialCommunityIcons name="whatsapp" size={28} color="#FFFFFF" />
+      </OlliPressable>
+    </AnimatedEntrance>
+  );
+}
+
 // ─── Estilos ─────────────────────────────────────────────────────────────────
 const LARGURA_MAXIMA = 1120;
 
@@ -813,6 +947,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroGlow2: { position: 'absolute', bottom: -110, left: -90, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(52,198,217,0.10)' },
   heroConteudo: { width: '100%', maxWidth: 720, paddingHorizontal: Spacing.xl, alignItems: 'center' },
   heroConteudoDesktop: { maxWidth: 820 },
+  heroMascoteWrap: { marginBottom: Spacing.lg },
   heroHeadline: {
     fontSize: 42,
     lineHeight: 50,
@@ -1041,4 +1176,44 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   footerLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
   footerLinkTexto: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.onSurfaceVariant },
   footerCopy: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceMuted, textAlign: 'center' },
+
+  // CTA FIXA (irmã absoluta da ScrollView — ver comentário em CtaFixaLanding)
+  ctaFixaWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    backgroundColor: c.background,
+    borderBottomWidth: 1,
+    borderBottomColor: c.outline,
+    ...sombrasDe(c).sm,
+  },
+  ctaFixaConteudo: {
+    width: '100%',
+    maxWidth: LARGURA_MAXIMA,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  ctaFixaMarcaTexto: { fontSize: 15, fontFamily: Fonts.extraBold, color: c.onBackground, letterSpacing: 1 },
+
+  // WHATSAPP FLUTUANTE (irmã absoluta da ScrollView)
+  whatsappFlutuanteWrap: {
+    position: 'absolute',
+    bottom: Spacing.xl,
+    right: Spacing.xl,
+    zIndex: 40,
+  },
+  whatsappFlutuante: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...sombrasDe(c).md,
+  },
 });

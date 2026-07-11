@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect } from 'react';
+import { View, ScrollView, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEstilos, type Cores } from '../theme';
@@ -17,10 +17,13 @@ import {
   FaqLanding,
   CtaFinalLanding,
   FooterLanding,
+  CtaFixaLanding,
+  WhatsAppFlutuante,
 } from '../components/web/LandingSecoes';
 import { ComparadorLanding } from '../components/web/ComparadorLanding';
 import { TeatroOffline } from '../components/web/TeatroOffline';
 import { RevealProvider, Revelar, useRevealScrollHandler } from '../components/Revelar';
+import { LandingScrollProvider, useLandingScrollHandler } from '../components/web/LandingScroll';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -69,27 +72,38 @@ export default function LandingScreen() {
 
   return (
     <View style={styles.container}>
-      {/* RevealProvider: as secoes abaixo da dobra se revelam ao rolar ate elas
+      {/* LandingScrollProvider: fonte única da posição de rolagem (ver
+          LandingScroll.tsx — a JANELA não rola nesta tela, só a ScrollView
+          abaixo; parallax do hero e a CTA fixa assinam esse contexto).
+          RevealProvider: as secoes abaixo da dobra se revelam ao rolar ate elas
           (em vez de animarem no mount, antes de estarem visiveis). O conteudo real
-          vive em ConteudoLanding para o onScroll poder ler o contexto. */}
-      <RevealProvider>
-        <ConteudoLanding
-          ehDesktop={ehDesktop}
-          irParaEntrar={irParaEntrar}
-          irParaPlanos={irParaPlanos}
-          irParaAjuda={irParaAjuda}
-          irParaPrivacidade={irParaPrivacidade}
-          irParaTermos={irParaTermos}
-          styles={styles}
-        />
-      </RevealProvider>
+          vive em ConteudoLanding para o onScroll poder ler os dois contextos.
+          CtaFixaLanding/WhatsAppFlutuante ficam FORA da ScrollView, como irmãs
+          absolutas sobre este contêiner de tela cheia — por isso "flutuam" por
+          cima do conteúdo rolado em vez de rolar junto. */}
+      <LandingScrollProvider>
+        <RevealProvider>
+          <ConteudoLanding
+            ehDesktop={ehDesktop}
+            irParaEntrar={irParaEntrar}
+            irParaPlanos={irParaPlanos}
+            irParaAjuda={irParaAjuda}
+            irParaPrivacidade={irParaPrivacidade}
+            irParaTermos={irParaTermos}
+            styles={styles}
+          />
+        </RevealProvider>
+        <CtaFixaLanding onCriarConta={irParaEntrar} />
+      </LandingScrollProvider>
+      <WhatsAppFlutuante />
     </View>
   );
 }
 
 /**
  * Conteudo da landing. Separado do LandingScreen so para poder chamar
- * useRevealScrollHandler() DENTRO do RevealProvider (o hook le o contexto).
+ * useRevealScrollHandler()/useLandingScrollHandler() DENTRO dos respectivos
+ * providers (os hooks leem o contexto).
  */
 function ConteudoLanding({
   ehDesktop, irParaEntrar, irParaPlanos, irParaAjuda, irParaPrivacidade, irParaTermos, styles,
@@ -99,7 +113,14 @@ function ConteudoLanding({
   irParaPrivacidade: () => void; irParaTermos: () => void;
   styles: ReturnType<typeof criarEstilos>;
 }) {
-  const onScroll = useRevealScrollHandler();
+  const onRevealScroll = useRevealScrollHandler();
+  const onLandingScroll = useLandingScrollHandler();
+  // Um único onScroll da ScrollView real alimenta os dois: o reveal-on-scroll
+  // (existente) e o parallax/CTA-fixa (novos) — nenhum listener próprio extra.
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    onRevealScroll(e);
+    onLandingScroll(e);
+  }, [onRevealScroll, onLandingScroll]);
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}

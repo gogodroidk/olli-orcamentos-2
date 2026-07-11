@@ -21,6 +21,16 @@ export const Motion = {
   },
   stagger: 55,
   maxStagger: 12,
+  /**
+   * Tokens dos efeitos WEB-ONLY (CSS transform via `Element.animate`/DOM, ver
+   * Tilt3D.web.tsx) — Flutuar, Parallax e a CTA fixa da landing consomem daqui,
+   * nunca número solto. `easingCss` é string CSS (não `Easing` do RN), porque
+   * quem lê estes tokens é a Web Animations API, não `Animated`.
+   */
+  web: {
+    float: { distanciaPx: 8, duracaoMs: 4000, easingCss: 'ease-in-out' as const },
+    parallax: { fator: 0.15 },
+  },
 } as const;
 
 // Habilita LayoutAnimation no Android (é opt-in fora do New Architecture
