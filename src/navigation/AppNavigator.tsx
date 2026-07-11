@@ -61,6 +61,16 @@ import {
   ClientesDesktopScreen,
   RelatoriosDesktopScreen,
   FerramentasDesktopScreen,
+  ServicosDesktopScreen,
+  ProdutosDesktopScreen,
+  EquipamentosDesktopScreen,
+  RecibosDesktopScreen,
+  OrdensDesktopScreen,
+  PmocDesktopScreen,
+  LixeiraDesktopScreen,
+  EquipeDesktopScreen,
+  AjudaDesktopScreen,
+  ContaDesktopScreen,
 } from '../screens/desktop';
 
 /**
@@ -148,6 +158,17 @@ export type TabParamList = {
   ClientesTab?: undefined;
   RelatoriosTab?: undefined;
   FerramentasTab?: undefined;
+  // F6 — as 10 telas secundárias como abas do shell desktop (mantêm a sidebar).
+  ServicosTab?: undefined;
+  ProdutosTab?: undefined;
+  EquipamentosTab?: undefined;
+  RecibosTab?: undefined;
+  OrdensTab?: undefined;
+  PmocTab?: undefined;
+  LixeiraTab?: undefined;
+  EquipeTab?: undefined;
+  AjudaTab?: undefined;
+  ContaTab?: undefined;
 };
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -387,6 +408,19 @@ function TabNavigator() {
               ),
             }}
           />
+          {/* F6 — as 10 telas secundárias como abas do shell (mantêm a sidebar).
+              Os rótulos/ícones reais vêm da SidebarNav (tabBar custom); estas
+              options são só o fallback do bottom-tabs, que o desktop não usa. */}
+          <Tab.Screen name="ServicosTab" component={ServicosDesktopScreen} options={{ tabBarLabel: 'Serviços', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="wrench-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="ProdutosTab" component={ProdutosDesktopScreen} options={{ tabBarLabel: 'Produtos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="package-variant-closed" color={color} size={size} />) }} />
+          <Tab.Screen name="EquipamentosTab" component={EquipamentosDesktopScreen} options={{ tabBarLabel: 'Equipamentos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="air-conditioner" color={color} size={size} />) }} />
+          <Tab.Screen name="RecibosTab" component={RecibosDesktopScreen} options={{ tabBarLabel: 'Recibos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="receipt" color={color} size={size} />) }} />
+          <Tab.Screen name="OrdensTab" component={OrdensDesktopScreen} options={{ tabBarLabel: 'Ordens de serviço', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="clipboard-check-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="PmocTab" component={PmocDesktopScreen} options={{ tabBarLabel: 'Planos PMOC', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="calendar-sync-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="EquipeTab" component={EquipeDesktopScreen} options={{ tabBarLabel: 'Equipe', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="account-multiple-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="LixeiraTab" component={LixeiraDesktopScreen} options={{ tabBarLabel: 'Lixeira', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="delete-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="AjudaTab" component={AjudaDesktopScreen} options={{ tabBarLabel: 'Ajuda', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="help-circle-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="ContaTab" component={ContaDesktopScreen} options={{ tabBarLabel: 'Conta', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="account-circle-outline" color={color} size={size} />) }} />
         </>
       )}
       {/* Hoje só existe no mobile: no desktop a sidebar não a lista (o resumo

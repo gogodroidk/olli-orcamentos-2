@@ -68,31 +68,31 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   { rota: 'OrcamentosTab', label: 'Orçamentos', icon: 'file-document-outline', acao: 'criar_orcamento' },
   { rota: 'ClientesTab', label: 'Clientes', icon: 'account-group-outline', acao: 'ver_clientes' },
   // Catálogo (dono do negócio/gestão). Técnico não mantém catálogo → oculto.
-  { rota: 'Servicos', label: 'Serviços', icon: 'wrench-outline', stack: true, acao: 'criar_orcamento', ocultarTecnico: true },
-  { rota: 'Produtos', label: 'Produtos', icon: 'package-variant-closed', stack: true, acao: 'criar_orcamento', ocultarTecnico: true },
+  { rota: 'ServicosTab', label: 'Serviços', icon: 'wrench-outline', acao: 'criar_orcamento', ocultarTecnico: true },
+  { rota: 'ProdutosTab', label: 'Produtos', icon: 'package-variant-closed', acao: 'criar_orcamento', ocultarTecnico: true },
   { rota: 'Agenda', label: 'Agenda', icon: 'calendar-month-outline', acao: 'ver_agenda_propria' },
   // Ordens de serviço (stack raiz). Rótulo role-aware definido em runtime.
-  { rota: 'OrdemServico', label: 'Ordens de serviço', icon: 'clipboard-check-outline', stack: true },
+  { rota: 'OrdensTab', label: 'Ordens de serviço', icon: 'clipboard-check-outline' },
   // Equipamentos HVAC (PMOC Fase 1): inventário + etiqueta QR. Sem gate de plano
   // (não há Recurso PMOC no mapa) — recurso de campo visível para todos os papéis.
-  { rota: 'Equipamento', label: 'Equipamentos', icon: 'air-conditioner', stack: true },
+  { rota: 'EquipamentosTab', label: 'Equipamentos', icon: 'air-conditioner' },
   // Planos PMOC (Fase 2): manutenção programada. Ação de gestão/dono — gateada por
   // 'ver_valores_agregados', então o técnico (que não gera nem edita plano) não a vê.
-  { rota: 'Pmoc', label: 'Planos PMOC', icon: 'calendar-sync-outline', stack: true, acao: 'ver_valores_agregados' },
+  { rota: 'PmocTab', label: 'Planos PMOC', icon: 'calendar-sync-outline', acao: 'ver_valores_agregados' },
   // Recibos (financeiro). Técnico não emite recibos no menu enxuto → oculto.
-  { rota: 'EmitirRecibo', label: 'Recibos', icon: 'receipt', stack: true, acao: 'criar_orcamento', ocultarTecnico: true },
+  { rota: 'RecibosTab', label: 'Recibos', icon: 'receipt', acao: 'criar_orcamento', ocultarTecnico: true },
   // Relatórios: permissão (ver_relatorios) + recurso pago (relatorios → cadeado).
   { rota: 'RelatoriosTab', label: 'Relatórios', icon: 'chart-line', acao: 'ver_relatorios', recurso: 'relatorios' },
   { rota: 'FerramentasTab', label: 'Ferramentas', icon: 'toolbox-outline' },
   // Equipe: só empresa, quem pode ver a equipe (owner/admin/gestor), recurso 'equipe'.
-  { rota: 'Equipe', label: 'Equipe', icon: 'account-multiple-outline', stack: true, acao: 'ver_equipe', soEmpresa: true, recurso: 'equipe' },
-  // Ajuda/suporte (stack raiz): disponível para todos os papéis, inclusive o técnico.
-  { rota: 'Ajuda', label: 'Ajuda', icon: 'help-circle-outline', stack: true },
-  // Lixeira (stack raiz): ação de GESTÃO — o técnico não vê (menu enxuto).
-  { rota: 'Lixeira', label: 'Lixeira', icon: 'delete-outline', stack: true, ocultarTecnico: true },
+  { rota: 'EquipeTab', label: 'Equipe', icon: 'account-multiple-outline', acao: 'ver_equipe', soEmpresa: true, recurso: 'equipe' },
+  // Ajuda/suporte: disponível para todos os papéis, inclusive o técnico.
+  { rota: 'AjudaTab', label: 'Ajuda', icon: 'help-circle-outline' },
+  // Lixeira: ação de GESTÃO — o técnico não vê (menu enxuto).
+  { rota: 'LixeiraTab', label: 'Lixeira', icon: 'delete-outline', ocultarTecnico: true },
 ];
 
-const ITEM_CONTA: ItemMenu = { rota: 'Conta', label: 'Conta', icon: 'account-circle-outline' };
+const ITEM_CONTA: ItemMenu = { rota: 'ContaTab', label: 'Conta', icon: 'account-circle-outline' };
 
 export function SidebarNav({ state, navigation }: BottomTabBarProps) {
   const [email, setEmail] = useState<string | null>(null);
@@ -195,7 +195,7 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
       <ScrollView style={styles.menu} contentContainerStyle={styles.menuConteudo} showsVerticalScrollIndicator={false}>
         {itensVisiveis.map((item) => {
           const trancado = item.recurso ? !temAcesso(item.recurso) : false;
-          const label = item.rota === 'OrdemServico' ? rotuloOrdens : item.label;
+          const label = item.rota === 'OrdensTab' ? rotuloOrdens : item.label;
           return (
             <ItemSidebar
               key={item.rota}

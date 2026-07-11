@@ -18,3 +18,16 @@ export { default as ClientesDesktopScreen } from './ClientesDesktopScreen';
 // F5
 export { default as AgendaDesktopScreen } from './AgendaDesktopScreen';
 export { default as FerramentasDesktopScreen } from './FerramentasDesktopScreen';
+
+// F6 (onda desktop): as 10 telas secundárias ganham layout desktop e viram ABAS
+// do shell (mantêm a sidebar) — fim do "vira celular" ao clicar nesses itens.
+export { default as ServicosDesktopScreen } from './ServicosDesktopScreen';
+export { default as ProdutosDesktopScreen } from './ProdutosDesktopScreen';
+export { default as EquipamentosDesktopScreen } from './EquipamentosDesktopScreen';
+export { default as RecibosDesktopScreen } from './RecibosDesktopScreen';
+export { default as OrdensDesktopScreen } from './OrdensDesktopScreen';
+export { default as PmocDesktopScreen } from './PmocDesktopScreen';
+export { default as LixeiraDesktopScreen } from './LixeiraDesktopScreen';
+export { default as EquipeDesktopScreen } from './EquipeDesktopScreen';
+export { default as AjudaDesktopScreen } from './AjudaDesktopScreen';
+export { default as ContaDesktopScreen } from './ContaDesktopScreen';
