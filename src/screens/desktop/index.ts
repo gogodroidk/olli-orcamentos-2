@@ -1,33 +1,47 @@
 /**
- * Barril das telas desktop (v4). Cada tela desktop é exportada daqui e consumida
- * pelo AppNavigator (condicionalmente, sob `ehDesktop`). No mobile/APK nada
- * disto é montado.
+ * Barril das telas desktop (v4) — versão NATIVA (STUB). O Metro escolhe este
+ * arquivo ao empacotar para iOS/Android; a web pega `index.web.ts` (as 16
+ * telas reais, ao lado). Mesmo padrão de `Tilt3D.web.tsx`/`Tilt3D.tsx`.
  *
- * ESTADO ATUAL: F3 (Início + Relatórios), F4 (Orçamentos + Clientes) e F5
- * (Agenda + Ferramentas) entregues — todas as telas desktop são reais.
+ * Por que existe (P0 de tamanho de APK): import estático entra no bundle
+ * Hermes independente do runtime. Antes deste split, as ~12 mil linhas das
+ * telas desktop — e o peso que elas carregam, como react-native-gifted-charts
+ * (InicioDesktopScreen/RelatoriosDesktopScreen) — eram compiladas para dentro
+ * do APK mesmo nunca renderizando lá: `ehDesktop` (useEhDesktop) é SEMPRE
+ * `false` no nativo, então o AppNavigator nunca monta nenhuma destas telas
+ * fora da web ≥ 1024px.
+ *
+ * Estes componentes são carcaças vazias que só existem para o import nomeado
+ * do AppNavigator resolver e o tipo (`component={XDesktopScreen}`, zero
+ * props) bater — nunca são de fato renderizados no APK.
  */
+import type { ReactElement } from 'react';
+
+/** Nunca renderiza no nativo — ver comentário acima. */
+function TelaDesktopStub(): ReactElement | null {
+  return null;
+}
 
 // F3
-export { default as InicioDesktopScreen } from './InicioDesktopScreen';
-export { default as RelatoriosDesktopScreen } from './RelatoriosDesktopScreen';
+export const InicioDesktopScreen = TelaDesktopStub;
+export const RelatoriosDesktopScreen = TelaDesktopStub;
 
 // F4
-export { default as OrcamentosDesktopScreen } from './OrcamentosDesktopScreen';
-export { default as ClientesDesktopScreen } from './ClientesDesktopScreen';
+export const OrcamentosDesktopScreen = TelaDesktopStub;
+export const ClientesDesktopScreen = TelaDesktopStub;
 
 // F5
-export { default as AgendaDesktopScreen } from './AgendaDesktopScreen';
-export { default as FerramentasDesktopScreen } from './FerramentasDesktopScreen';
+export const AgendaDesktopScreen = TelaDesktopStub;
+export const FerramentasDesktopScreen = TelaDesktopStub;
 
-// F6 (onda desktop): as 10 telas secundárias ganham layout desktop e viram ABAS
-// do shell (mantêm a sidebar) — fim do "vira celular" ao clicar nesses itens.
-export { default as ServicosDesktopScreen } from './ServicosDesktopScreen';
-export { default as ProdutosDesktopScreen } from './ProdutosDesktopScreen';
-export { default as EquipamentosDesktopScreen } from './EquipamentosDesktopScreen';
-export { default as RecibosDesktopScreen } from './RecibosDesktopScreen';
-export { default as OrdensDesktopScreen } from './OrdensDesktopScreen';
-export { default as PmocDesktopScreen } from './PmocDesktopScreen';
-export { default as LixeiraDesktopScreen } from './LixeiraDesktopScreen';
-export { default as EquipeDesktopScreen } from './EquipeDesktopScreen';
-export { default as AjudaDesktopScreen } from './AjudaDesktopScreen';
-export { default as ContaDesktopScreen } from './ContaDesktopScreen';
+// F6
+export const ServicosDesktopScreen = TelaDesktopStub;
+export const ProdutosDesktopScreen = TelaDesktopStub;
+export const EquipamentosDesktopScreen = TelaDesktopStub;
+export const RecibosDesktopScreen = TelaDesktopStub;
+export const OrdensDesktopScreen = TelaDesktopStub;
+export const PmocDesktopScreen = TelaDesktopStub;
+export const LixeiraDesktopScreen = TelaDesktopStub;
+export const EquipeDesktopScreen = TelaDesktopStub;
+export const AjudaDesktopScreen = TelaDesktopStub;
+export const ContaDesktopScreen = TelaDesktopStub;
