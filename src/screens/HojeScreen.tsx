@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { capitalizeFirst } from '../utils/date';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
-import { Motion } from '../theme/motion';
+import { Motion, useReducedMotion } from '../theme/motion';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
@@ -48,7 +48,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
  * a lista "assenta" em vez de saltar. Usa os tokens de duração/easing da OLLI.
  * No web, LayoutAnimation é no-op inofensivo (não anima, mas não quebra).
  */
-function animarLayoutChecklist() {
+function animarLayoutChecklist(reduzir: boolean) {
+  // Acessibilidade: sem movimento quando o usuário pediu menos animação (mesmo
+  // padrão de Agenda/RelatorioDia). A lista só "salta" para o estado final.
+  if (reduzir) return;
   LayoutAnimation.configureNext({
     duration: Motion.dur.base,
     create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
@@ -229,14 +232,17 @@ export default function HojeScreen() {
     void pushExtraChave('checklist.hoje').catch(() => {});
   }, []);
 
+  // Respeita prefers-reduced-motion na animação de layout do checklist.
+  const reduzirMovimento = useReducedMotion();
+
   const addItem = useCallback(() => {
     const t = novo.trim();
     if (!t) return;
     Haptics.selectionAsync().catch(() => {});
-    animarLayoutChecklist();
+    animarLayoutChecklist(reduzirMovimento);
     persist([...checklist, { id: generateId(), texto: t, feito: false, data: todayKey() }]);
     setNovo('');
-  }, [novo, checklist, persist]);
+  }, [novo, checklist, persist, reduzirMovimento]);
 
   const toggle = useCallback((id: string) => {
     const alvo = checklist.find(i => i.id === id);
@@ -248,9 +254,9 @@ export default function HojeScreen() {
 
   const remove = useCallback((id: string) => {
     Haptics.selectionAsync().catch(() => {});
-    animarLayoutChecklist();
+    animarLayoutChecklist(reduzirMovimento);
     persist(checklist.filter(i => i.id !== id));
-  }, [checklist, persist]);
+  }, [checklist, persist, reduzirMovimento]);
 
   // ── lembretes REAIS (sem inventar): orçamentos abertos parados +5 dias ──
   // "Em aberto" cobre toda proposta já entregue ao cliente sem desfecho
