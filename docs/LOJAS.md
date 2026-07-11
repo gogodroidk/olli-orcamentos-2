@@ -32,15 +32,19 @@ Labels).
 | Nome, e-mail, telefone | Cadastro (`EntrarScreen.tsx`) | Criar a conta, identificar o orçamento/empresa | Sim — Supabase (auth + tabela `empresas`), com RLS por organização |
 | Senha | Cadastro/login | Autenticação | Sim — Supabase Auth (hash, nunca em texto puro no app) |
 | Login social Google | Botão "Continuar com o Google" (`EntrarScreen.tsx`, OAuth via `expo-web-browser`) | Autenticação alternativa | Sim — fluxo OAuth padrão do Supabase; o app não guarda a senha do Google |
-| Fotos (CAMERA / READ_MEDIA_IMAGES) | Fotos de serviços/equipamentos anexadas a orçamentos e ao inventário PMOC | Documentar o serviço para o cliente | Sim, se o usuário sincronizar com a nuvem (Supabase Storage) — local por padrão |
+| Fotos (CAMERA / READ_MEDIA_IMAGES) | Fotos de serviços/equipamentos anexadas a orçamentos, OS e ao inventário PMOC (`src/utils/fotosOrcamento.ts`) | Documentar o serviço para o cliente | **Não.** O arquivo de imagem fica só no aparelho, em `documentDirectory/fotos-orcamento/` — **não existe upload de binário para a nuvem hoje**. Confirmado por grep (`.storage.`/`supabase.storage` em `src/` = zero ocorrências): `StorageProvider` (`src/services/ports/StorageProvider.ts`) é só a INTERFACE planejada (D-13/Onda 7), o próprio comentário do arquivo diz "Impl de-facto HOJE: NÃO EXISTE upload de binário para a nuvem". Nuance para não sobrar dúvida: quando a organização sincroniza OS/equipamento com a nuvem, o **caminho local do arquivo** (uma string tipo `file:///.../foto-123.jpg`, não a imagem) viaja como parte do jsonb `fotos` daquele registro — mas esse caminho não existe em outro aparelho, então a foto em si nunca sai de onde foi tirada |
 | Áudio (RECORD_AUDIO) | Ditado de orçamento por voz e chat com a assistente Olli (`OlliVozScreen.tsx`, `OlliChatScreen.tsx`) | Criar orçamento falando, tirar dúvida técnica | **Modo "dispositivo"**: reconhecimento nativo, o áudio não sai do aparelho. **Modo "nuvem"**: o áudio grava com `expo-audio` e vai para o Worker Cloudflare, que repassa para o modelo de IA (Gemini) para transcrever — não é armazenado depois de transcrito |
-| Localização da equipe | Tela "Equipe ao vivo" (`localizacaoEquipe.ts`, `EquipeAoVivoScreen.tsx`) — **atrás de flag**: hoje só funciona na versão **web** via `navigator.geolocation`; a captura nativa em background (expo-location) ainda não está instalada no app mobile | Gestor ver a posição do técnico em campo | Sim — tabela `localizacoes_equipe` no Supabase, RLS restringe a "própria linha OU gestão da mesma organização" (nunca entre organizações) |
+| Localização da equipe | Tela "Equipe ao vivo" (`localizacaoEquipe.ts`, `EquipeAoVivoScreen.tsx`) — **atrás de flag**: hoje só funciona na versão **web** via `navigator.geolocation`; a captura nativa em background (expo-location) ainda não está instalada no app mobile (`LOCALIZACAO_DISPONIVEL = false`, confirmado: `expo-location` não está no `package.json`) | Gestor ver a posição do técnico em campo | Sim — tabela `localizacoes_equipe` no Supabase, RLS restringe a "própria linha OU gestão da mesma organização" (nunca entre organizações) |
+| Calendar (Google Agenda) | Tela Agenda → "Conectar Google Agenda" (`src/services/googleAgenda.ts`), OAuth PKCE nativo | Espelhar o compromisso (título, cliente, endereço, horário) no calendário Google do próprio técnico | Sim, mas só se o usuário conectar — **hoje o recurso está desligado em produção**: depende do client OAuth Android (`EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID`) e do intent filter no `app.json`, nenhum dos dois configurado ainda (passo humano pendente — ver seção 1 e memória `olli-google-cloud-mapa.md`). Sem isso, `googleAgendaDisponivel()` é sempre `false` e a UI não mostra nada — nenhum dado de agenda sai do aparelho hoje. Quando ligar: cria/atualiza/apaga eventos só na agenda Google do PRÓPRIO usuário logado (escopo `calendar.events`), nunca lê a agenda nativa do sistema (Android/iOS) nem agenda de terceiros. **Só existe env var de client Android** — sem client iOS configurado o recurso não liga no iPhone mesmo que o app compile lá |
 | Assinatura/plano (Stripe) | Tela Planos (`PlanosScreen.tsx`) abre o Checkout do Stripe num navegador externo (`Linking.openURL`) | Cobrar a assinatura Pro/Empresa do prestador | Sim — processado pelo Stripe; o OLLI nunca vê número de cartão |
 | Eventos de uso (analytics) | `src/services/analytics.ts` (`track()`) | Funil interno (orçamento criado/enviado/aprovado, uso de IA) | **Não** — hoje grava só no SQLite local do aparelho. Não há Sentry/PostHog ligados ainda (bloqueios B7/B8 em `docs/KNOWN_BLOCKERS.md`). Quando ligar, revisite as seções 5 e 6 |
 | Dados de clientes/orçamentos/serviços | Uso normal do app | O produto em si (CRM + orçamentos) | Sim, se a organização usar backup/sync na nuvem — offline-first por padrão |
 
-Não há coleta de: contatos do aparelho, SMS, calendário nativo (a integração com Google Agenda é
-opt-in e por OAuth, não lê o calendário do sistema), identificadores de publicidade, nem
+Não há coleta de: contatos do aparelho (**[quando contacts entrar: declarar READ_CONTACTS** na
+permissão nativa, no Data Safety/App Privacy e nesta tabela — hoje não há `expo-contacts` nem
+qualquer leitura de contatos no código, grep confirmado**]**), SMS, calendário **nativo** do sistema
+(a integração com Google Agenda acima é opt-in, por OAuth, contra a API do Google Calendar — não lê
+nem escreve no app de Agenda/Calendário do aparelho), identificadores de publicidade, nem
 compartilhamento de dados com redes de anúncio.
 
 ---
@@ -226,16 +230,18 @@ documento. Resumo pronto pra marcar:
 | Categoria (nome atual do formulário) | Coletado? | Compartilhado com terceiro? | Finalidade | Opcional? | Pode excluir? |
 | --- | --- | --- | --- | --- | --- |
 | Informações pessoais (nome, e-mail, telefone) | Sim | Não (só processadores: Supabase) | Funcionalidade do app, gerenciamento de conta | Não (necessário pro cadastro) | Sim, uma vez o botão de exclusão de conta existir (item 1 da seção 1) |
-| Fotos | Sim | Não | Funcionalidade do app | Sim | Sim (apagar o orçamento/equipamento apaga a foto) |
+| Fotos | **Não.** A definição do Google para "coletado" é dado transmitido para fora do aparelho — o arquivo da foto nunca sai do aparelho hoje (não há Supabase Storage nem qualquer upload de binário implementado; ver seção 0). **Não marque esta categoria como coletada no formulário.** | — | — | — | — |
+| Calendário (eventos) | Sim, só se o usuário conectar o Google Agenda — **hoje desligado em produção** (falta o client OAuth Android, passo humano pendente, ver seção 1) | Sim — Google Calendar API (o próprio calendário do usuário; não é uma rede de terceiros para fins de anúncio) | Espelhar o compromisso no calendário do celular do técnico | Sim (recurso 100% opt-in, botão "Conectar") | Sim — "Desconectar" apaga os tokens locais; apagar o evento no OLLI remove do Google Agenda também |
 | Áudio | Sim | Sim, com processador de IA (Gemini, via Worker próprio) só no modo "nuvem" | Funcionalidade do app (ditado, assistente) | Sim (modo "dispositivo" não sai do aparelho) | Não é retido após transcrever |
 | Localização aproximada/precisa | Sim, só quando a organização usa "Equipe ao vivo" | Não | Funcionalidade do app (gestão de equipe em campo) | Sim (recurso opt-in, hoje só ativo na web) | Sim |
 | Informações financeiras (assinatura) | Sim | Sim (Stripe, processador de pagamento) | Cobrança da assinatura | Sim (só quem assina Pro/Empresa) | N/A — histórico de cobrança fica com o Stripe |
 | Interações no app (App interactions) | Sim | Não | Analytics interno (funil) | N/A | Fica no aparelho, some ao desinstalar |
+| Contatos | **[quando contacts entrar: declarar READ_CONTACTS]** — hoje não existe leitura de contatos do aparelho no código (`expo-contacts` não é dependência); não marcar esta categoria até essa feature entrar | — | — | — | — |
 
 Todas as categorias: **dados transmitidos criptografados em trânsito** = Sim (HTTPS/TLS em toda
-chamada Supabase/Worker/Stripe). **Mecanismo de exclusão de dados** (antigo "Deletion mechanism",
-hoje "Deletion request mechanism") = aponte para a política de privacidade + o botão de exclusão de
-conta (pré-requisito do item 1 da seção 1) uma vez implementado.
+chamada Supabase/Worker/Stripe/Google Calendar). **Mecanismo de exclusão de dados** (antigo "Deletion
+mechanism", hoje "Deletion request mechanism") = aponte para a política de privacidade + o botão de
+exclusão de conta (pré-requisito do item 1 da seção 1) uma vez implementado.
 
 ---
 
@@ -310,12 +316,14 @@ categorias da Apple:
 | Categoria Apple | Coletado? | Vinculado à identidade do usuário? | Usado para rastreamento (tracking)? |
 | --- | --- | --- | --- |
 | Contact Info (nome, e-mail, telefone) | Sim | Sim | Não |
-| User Content (fotos anexadas a orçamentos/equipamentos) | Sim | Sim | Não |
+| User Content → Photos or Videos (fotos anexadas a orçamentos/OS/equipamentos) | **Não.** A definição da Apple para "coletado" é dado transmitido para fora do aparelho — o arquivo da foto nunca sai do aparelho hoje (sem Supabase Storage, sem upload de binário nenhum; ver seção 0). **Não selecione este tipo de dado no formulário.** | — | — |
+| User Content → Other User Content (eventos do Google Agenda, quando conectado) | Sim, só se o usuário conectar — **hoje desligado em produção** (falta client OAuth Android, ver seção 1). Apple não tem uma categoria "Calendar" própria nesta lista; o mais próximo é "Other User Content" — **[VERIFICAR]** a taxonomia atual do App Store Connect perto do envio, pode ter mudado | Sim | Não |
 | Audio Data (ditado por voz / chat com IA) | Sim | Sim | Não |
 | Location (Coarse ou Precise — "Equipe ao vivo") | Sim, só se a organização ativar equipe/localização | Sim | Não |
 | Financial Info (status da assinatura Stripe) | Sim | Sim | Não |
 | Usage Data (eventos internos de uso) | Hoje **não sai do aparelho** — declare como não coletado até Sentry/PostHog entrarem (bloqueios B7/B8) | — | Não |
 | Identifiers | Não (nenhum ID de publicidade é lido) | — | Não |
+| Contacts | **[quando contacts entrar: declarar READ_CONTACTS]** — hoje não existe leitura de contatos do aparelho no código (`expo-contacts` não é dependência); não selecione esta categoria até essa feature entrar | — | — |
 
 "Usado para rastreamento entre apps/sites de terceiros" = **Não** em tudo — o OLLI não tem SDK de
 ads nem compartilha dado com rede de anúncio. Isso evita o rótulo de "App Tracking Transparency"

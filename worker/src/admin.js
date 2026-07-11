@@ -24,11 +24,19 @@ function json(obj, status = 200) {
   });
 }
 
+// Fail-closed: NUNCA hardcode um e-mail de admin aqui. Se a env ADMIN_EMAIL
+// não estiver configurada (ou vier vazia), retorna null — e requireAdmin()
+// abaixo nega acesso a QUALQUER usuário nesse caso. Um fallback fixo já foi
+// tentado antes e concedia o painel de TODOS os tenants a um e-mail hardcoded
+// sempre que a env faltasse; isso é o oposto de fail-closed.
 function adminEmail(env) {
-  return (env.ADMIN_EMAIL || 'igoreluisa@gmail.com').trim().toLowerCase();
+  const raw = (env.ADMIN_EMAIL || '').trim().toLowerCase();
+  return raw || null;
 }
 
 async function requireAdmin(request, env) {
+  const admin = adminEmail(env);
+  if (!admin) return null; // ADMIN_EMAIL ausente/vazia → nega a todos, nunca concede a um e-mail fixo
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
   try {
@@ -38,7 +46,7 @@ async function requireAdmin(request, env) {
     if (!r.ok) return null;
     const u = await r.json();
     if (!u || !u.id) return null;
-    if (String(u.email || '').trim().toLowerCase() !== adminEmail(env)) return null;
+    if (String(u.email || '').trim().toLowerCase() !== admin) return null;
     return u;
   } catch {
     return null;

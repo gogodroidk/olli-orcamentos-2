@@ -123,8 +123,8 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Localização da equipe em campo',
-          finalidade: 'Mostrar a posição dos técnicos e a rota SOMENTE enquanto o rastreio de jornada está ativado.',
-          base: 'Consentimento, ativável e desativável a qualquer momento (art. 7º, I).',
+          finalidade: 'Coordenar rotas e o andamento do expediente — mostrar a posição dos técnicos e o trajeto até o cliente SOMENTE durante o horário de trabalho, nunca fora do expediente.',
+          base: 'Legítimo interesse do empregador/contratante na gestão operacional da equipe em campo (art. 7º, IX), com uso restrito à finalidade de coordenação de rota/expediente. Você pode se opor a este tratamento a qualquer momento pelos canais de atendimento.',
         },
         {
           dado: 'Dados de assinatura (via Stripe)',
