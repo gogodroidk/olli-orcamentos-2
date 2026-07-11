@@ -1,14 +1,16 @@
 # KNOWN_BLOCKERS — bloqueios que dependem de gente, não de código
 
 > Regra do mestre §45: mesmo bloqueado, TODA a parte independente é implementada.
-> Status honesto de cada uma abaixo. Atualizado 2026-07-08.
+> Status honesto de cada uma abaixo. Atualizado 2026-07-11 (B4: billing e Routes/Geocoding
+> já ligados desde 2026-07-10 — ETA com trânsito em produção; só o mapa embutido no app
+> segue pendente, e agora é código, não decisão).
 
 | # | Bloqueio | Causa | Parte independente JÁ FEITA | O que o dono faz | Desbloqueia |
 | --- | --- | --- | --- | --- | --- |
 | B1 | Stripe 12x + Empresa live | "Installments" (parcelamento BR) precisa ser habilitado no dashboard Stripe; Prices `olli_pro_12x`, `olli_empresa_mensal`, `olli_empresa_anual` precisam existir com lookup_keys | Worker completo: mode=payment com `installments.enabled`, `processar12x` (acesso 12 meses), `LOOKUP_PARA_PLANO`, PlanosScreen com 3 preços | 1) habilitar installments; 2) criar os 3 Prices; 3) confirmar preço Empresa (R$ 99?) | Onda 1 100% live |
 | B2 | Chave Resend (e-mail transacional) | Não existe conta/API key no cofre | Decisão tomada (Resend + subdomínio `mail.olliorcamentos.online`); DNS Hostinger eu configuro via MCP; espec do worker `/email` pronta no roadmap | Criar conta em resend.com, gerar API key, salvar em `CONFIG CLAUDE/credenciais-locais.env` (~5 min) | Onda de e-mail: envio de orçamento/recibo/convite/boas-vindas |
 | B3 | OAuth client Android | Login Google nativo + Google Calendar exigem OAuth client ANDROID com SHA-1 do keystore de release no Google Cloud Console | `googleAgenda.ts` completo atrás de flag; login Google web funciona; `EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID` plugável | Criar o OAuth client Android no console (precisa do SHA-1 do keystore) | Login nativo + Agenda no APK final |
-| B4 | Billing Google Cloud (Maps/Speech) | Maps SDK embutido e trânsito exigem cartão no projeto | Deep-link para Google Maps FUNCIONA hoje (`rotas.ts`, `EquipeAoVivoScreen` com "Ver no mapa"); flag `EXPO_PUBLIC_MAPS_KEY`/mapa embutido desligada; voz já é Gemini (não precisa Speech) | Decidir se ativa billing (opcional — produto funciona sem) | Mapa embutido da equipe no APK final |
+| B4 | ~~Billing Google Cloud~~ RESOLVIDO 2026-07-10 — falta só o mapa `<MapView>` embutido no app | Billing está LIGADO no projeto `olli-orcamentos` desde 2026-07-10; chave restrita a Routes API + Geocoding API (confirmado ao vivo). O que falta pro mapa visual não é mais billing, é código: `react-native-maps` (exige o prebuild único do gate) + key client-side `EXPO_PUBLIC_MAPS_KEY` (ainda vazia — ver `.env.example`) | Com billing ligado: worker `POST /eta` (Routes API, `computeRoutes` TRAFFIC_AWARE) + `POST /geocodificar` (Geocoding API) em produção — ETA com trânsito ponta-a-ponta funcionando (chip "AO VIVO · PRÓXIMA PARADA" na HomeScreen, coord OU endereço; commits `0e6759d`/`da3635a`). Chave `OLLI_ROUTES_API_KEY` só no worker, nunca no app. Deep-link pro Google Maps (`rotas.ts`, `EquipeAoVivoScreen` "Ver no mapa") continua funcionando sem key nem billing, pra quem não tem o mapa embutido. Voz já é Gemini (não precisa Speech) | Nada pro ETA — já está no ar. Só decidir SE/QUANDO vale a pena o `<MapView>` embutido (prebuild + `EXPO_PUBLIC_MAPS_KEY`) | ETA em texto: JÁ DESBLOQUEADO. Só falta o mapa visual embutido da equipe no APK final |
 | B5 | Cloudflare: Workers Build do olli-diagnostico | Pode clobberar produção no push (memória `olli-cloudflare-git-integracoes.md`) | Deploys manuais cuidadosos; previews de Pages já excluídos | Desativar o build automático no dash do olli-diagnostico | Deploy seguro contínuo |
 | B6 | APK único final | Regra do dono: SÓ 1 APK, quando o ciclo comercial estiver perfeito e testado | Tudo que exige prebuild (expo-location/task-manager, login nativo) está escrito atrás de flag/import dinâmico | Aprovar o momento do build + roteiro de teste | Onda final |
 | B7 | Sentry DSN (crash/erro em produção) | Não existe projeto Sentry; hoje zero visibilidade de crash (o APK v6 com bug de Hermes só foi pego no aparelho) | Decisão tomada (radar: ADOTAR, nota 88, ADR-0004); plano de fiação pronto: ErrorReporter fino no app+worker, scrubbing PII, `sendDefaultPii` off; entra na janela de estabilidade (onda-2.5) sem tocar o guarda-chuva | Criar conta/projeto Sentry (tier grátis serve), copiar o DSN, salvar em `CONFIG CLAUDE/credenciais-locais.env` (~5 min) | Onda 2.5: crash/erro visível em Expo + Workers + web com release tracking |
@@ -24,7 +26,7 @@
 3. **B2 Resend** (5 min) — destrava convites de equipe por e-mail + envio de orçamento (Onda 6).
 4. **B5 Cloudflare** (5 min) — remove risco de clobber em produção.
 5. **B3 OAuth Android** (10 min) — pode esperar até perto do APK final.
-6. **B4 Billing Google** — decisão, sem pressa; o produto está inteiro sem ela.
+6. **B4 Billing Google** — RESOLVIDO (ligado 2026-07-10, ETA em produção); resta só decidir se vale investir no mapa `<MapView>` embutido, sem pressa.
 7. **B9 Gotenberg** — só na Onda 7; a POC roda em Docker local sem custo.
 8. **B10 Asaas** — só quando a Onda 9 (financeiro) estiver fechando; sandbox primeiro.
 9. **B11 Nuvem Fiscal** — o mais distante; envolve certificado digital e município, começar o processo só pós-9b.

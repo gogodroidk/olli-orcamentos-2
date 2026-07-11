@@ -15,6 +15,7 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { TimePickerModal } from 'react-native-paper-dates';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, sobreSecundario, corCategoriaEmChip, type Cores } from '../theme';
+import { useReducedMotion } from '../theme/motion';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -122,6 +123,7 @@ export default function AgendaScreen() {
   // ali é o gradiente da marca. `sobreHeader` é a cor que atravessa as duas pontas.
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  const reduzirMovimento = useReducedMotion();
 
   const [modo, setModo] = useState<Modo>('dia');
   const [ref, setRef] = useState<Date>(new Date());
@@ -233,13 +235,13 @@ export default function AgendaScreen() {
 
   function passo(delta: number) {
     Haptics.selectionAsync().catch(() => {});
-    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setRef(prev => modo === 'dia' ? addDays(prev, delta) : modo === 'semana' ? addWeeks(prev, delta) : addMonths(prev, delta));
   }
 
   function trocarModo(m: Modo) {
     Haptics.selectionAsync().catch(() => {});
-    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setModo(m);
   }
 

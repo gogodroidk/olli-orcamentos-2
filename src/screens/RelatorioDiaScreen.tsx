@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { useReducedMotion } from '../theme/motion';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
@@ -68,11 +69,12 @@ function diaDaSemana(dataChave: string): string {
 function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const reduzirMovimento = useReducedMotion();
   const [aberto, setAberto] = useState(false);
   const r = row.dados as RelatorioDia;
 
   function toggle() {
-    if (Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     Haptics.selectionAsync().catch(() => {});
     setAberto(a => !a);
   }

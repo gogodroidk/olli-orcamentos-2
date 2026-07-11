@@ -740,7 +740,9 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
 
   // "Estou a caminho" (item 1.3) — reaproveita o MESMO `etaRes` já buscado
   // acima para o chip (sem 2ª chamada de rede). Sem ETA disponível, a
-  // mensagem sai sem inventar um horário (ver mensagemEstouACaminho).
+  // mensagem sai sem inventar um horário (ver mensagemEstouACaminho). Gate de
+  // exibição é o mesmo `temDestinoEta` do chip (P2-1): plataforma sem
+  // localização não mostra nem o chip nem este botão, só endereço/mapa.
   const estouACaminho = useCallback(async () => {
     if (!telefoneCliente) return;
     Haptics.selectionAsync().catch(() => {});
@@ -779,7 +781,7 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
         <OlliPressable style={styles.visitaBtnGhost} onPress={irParaAgenda} haptic={false}>
           <Text style={styles.visitaBtnGhostTexto}>Ver agenda</Text>
         </OlliPressable>
-        {telefoneCliente ? (
+        {telefoneCliente && temDestinoEta(proxima) ? (
           <OlliPressable style={styles.visitaBtnWhats} onPress={estouACaminho} haptic={false}>
             <MaterialCommunityIcons
               name="whatsapp"

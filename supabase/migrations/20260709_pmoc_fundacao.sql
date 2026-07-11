@@ -1,23 +1,30 @@
 -- ============================================================================
--- APLICADA em 2026-07-08 (abertura do track PMOC — Fase 1 inventário + QR).
+-- STATUS: APLICADA em 2026-07-08 (abertura do track PMOC — Fase 1 inventário + QR).
 -- Idempotente; RLS testada com 2 contas reais (isolamento, membro, autoria carimbada,
--- user_id imutável, QR opaco/único). Fundação PMOC.
+-- user_id imutável, QR opaco/único). Fundação PMOC. CONFIRMADO em produção: a migration
+-- seguinte (20260715_pmoc_fase2.sql, também APLICADA) faz ALTER TABLE em `pmoc_plans`
+-- e CREATE TABLE referenciando `pmoc_plan_versions` — só roda porque estas tabelas já
+-- existem no banco. Código do app (`database.ts`, `cloudSync.ts`, `equipamentos.ts`)
+-- já lê/escreve `assets`/`pmoc_plans` em produção. Ver docs/EXECUTION_LOG.md
+-- ("Track PMOC — Fase 1: CONCLUÍDA") — fonte de verdade sobre o que está no ar.
 -- ----------------------------------------------------------------------------
--- OLLI Orçamentos — FUNDAÇÃO do módulo PMOC (esqueleto NÃO-aplicado). Este arquivo
--- é o núcleo mínimo do vertical HVAC/PMOC: ativos (equipamentos) + identidade física
--- (QR), contratos de serviço versionados e planos PMOC versionados. NÃO é o módulo
--- inteiro — ver docs/PMOC_MODULE.md para o mapa completo e o sequenciamento nas ondas.
+-- OLLI Orçamentos — FUNDAÇÃO do módulo PMOC. Este arquivo é o núcleo mínimo do
+-- vertical HVAC/PMOC: ativos (equipamentos) + identidade física (QR), contratos de
+-- serviço versionados e planos PMOC versionados. NÃO é o módulo inteiro — ver
+-- docs/PMOC_MODULE.md para o mapa completo e o sequenciamento nas ondas.
 --
--- POR QUE NÃO APLICAR AGORA:
---   1) A Onda 3 (ciclo comercial) está em curso em paralelo e mexe em orcamentos/
---      portal/versões/recibos. O PMOC entra DEPOIS do ciclo comercial + OS + app do
---      técnico (ver roadmap). Aplicar isto agora só cria tabelas órfãs sem UI/serviço.
---   2) Assets e contratos dependem de decisões de UI/sync que a Onda 3 ainda vai firmar
---      (ex.: como o app carimba `criado_por`, como o worker público lê o QR). Congelar
---      o schema antes disso arrisca retrabalho.
---   O INTEGRADOR aplica via mcp__supabase__apply_migration QUANDO o track PMOC abrir,
---   e roda os testes SQL do rodapé (2 JWTs). Até lá, este arquivo é fonte de verdade
---   revisável — não é executado por nenhum pipeline.
+-- CONTEXTO HISTÓRICO (por que a escrita original deste arquivo dizia "NÃO aplicar
+-- agora" — decisão já revertida, mantido só como registro):
+--   1) Na época, a Onda 3 (ciclo comercial) estava em curso em paralelo e mexia em
+--      orcamentos/portal/versões/recibos; o receio era criar tabelas órfãs sem
+--      UI/serviço antes do ciclo comercial fechar.
+--   2) Assets e contratos dependiam de decisões de UI/sync que a Onda 3 ainda ia
+--      firmar (ex.: como o app carimba `criado_por`, como o worker público lê o QR).
+--   Essas decisões foram tomadas e a migration FOI aplicada via
+--   mcp__supabase__apply_migration em 2026-07-08, com os testes SQL do rodapé
+--   rodados nas 2 contas reais (2 JWTs) — não é mais um esqueleto revisável fora de
+--   pipeline, é schema vigente. Alterações a partir daqui exigem uma NOVA migration
+--   (ex.: 20260715_pmoc_fase2.sql), nunca editar este arquivo.
 --
 -- PADRÕES HERDADOS (idênticos a 20260707_multitenant / 20260708_versoes — NÃO divergir):
 --   - PK `text` gerada no app (id estável entre aparelhos, igual orcamento_versoes).

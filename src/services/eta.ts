@@ -259,8 +259,21 @@ export interface DestinoAgendamento {
  * Há como calcular ETA para este destino? Decisão SÍNCRONA — é o que a UI usa
  * para decidir se mostra o chip (com shimmer) antes de qualquer rede. Verdadeiro
  * quando já há coordenada OU um endereço geocodificável.
+ *
+ * PLATAFORMA-CONSCIENTE (achado P2-1 da auditoria): no nativo, `origemAtual()`
+ * só funciona quando `LOCALIZACAO_DISPONIVEL` for `true` (expo-location entra
+ * só na Onda 8 — hoje o módulo nem está instalado). Até lá, todo ETA nativo
+ * resolveria sempre em 'sem_localizacao', e o chip mostraria "Ative a
+ * localização" como se fosse acionável — um beco sem saída, já que não há
+ * módulo de localização pra ativar. Por isso aqui devolve `false` no nativo
+ * enquanto `LOCALIZACAO_DISPONIVEL` for `false`: a Home some o chip (e o
+ * botão "Estou a caminho" que o acompanha) e mostra só endereço/"ver no
+ * mapa". Na web (`navigator.geolocation`, funciona hoje) o comportamento não
+ * muda. Quando a Onda 8 ligar `LOCALIZACAO_DISPONIVEL`, a feature volta
+ * sozinha no nativo, sem mexer nesta função de novo.
  */
 export function temDestinoEta(a: DestinoAgendamento | null | undefined): boolean {
+  if (Platform.OS !== 'web' && !LOCALIZACAO_DISPONIVEL) return false;
   if (!a) return false;
   if (Number.isFinite(a.lat) && Number.isFinite(a.lng)) return true;
   return typeof a.endereco === 'string' && a.endereco.trim().length >= 3;

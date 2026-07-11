@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, Modal, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, LayoutChangeEvent } from 'react-native';
+import { View, Text, Modal, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
@@ -174,6 +174,20 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
     : 1;
   const zoom = zoomManual ?? fitZoom;
   const folhaHeight = areaSize.height > 0 ? Math.max(320, areaSize.height - Spacing.lg * 2) : 500;
+  // P2-3: com zoom>1 a folha (visual) extrapola sua caixa de layout, porque
+  // `transform: scale` não altera o tamanho ocupado no layout — só o desenho.
+  // Para o ScrollView (pai) enxergar o overflow e permitir pan, medimos o
+  // tamanho JÁ escalado (folhaW/folhaH) e usamos como dimensão real de uma
+  // caixa "sizer" que envolve a folha (ver `transformOrigin: 'top left'` em
+  // `folhaSombra`, que faz a escala crescer a partir do canto ocupado pelo
+  // sizer, em vez do centro — daí o sizer ter exatamente esse tamanho).
+  const folhaW = PAGE_W * zoom;
+  const folhaH = folhaHeight * zoom;
+  // Conteúdo do scroll = pelo menos a área visível (para centralizar a folha
+  // quando ela cabe sem zoom) ou a folha + respiro da moldura nas duas pontas
+  // (quando o zoom faz a folha maior que a área — aí sim precisa rolar).
+  const scrollContentW = Math.max(areaSize.width, folhaW + Spacing.lg * 2);
+  const scrollContentH = Math.max(areaSize.height, folhaH + Spacing.lg * 2);
 
   const nomeArquivoEfetivo = nomeArquivo
     ?? (orcamento ? `Orcamento-${safeFileName(orcamento.clienteNome)}-${orcamento.numero}` : safeFileName(titulo ?? 'documento'));
@@ -283,23 +297,36 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
                 <OlliSkeleton height={180} style={{ marginTop: Spacing.lg }} radius={16} />
               </View>
             ) : (
-              <View style={styles.moldura}>
-                <View style={[styles.folhaSombra, { width: PAGE_W, height: folhaHeight, transform: [{ scale: zoom }] }]}>
-                  <View style={styles.folhaClip}>
-                    {Platform.OS === 'web' ? (
-                      <PreviewWeb html={html} />
-                    ) : (
-                      WebView && (
-                        <WebView
-                          originWhitelist={['*']}
-                          source={{ html }}
-                          style={styles.webview}
-                        />
-                      )
-                    )}
+              // Duas ScrollView aninhadas (vertical por fora, horizontal por
+              // dentro) dão pan nos dois eixos. A interna recebe altura
+              // explícita (= scrollContentH) para a externa enxergar o
+              // tamanho real do conteúdo sem depender de auto-medida — evita
+              // o bug clássico de ScrollView aninhada "colapsar" a altura.
+              <ScrollView style={styles.moldura} contentContainerStyle={{ minHeight: scrollContentH }}>
+                <ScrollView
+                  horizontal
+                  style={{ height: scrollContentH }}
+                  contentContainerStyle={[styles.molduraConteudoH, { minWidth: scrollContentW }]}
+                >
+                  <View style={{ width: folhaW, height: folhaH }}>
+                    <View style={[styles.folhaSombra, { width: PAGE_W, height: folhaHeight, transform: [{ scale: zoom }] }]}>
+                      <View style={styles.folhaClip}>
+                        {Platform.OS === 'web' ? (
+                          <PreviewWeb html={html} />
+                        ) : (
+                          WebView && (
+                            <WebView
+                              originWhitelist={['*']}
+                              source={{ html }}
+                              style={styles.webview}
+                            />
+                          )
+                        )}
+                      </View>
+                    </View>
                   </View>
-                </View>
-              </View>
+                </ScrollView>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -351,17 +378,23 @@ const criarEstilos = (c: Cores) => {
     zoomLabel: { ...Typography.caption, color: c.onSurfaceVariant, minWidth: 38, textAlign: 'center' },
     zoomDivider: { width: 1, height: 18, backgroundColor: c.outline, marginHorizontal: Spacing.xs },
     previewArea: { flex: 1 },
-    // A moldura (backdrop cinza, herdado de `container`) só dá o respiro em
-    // volta da folha — ela própria não tem cor: é o cinza do container que
-    // aparece atrás da folha branca, exatamente como um print-preview comum.
-    moldura: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
+    // A moldura (backdrop cinza, herdado de `container`) é só o "viewport"
+    // do scroll agora (P2-3: zoom>1 precisa de pan) — o respiro e a
+    // centralização da folha viraram responsabilidade do `contentContainerStyle`
+    // da ScrollView horizontal interna (`molduraConteudoH`), que é quem de
+    // fato compara o tamanho da folha escalada com a área visível.
+    moldura: { flex: 1 },
+    molduraConteudoH: { alignItems: 'center', justifyContent: 'center', padding: Spacing.lg },
     // A folha é SEMPRE branca — é o "papel" do PDF (mesmo contrato de
     // pdfGenerator.ts, que não lê o tema do app), não uma superfície temável.
     // Sombra e recorte ficam em views separadas de propósito: `overflow:hidden`
     // no MESMO view da elevação (Android) apaga a sombra — a "sombra de folha"
     // fica no wrapper, o `overflow:hidden` (pra arredondar o WebView/iframe)
-    // na view de dentro.
-    folhaSombra: { backgroundColor: '#fff', borderRadius: BorderRadius.sm, ...sombras.md },
+    // na view de dentro. `transformOrigin: 'top left'` faz o `scale` crescer a
+    // partir do canto (não do centro) para casar com o wrapper-"sizer" externo
+    // que já reserva o tamanho JÁ escalado (ver folhaW/folhaH) — assim o
+    // ScrollView enxerga o overflow real e consegue rolar até o zoom máximo.
+    folhaSombra: { backgroundColor: '#fff', borderRadius: BorderRadius.sm, transformOrigin: 'top left', ...sombras.md },
     folhaClip: { flex: 1, overflow: 'hidden', borderRadius: BorderRadius.sm },
     webview: { flex: 1, backgroundColor: '#fff' },
     loadingWrap: { flex: 1, padding: Spacing.xl },

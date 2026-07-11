@@ -424,9 +424,12 @@ export default function HomeScreen() {
                   </View>
                 ) : null}
                 {/* "Estou a caminho" (item 1.3) — só aparece com telefone do
-                    cliente. Sem ETA disponível, avisa em vez de inventar um
-                    horário (o EtaChip acima já mostra o motivo). */}
-                {telefoneProxima ? (
+                    cliente E onde o ETA é possível (`temEta`, plataforma-
+                    consciente — P2-1): no nativo sem localização o botão some
+                    junto do EtaChip, em vez de sobrar sozinho sem contexto.
+                    Sem ETA disponível (web sem GPS liberado), avisa em vez de
+                    inventar um horário (o EtaChip acima já mostra o motivo). */}
+                {telefoneProxima && temEta ? (
                   <TouchableOpacity style={styles.heroWhatsBtn} onPress={estouACaminho} activeOpacity={0.85}>
                     <MaterialCommunityIcons
                       name="whatsapp"
