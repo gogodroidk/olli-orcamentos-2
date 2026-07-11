@@ -577,15 +577,19 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       return;
     }
     const row = TO_ROW[table](objLocal);
-    // Membro não-dono: orçamento/agendamento/OS/equipamento e o plano PMOC (com suas
-    // versões e ordens geradas) são gravados no tenant do DONO da org. Sem isto, uma
-    // linha nova empurrada do aparelho do técnico nasceria com user_id dele e o dono
-    // nunca a veria. (empresa/clientes/etc. seguem escrita só do dono — não injetar.)
+    // Membro não-dono: cliente/orçamento/agendamento/OS/equipamento e o plano PMOC
+    // (com suas versões e ordens geradas) são gravados no tenant do DONO da org. Sem
+    // isto, uma linha nova empurrada do aparelho do técnico nasceria com user_id dele
+    // e o dono nunca a veria (P1-3: cliente cadastrado pelo técnico no wizard sumia
+    // em silêncio). `clientes` entrou nesta lista porque o wizard deixa o técnico
+    // cadastrar cliente — a RLS de INSERT foi aberta a membro ativo em migration
+    // dedicada (ver 20260719_clientes_insert_equipe.sql). (empresa/servicos/produtos/
+    // recibos seguem escrita só do dono — não injetar.)
     if (
       contextoEquipeOwner &&
-      (table === 'orcamentos' || table === 'agendamentos' || table === 'ordens_servico' ||
-       table === 'equipamentos' || table === 'pmoc_planos' || table === 'pmoc_plano_versoes' ||
-       table === 'pmoc_ordens_geradas')
+      (table === 'clientes' || table === 'orcamentos' || table === 'agendamentos' ||
+       table === 'ordens_servico' || table === 'equipamentos' || table === 'pmoc_planos' ||
+       table === 'pmoc_plano_versoes' || table === 'pmoc_ordens_geradas')
     ) {
       (row as Record<string, unknown>).user_id = contextoEquipeOwner;
     }

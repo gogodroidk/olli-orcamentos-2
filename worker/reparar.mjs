@@ -58,7 +58,12 @@ const secrets = [
   ['STRIPE_SECRET_KEY', env.STRIPE_SECRET_KEY],
   ['STRIPE_WEBHOOK_SECRET', env.OLLI_STRIPE_WEBHOOK_SECRET],
   ['GEMINI_API_KEY', env.OLLI_GEMINI_API_KEY],
-  ['ADMIN_EMAIL', env.OLLI_ADMIN_EMAIL || 'igoreluisa@gmail.com'],
+  // Fail-closed (mesma regra que admin.js aplica em runtime): se o cofre não tem
+  // OLLI_ADMIN_EMAIL, NÃO restaura com um e-mail fixo — um fallback hardcoded aqui
+  // já concedeu o painel de TODOS os tenants a esse e-mail sempre que o cofre
+  // faltasse. `valor` undefined cai no "SEM VALOR NO COFRE" do loop abaixo (avisa
+  // e segue) em vez de recriar o secret com um valor fixo.
+  ['ADMIN_EMAIL', env.OLLI_ADMIN_EMAIL],
   ['OLLI_ROUTES_API_KEY', env.OLLI_ROUTES_API_KEY],
 ];
 console.log('[2] secrets…');

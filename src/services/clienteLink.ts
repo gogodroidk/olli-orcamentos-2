@@ -425,6 +425,13 @@ export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCli
  * vez mais — e propagamos o novo número para o SQLite local (mesmo `id`), para os
  * dois aparelhos convergirem sem exibir "vN" duplicada. Fire-and-forget:
  * offline/deslogado/sem-nuvem = no-op silencioso. NUNCA lança.
+ *
+ * P1-4: membro não-dono (técnico) precisa gravar a versão no tenant do DONO —
+ * senão o snapshot nasce com user_id dele (default da coluna) e o dono nunca o vê.
+ * Mesmo padrão do cloudSync (`contextoEquipeOwner`): resolve a org via
+ * `getMinhaOrganizacao()` e só inclui `user_id` no payload quando o usuário é
+ * membro não-dono — a RLS de INSERT de `orcamento_versoes` já aceita
+ * `user_id in donos_visiveis()` (20260708_versoes.sql), só faltava o app mandar.
  */
 export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void> {
   try {
@@ -432,13 +439,33 @@ export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void
     const user = await getCurrentUser();
     if (!user) return;
 
-    const payload = (numeroVersao: number) => ({
-      id: versao.id,
-      orcamento_id: versao.orcamentoId,
-      numero_versao: numeroVersao,
-      dados: versao.dados,
-      criado_em: versao.criadoEm,
-    });
+    // Import dinâmico (mesmo motivo do cloudSync): evita aresta estática entre
+    // clienteLink e equipe. getMinhaOrganizacao() colapsa erro em null — aqui é
+    // caminho de escrita best-effort (não decide permissão), então o pior caso de
+    // falha é gravar no próprio tenant (comportamento de hoje), nunca vazamento.
+    const ownerUserId = await (async () => {
+      try {
+        const { getMinhaOrganizacao } = await import('./equipe');
+        const org = await getMinhaOrganizacao();
+        return org && org.papel !== 'owner' ? org.ownerUserId : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const payload = (numeroVersao: number) => {
+      const linha: Record<string, unknown> = {
+        id: versao.id,
+        orcamento_id: versao.orcamentoId,
+        numero_versao: numeroVersao,
+        dados: versao.dados,
+        criado_em: versao.criadoEm,
+      };
+      // Só sobrescreve user_id quando o técnico grava em nome do dono; dono sozinho
+      // continua sem enviar a coluna (default auth.uid() da tabela cuida disso).
+      if (ownerUserId) linha.user_id = ownerUserId;
+      return linha;
+    };
 
     const { error } = await supabase
       .from(TABLE_VERSOES)

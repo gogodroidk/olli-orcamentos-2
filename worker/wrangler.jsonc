@@ -31,6 +31,10 @@
     { "name": "STRIPE_RL", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
     // /admin/api/* por IP: barra força bruta/varredura de credencial contra o
     // painel do super-admin (acesso total a dados de todos os usuários).
-    { "name": "ADMIN_RL", "namespace_id": "1004", "simple": { "limit": 30, "period": 60 } }
+    { "name": "ADMIN_RL", "namespace_id": "1004", "simple": { "limit": 30, "period": 60 } },
+    // /eta e /geocodificar por usuário: são as ÚNICAS rotas que geram custo no
+    // Google Routes/Geocoding API — sem teto, qualquer conta grátis dispara
+    // chamadas pagas ilimitadas. Mesmo perfil do IA_RL.
+    { "name": "ETA_RL", "namespace_id": "1005", "simple": { "limit": 20, "period": 60 } }
   ]
 }

@@ -108,9 +108,13 @@ function subEquipamento(e: Equipamento): string {
 export default function EquipamentosDesktopScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const { papel, pode } = usePermissao();
+  const { papel, pode, carregando: carregandoPapel } = usePermissao();
   const { org } = useTipoConta();
-  const ehGestao = papel !== 'tecnico';
+  // Fail-closed enquanto o papel não resolveu (mesmo padrão de
+  // OrdensDesktopScreen/OrdemServicoScreen.tsx:221): "não sei" nunca vale
+  // mais que "sou técnico", senão `undefined !== 'tecnico'` liberava
+  // "Nova ordem de serviço" pro técnico antes da leitura do papel terminar.
+  const ehGestao = !carregandoPapel && papel !== 'tecnico';
   // Mesma regra do DetalheOS mobile: só quem é gestão E tem a permissão de
   // ver a agenda de toda a equipe pode reatribuir técnico dentro do PainelOS.
   const podeAtribuir = ehGestao && pode('ver_agenda_equipe');

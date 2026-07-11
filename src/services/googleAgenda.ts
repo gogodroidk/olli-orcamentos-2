@@ -27,15 +27,17 @@ import { Agendamento } from '../types';
  * conectado — a sincronização aqui é só para o compromisso também aparecer
  * no calendário do celular do técnico.
  *
- * Nota de implementação (PKCE): o app não tem `expo-auth-session` nem
- * `expo-crypto` instalados (fora do escopo desta frente mexer em
- * package.json). Por isso o fluxo abaixo é montado manualmente com
- * `expo-web-browser` (abre a tela de login do Google e captura o
- * redirect) e usa PKCE com `code_challenge_method=plain` (RFC 7636) — o
- * Google aceita esse método e ele dispensa hash SHA-256, que exigiria uma
- * lib de crypto extra. O `code_verifier` continua sendo uma string aleatória
- * de alta entropia gerada localmente; nada disso reduz a segurança do fluxo
- * "authorization code", só troca S256 por plain no desafio PKCE.
+ * Nota de implementação (PKCE): o app não tem `expo-auth-session` instalado
+ * (fora do escopo desta frente mexer em package.json). Por isso o fluxo
+ * abaixo é montado manualmente com `expo-web-browser` (abre a tela de login
+ * do Google e captura o redirect) e usa PKCE com `code_challenge_method=S256`
+ * (RFC 7636): o `code_challenge` é o SHA-256 do `code_verifier`, em
+ * base64url sem padding — não o verifier "em claro" (isso seria o método
+ * `plain`, que em custom URI scheme no Android NÃO protege contra um app
+ * malicioso interceptando o redirect e roubando o `code`, porque o atacante
+ * já teria o verifier = challenge). O SHA-256 vem de `expo-crypto`
+ * (`Crypto.digestStringAsync`), já usado no mesmo padrão em
+ * `services/appleAuth.ts` — sem dependência nova.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -63,7 +65,7 @@ export function googleAgendaDisponivel(): boolean {
   return !!GOOGLE_AGENDA_CLIENT_ID && Platform.OS !== 'web';
 }
 
-// ─── PKCE helpers (sem dependência de crypto nativa) ──────────────────────
+// ─── PKCE helpers (verifier local + challenge S256 via expo-crypto) ───────
 
 const VERIFIER_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
 
@@ -73,6 +75,22 @@ function gerarCodeVerifier(): string {
     out += VERIFIER_CHARS[Math.floor(Math.random() * VERIFIER_CHARS.length)];
   }
   return out;
+}
+
+/**
+ * code_challenge = BASE64URL-ENCODE(SHA256(code_verifier)), sem padding (RFC 7636,
+ * método S256). `expo-crypto` só oferece HEX ou BASE64 "padrão" (com `+`, `/` e `=`
+ * de padding); por isso a conversão manual para o alfabeto base64url abaixo —
+ * mesma lib usada em `services/appleAuth.ts` (`gerarNonce`), sem dependência nova.
+ */
+async function gerarCodeChallenge(verifier: string): Promise<string> {
+  const Crypto = await import('expo-crypto');
+  const hashBase64 = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    verifier,
+    { encoding: Crypto.CryptoEncoding.BASE64 }
+  );
+  return hashBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**
@@ -177,6 +195,7 @@ export async function conectarGoogleAgenda(): Promise<boolean> {
   try {
     const WebBrowser = await import('expo-web-browser');
     const codeVerifier = gerarCodeVerifier();
+    const codeChallenge = await gerarCodeChallenge(codeVerifier);
     const redirect = redirectUri();
     const params = new URLSearchParams({
       client_id: GOOGLE_AGENDA_CLIENT_ID,
@@ -185,8 +204,8 @@ export async function conectarGoogleAgenda(): Promise<boolean> {
       scope: SCOPE,
       access_type: 'offline',
       prompt: 'consent',
-      code_challenge: codeVerifier,
-      code_challenge_method: 'plain',
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
     });
     const authUrl = `${AUTH_ENDPOINT}?${params.toString()}`;
 

@@ -64,11 +64,37 @@ const MAX_BODY_BYTES = 65536;
 // minutos de fala num codec compacto (aac/ogg) com folga.
 const MAX_AUDIO_BODY_BYTES = 4_194_304;
 
-/** true se o body excede o limite da rota (checa content-length; nunca lê o stream). */
-function bodyMuitoGrande(request, pathname) {
-  const max = pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
-  const len = Number(request.headers.get('content-length') || 0);
-  return len > max;
+// /eta e /geocodificar recebem só coordenadas/endereço — corpo minúsculo por
+// natureza. Mesmo teto (4KB) das outras rotas de payload pequeno (equipe.js, link.js).
+const MAX_ETA_BODY_BYTES = 4096;
+
+/**
+ * Lê o corpo até `max` bytes e diz se passou do teto. NÃO confia em
+ * content-length: uma requisição em Transfer-Encoding: chunked não traz esse
+ * header (Number(null)=0) e escaparia do limite — mesma falha corrigida em
+ * link.js/responderLink, replicada aqui para as rotas de custo (IA + Google).
+ * Consome o body stream (só pode ser chamado 1x por request); quem chama
+ * reaproveita `raw` para o parse — nunca lê a request de novo.
+ */
+async function bodyMuitoGrande(request, max) {
+  let raw = '';
+  try {
+    raw = await request.text();
+  } catch {
+    return { grande: false, raw: '' };
+  }
+  return { grande: raw.length > max, raw };
+}
+
+/** Parseia o texto já lido por bodyMuitoGrande. Nunca lança — {} em JSON inválido. */
+function parseJsonBody(raw) {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
 }
 
 // Cache em memória do worker (por isolate) da validação de token → user. Evita
@@ -337,8 +363,8 @@ Gere o diagnóstico no JSON EXATO (todas as chaves, em pt-BR):
 }`;
 }
 
-async function handleDiag(request, env) {
-  const raw = await request.json().catch(() => ({}));
+async function handleDiag(bodyText, env) {
+  const raw = parseJsonBody(bodyText);
   // Sanitiza e trunca ANTES de qualquer uso — tanto no prompt quanto nos
   // filtros PostgREST. `contextoBase` do cliente é ignorado/depreciado: o
   // aterramento agora é feito server-side a partir da base oficial (o campo
@@ -387,7 +413,24 @@ async function handleEta(request, env) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
   if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
-  const raw = await request.json().catch(() => ({}));
+
+  // Teto de payload ANTES do parse — corpo minúsculo por natureza (2 coordenadas).
+  const corpo = await bodyMuitoGrande(request, MAX_ETA_BODY_BYTES);
+  if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
+
+  // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
+  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta). Mesmo
+  // padrão do IA_RL, aplicado ANTES de gastar a chamada externa.
+  if (env.ETA_RL) {
+    try {
+      const { success } = await env.ETA_RL.limit({ key: user.id });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch {
+      // binding ausente: não bloqueia
+    }
+  }
+
+  const raw = parseJsonBody(corpo.raw);
   const origem = raw && raw.origem;
   const destino = raw && raw.destino;
   if (!coordOk(origem) || !coordOk(destino)) {
@@ -435,7 +478,24 @@ async function handleGeocode(request, env) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
   if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
-  const raw = await request.json().catch(() => ({}));
+
+  // Teto de payload ANTES do parse — corpo minúsculo por natureza (1 endereço).
+  const corpo = await bodyMuitoGrande(request, MAX_ETA_BODY_BYTES);
+  if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
+
+  // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
+  // pode custar 1 chamada à Geocoding API (paga). Mesmo binding do /eta — as duas
+  // rotas alimentam o mesmo fluxo (endereço → coordenada → rota).
+  if (env.ETA_RL) {
+    try {
+      const { success } = await env.ETA_RL.limit({ key: user.id });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch {
+      // binding ausente: não bloqueia
+    }
+  }
+
+  const raw = parseJsonBody(corpo.raw);
   const endereco = raw && typeof raw.endereco === 'string' ? raw.endereco.trim() : '';
   if (endereco.length < 3) return json({ ok: false, erro: 'endereco_invalido' }, 400);
   try {
@@ -488,8 +548,8 @@ Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use nul
 // de prompt injection direto no prompt.
 const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
 
-async function handleVoz(request, env) {
-  const { transcript: rawTranscript, catalogo: rawCatalogo } = await request.json().catch(() => ({}));
+async function handleVoz(bodyText, env) {
+  const { transcript: rawTranscript, catalogo: rawCatalogo } = parseJsonBody(bodyText);
   const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
   if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
   const catalogo = Array.isArray(rawCatalogo)
@@ -535,8 +595,8 @@ function transcreverPromptSimples() {
   return 'Transcreva fielmente o áudio em português do Brasil. Responda SOMENTE com JSON {"texto":"..."}';
 }
 
-async function handleTranscrever(request, env) {
-  const raw = await request.json().catch(() => ({}));
+async function handleTranscrever(bodyText, env) {
+  const raw = parseJsonBody(bodyText);
 
   const audioBase64 = typeof (raw && raw.audioBase64) === 'string' ? raw.audioBase64.trim() : '';
   if (!audioBase64 || !BASE64_RE.test(audioBase64)) return json({ ok: false, erro: 'sem_audio' });
@@ -608,8 +668,8 @@ const CHAT_SYSTEM = `Você é a OLLI, assistente do prestador de serviços (foco
 // custo Gemini ilimitado por request.
 const CHAT_MAX = { mensagens: 40, texto: 4000 };
 
-async function handleChat(request, env) {
-  const { mensagens } = await request.json().catch(() => ({}));
+async function handleChat(bodyText, env) {
+  const { mensagens } = parseJsonBody(bodyText);
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
@@ -738,11 +798,13 @@ export default {
     }
     if (request.method !== 'POST') return json({ ok: false, erro: 'metodo_nao_suportado' }, 405);
 
-    // Rejeita payload grande ANTES de tocar auth/rate-limit/parse — barato de
-    // checar (só content-length) e evita gastar 1 validação de token ou 1 dos
-    // 20 tokens/min do usuário com um body que nem vamos processar. Limite
-    // depende da rota: /transcrever aceita áudio em base64 (bem maior).
-    if (bodyMuitoGrande(request, url.pathname)) return json({ ok: false, erro: 'payload_grande' }, 413);
+    // Rejeita payload grande ANTES de auth/rate-limit/parse — lê o corpo com o
+    // teto real (não confia em content-length; chunked escaparia, ver
+    // bodyMuitoGrande) e evita gastar 1 validação de token ou 1 dos 20 tokens/min
+    // do usuário com um body que nem vamos processar. Limite depende da rota:
+    // /transcrever aceita áudio em base64 (bem maior).
+    const corpoIa = await bodyMuitoGrande(request, url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
+    if (corpoIa.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
     if (!env.GEMINI_API_KEY) return json({ ok: false, motivo: 'ia_nao_configurada' });
@@ -770,10 +832,10 @@ export default {
     }
 
     try {
-      if (url.pathname === '/') return await handleDiag(request, env);
-      if (url.pathname === '/voz') return await handleVoz(request, env);
-      if (url.pathname === '/transcrever') return await handleTranscrever(request, env);
-      if (url.pathname === '/chat') return await handleChat(request, env);
+      if (url.pathname === '/') return await handleDiag(corpoIa.raw, env);
+      if (url.pathname === '/voz') return await handleVoz(corpoIa.raw, env);
+      if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env);
+      if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env);
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {
       const overloaded = !!(e && e.overloaded);

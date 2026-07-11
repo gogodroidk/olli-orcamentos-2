@@ -227,7 +227,13 @@ export async function handleConvite(request, env) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
 
-  if (!(await rateOk(env, user.id))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+  // Contador PRÓPRIO (prefixo `convite:`): sem ele, esta rota divide chave e balde
+  // (STRIPE_RL, reaproveitado por rateOk quando EQUIPE_RL não existe) com
+  // /stripe/checkout e /stripe/portal — mesmo risco que conta.js já documenta e
+  // corrige para /conta/excluir. Um dono convidando vários técnicos esgotaria o
+  // balde e devolveria 429 justamente no Portal, o caminho que a Apple exige
+  // para CANCELAR a assinatura.
+  if (!(await rateOk(env, `convite:${user.id}`))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
 
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return json({ ok: false, erro: 'backend_nao_configurado' }, 503);

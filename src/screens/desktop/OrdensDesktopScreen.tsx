@@ -50,11 +50,15 @@ export default function OrdensDesktopScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { org, carregando: carregandoConta } = useTipoConta();
-  const { papel, pode } = usePermissao();
+  const { papel, pode, carregando: carregandoPapel } = usePermissao();
   const ehTecnico = papel === 'tecnico';
   // Mesma derivação da OrdemServicoScreen mobile (DetalheOS): PainelOS agora
-  // exige os dois papéis explicitamente, em vez de inferir sozinho.
-  const ehGestao = papel !== 'tecnico';
+  // exige os dois papéis explicitamente, em vez de inferir sozinho. Fail-closed
+  // enquanto o papel não resolveu (1ª leitura em voo, ou offline sem cache —
+  // ver usePermissao): trata como NÃO-gestão, senão `undefined !== 'tecnico'`
+  // dá true e um técnico vê "Nova OS"/"Atribuir técnico"/"Cancelar OS" antes
+  // da leitura terminar (mesmo padrão de OrdemServicoScreen.tsx:221/222).
+  const ehGestao = !carregandoPapel && papel !== 'tecnico';
   const podeAtribuir = ehGestao && pode('ver_agenda_equipe');
 
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
