@@ -11,9 +11,11 @@ import { KpiCard } from '../../components/web/KpiCard';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { OlliSkeleton } from '../../components/OlliSkeleton';
 import { OlliPressable } from '../../components/OlliPressable';
+import { EtaChip } from '../../components/EtaChip';
 import { StatusBadge } from '../../components/StatusBadge';
 import { getOrcamentos, getEmpresa, getClientes, getRecibos } from '../../database/database';
 import { getProximoAgendamento } from '../../services/agenda';
+import { getEtaAgendamento, temDestinoEta, type ResultadoEta } from '../../services/eta';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
 import { getReciboDoOrcamento } from '../../services/pagamentos';
 import { clientesParaReconquistar, mensagemReconquista, ClienteParaReconquistar } from '../../services/radarClientes';
@@ -599,6 +601,18 @@ function agruparOSPorTecnico(ordens: OrdemServico[]): LinhaTecnico[] {
 function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irParaAgenda: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // ETA com trânsito — mesmo serviço/chip do app mobile (o dono quer o tempo de
+  // chegada onde quer que a próxima parada apareça). No desktop web a origem vem
+  // do navigator.geolocation; sem permissão, o chip mostra "ative a localização"
+  // em vez de sumir (regra dos 3 estados: erro nunca vira vazio).
+  const [etaRes, setEtaRes] = useState<ResultadoEta | null>(null);
+  const buscarEta = useCallback(() => {
+    if (!temDestinoEta(proxima)) { setEtaRes(null); return; }
+    setEtaRes(null);
+    getEtaAgendamento(proxima).then(setEtaRes).catch(() => setEtaRes({ estado: 'indisponivel' }));
+  }, [proxima]);
+  useEffect(() => { buscarEta(); }, [buscarEta]);
+  const horarioVisita = !isNaN(new Date(proxima.inicio).getTime()) ? new Date(proxima.inicio) : undefined;
   return (
     <View style={{ marginTop: 10, gap: 4 }}>
       <Text style={styles.visitaQuando}>{quandoLabel(proxima.inicio)}</Text>
@@ -610,6 +624,11 @@ function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irPara
         <View style={styles.visitaEndereco}>
           <MaterialCommunityIcons name="map-marker" size={13} color={cores.accentLight} />
           <Text style={styles.visitaEnderecoTexto} numberOfLines={1}>{proxima.endereco}</Text>
+        </View>
+      ) : null}
+      {temDestinoEta(proxima) ? (
+        <View style={{ marginTop: 2 }}>
+          <EtaChip resultado={etaRes} horario={horarioVisita} onTentarNovamente={buscarEta} />
         </View>
       ) : null}
       <View style={styles.visitaAcoes}>
