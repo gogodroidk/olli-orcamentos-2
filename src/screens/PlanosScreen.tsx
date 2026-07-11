@@ -10,6 +10,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { useEhDesktop } from '../hooks/useEhDesktop';
 import { goBackOrHome } from '../navigation/safeBack';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
@@ -140,6 +141,10 @@ export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Sem isto, a tela renderiza o layout mobile (coluna única) esticado no
+  // desktop — o "vira celular" que o dono apontou. No desktop, o conteúdo ganha
+  // largura máxima central e os planos vão lado a lado (ver `cardsRow`).
+  const ehDesktop = useEhDesktop();
 
   // SEO da rota pública "/planos". Sem isto ela herda o canonical da home e o
   // Google a trata como duplicata, apesar de estar no sitemap.xml. No-op no nativo.
@@ -316,7 +321,7 @@ export default function PlanosScreen() {
     <View style={styles.container}>
       <GradientHeader title="Planos OLLI" subtitle="Escolha como crescer" onBack={() => goBackOrHome(nav)} />
 
-      <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 48 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, ehDesktop && styles.scrollDesktop]} showsVerticalScrollIndicator={false}>
         {ehPagante ? (
           /* PAGANTE — sem propaganda: card discreto que leva à AssinaturaScreen. */
           <AnimatedEntrance index={0}>
@@ -379,21 +384,32 @@ export default function PlanosScreen() {
           </View>
         </AnimatedEntrance>
 
-        {/* CARTÕES */}
-        {planos.map((p, i) => (
-          <AnimatedEntrance key={p.id} index={2 + i}>
-            <PlanoCard
-              plano={p}
-              periodo={periodo}
-              carregandoPlano={carregandoPlano}
-              carregandoAcao={acaoEmAndamento === p.id}
-              carregandoPortal={acaoEmAndamento === 'portal'}
-              onPress={() => escolher(p)}
-              onGerenciar={gerenciarAssinatura}
-              onFalarSuporte={() => falarComSuporte(p)}
-            />
-          </AnimatedEntrance>
-        ))}
+        {/* CARTÕES — lado a lado no desktop, empilhados no mobile */}
+        <View style={ehDesktop ? styles.cardsRow : undefined}>
+          {planos.map((p, i) => {
+            const card = (
+              <PlanoCard
+                plano={p}
+                periodo={periodo}
+                ehDesktop={ehDesktop}
+                carregandoPlano={carregandoPlano}
+                carregandoAcao={acaoEmAndamento === p.id}
+                carregandoPortal={acaoEmAndamento === 'portal'}
+                onPress={() => escolher(p)}
+                onGerenciar={gerenciarAssinatura}
+                onFalarSuporte={() => falarComSuporte(p)}
+              />
+            );
+            // Desktop: cada card numa célula flex (larguras iguais). Sem a entrada
+            // animada por card — o stagger vertical não faz sentido lado a lado;
+            // a linha aparece com o resto do conteúdo.
+            return ehDesktop ? (
+              <View key={p.id} style={styles.cardCell}>{card}</View>
+            ) : (
+              <AnimatedEntrance key={p.id} index={2 + i}>{card}</AnimatedEntrance>
+            );
+          })}
+        </View>
 
         <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o plano por 12 meses. Algumas funções de equipe do Empresa ainda estão chegando (marcadas como "em breve"). 💙</Text>
         </>
@@ -406,6 +422,7 @@ export default function PlanosScreen() {
 function PlanoCard({
   plano,
   periodo,
+  ehDesktop,
   carregandoPlano,
   carregandoAcao,
   carregandoPortal,
@@ -415,6 +432,7 @@ function PlanoCard({
 }: {
   plano: Plano;
   periodo: Periodo;
+  ehDesktop?: boolean;
   carregandoPlano: boolean;
   carregandoAcao: boolean;
   carregandoPortal: boolean;
@@ -441,7 +459,7 @@ function PlanoCard({
         ? `Assinar ${plano.nome} — 12x de ${reais(plano.precoMensal)}`
         : `Assinar ${plano.nome} — ${reais(plano.precoMensal)}/mês`;
   const body = (
-    <View style={styles.cardBody}>
+    <View style={[styles.cardBody, ehDesktop && styles.cardBodyDesktop]}>
       <View style={styles.cardHead}>
         <View style={[styles.cardIcon, plano.destaque ? styles.cardIconDestaque : null]}>
           <MaterialCommunityIcons name={plano.icon as any} size={22} color={plano.destaque ? textoSobreAccent : cores.accentLight} />
@@ -485,6 +503,11 @@ function PlanoCard({
           </View>
         ))}
       </View>
+
+      {/* Desktop: empurra o CTA para a base — cards de alturas iguais (stretch)
+          ficam com os botões alinhados, mesmo com listas de benefícios de
+          tamanhos diferentes. No mobile não existe (cada card tem sua altura). */}
+      {ehDesktop ? <View style={styles.ctaSpacer} /> : null}
 
       {/* CTA */}
       {ehPlanoPagoAtivo ? (
@@ -549,17 +572,29 @@ function PlanoCard({
         colors={['#34C6D9', '#0B6FCE']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.cardFrame, sombrasDe(cores).md]}
+        style={[styles.cardFrame, sombrasDe(cores).md, ehDesktop && styles.cardFrameDesktop]}
       >
         {body}
       </LinearGradient>
     );
   }
-  return <View style={[styles.cardPlain, plano.atual && styles.cardAtual]}>{body}</View>;
+  return <View style={[styles.cardPlain, plano.atual && styles.cardAtual, ehDesktop && styles.cardPlainDesktop]}>{body}</View>;
 }
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+
+  // Conteúdo da rolagem. No desktop ganha largura máxima central (fim do layout
+  // "esticado como celular") e mais respiro; no mobile é o padding de sempre.
+  scroll: { padding: Spacing.base, paddingBottom: 48 },
+  scrollDesktop: { paddingHorizontal: 32, paddingTop: 32, paddingBottom: 64, maxWidth: 1160, width: '100%', alignSelf: 'center' },
+  // Planos lado a lado no desktop, larguras iguais e mesma altura (stretch).
+  cardsRow: { flexDirection: 'row', alignItems: 'stretch', gap: Spacing.base, marginTop: Spacing.xs },
+  cardCell: { flex: 1 },
+  cardFrameDesktop: { flex: 1, marginBottom: 0 },
+  cardPlainDesktop: { flex: 1, marginBottom: 0 },
+  cardBodyDesktop: { flex: 1 },
+  ctaSpacer: { flex: 1, minHeight: Spacing.base },
 
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
   // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.
