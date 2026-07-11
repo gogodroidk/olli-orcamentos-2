@@ -7,7 +7,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, type Cores } from '../theme';
-import { getOrcamentos, getEmpresa, getClientes } from '../database/database';
+import {
+  getEmpresa, getClientes,
+  getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getOrcamentosParadosAgregado, getUltimosOrcamentos,
+} from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
@@ -17,7 +20,7 @@ import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { Empresa, Orcamento, Agendamento, Cliente, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../types';
+import { Empresa, Orcamento, Agendamento, Cliente, TIPO_AGENDAMENTO_LABELS, STATUS_PROPOSTA_ENVIADA } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { EtaChip } from '../components/EtaChip';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -71,11 +74,6 @@ function saudacao(): string {
   if (h < 12) return 'Bom dia,';
   if (h < 18) return 'Boa tarde,';
   return 'Boa noite,';
-}
-
-function diasAtras(iso: string): number {
-  const d = new Date(iso);
-  return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
 const mesmoDia = (a: Date, b: Date) =>
@@ -140,7 +138,13 @@ export default function HomeScreen() {
   // ao da SidebarNav — a mesma rota do stack raiz decide o que listar.
   const ehTecnico = papel === 'tecnico';
   const rotuloOS = ehTecnico ? 'Minhas OS' : 'Ordens';
-  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  // dashboard-agg: KPIs comerciais chegam PRONTOS do SQLite (agregados) — não
+  // mais o histórico inteiro de orçamentos pra reduzir aqui a cada foco.
+  const [totalOrcamentos, setTotalOrcamentos] = useState(0);
+  const [aprovadosResumo, setAprovadosResumo] = useState({ contagem: 0, valorTotal: 0 });
+  const [emAbertoResumo, setEmAbertoResumo] = useState({ contagem: 0, valorTotal: 0 });
+  const [paradosResumo, setParadosResumo] = useState({ contagem: 0, valorTotal: 0 });
+  const [recentes, setRecentes] = useState<Orcamento[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -200,10 +204,19 @@ export default function HomeScreen() {
   }, [temEta, buscarEta]);
 
   const load = useCallback(async () => {
-    const [all, emp, prox, cli] = await Promise.all([
-      getOrcamentos(), getEmpresa(), getProximoAgendamento(), getClientes(),
+    const [total, aprov, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
+      getOrcamentosTotalAtivos(),
+      getOrcamentosAgregadoPorStatus(['aprovado']),
+      getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
+      getOrcamentosParadosAgregado(STATUS_PROPOSTA_ENVIADA, 5),
+      getUltimosOrcamentos(4),
+      getEmpresa(), getProximoAgendamento(), getClientes(),
     ]);
-    setOrcamentos(all);
+    setTotalOrcamentos(total);
+    setAprovadosResumo(aprov);
+    setEmAbertoResumo(aberto);
+    setParadosResumo(parados);
+    setRecentes(recentesLista);
     setEmpresa(emp);
     setProxima(prox);
     setClientes(cli);
@@ -321,21 +334,17 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radarCarregando, radarBloqueados]);
 
-  // ── métricas reais ──
-  const aprovados = orcamentos.filter(o => o.status === 'aprovado');
-  const faturamento = aprovados.reduce((s, o) => s + o.valorTotal, 0);
+  // ── métricas reais (já agregadas em SQL — ver load()) ──
+  const faturamento = aprovadosResumo.valorTotal;
   // "Em aberto" = proposta já entregue ao cliente e ainda sem desfecho — cobre
-  // enviado/visualizado/em_negociacao/aguardando_assinatura (propostaJaEnviada),
-  // não só os dois estados antigos. Sem isso as propostas mais quentes
-  // (visualizado/em_negociação) sumiam do funil e do radar de parados.
-  const emAberto = orcamentos.filter(o => propostaJaEnviada(o.status));
-  const conversao = orcamentos.length ? Math.round((aprovados.length / orcamentos.length) * 100) : 0;
-  const parados = emAberto.filter(o => diasAtras(o.criadoEm) >= 5);
-  const valorParado = parados.reduce((s, o) => s + o.valorTotal, 0);
+  // enviado/visualizado/em_negociacao/aguardando_assinatura (STATUS_PROPOSTA_
+  // ENVIADA), não só os dois estados antigos. Sem isso as propostas mais
+  // quentes (visualizado/em_negociação) sumiam do funil e do radar de parados.
+  const conversao = totalOrcamentos ? Math.round((aprovadosResumo.contagem / totalOrcamentos) * 100) : 0;
+  const valorParado = paradosResumo.valorTotal;
   const valorCobranca = cobranca.reduce((s, item) => s + item.valor, 0);
-  const conversaoDetalhe = orcamentos.length ? `${aprovados.length}/${orcamentos.length} aprovados` : 'sem histórico';
-  const emAbertoDetalhe = parados.length > 0 ? `${parados.length} parados` : 'sem atrasos';
-  const recentes = orcamentos.slice(0, 4);
+  const conversaoDetalhe = totalOrcamentos ? `${aprovadosResumo.contagem}/${totalOrcamentos} aprovados` : 'sem histórico';
+  const emAbertoDetalhe = paradosResumo.contagem > 0 ? `${paradosResumo.contagem} parados` : 'sem atrasos';
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
   const abrirOlli = () => {
@@ -368,8 +377,8 @@ export default function HomeScreen() {
           </View>
           <TouchableOpacity style={styles.olliBtn} onPress={abrirOlli} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Abrir menu da OLLI">
             <OlliMascot size={34} onDark />
-            {parados.length > 0 && (
-              <View style={styles.olliBadge}><Text style={styles.olliBadgeText}>{parados.length}</Text></View>
+            {paradosResumo.contagem > 0 && (
+              <View style={styles.olliBadge}><Text style={styles.olliBadgeText}>{paradosResumo.contagem}</Text></View>
             )}
           </TouchableOpacity>
         </View>
@@ -492,9 +501,9 @@ export default function HomeScreen() {
               </View>
               <View style={styles.kpiDivider} />
               <View style={styles.kpi}>
-                <CountUp value={emAberto.length} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={500} />
+                <CountUp value={emAbertoResumo.contagem} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={500} />
                 <Text style={styles.kpiLabel}>em aberto</Text>
-                <Text style={[styles.kpiHint, parados.length > 0 && styles.kpiHintWarn]}>{emAbertoDetalhe}</Text>
+                <Text style={[styles.kpiHint, paradosResumo.contagem > 0 && styles.kpiHintWarn]}>{emAbertoDetalhe}</Text>
               </View>
             </View>
           </AnimatedEntrance>
@@ -660,12 +669,12 @@ export default function HomeScreen() {
         </AnimatedEntrance>
 
         {/* LEMBRETE DA OLLI — orçamentos parados */}
-        {parados.length > 0 && (
+        {paradosResumo.contagem > 0 && (
           <AnimatedEntrance index={2}>
             <View style={styles.lembrete}>
               <OlliMascot size={40} float={false} onDark />
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.lembreteTitle}>{parados.length} orçamento{parados.length > 1 ? 's' : ''} parado{parados.length > 1 ? 's' : ''} há +5 dias</Text>
+                <Text style={styles.lembreteTitle}>{paradosResumo.contagem} orçamento{paradosResumo.contagem > 1 ? 's' : ''} parado{paradosResumo.contagem > 1 ? 's' : ''} há +5 dias</Text>
                 <Text style={styles.lembreteSub}>{formatCurrency(valorParado)} em jogo. Priorize o follow-up.</Text>
               </View>
               <TouchableOpacity style={styles.cobrarBtn} onPress={() => nav.navigate('Orcamentos')} activeOpacity={0.85}>
@@ -710,7 +719,7 @@ export default function HomeScreen() {
           </View>
         </AnimatedEntrance>
 
-        {!carregando && orcamentos.length === 0 && (
+        {!carregando && totalOrcamentos === 0 && (
           <AnimatedEntrance index={3}>
             <StarterCard
               onCreate={() => nav.navigate('NovoOrcamento', {})}

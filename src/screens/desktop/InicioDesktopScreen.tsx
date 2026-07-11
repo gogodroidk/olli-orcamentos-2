@@ -15,11 +15,13 @@ import { EtaChip } from '../../components/EtaChip';
 import { StatusBadge } from '../../components/StatusBadge';
 import { GatePro } from '../../components/GatePro';
 import { EmptyState } from '../../components/EmptyState';
-import { getOrcamentos, getEmpresa, getClientes, getRecibos } from '../../database/database';
+import {
+  getEmpresa, getClientes, getRecibos,
+  getOrcamentosAgregadoPorStatus, getContasAReceberAgregado, getUltimosOrcamentos,
+} from '../../database/database';
 import { getProximoAgendamento } from '../../services/agenda';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../../services/eta';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
-import { getReciboDoOrcamento } from '../../services/pagamentos';
 import { clientesParaReconquistar, mensagemReconquista, ClienteParaReconquistar } from '../../services/radarClientes';
 import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../../services/radarCobranca';
 import { getCurrentUser } from '../../services/supabase';
@@ -32,9 +34,21 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import {
   Empresa, Orcamento, Agendamento, Cliente, Recibo, OrdemServico,
   TIPO_AGENDAMENTO_LABELS, STATUS_OS_LABELS, STATUS_OS_CORES,
-  propostaJaEnviada,
+  STATUS_PROPOSTA_ENVIADA, StatusOrcamento,
 } from '../../types';
 import { avisar } from './dialogo';
+
+/** Resumo agregado (contagem + soma) de um recorte de orçamentos — vem pronto do SQLite. */
+interface ResumoOrcamentos { contagem: number; valorTotal: number }
+const RESUMO_VAZIO: ResumoOrcamentos = { contagem: 0, valorTotal: 0 };
+
+/**
+ * "Enviados" (denominador da taxa de aprovação) = proposta já enviada
+ * (STATUS_PROPOSTA_ENVIADA) OU já teve desfecho (aprovado/recusado). Mesma
+ * união que o antigo `orcamentos.filter(o => propostaJaEnviada(o.status) ||
+ * o.status === 'aprovado' || o.status === 'recusado')` fazia em JS.
+ */
+const STATUS_ENVIADOS_OU_DESFECHO: readonly StatusOrcamento[] = [...STATUS_PROPOSTA_ENVIADA, 'aprovado', 'recusado'];
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -88,7 +102,14 @@ export default function InicioDesktopScreen() {
   const styles = useEstilos(criarEstilos);
   const { ehEmpresa, papel, pode, carregando: permCarregando } = usePermissao();
 
-  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  // dashboard-agg: os KPIs comerciais chegam PRONTOS do SQLite (agregados),
+  // não mais como o histórico inteiro de orçamentos pra reduzir aqui. Só a
+  // lista "Últimos orçamentos" guarda objetos completos (8, via LIMIT).
+  const [aprovadosResumo, setAprovadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  const [enviadosResumo, setEnviadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  const [emAbertoResumo, setEmAbertoResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  const [ultimosOito, setUltimosOito] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -117,11 +138,20 @@ export default function InicioDesktopScreen() {
     : undefined;
 
   const load = useCallback(async () => {
-    const [all, rec, os, emp, prox, cli, user] = await Promise.all([
-      getOrcamentos(), getRecibos(), getOrdens(), getEmpresa(),
+    const [aprov, enviad, aberto, contasReceber, ultimos, rec, os, emp, prox, cli, user] = await Promise.all([
+      getOrcamentosAgregadoPorStatus(['aprovado']),
+      getOrcamentosAgregadoPorStatus(STATUS_ENVIADOS_OU_DESFECHO),
+      getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
+      getContasAReceberAgregado(),
+      getUltimosOrcamentos(8),
+      getRecibos(), getOrdens(), getEmpresa(),
       getProximoAgendamento(), getClientes(), getCurrentUser(),
     ]);
-    setOrcamentos(all);
+    setAprovadosResumo(aprov);
+    setEnviadosResumo(enviad);
+    setEmAbertoResumo(aberto);
+    setContasAReceberResumo(contasReceber);
+    setUltimosOito(ultimos);
     setRecibos(rec);
     setOrdens(os);
     setEmpresa(emp);
@@ -323,9 +353,7 @@ export default function InicioDesktopScreen() {
   // ═══════════════════════════════════════════════════════════════
   const podeValores = pode('ver_valores_agregados'); // owner/admin/gestor e pessoal
 
-  // ── métricas comerciais ──
-  const aprovados = orcamentos.filter(o => o.status === 'aprovado');
-  const enviados = orcamentos.filter(o => propostaJaEnviada(o.status) || o.status === 'aprovado' || o.status === 'recusado');
+  // ── métricas comerciais (já agregadas em SQL — ver load()) ──
   const agora = new Date();
   const noMesAtual = (iso?: string) => {
     if (!iso) return false;
@@ -352,21 +380,17 @@ export default function InicioDesktopScreen() {
   const receitaNoMes = recibosNoMes.reduce((s, r) => s + (r.valorRecebido || 0), 0);
 
   // Em aberto: toda proposta já entregue ao cliente sem desfecho.
-  const emAberto = orcamentos.filter(o => propostaJaEnviada(o.status));
-  const valorEmAberto = emAberto.reduce((s, o) => s + o.valorTotal, 0);
+  const valorEmAberto = emAbertoResumo.valorTotal;
 
   // Taxa de aprovação sobre o que efetivamente foi ENVIADO (não sobre rascunhos).
-  const taxaAprovacao = enviados.length ? Math.round((aprovados.length / enviados.length) * 100) : 0;
+  const taxaAprovacao = enviadosResumo.contagem ? Math.round((aprovadosResumo.contagem / enviadosResumo.contagem) * 100) : 0;
 
   // Contas a receber: orçamento aprovado que ainda NÃO tem recibo (pagamento).
-  const contasAReceber = aprovados.filter(o => !getReciboDoOrcamento(o.id, recibos));
-  const valorAReceber = contasAReceber.reduce((s, o) => s + o.valorTotal, 0);
+  const valorAReceber = contasAReceberResumo.valorTotal;
 
   // ── OS (empresa: gestão vê todas) ──
   const osEmAndamento = ordens.filter(o => STATUS_OS_ANDAMENTO.includes(o.status));
   const osPorTecnico = agruparOSPorTecnico(osEmAndamento);
-
-  const ultimosOito = orcamentos.slice(0, 8);
 
   // ── gráfico: receita recebida por mês (últimos 6 meses) ──
   const meses = ultimosSeisMeses();
@@ -409,7 +433,7 @@ export default function InicioDesktopScreen() {
           valor={carregando ? '—' : formatCurrency(valorEmAberto)}
           icone="clock-outline"
           corIcone={cores.warning}
-          rodape={`${emAberto.length} orçamento${emAberto.length === 1 ? '' : 's'} enviado${emAberto.length === 1 ? '' : 's'}`}
+          rodape={`${emAbertoResumo.contagem} orçamento${emAbertoResumo.contagem === 1 ? '' : 's'} enviado${emAbertoResumo.contagem === 1 ? '' : 's'}`}
           onPress={irParaOrcamentos}
         />
         <KpiCard
@@ -417,7 +441,7 @@ export default function InicioDesktopScreen() {
           valor={carregando ? '—' : formatCurrency(valorAReceber)}
           icone="cash-clock"
           corIcone={cores.accentLight}
-          rodape={contasAReceber.length ? `${contasAReceber.length} aprovado${contasAReceber.length === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
+          rodape={contasAReceberResumo.contagem ? `${contasAReceberResumo.contagem} aprovado${contasAReceberResumo.contagem === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
           onPress={irParaOrcamentos}
         />
         <KpiCard
@@ -425,7 +449,7 @@ export default function InicioDesktopScreen() {
           valor={carregando ? '—' : `${taxaAprovacao}%`}
           icone="chart-line"
           corIcone={cores.primaryLight}
-          rodape={enviados.length ? `${aprovados.length}/${enviados.length} enviados` : 'sem envios ainda'}
+          rodape={enviadosResumo.contagem ? `${aprovadosResumo.contagem}/${enviadosResumo.contagem} enviados` : 'sem envios ainda'}
           onPress={irParaRelatorios}
         />
       </View>

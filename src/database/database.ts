@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, propostaJaEnviada } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada } from '../types';
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
@@ -140,6 +140,16 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       numero TEXT NOT NULL,
       data TEXT NOT NULL
     );
+    -- dashboard-agg: índices de EXPRESSÃO sobre o blob JSON — sem eles, todo
+    -- WHERE/ORDER BY json_extract(...) abaixo (agregados do dashboard + lista
+    -- paginada) faz table scan lendo e parseando o TEXT de CADA linha. Com o
+    -- índice, o SQLite resolve status/soft-delete/cliente pela B-tree sem
+    -- tocar no blob inteiro. CREATE INDEX IF NOT EXISTS é idempotente — roda
+    -- em toda abertura, não precisa entrar no framework de SCHEMA_VERSION.
+    CREATE INDEX IF NOT EXISTS idx_orcamentos_status ON orcamentos (json_extract(data, '$.status'));
+    CREATE INDEX IF NOT EXISTS idx_orcamentos_excluido ON orcamentos (json_extract(data, '$.excluidoEm'));
+    CREATE INDEX IF NOT EXISTS idx_orcamentos_cliente ON orcamentos (json_extract(data, '$.clienteId'));
+    CREATE INDEX IF NOT EXISTS idx_orcamentos_criado ON orcamentos (json_extract(data, '$.criadoEm'));
 
     -- VERSÕES de orçamento (mestre 13.5) — snapshot congelado do orçamento ANTES
     -- de uma edição sobre uma proposta JÁ ENVIADA. Append-only (nunca se edita uma
@@ -160,6 +170,11 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       numero TEXT NOT NULL,
       data TEXT NOT NULL
     );
+    -- dashboard-agg: idem orcamentos — usados pelo anti-join de "contas a
+    -- receber" (orçamento aprovado sem recibo) e pela busca de recibos de uma
+    -- página de orçamentos (getRecibosPorOrcamentoIds), sem carregar tudo.
+    CREATE INDEX IF NOT EXISTS idx_recibos_orcamento ON recibos (json_extract(data, '$.orcamentoId'));
+    CREATE INDEX IF NOT EXISTS idx_recibos_excluido ON recibos (json_extract(data, '$.excluidoEm'));
 
     CREATE TABLE IF NOT EXISTS modelos (
       id TEXT PRIMARY KEY,
@@ -796,6 +811,212 @@ export async function getOrcamentos(): Promise<Orcamento[]> {
   // json_extract. Robusto ao sync: o cloudSync escreve o blob inteiro (com excluidoEm).
   const rows = await db.getAllAsync<any>(
     "SELECT * FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
+  );
+  return rows.map(r => JSON.parse(r.data));
+}
+
+/**
+ * dashboard-agg (item 1.18): agregados dos KPIs de orçamento em SQL puro
+ * (COUNT/SUM/WHERE via json_extract), no lugar do antigo padrão
+ * `getOrcamentos().filter(...).reduce(...)` sobre o HISTÓRICO INTEIRO a cada
+ * foco de tela. Mesma regra de soft-delete de `getOrcamentos` (excluido_em
+ * IS NULL) — os números batem com o reduce em JS que substituem.
+ */
+export async function getOrcamentosAgregadoPorStatus(
+  statuses: readonly StatusOrcamento[],
+): Promise<{ contagem: number; valorTotal: number }> {
+  if (statuses.length === 0) return { contagem: 0, valorTotal: 0 };
+  const db = await getDb();
+  const placeholders = statuses.map(() => '?').join(',');
+  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
+    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma
+     FROM orcamentos
+     WHERE json_extract(data, '$.excluidoEm') IS NULL
+       AND json_extract(data, '$.status') IN (${placeholders})`,
+    [...statuses],
+  );
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+}
+
+/** Total de orçamentos ATIVOS (qualquer status) — denominador de taxas (ex.: conversão). */
+export async function getOrcamentosTotalAtivos(): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ c: number }>(
+    "SELECT COUNT(*) as c FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NULL",
+  );
+  return row?.c ?? 0;
+}
+
+/**
+ * "Contas a receber": orçamentos APROVADOS sem recibo vinculado ainda.
+ * Substitui `aprovados.filter(o => !getReciboDoOrcamento(o.id, recibos))`,
+ * que era O(aprovados × recibos) em JS — aqui vira um anti-join em SQL.
+ * Mesma regra de `getReciboDoOrcamento`: só considera recibo ATIVO
+ * (excluido_em IS NULL) e só status EXATAMENTE 'aprovado' (não 'convertido').
+ */
+export async function getContasAReceberAgregado(): Promise<{ contagem: number; valorTotal: number }> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
+    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(o.data, '$.valorTotal')), 0) as soma
+     FROM orcamentos o
+     WHERE json_extract(o.data, '$.excluidoEm') IS NULL
+       AND json_extract(o.data, '$.status') = 'aprovado'
+       AND NOT EXISTS (
+         SELECT 1 FROM recibos r
+         WHERE json_extract(r.data, '$.orcamentoId') = o.id
+           AND json_extract(r.data, '$.excluidoEm') IS NULL
+       )`,
+  );
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+}
+
+/**
+ * Orçamentos com status dentro do conjunto informado E criados há pelo menos
+ * `diasMinimos` dias corridos (não calendário) — mesmo cálculo de `diasAtras`
+ * (`Math.floor((Date.now()-d.getTime())/86400000) >= N`), só que em SQL via
+ * `julianday`. `criadoEm` é sempre `new Date().toISOString()` (UTC, ver
+ * `nowISO`), e `julianday('now')`/`julianday(iso)` tratam ISO como UTC — a
+ * diferença dá o mesmo número de dias corridos que o `Date.now()` em JS,
+ * independente do fuso do aparelho. `floor(x) >= N ⟺ x >= N` para N inteiro,
+ * então a comparação direta (sem floor) é equivalente ao original.
+ */
+export async function getOrcamentosParadosAgregado(
+  statuses: readonly StatusOrcamento[],
+  diasMinimos: number,
+): Promise<{ contagem: number; valorTotal: number }> {
+  if (statuses.length === 0) return { contagem: 0, valorTotal: 0 };
+  const db = await getDb();
+  const placeholders = statuses.map(() => '?').join(',');
+  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
+    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma
+     FROM orcamentos
+     WHERE json_extract(data, '$.excluidoEm') IS NULL
+       AND json_extract(data, '$.status') IN (${placeholders})
+       AND (julianday('now') - julianday(json_extract(data, '$.criadoEm'))) >= ?`,
+    [...statuses, diasMinimos],
+  );
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+}
+
+/** Últimos N orçamentos ATIVOS (mais recentes primeiro) — para cards/tabelas do dashboard, sem carregar o histórico inteiro. */
+export async function getUltimosOrcamentos(limite: number): Promise<Orcamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC LIMIT ?",
+    [limite],
+  );
+  return rows.map(r => JSON.parse(r.data));
+}
+
+/** Filtro compartilhado pela lista paginada de orçamentos (OrcamentosScreen). */
+export interface FiltroOrcamentos {
+  clienteId?: string;
+  status?: StatusOrcamento;
+  /** Busca livre — mesma regra da tela: cliente (case-insensitive) OU número do orçamento (substring). */
+  busca?: string;
+}
+
+/**
+ * Busca por nome tem que ser acento-insensível como o `normalizarBusca` do app
+ * (JS, Unicode). O `LOWER()` do SQLite só cobre ASCII — "JOSÉ" não casava com
+ * "josé" (regressão real ao trocar filter/reduce em JS por SQL). Solução: tirar
+ * acento + minúsculo dos DOIS lados — na coluna via REPLACE aninhado (SQL), na
+ * query via NFD-strip (JS) — para o LIKE comparar `jose` com `jose`.
+ */
+const PARES_ACENTO: [string, string][] = [
+  ['á', 'a'], ['à', 'a'], ['â', 'a'], ['ã', 'a'], ['ä', 'a'], ['Á', 'a'], ['À', 'a'], ['Â', 'a'], ['Ã', 'a'], ['Ä', 'a'],
+  ['é', 'e'], ['è', 'e'], ['ê', 'e'], ['ë', 'e'], ['É', 'e'], ['È', 'e'], ['Ê', 'e'], ['Ë', 'e'],
+  ['í', 'i'], ['ì', 'i'], ['î', 'i'], ['ï', 'i'], ['Í', 'i'], ['Ì', 'i'], ['Î', 'i'], ['Ï', 'i'],
+  ['ó', 'o'], ['ò', 'o'], ['ô', 'o'], ['õ', 'o'], ['ö', 'o'], ['Ó', 'o'], ['Ò', 'o'], ['Ô', 'o'], ['Õ', 'o'], ['Ö', 'o'],
+  ['ú', 'u'], ['ù', 'u'], ['û', 'u'], ['ü', 'u'], ['Ú', 'u'], ['Ù', 'u'], ['Û', 'u'], ['Ü', 'u'],
+  ['ç', 'c'], ['Ç', 'c'], ['ñ', 'n'], ['Ñ', 'n'],
+];
+
+/** Expressão SQL "sem acento + minúsculo" de `expr` (REPLACE aninhado sobre LOWER). */
+function semAcentoLowerSql(expr: string): string {
+  let s = `LOWER(${expr})`;
+  for (const [de, para] of PARES_ACENTO) s = `REPLACE(${s}, '${de}', '${para}')`;
+  return s;
+}
+
+/** Versão JS equivalente (para o lado da query) — mesmo resultado do REPLACE do SQL. */
+function semAcentoLower(s: string): string {
+  let r = s.toLowerCase();
+  for (const [de, para] of PARES_ACENTO) r = r.split(de).join(para);
+  return r;
+}
+
+/** Escapa os curingas do LIKE (%, _, \) para que o texto digitado seja literal. Usar com `ESCAPE '\\'`. */
+function escaparLike(s: string): string {
+  return s.replace(/[\\%_]/g, (ch) => '\\' + ch);
+}
+
+/** Monta a cláusula WHERE + params compartilhada por paginação/resumo/ids — uma única fonte da regra de filtro. */
+function whereOrcamentosFiltro(filtro: FiltroOrcamentos): { clausula: string; params: (string | number)[] } {
+  const condicoes: string[] = ["json_extract(data, '$.excluidoEm') IS NULL"];
+  const params: (string | number)[] = [];
+  if (filtro.clienteId) {
+    condicoes.push("json_extract(data, '$.clienteId') = ?");
+    params.push(filtro.clienteId);
+  }
+  if (filtro.status) {
+    condicoes.push("json_extract(data, '$.status') = ?");
+    params.push(filtro.status);
+  }
+  if (filtro.busca && filtro.busca.trim()) {
+    // Nome: sem-acento+minúsculo dos dois lados (acento-insensível como o app).
+    // Número: minúsculo (dígitos não mudam). Curingas do usuário escapados.
+    const nomeSql = semAcentoLowerSql("json_extract(data, '$.clienteNome')");
+    condicoes.push(`(${nomeSql} LIKE ? ESCAPE '\\' OR LOWER(numero) LIKE ? ESCAPE '\\')`);
+    const like = `%${escaparLike(semAcentoLower(filtro.busca.trim()))}%`;
+    params.push(like, like);
+  }
+  return { clausula: condicoes.join(' AND '), params };
+}
+
+/**
+ * PAGINAÇÃO (item 1.18): uma página de orçamentos (mais recentes primeiro),
+ * já filtrada em SQL — no lugar de `getOrcamentos()` completo + filtro em JS
+ * a cada busca/troca de status. `OrcamentosScreen` chama com LIMIT 50 e vai
+ * pedindo a próxima página (`offset`) ao chegar no fim da lista.
+ */
+export async function getOrcamentosPagina(filtro: FiltroOrcamentos, limite: number, offset: number): Promise<Orcamento[]> {
+  const db = await getDb();
+  const { clausula, params } = whereOrcamentosFiltro(filtro);
+  const rows = await db.getAllAsync<any>(
+    `SELECT * FROM orcamentos WHERE ${clausula} ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC LIMIT ? OFFSET ?`,
+    [...params, limite, offset],
+  );
+  return rows.map(r => JSON.parse(r.data));
+}
+
+/** Contagem + soma de valorTotal do TOTAL filtrado (não só a página carregada) — para o cabeçalho da lista. */
+export async function getOrcamentosResumoFiltro(filtro: FiltroOrcamentos): Promise<{ contagem: number; valorTotal: number }> {
+  const db = await getDb();
+  const { clausula, params } = whereOrcamentosFiltro(filtro);
+  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
+    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma FROM orcamentos WHERE ${clausula}`,
+    params,
+  );
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+}
+
+/** Todos os ids que batem o filtro (não só a página carregada) — usado por "selecionar todos" na seleção em lote. */
+export async function getOrcamentosIdsFiltro(filtro: FiltroOrcamentos): Promise<string[]> {
+  const db = await getDb();
+  const { clausula, params } = whereOrcamentosFiltro(filtro);
+  const rows = await db.getAllAsync<{ id: string }>(`SELECT id FROM orcamentos WHERE ${clausula}`, params);
+  return rows.map(r => r.id);
+}
+
+/** Recibos ATIVOS vinculados a um conjunto de orçamentos (ex.: os da página atual) — evita carregar `recibos` inteiro. */
+export async function getRecibosPorOrcamentoIds(orcamentoIds: string[]): Promise<Recibo[]> {
+  if (orcamentoIds.length === 0) return [];
+  const db = await getDb();
+  const placeholders = orcamentoIds.map(() => '?').join(',');
+  const rows = await db.getAllAsync<any>(
+    `SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NULL AND json_extract(data, '$.orcamentoId') IN (${placeholders})`,
+    orcamentoIds,
   );
   return rows.map(r => JSON.parse(r.data));
 }

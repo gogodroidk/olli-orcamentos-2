@@ -18,7 +18,11 @@ import { DicaContextual } from '../components/DicaContextual';
 import { CountUp } from '../components/CountUp';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
-import { getOrcamentos, deleteOrcamento, saveOrcamento, getNextOrcamentoNumber, getRecibos } from '../database/database';
+import {
+  deleteOrcamento, saveOrcamento, getNextOrcamentoNumber,
+  getOrcamentosPagina, getOrcamentosResumoFiltro, getOrcamentosIdsFiltro, getRecibosPorOrcamentoIds,
+  type FiltroOrcamentos,
+} from '../database/database';
 import { sincronizarStatusLinks } from '../services/clienteLink';
 import { onSyncAplicado } from '../services/cloudSync';
 import { getStatusFinanceiro, getBadgeFinanceiro, getReciboDoOrcamento, registrarPagamento, StatusFinanceiro } from '../services/pagamentos';
@@ -33,6 +37,39 @@ import { generateId } from '../utils/id';
 
 const FORMAS_PAGAMENTO_RAPIDO = ['PIX', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Transferência'];
 
+// Perf: com listas longas, animar a entrada (fade+slide) de CADA linha monta um
+// Animated.Value + timing por item conforme a FlatList vai revelando novas
+// células ao rolar. Só as primeiras N (janela inicial visível) ganham o efeito
+// cascata — o resto aparece direto no estado final (idêntico ao fim da
+// animação), sem gastar ciclos de JS thread em linhas que o usuário nem viu
+// entrar. Mesmo motion de sempre (AnimatedEntrance já respeita reduced-motion).
+const LIMITE_ANIMACAO_ENTRADA = 20;
+
+// PAGINAÇÃO (item 1.18): a lista deixou de carregar getOrcamentos() completo
+// (o HISTÓRICO INTEIRO) a cada foco/busca/filtro — em vez disso pede páginas
+// de PAGE_SIZE ao SQLite (já filtradas em SQL) e vai concatenando conforme o
+// usuário rola. O cabeçalho ("N orçamentos" + soma) usa um resumo AGREGADO
+// separado (getOrcamentosResumoFiltro), que reflete o TOTAL do filtro mesmo
+// antes de todas as páginas serem carregadas.
+const PAGE_SIZE = 50;
+
+/** Monta o filtro compartilhado (busca/status/cliente) a partir do estado atual da tela. */
+function montarFiltro(query: string, statusFilter: StatusOrcamento | 'todos', clienteId?: string): FiltroOrcamentos {
+  return {
+    clienteId,
+    status: statusFilter === 'todos' ? undefined : statusFilter,
+    busca: query.trim() || undefined,
+  };
+}
+
+/** Concatena recibos de uma nova página sem duplicar (por id) os já carregados. */
+function mesclarRecibos(atual: Recibo[], novos: Recibo[]): Recibo[] {
+  if (novos.length === 0) return atual;
+  const idsExistentes = new Set(atual.map(r => r.id));
+  const extras = novos.filter(r => !idsExistentes.has(r.id));
+  return extras.length ? [...atual, ...extras] : atual;
+}
+
 /** Badge compacto de estado financeiro — só aparece em orçamentos aprovados/convertidos. */
 function BadgeFinanceiroPill({ status }: { status: StatusFinanceiro }) {
   const styles = useEstilos(criarEstilos);
@@ -44,6 +81,118 @@ function BadgeFinanceiroPill({ status }: { status: StatusFinanceiro }) {
     </View>
   );
 }
+
+interface LinhaOrcamentoProps {
+  item: Orcamento;
+  index: number;
+  selecionando: boolean;
+  marcado: boolean;
+  statusFinanceiro: StatusFinanceiro | null;
+  reciboVinculado: Recibo | null;
+  onPress: (item: Orcamento) => void;
+  onEditar: (item: Orcamento) => void;
+  onClonar: (item: Orcamento) => void;
+  onPagamento: (item: Orcamento) => void;
+  onRecibo: (item: Orcamento) => void;
+  onExcluir: (item: Orcamento) => void;
+}
+
+/**
+ * Linha da lista de orçamentos — extraída do renderItem e memoizada (React.memo)
+ * pra que um re-render da tela (ex.: digitar no modal de pagamento) não force a
+ * reconciliação de TODAS as linhas visíveis; só as que tiverem props realmente
+ * diferentes (marcado, statusFinanceiro etc.) re-renderizam de fato.
+ */
+function LinhaOrcamentoBase({
+  item: o,
+  index,
+  selecionando,
+  marcado,
+  statusFinanceiro,
+  reciboVinculado,
+  onPress,
+  onEditar,
+  onClonar,
+  onPagamento,
+  onRecibo,
+  onExcluir,
+}: LinhaOrcamentoProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+
+  const conteudo = (
+    <OlliCard
+      onPress={() => onPress(o)}
+      variant={selecionando && marcado ? 'selected' : 'default'}
+      style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
+    >
+      <View style={styles.itemHeader}>
+        {selecionando && (
+          <MaterialCommunityIcons
+            name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
+            size={22}
+            color={marcado ? cores.accent : cores.onSurfaceMuted}
+            style={{ marginRight: 12, marginTop: 2 }}
+          />
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
+          <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
+          <StatusBadge status={o.status} size="sm" />
+        </View>
+      </View>
+
+      {statusFinanceiro && (
+        <View style={styles.finRow}>
+          <BadgeFinanceiroPill status={statusFinanceiro} />
+          {reciboVinculado && (
+            <Text style={styles.finReciboRef} numberOfLines={1}>Recibo Nº {reciboVinculado.numero}</Text>
+          )}
+        </View>
+      )}
+
+      {/* Em modo de seleção as ações somem — o card inteiro vira alvo do toque. */}
+      {!selecionando && (
+        <View style={styles.itemActions}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => onEditar(o)}>
+            <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.primary} />
+            <Text style={[styles.actionLabel, { color: cores.primary }]}>Editar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => onClonar(o)}>
+            <MaterialCommunityIcons name="content-copy" size={16} color={cores.secondary} />
+            <Text style={[styles.actionLabel, { color: cores.secondary }]}>Clonar</Text>
+          </TouchableOpacity>
+          {statusFinanceiro === 'aguardando_pagamento' ? (
+            <TouchableOpacity style={styles.actionBtn} onPress={() => onPagamento(o)}>
+              <MaterialCommunityIcons name="cash-plus" size={16} color={cores.warning} />
+              <Text style={[styles.actionLabel, { color: cores.warning }]}>Pagamento</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.actionBtn} onPress={() => onRecibo(o)}>
+              <MaterialCommunityIcons name="receipt" size={16} color={cores.success} />
+              <Text style={[styles.actionLabel, { color: cores.success }]}>Recibo</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.actionBtn} onPress={() => onExcluir(o)}>
+            <MaterialCommunityIcons name="trash-can-outline" size={16} color={cores.danger} />
+            <Text style={[styles.actionLabel, { color: cores.danger }]}>Excluir</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </OlliCard>
+  );
+
+  // Cascata de entrada só nas primeiras linhas (ver LIMITE_ANIMACAO_ENTRADA) —
+  // as demais aparecem direto no estado final, sem animação.
+  return index < LIMITE_ANIMACAO_ENTRADA
+    ? <AnimatedEntrance index={index}>{conteudo}</AnimatedEntrance>
+    : conteudo;
+}
+
+const LinhaOrcamento = React.memo(LinhaOrcamentoBase);
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Orcamentos'>;
@@ -99,8 +248,10 @@ export default function OrcamentosScreen() {
   // Filtro por cliente (CRM): quando aberto a partir de um cliente.
   const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
   const clienteNome = route.params?.clienteNome;
-  const [all, setAll] = useState<Orcamento[]>([]);
-  const [filtered, setFiltered] = useState<Orcamento[]>([]);
+  const [itens, setItens] = useState<Orcamento[]>([]);
+  const [resumo, setResumo] = useState<{ contagem: number; valorTotal: number }>({ contagem: 0, valorTotal: 0 });
+  const [temMais, setTemMais] = useState(false);
+  const [carregandoMais, setCarregandoMais] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusOrcamento | 'todos'>('todos');
   const [refreshing, setRefreshing] = useState(false);
@@ -110,8 +261,8 @@ export default function OrcamentosScreen() {
   const [selecionando, setSelecionando] = useState(false);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 
-  // Recibos vinculados aos orçamentos (badge financeiro: aguardando pagamento /
-  // pago / recibo emitido). Recarregado junto com a lista de orçamentos.
+  // Recibos vinculados aos orçamentos CARREGADOS (badge financeiro: aguardando
+  // pagamento / pago / recibo emitido) — só os da página, não a tabela inteira.
   const [recibos, setRecibos] = useState<Recibo[]>([]);
 
   // Modal "Registrar pagamento" — rápido, sem sair da lista.
@@ -121,59 +272,107 @@ export default function OrcamentosScreen() {
   const [dataPagamento, setDataPagamento] = useState(isoToBR(todayISO()));
   const [registrando, setRegistrando] = useState(false);
 
-  const load = useCallback(async () => {
-    const [data, listaRecibos] = await Promise.all([getOrcamentos(), getRecibos()]);
-    setAll(data);
-    setRecibos(listaRecibos);
-    applyFilters(data, query, statusFilter, clienteId);
-    setCarregando(false);
-  }, [clienteId]);
+  // itensRef: espelha `itens` p/ ler o tamanho atual (offset da próxima página)
+  // sem depender de closure — evita reler `itens` como dependência e refazer
+  // `carregarPagina` a cada página carregada. filtroRef: espelha
+  // query/statusFilter/clienteId p/ o useFocusEffect e o onSync lerem o filtro
+  // MAIS RECENTE sem precisar deles nas deps (senão cada tecla digitada
+  // re-registraria o effect de foco). pedidoIdRef: descarta respostas de uma
+  // busca/filtro já ultrapassado por um mais novo (corrida ao digitar rápido).
+  const itensRef = useRef<Orcamento[]>([]);
+  const filtroRef = useRef({ query: '', statusFilter: 'todos' as StatusOrcamento | 'todos', clienteId: undefined as string | undefined });
+  filtroRef.current = { query, statusFilter, clienteId };
+  const pedidoIdRef = useRef(0);
+  const temMaisRef = useRef(false);
+  const carregandoMaisRef = useRef(false);
+  const buscaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const carregarPagina = useCallback(async (filtro: FiltroOrcamentos, opts: { reset: boolean }) => {
+    const meuPedido = opts.reset ? ++pedidoIdRef.current : pedidoIdRef.current;
+    if (opts.reset) {
+      // cache-then-revalidate: só mostra skeleton se NÃO há nada em tela ainda
+      // (foco/sync em segundo plano não apaga a lista pra "piscar" de novo).
+      if (itensRef.current.length === 0) setCarregando(true);
+    } else {
+      if (carregandoMaisRef.current || !temMaisRef.current) return;
+      carregandoMaisRef.current = true;
+      setCarregandoMais(true);
+    }
+    try {
+      const offset = opts.reset ? 0 : itensRef.current.length;
+      const [pagina, resumoNovo] = await Promise.all([
+        getOrcamentosPagina(filtro, PAGE_SIZE, offset),
+        opts.reset ? getOrcamentosResumoFiltro(filtro) : Promise.resolve(null),
+      ]);
+      if (meuPedido !== pedidoIdRef.current) return; // filtro já mudou de novo — descarta resposta velha
+      const idsPagina = pagina.map(o => o.id);
+      const recibosPagina = idsPagina.length ? await getRecibosPorOrcamentoIds(idsPagina) : [];
+      if (meuPedido !== pedidoIdRef.current) return;
+      const proximos = opts.reset ? pagina : [...itensRef.current, ...pagina];
+      itensRef.current = proximos;
+      setItens(proximos);
+      setRecibos(prev => (opts.reset ? recibosPagina : mesclarRecibos(prev, recibosPagina)));
+      const aindaTemMais = pagina.length === PAGE_SIZE;
+      temMaisRef.current = aindaTemMais;
+      setTemMais(aindaTemMais);
+      if (resumoNovo) setResumo(resumoNovo);
+    } finally {
+      if (meuPedido === pedidoIdRef.current) {
+        setCarregando(false);
+        carregandoMaisRef.current = false;
+        setCarregandoMais(false);
+      }
+    }
+  }, []);
+
+  /** Recarrega do zero com o filtro ATUAL (query/statusFilter/clienteId mais recentes). */
+  const recarregar = useCallback(() => {
+    const f = filtroRef.current;
+    return carregarPagina(montarFiltro(f.query, f.statusFilter, f.clienteId), { reset: true });
+  }, [carregarPagina]);
+
+  const carregarMais = useCallback(() => {
+    const f = filtroRef.current;
+    carregarPagina(montarFiltro(f.query, f.statusFilter, f.clienteId), { reset: false });
+  }, [carregarPagina]);
 
   useFocusEffect(useCallback(() => {
-    load();
+    recarregar();
     // sincronizarStatusLinks() nunca lança — é seguro chamar sem try/catch.
     // Se algum orçamento mudou de status (cliente aprovou/recusou pelo link),
     // recarrega a lista para refletir o novo status.
     sincronizarStatusLinks().then(alterados => {
-      if (alterados > 0) load();
+      if (alterados > 0) recarregar();
     });
-  }, [load]));
+  }, [recarregar, clienteId]));
 
   // Recarrega a lista quando o sync em segundo plano (login/foreground) traz
   // dados novos da nuvem — sem isso, um aparelho recém-logado podia mostrar a
   // lista vazia até o usuário sair e voltar para a tela.
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
-
-  function applyFilters(data: Orcamento[], q: string, s: typeof statusFilter, cliId?: string) {
-    let r = data;
-    if (cliId) r = r.filter(o => o.clienteId === cliId);
-    if (s !== 'todos') r = r.filter(o => o.status === s);
-    if (q.trim()) {
-      const lower = q.toLowerCase();
-      r = r.filter(o =>
-        o.clienteNome.toLowerCase().includes(lower) ||
-        o.numero.includes(lower)
-      );
-    }
-    setFiltered(r);
-  }
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); recarregar(); }), [recarregar]);
 
   function limparFiltroCliente() {
     setClienteId(undefined);
-    applyFilters(all, query, statusFilter, undefined);
+    carregarPagina(montarFiltro(filtroRef.current.query, filtroRef.current.statusFilter, undefined), { reset: true });
   }
 
   function handleSearch(q: string) {
     setQuery(q);
-    applyFilters(all, q, statusFilter, clienteId);
+    // debounce: SQL por tecla seria exagero — espera a digitação assentar.
+    if (buscaTimerRef.current) clearTimeout(buscaTimerRef.current);
+    buscaTimerRef.current = setTimeout(() => {
+      carregarPagina(montarFiltro(q, filtroRef.current.statusFilter, filtroRef.current.clienteId), { reset: true });
+    }, 250);
   }
+
+  useEffect(() => () => { if (buscaTimerRef.current) clearTimeout(buscaTimerRef.current); }, []);
 
   function handleStatusFilter(s: typeof statusFilter) {
     setStatusFilter(s);
-    applyFilters(all, query, s, clienteId);
+    carregarPagina(montarFiltro(filtroRef.current.query, s, filtroRef.current.clienteId), { reset: true });
   }
 
-  async function handleDelete(o: Orcamento) {
+  const handleDelete = useCallback(async (o: Orcamento) => {
     Alert.alert(
       'Excluir orçamento',
       `O orçamento nº ${o.numero} de ${o.clienteNome} vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`,
@@ -184,7 +383,7 @@ export default function OrcamentosScreen() {
           onPress: async () => {
             try {
               await deleteOrcamento(o.id);
-              load();
+              recarregar();
             } catch (e) {
               Alert.alert('Erro', 'Não foi possível excluir o orçamento agora. Tente novamente.');
             }
@@ -192,7 +391,7 @@ export default function OrcamentosScreen() {
         },
       ]
     );
-  }
+  }, [recarregar]);
 
   // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
   function entrarSelecao(inicialId?: string) {
@@ -205,16 +404,19 @@ export default function OrcamentosScreen() {
     setSelecionados(new Set());
   }
 
-  function alternarSelecao(id: string) {
+  const alternarSelecao = useCallback((id: string) => {
     setSelecionados(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  function selecionarTodos() {
-    setSelecionados(new Set(filtered.map(o => o.id)));
+  /** Seleciona TODOS os ids que batem o filtro atual (não só a página já carregada). */
+  async function selecionarTodos() {
+    const f = filtroRef.current;
+    const ids = await getOrcamentosIdsFiltro(montarFiltro(f.query, f.statusFilter, f.clienteId));
+    setSelecionados(new Set(ids));
   }
 
   function handleExcluirSelecionados() {
@@ -234,7 +436,7 @@ export default function OrcamentosScreen() {
               }
             } finally {
               sairSelecao();
-              await load();
+              await recarregar();
             }
           },
         },
@@ -242,7 +444,7 @@ export default function OrcamentosScreen() {
     );
   }
 
-  async function handleClone(o: Orcamento) {
+  const handleClone = useCallback(async (o: Orcamento) => {
     try {
       const cloneId = generateId();
       const numero = await getNextOrcamentoNumber();
@@ -260,26 +462,26 @@ export default function OrcamentosScreen() {
         atualizadoEm: nowISO(),
       };
       await saveOrcamento(clone);
-      load();
+      recarregar();
       nav.navigate('EditarOrcamento', { orcamentoId: cloneId });
     } catch (e) {
       Alert.alert('Erro', 'Não foi possível clonar o orçamento agora. Tente novamente.');
     }
-  }
+  }, [recarregar, nav]);
 
   const refresh = async () => {
     setRefreshing(true);
-    await load();
+    await recarregar();
     setRefreshing(false);
   };
 
   /** Abre o modal "Registrar pagamento" pré-preenchido com o valor do orçamento. */
-  function abrirRegistrarPagamento(o: Orcamento) {
+  const abrirRegistrarPagamento = useCallback((o: Orcamento) => {
     setOrcPagamento(o);
     setValorPagamento(o.valorTotal);
     setFormaPagamento('PIX');
     setDataPagamento(isoToBR(todayISO()));
-  }
+  }, []);
 
   function fecharRegistrarPagamento() {
     if (registrando) return; // não fecha no meio de um salvamento em andamento
@@ -301,7 +503,7 @@ export default function OrcamentosScreen() {
         dataRecebimento: dataPagamento,
       });
       setOrcPagamento(null);
-      await load();
+      await recarregar();
     } catch (e) {
       Alert.alert('Erro', 'Não foi possível registrar o pagamento agora. Tente novamente.');
     } finally {
@@ -309,78 +511,53 @@ export default function OrcamentosScreen() {
     }
   }
 
-  const renderItem = ({ item: o, index }: { item: Orcamento; index: number }) => {
+  // Callbacks estáveis (useCallback) parametrizados pelo item — passadas como
+  // prop para o LinhaOrcamento memoizado. Recriar closures NOVAS a cada item
+  // dentro do renderItem quebraria o React.memo (props sempre "diferentes");
+  // aqui a IDENTIDADE da função fica igual entre renders, só o item varia.
+  const onPressLinha = useCallback((o: Orcamento) => {
+    if (selecionando) alternarSelecao(o.id);
+    else nav.navigate('VisualizarOrcamento', { orcamentoId: o.id });
+  }, [selecionando, alternarSelecao, nav]);
+
+  const onEditarLinha = useCallback((o: Orcamento) => {
+    nav.navigate('EditarOrcamento', { orcamentoId: o.id });
+  }, [nav]);
+
+  const onClonarLinha = useCallback((o: Orcamento) => { handleClone(o); }, [handleClone]);
+
+  const onPagamentoLinha = useCallback((o: Orcamento) => { abrirRegistrarPagamento(o); }, [abrirRegistrarPagamento]);
+
+  const onReciboLinha = useCallback((o: Orcamento) => {
+    nav.navigate('EmitirRecibo', { orcamentoId: o.id });
+  }, [nav]);
+
+  const onExcluirLinha = useCallback((o: Orcamento) => { handleDelete(o); }, [handleDelete]);
+
+  const renderItem = useCallback(({ item: o, index }: { item: Orcamento; index: number }) => {
     const statusFinanceiro = getStatusFinanceiro(o, recibos);
     const reciboVinculado = statusFinanceiro ? getReciboDoOrcamento(o.id, recibos) : null;
     const marcado = selecionados.has(o.id);
 
     return (
-      <AnimatedEntrance index={index}>
-        <OlliCard
-          onPress={() => selecionando ? alternarSelecao(o.id) : nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
-          variant={selecionando && marcado ? 'selected' : 'default'}
-          style={{ marginHorizontal: Spacing.base, marginBottom: 10 }}
-        >
-          <View style={styles.itemHeader}>
-            {selecionando && (
-              <MaterialCommunityIcons
-                name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                size={22}
-                color={marcado ? cores.accent : cores.onSurfaceMuted}
-                style={{ marginRight: 12, marginTop: 2 }}
-              />
-            )}
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
-              <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
-              <StatusBadge status={o.status} size="sm" />
-            </View>
-          </View>
-
-          {statusFinanceiro && (
-            <View style={styles.finRow}>
-              <BadgeFinanceiroPill status={statusFinanceiro} />
-              {reciboVinculado && (
-                <Text style={styles.finReciboRef} numberOfLines={1}>Recibo Nº {reciboVinculado.numero}</Text>
-              )}
-            </View>
-          )}
-
-          {/* Em modo de seleção as ações somem — o card inteiro vira alvo do toque. */}
-          {!selecionando && (
-            <View style={styles.itemActions}>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })}>
-                <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.primary} />
-                <Text style={[styles.actionLabel, { color: cores.primary }]}>Editar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => handleClone(o)}>
-                <MaterialCommunityIcons name="content-copy" size={16} color={cores.secondary} />
-                <Text style={[styles.actionLabel, { color: cores.secondary }]}>Clonar</Text>
-              </TouchableOpacity>
-              {statusFinanceiro === 'aguardando_pagamento' ? (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => abrirRegistrarPagamento(o)}>
-                  <MaterialCommunityIcons name="cash-plus" size={16} color={cores.warning} />
-                  <Text style={[styles.actionLabel, { color: cores.warning }]}>Pagamento</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })}>
-                  <MaterialCommunityIcons name="receipt" size={16} color={cores.success} />
-                  <Text style={[styles.actionLabel, { color: cores.success }]}>Recibo</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(o)}>
-                <MaterialCommunityIcons name="trash-can-outline" size={16} color={cores.danger} />
-                <Text style={[styles.actionLabel, { color: cores.danger }]}>Excluir</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </OlliCard>
-      </AnimatedEntrance>
+      <LinhaOrcamento
+        item={o}
+        index={index}
+        selecionando={selecionando}
+        marcado={marcado}
+        statusFinanceiro={statusFinanceiro}
+        reciboVinculado={reciboVinculado}
+        onPress={onPressLinha}
+        onEditar={onEditarLinha}
+        onClonar={onClonarLinha}
+        onPagamento={onPagamentoLinha}
+        onRecibo={onReciboLinha}
+        onExcluir={onExcluirLinha}
+      />
     );
-  };
+  }, [recibos, selecionados, selecionando, onPressLinha, onEditarLinha, onClonarLinha, onPagamentoLinha, onReciboLinha, onExcluirLinha]);
+
+  const keyExtractor = useCallback((o: Orcamento) => o.id, []);
 
   return (
     <View style={styles.container}>
@@ -412,9 +589,9 @@ export default function OrcamentosScreen() {
           ) : null}
         </View>
         <View style={styles.totalRow}>
-          <Text style={[styles.totalLabel, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]}>{filtered.length} orçamento{filtered.length !== 1 ? 's' : ''}</Text>
+          <Text style={[styles.totalLabel, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]}>{resumo.contagem} orçamento{resumo.contagem !== 1 ? 's' : ''}</Text>
           <CountUp
-            value={filtered.reduce((s, o) => s + o.valorTotal, 0)}
+            value={resumo.valorTotal}
             format="currency"
             style={styles.totalValue}
           />
@@ -467,7 +644,7 @@ export default function OrcamentosScreen() {
       )}
 
       {/* TOOLBAR DE SELEÇÃO — "Selecionar" (entrada) ou controles do modo lote */}
-      {!carregando && filtered.length > 0 && (
+      {!carregando && resumo.contagem > 0 && (
         <View style={styles.selToolbar}>
           {selecionando ? (
             <>
@@ -501,11 +678,20 @@ export default function OrcamentosScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered}
-          keyExtractor={o => o.id}
+          data={itens}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={{ paddingVertical: 8, paddingBottom: (selecionando ? 104 : 80) + insets.bottom, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} />}
+          onEndReached={carregarMais}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            carregandoMais ? (
+              <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                <OlliSkeleton width={120} height={12} />
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <EmptyState
               icon="file-document-outline"

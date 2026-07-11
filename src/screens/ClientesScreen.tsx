@@ -33,6 +33,14 @@ import { goBackOrHome } from '../navigation/safeBack';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+// Perf: com listas longas, animar a entrada (fade+slide) de CADA linha monta um
+// Animated.Value + timing por item conforme a FlatList vai revelando novas
+// células ao rolar. Só as primeiras N (janela inicial visível) ganham o efeito
+// cascata — o resto aparece direto no estado final (idêntico ao fim da
+// animação), sem gastar ciclos de JS thread em linhas que o usuário nem viu
+// entrar. Mesmo motion de sempre (AnimatedEntrance já respeita reduced-motion).
+const LIMITE_ANIMACAO_ENTRADA = 20;
+
 /**
  * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
  * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
@@ -62,6 +70,92 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
     </Animated.View>
   );
 }
+
+interface LinhaClienteProps {
+  item: Cliente;
+  index: number;
+  selecionando: boolean;
+  marcado: boolean;
+  mesesRadar: number | undefined;
+  excluindo: boolean;
+  onPress: (item: Cliente) => void;
+  onLongPress: (item: Cliente) => void;
+  onEditar: (item: Cliente) => void;
+  onExcluir: (item: Cliente) => void;
+}
+
+/**
+ * Card da lista de clientes — extraído do renderItem e memoizado (React.memo)
+ * pra que um re-render da tela (ex.: digitar no modal de edição) não force a
+ * reconciliação de TODOS os cards visíveis; só os que tiverem props realmente
+ * diferentes (marcado, excluindo etc.) re-renderizam de fato.
+ */
+function LinhaClienteBase({
+  item: c,
+  index,
+  selecionando,
+  marcado,
+  mesesRadar,
+  excluindo,
+  onPress,
+  onLongPress,
+  onEditar,
+  onExcluir,
+}: LinhaClienteProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+
+  const conteudo = (
+    <TouchableOpacity
+      style={[styles.card, selecionando && marcado && styles.cardSelected]}
+      activeOpacity={0.85}
+      onPress={() => onPress(c)}
+      onLongPress={() => onLongPress(c)}
+    >
+      {selecionando && (
+        <MaterialCommunityIcons
+          name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
+          size={24}
+          color={marcado ? cores.accentLight : cores.onSurfaceMuted}
+          style={{ marginRight: 10 }}
+        />
+      )}
+      <View style={styles.avatar}><Text style={styles.avatarText}>{c.nome.charAt(0).toUpperCase()}</Text></View>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>{c.nome}</Text>
+          {mesesRadar !== undefined && (
+            <View style={styles.radarBadge}>
+              <Text style={styles.radarBadgeText}>{mesesRadar}+ meses</Text>
+            </View>
+          )}
+        </View>
+        {c.telefone ? <Text style={styles.info}>{c.telefone}</Text> : null}
+        {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
+      </View>
+      {!selecionando && (
+        <View style={styles.cardActions}>
+          <TouchableOpacity onPress={() => onEditar(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
+            <MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => onExcluir(c)} disabled={excluindo} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
+            {excluindo
+              ? <ActivityIndicator size="small" color={cores.danger} />
+              : <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />}
+          </TouchableOpacity>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+
+  // Cascata de entrada só nas primeiras linhas (ver LIMITE_ANIMACAO_ENTRADA) —
+  // as demais aparecem direto no estado final, sem animação.
+  return index < LIMITE_ANIMACAO_ENTRADA
+    ? <AnimatedEntrance index={index}>{conteudo}</AnimatedEntrance>
+    : conteudo;
+}
+
+const LinhaCliente = React.memo(LinhaClienteBase);
 
 export default function ClientesScreen() {
   const nav = useNavigation<Nav>();
@@ -97,29 +191,35 @@ export default function ClientesScreen() {
     } : p);
   });
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); }, []));
-
-  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
-  // trazendo clientes que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); }), []);
-
-  async function load() {
+  // useCallback (dep [query]): mesma semântica de "sempre closure fresca" de
+  // uma function declaration redefinida a cada render, só que com identidade
+  // ESTÁVEL entre renders que não mexem em `query` — handleDelete/handleSave
+  // (que chamam load() após salvar) ganham identidade estável também, o que
+  // por sua vez deixa a linha memoizada (React.memo) da FlatList realmente
+  // pular re-render em updates que não afetam a lista (ex.: digitar no modal).
+  const load = useCallback(async () => {
     const all = await getClientes();
     setClientes(all);
     applyFilter(all, query);
     setCarregando(false);
-  }
+  }, [query]);
 
-  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar()]); setRefreshing(false); };
-
-  async function loadRadar() {
+  const loadRadar = useCallback(async () => {
     try {
       const lista = await clientesParaReconquistar();
       setRadarMeses(new Map(lista.map(item => [item.cliente.id, item.mesesSemContato])));
     } catch {
       setRadarMeses(new Map());
     }
-  }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadRadar(); }, []));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
+  // trazendo clientes que ainda não existiam localmente).
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); }), []);
+
+  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar()]); setRefreshing(false); };
 
   function applyFilter(data: Cliente[], q: string) {
     if (!q.trim()) { setFiltered(data); return; }
@@ -182,7 +282,7 @@ export default function ClientesScreen() {
     }
   }
 
-  async function handleDelete(c: Cliente) {
+  const handleDelete = useCallback(async (c: Cliente) => {
     // Avisa se há orçamentos/agendamentos vinculados antes de confirmar a exclusão.
     let orcamentosVinculados = 0;
     let agendamentosVinculados = 0;
@@ -219,27 +319,27 @@ export default function ClientesScreen() {
         }
       },
     ]);
-  }
+  }, [load]);
 
   // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
-  function entrarSelecao(inicialId?: string) {
+  const entrarSelecao = useCallback((inicialId?: string) => {
     setAcoes(null);
     setSelecionando(true);
     setSelecionados(inicialId ? new Set([inicialId]) : new Set());
-  }
+  }, []);
 
   function sairSelecao() {
     setSelecionando(false);
     setSelecionados(new Set());
   }
 
-  function alternarSelecao(id: string) {
+  const alternarSelecao = useCallback((id: string) => {
     setSelecionados(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   function selecionarTodos() {
     setSelecionados(new Set(filtered.map(c => c.id)));
@@ -309,6 +409,45 @@ export default function ClientesScreen() {
     setErrors({});
   }
 
+  // Callbacks estáveis (useCallback) parametrizadas pelo item — passadas como
+  // prop para o LinhaCliente memoizado. Recriar closures novas a cada item
+  // dentro do renderItem quebraria o React.memo (props sempre "diferentes");
+  // aqui a IDENTIDADE da função fica igual entre renders, só o item varia.
+  const onPressLinha = useCallback((c: Cliente) => {
+    Haptics.selectionAsync().catch(() => {});
+    if (selecionando) alternarSelecao(c.id); else setAcoes(c);
+  }, [selecionando, alternarSelecao]);
+
+  const onLongPressLinha = useCallback((c: Cliente) => {
+    Haptics.selectionAsync().catch(() => {});
+    entrarSelecao(c.id);
+  }, [entrarSelecao]);
+
+  const onEditarLinha = useCallback((c: Cliente) => {
+    setEditing({ ...c });
+    setIsNew(false);
+    setErrors({});
+  }, []);
+
+  const onExcluirLinha = useCallback((c: Cliente) => { handleDelete(c); }, [handleDelete]);
+
+  const renderItem = useCallback(({ item: c, index }: { item: Cliente; index: number }) => (
+    <LinhaCliente
+      item={c}
+      index={index}
+      selecionando={selecionando}
+      marcado={selecionados.has(c.id)}
+      mesesRadar={radarMeses.get(c.id)}
+      excluindo={excluindoId === c.id}
+      onPress={onPressLinha}
+      onLongPress={onLongPressLinha}
+      onEditar={onEditarLinha}
+      onExcluir={onExcluirLinha}
+    />
+  ), [selecionando, selecionados, radarMeses, excluindoId, onPressLinha, onLongPressLinha, onEditarLinha, onExcluirLinha]);
+
+  const keyExtractor = useCallback((c: Cliente) => c.id, []);
+
   return (
     <View style={styles.container}>
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
@@ -349,59 +488,10 @@ export default function ClientesScreen() {
       ) : (
       <FlatList
         data={filtered}
-        keyExtractor={c => c.id}
+        keyExtractor={keyExtractor}
         contentContainerStyle={{ paddingTop: Spacing.base, paddingHorizontal: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: (selecionando ? 100 : Spacing.base + 80) + insets.bottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
-        renderItem={({ item: c, index }) => {
-          const marcado = selecionados.has(c.id);
-          return (
-          <AnimatedEntrance index={index}>
-            <TouchableOpacity
-              style={[styles.card, selecionando && marcado && styles.cardSelected]}
-              activeOpacity={0.85}
-              onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
-                if (selecionando) alternarSelecao(c.id); else setAcoes(c);
-              }}
-              onLongPress={() => { Haptics.selectionAsync().catch(() => {}); entrarSelecao(c.id); }}
-            >
-              {selecionando && (
-                <MaterialCommunityIcons
-                  name={marcado ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                  size={24}
-                  color={marcado ? cores.accentLight : cores.onSurfaceMuted}
-                  style={{ marginRight: 10 }}
-                />
-              )}
-              <View style={styles.avatar}><Text style={styles.avatarText}>{c.nome.charAt(0).toUpperCase()}</Text></View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.name} numberOfLines={1}>{c.nome}</Text>
-                  {radarMeses.has(c.id) && (
-                    <View style={styles.radarBadge}>
-                      <Text style={styles.radarBadgeText}>{radarMeses.get(c.id)}+ meses</Text>
-                    </View>
-                  )}
-                </View>
-                {c.telefone ? <Text style={styles.info}>{c.telefone}</Text> : null}
-                {c.cidade ? <Text style={styles.infoMuted}>{c.cidade}{c.estado ? `, ${c.estado}` : ''}</Text> : null}
-              </View>
-              {!selecionando && (
-                <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => { setEditing({ ...c }); setIsNew(false); setErrors({}); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
-                    <MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(c)} disabled={excluindoId === c.id} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
-                    {excluindoId === c.id
-                      ? <ActivityIndicator size="small" color={cores.danger} />
-                      : <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />}
-                  </TouchableOpacity>
-                </View>
-              )}
-            </TouchableOpacity>
-          </AnimatedEntrance>
-          );
-        }}
+        renderItem={renderItem}
         ListHeaderComponent={
           !carregando && filtered.length > 0 ? (
             <View style={styles.selToolbar}>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, FlatList, StyleSheet, DimensionValue, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
@@ -93,6 +93,16 @@ export function TabelaDados<T extends { id: string }>({
     });
   }
 
+  // useCallback: mantém a IDENTIDADE de renderItem/keyExtractor estável entre
+  // re-renders da tabela que não mudam `colunas`/`aoClicarLinha` (ex.: alternar
+  // ordenação só troca `dadosOrdenados`). Combinado com LinhaTabela memoizada
+  // (React.memo), uma linha só reconcilia de verdade se o próprio item mudar.
+  const renderItem = useCallback(
+    ({ item }: { item: T }) => <LinhaTabela item={item} colunas={colunas} onPress={aoClicarLinha} />,
+    [colunas, aoClicarLinha]
+  );
+  const keyExtractor = useCallback((item: T) => item.id, []);
+
   if (!carregando && dados.length === 0) {
     return (
       <View style={styles.wrap}>
@@ -142,10 +152,10 @@ export function TabelaDados<T extends { id: string }>({
             // permite getItemLayout, evitando medição custosa a cada render.
             <FlatList
               data={dadosOrdenados}
-              keyExtractor={(item) => item.id}
+              keyExtractor={keyExtractor}
               style={styles.corpoScroll}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => <LinhaTabela item={item} colunas={colunas} onPress={aoClicarLinha} />}
+              renderItem={renderItem}
               getItemLayout={(_, index) => ({ length: ALTURA_LINHA, offset: ALTURA_LINHA * index, index })}
               initialNumToRender={20}
               windowSize={8}
@@ -157,7 +167,7 @@ export function TabelaDados<T extends { id: string }>({
   );
 }
 
-function CelulaHeader<T>({
+function CelulaHeaderBase<T>({
   coluna,
   ordenacao,
   onPress,
@@ -211,7 +221,13 @@ function CelulaHeader<T>({
   );
 }
 
-function LinhaTabela<T extends { id: string }>({
+// React.memo: o header não é virtualizado (poucas colunas, sempre montado),
+// mas re-renderiza a cada alternância de ordenação — memoizar evita refazer o
+// trabalho das colunas que não mudaram de estado "ativa". Cast preserva o
+// genérico <T> (React.memo por si só devolveria um componente não-genérico).
+const CelulaHeader = React.memo(CelulaHeaderBase) as typeof CelulaHeaderBase;
+
+function LinhaTabelaBase<T extends { id: string }>({
   item,
   colunas,
   onPress,
@@ -249,6 +265,12 @@ function LinhaTabela<T extends { id: string }>({
     </Pressable>
   );
 }
+
+// React.memo: cada linha só reconcilia de verdade se `item`, `colunas` ou
+// `onPress` mudarem de fato — um re-render da tabela por causa de outra parte
+// da tela (ex.: cabeçalho, totais) não obriga a passar por TODAS as linhas
+// visíveis de novo. Cast preserva o genérico <T> pelo mesmo motivo do header.
+const LinhaTabela = React.memo(LinhaTabelaBase) as typeof LinhaTabelaBase;
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   wrap: {

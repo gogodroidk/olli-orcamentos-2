@@ -1254,15 +1254,26 @@ async function pullTable<T>(
     if (!supabase) return;
     const { data, error } = await supabase.from(remoteNome(table)).select('*');
     if (error || !Array.isArray(data)) return;
-    for (const row of data) {
-      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de gravar
-      try {
-        const obj = fromRow(row);
-        if (obj) await localUpsert(obj);
-      } catch {
-        // pula linha problemática, segue o resto
+    // Grava o lote inteiro numa ÚNICA transação: cada INSERT OR REPLACE fora de
+    // transação força um commit/fsync próprio no SQLite — com dezenas/centenas de
+    // linhas por tabela isso é ~50x mais lento que agrupar tudo num só commit.
+    // NÃO muda O QUE é puxado nem a lógica de conflito/LWW/tombstone (que continua
+    // dentro de localUpsert/fromRow, linha a linha, idêntica a antes) — só o
+    // wrapper de transação. Bônus: se algo estourar no meio (fora do catch por
+    // linha abaixo), a transação inteira reverte em vez de deixar a tabela num
+    // estado parcialmente escrito.
+    const db = await getDb();
+    await db.withTransactionAsync(async () => {
+      for (const row of data) {
+        if (syncAbortado(geracao)) return; // logout/wipe em voo → para de gravar (commita o que já foi feito até aqui, igual ao comportamento anterior linha a linha)
+        try {
+          const obj = fromRow(row);
+          if (obj) await localUpsert(obj);
+        } catch {
+          // pula linha problemática, segue o resto
+        }
       }
-    }
+    });
   } catch {
     // tabela indisponível = ignora
   }
