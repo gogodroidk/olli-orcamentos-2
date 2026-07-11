@@ -27,6 +27,7 @@ import {
 } from '../services/supabase';
 import { getEmpresa, saveEmpresa } from '../database/database';
 import { ONBOARDED_KEY } from './OnboardingScreen';
+import { marcarVisto } from '../services/onboarding';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
@@ -125,7 +126,26 @@ export default function EntrarScreen() {
         getEmpresa(),
         AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
       ]);
-      if (empresa === null && onboarded !== '1') destino = 'Onboarding';
+      if (empresa === null && onboarded !== '1') {
+        // Local vazio + nunca onboardado NESTE aparelho pode ser um usuário NOVO
+        // OU um usuário EXISTENTE logando num navegador/aparelho novo — o SQLite
+        // local ainda está vazio porque o sync da nuvem é ASSÍNCRONO (disparado
+        // pelo listener do App.tsx, não concluiu quando decidimos aqui). Antes de
+        // tratar como novo e jogar no wizard "monte seu cadastro", confere a
+        // NUVEM: se a conta já tem `empresa`, é usuário existente → vai direto
+        // pras Tabs e marca onboardado (não repete o wizard neste aparelho).
+        // Fail-safe: em dúvida (rede/erro), mostra o Onboarding — um usuário
+        // realmente novo PRECISA dele para criar a empresa.
+        let temEmpresaNaNuvem = false;
+        try {
+          if (supabase) {
+            const { data, error } = await supabase.from('empresa').select('user_id').maybeSingle();
+            temEmpresaNaNuvem = !error && !!data;
+          }
+        } catch { /* rede instável: trata como sem empresa (mostra Onboarding) */ }
+        if (temEmpresaNaNuvem) await marcarVisto();
+        else destino = 'Onboarding';
+      }
     } catch {
       // fail-safe: em erro, cai nas Tabs (já está logado).
     }
