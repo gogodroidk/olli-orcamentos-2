@@ -16,6 +16,8 @@ export const CHAT_KEY = 'olli.chat';
 export const PENDING_EMAIL_KEY = 'olli.pendingEmail';
 /** Mapa agendamento→notificação de lembrete (services/agenda). */
 export const LEMBRETE_MAP_KEY = 'olli.agenda.lembretes';
+/** Mapa ordemDeServiço→notificações de lembrete de vencimento PMOC (services/pmocLembretes). */
+export const PMOC_LEMBRETE_MAP_KEY = 'olli.pmoc.lembretes';
 /** Aviso de lembretes já explicado (AgendaScreen) — por conta, re-explica após logout com limpeza. */
 export const NOTIF_EXPLICADO_KEY = 'olli.agenda.notifExplicado';
 /**
@@ -69,6 +71,7 @@ export const APP_DATA_STORAGE_KEYS = [
   CHAT_KEY,
   PENDING_EMAIL_KEY,
   LEMBRETE_MAP_KEY,
+  PMOC_LEMBRETE_MAP_KEY,
   NOTIF_EXPLICADO_KEY,
   AUTO_BACKUP_TOGGLE_KEY,
   AUTO_BACKUP_ULTIMO_KEY,

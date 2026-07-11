@@ -2044,6 +2044,13 @@ export async function syncOnLogin(): Promise<void> {
     void import('./agenda')
       .then(m => m.resincronizarLembretes())
       .catch(() => {});
+    // Mesmo motivo, para os lembretes de vencimento PMOC: o pull grava
+    // ordens_servico/pmoc_ordens_geradas direto no SQLite (localUpsert*, sem
+    // passar por atualizarStatusOS/gerarOrdensDoPlano), então uma OS concluída
+    // em OUTRO aparelho só cancela o lembrete aqui após esta reconciliação.
+    void import('./pmoc')
+      .then(m => m.resincronizarLembretesPmoc())
+      .catch(() => {});
     // Sinaliza que a nuvem já foi baixada para o SQLite: as telas que se
     // inscreveram refazem o fetch e o estado "vazio" inicial some sozinho.
     notificarSyncAplicado();

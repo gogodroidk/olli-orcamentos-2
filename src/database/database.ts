@@ -4,6 +4,7 @@ import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOr
 import codigosErroSeed from '../../assets/codigos_erro.json';
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
+import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import { APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
 import { generateId } from '../utils/id';
 
@@ -2126,11 +2127,17 @@ export async function clearAllLocalData(): Promise<void> {
       await database.runAsync(`DELETE FROM ${tabela}`);
     }
   });
-  // 2) Notificações agendadas — cancela os lembretes de agenda da conta anterior
-  // ANTES de apagar o mapa que permite cancelá-los, senão continuariam disparando
-  // no aparelho (com nome/endereço do cliente) após a troca de conta. Best-effort.
+  // 2) Notificações agendadas — cancela os lembretes de agenda E de vencimento
+  // PMOC da conta anterior ANTES de apagar os mapas que permitem cancelá-los,
+  // senão continuariam disparando no aparelho (com nome/endereço do cliente)
+  // após a troca de conta. Best-effort.
   try {
     await cancelarTodosLembretes();
+  } catch {
+    // não bloqueia o logout
+  }
+  try {
+    await cancelarTodosLembretesPmoc();
   } catch {
     // não bloqueia o logout
   }

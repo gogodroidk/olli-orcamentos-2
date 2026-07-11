@@ -122,6 +122,13 @@ export interface Empresa {
   modeloPdfPadrao?: ModeloPdfId;
   /** Modelo padrão do recibo (escolhido em Conta → Modelos de documento). */
   modeloReciboPadrao?: ModeloReciboId;
+  /**
+   * Link "Escrever avaliação" do perfil da empresa no Google (Maps/Perfil da
+   * Empresa) — cadastrado em Meu Negócio. Habilita o botão "Pedir avaliação"
+   * no recibo/relatório pós-serviço (mestre 1.4): SEM API do Google Business,
+   * é só o texto do link embutido numa mensagem de WhatsApp via `abrirWhatsApp`.
+   */
+  linkGoogleAvaliacoes?: string;
 }
 
 export interface Cliente {

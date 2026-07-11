@@ -17,6 +17,7 @@ import {
   saveOrdemServico,
   getOrcamento,
 } from '../database/database';
+import { cancelarLembretesPmoc } from './pmocLembretes';
 import { generateId } from '../utils/id';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../types';
 
@@ -150,9 +151,20 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
   return atualizada;
 }
 
-/** Muda o status da OS (aberta → agendada → em_execucao → …). */
+/**
+ * Muda o status da OS (aberta → agendada → em_execucao → …). Ao chegar num
+ * status TERMINAL (concluída/cancelada), cancela o lembrete de vencimento PMOC
+ * desta OS, se houver — visita concluída/cancelada não deve mais avisar que
+ * está vencendo. `cancelarLembretesPmoc` é no-op silencioso para OS que nunca
+ * teve lembrete (a maioria, que não nasceu de um plano PMOC), então o gancho
+ * fica aqui sem precisar saber a origem da OS. Fire-and-forget: notificação
+ * nunca pode travar a mudança de status.
+ */
 export async function atualizarStatusOS(id: string, status: StatusOS): Promise<void> {
   await patchOrdem(id, { status });
+  if (status === 'concluida' || status === 'cancelada') {
+    void cancelarLembretesPmoc(id).catch(() => {});
+  }
 }
 
 /** Atribui (ou reatribui) o técnico executor da OS. */

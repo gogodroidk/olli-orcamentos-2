@@ -15,10 +15,11 @@ import { EtaChip } from '../../components/EtaChip';
 import { StatusBadge } from '../../components/StatusBadge';
 import { getOrcamentos, getEmpresa, getClientes, getRecibos } from '../../database/database';
 import { getProximoAgendamento } from '../../services/agenda';
-import { getEtaAgendamento, temDestinoEta, type ResultadoEta } from '../../services/eta';
+import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../../services/eta';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
 import { getReciboDoOrcamento } from '../../services/pagamentos';
 import { clientesParaReconquistar, mensagemReconquista, ClienteParaReconquistar } from '../../services/radarClientes';
+import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../../services/radarCobranca';
 import { getCurrentUser } from '../../services/supabase';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { usePermissao } from '../../hooks/usePermissao';
@@ -28,7 +29,7 @@ import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import {
-  Empresa, Orcamento, Agendamento, Recibo, OrdemServico,
+  Empresa, Orcamento, Agendamento, Cliente, Recibo, OrdemServico,
   TIPO_AGENDAMENTO_LABELS, STATUS_OS_LABELS, STATUS_OS_CORES,
   propostaJaEnviada,
 } from '../../types';
@@ -90,7 +91,7 @@ export default function InicioDesktopScreen() {
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
-  const [clientesCount, setClientesCount] = useState(0);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
   const [meuUserId, setMeuUserId] = useState<string | null>(null);
@@ -99,10 +100,24 @@ export default function InicioDesktopScreen() {
   const [radarCarregando, setRadarCarregando] = useState(true);
   const [larguraGrafico, setLarguraGrafico] = useState(0);
 
+  // RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
+  // 3 estados explícitos: `cobrancaErro` só vira `true` numa falha de leitura
+  // de verdade; lista vazia com sucesso é "tudo recebido" (não é a mesma coisa).
+  const [cobranca, setCobranca] = useState<OrcamentoParaCobrar[]>([]);
+  const [cobrancaCarregando, setCobrancaCarregando] = useState(true);
+  const [cobrancaErro, setCobrancaErro] = useState(false);
+
   const ehTecnico = ehEmpresa && papel === 'tecnico';
+  const clientesCount = clientes.length;
+  // "ESTOU A CAMINHO" (item 1.3): telefone do cliente da próxima parada,
+  // resolvido pelo clienteId no cadastro ativo já carregado acima — sem
+  // leitura nova. `undefined` = botão não aparece (gate: só com telefone).
+  const telefoneProxima = proxima?.clienteId
+    ? clientes.find(c => c.id === proxima.clienteId)?.telefone?.trim() || undefined
+    : undefined;
 
   const load = useCallback(async () => {
-    const [all, rec, os, emp, prox, clientes, user] = await Promise.all([
+    const [all, rec, os, emp, prox, cli, user] = await Promise.all([
       getOrcamentos(), getRecibos(), getOrdens(), getEmpresa(),
       getProximoAgendamento(), getClientes(), getCurrentUser(),
     ]);
@@ -111,7 +126,7 @@ export default function InicioDesktopScreen() {
     setOrdens(os);
     setEmpresa(emp);
     setProxima(prox);
-    setClientesCount(clientes.length);
+    setClientes(cli);
     setMeuUserId(user?.id ?? null);
     setCarregando(false);
   }, []);
@@ -127,8 +142,21 @@ export default function InicioDesktopScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); }, [load, loadRadar]));
-  useEffect(() => onSyncAplicado(() => { load(); loadRadar(); }), [load, loadRadar]);
+  const loadCobranca = useCallback(async () => {
+    setCobrancaErro(false);
+    try {
+      const lista = await orcamentosParaCobrar();
+      setCobranca(lista);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setCobrancaErro(true);
+    } finally {
+      setCobrancaCarregando(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); }, [load, loadRadar, loadCobranca]));
+  useEffect(() => onSyncAplicado(() => { load(); loadRadar(); loadCobranca(); }), [load, loadRadar, loadCobranca]);
 
   async function chamarNoWhatsApp(item: ClienteParaReconquistar) {
     if (!item.cliente.telefone?.trim()) {
@@ -139,6 +167,22 @@ export default function InicioDesktopScreen() {
     const mensagem = mensagemReconquista(item.cliente.nome, item.mesesSemContato);
     try {
       await abrirWhatsApp(item.cliente.telefone, mensagem);
+    } catch {
+      // silencioso: mesmo padrão do resto do app
+    }
+  }
+
+  async function cobrarNoWhatsApp(item: OrcamentoParaCobrar) {
+    // O orçamento já guarda o telefone denormalizado — funciona mesmo se o
+    // cadastro do cliente tiver sido excluído depois da aprovação.
+    const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
+    if (!telefone?.trim()) {
+      avisar('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para cobrar por aqui.`);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await abrirWhatsApp(telefone, mensagemCobranca(item));
     } catch {
       // silencioso: mesmo padrão do resto do app
     }
@@ -239,7 +283,7 @@ export default function InicioDesktopScreen() {
                 <OlliSkeleton width="80%" height={14} />
               </View>
             ) : proxima ? (
-              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} />
+              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} telefoneCliente={telefoneProxima} />
             ) : (
               <VazioAgenda irParaAgenda={irParaAgenda} />
             )}
@@ -469,7 +513,7 @@ export default function InicioDesktopScreen() {
                 <OlliSkeleton width="80%" height={14} />
               </View>
             ) : proxima ? (
-              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} />
+              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} telefoneCliente={telefoneProxima} />
             ) : (
               <VazioAgenda irParaAgenda={irParaAgenda} />
             )}
@@ -492,6 +536,48 @@ export default function InicioDesktopScreen() {
                       <Text style={styles.radarMeta}>há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'} sem contato</Text>
                     </View>
                     <OlliPressable style={styles.radarBtn} onPress={() => chamarNoWhatsApp(item)} haptic={false}>
+                      <MaterialCommunityIcons
+                        name="whatsapp"
+                        size={15}
+                        color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                      />
+                    </OlliPressable>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro
+              parado). 3 estados explícitos: carregando / erro (nunca vira
+              "vazio") / vazio de verdade ("tudo recebido"). */}
+          <View style={[styles.cartao, styles.cartaoRadar]}>
+            <Text style={styles.cartaoTitulo}>Radar de cobrança</Text>
+            {cobrancaCarregando ? (
+              <View style={{ gap: 8, marginTop: 10 }}>
+                <OlliSkeleton width="100%" height={44} />
+              </View>
+            ) : cobrancaErro ? (
+              <View style={{ marginTop: 10, gap: 6 }}>
+                <Text style={styles.visitaVazioTexto}>Não deu para carregar o radar de cobrança agora.</Text>
+                <OlliPressable onPress={loadCobranca} haptic={false}>
+                  <Text style={styles.verTodos}>Tentar de novo</Text>
+                </OlliPressable>
+              </View>
+            ) : cobranca.length === 0 ? (
+              <Text style={styles.visitaVazioTexto}>Tudo recebido — nenhum orçamento aprovado esperando pagamento.</Text>
+            ) : (
+              <View style={{ gap: 8, marginTop: 10 }}>
+                <Text style={styles.radarMeta}>
+                  {cobranca.length} sem pagamento · {formatCurrency(cobranca.reduce((s, item) => s + item.valor, 0))} parado
+                </Text>
+                {cobranca.slice(0, 3).map((item) => (
+                  <View key={item.orcamento.id} style={styles.radarLinha}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.radarNome} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
+                      <Text style={styles.radarMeta}>{formatCurrency(item.valor)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado</Text>
+                    </View>
+                    <OlliPressable style={styles.radarBtn} onPress={() => cobrarNoWhatsApp(item)} haptic={false}>
                       <MaterialCommunityIcons
                         name="whatsapp"
                         size={15}
@@ -598,7 +684,7 @@ function agruparOSPorTecnico(ordens: OrdemServico[]): LinhaTecnico[] {
   return [...mapa.values()].sort((a, b) => b.total - a.total);
 }
 
-function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irParaAgenda: () => void }) {
+function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Agendamento; irParaAgenda: () => void; telefoneCliente?: string }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // ETA com trânsito — mesmo serviço/chip do app mobile (o dono quer o tempo de
@@ -613,6 +699,20 @@ function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irPara
   }, [proxima]);
   useEffect(() => { buscarEta(); }, [buscarEta]);
   const horarioVisita = !isNaN(new Date(proxima.inicio).getTime()) ? new Date(proxima.inicio) : undefined;
+
+  // "Estou a caminho" (item 1.3) — reaproveita o MESMO `etaRes` já buscado
+  // acima para o chip (sem 2ª chamada de rede). Sem ETA disponível, a
+  // mensagem sai sem inventar um horário (ver mensagemEstouACaminho).
+  const estouACaminho = useCallback(async () => {
+    if (!telefoneCliente) return;
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await abrirWhatsApp(telefoneCliente, mensagemEstouACaminho(proxima.clienteNome, etaRes));
+    } catch {
+      // silencioso: mesmo padrão do resto do app
+    }
+  }, [telefoneCliente, proxima.clienteNome, etaRes]);
+
   return (
     <View style={{ marginTop: 10, gap: 4 }}>
       <Text style={styles.visitaQuando}>{quandoLabel(proxima.inicio)}</Text>
@@ -641,6 +741,16 @@ function ProximaVisita({ proxima, irParaAgenda }: { proxima: Agendamento; irPara
         <OlliPressable style={styles.visitaBtnGhost} onPress={irParaAgenda} haptic={false}>
           <Text style={styles.visitaBtnGhostTexto}>Ver agenda</Text>
         </OlliPressable>
+        {telefoneCliente ? (
+          <OlliPressable style={styles.visitaBtnWhats} onPress={estouACaminho} haptic={false}>
+            <MaterialCommunityIcons
+              name="whatsapp"
+              size={14}
+              color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366 (9.16:1)
+            />
+            <Text style={styles.visitaBtnWhatsTexto}>Estou a caminho</Text>
+          </OlliPressable>
+        ) : null}
       </View>
     </View>
   );
@@ -712,6 +822,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   visitaBtnTexto: { fontSize: 12.5, fontWeight: '800', color: textoSobre(c.accentLight) },
   visitaBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 9 },
   visitaBtnGhostTexto: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  // "Estou a caminho" (item 1.3): mesmo verde/contraste do botão de WhatsApp
+  // do Radar de clientes (radarBtn) — convenção única de "ação de WhatsApp".
+  visitaBtnWhats: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 9 },
+  visitaBtnWhatsTexto: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366 (9.16:1)
   visitaVazioTexto: { ...Typography.body, color: c.onSurfaceVariant, marginTop: 10 },
 
   radarLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderTopWidth: 1, borderTopColor: c.outline, paddingTop: Spacing.sm },

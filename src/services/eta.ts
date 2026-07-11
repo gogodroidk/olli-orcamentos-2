@@ -49,6 +49,22 @@ export type ResultadoEta =
   | { estado: 'sem_localizacao' }
   | { estado: 'indisponivel' };
 
+/**
+ * Mensagem de WhatsApp "estou a caminho" (item 1.3) — usa os minutos do ETA
+ * quando disponível (`resultado.estado === 'ok'`). Nos demais estados (ainda
+ * carregando, sem localização, indisponível) a mensagem sai SEM prometer um
+ * horário que não temos — nunca inventa um número. O chip do ETA (EtaChip),
+ * visível junto do botão, já explica ao prestador POR QUE a estimativa não
+ * veio; esta função só garante que a mensagem enviada nunca minta sobre isso.
+ */
+export function mensagemEstouACaminho(nomeCliente: string, resultado: ResultadoEta | null): string {
+  const primeiro = (nomeCliente ?? '').trim().split(/\s+/)[0] || 'tudo bem';
+  if (resultado?.estado === 'ok') {
+    return `Olá ${primeiro}, estou a caminho, chego em ~${resultado.minutos} min.`;
+  }
+  return `Olá ${primeiro}, estou a caminho!`;
+}
+
 /** Timeout da chamada ao worker: rota leve (Routes API), não precisa dos 30s do diagnóstico por IA. */
 const TIMEOUT_ETA_MS = 15_000;
 

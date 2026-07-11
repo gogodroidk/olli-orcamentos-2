@@ -31,6 +31,7 @@ import {
 } from '../database/database';
 import { getEquipamentos } from './equipamentos';
 import { criarOSManual, getOrdem } from './ordemServico';
+import { agendarLembretesPmoc, cancelarLembretesPmoc } from './pmocLembretes';
 import { generateId } from '../utils/id';
 import { FREQUENCIAS_PMOC, CATEGORIAS_HVAC } from '../types';
 import type {
@@ -443,6 +444,14 @@ export async function gerarOrdensDoPlano(
             // reusar o id é seguro justamente porque não há tombstone.
             await construirOS(reserva.ordemId);
             recuperadas += 1;
+            // Lembrete de vencimento (15/7/1 dias antes) para a visita reconstruída.
+            // Fire-and-forget: notificação nunca pode travar a geração de ordens.
+            void agendarLembretesPmoc({
+              ordemId: reserva.ordemId,
+              vencimento: reserva.vencimento,
+              tituloEquipamento: nomeEquip,
+              clienteNome,
+            }).catch(() => {});
           }
           continue;
         }
@@ -450,6 +459,16 @@ export async function gerarOrdensDoPlano(
         // (c) SÓ agora constrói a OS, com o MESMO id reservado.
         await construirOS(osId);
         criadas += 1;
+        // Lembrete proativo de vencimento (item 1.2): agenda os avisos de
+        // 15/7/1 dias antes do vencimento desta visita, reaproveitando o mesmo
+        // mecanismo de notificação local da agenda (ver services/pmocLembretes).
+        // Fire-and-forget: notificação nunca pode travar a geração de ordens.
+        void agendarLembretesPmoc({
+          ordemId: osId,
+          vencimento: vencimento || undefined,
+          tituloEquipamento: nomeEquip,
+          clienteNome,
+        }).catch(() => {});
       }
     }
   }
@@ -613,4 +632,57 @@ export async function aprovarVersao(
     });
   }
   return aprovada;
+}
+
+// ─── 5) RECONCILIAÇÃO DE LEMBRETES (gancho de sync) ───────────────────────────
+
+/**
+ * Reconcilia os lembretes locais de vencimento PMOC com o estado atual (planos
+ * ativos × visitas geradas × status da OS de cada uma). Cancela o lembrete de
+ * visitas cuja OS já não existe, está na lixeira ou terminou
+ * (concluída/cancelada) e (re)agenda as demais. Mesmo motivo da reconciliação
+ * de agenda (`agenda.ts.resincronizarLembretes`): o PULL do sync grava
+ * `ordens_servico`/`pmoc_ordens_geradas` direto no SQLite (localUpsert*, em
+ * cloudSync.ts), sem passar por `atualizarStatusOS`/`gerarOrdensDoPlano` — sem
+ * isto, uma OS concluída em OUTRO aparelho continuaria lembrando neste depois
+ * do sync. NUNCA lança.
+ *
+ * GAP CONHECIDO (aceito, minimal): só varre planos ATIVOS (`getPmocPlanos`) —
+ * um plano movido para a lixeira com visitas pendentes não tem o lembrete
+ * cancelado por aqui (a OS em si segue ativa). Caminho raro e fora do escopo
+ * pedido; documentado para não parecer descuido.
+ */
+export async function resincronizarLembretesPmoc(): Promise<void> {
+  try {
+    const planos = await getPmocPlanos();
+    const equipamentos = await getEquipamentos();
+    const mapaEquip = new Map(equipamentos.map((e) => [e.id, e]));
+    const clientes = await getClientes();
+    const nomePorCliente = new Map(clientes.map((c) => [c.id, c.nome]));
+
+    for (const plano of planos) {
+      const clienteNome = plano.clienteId ? nomePorCliente.get(plano.clienteId) : undefined;
+      const geradas = await getOrdensGeradas(plano.id);
+      for (const g of geradas) {
+        try {
+          const os = await getOrdem(g.ordemId); // não filtra soft-delete
+          if (!os || os.excluidoEm || os.status === 'concluida' || os.status === 'cancelada') {
+            await cancelarLembretesPmoc(g.ordemId);
+            continue;
+          }
+          const eq = mapaEquip.get(g.equipamentoId);
+          await agendarLembretesPmoc({
+            ordemId: g.ordemId,
+            vencimento: g.vencimento,
+            tituloEquipamento: eq ? descreverEquipamento(eq) : 'Equipamento',
+            clienteNome,
+          });
+        } catch {
+          // pula visita problemática, segue o resto
+        }
+      }
+    }
+  } catch {
+    // best-effort: reconciliação de lembretes PMOC nunca afeta os dados locais
+  }
 }

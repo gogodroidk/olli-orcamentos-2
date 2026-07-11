@@ -78,3 +78,38 @@ export function montarMensagemReconquista(nome: string, meses: number, nomePrest
   ];
   return linhas.filter(Boolean).join('\n');
 }
+
+/**
+ * Mensagem de WhatsApp para cobrar um orçamento APROVADO que ainda não tem
+ * recibo (Radar de cobrança). O cliente já disse sim — só falta fechar o
+ * pagamento — então o tom é direto mas cordial, nunca de pressão. Só menciona
+ * "N dias" quando isso ajuda (>= 3 dias parado); orçamento aprovado ontem não
+ * precisa soar como cobrança atrasada.
+ */
+export function montarMensagemCobranca(orc: Orcamento, diasParado: number): string {
+  const linhas = [
+    `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`,
+    diasParado >= 3
+      ? `Já faz ${diasParado} dias e ainda não recebi o pagamento — posso te ajudar a fechar isso?`
+      : 'Posso te ajudar a fechar o pagamento?',
+    'Qualquer dúvida sobre forma de pagamento, é só me chamar por aqui.',
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
+
+/**
+ * Mensagem de WhatsApp pedindo avaliação no Google, disparada pós-serviço
+ * (mestre 1.4) — no recibo. Só é chamada quando `Empresa.linkGoogleAvaliacoes`
+ * está preenchido (ver MeuNegocioScreen); o link vem PRONTO do cadastro, sem
+ * nenhuma chamada à API do Google Business.
+ */
+export function montarMensagemPedidoAvaliacao(nomeCliente: string, linkGoogle: string, empresa?: Empresa | null): string {
+  const quem = (empresa?.nomePrestador || empresa?.nome || '').trim();
+  const linhas = [
+    `Oi, ${primeiroNome(nomeCliente)}! ${quem ? `Aqui é ${quem}.` : ''}`.trim(),
+    'Muito obrigado pela confiança no nosso serviço!',
+    'Se puder, deixa uma avaliação rapidinha pra gente no Google — ajuda muito:',
+    linkGoogle.trim(),
+  ];
+  return linhas.filter(Boolean).join('\n');
+}

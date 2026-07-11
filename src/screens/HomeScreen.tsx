@@ -7,16 +7,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, type Cores } from '../theme';
-import { getOrcamentos, getEmpresa } from '../database/database';
+import { getOrcamentos, getEmpresa, getClientes } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
-import { getEtaAgendamento, temDestinoEta, type ResultadoEta } from '../services/eta';
+import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
 import { clientesParaReconquistar, mensagemReconquista, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
+import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../services/radarCobranca';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { Empresa, Orcamento, Agendamento, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../types';
+import { Empresa, Orcamento, Agendamento, Cliente, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { EtaChip } from '../components/EtaChip';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -140,6 +141,7 @@ export default function HomeScreen() {
   const ehTecnico = papel === 'tecnico';
   const rotuloOS = ehTecnico ? 'Minhas OS' : 'Ordens';
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [olliMenu, setOlliMenu] = useState(false);
@@ -149,6 +151,13 @@ export default function HomeScreen() {
   const [radarCarregando, setRadarCarregando] = useState(true);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
+
+  // RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
+  // 3 estados explícitos (nunca colapsar erro em vazio): `cobrancaErro` só vira
+  // `true` se a leitura de fato falhar; lista vazia com sucesso é "tudo recebido".
+  const [cobranca, setCobranca] = useState<OrcamentoParaCobrar[]>([]);
+  const [cobrancaCarregando, setCobrancaCarregando] = useState(true);
+  const [cobrancaErro, setCobrancaErro] = useState(false);
 
   // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra
   // shimmer). O destino vem de coordenada salva OU do endereço (o serviço
@@ -191,10 +200,13 @@ export default function HomeScreen() {
   }, [temEta, buscarEta]);
 
   const load = useCallback(async () => {
-    const [all, emp, prox] = await Promise.all([getOrcamentos(), getEmpresa(), getProximoAgendamento()]);
+    const [all, emp, prox, cli] = await Promise.all([
+      getOrcamentos(), getEmpresa(), getProximoAgendamento(), getClientes(),
+    ]);
     setOrcamentos(all);
     setEmpresa(emp);
     setProxima(prox);
+    setClientes(cli);
     setCarregando(false);
   }, []);
 
@@ -211,13 +223,26 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); }, [load, loadRadar]));
+  const loadCobranca = useCallback(async () => {
+    setCobrancaErro(false);
+    try {
+      const lista = await orcamentosParaCobrar();
+      setCobranca(lista);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setCobrancaErro(true);
+    } finally {
+      setCobrancaCarregando(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); }, [load, loadRadar, loadCobranca]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); }), [load, loadRadar]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); }), [load, loadRadar, loadCobranca]);
 
-  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar()]); setRefreshing(false); };
+  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar(), loadCobranca()]); setRefreshing(false); };
 
   async function chamarNoWhatsApp(item: ClienteParaReconquistar) {
     if (!item.cliente.telefone?.trim()) {
@@ -243,6 +268,41 @@ export default function HomeScreen() {
       setAdiandoId(null);
     }
   }
+
+  async function cobrarNoWhatsApp(item: OrcamentoParaCobrar) {
+    // O orçamento já guarda o telefone denormalizado — funciona mesmo se o
+    // cadastro do cliente tiver sido excluído depois da aprovação.
+    const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
+    if (!telefone?.trim()) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para cobrar por aqui.`);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await abrirWhatsApp(telefone, mensagemCobranca(item));
+    } catch {
+      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+    }
+  }
+
+  // "ESTOU A CAMINHO" — só aparece com telefone do cliente da próxima parada
+  // (resolvido pelo clienteId no cadastro ativo). Reaproveita o MESMO
+  // `etaResultado` já buscado pelo EtaChip do hero — sem 2ª chamada de rede.
+  const telefoneProxima = useMemo(() => {
+    if (!proxima?.clienteId) return undefined;
+    return clientes.find(c => c.id === proxima.clienteId)?.telefone?.trim() || undefined;
+  }, [proxima, clientes]);
+
+  const estouACaminho = useCallback(async () => {
+    if (!proxima || !telefoneProxima) return;
+    Haptics.selectionAsync().catch(() => {});
+    const mensagem = mensagemEstouACaminho(proxima.clienteNome, etaResultado);
+    try {
+      await abrirWhatsApp(telefoneProxima, mensagem);
+    } catch {
+      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+    }
+  }, [proxima, telefoneProxima, etaResultado]);
 
   // Grátis vê 1 cliente sumido de verdade; o resto vira teaser "+N no Pro".
   const radar = radarLiberado ? radarTotal.slice(0, 3) : radarTotal.slice(0, RADAR_GRATIS_QTD);
@@ -272,6 +332,7 @@ export default function HomeScreen() {
   const conversao = orcamentos.length ? Math.round((aprovados.length / orcamentos.length) * 100) : 0;
   const parados = emAberto.filter(o => diasAtras(o.criadoEm) >= 5);
   const valorParado = parados.reduce((s, o) => s + o.valorTotal, 0);
+  const valorCobranca = cobranca.reduce((s, item) => s + item.valor, 0);
   const conversaoDetalhe = orcamentos.length ? `${aprovados.length}/${orcamentos.length} aprovados` : 'sem histórico';
   const emAbertoDetalhe = parados.length > 0 ? `${parados.length} parados` : 'sem atrasos';
   const recentes = orcamentos.slice(0, 4);
@@ -352,6 +413,19 @@ export default function HomeScreen() {
                       onTentarNovamente={tentarEtaNovamente}
                     />
                   </View>
+                ) : null}
+                {/* "Estou a caminho" (item 1.3) — só aparece com telefone do
+                    cliente. Sem ETA disponível, avisa em vez de inventar um
+                    horário (o EtaChip acima já mostra o motivo). */}
+                {telefoneProxima ? (
+                  <TouchableOpacity style={styles.heroWhatsBtn} onPress={estouACaminho} activeOpacity={0.85}>
+                    <MaterialCommunityIcons
+                      name="whatsapp"
+                      size={16}
+                      color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                    />
+                    <Text style={styles.heroWhatsBtnText}>Estou a caminho</Text>
+                  </TouchableOpacity>
                 ) : null}
                 <View style={styles.heroActions}>
                   {proxima.endereco ? (
@@ -490,6 +564,77 @@ export default function HomeScreen() {
             </View>
           </>
         ) : null}
+
+        {/* RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
+            3 estados explícitos: carregando (skeleton) / erro (nunca vira "vazio")
+            / vazio de verdade ("tudo recebido"). */}
+        {cobrancaCarregando ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
+            <OlliSkeleton width="50%" height={16} />
+            <View style={styles.radarCard}>
+              <OlliSkeleton width={42} height={42} radius={21} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="60%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.sectionTitle}>Radar de cobrança</Text>
+            {cobrancaErro ? (
+              <View style={{ paddingHorizontal: Spacing.base }}>
+                <View style={styles.cobrancaAviso}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                  <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar o radar de cobrança agora.</Text>
+                  <TouchableOpacity onPress={loadCobranca} activeOpacity={0.8}>
+                    <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : cobranca.length === 0 ? (
+              <View style={{ paddingHorizontal: Spacing.base }}>
+                <View style={styles.cobrancaVazio}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={20} color={cores.success} />
+                  <Text style={styles.cobrancaVazioTexto}>Tudo recebido — nenhum orçamento aprovado esperando pagamento.</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
+                <Text style={styles.cobrancaResumo}>
+                  {cobranca.length} orçamento{cobranca.length > 1 ? 's' : ''} aprovado{cobranca.length > 1 ? 's' : ''} sem pagamento · {formatCurrency(valorCobranca)} parado
+                </Text>
+                {cobranca.slice(0, 3).map((item, i) => (
+                  <AnimatedEntrance key={item.orcamento.id} index={2 + i}>
+                    <View style={styles.radarCard}>
+                      <View style={styles.radarTop}>
+                        <View style={styles.radarAvatar}>
+                          <Text style={styles.radarAvatarText}>{item.orcamento.clienteNome.charAt(0).toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={styles.radarName} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
+                          <Text style={styles.radarMeta}>
+                            {formatCurrency(item.valor)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.radarActions}>
+                        <OlliPressable style={styles.radarBtnPrimary} onPress={() => cobrarNoWhatsApp(item)} haptic={false}>
+                          <MaterialCommunityIcons
+                            name="whatsapp"
+                            size={16}
+                            color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                          />
+                          <Text style={styles.radarBtnPrimaryText}>Cobrar no WhatsApp</Text>
+                        </OlliPressable>
+                      </View>
+                    </View>
+                  </AnimatedEntrance>
+                ))}
+              </View>
+            )}
+          </>
+        )}
 
         {/* ANZOL — Diagnóstico por código de erro (offline, único no BR) */}
         <AnimatedEntrance index={2}>
@@ -806,6 +951,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   heroAddrText: { flex: 1, fontSize: 12.5 },
   heroEta: { marginTop: 8, alignItems: 'flex-start' },
+  // "Estou a caminho" (item 1.3): mesmo verde/contraste do botão de WhatsApp
+  // do Radar de clientes (radarBtnPrimary) — convenção única pra "ação de
+  // WhatsApp" no app inteiro.
+  heroWhatsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, paddingVertical: 11, marginTop: 10 },
+  heroWhatsBtnText: { fontSize: 13.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366 (9.16:1)
   heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   heroBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
   heroBtnGhostText: { fontSize: 13, fontWeight: '800' },
@@ -887,6 +1037,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
   radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
   radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+
+  // RADAR DE COBRANÇA — resumo + estados erro/vazio (nunca colapsados um no outro).
+  cobrancaResumo: { fontSize: 12.5, color: c.onSurfaceVariant, fontWeight: '600' },
+  cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md },
+  cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  cobrancaVazio: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceGlass, borderWidth: 1, borderColor: c.outlineDark, borderRadius: BorderRadius.xl, padding: Spacing.md },
+  cobrancaVazioTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
 
   radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
   radarTeaserIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },

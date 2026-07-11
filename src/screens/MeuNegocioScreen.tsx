@@ -345,6 +345,16 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           <OlliInput label="Telefone" mask="phone" value={empresa.telefone} onChangeText={v => set('telefone', v)} leftIcon="phone" />
           <OlliInput label="WhatsApp (só números)" mask="phone" value={empresa.whatsapp} onChangeText={v => set('whatsapp', v.replace(/\D/g, ''))} leftIcon="whatsapp" />
           <OlliInput label="Site" value={empresa.site} onChangeText={v => set('site', v)} placeholder="www.suaempresa.com.br" leftIcon="web" autoCapitalize="none" />
+          <OlliInput
+            label="Link do Google (avaliações)"
+            value={empresa.linkGoogleAvaliacoes ?? ''}
+            onChangeText={v => set('linkGoogleAvaliacoes', v)}
+            placeholder="Link 'Escrever avaliação' do seu perfil no Google"
+            helper="Cole aqui pra liberar o botão 'Pedir avaliação' no recibo, depois do serviço."
+            leftIcon="google-maps"
+            autoCapitalize="none"
+            keyboardType="url"
+          />
           <OlliInput label="E-mail" value={empresa.email} onChangeText={v => set('email', v)} keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
           <OlliInput label="Chave PIX" value={empresa.chavePix} onChangeText={v => set('chavePix', v)} leftIcon="key-variant" />
           <OlliInput label="Normas técnicas" value={empresa.normas} onChangeText={v => set('normas', v)} multiline containerStyle={{ marginBottom: 0 }} />

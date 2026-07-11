@@ -21,8 +21,9 @@ import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
 import { generateId } from '../utils/id';
-import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
+import { exportarHtmlComoPdf, abrirWhatsApp } from '../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
+import { montarMensagemPedidoAvaliacao } from '../utils/mensagensOrcamento';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
@@ -278,6 +279,24 @@ function EmitirReciboConteudo() {
     }
   }
 
+  // Pedir avaliação no Google pós-serviço (mestre 1.4): reusa o abrirWhatsApp
+  // já usado no envio de orçamento, com uma mensagem que inclui o link
+  // cadastrado em Meu Negócio. Sem link cadastrado o botão nem aparece.
+  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim();
+  async function handlePedirAvaliacao(nome: string, telefone: string) {
+    if (!linkAvaliacao) return;
+    if (!telefone?.trim()) {
+      Alert.alert('WhatsApp', 'Cliente sem telefone cadastrado.');
+      return;
+    }
+    const msg = montarMensagemPedidoAvaliacao(nome, linkAvaliacao, empresa);
+    try {
+      await abrirWhatsApp(telefone, msg);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
+  }
+
   const semEmpresa = !carregandoEmpresa && !empresa;
 
   return (
@@ -378,6 +397,20 @@ function EmitirReciboConteudo() {
             icon={<MaterialCommunityIcons name="file-pdf-box" size={22} color="#fff" />}
             style={{ marginTop: 4 }}
           />
+
+          {/* Recibo recém-emitido + link de avaliação cadastrado: oferece pedir
+              a avaliação no Google na hora, enquanto o serviço está fresco. */}
+          {!!numero && !!linkAvaliacao && (
+            <OlliButton
+              label="Pedir avaliação no Google"
+              variant="outline"
+              size="lg"
+              fullWidth
+              onPress={() => handlePedirAvaliacao(clienteNome, clienteTelefone)}
+              icon={<MaterialCommunityIcons name="google-maps" size={20} color={cores.accentLight} />}
+              style={{ marginTop: 10 }}
+            />
+          )}
         </ScrollView>
       ) : (
         <FlatList
@@ -430,6 +463,18 @@ function EmitirReciboConteudo() {
                   {item.pdfEmitido === false ? 'Gerar e compartilhar PDF' : 'Reenviar / compartilhar'}
                 </Text>
               </TouchableOpacity>
+
+              {/* Só aparece com o link do Google cadastrado em Meu Negócio. */}
+              {!!linkAvaliacao && (
+                <TouchableOpacity
+                  style={styles.avaliacaoBtn}
+                  onPress={() => handlePedirAvaliacao(item.clienteNome, item.clienteTelefone)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="google-maps" size={16} color={cores.accentLight} />
+                  <Text style={styles.avaliacaoBtnText}>Pedir avaliação</Text>
+                </TouchableOpacity>
+              )}
             </OlliCard>
           )}
         />
@@ -493,6 +538,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline,
   },
   reenviarBtnText: { fontSize: 13, fontWeight: '700', color: c.primary },
+  avaliacaoBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.outline,
+  },
+  avaliacaoBtnText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   orcCard: {
     flexDirection: 'row', alignItems: 'center',

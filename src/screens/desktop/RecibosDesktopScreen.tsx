@@ -14,8 +14,9 @@ import { PressableWebState } from '../../components/web/pressableWebState';
 import { getRecibos, getEmpresa } from '../../database/database';
 import { marcarReciboComoPdfEmitido } from '../../services/pagamentos';
 import { onSyncAplicado } from '../../services/cloudSync';
-import { exportarHtmlComoPdf } from '../../utils/exportarDocumento';
+import { exportarHtmlComoPdf, abrirWhatsApp } from '../../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../../utils/reciboPdf';
+import { montarMensagemPedidoAvaliacao } from '../../utils/mensagensOrcamento';
 import { formatCurrency } from '../../utils/currency';
 import { parseDateBR } from '../../utils/date';
 import { RootStackParamList } from '../../navigation/AppNavigator';
@@ -165,6 +166,24 @@ export default function RecibosDesktopScreen() {
     }
   }, [empresa, processandoId, buildHtml, carregar]);
 
+  // Pedir avaliação no Google pós-serviço (mestre 1.4): mesma regra da tela
+  // mobile — reusa o abrirWhatsApp já existente, só aparece com o link
+  // cadastrado em Meu Negócio (Empresa.linkGoogleAvaliacoes).
+  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim();
+  const handlePedirAvaliacao = useCallback(async (r: Recibo) => {
+    if (!linkAvaliacao) return;
+    if (!r.clienteTelefone?.trim()) {
+      avisar('WhatsApp', 'Cliente sem telefone cadastrado.');
+      return;
+    }
+    const msg = montarMensagemPedidoAvaliacao(r.clienteNome, linkAvaliacao, empresa);
+    try {
+      await abrirWhatsApp(r.clienteTelefone, msg);
+    } catch {
+      avisar('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
+  }, [linkAvaliacao, empresa]);
+
   const verOrcamento = useCallback((r: Recibo) => {
     if (!r.orcamentoId) return;
     nav.navigate('VisualizarOrcamento', { orcamentoId: r.orcamentoId });
@@ -241,7 +260,7 @@ export default function RecibosDesktopScreen() {
     {
       chave: 'acoes',
       titulo: 'Ações',
-      largura: 140,
+      largura: 180,
       render: (r) => (
         <View style={styles.acoesLinha}>
           <AcaoIcone
@@ -253,10 +272,13 @@ export default function RecibosDesktopScreen() {
           {r.orcamentoId && (
             <AcaoIcone icone="file-document-outline" rotulo="Ver orçamento" onPress={() => verOrcamento(r)} />
           )}
+          {!!linkAvaliacao && (
+            <AcaoIcone icone="google-maps" rotulo="Pedir avaliação" onPress={() => handlePedirAvaliacao(r)} />
+          )}
         </View>
       ),
     },
-  ], [styles, handleGerarOuReenviar, verOrcamento, processandoId]);
+  ], [styles, handleGerarOuReenviar, verOrcamento, processandoId, linkAvaliacao, handlePedirAvaliacao]);
 
   return (
     <LayoutDesktop
