@@ -7,22 +7,24 @@ import {
   format, startOfWeek, endOfWeek, addDays, addWeeks, isSameDay, isToday, eachDayOfInterval,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { TimePickerModal } from 'react-native-paper-dates';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { PressableWebState } from '../../components/web/pressableWebState';
+import { ChipsFiltro, ItemChipFiltro } from '../../components/web/ChipsFiltro';
 import { OlliInput } from '../../components/OlliInput';
 import { OlliButton } from '../../components/OlliButton';
 import { OlliSkeleton } from '../../components/OlliSkeleton';
 import {
-  getAgendamentosRange, saveAgendamento, deleteAgendamento,
+  getAgendamentosRange, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
 } from '../../services/agenda';
 import {
-  Agendamento, TipoAgendamento, TIPOS_AGENDAMENTO,
+  Agendamento, TipoAgendamento, StatusAgendamento, TIPOS_AGENDAMENTO,
   TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS,
 } from '../../types';
 import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator';
 import { generateId } from '../../utils/id';
-import { nowISO, capitalizeFirst } from '../../utils/date';
+import { nowISO, capitalizeFirst, parseHoraHHMM, formatHoraHHMM } from '../../utils/date';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { avisar, confirmar } from './dialogo';
 
@@ -46,11 +48,9 @@ function combinarDataHora(data: Date, hora: string): Date {
   return d;
 }
 
-function maskHora(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-}
+// FILTROS (1.6) — client-side, sobre a lista já carregada (ver `itensFiltrados`).
+type FiltroTipoAgenda = TipoAgendamento | 'todos';
+type FiltroStatusAgenda = StatusAgendamento | 'todos';
 
 interface EditState {
   id?: string;
@@ -87,12 +87,49 @@ export default function AgendaDesktopScreen() {
   const [detalhe, setDetalhe] = useState<Agendamento | null>(null);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [filtroTipo, setFiltroTipo] = useState<FiltroTipoAgenda>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatusAgenda>('todos');
+  // Qual campo de hora o TimePickerModal está editando agora (1.7).
+  const [timePicker, setTimePicker] = useState<'inicio' | 'fim' | null>(null);
 
   // Grade desktop começa na SEGUNDA (padrão de agenda profissional/comercial;
   // decisão explícita da v4 para a visão semanal desktop, ver PLANTA).
   const inicioSemana = useMemo(() => startOfWeek(semanaRef, { weekStartsOn: 1 }), [semanaRef]);
   const fimSemana = useMemo(() => endOfWeek(semanaRef, { weekStartsOn: 1 }), [semanaRef]);
   const dias = useMemo(() => eachDayOfInterval({ start: inicioSemana, end: fimSemana }), [inicioSemana, fimSemana]);
+
+  // FILTROS (1.6) — chips de tipo/status com contagem, client-side sobre
+  // `itens` (a semana já carregada; nenhuma query nova).
+  const chipsTipo: ItemChipFiltro<FiltroTipoAgenda>[] = useMemo(() => [
+    { chave: 'todos', rotulo: 'Todos', contagem: itens.length },
+    ...TIPOS_AGENDAMENTO.map(t => ({
+      chave: t.id as FiltroTipoAgenda,
+      rotulo: t.label,
+      cor: t.color,
+      contagem: itens.filter(a => a.tipo === t.id).length,
+    })),
+  ], [itens]);
+
+  const chipsStatus: ItemChipFiltro<FiltroStatusAgenda>[] = useMemo(() => [
+    { chave: 'todos', rotulo: 'Todos', contagem: itens.length },
+    { chave: 'agendado', rotulo: STATUS_AGENDAMENTO_LABELS.agendado, cor: cores.accent, contagem: itens.filter(a => a.status === 'agendado').length },
+    { chave: 'concluido', rotulo: STATUS_AGENDAMENTO_LABELS.concluido, cor: cores.success, contagem: itens.filter(a => a.status === 'concluido').length },
+    { chave: 'cancelado', rotulo: STATUS_AGENDAMENTO_LABELS.cancelado, cor: cores.danger, contagem: itens.filter(a => a.status === 'cancelado').length },
+  ], [itens, cores]);
+
+  const itensFiltrados = useMemo(() => itens.filter(a =>
+    (filtroTipo === 'todos' || a.tipo === filtroTipo) &&
+    (filtroStatus === 'todos' || a.status === filtroStatus)
+  ), [itens, filtroTipo, filtroStatus]);
+
+  // SOBREPOSIÇÃO (1.5) — aviso NÃO-BLOQUEANTE, contra `itens` (não o filtrado:
+  // o conflito vale mesmo que o outro compromisso esteja escondido pelo filtro).
+  const conflito = useMemo(() => {
+    if (!editing || !editing.horaInicio) return null;
+    const ini = combinarDataHora(editing.data, editing.horaInicio);
+    const fimDt = editing.horaFim ? combinarDataHora(editing.data, editing.horaFim) : undefined;
+    return encontrarConflitoDeHorario(itens, { inicio: ini, fim: fimDt }, editing.id);
+  }, [itens, editing?.data, editing?.horaInicio, editing?.horaFim, editing?.id]);
 
   const rotuloSemana = useMemo(() => {
     const mesmoMes = inicioSemana.getMonth() === fimSemana.getMonth();
@@ -285,6 +322,15 @@ export default function AgendaDesktopScreen() {
         </View>
       }
     >
+      {/* FILTROS (1.6) — tipo/status, client-side sobre a semana já carregada.
+          Só aparece quando há algo pra filtrar. */}
+      {!carregando && itens.length > 0 && (
+        <View style={{ marginBottom: Spacing.sm }}>
+          <ChipsFiltro<FiltroTipoAgenda> itens={chipsTipo} selecionado={filtroTipo} aoSelecionar={setFiltroTipo} />
+          <ChipsFiltro<FiltroStatusAgenda> itens={chipsStatus} selecionado={filtroStatus} aoSelecionar={setFiltroStatus} />
+        </View>
+      )}
+
       {carregando ? (
         <View style={styles.grade}>
           {Array.from({ length: 7 }).map((_, i) => (
@@ -297,7 +343,7 @@ export default function AgendaDesktopScreen() {
       ) : (
         <View style={styles.grade}>
           {dias.map((dia) => {
-            const doDia = itens
+            const doDia = itensFiltrados
               .filter((a) => isSameDay(new Date(a.inicio), dia))
               .sort((a, b) => a.inicio.localeCompare(b.inicio));
             const hoje = isToday(dia);
@@ -490,26 +536,67 @@ export default function AgendaDesktopScreen() {
                   leftIcon="text"
                 />
 
+                {/* HORÁRIOS (1.7) — TimePickerModal do react-native-paper-dates no
+                    lugar da máscara de texto manual (frágil: aceitava "25:99"). */}
                 <View style={styles.rowFields}>
-                  <OlliInput
-                    label="Início (hh:mm)"
-                    value={editing.horaInicio}
-                    onChangeText={(v) => setEditing({ ...editing, horaInicio: maskHora(v) })}
-                    placeholder="09:00"
-                    keyboardType="numeric"
-                    leftIcon="clock-outline"
-                    containerStyle={{ flex: 1, marginRight: 10 }}
-                  />
-                  <OlliInput
-                    label="Fim (opcional)"
-                    value={editing.horaFim}
-                    onChangeText={(v) => setEditing({ ...editing, horaFim: maskHora(v) })}
-                    placeholder="10:30"
-                    keyboardType="numeric"
-                    leftIcon="clock-check-outline"
-                    containerStyle={{ flex: 1 }}
-                  />
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.fieldLabel}>Início</Text>
+                    <Pressable
+                      onPress={() => setTimePicker('inicio')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Escolher horário de início"
+                      style={({ hovered, focused }: PressableWebState) => [styles.horaField, hovered && styles.horaFieldHover, focused && styles.focoVisivel]}
+                    >
+                      <MaterialCommunityIcons name="clock-outline" size={18} color={cores.onSurfaceMuted} />
+                      <Text style={styles.horaFieldText}>{editing.horaInicio || '09:00'}</Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Fim (opcional)</Text>
+                    <Pressable
+                      onPress={() => setTimePicker('fim')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Escolher horário de fim"
+                      style={({ hovered, focused }: PressableWebState) => [styles.horaField, hovered && styles.horaFieldHover, focused && styles.focoVisivel]}
+                    >
+                      <MaterialCommunityIcons name="clock-check-outline" size={18} color={cores.onSurfaceMuted} />
+                      <Text style={[styles.horaFieldText, !editing.horaFim && { color: cores.onSurfaceMuted }]}>
+                        {editing.horaFim || 'Não definido'}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
+
+                {/* SOBREPOSIÇÃO (1.5) — aviso não-bloqueante: some sozinho quando
+                    o horário deixa de colidir; "Confirmar" continua ativo. */}
+                {conflito && (
+                  <View style={styles.avisoConflito}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={16} color={cores.warning} />
+                    <Text style={styles.avisoConflitoText}>
+                      Esse horário colide com "{conflito.titulo}" das {hhmm(conflito.inicio)}
+                      {conflito.fim ? `–${hhmm(conflito.fim)}` : ''}.
+                    </Text>
+                  </View>
+                )}
+
+                <TimePickerModal
+                  visible={timePicker !== null}
+                  animationType="fade"
+                  locale="pt-BR"
+                  use24HourClock
+                  label={timePicker === 'inicio' ? 'Horário de início' : 'Horário de fim'}
+                  cancelLabel="Cancelar"
+                  confirmLabel="Definir"
+                  hours={parseHoraHHMM(timePicker === 'inicio' ? editing.horaInicio : editing.horaFim).hours}
+                  minutes={parseHoraHHMM(timePicker === 'inicio' ? editing.horaInicio : editing.horaFim).minutes}
+                  onDismiss={() => setTimePicker(null)}
+                  onConfirm={({ hours, minutes }) => {
+                    const hhmmSel = formatHoraHHMM(hours, minutes);
+                    if (timePicker === 'inicio') setEditing({ ...editing, horaInicio: hhmmSel });
+                    else setEditing({ ...editing, horaFim: hhmmSel });
+                    setTimePicker(null);
+                  }}
+                />
 
                 <OlliInput
                   label="Endereço"
@@ -655,4 +742,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tipoOptionText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
   modalFooterBtns: { marginTop: Spacing.md },
+
+  // HORÁRIOS (1.7) — mesmo "corpo" visual do OlliInput.field (borda 1.3,
+  // BorderRadius.lg, surfaceVariant), só que Pressable pra abrir o TimePickerModal.
+  horaField: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.3, borderRadius: BorderRadius.lg, borderColor: c.outline,
+    backgroundColor: c.surfaceVariant, paddingHorizontal: 15, minHeight: 52,
+  },
+  horaFieldHover: { backgroundColor: c.surfacePressed },
+  horaFieldText: { fontSize: 15, color: c.onSurface },
+
+  // SOBREPOSIÇÃO (1.5) — aviso não-bloqueante, mesmo par warning/warningLight
+  // usado nos avisos mobile (EmitirReciboScreen) — "atenção, mas segue".
+  avisoConflito: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: c.warning, borderRadius: BorderRadius.md, padding: 10, marginBottom: Spacing.md },
+  avisoConflitoText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 17 },
 });

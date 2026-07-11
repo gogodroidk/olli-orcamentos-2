@@ -75,6 +75,25 @@ export function parseDateBR(br: string): string {
   return `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 }
 
+/**
+ * Parseia 'HH:mm' em `{ hours, minutes }` (números) para alimentar o
+ * TimePickerModal (react-native-paper-dates). String vazia/inválida → `{}`,
+ * que o TimePickerModal interpreta como "usar a hora atual do aparelho".
+ */
+export function parseHoraHHMM(hhmm: string): { hours?: number; minutes?: number } {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+  if (!m) return {};
+  const hours = Number(m[1]);
+  const minutes = Number(m[2]);
+  if (hours > 23 || minutes > 59) return {};
+  return { hours, minutes };
+}
+
+/** Formata `{ hours, minutes }` (do TimePickerModal) em 'HH:mm'. */
+export function formatHoraHHMM(hours: number, minutes: number): string {
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
 export function formatDateBR(iso: string): string {
   if (!iso) return '';
   if (iso.includes('/')) return iso; // already BR

@@ -186,6 +186,36 @@ export async function resincronizarLembretes(): Promise<void> {
   }
 }
 
+// ─── SOBREPOSIÇÃO DE HORÁRIO (aviso não-bloqueante ao salvar) ─
+/**
+ * Agendamento ATIVO (não cancelado) cujo intervalo cruza com [inicio, fim) do
+ * candidato — mesmo dia "de graça" (dois intervalos em dias diferentes nunca
+ * se cruzam por timestamp). Passe `ignorarId` ao EDITAR, senão o item colide
+ * consigo mesmo. Sem `fim` definido (nem no candidato, nem no item salvo),
+ * assume 1h de duração só para efeito da comparação (não altera nada gravado).
+ * Puro — opera sobre a lista JÁ carregada em memória (`itens`), sem query nova;
+ * é aviso, não validação: quem chama decide se deixa salvar mesmo assim.
+ */
+export function encontrarConflitoDeHorario(
+  itens: Agendamento[],
+  candidato: { inicio: Date; fim?: Date },
+  ignorarId?: string,
+): Agendamento | null {
+  const DURACAO_PADRAO_MS = 60 * 60 * 1000;
+  const ini = candidato.inicio.getTime();
+  if (isNaN(ini)) return null;
+  const fim = candidato.fim ? candidato.fim.getTime() : ini + DURACAO_PADRAO_MS;
+  for (const a of itens) {
+    if (a.id === ignorarId || a.status === 'cancelado') continue;
+    const aIni = new Date(a.inicio).getTime();
+    if (isNaN(aIni)) continue;
+    const aFim = a.fim ? new Date(a.fim).getTime() : aIni + DURACAO_PADRAO_MS;
+    if (isNaN(aFim)) continue;
+    if (ini < aFim && fim > aIni) return a;
+  }
+  return null;
+}
+
 function rowToAgendamento(r: any): Agendamento {
   return {
     id: r.id,

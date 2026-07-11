@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
+import { registerTranslation, pt as ptDatas } from 'react-native-paper-dates';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,6 +38,12 @@ import { DESKTOP_BREAKPOINT } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// TimePickerModal/DatePickerModal (react-native-paper-dates) — Agenda usa
+// locale="pt-BR". Registro único no boot (idempotente: é só uma atribuição de
+// dicionário); PaperProvider abaixo já cobre o tema, então não precisa de outro
+// provider — os modais dessa lib usam o Modal nativo do RN, não um Portal.
+registerTranslation('pt-BR', ptDatas);
 
 /**
  * Modo desktop RESOLVIDO UMA VEZ no boot (fora do render). O linking precisa de

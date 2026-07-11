@@ -13,6 +13,7 @@ import {
   addDays, addWeeks, addMonths, isSameDay, eachDayOfInterval, isToday,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { TimePickerModal } from 'react-native-paper-dates';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, sobreSecundario, corCategoriaEmChip, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -22,19 +23,20 @@ import { OlliPressable } from '../components/OlliPressable';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliSkeleton } from '../components/OlliSkeleton';
+import { ChipsFiltro, ItemChipFiltro } from '../components/web/ChipsFiltro';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  getAgendamentosRange, saveAgendamento, deleteAgendamento,
+  getAgendamentosRange, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
   pedirPermissaoNotificacao, temPermissaoNotificacao, MINUTOS_ANTECEDENCIA_LEMBRETE,
 } from '../services/agenda';
 import { getClientes } from '../database/database';
 import {
-  Agendamento, Cliente, TipoAgendamento, TIPOS_AGENDAMENTO,
+  Agendamento, Cliente, TipoAgendamento, StatusAgendamento, TIPOS_AGENDAMENTO,
   TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS,
 } from '../types';
 import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
-import { nowISO, capitalizeFirst } from '../utils/date';
+import { nowISO, capitalizeFirst, parseHoraHHMM, formatHoraHHMM } from '../utils/date';
 import { onSyncAplicado } from '../services/cloudSync';
 import { NOTIF_EXPLICADO_KEY } from '../services/storageKeys';
 import {
@@ -46,6 +48,9 @@ import { abrirRotaGoogleMaps } from '../services/rotas';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type AgendaRoute = RouteProp<TabParamList, 'Agenda'>;
 type Modo = 'dia' | 'semana' | 'mes';
+// FILTROS (1.6) — client-side, sobre a lista já carregada (ver `itensFiltrados`).
+type FiltroTipoAgenda = TipoAgendamento | 'todos';
+type FiltroStatusAgenda = StatusAgendamento | 'todos';
 
 /**
  * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
@@ -129,6 +134,8 @@ export default function AgendaScreen() {
   const [sincronizando, setSincronizando] = useState(false);
   const [googleSyncPill, setGoogleSyncPill] = useState(false);
   const [googleConectado, setGoogleConectado] = useState(false);
+  const [filtroTipo, setFiltroTipo] = useState<FiltroTipoAgenda>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatusAgenda>('todos');
   const [googleBusy, setGoogleBusy] = useState(false);
   const googleDisponivel = googleAgendaDisponivel();
 
@@ -191,12 +198,38 @@ export default function AgendaScreen() {
 
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
-  // Dias do período que efetivamente têm agendamentos (para o modo semana/mês).
+  // FILTROS (1.6) — chips de tipo/status com contagem, client-side sobre `itens`
+  // (a lista já carregada do período; nenhuma query nova). "Todos" sempre é a
+  // contagem total do período, independente do OUTRO filtro estar ativo.
+  const chipsTipo: ItemChipFiltro<FiltroTipoAgenda>[] = useMemo(() => [
+    { chave: 'todos', rotulo: 'Todos', contagem: itens.length },
+    ...TIPOS_AGENDAMENTO.map(t => ({
+      chave: t.id as FiltroTipoAgenda,
+      rotulo: t.label,
+      cor: t.color,
+      contagem: itens.filter(a => a.tipo === t.id).length,
+    })),
+  ], [itens]);
+
+  const chipsStatus: ItemChipFiltro<FiltroStatusAgenda>[] = useMemo(() => [
+    { chave: 'todos', rotulo: 'Todos', contagem: itens.length },
+    { chave: 'agendado', rotulo: STATUS_AGENDAMENTO_LABELS.agendado, cor: cores.accent, contagem: itens.filter(a => a.status === 'agendado').length },
+    { chave: 'concluido', rotulo: STATUS_AGENDAMENTO_LABELS.concluido, cor: cores.success, contagem: itens.filter(a => a.status === 'concluido').length },
+    { chave: 'cancelado', rotulo: STATUS_AGENDAMENTO_LABELS.cancelado, cor: cores.danger, contagem: itens.filter(a => a.status === 'cancelado').length },
+  ], [itens, cores]);
+
+  const itensFiltrados = useMemo(() => itens.filter(a =>
+    (filtroTipo === 'todos' || a.tipo === filtroTipo) &&
+    (filtroStatus === 'todos' || a.status === filtroStatus)
+  ), [itens, filtroTipo, filtroStatus]);
+
+  // Dias do período que efetivamente têm agendamentos (para o modo semana/mês) —
+  // já considerando o filtro, senão apareceriam dias "vazios" pro filtro atual.
   const dias = useMemo(() => {
     if (modo === 'dia') return [startOfDay(ref)];
     const todos = eachDayOfInterval({ start: inicio, end: fim });
-    return todos.filter(d => itens.some(a => isSameDay(new Date(a.inicio), d)));
-  }, [modo, ref, inicio.getTime(), fim.getTime(), itens]);
+    return todos.filter(d => itensFiltrados.some(a => isSameDay(new Date(a.inicio), d)));
+  }, [modo, ref, inicio.getTime(), fim.getTime(), itensFiltrados]);
 
   function passo(delta: number) {
     Haptics.selectionAsync().catch(() => {});
@@ -374,7 +407,11 @@ export default function AgendaScreen() {
     }
   }
 
-  const vazio = itens.length === 0;
+  // Dois estados de "vazio" distintos: período sem NENHUM agendamento (mostra o
+  // CTA "Agendar visita") vs. período com itens mas o FILTRO escondeu todos
+  // (mostra um jeito de limpar o filtro, não repete o CTA de criar).
+  const semAgendamentos = itens.length === 0;
+  const semResultadoDoFiltro = !semAgendamentos && itensFiltrados.length === 0;
 
   // Identidade do período visível. Muda ao navegar (‹ ›) ou trocar de modo;
   // usada como parte da key dos itens para re-disparar a entrada animada,
@@ -397,7 +434,7 @@ export default function AgendaScreen() {
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
-        subtitle={`${itens.length} compromisso${itens.length === 1 ? '' : 's'} no período`}
+        subtitle={`${itensFiltrados.length} compromisso${itensFiltrados.length === 1 ? '' : 's'} no período`}
         right={
           <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); }} activeOpacity={0.85}>
             <Text style={[styles.todayBtnText, { color: gradientes.sobreHeader }]}>Hoje</Text>
@@ -481,6 +518,15 @@ export default function AgendaScreen() {
         />
       </View>
 
+      {/* FILTROS (1.6) — tipo/status, client-side sobre a lista já carregada.
+          Só aparece quando há algo pra filtrar (período com agendamentos). */}
+      {!carregando && !semAgendamentos && (
+        <View style={{ paddingHorizontal: Spacing.base }}>
+          <ChipsFiltro<FiltroTipoAgenda> itens={chipsTipo} selecionado={filtroTipo} aoSelecionar={setFiltroTipo} />
+          <ChipsFiltro<FiltroStatusAgenda> itens={chipsStatus} selecionado={filtroStatus} aoSelecionar={setFiltroStatus} />
+        </View>
+      )}
+
       {/* LISTA */}
       {carregando ? (
         <View style={{ padding: Spacing.base, gap: 10 }}>
@@ -500,7 +546,7 @@ export default function AgendaScreen() {
             </AnimatedEntrance>
           ))}
         </View>
-      ) : vazio ? (
+      ) : semAgendamentos ? (
         <View style={{ flex: 1 }}>
           <EmptyState
             icon="calendar-blank-outline"
@@ -508,6 +554,16 @@ export default function AgendaScreen() {
             subtitle="Agende suas visitas e serviços para organizar o seu dia."
             actionLabel="Agendar visita"
             onAction={() => abrirNovo()}
+          />
+        </View>
+      ) : semResultadoDoFiltro ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState
+            icon="filter-remove-outline"
+            title="Nada com esse filtro"
+            subtitle="Ajuste os filtros acima para ver os compromissos deste período."
+            actionLabel="Limpar filtros"
+            onAction={() => { setFiltroTipo('todos'); setFiltroStatus('todos'); }}
           />
         </View>
       ) : (
@@ -522,7 +578,7 @@ export default function AgendaScreen() {
             // dos itens fora da primeira dobra, evitando jank em listas longas).
             let ordem = -1;
             return dias.map((dia) => {
-              const doDia = itens
+              const doDia = itensFiltrados
                 .filter(a => isSameDay(new Date(a.inicio), dia))
                 .sort((a, b) => a.inicio.localeCompare(b.inicio));
               if (doDia.length === 0) return null;
@@ -570,6 +626,7 @@ export default function AgendaScreen() {
           <AgendamentoForm
             state={editing}
             clientes={clientes}
+            itens={itens}
             salvando={salvando}
             onChange={setEditing}
             onClose={() => setEditing(null)}
@@ -671,17 +728,13 @@ function combinarDataHora(data: Date, hora: string): Date {
   return d;
 }
 
-function maskHora(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-}
-
 function AgendamentoForm({
-  state, clientes, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
+  state, clientes, itens, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
 }: {
   state: EditState;
   clientes: Cliente[];
+  /** Agendamentos JÁ carregados do período — usados só pra detectar SOBREPOSIÇÃO (1.5), sem query nova. */
+  itens: Agendamento[];
   salvando: boolean;
   onChange: (s: EditState) => void;
   onClose: () => void;
@@ -694,6 +747,8 @@ function AgendamentoForm({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [showClientes, setShowClientes] = useState(false);
+  // Qual campo de hora o TimePickerModal está editando agora (1.7).
+  const [timePicker, setTimePicker] = useState<'inicio' | 'fim' | null>(null);
 
   const set = (patch: Partial<EditState>) => onChange({ ...state, ...patch });
 
@@ -701,6 +756,16 @@ function AgendamentoForm({
     Haptics.selectionAsync().catch(() => {});
     set({ data: addDays(state.data, delta) });
   }
+
+  // SOBREPOSIÇÃO (1.5) — aviso NÃO-BLOQUEANTE: recalcula a cada troca de
+  // horário/data, contra a lista `itens` já carregada (sem query nova).
+  // `ignorarId: state.id` evita o item colidir consigo mesmo ao editar.
+  const conflito = useMemo(() => {
+    if (!state.horaInicio) return null;
+    const ini = combinarDataHora(state.data, state.horaInicio);
+    const fimDt = state.horaFim ? combinarDataHora(state.data, state.horaFim) : undefined;
+    return encontrarConflitoDeHorario(itens, { inicio: ini, fim: fimDt }, state.id);
+  }, [itens, state.data, state.horaInicio, state.horaFim, state.id]);
 
   return (
     <KeyboardAvoidingView style={styles.formContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -818,27 +883,68 @@ function AgendamentoForm({
           <QuickDate label="+1 semana" onPress={() => set({ data: addDays(new Date(), 7) })} />
         </View>
 
-        {/* HORÁRIOS */}
+        {/* HORÁRIOS (1.7) — TimePickerModal do react-native-paper-dates no lugar
+            da máscara de texto manual (frágil: aceitava "25:99"). */}
         <View style={styles.rowFields}>
-          <OlliInput
-            label="Início (hh:mm)"
-            value={state.horaInicio}
-            onChangeText={v => set({ horaInicio: maskHora(v) })}
-            placeholder="09:00"
-            keyboardType="numeric"
-            leftIcon="clock-outline"
-            containerStyle={{ flex: 1, marginRight: 10 }}
-          />
-          <OlliInput
-            label="Fim (opcional)"
-            value={state.horaFim}
-            onChangeText={v => set({ horaFim: maskHora(v) })}
-            placeholder="10:30"
-            keyboardType="numeric"
-            leftIcon="clock-check-outline"
-            containerStyle={{ flex: 1 }}
-          />
+          <View style={{ flex: 1, marginRight: 10 }}>
+            <Text style={styles.fieldLabel}>Início</Text>
+            <TouchableOpacity
+              style={styles.clientePicker}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setTimePicker('inicio'); }}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Escolher horário de início"
+            >
+              <MaterialCommunityIcons name="clock-outline" size={20} color={cores.onSurfaceMuted} />
+              <Text style={styles.clientePickerText}>{state.horaInicio || '09:00'}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldLabel}>Fim (opcional)</Text>
+            <TouchableOpacity
+              style={styles.clientePicker}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setTimePicker('fim'); }}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Escolher horário de fim"
+            >
+              <MaterialCommunityIcons name="clock-check-outline" size={20} color={cores.onSurfaceMuted} />
+              <Text style={[styles.clientePickerText, !state.horaFim && { color: cores.onSurfaceMuted }]}>
+                {state.horaFim || 'Não definido'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* SOBREPOSIÇÃO (1.5) — aviso não-bloqueante: some sozinho quando o
+            horário deixa de colidir; o botão Confirmar continua ativo. */}
+        {conflito && (
+          <View style={styles.avisoConflito}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={cores.warning} />
+            <Text style={styles.avisoConflitoText}>
+              Esse horário colide com "{conflito.titulo}" das {hhmm(conflito.inicio)}
+              {conflito.fim ? `–${hhmm(conflito.fim)}` : ''}.
+            </Text>
+          </View>
+        )}
+
+        <TimePickerModal
+          visible={timePicker !== null}
+          animationType="fade"
+          locale="pt-BR"
+          use24HourClock
+          label={timePicker === 'inicio' ? 'Horário de início' : 'Horário de fim'}
+          cancelLabel="Cancelar"
+          confirmLabel="Definir"
+          hours={parseHoraHHMM(timePicker === 'inicio' ? state.horaInicio : state.horaFim).hours}
+          minutes={parseHoraHHMM(timePicker === 'inicio' ? state.horaInicio : state.horaFim).minutes}
+          onDismiss={() => setTimePicker(null)}
+          onConfirm={({ hours, minutes }) => {
+            const hhmmSel = formatHoraHHMM(hours, minutes);
+            if (timePicker === 'inicio') set({ horaInicio: hhmmSel }); else set({ horaFim: hhmmSel });
+            setTimePicker(null);
+          }}
+        />
 
         {/* ENDEREÇO */}
         <OlliInput
@@ -1015,6 +1121,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   quickDateText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
 
   rowFields: { flexDirection: 'row' },
+
+  // SOBREPOSIÇÃO (1.5) — aviso não-bloqueante, mesmo par warning/warningLight
+  // usado nos avisos de EmitirReciboScreen (padrão do app pra "atenção, mas segue").
+  avisoConflito: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: c.warning, borderRadius: BorderRadius.md, padding: 10, marginBottom: Spacing.base },
+  avisoConflitoText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 17 },
 
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: Spacing.base },
   statusOption: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },

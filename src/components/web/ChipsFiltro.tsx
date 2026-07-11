@@ -22,8 +22,9 @@ interface Props<K extends string> {
  * Fileira de chips de filtro (um ativo por grupo, com contagem) — primitiva
  * compartilhada do kit desktop v4 (Equipamentos, Recibos, Ordens de serviço,
  * PMOC, Lixeira, Equipe...). Client-side, sem paginação; hover/focus-visible
- * no padrão do kit (ver TabelaDados/ClientesDesktopScreen). Não importada por
- * nenhuma tela mobile.
+ * no padrão do kit (ver TabelaDados/ClientesDesktopScreen). `hovered`/`focused`
+ * são opcionais (ver PressableWebState) — em telas MOBILE (ex.: AgendaScreen)
+ * o componente funciona igual, só sem os efeitos de hover/teclado (web-only).
  */
 export function ChipsFiltro<K extends string>({ itens, selecionado, aoSelecionar }: Props<K>) {
   const styles = useEstilos(criarEstilos);
