@@ -10,6 +10,26 @@
 ## Legenda
 `[x]` feito+verificado (typecheck/node-check) · `[~]` feito, requer teste vivo (emulador/Stripe/Supabase) · `[ ]` pendente
 
+## ENTREGUE nesta sessão (2026-07-12) — 6 commits, todos tsc 0 / node --check OK
+`ebcaceb` F0 login (3 estados) + paywall Empresa · `6242b0a` F1a CNPJ (worker+domínio+cliente) ·
+`03b98f0` F1a-UI autofill no Onboarding · `c73d866` XSS no PDF + reduced-motion no skeleton + calculadora ·
+`ad716fc` "Feito com OLLI" no portal + reduced-motion voz/chat · `aa2c103` docs (auditoria+estratégia+plano).
+**Nada rodou em emulador/Stripe ainda** — ver o runbook de teste no fim deste doc antes de publicar.
+
+## RUNBOOK — testar e publicar (só roda no ambiente com emulador/Stripe, ex. C:\olli)
+1. **Login (F0a) no emulador `olli_phone`:** logar um usuário EXISTENTE num aparelho novo/limpo, com e sem
+   rede. Confirmar que ele cai nas Tabs com os dados sincronizados — NUNCA no Onboarding, e a empresa real
+   na nuvem NÃO vira branco. Repetir forçando erro de rede na 1ª checagem.
+2. **Paywall (F0b) via Stripe:** conta Grátis tenta convidar → 402 `plano_requer_empresa`; conta Empresa
+   ATIVA → convite OK; simular `customer.subscription.deleted` e reconferir que o convite passa a 402.
+3. **CNPJ (F1a):** deploy do worker (declarar o binding `CNPJ_RL` no wrangler antes) e testar o botão
+   "Preencher pelo CNPJ" no Onboarding com um CNPJ real — confere autofill + segmento deduzido.
+4. **Portal "Feito com OLLI":** abrir um link `/o/<token>` e conferir o rodapé + o deep-link.
+5. **Build:** seguir a memória `olli-build-apk-windows` (C:\olli, `-x lintVitalRelease`), smoke test no
+   emulador (boot sem FATAL — regra Hermes), depois AAB/deploy.
+> Enquanto o Workers Build por Git não estiver comprovadamente OFF, todo push na main derruba o worker +
+> os 5 rate-limiters (ver KNOWN_BLOCKERS B5) — `reparar.mjs` de plantão.
+
 ---
 
 ## FASE 0 — Estancar sangramentos (confiança + receita)
