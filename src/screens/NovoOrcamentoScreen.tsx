@@ -142,7 +142,7 @@ export default function NovoOrcamentoScreen() {
   // diagnóstico / código de erro. Lidos só na criação (não no modo edição).
   const prefillClienteId = (route.params as any)?.clienteId as string | undefined;
   const prefillItem = (route.params as any)?.prefillItem as
-    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string }
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }
     | undefined;
 
   const [step, setStep] = useState(0);
@@ -220,6 +220,10 @@ export default function NovoOrcamentoScreen() {
 
       // Pré-carrega 1 item (descrição de diagnóstico/código) para o usuário só ajustar preço.
       if (prefillItem?.nome?.trim()) {
+        const qtdPrefill =
+          typeof prefillItem.quantidade === 'number' && prefillItem.quantidade > 0
+            ? prefillItem.quantidade
+            : 1;
         const item: ItemOrcamento = {
           id: generateId(),
           tipo: prefillItem.tipo,
@@ -227,7 +231,7 @@ export default function NovoOrcamentoScreen() {
           nome: prefillItem.nome.trim(),
           descricao: prefillItem.descricao?.trim() || undefined,
           preco: 0,
-          quantidade: 1,
+          quantidade: qtdPrefill,
           unidade: 'un',
           subtotal: 0,
         };

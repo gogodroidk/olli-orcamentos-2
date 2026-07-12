@@ -30,6 +30,7 @@ import AgendaScreen from '../screens/AgendaScreen';
 import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
+import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import PlanosScreen from '../screens/PlanosScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
@@ -81,6 +82,8 @@ export type PrefillItem = {
   tipo: 'servico' | 'produto';
   nome: string;
   descricao?: string;
+  /** Quantidade pré-carregada (ex.: litros de tinta calculados). Default 1. */
+  quantidade?: number;
 };
 
 export type RootStackParamList = {
@@ -109,6 +112,8 @@ export type RootStackParamList = {
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
   OlliChat: undefined;
+  // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
+  CalculadoraTinta: undefined;
   Planos: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
@@ -199,6 +204,7 @@ const ModelosDocumentoCentro = comCentroDesktop(ModelosDocumentoScreen);
 const DiagnosticoIACentro = comCentroDesktop(DiagnosticoIAScreen);
 const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
+const CalculadoraTintaCentro = comCentroDesktop(CalculadoraTintaScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
@@ -497,6 +503,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
+      <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
