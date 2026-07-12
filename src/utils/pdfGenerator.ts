@@ -194,16 +194,35 @@ function renderItensTabela(itens: ItemOrcamento[]): string {
  * escapado aqui; o `<br/>` do ramo do sinal é marcação fixa controlada.
  */
 function pagamentoTexto(o: Orcamento): string {
-  if (o.condicoesPagamento) return escapeHtml(o.condicoesPagamento);
-  const formas: string[] = [];
-  if (o.formasPagamento?.pix) formas.push('Pix');
-  if (o.formasPagamento?.credito) formas.push('Crédito');
-  if (o.formasPagamento?.debito) formas.push('Débito');
-  if (o.formasPagamento?.dinheiro) formas.push('Dinheiro');
-  if (o.sinalPercentual) {
-    return `Sinal de ${o.sinalPercentual}% na aprovação<br/>Restante na conclusão · ${formas.join(', ') || 'a combinar'}`;
+  const partes: string[] = [];
+  // Sinal/entrada preenchido no wizard — antes NÃO aparecia no PDF entregue ao
+  // cliente (só o percentual, e só quando não havia condição em texto livre). O
+  // valor em R$ tem prioridade sobre o percentual; a data entra se houver.
+  if (o.sinalValor && o.sinalValor > 0) {
+    const dataTxt = o.sinalData ? ` até ${escapeHtml(dataSinalBR(o.sinalData))}` : '';
+    partes.push(`Entrada de ${formatCurrency(o.sinalValor)}${dataTxt}`);
+  } else if (o.sinalPercentual) {
+    partes.push(`Sinal de ${o.sinalPercentual}% na aprovação`);
   }
-  return formas.length ? formas.join(' · ') : 'A combinar';
+  if (o.condicoesPagamento) {
+    // Texto livre do usuário — escapado (pode ser adulterado via sync).
+    partes.push(escapeHtml(o.condicoesPagamento));
+  } else {
+    const formas: string[] = [];
+    if (o.formasPagamento?.pix) formas.push('Pix');
+    if (o.formasPagamento?.credito) formas.push('Crédito');
+    if (o.formasPagamento?.debito) formas.push('Débito');
+    if (o.formasPagamento?.dinheiro) formas.push('Dinheiro');
+    if (partes.length && formas.length) partes.push(`Restante na conclusão · ${formas.join(', ')}`);
+    else if (formas.length) partes.push(formas.join(' · '));
+  }
+  return partes.length ? partes.join('<br/>') : 'A combinar';
+}
+
+/** Data ISO (YYYY-MM-DD…) → DD/MM/YYYY; qualquer outro formato passa direto. */
+function dataSinalBR(d: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 }
 
 /** 3 colunas de condições: Pagamento · Garantia · Prazo (omite vazias). */
@@ -231,6 +250,17 @@ function renderObservacoes(o: Orcamento): string {
     <div class="text-block">
       <div class="eyebrow">Observações</div>
       <div class="body">${escapeHtml(o.informacoesAdicionais)}</div>
+    </div>
+  `;
+}
+
+/** Bloco "Laudo técnico" (laudoTecnico) — capturado no wizard e antes NUNCA exibido no PDF. */
+function renderLaudo(o: Orcamento): string {
+  if (!o.laudoTecnico) return '';
+  return `
+    <div class="text-block">
+      <div class="eyebrow">Laudo técnico</div>
+      <div class="body">${escapeHtml(o.laudoTecnico)}</div>
     </div>
   `;
 }
@@ -544,6 +574,7 @@ export function gerarHtmlOrcamento(
   const condicoesHtml = renderCondicoes(o);
   const approvalGuideHtml = renderApprovalGuide(o, opts?.linkPublico);
   const observacoesHtml = renderObservacoes(o);
+  const laudoHtml = renderLaudo(o);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
   const accentSoft = mixWhite(accent, 0.09);   // fundo do TOTAL / pílula
@@ -803,6 +834,7 @@ ${renderCapa(o, empresa, planoCapa)}
     ` : ''}
 
     <!-- OBSERVAÇÕES (texto livre, opcional — inclui observações padrão da empresa) -->
+    ${laudoHtml}
     ${observacoesHtml}
 
     <!-- FOTOS DO SERVIÇO -->
