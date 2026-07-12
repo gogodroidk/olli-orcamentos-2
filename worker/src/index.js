@@ -470,6 +470,67 @@ async function handleEta(request, env) {
   }
 }
 
+// Consulta de CNPJ (BrasilAPI) para o CADASTRO MÁGICO do Onboarding: o app manda
+// só os 14 dígitos, o worker consulta a BrasilAPI (grátis, sem chave) e devolve a
+// empresa NORMALIZADA (razão, fantasia, CNAE principal + secundários, endereço). A
+// dedução CNAE→vertical é feita no CLIENTE (src/services/verticais.ts) — o worker é
+// proxy fino. Autenticado + rate limit por usuário (a BrasilAPI é grátis mas tem
+// fair-use; e evita usarem o worker pra raspar CNPJ). TODO(cache): cachear por CNPJ
+// 30 dias (tabela Supabase) + fallback Casa dos Dados. Ver docs/ESTRATEGIA_SUPERIOR.md.
+async function handleCnpj(cnpjBruto, request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+
+  const cnpj = String(cnpjBruto || '').replace(/\D/g, '');
+  if (cnpj.length !== 14) return json({ ok: false, erro: 'cnpj_invalido' }, 400);
+
+  // Rate limit por usuário (binding OPCIONAL — se não provisionado no wrangler,
+  // não bloqueia; mesmo padrão gracioso do ETA_RL).
+  if (env.CNPJ_RL) {
+    try {
+      const { success } = await env.CNPJ_RL.limit({ key: user.id });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch { /* binding ausente: não bloqueia */ }
+  }
+
+  try {
+    const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (resp.status === 404) return json({ ok: false, erro: 'cnpj_nao_encontrado' }, 404);
+    if (!resp.ok) return json({ ok: false, erro: 'consulta_indisponivel' }, 502);
+    const d = await resp.json().catch(() => null);
+    if (!d || typeof d !== 'object') return json({ ok: false, erro: 'consulta_indisponivel' }, 502);
+
+    const secundarios = Array.isArray(d.cnaes_secundarios)
+      ? d.cnaes_secundarios
+          .filter((c) => c && c.codigo)
+          .map((c) => ({ codigo: String(c.codigo), descricao: String(c.descricao || '') }))
+          .slice(0, 20)
+      : [];
+
+    return json({
+      ok: true,
+      empresa: {
+        cnpj,
+        razaoSocial: String(d.razao_social || ''),
+        nomeFantasia: String(d.nome_fantasia || ''),
+        cnaePrincipal: { codigo: String(d.cnae_fiscal || ''), descricao: String(d.cnae_fiscal_descricao || '') },
+        cnaesSecundarios: secundarios,
+        logradouro: [d.descricao_tipo_de_logradouro, d.logradouro, d.numero].filter(Boolean).join(' ').trim(),
+        bairro: String(d.bairro || ''),
+        municipio: String(d.municipio || ''),
+        uf: String(d.uf || ''),
+        cep: String(d.cep || '').replace(/\D/g, ''),
+        porte: String(d.porte || ''),
+        mei: !!d.opcao_pelo_mei,
+      },
+    });
+  } catch {
+    return json({ ok: false, erro: 'consulta_falhou' }, 502);
+  }
+}
+
 // Geocodificação (endereço em texto → lat/lng). Serve o ETA: o `Agendamento`
 // guarda só `endereco` (texto), e o /eta exige coordenadas. Mesma chave restrita
 // do /eta (agora liberada p/ Routes + Geocoding), sempre server-side — o app
@@ -781,6 +842,11 @@ export default {
     // ETA com trânsito (Routes API). Não é rota de IA — não exige Gemini, mas
     // exige login (protege a chave/cota). A chave vive só aqui (secret), nunca no
     // app. Barato por design: o app chama só a próxima parada, com cache.
+    // Cadastro mágico por CNPJ — GET /cnpj/<14 dígitos>, autenticado (ver handleCnpj).
+    if (url.pathname.startsWith('/cnpj/') && request.method === 'GET') {
+      return handleCnpj(url.pathname.slice('/cnpj/'.length), request, env);
+    }
+
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEta(request, env);
     }
