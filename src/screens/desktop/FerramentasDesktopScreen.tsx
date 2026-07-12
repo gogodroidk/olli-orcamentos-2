@@ -7,6 +7,8 @@ import { Spacing, BorderRadius, Typography, useEstilos, type Cores } from '../..
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import { useVerticais } from '../../hooks/useVerticais';
+import type { VerticalId } from '../../services/verticais';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -17,6 +19,10 @@ interface Ferramenta {
   desc: string;
   color: string;
   route: keyof RootStackParamList;
+  /** Ferramenta de HVAC (diagnósticos de ar-condicionado). Some para outros ofícios. */
+  verticalHvac?: boolean;
+  /** Ferramenta única de um ofício (ex.: calculadora de tinta → 'pintura'). */
+  vertical?: VerticalId;
 }
 
 /**
@@ -33,8 +39,9 @@ function criarFerramentas(c: Cores): Ferramenta[] {
   return [
     { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: c.accentLight, route: 'OlliVoz' },
     { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: c.primaryLight, route: 'OlliChat' },
-    { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Descreva o defeito, a OLLI ajuda', color: c.accentLight, route: 'DiagnosticoIA' },
-    { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico' },
+    { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Descreva o defeito, a OLLI ajuda', color: c.accentLight, route: 'DiagnosticoIA', verticalHvac: true },
+    { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
+    { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: c.warning, route: 'CalculadoraTinta', vertical: 'pintura' },
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos' },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo' },
@@ -48,7 +55,10 @@ function criarFerramentas(c: Cores): Ferramenta[] {
 export default function FerramentasDesktopScreen() {
   const nav = useNavigation<Nav>();
   const styles = useEstilos(criarEstilos);
-  const ferramentas = useEstilos(criarFerramentas);
+  const { mostraHvac, mostraVertical } = useVerticais();
+  const ferramentas = useEstilos(criarFerramentas).filter(
+    (f) => !(f.verticalHvac && !mostraHvac) && !(f.vertical && !mostraVertical(f.vertical)),
+  );
 
   return (
     <LayoutDesktop titulo="Ferramentas" subtitulo="Tudo que você precisa para atender seus clientes.">
