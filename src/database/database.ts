@@ -1,7 +1,9 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada } from '../types';
-import codigosErroSeed from '../../assets/codigos_erro.json';
+// codigos_erro.json (~365 KB) é carregado SOB DEMANDA em seedCodigosErro (lazy
+// require), não como import estático — assim o boot não paga o parse quando o
+// seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
@@ -501,7 +503,8 @@ async function seedCodigosErro(database: SQLite.SQLiteDatabase) {
   const row = await database.getFirstAsync<{ c: number }>('SELECT COUNT(*) as c FROM codigos_erro');
   const versaoAtual = Number(atual?.valor ?? '0');
   if ((row?.c ?? 0) > 0 && versaoAtual >= SEED_CODIGOS_VERSAO) return;
-  const seed = codigosErroSeed as any[];
+  // Só AGORA (quando vamos de fato semear) o JSON grande é lido e parseado.
+  const seed = require('../../assets/codigos_erro.json') as any[];
   if (!Array.isArray(seed) || seed.length === 0) return;
   await database.withTransactionAsync(async () => {
     await database.runAsync('DELETE FROM codigos_erro');
