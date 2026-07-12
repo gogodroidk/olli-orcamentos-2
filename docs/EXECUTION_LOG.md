@@ -1,7 +1,7 @@
 # EXECUTION_LOG — OLLI Orçamentos
 
 > O que já foi ENTREGUE, com evidência (commit ou arquivo). Atualizar ao fim de cada onda.
-> Última atualização: 2026-07-10.
+> Última atualização: 2026-07-12.
 
 ## Ciclo v1–v8 (pré-roadmap atual)
 
@@ -327,6 +327,54 @@ Um bug meu no meio: `sev*/status` num JSDoc — o `*/` fechou o comentário. `ts
 **APK testado no emulador** (regra dura da memória). Build de `C:\olli` no `origin/main` (100.8 MB). Provado que o bundle tem meu código (`modeloReciboPadrao`, `Modelos de documento`, `Como foi o dia`, `notaEm`, `sevCritica` no `index.android.bundle`). Smoke test no `olli_phone`: instala, sobe, renderiza a Home (dark, dados GR Tech, nav acima da barra de gestos), navega para Conta/Ferramentas e rola a Home — **zero FATAL** no logcat. O `errorReport.ts` (ErrorUtils/globalThis, específico de Hermes) não derruba o boot.
 
 APK: `C:\olli\android\app\build\outputs\apk\release\app-release.apk`.
+
+## Roadmap Mestre + Fase 0/1 (2026-07-10/11)
+
+Commits: `8309b37` (roadmap mestre — 8 lentes Sonnet + Fable), `e4bf966` (Fase 0 segurança/loja:
+Data Safety fiel a "sem Supabase Storage", base legal LGPD por legítimo interesse, admin fail-closed),
+`53c8113` (Fase 1 Receita — "o OLLI fala": radar de cobrança, "estou a caminho", lembrete PMOC,
+avaliação Google), `d2ac2d6` (Fase 1 Fricção: erro de IA unificado `<EstadoIA>`, moldura/zoom do
+PdfPreview, ErrorBoundary de topo, paywall/EmptyState), `5d2952c` (Fase 1 Velocidade: transação no
+pull, dashboard em SQL agregado, memoização — **paginação foi tentada e depois revertida por decisão
+documentada**), `c46bdbd` (Fase 1 Agenda — os P's: sobreposição, filtros, TimePicker do paper-dates).
+Landing/site de marketing "SETPOINT": `c0bc5d4`/`e5f7807`/`ed440be`/`ad54801`. ETA com trânsito ponta a
+ponta: `0e6759d`/`da3635a` (worker `/eta` + `/geocodificar`). Desktop "fim do vira-celular": `c8c84a5`.
+
+## Auditoria Geral (7 lentes + Fable) + Ondas de Correção (2026-07-11)
+
+Auditoria: `6b36f46` — 7 lentes Sonnet + síntese Fable, **38 achados únicos (4 P0, 14 P1)** em
+`docs/AUDITORIA_GERAL.md`. As correções entraram em 5 ondas, cada uma citando o achado que fecha:
+
+| Onda | Commit | Achados fechados (evidência lida no código) |
+| --- | --- | --- |
+| 1 — segurança/dinheiro | `7da4a94` | P0-2 (migrations `20260718_rls_owner_backdoor` + `20260719_clientes_insert_equipe` — `papel<>'owner'` + índice único; INSERT de clientes a membro ativo), P1-1 (rate limit + teto de payload em `/eta`+`/geocodificar`), P1-2 (gate de papel fail-closed em Ordens/EquipamentosDesktop), P1-3/P1-4 (injeção de owner em `cloudSync.ts`/`clienteLink.ts`), P1-6 (prefixo `convite:` no rate limit), P1-7 (PKCE S256), P2-6 (reparar.mjs sem fallback de ADMIN_EMAIL) |
+| 2 — tamanho do APK | `337daa1` | P0-3 (`expo-build-properties` no `app.json`: ProGuard + shrinkResources), P0-4 (split de plataforma do Metro: `src/screens/desktop/index.ts` stub + `index.web.ts` real, `LandingScreen.tsx/.web.tsx` — ~12k linhas fora do bundle Hermes), P1-14a (`react-native-vector-icons` removido) |
+| 3a — ConfirmDialog | `7c0d50e` | P1-10 (96 `window.confirm/alert` crus do desktop → `ConfirmDialog` temático + `DialogoDesktopHost`) |
+| 3b — consistência/UX | `b6abcf4` | P1-5 (copy da privacidade sem promessa falsa), P1-9 (contraste dos badges via `corStatusOrcamento`/`corCategoriaEmChip` no theme), P1-12 (reduced-motion no `OlliMascot`/`EmptyState`) |
+| 4 — P2 codáveis | `7f975a6` | P2 (cache de ETA, zoom do `PdfPreviewModal`, cabeçalho da `pmoc_fundacao`, `KNOWN_BLOCKERS` B4) |
+
+Pós-auditoria (já em main): `6b11106` (reduced-motion estendido ao HojeScreen), `fbdf7e2` (usuário
+existente caía no onboarding em aparelho novo — checa a nuvem antes do wizard), `5250f49` (perf do login:
+`getCurrentUser` passou a usar `getSession` local em vez de `getUser`, + push do sync em paralelo com
+teto de concorrência — mata o "arrasta ao logar" / flood de `/auth/v1/user`).
+
+**Aplicação em produção (2026-07-11):** as 2 migrations de segurança (owner backdoor + cliente-do-técnico)
+aplicadas no projeto `yiaeplqinnnnniyvwtls`; APK v1.1.0 (vc9, R8 ligado, 93 MB) buildado e testado no
+emulador `olli_phone` (boot limpo, sem FATAL); web publicada; o dono confirmou ter desativado o Workers
+Build por Git no Cloudflare (push monitorado ~6 min sem clobber).
+
+## Re-auditoria total (10 lentes + Fable) — 2026-07-12
+
+`docs/AUDITORIA_GERAL.md` foi **reescrito** com a re-auditoria de 10 lentes (app + web + landing + worker +
+db + build) + verificação adversarial contra o código + crítico de completude. Resultado: **os 4 P0 codáveis
+e ~12 P1 de 07-11 confirmados CORRIGIDOS**; perfeição estimada subiu de 80-85% → **88-90%**. Achados que
+sobram (detalhe no AUDITORIA_GERAL): P0-1 Workers Build (humano, risco composto — apaga também os 5 bindings
+de rate limit → worker fail-open); paywall do plano Empresa inexistente (achado NOVO — dinheiro); reintrodução
+da classe "erro vira vazio" em bordas multi-tenant (tombstone single-tenant, cliente do técnico falha em
+silêncio, `contextoEquipeOwner` colapsa erro em null); correções de contraste/reduced-motion/dialogs que não
+chegaram ao mobile (badges PMOC, shimmer do skeleton, NovoOrcamentoScreen com `window.alert`); `codigos_erro.json`
+(365KB) importado estático no boot; notificação de PMOC sem handler de toque (payload morto); MFA do admin; e
+drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 
 ## Bloqueios externos ativos
 

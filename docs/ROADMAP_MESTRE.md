@@ -2,7 +2,18 @@
   ROADMAP MESTRE do OLLI — gerado por analise multiespecialista (8 lentes Sonnet + pesquisa web)
   e sintetizado pelo Fable 5, em 2026-07-10. Validado pelo Opus (spot-checks confirmaram:
   admin.js:28 fallback hardcoded, react-native-paper-dates ja no bundle, zero Supabase Storage).
-  Este e um documento de DECISAO — nada aqui foi executado. Aguarda aprovacao do dono por fase/item.
+
+  >>> STATUS 2026-07-12 (re-auditoria): este roadmap NÃO está mais "nada executado".
+  Fase 0 e a maior parte da Fase 1 já foram entregues e estão em produção. Evidência por commit:
+    - Fase 0 (loja/legal): e4bf966 (Data Safety fiel, base legal LGPD, admin fail-closed). 0.1-0.4 seguem HUMANO.
+    - Fase 1 Receita (1.1-1.4): 53c8113. Fricção (1.8/1.9/1.11-1.16): d2ac2d6. Velocidade (1.17-1.19/1.21): 5d2952c
+      (paginação 1.13/1.18 foi TENTADA e depois REVERTIDA por decisão documentada — segue full-load nas telas desktop;
+       HojeScreen e os radares ficaram FORA do dashboard-agg — ver AUDITORIA_GERAL 2026-07-12). Agenda P's (1.5-1.7): c46bdbd.
+    - Fase 2: 2.4 S256 e 2.6 R8/shrink FEITOS (337daa1 + app.json). 2.7 ícone 990KB PENDENTE. 2.1-2.3 (Calendar/contacts/push)
+      seguem atrás dos passos humanos (OAuth Android, FCM).
+    - Fase 3 (pós-loja): 3.9 split de plataforma FEITO (index.web.ts). Resto PENDENTE.
+  O que NÃO foi executado: 1.20 (code-splitting web), o paywall do plano Empresa (achado NOVO da re-auditoria — hoje
+  Equipe funciona de graça), e toda a Fase 3 grande. Detalhe e reconciliação item-a-item em docs/AUDITORIA_GERAL.md.
 -->
 
 # ROADMAP MESTRE — OLLI Orçamentos

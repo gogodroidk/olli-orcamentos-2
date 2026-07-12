@@ -16,7 +16,9 @@
 | 3 | Membro vê dados do owner | B aceita convite → `select` orcamentos de A | linhas de A visíveis | T3 |
 | 4 | Técnico escreve em nome do owner | B `insert` orçamento com `user_id=A, criado_por=B` | sucesso | T4 |
 | 5 | Técnico não forja autoria | B `insert` com `user_id=A, criado_por=A` (ou null) | **negado** | T4 |
-| 6 | Técnico não altera cadastro base | B `update/insert` em `empresa`, `clientes`, `servicos`, `produtos`, `recibos` de A | **negado** (escrita conservadora) | T7 |
+| 6 | Técnico não altera cadastro base | B `update/insert` em `empresa`, `servicos`, `produtos`, `recibos` de A | **negado** (escrita conservadora) | T7 |
+| 6b | **Técnico CRIA cliente em nome do owner** (mudou em `20260719_clientes_insert_equipe.sql` — P1-3) | B `insert` em `clientes` com `user_id=A, criado_por=B` | **sucesso** (nasce no tenant de A) | T2 da 20260719 |
+| 6c | Técnico não edita/apaga cliente do owner | B `update/delete` em `clientes` de A | **negado** (UPDATE/DELETE seguem owner-only — furo de UI: hoje falha em silêncio, ver AUDITORIA_GERAL 2026-07-12) | T3 da 20260719 |
 | 7 | Desativação corta acesso na hora | A seta `ativo=false` em B → B `select` dados de A | 0 linhas | T5 |
 | 8 | Convite expirado não concede acesso | B chama `aceitar_convite(token expirado)` | `erro:convite_expirado`, sem membership | T6 |
 | 9 | Convite reusado | segundo `aceitar_convite(mesmo token)` por outro user | `erro:convite_ja_usado` | T6 |
