@@ -64,13 +64,17 @@ antes/depois no portal · **lucro de verdade** (não faturamento) · contrato qu
 > Detalhe completo no journal do workflow. Ordem = maior "amor do técnico / isso é diferente" por esforço.
 
 **FASE 1 — App do ofício** (o pré-requisito de tudo)
-- [~] **Motor de personalização por vertical** (persistir verticais+ferramentas na org, hook `useVertical()`/
-  `temFerramenta()`, gate dos HVAC por `'refrigeracao'`, HojeScreen/Ferramentas por `ferramentasSugeridas()`). **M**
-- [ ] IA por vertical (payload leva `vertical`; worker injeta prompt por segmento). **M**
-- [ ] Certificado ANVISA (dedetização). **P** · Calculadora de tinta (pintura). **P** · Contrato recorrente. **P**
+- [x] **Motor de personalização por vertical** — `verticais.ts` + `useVerticais` (store reativo). Deduz no
+  onboarding (CNAE→`Empresa.verticais`, schema-less), editável em "Meu negócio", gate esconde HVAC
+  (Equipamentos/PMOC/Diagnóstico) para outros ofícios em SidebarNav + Ferramentas (mobile E desktop).
+- [x] IA por vertical — worker `rotuloVertical()` + `vozSystem`/`chatSystem` (VOZ/CHAT/transcrever); cliente
+  injeta `vertical` via `verticalParaIA()`. Default = HVAC (backward-compat). Diagnóstico segue HVAC-only.
+- [x] Calculadora de tinta (pintura) — `CalculadoraTintaScreen`, gate por `vertical:'pintura'`, resultado
+  vira item de orçamento (`PrefillItem.quantidade`). [ ] Certificado ANVISA (dedetização). **P** · [ ] Contrato recorrente. **P**
+- [x] BÔNUS: Checklist por ofício na OS (`checklistVertical.ts`) — kickstart de 1 toque por vertical.
 
 **FASE 2 — Amor do técnico**
-- [ ] Botões "Ligar"/"Ir até lá" no header da OS (Linking tel:/maps). **P**
+- [x] Botões "Ligar"/"WhatsApp"/"Ir até lá" no detalhe da OS (Linking tel:/wa.me/maps; busca o Cliente p/ contato+endereço).
 - [ ] Sol/lua no header da execução (reusa toggleTema). **P**
 - [ ] `CampoComVoz` (TextInput+microfone) em observações/checklist/PMOC. **M**
 - [ ] Scanner de QR do equipamento (expo-camera). **M**
