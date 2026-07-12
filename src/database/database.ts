@@ -2159,6 +2159,18 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const ordensServico = asArray<OrdemServico>(data.ordensServico);
   const equipamentos = asArray<Equipamento>(data.equipamentos);
 
+  // GUARDA ANTI-PERDA: um backup corrompido/parcial que vira `{}` passa pela checagem
+  // de objeto lá em cima e, SEM isto, apagaria todas as tabelas e inseriria nada
+  // (perda TOTAL). Se o snapshot não traz NENHUM item nem empresa, é vazio/inválido:
+  // recusa ANTES de tocar no banco. Um app de fato vazio não tem o que perder.
+  const totalItens =
+    clientes.length + servicos.length + produtos.length + orcamentos.length +
+    recibos.length + modelos.length + depoimentos.length + agendamentos.length +
+    relatoriosDiarios.length + orcamentoVersoes.length + ordensServico.length + equipamentos.length;
+  if (totalItens === 0 && !data.empresa) {
+    throw new Error('Backup vazio ou inválido — nada para restaurar. Seus dados não foram alterados.');
+  }
+
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
   const idsRestaurados: { tabela: string; itemId: string }[] = [

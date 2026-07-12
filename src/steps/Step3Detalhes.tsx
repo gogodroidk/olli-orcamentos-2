@@ -160,7 +160,10 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
             value={orc.sinalValor ?? 0}
             onChangeValue={v => {
               const clamped = Math.max(0, Math.min(orc.valorTotal, v));
-              onChange({ sinalValor: clamped, sinalPercentual: orc.subtotal ? Math.round((clamped / orc.subtotal) * 100) : 0 });
+              // Percentual derivado do valorTotal (pós-desconto) — a MESMA base do clamp
+              // acima e do "restante" (linha ~63). Antes usava o subtotal (pré-desconto),
+              // então "50%" não batia com o total real quando havia desconto.
+              onChange({ sinalValor: clamped, sinalPercentual: orc.valorTotal ? Math.round((clamped / orc.valorTotal) * 100) : 0 });
             }}
             containerStyle={{ flex: 1, marginRight: 10 }}
           />
