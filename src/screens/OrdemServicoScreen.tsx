@@ -19,6 +19,8 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { useTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
+import { useVerticais } from '../hooks/useVerticais';
+import { modeloChecklistVertical } from '../services/checklistVertical';
 // Contrato da ONDA 4 — ÚNICA superfície de import da frente B (além de types).
 import {
   getOrdens,
@@ -404,6 +406,10 @@ function DetalheOS({
     ? [cliente.endereco, cliente.cidade, cliente.estado].map((p) => (p || '').trim()).filter(Boolean).join(', ')
     : '';
 
+  // Checklist pronto do ofício (vazio p/ 'geral'/sem ofício → botão some).
+  const { verticais } = useVerticais();
+  const modeloOficio = modeloChecklistVertical(verticais?.[0]);
+
   // Limpa o timer do checklist ao desmontar (evita gravar em componente morto).
   useEffect(() => () => {
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
@@ -460,6 +466,26 @@ function DetalheOS({
     setOrdem((prev) => {
       if (!prev) return prev;
       const novo = [...prev.checklist, item];
+      listaParaSalvar = novo;
+      return { ...prev, checklist: novo };
+    });
+    if (!listaParaSalvar) return;
+    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => {});
+  }
+
+  /** Kickstart: aplica o checklist do ofício, pulando itens de texto já presente. */
+  function aplicarModeloChecklist() {
+    if (!ordem || modeloOficio.length === 0) return;
+    Haptics.selectionAsync().catch(() => {});
+    let listaParaSalvar: ItemChecklist[] | null = null;
+    setOrdem((prev) => {
+      if (!prev) return prev;
+      const existentes = new Set(prev.checklist.map((c) => c.texto.trim().toLowerCase()));
+      const novos: ItemChecklist[] = modeloOficio
+        .filter((t) => !existentes.has(t.trim().toLowerCase()))
+        .map((t) => ({ id: generateId(), texto: t, feito: false }));
+      if (novos.length === 0) return prev;
+      const novo = [...prev.checklist, ...novos];
       listaParaSalvar = novo;
       return { ...prev, checklist: novo };
     });
@@ -651,7 +677,21 @@ function DetalheOS({
                 {total > 0 ? <Text style={styles.blocoContador}>{feitos}/{total}</Text> : null}
               </View>
               {ordem.checklist.length === 0 ? (
-                <Text style={styles.vazioTexto}>Nenhum item ainda. Adicione o que precisa ser feito.</Text>
+                <>
+                  <Text style={styles.vazioTexto}>Nenhum item ainda. Adicione o que precisa ser feito.</Text>
+                  {modeloOficio.length > 0 ? (
+                    <TouchableOpacity
+                      style={styles.atribuirBtn}
+                      activeOpacity={0.85}
+                      onPress={aplicarModeloChecklist}
+                      accessibilityRole="button"
+                      accessibilityLabel="Usar checklist do meu ofício"
+                    >
+                      <MaterialCommunityIcons name="clipboard-list-outline" size={18} color={cores.accentLight} />
+                      <Text style={styles.atribuirBtnText}>Usar checklist do meu ofício</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
               ) : (
                 ordem.checklist.map((c) => (
                   <View key={c.id} style={styles.checkRow}>
