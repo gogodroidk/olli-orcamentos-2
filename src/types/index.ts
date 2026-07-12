@@ -1,3 +1,5 @@
+import type { VerticalId, FerramentaId } from '../services/verticais';
+
 /**
  * Status do orçamento ao longo do ciclo comercial (mestre 13/35).
  *
@@ -108,6 +110,13 @@ export interface Empresa {
   logoUri?: string;
   assinaturaUri?: string;
   nomePrestador: string;
+
+  // OFÍCIO (personalização por vertical — F1 do docs/SISTEMA_SUPERIOR.md): deduzido do
+  // CNAE no onboarding, editável em "Meu ofício". VAZIO/AUSENTE = fluxo genérico (o mesmo
+  // de hoje — usuário existente não perde nada; o gate só ESCONDE p/ quem escolheu outra
+  // vertical). Ver src/services/verticais.ts (empresaMostraVertical / ferramentasSugeridas).
+  verticais?: VerticalId[];
+  ferramentasAtivas?: FerramentaId[];
 
   // Personalização — padrões usados para pré-preencher novos orçamentos e
   // documentos (o.corMarca segue prevalecendo por orçamento; aqui é só o

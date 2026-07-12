@@ -179,3 +179,24 @@ export function ferramentasSugeridas(verticais: readonly VerticalId[]): Ferramen
   }
   return [...set];
 }
+
+/**
+ * A empresa deve VER as ferramentas/telas da vertical `id`? É o GATE central da
+ * personalização (docs/SISTEMA_SUPERIOR.md). BACKWARD-COMPAT deliberado: empresa SEM
+ * verticais definidas (todo usuário existente) ou com `'geral'` vê TUDO — como hoje.
+ * O gate só ESCONDE quando a empresa escolheu verticais específicas que não incluem `id`.
+ * A dedução nunca tira nada de quem não escolheu.
+ */
+export function empresaMostraVertical(
+  verticaisEmpresa: readonly VerticalId[] | undefined,
+  id: VerticalId,
+): boolean {
+  if (!verticaisEmpresa || verticaisEmpresa.length === 0) return true; // sem ofício = mostra tudo
+  if (verticaisEmpresa.includes('geral')) return true;
+  return verticaisEmpresa.includes(id);
+}
+
+/** Atalho: mostrar as ferramentas de HVAC (PMOC, equipamentos, códigos de erro, diagnóstico)? */
+export function empresaMostraHvac(verticaisEmpresa: readonly VerticalId[] | undefined): boolean {
+  return empresaMostraVertical(verticaisEmpresa, 'refrigeracao');
+}

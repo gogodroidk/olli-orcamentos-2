@@ -24,7 +24,7 @@ import { nowISO } from '../utils/date';
 import { isValidCPF } from '../utils/masks';
 import { buscarCep } from '../services/cep';
 import { consultarCnpj } from '../services/cnpj';
-import { deduzirVerticais, verticalPorId, type VerticalId } from '../services/verticais';
+import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId } from '../services/verticais';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY, marcarVisto } from '../services/onboarding';
@@ -206,6 +206,10 @@ export default function OnboardingScreen() {
         ...p,
         nome: p.nome.trim() || nomeEmpresa,
         segmento: p.segmento ?? VERTICAL_PARA_SEGMENTO[principal] ?? 'outro',
+        // Persiste a vertical deduzida (F1 do SISTEMA_SUPERIOR): vira o "ofício" da
+        // empresa (editável depois), e alimenta o gate de ferramentas por segmento.
+        verticais: (p.verticais && p.verticais.length) ? p.verticais : verticais,
+        ferramentasAtivas: (p.ferramentasAtivas && p.ferramentasAtivas.length) ? p.ferramentasAtivas : ferramentasSugeridas(verticais),
         cidade: p.cidade.trim() || e.municipio,
         estado: p.estado.trim() || e.uf,
       }));
