@@ -53,6 +53,22 @@ export function recarregarVerticais(): Promise<void> {
   return revalidar();
 }
 
+/**
+ * O ofício atual (1º vertical) para MANDAR À IA — a OLLI fala a língua do segmento.
+ * Usa o cache do módulo quando quente (o app quase sempre já leu via useVerticais);
+ * só toca o banco na primeira chamada fria. `undefined` = sem ofício → a IA usa o
+ * default (ar-condicionado, backward-compat no worker). Nunca lança.
+ */
+export async function verticalParaIA(): Promise<VerticalId | undefined> {
+  if (carregou) return cache?.[0];
+  try {
+    const emp = await getEmpresa();
+    return emp?.verticais?.[0];
+  } catch {
+    return undefined;
+  }
+}
+
 export interface UseVerticais {
   /** O ofício da empresa (undefined/vazio = genérico, vê tudo). */
   verticais: VerticalId[] | undefined;

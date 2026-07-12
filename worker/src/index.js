@@ -616,7 +616,24 @@ async function handleGeocode(request, env) {
 }
 
 // ─── VOZ → ITENS ─────────────────────────────────────────────
-const VOZ_SYSTEM = `Você é a OLLI, assistente de um prestador de serviços (ar-condicionado e afins) no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
+// Contexto do OFÍCIO por vertical (personalização — a IA fala a língua do segmento).
+// DEFAULT = ar-condicionado/refrigeração: cliente antigo que NÃO manda `vertical` mantém
+// EXATAMENTE o comportamento atual (backward-compat). Ver src/services/verticais.ts.
+function rotuloVertical(vertical) {
+  switch (vertical) {
+    case 'eletrica': return 'instalações elétricas (NR-10, NBR 5410, quadros, disjuntores, aterramento)';
+    case 'hidraulica': return 'hidráulica e encanamento (vazamentos, pressão, NBR 5626)';
+    case 'pintura': return 'pintura e acabamento (cálculo de tinta, superfícies, demãos)';
+    case 'dedetizacao': return 'controle de pragas / dedetização (RDC 622, produtos, responsável técnico)';
+    case 'jardinagem': return 'jardinagem e paisagismo (poda, irrigação, manutenção)';
+    case 'geral': return 'serviços de campo em geral';
+    case 'refrigeracao':
+    default: return 'ar-condicionado e refrigeração (split, multi-split, VRF)';
+  }
+}
+function vozSystem(vertical) {
+  return `Você é a OLLI, assistente de um prestador de serviços de ${rotuloVertical(vertical)} no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
+}
 
 // `linhaFala` permite trocar a 1ª linha do prompt: por padrão cita o
 // transcript em texto (rota /voz); /transcrever (modo orcamento) passa o
@@ -648,7 +665,7 @@ Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use nul
 const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
 
 async function handleVoz(bodyText, env) {
-  const { transcript: rawTranscript, catalogo: rawCatalogo } = parseJsonBody(bodyText);
+  const { transcript: rawTranscript, catalogo: rawCatalogo, vertical } = parseJsonBody(bodyText);
   const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
   if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
   const catalogo = Array.isArray(rawCatalogo)
@@ -657,7 +674,7 @@ async function handleVoz(bodyText, env) {
         preco: c && typeof c.preco === 'number' ? c.preco : undefined,
       }))
     : undefined;
-  const text = await gemini(env, { system: VOZ_SYSTEM, user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
+  const text = await gemini(env, { system: vozSystem(vertical), user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
   const parsed = parseJsonLoose(text);
   if (!parsed || !Array.isArray(parsed.itens)) {
     console.error('[olli-voz] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
@@ -704,6 +721,7 @@ async function handleTranscrever(bodyText, env) {
   if (!TRANSCREVER_MIME_OK.has(mimeType)) return json({ ok: false, erro: 'mime_invalido' });
 
   const modo = raw && raw.modo === 'orcamento' ? 'orcamento' : 'transcrever';
+  const vertical = typeof (raw && raw.vertical) === 'string' ? raw.vertical : undefined;
 
   const catalogo = Array.isArray(raw && raw.catalogo)
     ? raw.catalogo.slice(0, VOZ_MAX.catalogoItens).map((c) => ({
@@ -738,7 +756,7 @@ async function handleTranscrever(bodyText, env) {
     exigirTexto: true,
   });
   const text = await gemini(env, {
-    system: VOZ_SYSTEM,
+    system: vozSystem(vertical),
     userParts: [audioPart, { text: prompt }],
     wantJson: true,
     temperature: 0.3,
