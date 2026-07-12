@@ -6,7 +6,7 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -281,7 +281,7 @@ function PmocPlanoConteudo() {
               icone="progress-check"
               rotulo="Situação (operacional)"
               valor={SIT_PMOC_LABEL[plano.situacao]}
-              valorCor={sitPmocCor[plano.situacao]}
+              valorCor={corCategoriaEmChip(sitPmocCor[plano.situacao], cores.surface)}
             />
             <LinhaInfo
               icone="source-branch"
@@ -515,7 +515,7 @@ function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
   const cor = criarSitPmocCor(cores)[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '88' }]}>
-      <Text style={[styles.statusBadgeText, { color: '#fff' }]}>{SIT_PMOC_LABEL[situacao] ?? situacao}</Text>
+      <Text style={[styles.statusBadgeText, { color: corCategoriaEmChip(cor, cores.surface) }]}>{SIT_PMOC_LABEL[situacao] ?? situacao}</Text>
     </View>
   );
 }
