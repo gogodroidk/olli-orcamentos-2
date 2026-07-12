@@ -35,6 +35,9 @@
     // /eta e /geocodificar por usuário: são as ÚNICAS rotas que geram custo no
     // Google Routes/Geocoding API — sem teto, qualquer conta grátis dispara
     // chamadas pagas ilimitadas. Mesmo perfil do IA_RL.
-    { "name": "ETA_RL", "namespace_id": "1005", "simple": { "limit": 20, "period": 60 } }
+    { "name": "ETA_RL", "namespace_id": "1005", "simple": { "limit": 20, "period": 60 } },
+    // /cnpj por usuário: consulta a BrasilAPI (grátis, mas com fair-use) e evita
+    // que usem o worker pra raspar CNPJ em massa. Baixo volume (cadastro), teto folgado.
+    { "name": "CNPJ_RL", "namespace_id": "1006", "simple": { "limit": 20, "period": 60 } }
   ]
 }

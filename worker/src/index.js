@@ -475,8 +475,8 @@ async function handleEta(request, env) {
 // empresa NORMALIZADA (razão, fantasia, CNAE principal + secundários, endereço). A
 // dedução CNAE→vertical é feita no CLIENTE (src/services/verticais.ts) — o worker é
 // proxy fino. Autenticado + rate limit por usuário (a BrasilAPI é grátis mas tem
-// fair-use; e evita usarem o worker pra raspar CNPJ). TODO(cache): cachear por CNPJ
-// 30 dias (tabela Supabase) + fallback Casa dos Dados. Ver docs/ESTRATEGIA_SUPERIOR.md.
+// fair-use; e evita usarem o worker pra raspar CNPJ). Cache de 30 dias em
+// public.cnpj_cache (migration 20260721) — fallback Casa dos Dados fica de follow-up.
 async function handleCnpj(cnpjBruto, request, env) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
@@ -492,6 +492,11 @@ async function handleCnpj(cnpjBruto, request, env) {
       if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
     } catch { /* binding ausente: não bloqueia */ }
   }
+
+  // Cache de 30 dias: reconsulta do mesmo CNPJ não bate na BrasilAPI. Gracioso —
+  // sem Supabase ou em erro, cai direto na consulta ao vivo (nunca bloqueia).
+  const emCache = await lerCacheCnpj(env, cnpj);
+  if (emCache) return json({ ok: true, empresa: emCache, cache: true });
 
   try {
     const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
@@ -509,26 +514,59 @@ async function handleCnpj(cnpjBruto, request, env) {
           .slice(0, 20)
       : [];
 
-    return json({
-      ok: true,
-      empresa: {
-        cnpj,
-        razaoSocial: String(d.razao_social || ''),
-        nomeFantasia: String(d.nome_fantasia || ''),
-        cnaePrincipal: { codigo: String(d.cnae_fiscal || ''), descricao: String(d.cnae_fiscal_descricao || '') },
-        cnaesSecundarios: secundarios,
-        logradouro: [d.descricao_tipo_de_logradouro, d.logradouro, d.numero].filter(Boolean).join(' ').trim(),
-        bairro: String(d.bairro || ''),
-        municipio: String(d.municipio || ''),
-        uf: String(d.uf || ''),
-        cep: String(d.cep || '').replace(/\D/g, ''),
-        porte: String(d.porte || ''),
-        mei: !!d.opcao_pelo_mei,
-      },
-    });
+    const empresa = {
+      cnpj,
+      razaoSocial: String(d.razao_social || ''),
+      nomeFantasia: String(d.nome_fantasia || ''),
+      cnaePrincipal: { codigo: String(d.cnae_fiscal || ''), descricao: String(d.cnae_fiscal_descricao || '') },
+      cnaesSecundarios: secundarios,
+      logradouro: [d.descricao_tipo_de_logradouro, d.logradouro, d.numero].filter(Boolean).join(' ').trim(),
+      bairro: String(d.bairro || ''),
+      municipio: String(d.municipio || ''),
+      uf: String(d.uf || ''),
+      cep: String(d.cep || '').replace(/\D/g, ''),
+      porte: String(d.porte || ''),
+      mei: !!d.opcao_pelo_mei,
+    };
+    void gravarCacheCnpj(env, cnpj, empresa); // best-effort, não bloqueia a resposta
+    return json({ ok: true, empresa });
   } catch {
     return json({ ok: false, erro: 'consulta_falhou' }, 502);
   }
+}
+
+// Headers de service_role para o cache de CNPJ (mesmo padrão inline do resto do worker).
+function cnpjCacheHeaders(env, extra) {
+  return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, ...(extra || {}) };
+}
+
+// Lê o cache (public.cnpj_cache): devolve os `dados` se houver linha com < 30 dias;
+// senão null. Gracioso: sem Supabase/erro/stale → null → consulta ao vivo.
+async function lerCacheCnpj(env, cnpj) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/cnpj_cache?cnpj=eq.${cnpj}&select=dados,atualizado_em&limit=1`, { headers: cnpjCacheHeaders(env) });
+    if (!r.ok) return null;
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr) || !arr.length) return null;
+    const idade = Date.now() - new Date(arr[0].atualizado_em).getTime();
+    if (!(idade >= 0) || idade > 30 * 24 * 3600 * 1000) return null; // > 30 dias = stale
+    return arr[0].dados || null;
+  } catch {
+    return null;
+  }
+}
+
+// Grava/atualiza o cache (upsert por cnpj). Best-effort: falha não afeta a resposta.
+async function gravarCacheCnpj(env, cnpj, empresa) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/cnpj_cache?on_conflict=cnpj`, {
+      method: 'POST',
+      headers: cnpjCacheHeaders(env, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ cnpj, dados: empresa, atualizado_em: new Date().toISOString() }),
+    });
+  } catch { /* best-effort */ }
 }
 
 // Geocodificação (endereço em texto → lat/lng). Serve o ETA: o `Agendamento`
