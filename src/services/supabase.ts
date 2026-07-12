@@ -78,8 +78,19 @@ export async function signOut() {
 
 export async function getCurrentUser() {
   if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data.user ?? null;
+  try {
+    // getSession() lê a sessão do AsyncStorage (LOCAL, sem rede). getUser() faria
+    // um GET /auth/v1/user a CADA chamada — e este helper é usado em dezenas de
+    // pontos (sidebar, telas, serviços, o sync), o que gerava um FLOOD de
+    // /auth/v1/user a cada login/carga (parte do "app arrasta ao logar"). Para
+    // obter id/e-mail do usuário logado a sessão local basta; a segurança real é a
+    // RLS no servidor, não a revalidação do getUser. Mesmo racional já aplicado em
+    // sessaoAtiva() e documentado em useTipoConta.ts.
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

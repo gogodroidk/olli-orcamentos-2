@@ -1571,15 +1571,27 @@ async function pushTable<T>(
   try {
     const db = await getDb();
     const rows = await db.getAllAsync<any>(sql);
+    // Mapeia (e aplica o guard LWW) ANTES de empurrar; depois empurra em PARALELO
+    // com teto de concorrência. Antes era um `await` por linha (sequencial): num
+    // login com muitos registros isso vira dezenas de round-trips um atrás do
+    // outro — o "app arrasta/bugadinho". Cada linha continua sendo um upsert
+    // INDEPENDENTE (mesma injeção de owner de equipe, mesma isolação de falha por
+    // item — pushRowUnchecked engole o próprio erro), então a semântica não muda;
+    // só param de esperar em fila.
+    const alvos: T[] = [];
     for (const r of rows) {
-      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de empurrar
       try {
         const obj = toLocal(r);
         if (guard && guard(obj)) continue; // nuvem mais nova → não regride
-        await pushRowUnchecked(table, obj);
+        alvos.push(obj);
       } catch {
-        // pula item problemático
+        // pula item problemático de mapeamento
       }
+    }
+    const TETO = 8; // concorrência modesta: acelera sem estourar a conexão/limites
+    for (let i = 0; i < alvos.length; i += TETO) {
+      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de empurrar
+      await Promise.all(alvos.slice(i, i + TETO).map((o) => pushRowUnchecked(table, o)));
     }
   } catch {
     // tabela local indisponível = ignora
