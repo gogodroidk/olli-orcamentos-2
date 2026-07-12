@@ -511,7 +511,12 @@ export function gerarHtmlOrcamento(
 ): string {
   // Cor de marca configurável: valida como hex antes de interpolar em <style>/SVG.
   const accent = safeHexColor(accentRaw ?? o.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
-  const modelClass = `model-${o.modeloPdf ?? 'editorial'}`;
+  // Sanitiza contra XSS armazenado: `modeloPdf` é campo SINCRONIZADO — um registro
+  // adulterado (escrito direto na API) injetaria atributos via a classe do <body>.
+  // Mesmo vetor já corrigido no recibo (reciboPdf.modeloSeguro): whitelist estrita.
+  const MODELOS_PDF_VALIDOS = ['editorial', 'minimalista', 'bold', 'classico', 'faixa_lateral', 'recibo_compacto', 'premium_capa'];
+  const modeloPdfSeguro = MODELOS_PDF_VALIDOS.includes(o.modeloPdf as string) ? o.modeloPdf : 'editorial';
+  const modelClass = `model-${modeloPdfSeguro}`;
   const removerMarca = opts?.removerMarca === true;
 
   // A capa é decidida por o.capaEstilo/o.capaFotoUri (default 'logo'). O modelo

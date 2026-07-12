@@ -38,9 +38,11 @@
   casando CNAE por prefixo, resolve o ambíguo 4322-3). `src/services/cnpj.ts` (cliente, 4 estados, nunca lança).
   Verificado: tsc 0 + node --check OK. **Pendente:** cache 30d (tabela Supabase) + fallback Casa dos Dados +
   binding `CNPJ_RL` no wrangler.jsonc antes de deploy.
-- `[ ]` **F1a-UI · Tela de CNPJ no Onboarding** — input com "Não tenho CNPJ" → picker manual; autofill
-  (razão/fantasia/endereço) + "Detectamos que você trabalha com X" com os cards de ferramentas ligáveis
-  (`deduzirVerticais` + `ferramentasSugeridas`); termina no 1º orçamento.
+- `[~]` **F1a-UI · Autofill por CNPJ no Onboarding — feito.** Botão "Preencher pelo CNPJ" no passo 0:
+  autofill (nome/cidade/UF/rua/bairro, só campos vazios) + dedução da vertical pré-selecionando o segmento
+  (`VERTICAL_PARA_SEGMENTO`). CNPJ segue opcional ("Não tenho CNPJ" = não preenche). Verificado: tsc 0.
+  Pendente: teste no emulador. **Evolução (Fase 4):** trocar os 5 segmentos MVP pela taxonomia rica de
+  verticais + os cards de ferramentas ligáveis (`ferramentasSugeridas`).
 - `[ ]` **F1b · Ferramentas sugeridas por vertical (cards ligáveis).** `empresa.verticais[]` + `empresa.ferramentas[]`
   (schema-less, aditivo); o Onboarding sugere pelo CNAE, o usuário ajusta. Reusa o padrão de entitlement.
 - `[ ]` **F1c · Calculadora no item do orçamento** (m²→tinta, metro linear). `Step2Itens` — maior uau÷esforço.

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Animated, StyleSheet, ViewStyle, Easing, LayoutChangeEvent } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BorderRadius, comAlfa, useTema } from '../theme';
+import { useReducedMotion } from '../theme/motion';
 
 interface SkeletonProps {
   width?: number | string;
@@ -17,10 +18,14 @@ interface SkeletonProps {
  */
 export function OlliSkeleton({ width = '100%', height = 16, radius = BorderRadius.md, style }: SkeletonProps) {
   const { modo, cores } = useTema();
+  const reduzir = useReducedMotion();
   const [w, setW] = useState(0);
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // reduced-motion: sem shimmer (o box de superfície estático já sinaliza o
+    // carregamento). Sem o loop, t=0 → o brilho fica fora da tela, invisível.
+    if (reduzir) return;
     const loop = Animated.loop(
       Animated.timing(t, {
         toValue: 1,
@@ -31,7 +36,7 @@ export function OlliSkeleton({ width = '100%', height = 16, radius = BorderRadiu
     );
     loop.start();
     return () => loop.stop();
-  }, [t]);
+  }, [t, reduzir]);
 
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
