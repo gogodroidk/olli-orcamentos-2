@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Alert, RefreshControl, ActivityIndicator, Modal, Image, Platform,
+  TextInput, Alert, RefreshControl, ActivityIndicator, Modal, Image, Platform, Linking,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,11 +32,13 @@ import {
   adicionarFotoOS,
 } from '../services/ordemServico';
 import { STATUS_OS_LABELS, STATUS_OS_CORES, STATUS_LABELS } from '../types';
-import type { OrdemServico, StatusOS, ItemChecklist, Orcamento } from '../types';
+import type { OrdemServico, StatusOS, ItemChecklist, Orcamento, Cliente } from '../types';
 // Superfícies pré-existentes (somente leitura — não modificadas por esta frente):
 // orçamentos aprovados/convertidos p/ criar OS, membros da equipe p/ atribuir,
 // helper de foto já usado no app, e o id do usuário logado.
-import { getOrcamentos } from '../database/database';
+import { getOrcamentos, getCliente } from '../database/database';
+import { abrirRotaGoogleMaps } from '../services/rotas';
+import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { listarMembros, type MembroEquipe } from '../services/equipe';
 import { getCurrentUser } from '../services/supabase';
 import {
@@ -370,6 +372,9 @@ function DetalheOS({
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
+  // Contato/endereço do cliente para Ligar/WhatsApp/Ir até lá — a OS não os
+  // carrega (só clienteId), então buscamos o Cliente à parte quando há id.
+  const [cliente, setCliente] = useState<Cliente | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
   const [addingFoto, setAddingFoto] = useState(false);
@@ -383,9 +388,21 @@ function DetalheOS({
     const o = await getOrdem(ordemId);
     setOrdem(o);
     setCarregando(false);
+    // Busca o contato/endereço do cliente (não bloqueia a OS já exibida).
+    if (o?.clienteId) {
+      try { setCliente(await getCliente(o.clienteId)); } catch { setCliente(null); }
+    } else {
+      setCliente(null);
+    }
   }, [ordemId]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  // Derivados do cliente para os atalhos de campo (vazio = botão não aparece).
+  const telefoneCliente = cliente?.telefone?.trim() || '';
+  const enderecoCliente = cliente
+    ? [cliente.endereco, cliente.cidade, cliente.estado].map((p) => (p || '').trim()).filter(Boolean).join(', ')
+    : '';
 
   // Limpa o timer do checklist ao desmontar (evita gravar em componente morto).
   useEffect(() => () => {
@@ -549,6 +566,40 @@ function DetalheOS({
                 <Text style={styles.descricao}>{ordem.descricao}</Text>
               ) : null}
             </View>
+
+            {/* Atalhos de campo — o técnico liga e vai até o cliente sem sair da OS. */}
+            {(telefoneCliente || enderecoCliente) ? (
+              <View style={{ flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' }}>
+                {telefoneCliente ? (
+                  <AcaoRapida
+                    icon="phone"
+                    label="Ligar"
+                    cor={cores.success}
+                    onPress={() =>
+                      Linking.openURL(`tel:${telefoneCliente.replace(/[^\d+]/g, '')}`).catch(() =>
+                        Alert.alert('Ops', 'Não consegui abrir o telefone.'),
+                      )
+                    }
+                  />
+                ) : null}
+                {telefoneCliente ? (
+                  <AcaoRapida
+                    icon="whatsapp"
+                    label="WhatsApp"
+                    cor="#25D366"
+                    onPress={() => abrirWhatsApp(telefoneCliente, `Olá! Sobre o serviço "${ordem.titulo}".`)}
+                  />
+                ) : null}
+                {enderecoCliente ? (
+                  <AcaoRapida
+                    icon="map-marker-outline"
+                    label="Ir até lá"
+                    cor={cores.primary}
+                    onPress={() => abrirRotaGoogleMaps(enderecoCliente)}
+                  />
+                ) : null}
+              </View>
+            ) : null}
 
             {/* Atribuir técnico (só gestão com permissão) */}
             {podeAtribuir && (
@@ -716,6 +767,39 @@ function LinhaInfo({ icon, label, valor }: { icon: keyof typeof MaterialCommunit
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValor} numberOfLines={1}>{valor}</Text>
     </View>
+  );
+}
+
+/** Atalho de campo (Ligar / WhatsApp / Ir até lá) — pílula colorida com feedback tátil. */
+function AcaoRapida({
+  icon, label, cor, onPress,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  label: string;
+  cor: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: BorderRadius.full,
+        backgroundColor: cor + '1E',
+        borderWidth: 1,
+        borderColor: cor + '55',
+      }}
+    >
+      <MaterialCommunityIcons name={icon} size={18} color={cor} />
+      <Text style={{ color: cor, fontWeight: '700', fontSize: 14 }}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 

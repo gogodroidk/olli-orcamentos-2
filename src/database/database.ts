@@ -551,6 +551,14 @@ export async function getClientes(): Promise<Cliente[]> {
   return rows.map(rowToCliente);
 }
 
+/** Um cliente ATIVO por id (para telefone/endereço na Ordem de Serviço). null se não achar. */
+export async function getCliente(id: string): Promise<Cliente | null> {
+  if (!id) return null;
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM clientes WHERE id = ? AND excluido_em IS NULL', [id]);
+  return row ? rowToCliente(row) : null;
+}
+
 export async function searchClientes(q: string): Promise<Cliente[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
