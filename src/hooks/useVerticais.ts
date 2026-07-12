@@ -48,6 +48,11 @@ function garantirAppStateListener(): void {
   });
 }
 
+/** Força uma releitura do ofício — chamável FORA de componente (ex.: após salvar em MeuNegócio). */
+export function recarregarVerticais(): Promise<void> {
+  return revalidar();
+}
+
 export interface UseVerticais {
   /** O ofício da empresa (undefined/vazio = genérico, vê tudo). */
   verticais: VerticalId[] | undefined;

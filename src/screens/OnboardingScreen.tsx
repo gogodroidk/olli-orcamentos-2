@@ -25,6 +25,7 @@ import { isValidCPF } from '../utils/masks';
 import { buscarCep } from '../services/cep';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId } from '../services/verticais';
+import { VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY, marcarVisto } from '../services/onboarding';
@@ -78,20 +79,7 @@ const ULTIMO = STEPS.length - 1;
 
 type Errors = Partial<Record<string, string>>;
 
-/**
- * VerticalId (deduzido do CNAE em verticais.ts) → Segmento (os chips do Onboarding,
- * hoje um MVP HVAC de 5 opções). A taxonomia rica de verticais é a expansão futura
- * (Fase 4); aqui a dedução por CNPJ apenas pré-seleciona o chip mais próximo.
- */
-const VERTICAL_PARA_SEGMENTO: Record<VerticalId, Segmento> = {
-  refrigeracao: 'ar-condicionado',
-  eletrica: 'eletrica',
-  hidraulica: 'hidraulica',
-  pintura: 'pintura',
-  dedetizacao: 'outro',
-  jardinagem: 'outro',
-  geral: 'outro',
-};
+// VERTICAL_PARA_SEGMENTO vive em services/verticalSegmento.ts (compartilhado com MeuNegócio).
 
 export default function OnboardingScreen() {
   const nav = useNavigation<Nav>();
