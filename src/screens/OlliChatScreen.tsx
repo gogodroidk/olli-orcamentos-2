@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { useReducedMotion } from '../theme/motion';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -338,9 +339,12 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }
 
 function PontoPulsante({ delay }: { delay: number }) {
   const styles = useEstilos(criarEstilos);
+  const reduzir = useReducedMotion();
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // reduced-motion: pontos estáticos (o estado "digitando" já é sinalizado pelo texto/layout).
+    if (reduzir) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
@@ -351,7 +355,7 @@ function PontoPulsante({ delay }: { delay: number }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [delay, t]);
+  }, [delay, t, reduzir]);
 
   const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, -4] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
