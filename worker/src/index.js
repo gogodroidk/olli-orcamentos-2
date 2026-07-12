@@ -778,7 +778,11 @@ async function handleTranscrever(bodyText, env) {
 }
 
 // ─── CHAT ────────────────────────────────────────────────────
-const CHAT_SYSTEM = `Você é a OLLI, assistente do prestador de serviços (foco em ar-condicionado) no Brasil. Ajuda com diagnóstico técnico, preços e orçamentos, atendimento ao cliente e organização do dia. Seja prática, direta e em português do Brasil. Respostas curtas e úteis. Quando faltar dado técnico, peça marca e modelo. Nunca mande trocar peça sem teste.`;
+// Parametrizado por vertical (rotuloVertical, definido junto do vozSystem acima).
+// Default = ar-condicionado → cliente antigo sem `vertical` mantém o comportamento atual.
+function chatSystem(vertical) {
+  return `Você é a OLLI, assistente do prestador de serviços de ${rotuloVertical(vertical)} no Brasil. Ajuda com diagnóstico técnico, preços e orçamentos, atendimento ao cliente e organização do dia. Seja prática, direta e em português do Brasil. Respostas curtas e úteis. Quando faltar dado técnico, peça marca e modelo. Nunca mande trocar peça sem teste.`;
+}
 
 // Limites de sanitização do chat: máx. de mensagens por request e tamanho por
 // mensagem — sem isto um histórico gigante (dentro dos 20/min da IA_RL) teria
@@ -786,14 +790,14 @@ const CHAT_SYSTEM = `Você é a OLLI, assistente do prestador de serviços (foco
 const CHAT_MAX = { mensagens: 40, texto: 4000 };
 
 async function handleChat(bodyText, env) {
-  const { mensagens } = parseJsonBody(bodyText);
+  const { mensagens, vertical } = parseJsonBody(bodyText);
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
     .filter((m) => m && typeof m.texto === 'string' && m.texto.trim())
     .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
-  const text = await gemini(env, { system: CHAT_SYSTEM, user: contents, temperature: 0.6 });
+  const text = await gemini(env, { system: chatSystem(vertical), user: contents, temperature: 0.6 });
   if (!text) return json({ ok: false, erro: 'resposta_vazia' });
   return json({ ok: true, resposta: text });
 }
