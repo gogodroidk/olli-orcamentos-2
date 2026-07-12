@@ -2,7 +2,8 @@
  * creditos.ts — saldo de Créditos OLLI, app-side (F2 da estratégia).
  *
  * O saldo é derivado do ledger imutável (public.credit_ledger, migration 20260720)
- * via a função RPC `meu_saldo_creditos()` (SECURITY DEFINER, soma só de auth.uid()).
+ * via a função RPC `meu_saldo_creditos()` (SECURITY INVOKER — a RLS do ledger já
+ * restringe o usuário às próprias linhas; soma só de auth.uid()).
  * O app SÓ LÊ — a concessão/consumo é sempre do worker (service_role); o usuário
  * nunca escreve no ledger (senão se daria créditos de graça).
  *
