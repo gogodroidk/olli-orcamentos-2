@@ -610,7 +610,16 @@ async function empresaNuvemMudouDesdeUltimoPull(): Promise<boolean> {
   try {
     if (!supabase) return false;
     const stampLocal = await AsyncStorage.getItem(EMPRESA_STAMP_KEY).catch(() => null);
-    if (!stampLocal) return false;
+    if (!stampLocal) {
+      // Sem carimbo = este aparelho NUNCA puxou a empresa. Se a nuvem JÁ tem uma
+      // empresa, NÃO empurrar por cima: seria sobrescrever o cadastro real de um
+      // usuário existente que logou em aparelho novo (mecanismo do P0 da auditoria —
+      // o antigo "return false" era o piso INSEGURO). Devolver true faz o chamador
+      // puxar a nuvem em vez de empurrar, e o local converge. Se a nuvem não tem
+      // empresa, é usuário novo criando a dele → false libera o push (fluxo correto).
+      const { data } = await supabase.from('empresa').select('user_id').maybeSingle();
+      return !!data;
+    }
     const { data } = await supabase.from('empresa').select('atualizado_em').maybeSingle();
     const remoto = (data as any)?.atualizado_em as string | undefined;
     return tsMaisNovo(remoto, stampLocal);

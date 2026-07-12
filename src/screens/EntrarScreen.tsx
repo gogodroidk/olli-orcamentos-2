@@ -127,24 +127,35 @@ export default function EntrarScreen() {
         AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
       ]);
       if (empresa === null && onboarded !== '1') {
-        // Local vazio + nunca onboardado NESTE aparelho pode ser um usuário NOVO
-        // OU um usuário EXISTENTE logando num navegador/aparelho novo — o SQLite
-        // local ainda está vazio porque o sync da nuvem é ASSÍNCRONO (disparado
-        // pelo listener do App.tsx, não concluiu quando decidimos aqui). Antes de
-        // tratar como novo e jogar no wizard "monte seu cadastro", confere a
-        // NUVEM: se a conta já tem `empresa`, é usuário existente → vai direto
-        // pras Tabs e marca onboardado (não repete o wizard neste aparelho).
-        // Fail-safe: em dúvida (rede/erro), mostra o Onboarding — um usuário
-        // realmente novo PRECISA dele para criar a empresa.
-        let temEmpresaNaNuvem = false;
-        try {
-          if (supabase) {
-            const { data, error } = await supabase.from('empresa').select('user_id').maybeSingle();
-            temEmpresaNaNuvem = !error && !!data;
+        // Local vazio + nunca onboardado NESTE aparelho: pode ser usuário NOVO
+        // OU EXISTENTE logando em aparelho/navegador novo — o SQLite local ainda
+        // está vazio porque o sync da nuvem é ASSÍNCRONO (listener do App.tsx, não
+        // concluiu quando decidimos aqui). O wizard "monte seu cadastro" GRAVA uma
+        // empresa e a empurra pra nuvem; mandar um usuário existente pra lá
+        // SOBRESCREVE a empresa real com dados em branco (bug P0 da auditoria).
+        // Por isso consultamos a nuvem com a REGRA DOS 3 ESTADOS
+        // (memória olli-gate-erro-vira-vazio) — "não sei" nunca vira "não tem":
+        //   'tem'     → usuário existente        → Tabs (marca onboardado).
+        //   'nao_tem' → confirmado sem empresa   → Onboarding (usuário novo de fato).
+        //   'nao_sei' → erro de rede/Supabase    → Tabs, NUNCA Onboarding. O sync
+        //               assíncrono popula o local; se na próxima abertura ainda
+        //               faltar empresa, esta checagem roda de novo e se auto-cura.
+        let estado: 'tem' | 'nao_tem' | 'nao_sei' = 'nao_sei';
+        if (supabase) {
+          // 2 tentativas com backoff curto reduzem o 'nao_sei' por instabilidade momentânea.
+          for (let tentativa = 0; tentativa < 2 && estado === 'nao_sei'; tentativa++) {
+            try {
+              const { data, error } = await supabase.from('empresa').select('user_id').maybeSingle();
+              if (!error) estado = data ? 'tem' : 'nao_tem';
+            } catch { /* rede instável: tenta de novo */ }
+            if (estado === 'nao_sei' && tentativa === 0) {
+              await new Promise<void>((resolve) => setTimeout(resolve, 600));
+            }
           }
-        } catch { /* rede instável: trata como sem empresa (mostra Onboarding) */ }
-        if (temEmpresaNaNuvem) await marcarVisto();
-        else destino = 'Onboarding';
+        }
+        if (estado === 'tem') await marcarVisto();
+        else if (estado === 'nao_tem') destino = 'Onboarding';
+        // 'nao_sei' → destino permanece 'Tabs' (piso NÃO-destrutivo).
       }
     } catch {
       // fail-safe: em erro, cai nas Tabs (já está logado).
