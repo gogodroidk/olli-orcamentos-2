@@ -23,6 +23,8 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF } from '../utils/masks';
 import { buscarCep } from '../services/cep';
+import { consultarCnpj } from '../services/cnpj';
+import { deduzirVerticais, verticalPorId, type VerticalId } from '../services/verticais';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY, marcarVisto } from '../services/onboarding';
@@ -76,6 +78,21 @@ const ULTIMO = STEPS.length - 1;
 
 type Errors = Partial<Record<string, string>>;
 
+/**
+ * VerticalId (deduzido do CNAE em verticais.ts) → Segmento (os chips do Onboarding,
+ * hoje um MVP HVAC de 5 opções). A taxonomia rica de verticais é a expansão futura
+ * (Fase 4); aqui a dedução por CNPJ apenas pré-seleciona o chip mais próximo.
+ */
+const VERTICAL_PARA_SEGMENTO: Record<VerticalId, Segmento> = {
+  refrigeracao: 'ar-condicionado',
+  eletrica: 'eletrica',
+  hidraulica: 'hidraulica',
+  pintura: 'pintura',
+  dedetizacao: 'outro',
+  jardinagem: 'outro',
+  geral: 'outro',
+};
+
 export default function OnboardingScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -109,6 +126,9 @@ export default function OnboardingScreen() {
   const [end, setEnd] = useState<EnderecoForm>({ cep: '', rua: '', numero: '', complemento: '', bairro: '' });
   const [cepLoading, setCepLoading] = useState(false);
   const [cepInfo, setCepInfo] = useState<string | null>(null);
+  // CNPJ: cadastro mágico (autofill + dedução da vertical).
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cnpjInfo, setCnpjInfo] = useState<string | null>(null);
   // último serviço (opcional)
   const [servNome, setServNome] = useState('');
   const [servPreco, setServPreco] = useState(0);
@@ -161,6 +181,53 @@ export default function OnboardingScreen() {
     } finally {
       setCepLoading(false);
     }
+  }
+
+  // ─── CNPJ: cadastro mágico (F1 da estratégia) ──────────────────
+  // Preenche a empresa pela BrasilAPI (via worker) e DEDUZ a vertical pelo CNAE,
+  // pré-selecionando o segmento. Só preenche campo VAZIO (nunca sobrescreve o que
+  // o usuário já digitou). Nunca lança; cada estado do serviço vira um aviso.
+  async function buscarCnpj() {
+    const digits = emp.cnpj.replace(/\D/g, '');
+    if (digits.length !== 14) {
+      setErrors(p => ({ ...p, cnpj: 'Informe o CNPJ com 14 dígitos para buscar.' }));
+      return;
+    }
+    setCnpjLoading(true);
+    setCnpjInfo(null);
+    clearError('cnpj');
+    const r = await consultarCnpj(digits);
+    if (r.estado === 'ok') {
+      const e = r.empresa;
+      const verticais = deduzirVerticais(e.cnaePrincipal.codigo, e.cnaesSecundarios.map(c => c.codigo));
+      const principal = verticais[0];
+      const nomeEmpresa = e.nomeFantasia || e.razaoSocial;
+      setEmp(p => ({
+        ...p,
+        nome: p.nome.trim() || nomeEmpresa,
+        segmento: p.segmento ?? VERTICAL_PARA_SEGMENTO[principal] ?? 'outro',
+        cidade: p.cidade.trim() || e.municipio,
+        estado: p.estado.trim() || e.uf,
+      }));
+      setEnd(p => ({
+        ...p,
+        rua: p.rua.trim() || e.logradouro,
+        bairro: p.bairro.trim() || e.bairro,
+      }));
+      setCnpjInfo(
+        principal === 'geral'
+          ? `Achei ${nomeEmpresa}. Confira os dados abaixo.`
+          : `Achei ${nomeEmpresa} — detectei ${verticalPorId(principal).label}. Confira e ajuste se precisar.`,
+      );
+      Haptics.selectionAsync().catch(() => {});
+    } else if (r.estado === 'nao_encontrado') {
+      setCnpjInfo('Não achei esse CNPJ. Confira o número ou preencha na mão.');
+    } else if (r.estado === 'invalido') {
+      setCnpjInfo('O CNPJ precisa ter 14 dígitos.');
+    } else {
+      setCnpjInfo('Não consegui buscar agora — você pode preencher na mão.');
+    }
+    setCnpjLoading(false);
   }
 
   // marca como concluído (idempotente) — usado tanto no "pular" quanto no "concluir"
@@ -342,6 +409,28 @@ export default function OnboardingScreen() {
                   onChangeText={v => { setField('cpf', v); clearError('cpf'); }}
                   placeholder="000.000.000-00" containerStyle={{ flex: 1 }} />
               </View>
+
+              {/* Cadastro mágico: preenche empresa + deduz a vertical pelo CNPJ. */}
+              <TouchableOpacity
+                onPress={buscarCnpj}
+                disabled={cnpjLoading}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Preencher dados da empresa pelo CNPJ"
+                style={{
+                  flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6,
+                  paddingVertical: 8, paddingHorizontal: 12, borderRadius: BorderRadius.md,
+                  backgroundColor: comAlfa(cores.accent, 0.12), marginBottom: Spacing.md,
+                }}
+              >
+                {cnpjLoading
+                  ? <ActivityIndicator size="small" color={cores.accent} />
+                  : <MaterialCommunityIcons name="magnify" size={16} color={cores.accent} />}
+                <Text style={{ color: cores.accent, fontWeight: '600', fontSize: 13 }}>
+                  {cnpjLoading ? 'Buscando…' : 'Preencher pelo CNPJ'}
+                </Text>
+              </TouchableOpacity>
+              {cnpjInfo ? <Text style={styles.hint}>{cnpjInfo}</Text> : null}
 
               <Text style={styles.segLabel}>Qual o seu segmento?</Text>
               <View style={styles.segRow}>
