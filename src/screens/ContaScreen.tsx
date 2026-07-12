@@ -16,6 +16,7 @@ import { SeletorTema } from '../components/SeletorTema';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
 import { usePlano } from '../hooks/usePlano';
+import { useVerticais } from '../hooks/useVerticais';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
@@ -112,6 +113,9 @@ interface Ferramenta {
    * lista mesmo com a sidebar escondendo os mesmos itens.
    */
   ocultarTecnico?: boolean;
+  /** Ferramenta de HVAC (diagnóstico/códigos de ar-condicionado). Some para quem
+   *  definiu outra vertical no ofício. Ver src/hooks/useVerticais.ts. */
+  verticalHvac?: boolean;
 }
 
 // Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
@@ -124,7 +128,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
-    { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico' },
+    { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
     { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
@@ -141,12 +145,15 @@ export default function ContaScreen() {
   // Onda 2 — tipo de conta (pessoal vs empresa) e permissão de gerenciar equipe.
   const { tipo, org, carregando: carregandoConta } = useTipoConta();
   const { pode, papel, carregando: carregandoPermissao } = usePermissao();
+  const { mostraHvac } = useVerticais();
   // Fail-closed: enquanto o papel ainda carrega, trata como se pudesse ser
   // técnico — evita o flash de um item de dono (Serviços/Produtos/Recibos/
   // Meu Negócio) antes da permissão real chegar.
   const FERRAMENTAS = criarFerramentas(cores);
   const ferramentasVisiveis = FERRAMENTAS.filter(
-    (f) => !(f.ocultarTecnico && (papel === 'tecnico' || carregandoPermissao)),
+    (f) =>
+      !(f.ocultarTecnico && (papel === 'tecnico' || carregandoPermissao)) &&
+      !(f.verticalHvac && !mostraHvac),
   );
   // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
   const { plano } = usePlano();
