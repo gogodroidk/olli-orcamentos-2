@@ -10,11 +10,22 @@
 ## Legenda
 `[x]` feito+verificado (typecheck/node-check) · `[~]` feito, requer teste vivo (emulador/Stripe/Supabase) · `[ ]` pendente
 
-## ENTREGUE nesta sessão (2026-07-12) — 6 commits, todos tsc 0 / node --check OK
-`ebcaceb` F0 login (3 estados) + paywall Empresa · `6242b0a` F1a CNPJ (worker+domínio+cliente) ·
-`03b98f0` F1a-UI autofill no Onboarding · `c73d866` XSS no PDF + reduced-motion no skeleton + calculadora ·
-`ad716fc` "Feito com OLLI" no portal + reduced-motion voz/chat · `aa2c103` docs (auditoria+estratégia+plano).
-**Nada rodou em emulador/Stripe ainda** — ver o runbook de teste no fim deste doc antes de publicar.
+## ENTREGUE nesta sessão (2026-07-12) — 10 commits, todos tsc 0 / node --check OK
+**Estratégia/direção:** `aa2c103` docs (re-auditoria + estratégia + plano).
+**F0 (confiança/receita):** `ebcaceb` login à prova de perda de dados (3 estados) + paywall do plano Empresa (worker).
+**F1a (aquisição):** `6242b0a` fundação do CNPJ (worker+domínio+cliente) · `03b98f0` autofill no Onboarding.
+**Ondas de correção da auditoria (P1/P2):**
+- `c73d866` XSS no PDF (`modeloPdf`) + reduced-motion no OlliSkeleton + calculadora de tinta (serviço).
+- `ad716fc` "Feito com OLLI" no portal (growth loop) + reduced-motion na voz/chat.
+- `90265fc` sinal/entrada (R$ + data) e laudo técnico passam a aparecer no PDF do cliente.
+- `ffd1065` toque na notificação navega pra área certa (payload deixou de ser código morto).
+- `f...` NovoOrcamentoScreen usa diálogo temático na web (fim do `window.alert/confirm` — resto do P1-10).
+**Nada rodou em emulador/Stripe ainda** — ver o runbook de teste abaixo antes de publicar.
+
+## AINDA NÃO FEITO (precisa do emulador para verificar com segurança, ou é feature maior)
+F0c GatePro na Equipe (org-aware) · calculadora plugada no Step2 · temas de PDF por segmento (F1d) ·
+`codigos_erro.json` fora do parse de boot (P2, toca o boot) · Fases 2-5 (ledger de créditos, compra PIX,
+portal com pagamento, "a caminho" com GPS, verticais). Priorizado nas fases acima.
 
 ## RUNBOOK — testar e publicar (só roda no ambiente com emulador/Stripe, ex. C:\olli)
 1. **Login (F0a) no emulador `olli_phone`:** logar um usuário EXISTENTE num aparelho novo/limpo, com e sem
