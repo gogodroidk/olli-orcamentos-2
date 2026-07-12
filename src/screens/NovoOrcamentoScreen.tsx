@@ -9,6 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
 import { Motion } from '../theme/motion';
+import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -293,7 +294,7 @@ export default function NovoOrcamentoScreen() {
       }
     } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Não foi possível salvar o orçamento agora. Tente novamente.');
+        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
       } else {
         Alert.alert('Erro', 'Não foi possível salvar o orçamento agora. Tente novamente.');
       }
@@ -308,7 +309,7 @@ export default function NovoOrcamentoScreen() {
     try {
       await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Orcamento salvo como rascunho.');
+        avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
         goBackOrHome(nav);
         return;
       }
@@ -318,7 +319,7 @@ export default function NovoOrcamentoScreen() {
       goBackOrHome(nav);
     } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Não foi possível salvar o rascunho agora. Tente novamente.');
+        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
       } else {
         Alert.alert('Erro', 'Não foi possível salvar o rascunho agora. Tente novamente.');
       }
@@ -330,9 +331,8 @@ export default function NovoOrcamentoScreen() {
   function handleBack() {
     if (step === 0) {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        if (window.confirm('Deseja descartar este orcamento?')) {
-          goBackOrHome(nav);
-        }
+        void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
+          .then(ok => { if (ok) goBackOrHome(nav); });
         return;
       }
       Alert.alert('Cancelar orçamento', 'Deseja descartar este orçamento?', [
