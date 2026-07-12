@@ -44,13 +44,15 @@ create policy credit_ledger_select_own on public.credit_ledger
 
 grant select on public.credit_ledger to authenticated;
 
--- Saldo do próprio usuário (o app chama para exibir). SECURITY DEFINER + soma só
--- de auth.uid() → nunca revela o saldo de outra conta. STABLE (não escreve).
+-- Saldo do próprio usuário (o app chama para exibir). SECURITY INVOKER: a policy de
+-- SELECT do ledger já restringe o usuário às PRÓPRIAS linhas, então NÃO precisa de
+-- DEFINER — e DEFINER chamável por authenticated é surfacie de privilégio (advisor
+-- `authenticated_security_definer_function_executable`). STABLE (não escreve).
 create or replace function public.meu_saldo_creditos()
 returns integer
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
 as $$
   select coalesce(sum(delta), 0)::integer
