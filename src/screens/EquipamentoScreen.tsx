@@ -42,7 +42,9 @@ import type {
   Cliente,
 } from '../types';
 // Superfície pré-existente (só leitura — o seletor de cliente reusa a busca do app).
-import { searchClientes } from '../database/database';
+import { searchClientes, getEmpresa } from '../database/database';
+import { montarHtmlEtiqueta, montarHtmlEtiquetasLote } from '../utils/etiquetaQrPdf';
+import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
 // Helper de foto já usado no app (câmera/galeria + compressão + storage permanente).
 // CUIDADO: adicionarFotoEquip do service MESCLA [...atuais, ...novas], não substitui.
 import {
@@ -174,6 +176,47 @@ export default function EquipamentoScreen() {
     setDetalheId(id);
   }
 
+  // Impressão em LOTE das etiquetas QR (respeita o filtro/busca atual, então dá
+  // pra imprimir só os equipamentos de um cliente/local buscando antes).
+  const [imprimindoLote, setImprimindoLote] = useState(false);
+  const temEtiquetas = useMemo(
+    () => filtrados.some((e) => e.qrToken && !e.qrRevogadoEm),
+    [filtrados],
+  );
+
+  async function imprimirEtiquetas() {
+    if (imprimindoLote) return;
+    const comQr = filtrados.filter((e) => e.qrToken && !e.qrRevogadoEm);
+    if (comQr.length === 0) {
+      Alert.alert('Sem etiquetas', 'Sincronize os equipamentos para gerar os QRs primeiro.');
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    setImprimindoLote(true);
+    try {
+      let empresa: string | undefined;
+      try { empresa = (await getEmpresa())?.nome || undefined; } catch { /* segue sem */ }
+      const { html } = montarHtmlEtiquetasLote(
+        comQr.map((e) => ({
+          titulo: e.codigoInterno
+            || [e.fabricante, e.modelo].filter(Boolean).join(' ')
+            || labelCategoria(e.categoria)
+            || 'Equipamento',
+          subtitulo: e.localizacao || undefined,
+          qrToken: e.qrToken,
+        })),
+        { empresa },
+      );
+      await exportarHtmlComoPdf(html, 'etiquetas-equipamentos', {
+        dialogTitle: 'Etiquetas de equipamentos',
+      });
+    } catch {
+      Alert.alert('Não deu para gerar', 'Tente novamente.');
+    } finally {
+      setImprimindoLote(false);
+    }
+  }
+
   const renderItem = ({ item, index }: { item: Equipamento; index: number }) => {
     const titulo = item.codigoInterno
       || [item.fabricante, item.modelo].filter(Boolean).join(' ')
@@ -271,6 +314,21 @@ export default function EquipamentoScreen() {
           >
             <MaterialCommunityIcons name="calendar-sync-outline" size={16} color="#fff" />
             <Text style={styles.pmocAtalhoText}>Planos de manutenção (PMOC)</Text>
+            <MaterialCommunityIcons name="chevron-right" size={16} color={gradientes.sobreHeader} />
+          </TouchableOpacity>
+        )}
+        {temEtiquetas && (
+          <TouchableOpacity
+            onPress={imprimirEtiquetas}
+            disabled={imprimindoLote}
+            accessibilityRole="button"
+            accessibilityLabel="Imprimir etiquetas QR dos equipamentos"
+            style={styles.pmocAtalho}
+          >
+            <MaterialCommunityIcons name="printer" size={16} color="#fff" />
+            <Text style={styles.pmocAtalhoText}>
+              {imprimindoLote ? 'Gerando etiquetas…' : 'Imprimir etiquetas (QR)'}
+            </Text>
             <MaterialCommunityIcons name="chevron-right" size={16} color={gradientes.sobreHeader} />
           </TouchableOpacity>
         )}
@@ -662,6 +720,7 @@ function DetalheEquipamento({
       {showEtiqueta && eq && (
         <EtiquetaSheet
           titulo={titulo}
+          subtitulo={[eq.localizacao, eq.patrimonio].filter(Boolean).join(' · ') || undefined}
           qrToken={eq.qrToken}
           onFechar={() => setShowEtiqueta(false)}
         />
@@ -674,15 +733,36 @@ function DetalheEquipamento({
 // Sheet da etiqueta — mostra a URL pública + botões copiar/compartilhar.
 // ─────────────────────────────────────────────────────────────
 function EtiquetaSheet({
-  titulo, qrToken, onFechar,
+  titulo, subtitulo, qrToken, onFechar,
 }: {
   titulo: string;
+  subtitulo?: string;
   qrToken: string;
   onFechar: () => void;
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const url = urlEtiqueta(qrToken);
+  const [imprimindo, setImprimindo] = useState(false);
+
+  async function imprimir() {
+    if (imprimindo) return;
+    Haptics.selectionAsync().catch(() => {});
+    setImprimindo(true);
+    try {
+      // Nome da empresa no rodapé da etiqueta (best-effort — não bloqueia).
+      let empresa: string | undefined;
+      try { empresa = (await getEmpresa())?.nome || undefined; } catch { /* segue sem */ }
+      const html = montarHtmlEtiqueta({ titulo, subtitulo, qrToken }, { empresa });
+      await exportarHtmlComoPdf(html, `etiqueta-${qrToken.slice(-6)}`, {
+        dialogTitle: `Etiqueta ${titulo}`,
+      });
+    } catch {
+      Alert.alert('Não deu para gerar', 'Tente novamente em instantes.');
+    } finally {
+      setImprimindo(false);
+    }
+  }
 
   async function compartilhar() {
     Haptics.selectionAsync().catch(() => {});
@@ -728,9 +808,18 @@ function EtiquetaSheet({
               <MaterialCommunityIcons name="qrcode" size={64} color={cores.accentLight} />
             </View>
             <Text style={styles.etiquetaHint}>
-              Este é o endereço que o QR da porta aponta. Imprima a etiqueta a partir
-              deste link ou compartilhe com quem for gerá-la.
+              Imprima a etiqueta com o QR para colar na máquina. Quem escanear cai no
+              histórico deste equipamento. Também dá para copiar ou compartilhar o link.
             </Text>
+            <OlliButton
+              label="Imprimir etiqueta (PDF)"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              loading={imprimindo}
+              onPress={imprimir}
+              icon={<MaterialCommunityIcons name="printer" size={20} color="#fff" />}
+            />
             <View style={styles.urlBox}>
               <Text style={styles.urlText} numberOfLines={2} selectable>{url}</Text>
             </View>
