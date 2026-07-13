@@ -271,7 +271,9 @@ export const CALCULOS: CalculoOficio[] = [
  */
 export function calculosDoOficio(verticais: VerticalId | VerticalId[] | undefined): CalculoOficio[] {
   const arr = verticais == null ? [] : Array.isArray(verticais) ? verticais : [verticais];
-  if (arr.length === 0 || arr.includes('geral')) return CALCULOS;
+  // Sem ofício = todas (backward-compat). 'geral' NÃO é coringa: cai no filtro (nenhuma
+  // calculadora é 'geral') → o hub some p/ quem escolheu "Serviços em Geral".
+  if (arr.length === 0) return CALCULOS;
   return CALCULOS.filter((c) => c.verticais.some((v) => arr.includes(v)));
 }
 
