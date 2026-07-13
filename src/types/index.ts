@@ -127,6 +127,15 @@ export interface Empresa {
   garantiaPadrao?: string;
   condicoesPagamentoPadrao?: string;
   observacoesPadrao?: string;
+
+  // DEDETIZAÇÃO (RDC 52/2009 art. 19 · RDC 622/2022) — dados de compliance da
+  // imunizadora usados no Certificado ANVISA. Preenchidos 1x (na 1ª emissão) e
+  // reaproveitados. Schema-less (SQLite id + JSON) → sem migração. Ver
+  // src/utils/certificadoAnvisaPdf.ts e CertificadoAnvisaScreen.
+  licencaSanitaria?: string;
+  licencaAmbiental?: string;
+  responsavelTecnico?: string;
+  responsavelTecnicoRegistro?: string;
   /** Modelo de PDF padrão para orçamentos novos (escolhido em Conta → Modelos de documento). */
   modeloPdfPadrao?: ModeloPdfId;
   /** Modelo padrão do recibo (escolhido em Conta → Modelos de documento). */

@@ -42,6 +42,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Descreva o defeito, a OLLI ajuda', color: c.accentLight, route: 'DiagnosticoIA', verticalHvac: true },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: c.warning, route: 'CalculadoraTinta', vertical: 'pintura' },
+    { key: 'anvisa', icon: 'file-certificate-outline', label: 'Certificado ANVISA', desc: 'Comprovante RDC 52 de dedetização', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos' },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo' },

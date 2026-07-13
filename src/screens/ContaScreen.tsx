@@ -134,6 +134,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: '#F7B23B', route: 'CalculadoraTinta', vertical: 'pintura' },
+    { key: 'anvisa', icon: 'file-certificate-outline', label: 'Certificado ANVISA', desc: 'Comprovante RDC 52 de dedetização', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
     { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },

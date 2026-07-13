@@ -63,7 +63,7 @@ export const FERRAMENTAS: Record<FerramentaId, Ferramenta> = {
   checklist_nr10: { id: 'checklist_nr10', label: 'Checklist NR-10', descricao: 'Inspeção elétrica no padrão da norma, pronta pro laudo.', disponivel: false },
   laudo_eletrico: { id: 'laudo_eletrico', label: 'Laudo elétrico + ART', descricao: 'Laudo estruturado com campo de ART para o engenheiro assinar.', disponivel: false },
   laudo_estanqueidade: { id: 'laudo_estanqueidade', label: 'Laudo de estanqueidade', descricao: 'Teste de pressão (inicial/final, tempo, foto) — laudo avulso custa R$3-7 mil.', disponivel: false },
-  certificado_anvisa: { id: 'certificado_anvisa', label: 'Certificado ANVISA', descricao: 'Certificado de dedetização RDC 622/2022 com validade e responsável técnico.', disponivel: false },
+  certificado_anvisa: { id: 'certificado_anvisa', label: 'Certificado ANVISA', descricao: 'Certificado de dedetização RDC 52/622 com validade e responsável técnico.', disponivel: true },
   contrato_recorrente: { id: 'contrato_recorrente', label: 'Contrato recorrente', descricao: 'Manutenção mensal/semestral com checklist por visita (reusa o motor do PMOC).', disponivel: false },
   calculadora_tinta: { id: 'calculadora_tinta', label: 'Calculadora de tinta', descricao: 'm² → litros e demãos, dentro do item do orçamento.', disponivel: false },
 };
