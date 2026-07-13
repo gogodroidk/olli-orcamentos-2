@@ -126,7 +126,15 @@ function calcTotais(o: Orcamento): Orcamento {
     ? round2(subtotal * (descontoBruto / 100))
     : descontoBruto;
   const valorTotal = round2(Math.max(0, subtotal - desconto));
-  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, desconto: descontoBruto, valorTotal };
+  // Sinal/entrada em VALOR (R$) também é reclampado ao novo total, pela mesma razão do
+  // desconto: um sinal definido com o total maior não pode ficar PRESO acima do total
+  // quando os itens caem — senão o Pix/PDF cobraria MAIS que o próprio orçamento. O modo
+  // PERCENTUAL (sinalValor ausente) fica intacto: um % é sempre válido sobre qualquer total.
+  const sinalValor = o.sinalValor && o.sinalValor > 0 ? round2(Math.min(o.sinalValor, valorTotal)) : o.sinalValor;
+  const sinalPercentual = sinalValor && sinalValor > 0 && valorTotal > 0
+    ? Math.round((sinalValor / valorTotal) * 100)
+    : o.sinalPercentual;
+  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, desconto: descontoBruto, valorTotal, sinalValor, sinalPercentual };
 }
 
 export default function NovoOrcamentoScreen() {

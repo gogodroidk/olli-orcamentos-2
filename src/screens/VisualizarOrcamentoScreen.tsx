@@ -70,14 +70,18 @@ export default function VisualizarOrcamentoScreen() {
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [pixVisivel, setPixVisivel] = useState(false);
   // Cobrança por Pix: valor = sinal (se houver) senão o total; BR Code memoizado.
-  const pixValor = orc && orc.sinalValor && orc.sinalValor > 0 ? orc.sinalValor : orc?.valorTotal ?? 0;
+  // Sinal EFETIVO clampado ao total (defesa em profundidade: um orçamento antigo pode ter
+  // sinalValor stale salvo acima do total; nunca cobrar por Pix mais que o próprio total).
+  const pixValor = orc
+    ? (orc.sinalValor && orc.sinalValor > 0 ? Math.min(orc.sinalValor, orc.valorTotal) : orc.valorTotal)
+    : 0;
   const pixBrCode = useMemo(() => {
     if (!orc) return '';
     const chave = (orc.chavePix || empresa?.chavePix || '').trim();
     if (!chave) return '';
     return gerarPixCopiaECola({
       chave,
-      valor: orc.sinalValor && orc.sinalValor > 0 ? orc.sinalValor : orc.valorTotal,
+      valor: orc.sinalValor && orc.sinalValor > 0 ? Math.min(orc.sinalValor, orc.valorTotal) : orc.valorTotal,
       nome: empresa?.nome || '',
       cidade: empresa?.cidade || '',
       txid: orc.numero,

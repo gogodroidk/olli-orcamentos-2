@@ -67,7 +67,7 @@ export function PixCobrancaModal({ visivel, aoFechar, brcode, valor, referencia 
               <View style={styles.codeBox}>
                 <Text style={styles.code} selectable numberOfLines={4}>{brcode}</Text>
               </View>
-              <OlliButton label="Compartilhar código" icon="share-variant" variant="gradient" fullWidth onPress={compartilhar} style={styles.cta} />
+              <OlliButton label="Compartilhar código" icon={<MaterialCommunityIcons name="share-variant" size={18} color="#fff" />} variant="gradient" fullWidth onPress={compartilhar} style={styles.cta} />
             </ScrollView>
           ) : (
             <View style={styles.corpo}>

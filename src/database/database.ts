@@ -2393,6 +2393,9 @@ const USER_DATA_TABLES = [
   'clientes', 'servicos', 'produtos', 'orcamentos', 'orcamento_versoes', 'recibos', 'modelos',
   'depoimentos', 'agendamentos', 'ordens_servico', 'empresa', 'exclusoes', 'contadores',
   'eventos', 'cache_ia', 'casos_erro', 'relatorios_diarios',
+  // PMOC/HVAC — estavam de FORA e vazavam entre contas no aparelho compartilhado (equipamentos,
+  // planos de manutenção e ordens geradas do usuário anterior sobreviviam ao logout).
+  'equipamentos', 'pmoc_planos', 'pmoc_plano_versoes', 'pmoc_ordens_geradas',
 ];
 
 /**

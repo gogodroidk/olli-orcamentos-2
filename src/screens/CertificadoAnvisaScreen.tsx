@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, Fonts, useCores, useEstilos, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput } from '../components/OlliInput';
@@ -160,7 +161,7 @@ export default function CertificadoAnvisaScreen() {
             <CampoComVoz label="Observações" value={observacoes} onChangeText={setObservacoes} multiline placeholder="Prazo de reentrada, cuidados… (toque no microfone para ditar)" />
           </OlliCard>
 
-          <OlliButton label="Gerar certificado (PDF)" icon="file-document-outline" variant="gradient" fullWidth onPress={gerar} loading={gerando} style={styles.cta} />
+          <OlliButton label="Gerar certificado (PDF)" icon={<MaterialCommunityIcons name="file-document-outline" size={18} color="#fff" />} variant="gradient" fullWidth onPress={gerar} loading={gerando} style={styles.cta} />
           <Text style={styles.aviso}>
             A validade legal depende das licenças e do responsável técnico reais. O OLLI só organiza os dados da RDC 52 no documento.
           </Text>

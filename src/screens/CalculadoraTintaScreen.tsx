@@ -102,7 +102,7 @@ export default function CalculadoraTintaScreen() {
               </View>
               <OlliButton
                 label="Adicionar ao orçamento"
-                icon="plus"
+                icon={<MaterialCommunityIcons name="plus" size={18} color="#fff" />}
                 variant="gradient"
                 fullWidth
                 onPress={adicionarAoOrcamento}

@@ -277,7 +277,8 @@ function renderPixCobranca(o: Orcamento, empresa: Empresa): string {
   const chave = (o.chavePix || empresa.chavePix || '').trim();
   if (!chave || !o.formasPagamento?.pix) return '';
   const temSinal = !!(o.sinalValor && o.sinalValor > 0);
-  const valor = temSinal ? o.sinalValor! : o.valorTotal;
+  // Clampa ao total (defesa em profundidade contra sinal stale) — nunca cobrar mais que o total.
+  const valor = temSinal ? Math.min(o.sinalValor!, o.valorTotal) : o.valorTotal;
   if (!valor || valor <= 0) return '';
   const brcode = gerarPixCopiaECola({
     chave,
