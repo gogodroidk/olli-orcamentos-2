@@ -451,7 +451,7 @@ function DetalheOS({
     // Autosave com debounce (offline-first: o service persiste local e sincroniza).
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
     checklistTimer.current = setTimeout(() => {
-      atualizarChecklist(ordem.id, paraSalvar).then(onMudou).catch(() => {});
+      atualizarChecklist(ordem.id, paraSalvar).then(onMudou).catch(() => Alert.alert('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
     }, 500);
   }
 
@@ -470,7 +470,7 @@ function DetalheOS({
       return { ...prev, checklist: novo };
     });
     if (!listaParaSalvar) return;
-    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => {});
+    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => Alert.alert('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
   }
 
   /** Kickstart: aplica o checklist do ofício, pulando itens de texto já presente. */
@@ -490,7 +490,7 @@ function DetalheOS({
       return { ...prev, checklist: novo };
     });
     if (!listaParaSalvar) return;
-    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => {});
+    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => Alert.alert('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
   }
 
   function removerItem(itemId: string) {
@@ -504,7 +504,7 @@ function DetalheOS({
       return { ...prev, checklist: novo };
     });
     if (!listaParaSalvar) return;
-    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => {});
+    atualizarChecklist(ordem.id, listaParaSalvar).then(onMudou).catch(() => Alert.alert('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
   }
 
   async function tirarFoto(origem: 'camera' | 'galeria') {

@@ -139,7 +139,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
     const paraSalvar = listaParaSalvar;
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
     checklistTimer.current = setTimeout(() => {
-      atualizarChecklist(ordem.id, paraSalvar).then(aoMudou).catch(() => {});
+      atualizarChecklist(ordem.id, paraSalvar).then(aoMudou).catch(() => avisar('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
     }, 500);
   }
 
@@ -153,7 +153,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
       return { ...prev, checklist: novo };
     });
     if (!listaParaSalvar) return;
-    atualizarChecklist(ordem.id, listaParaSalvar).then(aoMudou).catch(() => {});
+    atualizarChecklist(ordem.id, listaParaSalvar).then(aoMudou).catch(() => avisar('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
   }
 
   function adicionarItem(texto: string) {
@@ -169,7 +169,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
       return { ...prev, checklist: novo };
     });
     if (!listaParaSalvar) return;
-    atualizarChecklist(ordem.id, listaParaSalvar).then(aoMudou).catch(() => {});
+    atualizarChecklist(ordem.id, listaParaSalvar).then(aoMudou).catch(() => avisar('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
   }
 
   // Não há mutação dedicada de agenda no contrato de services/ordemServico (o app
