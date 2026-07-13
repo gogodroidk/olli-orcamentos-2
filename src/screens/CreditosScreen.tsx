@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator,
-  Share, Platform, Alert, TouchableOpacity,
+  Share, Platform, Alert, TouchableOpacity, Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -26,13 +26,13 @@ import {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * CreditosScreen — saldo de Créditos OLLI + RECARGA POR PIX (AbacatePay).
+ * CreditosScreen — saldo de Créditos OLLI + RECARGA POR PIX (Mercado Pago).
  *
  * Créditos custeiam voz na nuvem, WhatsApp e consultas (ver worker/creditos.js).
  * Aqui o prestador vê o saldo, escolhe um pacote e paga por Pix: o worker cria a
  * cobrança (QR + copia-e-cola), o app faz polling de UX do status, e o CRÉDITO
- * cai pelo WEBHOOK (nunca otimista). O QR é renderizado localmente do brCode
- * (mesmo gerador do resto do app), não do PNG do gateway.
+ * cai pelo WEBHOOK (nunca otimista). O QR usa o PNG do gateway (brCodeBase64) —
+ * sempre válido — com fallback pro gerador local do brCode.
  */
 
 /** "há 3 dias" / data curta a partir do ISO do lançamento. */
@@ -55,11 +55,22 @@ export default function CreditosScreen() {
   const [cobranca, setCobranca] = useState<CobrancaPix | null>(null);
   const [criando, setCriando] = useState<string | null>(null); // pacoteId em criação
   const [pago, setPago] = useState(false);
+  const [expirado, setExpirado] = useState(false);
+
+  // Aplica um resultado de leitura SEM regredir um valor bom já conhecido: uma
+  // falha transitória (null) num refresh não apaga o saldo/extrato que já tínhamos
+  // (regra "erro vira vazio"). Só na 1ª carga (prev não-número/não-lista) o null passa.
+  const aplicarSaldo = useCallback((v: number | null) => {
+    setSaldo((prev) => (v !== null ? v : typeof prev === 'number' ? prev : null));
+  }, []);
+  const aplicarExtrato = useCallback((v: LancamentoCredito[] | null) => {
+    setExtrato((prev) => (v !== null ? v : Array.isArray(prev) ? prev : null));
+  }, []);
 
   const recarregarSaldo = useCallback(() => {
-    getMeuSaldo().then(setSaldo).catch(() => setSaldo(null));
-    getMeuExtrato(8).then(setExtrato).catch(() => setExtrato(null));
-  }, []);
+    getMeuSaldo().then(aplicarSaldo).catch(() => aplicarSaldo(null));
+    getMeuExtrato(8).then(aplicarExtrato).catch(() => aplicarExtrato(null));
+  }, [aplicarSaldo, aplicarExtrato]);
 
   useEffect(() => {
     recarregarSaldo();
@@ -69,23 +80,31 @@ export default function CreditosScreen() {
       .finally(() => setCarregandoPacotes(false));
   }, [recarregarSaldo]);
 
-  // Polling de UX enquanto a cobrança está aberta e ainda não paga. A fonte de
-  // verdade é o saldo (o webhook credita); isto só antecipa o "pago!" na tela.
+  // Polling de UX enquanto a cobrança está aberta, não paga e não expirada. A
+  // fonte de verdade é o saldo (o webhook credita); isto só antecipa o "pago!".
   useEffect(() => {
-    if (!cobranca || pago) return;
+    if (!cobranca || pago || expirado) return;
     let ativo = true;
     const tick = async () => {
+      // Pix expira (~30 min): para de perguntar e mostra "gere outro" em vez de
+      // ficar eternamente em "aguardando".
+      if (cobranca.expiresAt && Date.now() > Date.parse(cobranca.expiresAt)) {
+        if (ativo) setExpirado(true);
+        return;
+      }
       const s = await checarStatusPix(cobranca.id);
       if (!ativo || !s) return;
       if (s.pago) {
         setPago(true);
-        getMeuSaldo().then((v) => { if (ativo) setSaldo(v); });
-        getMeuExtrato(8).then((v) => { if (ativo) setExtrato(v); });
+        getMeuSaldo().then((v) => { if (ativo) aplicarSaldo(v); });
+        getMeuExtrato(8).then((v) => { if (ativo) aplicarExtrato(v); });
+      } else if (s.status === 'cancelled' || s.status === 'expired' || s.status === 'rejected') {
+        if (ativo) setExpirado(true);
       }
     };
     const iv = setInterval(tick, 4000);
     return () => { ativo = false; clearInterval(iv); };
-  }, [cobranca, pago]);
+  }, [cobranca, pago, expirado, aplicarSaldo, aplicarExtrato]);
 
   async function comprar(p: PacotePix) {
     if (criando) return;
@@ -97,6 +116,7 @@ export default function CreditosScreen() {
         return;
       }
       setPago(false);
+      setExpirado(false);
       setCobranca(c);
     } finally {
       setCriando(null);
@@ -124,7 +144,19 @@ export default function CreditosScreen() {
   function fecharCobranca() {
     setCobranca(null);
     setPago(false);
+    setExpirado(false);
     recarregarSaldo();
+  }
+
+  /** QR robusto: usa o PNG do Mercado Pago (sempre válido); só cai no gerador
+   *  local (que pode lançar se o código for grande demais) quando o PNG faltar. */
+  function qrElemento(c: CobrancaPix): React.ReactNode {
+    if (c.brCodeBase64) return <Image source={{ uri: c.brCodeBase64 }} style={styles.qrImg} />;
+    try {
+      return <SvgXml xml={qrSvg(c.brCode)} width={208} height={208} />;
+    } catch {
+      return null;
+    }
   }
 
   const semPix = !carregandoPacotes && pacotes.length === 0;
@@ -159,11 +191,19 @@ export default function CreditosScreen() {
               </Text>
               <OlliButton label="Concluir" variant="gradient" fullWidth onPress={fecharCobranca} style={styles.cta} />
             </OlliCard>
+          ) : expirado ? (
+            // Expirado — para de "aguardar" e oferece gerar outro
+            <OlliCard style={styles.pixCard} padding={Spacing.lg}>
+              <MaterialCommunityIcons name="clock-alert-outline" size={52} color={cores.warning} />
+              <Text style={styles.pagoTitulo}>Código expirado</Text>
+              <Text style={styles.pagoSub}>Esse Pix venceu. Gere um novo para pagar.</Text>
+              <OlliButton label="Escolher pacote" variant="gradient" fullWidth onPress={fecharCobranca} style={styles.cta} />
+            </OlliCard>
           ) : (
             // Aguardando pagamento
             <OlliCard style={styles.pixCard} padding={Spacing.lg}>
               <View style={styles.qrWrap}>
-                <SvgXml xml={qrSvg(cobranca.brCode)} width={208} height={208} />
+                {qrElemento(cobranca) ?? <Text style={styles.pixInstr}>Use o código copia-e-cola abaixo.</Text>}
               </View>
               <Text style={styles.pixValor}>{formatarPrecoCentavos(cobranca.pacote.amount)}</Text>
               <Text style={styles.pixCreditos}>{formatarCreditos(cobranca.pacote.creditos)}</Text>
@@ -226,8 +266,10 @@ export default function CreditosScreen() {
               ))
             )}
 
-            {/* Extrato */}
-            {extrato && extrato.length > 0 ? (
+            {/* Extrato — 3 estados: null=indisponível (não confundir com []=vazio). */}
+            {extrato === null ? (
+              <Text style={styles.extErro}>Não foi possível carregar o extrato agora.</Text>
+            ) : extrato.length > 0 ? (
               <>
                 <Text style={styles.secaoTitulo}>Últimos lançamentos</Text>
                 <OlliCard style={styles.card} padding={Spacing.base}>
@@ -283,6 +325,7 @@ const criarEstilos = (c: Cores) =>
     // cobrança pix
     pixCard: { alignItems: 'center', gap: Spacing.sm },
     qrWrap: { backgroundColor: '#FFFFFF', borderRadius: BorderRadius.md, padding: 12 },
+    qrImg: { width: 208, height: 208 },
     pixValor: { fontSize: 26, fontFamily: Fonts.serifBold, color: c.accentLight, marginTop: Spacing.xs },
     pixCreditos: { fontSize: 14, fontFamily: Fonts.semiBold, color: c.onSurface },
     pixInstr: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
@@ -305,4 +348,5 @@ const criarEstilos = (c: Cores) =>
     extDir: { alignItems: 'flex-end' },
     extDelta: { fontSize: 15, fontFamily: Fonts.semiBold },
     extData: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
+    extErro: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.sm },
   });
