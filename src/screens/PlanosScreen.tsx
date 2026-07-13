@@ -15,7 +15,7 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
 import { supabase } from '../services/supabase';
-import { getPlanoAtual, getPlanoCacheado, invalidarCachePlano, PlanoId } from '../services/planos';
+import { getPlanoAtual, getPlanoCacheado, PlanoId } from '../services/planos';
 import { aplicarSeo } from '../utils/seoWeb';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -174,8 +174,10 @@ export default function PlanosScreen() {
     getPlanoCacheado().then(p => { if (p) setPlanoAtualId(p); }).catch(() => {});
   }, []);
 
-  const carregarPlano = useCallback(async (invalidarCache: boolean) => {
-    if (invalidarCache) invalidarCachePlano();
+  const carregarPlano = useCallback(async () => {
+    // NÃO invalidar o cache antes da rede: getPlanoAtual já prioriza a rede e reescreve o
+    // cache no sucesso; apagar antes só destruía a rede de segurança da graça de 7 dias
+    // (se a rede falhasse logo após, caía em 'gratis' e reexibia a venda a um pagante).
     setCarregandoPlano(true);
     try {
       const resultado = await getPlanoAtual();
@@ -189,7 +191,7 @@ export default function PlanosScreen() {
   // usuário sai para o navegador e volta pelo botão "voltar" do sistema).
   useFocusEffect(
     useCallback(() => {
-      carregarPlano(true);
+      carregarPlano();
     }, [carregarPlano]),
   );
 

@@ -221,7 +221,7 @@ function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCom
   const styles = useEstilos(criarEstilos);
   return (
     <Pressable
-      onPress={onPress}
+      onPress={(e) => { e.stopPropagation(); onPress(); }}
       accessibilityRole="button"
       accessibilityLabel={rotulo}
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
