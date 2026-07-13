@@ -43,6 +43,7 @@ import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
+import EscanearQrScreen from '../screens/EscanearQrScreen';
 import PmocPlanosScreen from '../screens/PmocPlanosScreen';
 import PmocPlanoScreen from '../screens/PmocPlanoScreen';
 // Frentes novas — landing pública, lixeira, assinatura, ajuda/suporte, legal
@@ -136,7 +137,10 @@ export type RootStackParamList = {
   // gestão vê todas; técnico vê só as suas.
   OrdemServico: undefined;
   // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR da porta física).
-  Equipamento: undefined;
+  // abrirToken: vem do scanner (EscanearQr) → abre o equipamento com esse qrToken.
+  Equipamento: { abrirToken?: string } | undefined;
+  // Scanner de QR (expo-camera) — lê a etiqueta e abre o equipamento.
+  EscanearQr: undefined;
   // PMOC Fase 2 — planos de manutenção programada (lista) e o detalhe do plano,
   // que gera as ordens de serviço recorrentes. `PmocPlano` recebe o id do plano.
   Pmoc: undefined;
@@ -530,6 +534,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />
       {/* PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). */}
       <Stack.Screen name="Equipamento" component={EquipamentoCentro} />
+      <Stack.Screen name="EscanearQr" component={EscanearQrScreen} />
       {/* PMOC Fase 2 — planos de manutenção (/pmoc) e o detalhe (/pmoc/:id). */}
       <Stack.Screen name="Pmoc" component={PmocCentro} />
       <Stack.Screen name="PmocPlano" component={PmocPlanoCentro} />

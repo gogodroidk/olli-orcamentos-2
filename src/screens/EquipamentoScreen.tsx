@@ -3,7 +3,7 @@ import {
   View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Alert, RefreshControl, Modal, Image, Platform, Share,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -115,6 +115,7 @@ function SituacaoBadge({ situacao }: { situacao: SituacaoEquipamento }) {
 // ═════════════════════════════════════════════════════════════
 export default function EquipamentoScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Equipamento'>>();
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
@@ -147,6 +148,22 @@ export default function EquipamentoScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Veio do scanner (EscanearQr) com um token → abre AQUELE equipamento pelo
+  // qrToken. Espera a lista carregar; se o QR não for de um equipamento deste
+  // aparelho (outra empresa, ou ainda não sincronizado aqui), avisa. Limpa o
+  // param depois de tratar para não reabrir a cada foco.
+  const abrirToken = route.params?.abrirToken;
+  useEffect(() => {
+    if (!abrirToken || carregando) return;
+    const alvo = equipamentos.find((e) => e.qrToken && e.qrToken === abrirToken);
+    if (alvo) {
+      setDetalheId(alvo.id);
+    } else {
+      Alert.alert('QR não reconhecido', 'Este equipamento não está neste aparelho. Sincronize e tente de novo.');
+    }
+    nav.setParams({ abrirToken: undefined });
+  }, [abrirToken, carregando, equipamentos, nav]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -280,14 +297,27 @@ export default function EquipamentoScreen() {
         title="Equipamentos"
         subtitle="Inventário HVAC · PMOC"
         right={
-          <TouchableOpacity
-            style={styles.newBtn}
-            activeOpacity={0.85}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); setEditando('novo'); }}
-          >
-            <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-            <Text style={styles.newBtnLabel}>Novo</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity
+                style={styles.scanBtn}
+                activeOpacity={0.85}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('EscanearQr'); }}
+                accessibilityRole="button"
+                accessibilityLabel="Escanear QR do equipamento"
+              >
+                <MaterialCommunityIcons name="qrcode-scan" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.newBtn}
+              activeOpacity={0.85}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setEditando('novo'); }}
+            >
+              <MaterialCommunityIcons name="plus" size={20} color="#fff" />
+              <Text style={styles.newBtnLabel}>Novo</Text>
+            </TouchableOpacity>
+          </View>
         }
       >
         <View style={styles.searchRow}>
@@ -1273,6 +1303,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.full,
   },
   newBtnLabel: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  scanBtn: {
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 38, height: 38, borderRadius: BorderRadius.full,
+  },
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center',

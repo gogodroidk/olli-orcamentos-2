@@ -42,6 +42,12 @@
           "microphonePermission": "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente."
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O OLLI usa a câmera para ler o QR do equipamento."
+        }
+      ],
       "expo-font",
       [
         "expo-notifications",
