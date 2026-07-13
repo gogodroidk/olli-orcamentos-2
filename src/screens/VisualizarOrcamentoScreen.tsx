@@ -13,6 +13,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
+import { PixCobrancaModal } from '../components/PixCobrancaModal';
+import { gerarPixCopiaECola } from '../utils/pixBrCode';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
@@ -66,6 +68,21 @@ export default function VisualizarOrcamentoScreen() {
 
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [pixVisivel, setPixVisivel] = useState(false);
+  // Cobrança por Pix: valor = sinal (se houver) senão o total; BR Code memoizado.
+  const pixValor = orc && orc.sinalValor && orc.sinalValor > 0 ? orc.sinalValor : orc?.valorTotal ?? 0;
+  const pixBrCode = useMemo(() => {
+    if (!orc) return '';
+    const chave = (orc.chavePix || empresa?.chavePix || '').trim();
+    if (!chave) return '';
+    return gerarPixCopiaECola({
+      chave,
+      valor: orc.sinalValor && orc.sinalValor > 0 ? orc.sinalValor : orc.valorTotal,
+      nome: empresa?.nome || '',
+      cidade: empresa?.cidade || '',
+      txid: orc.numero,
+    });
+  }, [orc, empresa]);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [versoes, setVersoes] = useState<OrcamentoVersao[]>([]);
   const [trilha, setTrilha] = useState<EventoTrilhaCliente[]>([]);
@@ -258,6 +275,7 @@ export default function VisualizarOrcamentoScreen() {
           <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
           <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
+          <ActionBtn icon="qrcode" label="Pix" onPress={() => setPixVisivel(true)} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
           <ActionBtn icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
@@ -456,6 +474,13 @@ export default function VisualizarOrcamentoScreen() {
         )}
       </ScrollView>
 
+      <PixCobrancaModal
+        visivel={pixVisivel}
+        aoFechar={() => setPixVisivel(false)}
+        brcode={pixBrCode}
+        valor={pixValor}
+        referencia={`Orçamento nº ${orc.numero}`}
+      />
       <Celebracao visible={celebrando} tipo="aprovado" onDone={() => setCelebrando(false)} />
       <OverlayProgresso
         visible={!!overlayInfo}
