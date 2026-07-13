@@ -1,10 +1,13 @@
 # OLLI Orçamentos — App Android (Play Store)
 
-App **Expo / React Native** (SDK 56). Esta pasta já tem a **parte nativa Android gerada** (`android/`), pronta pra compilar.
+App **Expo / React Native** (SDK 56). A pasta `android/` **NÃO está versionada** — ela é 100% gerada
+pelo Expo. Você precisa gerá-la com `npx expo prebuild -p android` antes de abrir no Android Studio
+(ver Opção A, passo 2). O R8/ProGuard + shrinkResources já vêm ligados via `expo-build-properties`
+no `app.json` (sobrevive ao prebuild).
 
 - **Nome:** OLLI Orçamentos
 - **Pacote (applicationId):** `online.olliorcamentos.app`
-- **Versão:** 1.0.0 (versionCode 2)
+- **Versão:** ver `app.json` (`version` + `android.versionCode`) — hoje 1.1.0 / versionCode 9
 - **Política de privacidade (a Play Store exige):** https://olliorcamentos.online/privacidade
 - **Site / app:** https://olliorcamentos.online · https://app.olliorcamentos.online
 
@@ -27,11 +30,12 @@ Este projeto **não é um app nativo puro** — ele é Expo/React Native. O Andr
 Abra um terminal **nesta pasta** (`olli-orcamentos`) e rode:
 ```
 npm install
+npx expo prebuild -p android    # GERA a pasta android/ (ela não vem no repo)
 ```
-(baixa as dependências — demora alguns minutos)
+(baixa as dependências e cria a parte nativa — demora alguns minutos)
 
 ### 3. Abrir no Android Studio
-- Android Studio → **Open** → selecione a subpasta **`android`** (não a pasta de cima).
+- Android Studio → **Open** → selecione a subpasta **`android`** (agora ela existe; não a pasta de cima).
 - Espere o **Gradle Sync** terminar (pode baixar componentes na 1ª vez).
 
 ### 4. Gerar o app assinado (.aab) pra Play Store

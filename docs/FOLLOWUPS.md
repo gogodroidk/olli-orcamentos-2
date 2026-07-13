@@ -5,6 +5,50 @@
 > ou atacá-los diretamente. Todos são melhorias fora do caminho crítico —
 > nenhum bloqueia o que já está no ar.
 
+## RE-AUDITORIA 2026-07-12 — onda de correção codável (checklist para o enxame)
+
+> Detalhe e severidade em `docs/AUDITORIA_GERAL.md`. Ordem por gravidade. Os P0-A/B/C são de INTEGRIDADE
+> DE DADOS na camada de identidade/conta — atacar antes do resto (o dono pediu "login perfeito").
+
+**P0 — integridade de dados (fazer primeiro):**
+- [ ] **Login não pode gravar empresa em branco.** `EntrarScreen.tsx:129-151`: distinguir 3 estados
+  (`tem`/`não tem`/`não sei`); `não sei` (erro de rede) → tela de retry, NUNCA Onboarding. E o Onboarding
+  (`salvarTudo`) faz MERGE, nunca overwrite de campo já preenchido remotamente. `empresaNuvemMudouDesdeUltimoPull`
+  deve falhar FECHADO (não empurrar) quando não há carimbo local e a origem foi o Onboarding pós-login.
+- [ ] **Logout "Sair e manter dados" não pode contaminar o próximo usuário.** `ContaScreen.tsx:323-344` +
+  `cloudSync.pullAll` aditivo: marcar o SQLite com o `user_id` dono e, no login de outra conta, exigir "apagar
+  dados" (ou isolar por conta) antes do primeiro pull.
+- [ ] **Backup de membro não pode ressuscitar dados do dono.** `database.exportAllData` + `backup.ts` +
+  role gate na UI: o backup do técnico não deve snapshotar o tenant do dono; e o restore não pode reintroduzir
+  itens com `excluido_em` (respeitar tombstones da nuvem).
+
+**P1 — dinheiro, segurança, entrega ao cliente:**
+- [ ] **Paywall do plano Empresa** (worker `handleConvite` checa plano do owner + `GatePro` nas rotas de Equipe).
+  Ver `olli-paywall-empresa-ausente`. **DEPENDE de decisão do dono.**
+- [ ] **XSS em `modeloPdf`** do orçamento (`pdfGenerator.ts`) — mesma blindagem `modeloSeguro()` do recibo.
+- [ ] **`/stripe/webhook` e `/transcrever`**: teto de payload + rate-limit por IP ANTES de bufferizar o corpo;
+  `/transcrever` deve validar plano/cota mensal (hoje só client-side).
+- [ ] **`contextoEquipeOwner` com 3 estados** — usar `carregarMinhaOrganizacao` (não o wrapper que colapsa);
+  `erro` ⇒ não empurra escrita de equipe / re-tenta. `cloudSync.ts:558`.
+- [ ] **Gate de papel na UI de clientes** (edição/exclusão do técnico não pode falhar em silêncio) + **tombstone
+  `exclusoes` multi-tenant** + **query de `OrdensDesktopScreen` fail-closed** enquanto o papel resolve.
+- [ ] **Sinal (R$ + data) e Laudo técnico no PDF** (`Step3Detalhes`/`pdfGenerator` — hoje somem na entrega).
+- [ ] **`NovoOrcamentoScreen`**: trocar `window.alert/confirm` pelo `ConfirmDialog` temático.
+- [ ] **reduced-motion**: `OlliSkeleton` (shimmer), pulso do mic (`OlliVozScreen`), "digitando" (`OlliChatScreen`),
+  container do wizard (`NovoOrcamentoScreen`).
+- [ ] **Handler de toque na notificação** (`addNotificationResponseReceivedListener` → navega pra OS/agenda) +
+  **teto de lembretes PMOC** + **cancelar lembretes no logout "manter dados"** (hoje vazam nome/endereço).
+- [ ] **Badges PMOC** via `corCategoriaEmChip` (contraste — 2 telas).
+- [ ] **Copy que mente**: `public/index.html` estático + `ComparadorLanding` ("assinatura", "equipe no mapa").
+
+**P2/P3 — perf, higiene, código morto:**
+- [ ] `codigos_erro.json` (365KB) fora do import estático do boot (carregar sob demanda / só no seed).
+- [ ] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) e KPIs de recibos → dashboard-agregado em SQL.
+- [ ] `useCallback` nas telas que usam `TabelaDados`; ícone android 990KB comprimido; cache de ETA com origem.
+- [ ] `code-splitting` web (landing não baixa o ERP); `_headers` com CSP; `ErrorBoundary` com "ir para o início".
+- [ ] Higiene: exports mortos do worker; `tsconfig noUnusedLocals`/linter mínimo; fotos `file://` (decisão: subir
+  pra Storage — ver D-13 — ou avisar que é local).
+
 ## Pendentes (27)
 
 1. **Badge financeiro na tabela desktop de orçamentos**

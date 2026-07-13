@@ -34,6 +34,8 @@
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
+import { handleAbacate } from './abacate.js';
+import { handleMercadoPago } from './mercadopago.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
@@ -470,6 +472,105 @@ async function handleEta(request, env) {
   }
 }
 
+// Consulta de CNPJ (BrasilAPI) para o CADASTRO MÁGICO do Onboarding: o app manda
+// só os 14 dígitos, o worker consulta a BrasilAPI (grátis, sem chave) e devolve a
+// empresa NORMALIZADA (razão, fantasia, CNAE principal + secundários, endereço). A
+// dedução CNAE→vertical é feita no CLIENTE (src/services/verticais.ts) — o worker é
+// proxy fino. Autenticado + rate limit por usuário (a BrasilAPI é grátis mas tem
+// fair-use; e evita usarem o worker pra raspar CNPJ). Cache de 30 dias em
+// public.cnpj_cache (migration 20260721) — fallback Casa dos Dados fica de follow-up.
+async function handleCnpj(cnpjBruto, request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+
+  const cnpj = String(cnpjBruto || '').replace(/\D/g, '');
+  if (cnpj.length !== 14) return json({ ok: false, erro: 'cnpj_invalido' }, 400);
+
+  // Rate limit por usuário (binding OPCIONAL — se não provisionado no wrangler,
+  // não bloqueia; mesmo padrão gracioso do ETA_RL).
+  if (env.CNPJ_RL) {
+    try {
+      const { success } = await env.CNPJ_RL.limit({ key: user.id });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch { /* binding ausente: não bloqueia */ }
+  }
+
+  // Cache de 30 dias: reconsulta do mesmo CNPJ não bate na BrasilAPI. Gracioso —
+  // sem Supabase ou em erro, cai direto na consulta ao vivo (nunca bloqueia).
+  const emCache = await lerCacheCnpj(env, cnpj);
+  if (emCache) return json({ ok: true, empresa: emCache, cache: true });
+
+  try {
+    const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (resp.status === 404) return json({ ok: false, erro: 'cnpj_nao_encontrado' }, 404);
+    if (!resp.ok) return json({ ok: false, erro: 'consulta_indisponivel' }, 502);
+    const d = await resp.json().catch(() => null);
+    if (!d || typeof d !== 'object') return json({ ok: false, erro: 'consulta_indisponivel' }, 502);
+
+    const secundarios = Array.isArray(d.cnaes_secundarios)
+      ? d.cnaes_secundarios
+          .filter((c) => c && c.codigo)
+          .map((c) => ({ codigo: String(c.codigo), descricao: String(c.descricao || '') }))
+          .slice(0, 20)
+      : [];
+
+    const empresa = {
+      cnpj,
+      razaoSocial: String(d.razao_social || ''),
+      nomeFantasia: String(d.nome_fantasia || ''),
+      cnaePrincipal: { codigo: String(d.cnae_fiscal || ''), descricao: String(d.cnae_fiscal_descricao || '') },
+      cnaesSecundarios: secundarios,
+      logradouro: [d.descricao_tipo_de_logradouro, d.logradouro, d.numero].filter(Boolean).join(' ').trim(),
+      bairro: String(d.bairro || ''),
+      municipio: String(d.municipio || ''),
+      uf: String(d.uf || ''),
+      cep: String(d.cep || '').replace(/\D/g, ''),
+      porte: String(d.porte || ''),
+      mei: !!d.opcao_pelo_mei,
+    };
+    void gravarCacheCnpj(env, cnpj, empresa); // best-effort, não bloqueia a resposta
+    return json({ ok: true, empresa });
+  } catch {
+    return json({ ok: false, erro: 'consulta_falhou' }, 502);
+  }
+}
+
+// Headers de service_role para o cache de CNPJ (mesmo padrão inline do resto do worker).
+function cnpjCacheHeaders(env, extra) {
+  return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, ...(extra || {}) };
+}
+
+// Lê o cache (public.cnpj_cache): devolve os `dados` se houver linha com < 30 dias;
+// senão null. Gracioso: sem Supabase/erro/stale → null → consulta ao vivo.
+async function lerCacheCnpj(env, cnpj) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/cnpj_cache?cnpj=eq.${cnpj}&select=dados,atualizado_em&limit=1`, { headers: cnpjCacheHeaders(env) });
+    if (!r.ok) return null;
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr) || !arr.length) return null;
+    const idade = Date.now() - new Date(arr[0].atualizado_em).getTime();
+    if (!(idade >= 0) || idade > 30 * 24 * 3600 * 1000) return null; // > 30 dias = stale
+    return arr[0].dados || null;
+  } catch {
+    return null;
+  }
+}
+
+// Grava/atualiza o cache (upsert por cnpj). Best-effort: falha não afeta a resposta.
+async function gravarCacheCnpj(env, cnpj, empresa) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/cnpj_cache?on_conflict=cnpj`, {
+      method: 'POST',
+      headers: cnpjCacheHeaders(env, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ cnpj, dados: empresa, atualizado_em: new Date().toISOString() }),
+    });
+  } catch { /* best-effort */ }
+}
+
 // Geocodificação (endereço em texto → lat/lng). Serve o ETA: o `Agendamento`
 // guarda só `endereco` (texto), e o /eta exige coordenadas. Mesma chave restrita
 // do /eta (agora liberada p/ Routes + Geocoding), sempre server-side — o app
@@ -517,7 +618,24 @@ async function handleGeocode(request, env) {
 }
 
 // ─── VOZ → ITENS ─────────────────────────────────────────────
-const VOZ_SYSTEM = `Você é a OLLI, assistente de um prestador de serviços (ar-condicionado e afins) no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
+// Contexto do OFÍCIO por vertical (personalização — a IA fala a língua do segmento).
+// DEFAULT = ar-condicionado/refrigeração: cliente antigo que NÃO manda `vertical` mantém
+// EXATAMENTE o comportamento atual (backward-compat). Ver src/services/verticais.ts.
+function rotuloVertical(vertical) {
+  switch (vertical) {
+    case 'eletrica': return 'instalações elétricas (NR-10, NBR 5410, quadros, disjuntores, aterramento)';
+    case 'hidraulica': return 'hidráulica e encanamento (vazamentos, pressão, NBR 5626)';
+    case 'pintura': return 'pintura e acabamento (cálculo de tinta, superfícies, demãos)';
+    case 'dedetizacao': return 'controle de pragas / dedetização (RDC 622, produtos, responsável técnico)';
+    case 'jardinagem': return 'jardinagem e paisagismo (poda, irrigação, manutenção)';
+    case 'geral': return 'serviços de campo em geral';
+    case 'refrigeracao':
+    default: return 'ar-condicionado e refrigeração (split, multi-split, VRF)';
+  }
+}
+function vozSystem(vertical) {
+  return `Você é a OLLI, assistente de um prestador de serviços de ${rotuloVertical(vertical)} no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
+}
 
 // `linhaFala` permite trocar a 1ª linha do prompt: por padrão cita o
 // transcript em texto (rota /voz); /transcrever (modo orcamento) passa o
@@ -549,7 +667,7 @@ Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use nul
 const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
 
 async function handleVoz(bodyText, env) {
-  const { transcript: rawTranscript, catalogo: rawCatalogo } = parseJsonBody(bodyText);
+  const { transcript: rawTranscript, catalogo: rawCatalogo, vertical } = parseJsonBody(bodyText);
   const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
   if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
   const catalogo = Array.isArray(rawCatalogo)
@@ -558,7 +676,7 @@ async function handleVoz(bodyText, env) {
         preco: c && typeof c.preco === 'number' ? c.preco : undefined,
       }))
     : undefined;
-  const text = await gemini(env, { system: VOZ_SYSTEM, user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
+  const text = await gemini(env, { system: vozSystem(vertical), user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
   const parsed = parseJsonLoose(text);
   if (!parsed || !Array.isArray(parsed.itens)) {
     console.error('[olli-voz] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
@@ -605,6 +723,7 @@ async function handleTranscrever(bodyText, env) {
   if (!TRANSCREVER_MIME_OK.has(mimeType)) return json({ ok: false, erro: 'mime_invalido' });
 
   const modo = raw && raw.modo === 'orcamento' ? 'orcamento' : 'transcrever';
+  const vertical = typeof (raw && raw.vertical) === 'string' ? raw.vertical : undefined;
 
   const catalogo = Array.isArray(raw && raw.catalogo)
     ? raw.catalogo.slice(0, VOZ_MAX.catalogoItens).map((c) => ({
@@ -639,7 +758,7 @@ async function handleTranscrever(bodyText, env) {
     exigirTexto: true,
   });
   const text = await gemini(env, {
-    system: VOZ_SYSTEM,
+    system: vozSystem(vertical),
     userParts: [audioPart, { text: prompt }],
     wantJson: true,
     temperature: 0.3,
@@ -661,7 +780,11 @@ async function handleTranscrever(bodyText, env) {
 }
 
 // ─── CHAT ────────────────────────────────────────────────────
-const CHAT_SYSTEM = `Você é a OLLI, assistente do prestador de serviços (foco em ar-condicionado) no Brasil. Ajuda com diagnóstico técnico, preços e orçamentos, atendimento ao cliente e organização do dia. Seja prática, direta e em português do Brasil. Respostas curtas e úteis. Quando faltar dado técnico, peça marca e modelo. Nunca mande trocar peça sem teste.`;
+// Parametrizado por vertical (rotuloVertical, definido junto do vozSystem acima).
+// Default = ar-condicionado → cliente antigo sem `vertical` mantém o comportamento atual.
+function chatSystem(vertical) {
+  return `Você é a OLLI, assistente do prestador de serviços de ${rotuloVertical(vertical)} no Brasil. Ajuda com diagnóstico técnico, preços e orçamentos, atendimento ao cliente e organização do dia. Seja prática, direta e em português do Brasil. Respostas curtas e úteis. Quando faltar dado técnico, peça marca e modelo. Nunca mande trocar peça sem teste.`;
+}
 
 // Limites de sanitização do chat: máx. de mensagens por request e tamanho por
 // mensagem — sem isto um histórico gigante (dentro dos 20/min da IA_RL) teria
@@ -669,14 +792,14 @@ const CHAT_SYSTEM = `Você é a OLLI, assistente do prestador de serviços (foco
 const CHAT_MAX = { mensagens: 40, texto: 4000 };
 
 async function handleChat(bodyText, env) {
-  const { mensagens } = parseJsonBody(bodyText);
+  const { mensagens, vertical } = parseJsonBody(bodyText);
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
     .filter((m) => m && typeof m.texto === 'string' && m.texto.trim())
     .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
-  const text = await gemini(env, { system: CHAT_SYSTEM, user: contents, temperature: 0.6 });
+  const text = await gemini(env, { system: chatSystem(vertical), user: contents, temperature: 0.6 });
   if (!text) return json({ ok: false, erro: 'resposta_vazia' });
   return json({ ok: true, resposta: text });
 }
@@ -699,6 +822,21 @@ export default {
     // handleStripe cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/stripe/')) {
       return handleStripe(request, env, url);
+    }
+
+    // ── PAGAMENTOS PIX ABACATEPAY (créditos por Pix) ──
+    // Mesmo perfil do Stripe: fora do gate da IA; o webhook autentica por
+    // secret(query)+HMAC, as demais rotas validam o JWT do Supabase por conta
+    // própria. handleAbacate cuida do método e de OPTIONS/CORS por rota.
+    if (url.pathname.startsWith('/abacate/')) {
+      return handleAbacate(request, env, url);
+    }
+
+    // ── PAGAMENTOS MERCADO PAGO (gateway único: créditos Pix + planos) ──
+    // Mesmo perfil: fora do gate da IA; o webhook autentica por x-signature
+    // (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
+    if (url.pathname.startsWith('/mp/')) {
+      return handleMercadoPago(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──
@@ -781,6 +919,11 @@ export default {
     // ETA com trânsito (Routes API). Não é rota de IA — não exige Gemini, mas
     // exige login (protege a chave/cota). A chave vive só aqui (secret), nunca no
     // app. Barato por design: o app chama só a próxima parada, com cache.
+    // Cadastro mágico por CNPJ — GET /cnpj/<14 dígitos>, autenticado (ver handleCnpj).
+    if (url.pathname.startsWith('/cnpj/') && request.method === 'GET') {
+      return handleCnpj(url.pathname.slice('/cnpj/'.length), request, env);
+    }
+
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEta(request, env);
     }

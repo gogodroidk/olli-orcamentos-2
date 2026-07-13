@@ -2,7 +2,10 @@
 
 > Onda 2, frente **"Schema multi-tenant + RLS (fundação)"**.
 > Migration: `supabase/migrations/20260707_multitenant.sql` (idempotente).
-> **Não foi aplicada** — o integrador revisa e aplica via `mcp__supabase__apply_migration`.
+> **APLICADA em produção** (projeto `yiaeplqinnnnniyvwtls`), junto de `20260708_multitenant_fixes.sql`,
+> `20260718_rls_owner_backdoor.sql` (fecha o backdoor de owner — P0-2) e
+> `20260719_clientes_insert_equipe.sql` (abre INSERT de `clientes` a membro ativo — P1-3).
+> RLS testada com 2 JWTs (ver `docs/RLS_MATRIX.md`).
 
 ## A decisão central: organização é uma CAMADA, não um dono de dados
 
@@ -92,7 +95,7 @@ A policy única `*_owner` (FOR ALL) foi trocada por policies separadas:
 | Tabela | SELECT | INSERT / UPDATE / DELETE |
 | --- | --- | --- |
 | `empresa` | dono **ou membro ativo** | só o dono |
-| `clientes` | dono **ou membro ativo** | só o dono *(ver nota)* |
+| `clientes` | dono **ou membro ativo** | **INSERT: dono ou membro ativo** (carimba `criado_por`); UPDATE/DELETE só do dono *(ver nota)* |
 | `servicos` | dono **ou membro ativo** | só o dono |
 | `produtos` | dono **ou membro ativo** | só o dono |
 | `recibos` | dono **ou membro ativo** | só o dono |
@@ -106,13 +109,15 @@ A policy única `*_owner` (FOR ALL) foi trocada por policies separadas:
 - **UPDATE/DELETE** de `orcamentos`/`agendamentos` liberados a membros ativos
   (a UI/`usePermissao` afina quem pode o quê; a RLS é o **piso** de segurança).
 
-> **Nota (clientes/catálogo conservador):** por segurança da fundação, a escrita
-> de `clientes`/`servicos`/`produtos`/`empresa`/`recibos` fica com o **dono**.
-> A leitura já é compartilhada (técnico vê o catálogo e o cadastro base). Se a
-> UI da Onda 2 precisar que o técnico **crie clientes**, basta ampliar o INSERT
-> de `clientes` igual a `orcamentos` (mesmo par `user_id in donos_visiveis()` +
-> `criado_por`, adicionando a coluna `criado_por` a `clientes`). Deixado fechado
-> **de propósito** para não abrir superfície de escrita antes da UI existir.
+> **Nota (clientes — ATUALIZADA em `20260719_clientes_insert_equipe.sql`, achado P1-3):**
+> o INSERT de `clientes` **foi ampliado** para membro ativo (mesmo par
+> `user_id in donos_visiveis()` + `criado_por = auth.uid()` de `orcamentos`), porque o
+> wizard (`Step1Cliente`) já deixava o técnico cadastrar cliente — e sem a RLS acompanhar,
+> o registro nascia no tenant do técnico e sumia pro dono ("erro vira vazio"). **UPDATE/DELETE
+> de `clientes` seguem owner-only** por decisão. ⚠️ Furo de UI conhecido (re-auditoria 2026-07-12):
+> a tela de clientes NÃO tem gate de papel, então um técnico que "edita/exclui" um cliente do dono
+> vê sucesso local mas a mudança nunca chega ao owner (falha silenciosa). `servicos`/`produtos`/
+> `empresa`/`recibos` continuam escrita conservadora só do dono.
 
 ## Funções de negócio
 

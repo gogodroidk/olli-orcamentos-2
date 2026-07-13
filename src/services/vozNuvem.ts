@@ -10,6 +10,7 @@ import {
 import { DIAGNOSTICO_URL } from '../config';
 import { supabase } from './supabase';
 import { mensagemPermissaoNegada } from './reconhecimentoVoz';
+import { verticalParaIA } from '../hooks/useVerticais';
 import type { VozResultadoOk, VozItem } from './olliAssistente';
 
 /**
@@ -213,12 +214,14 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
       const timer = setTimeout(() => controller.abort(), TIMEOUT_TRANSCREVER_MS);
 
       try {
+        const vertical = await verticalParaIA();
         const body: Record<string, unknown> = {
           audioBase64,
           mimeType: 'audio/mp4',
           modo,
         };
         if (catalogo && catalogo.length > 0) body.catalogo = catalogo;
+        if (vertical) body.vertical = vertical;
 
         const r = await fetch(`${DIAGNOSTICO_URL}/transcrever`, {
           method: 'POST',

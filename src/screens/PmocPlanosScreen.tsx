@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -93,7 +93,7 @@ function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
   const cor = criarSitPmocCor(cores)[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
-      <Text style={[styles.statusBadgeText, { color: cor }]}>{SIT_PMOC_LABEL[situacao] ?? situacao}</Text>
+      <Text style={[styles.statusBadgeText, { color: corCategoriaEmChip(cor, cores.surface) }]}>{SIT_PMOC_LABEL[situacao] ?? situacao}</Text>
     </View>
   );
 }

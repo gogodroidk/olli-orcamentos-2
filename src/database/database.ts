@@ -1,7 +1,9 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada } from '../types';
-import codigosErroSeed from '../../assets/codigos_erro.json';
+// codigos_erro.json (~365 KB) é carregado SOB DEMANDA em seedCodigosErro (lazy
+// require), não como import estático — assim o boot não paga o parse quando o
+// seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
@@ -501,7 +503,8 @@ async function seedCodigosErro(database: SQLite.SQLiteDatabase) {
   const row = await database.getFirstAsync<{ c: number }>('SELECT COUNT(*) as c FROM codigos_erro');
   const versaoAtual = Number(atual?.valor ?? '0');
   if ((row?.c ?? 0) > 0 && versaoAtual >= SEED_CODIGOS_VERSAO) return;
-  const seed = codigosErroSeed as any[];
+  // Só AGORA (quando vamos de fato semear) o JSON grande é lido e parseado.
+  const seed = require('../../assets/codigos_erro.json') as any[];
   if (!Array.isArray(seed) || seed.length === 0) return;
   await database.withTransactionAsync(async () => {
     await database.runAsync('DELETE FROM codigos_erro');
@@ -546,6 +549,14 @@ export async function getClientes(): Promise<Cliente[]> {
   // vivem em getLixeiraClientes até restaurar / expurgo.
   const rows = await db.getAllAsync<any>('SELECT * FROM clientes WHERE excluido_em IS NULL ORDER BY nome ASC');
   return rows.map(rowToCliente);
+}
+
+/** Um cliente ATIVO por id (para telefone/endereço na Ordem de Serviço). null se não achar. */
+export async function getCliente(id: string): Promise<Cliente | null> {
+  if (!id) return null;
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM clientes WHERE id = ? AND excluido_em IS NULL', [id]);
+  return row ? rowToCliente(row) : null;
 }
 
 export async function searchClientes(q: string): Promise<Cliente[]> {
@@ -2156,6 +2167,18 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const ordensServico = asArray<OrdemServico>(data.ordensServico);
   const equipamentos = asArray<Equipamento>(data.equipamentos);
 
+  // GUARDA ANTI-PERDA: um backup corrompido/parcial que vira `{}` passa pela checagem
+  // de objeto lá em cima e, SEM isto, apagaria todas as tabelas e inseriria nada
+  // (perda TOTAL). Se o snapshot não traz NENHUM item nem empresa, é vazio/inválido:
+  // recusa ANTES de tocar no banco. Um app de fato vazio não tem o que perder.
+  const totalItens =
+    clientes.length + servicos.length + produtos.length + orcamentos.length +
+    recibos.length + modelos.length + depoimentos.length + agendamentos.length +
+    relatoriosDiarios.length + orcamentoVersoes.length + ordensServico.length + equipamentos.length;
+  if (totalItens === 0 && !data.empresa) {
+    throw new Error('Backup vazio ou inválido — nada para restaurar. Seus dados não foram alterados.');
+  }
+
   // Ids que o snapshot TRAZ DE VOLTA — usados para limpar tombstones (senão um item
   // recuperado num restore seria re-excluído pelo applyCloudTombstones no próximo sync).
   const idsRestaurados: { tabela: string; itemId: string }[] = [
@@ -2370,6 +2393,9 @@ const USER_DATA_TABLES = [
   'clientes', 'servicos', 'produtos', 'orcamentos', 'orcamento_versoes', 'recibos', 'modelos',
   'depoimentos', 'agendamentos', 'ordens_servico', 'empresa', 'exclusoes', 'contadores',
   'eventos', 'cache_ia', 'casos_erro', 'relatorios_diarios',
+  // PMOC/HVAC — estavam de FORA e vazavam entre contas no aparelho compartilhado (equipamentos,
+  // planos de manutenção e ordens geradas do usuário anterior sobreviviam ao logout).
+  'equipamentos', 'pmoc_planos', 'pmoc_plano_versoes', 'pmoc_ordens_geradas',
 ];
 
 /**

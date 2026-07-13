@@ -30,6 +30,10 @@ import AgendaScreen from '../screens/AgendaScreen';
 import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
+import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
+import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
+import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
+import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
@@ -39,6 +43,7 @@ import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
+import EscanearQrScreen from '../screens/EscanearQrScreen';
 import PmocPlanosScreen from '../screens/PmocPlanosScreen';
 import PmocPlanoScreen from '../screens/PmocPlanoScreen';
 // Frentes novas — landing pública, lixeira, assinatura, ajuda/suporte, legal
@@ -81,6 +86,8 @@ export type PrefillItem = {
   tipo: 'servico' | 'produto';
   nome: string;
   descricao?: string;
+  /** Quantidade pré-carregada (ex.: litros de tinta calculados). Default 1. */
+  quantidade?: number;
 };
 
 export type RootStackParamList = {
@@ -109,6 +116,14 @@ export type RootStackParamList = {
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
   OlliChat: undefined;
+  // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
+  CalculadoraTinta: undefined;
+  // Ferramenta ÚNICA do ofício de dedetização (gate `vertical: 'dedetizacao'`).
+  CertificadoAnvisa: undefined;
+  // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
+  FerramentasOficio: undefined;
+  // Saldo de créditos + recarga por Pix (AbacatePay).
+  Creditos: undefined;
   Planos: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
@@ -122,7 +137,10 @@ export type RootStackParamList = {
   // gestão vê todas; técnico vê só as suas.
   OrdemServico: undefined;
   // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR da porta física).
-  Equipamento: undefined;
+  // abrirToken: vem do scanner (EscanearQr) → abre o equipamento com esse qrToken.
+  Equipamento: { abrirToken?: string } | undefined;
+  // Scanner de QR (expo-camera) — lê a etiqueta e abre o equipamento.
+  EscanearQr: undefined;
   // PMOC Fase 2 — planos de manutenção programada (lista) e o detalhe do plano,
   // que gera as ordens de serviço recorrentes. `PmocPlano` recebe o id do plano.
   Pmoc: undefined;
@@ -199,6 +217,10 @@ const ModelosDocumentoCentro = comCentroDesktop(ModelosDocumentoScreen);
 const DiagnosticoIACentro = comCentroDesktop(DiagnosticoIAScreen);
 const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
+const CalculadoraTintaCentro = comCentroDesktop(CalculadoraTintaScreen);
+const CertificadoAnvisaCentro = comCentroDesktop(CertificadoAnvisaScreen);
+const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
+const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
@@ -497,6 +519,10 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
+      <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
+      <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
+      <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
+      <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
@@ -508,6 +534,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />
       {/* PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). */}
       <Stack.Screen name="Equipamento" component={EquipamentoCentro} />
+      <Stack.Screen name="EscanearQr" component={EscanearQrScreen} />
       {/* PMOC Fase 2 — planos de manutenção (/pmoc) e o detalhe (/pmoc/:id). */}
       <Stack.Screen name="Pmoc" component={PmocCentro} />
       <Stack.Screen name="PmocPlano" component={PmocPlanoCentro} />

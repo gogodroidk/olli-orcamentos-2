@@ -437,7 +437,7 @@ function AcaoIcone({
   const styles = useEstilos(criarEstilos);
   return (
     <Pressable
-      onPress={carregando ? undefined : onPress}
+      onPress={carregando ? undefined : (e) => { e.stopPropagation(); onPress(); }}
       accessibilityRole="button"
       accessibilityLabel={rotulo}
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}

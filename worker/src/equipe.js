@@ -145,6 +145,55 @@ async function getNomeOrg(env, orgId) {
   }
 }
 
+// Status de assinatura que significam "acabou" (espelha worker/src/stripe.js:564).
+// Empresa ATIVO = plano 'empresa' com status FORA deste conjunto.
+const PLANO_TERMINADO = new Set(['canceled', 'unpaid', 'incomplete_expired']);
+
+/** owner_user_id da org. Retorna string ('' se ausente) ou { error:true } em falha. */
+async function getOwnerDaOrg(env, orgId) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/organizacoes?id=eq.${encodeURIComponent(orgId)}&select=owner_user_id&limit=1`,
+      { headers: sbHeaders(env) },
+    );
+    if (!r.ok) return { error: true };
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr)) return { error: true };
+    return arr.length ? (arr[0].owner_user_id || '') : '';
+  } catch {
+    return { error: true };
+  }
+}
+
+/**
+ * A org tem plano EMPRESA ATIVO? Recurso de equipe (convidar membros) é do plano
+ * Empresa — e o plano é o do DONO da org (o webhook Stripe grava plano+status em
+ * public.assinaturas; é a fonte da verdade, D-03). REGRA DOS 3 ESTADOS
+ * (olli-gate-erro-vira-vazio): 'sim' | 'nao' | 'erro'. Uma falha de backend NUNCA
+ * pode virar "nao tem plano" nem "tem" — devolve 'erro', e o chamador falha FECHADO
+ * (503, tente de novo), para nunca conceder equipe de graça por um erro transitório.
+ */
+async function orgTemEmpresaAtivo(env, orgId) {
+  const owner = await getOwnerDaOrg(env, orgId);
+  if (owner && owner.error) return 'erro';
+  if (!owner) return 'nao'; // org sem dono resolvível = sem plano Empresa comprovável
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(owner)}&select=plano,status&limit=1`,
+      { headers: sbHeaders(env) },
+    );
+    if (!r.ok) return 'erro';
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr)) return 'erro';
+    if (!arr.length) return 'nao'; // dono sem nenhuma assinatura = Grátis
+    const { plano, status } = arr[0];
+    const ativo = plano === 'empresa' && typeof status === 'string' && !PLANO_TERMINADO.has(status);
+    return ativo ? 'sim' : 'nao';
+  } catch {
+    return 'erro';
+  }
+}
+
 /**
  * Insere um convite. Retorna { ok:true } em sucesso, { ok:false } em falha.
  * A linha grava org_id, email (opcional), papel, token, expira_em e criado_por.
@@ -257,6 +306,16 @@ export async function handleConvite(request, env) {
   if (membership && membership.error) return json({ ok: false, erro: 'indisponivel' }, 503);
   if (!membership) return json({ ok: false, erro: 'sem_organizacao' }, 403);
   if (!PAPEIS_GESTAO.has(membership.papel)) return json({ ok: false, erro: 'sem_permissao' }, 403);
+
+  // PAYWALL do plano Empresa: convidar membro é recurso do plano Empresa (a auditoria
+  // achou este gate aberto — Equipe funcionava de graça). O plano é o do DONO da org.
+  // Em 'erro' falhamos FECHADO (503) para nunca conceder equipe de graça por um erro
+  // transitório. Ver docs/ESTRATEGIA_SUPERIOR.md e a memória olli-paywall-empresa-ausente.
+  // NOTA (decisão do dono): orgs criadas ANTES do paywall não são grandfathered aqui —
+  // se quiser preservar times antigos, adicionar uma allowlist/flag antes deste gate.
+  const planoEmpresa = await orgTemEmpresaAtivo(env, membership.org_id);
+  if (planoEmpresa === 'erro') return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (planoEmpresa !== 'sim') return json({ ok: false, erro: 'plano_requer_empresa' }, 402);
 
   const token = novoToken();
   const ins = await inserirConvite(env, {

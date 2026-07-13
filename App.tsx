@@ -7,6 +7,7 @@ import { NavigationContainer, createNavigationContainerRef } from '@react-naviga
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -156,6 +157,28 @@ function AppConteudo() {
       try { return navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined; }
       catch { return undefined; }
     });
+  }, []);
+
+  // Toque na notificação (lembrete de PMOC ou de agenda) leva o usuário à ÁREA certa.
+  // Sem isto o payload (ordemId/agendamentoId) era CÓDIGO MORTO — tocar abria o app
+  // em qualquer tela (achado da re-auditoria). As rotas OrdemServico/Agenda não recebem
+  // id (ver RootStackParamList), então navegamos para a TELA/ABA relevante; abrir o item
+  // específico exigiria um param novo nessas rotas (follow-up). Nunca derruba o app.
+  useEffect(() => {
+    function tratar(resposta: Notifications.NotificationResponse | null) {
+      if (!resposta) return;
+      try {
+        const data = resposta.notification.request.content.data as { ordemId?: string; agendamentoId?: string };
+        if (!navigationRef.isReady()) return;
+        // `as never`: navigate com nome de rota dinâmico não casa os overloads do ref.
+        if (data?.ordemId) navigationRef.navigate('OrdemServico' as never);
+        else if (data?.agendamentoId) navigationRef.navigate('Agenda' as never);
+      } catch { /* best-effort: nunca derruba o app */ }
+    }
+    const sub = Notifications.addNotificationResponseReceivedListener(tratar);
+    // App aberto A PARTIR do toque (estava fechado): melhor-esforço se a navegação já montou.
+    Notifications.getLastNotificationResponseAsync().then(tratar).catch(() => {});
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {

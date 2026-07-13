@@ -9,6 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
 import { Motion } from '../theme/motion';
+import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -125,7 +126,15 @@ function calcTotais(o: Orcamento): Orcamento {
     ? round2(subtotal * (descontoBruto / 100))
     : descontoBruto;
   const valorTotal = round2(Math.max(0, subtotal - desconto));
-  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, desconto: descontoBruto, valorTotal };
+  // Sinal/entrada em VALOR (R$) também é reclampado ao novo total, pela mesma razão do
+  // desconto: um sinal definido com o total maior não pode ficar PRESO acima do total
+  // quando os itens caem — senão o Pix/PDF cobraria MAIS que o próprio orçamento. O modo
+  // PERCENTUAL (sinalValor ausente) fica intacto: um % é sempre válido sobre qualquer total.
+  const sinalValor = o.sinalValor && o.sinalValor > 0 ? round2(Math.min(o.sinalValor, valorTotal)) : o.sinalValor;
+  const sinalPercentual = sinalValor && sinalValor > 0 && valorTotal > 0
+    ? Math.round((sinalValor / valorTotal) * 100)
+    : o.sinalPercentual;
+  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, desconto: descontoBruto, valorTotal, sinalValor, sinalPercentual };
 }
 
 export default function NovoOrcamentoScreen() {
@@ -141,7 +150,7 @@ export default function NovoOrcamentoScreen() {
   // diagnóstico / código de erro. Lidos só na criação (não no modo edição).
   const prefillClienteId = (route.params as any)?.clienteId as string | undefined;
   const prefillItem = (route.params as any)?.prefillItem as
-    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string }
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }
     | undefined;
 
   const [step, setStep] = useState(0);
@@ -219,6 +228,10 @@ export default function NovoOrcamentoScreen() {
 
       // Pré-carrega 1 item (descrição de diagnóstico/código) para o usuário só ajustar preço.
       if (prefillItem?.nome?.trim()) {
+        const qtdPrefill =
+          typeof prefillItem.quantidade === 'number' && prefillItem.quantidade > 0
+            ? prefillItem.quantidade
+            : 1;
         const item: ItemOrcamento = {
           id: generateId(),
           tipo: prefillItem.tipo,
@@ -226,7 +239,7 @@ export default function NovoOrcamentoScreen() {
           nome: prefillItem.nome.trim(),
           descricao: prefillItem.descricao?.trim() || undefined,
           preco: 0,
-          quantidade: 1,
+          quantidade: qtdPrefill,
           unidade: 'un',
           subtotal: 0,
         };
@@ -293,7 +306,7 @@ export default function NovoOrcamentoScreen() {
       }
     } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Não foi possível salvar o orçamento agora. Tente novamente.');
+        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
       } else {
         Alert.alert('Erro', 'Não foi possível salvar o orçamento agora. Tente novamente.');
       }
@@ -308,7 +321,7 @@ export default function NovoOrcamentoScreen() {
     try {
       await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Orcamento salvo como rascunho.');
+        avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
         goBackOrHome(nav);
         return;
       }
@@ -318,7 +331,7 @@ export default function NovoOrcamentoScreen() {
       goBackOrHome(nav);
     } catch {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('Não foi possível salvar o rascunho agora. Tente novamente.');
+        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
       } else {
         Alert.alert('Erro', 'Não foi possível salvar o rascunho agora. Tente novamente.');
       }
@@ -330,9 +343,8 @@ export default function NovoOrcamentoScreen() {
   function handleBack() {
     if (step === 0) {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        if (window.confirm('Deseja descartar este orcamento?')) {
-          goBackOrHome(nav);
-        }
+        void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
+          .then(ok => { if (ok) goBackOrHome(nav); });
         return;
       }
       Alert.alert('Cancelar orçamento', 'Deseja descartar este orçamento?', [

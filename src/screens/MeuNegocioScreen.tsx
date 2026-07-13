@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, Alert, Image, Modal, KeyboardAvoidingView, Platform,
@@ -14,6 +14,9 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getEmpresa, saveEmpresa, getDepoimentos, saveDepoimento, deleteDepoimento } from '../database/database';
+import { ferramentasSugeridas } from '../services/verticais';
+import { SEGMENTO_PARA_VERTICAL } from '../services/verticalSegmento';
+import { recarregarVerticais } from '../hooks/useVerticais';
 import { Empresa, Depoimento, SEGMENTOS, Segmento } from '../types';
 import { CORES_MARCA, contrasteTextoSobre } from '../utils/coresMarca';
 import { extrairCoresLogo } from '../utils/extrairCoresLogo';
@@ -95,6 +98,24 @@ function MeuNegocioConteudo() {
   const extraiuCoresRef = React.useRef(false);
 const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  // Guarda contra perda silenciosa: sair com alterações não salvas (botão voltar do header,
+  // gesto ou botão físico) pede confirmação antes de descartar os campos editados.
+  useEffect(() => {
+    const remover = nav.addListener('beforeRemove', (e: any) => {
+      if (!dirty) return;
+      e.preventDefault();
+      Alert.alert(
+        'Descartar alterações?',
+        'Você tem alterações não salvas em "Meu negócio".',
+        [
+          { text: 'Continuar editando', style: 'cancel' },
+          { text: 'Descartar', style: 'destructive', onPress: () => nav.dispatch(e.data.action) },
+        ],
+      );
+    });
+    return remover;
+  }, [nav, dirty]);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [showDep, setShowDep] = useState(false);
   const [newDep, setNewDep] = useState<Partial<Depoimento>>({ estrelas: 5 });
@@ -129,7 +150,10 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
   }
 
   function chooseSegmento(id: Segmento) {
-    setEmpresa(p => (p ? { ...p, segmento: id } : p));
+    // O segmento também define o OFÍCIO (verticais) que dirige o gate de ferramentas por
+    // vertical — um pintor deixa de ver ar-condicionado. Ver src/hooks/useVerticais.ts.
+    const vertical = SEGMENTO_PARA_VERTICAL[id];
+    setEmpresa(p => (p ? { ...p, segmento: id, verticais: [vertical], ferramentasAtivas: ferramentasSugeridas([vertical]) } : p));
     setDirty(true);
     Haptics.selectionAsync().catch(() => {});
     track(Eventos.segmentoChanged, { segmento: id });
@@ -158,6 +182,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     setSalvando(true);
     try {
       await saveEmpresa(empresa);
+      void recarregarVerticais(); // atualiza o gate de ferramentas por ofício na hora
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setDirty(false);
       Alert.alert('Salvo!', 'Dados da empresa atualizados.');

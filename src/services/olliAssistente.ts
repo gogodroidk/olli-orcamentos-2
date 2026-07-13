@@ -2,6 +2,7 @@ import { DIAGNOSTICO_URL } from '../config';
 import { getServicos } from '../database/database';
 import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
+import { verticalParaIA } from '../hooks/useVerticais';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -126,15 +127,22 @@ export async function interpretarVoz(transcript: string, sinalCancelamento?: Abo
     // sem catálogo não tem problema — a IA segue só com o texto
   }
 
+  // Ofício da empresa → a IA monta o orçamento na língua do segmento (pintura,
+  // elétrica…). undefined = sem ofício → worker usa o default (ar-condicionado).
+  const vertical = await verticalParaIA();
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_VOZ_MS);
   const onCancelar = () => controller.abort();
   sinalCancelamento?.addEventListener('abort', onCancelar);
   try {
+    const corpo: Record<string, unknown> = { transcript: texto };
+    if (catalogo) corpo.catalogo = catalogo;
+    if (vertical) corpo.vertical = vertical;
     const r = await fetch(`${DIAGNOSTICO_URL}/voz`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(catalogo ? { transcript: texto, catalogo } : { transcript: texto }),
+      body: JSON.stringify(corpo),
       signal: controller.signal,
     });
     if (!r.ok) return { ok: false, erro: mensagemPorStatus(r.status, FALHOU) };
@@ -210,15 +218,19 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
   const token = await accessTokenAtual();
   if (!token) return { ok: false, resposta: PRECISA_LOGIN };
 
+  const vertical = await verticalParaIA();
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_CHAT_MS);
   const onCancelar = () => controller.abort();
   sinalCancelamento?.addEventListener('abort', onCancelar);
   try {
+    const corpo: Record<string, unknown> = { mensagens };
+    if (vertical) corpo.vertical = vertical;
     const r = await fetch(`${DIAGNOSTICO_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ mensagens }),
+      body: JSON.stringify(corpo),
       signal: controller.signal,
     });
     if (!r.ok) return { ok: false, resposta: mensagemPorStatus(r.status, CHAT_FALHOU) };

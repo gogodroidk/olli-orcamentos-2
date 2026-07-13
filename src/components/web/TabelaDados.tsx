@@ -281,7 +281,11 @@ function LinhaTabelaBase<T extends { id: string }>({
   return (
     <Pressable
       onPress={() => onPress(item)}
-      accessibilityRole="button"
+      // SEM accessibilityRole="button": no react-native-web isso renderiza um <button>,
+      // e as células frequentemente contêm botões de ação (Ver/editar) → <button> DENTRO de
+      // <button> = HTML inválido + erro de hidratação em massa (um por linha, em toda tabela
+      // do desktop). Como <div> clicável a linha continua abrindo no clique; o acesso por
+      // TECLADO fica nos botões de ação explícitos das células (que seguem sendo <button>).
       style={({ hovered, focused }: PressableWebState) => [styles.linha, hovered && styles.linhaHover, focused && styles.celulaFocada]}
     >
       {conteudo}

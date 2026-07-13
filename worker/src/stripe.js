@@ -120,8 +120,9 @@ function sbHeaders(env, extra = {}) {
   };
 }
 
-/** Lê a linha de assinatura do usuário. null se não houver; { error:true } em falha. */
-async function getAssinatura(env, userId) {
+/** Lê a linha de assinatura do usuário. null se não houver; { error:true } em falha.
+ *  Exportada para o módulo do Mercado Pago reusar (mesma tabela `assinaturas`). */
+export async function getAssinatura(env, userId) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}` +
@@ -141,8 +142,9 @@ async function getAssinatura(env, userId) {
  * Upsert idempotente em public.assinaturas (on_conflict=user_id, merge-duplicates).
  * `patch` são só as colunas a gravar; user_id é sempre incluído para o merge.
  * Retorna true em sucesso, false em falha (o webhook usa isso para decidir o HTTP).
+ * Exportada para o módulo do Mercado Pago reusar (mesma tabela `assinaturas`).
  */
-async function upsertAssinatura(env, userId, patch) {
+export async function upsertAssinatura(env, userId, patch) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/assinaturas?on_conflict=user_id`,
@@ -326,12 +328,14 @@ export async function handleCheckout(request, env) {
     // (customer.subscription.updated/deleted) casa o evento com a linha certa.
     fields['subscription_data[metadata][user_id]'] = user.id;
   } else {
-    // AVULSO 12x: SÓ cartão (parcelamento não existe em boleto/Pix; fixar o
-    // método elimina o caminho de pagamento assíncrono e a autorização é
-    // imediata, então payment_status='paid' já chega no checkout.completed).
-    fields['payment_method_types[0]'] = 'card';
-    // Habilita o parcelamento sem juros do cartão BR no Checkout e marca a
-    // session como o fluxo de 12 meses para o webhook derivar plano/vigência.
+    // AVULSO (pagamento único → 12 meses de acesso). Antes fixava SÓ cartão para
+    // evitar o caminho assíncrono; agora OMITE payment_method_types para o Checkout
+    // oferecer os métodos ATIVOS da conta: cartão parcelado hoje, e Pix (mode=payment,
+    // à vista) entra SOZINHO assim que o dono ativar o Pix no dashboard da Stripe —
+    // sem mudar código. O caminho assíncrono do Pix JÁ é tratado: o webhook em
+    // checkout.session.completed defere quando payment_status != 'paid' e libera em
+    // checkout.session.async_payment_succeeded (processar12x). Pix não parcela, então
+    // a opção de installments abaixo se aplica só ao cartão (o Stripe ignora no Pix).
     fields['payment_method_options[card][installments][enabled]'] = 'true';
     fields['metadata[origem]'] = '12x';
     fields['metadata[meses_acesso]'] = '12';
@@ -649,12 +653,34 @@ async function processar12x(env, obj, evento) {
   }
   const mesesRaw = Number(obj.metadata && obj.metadata.meses_acesso);
   const meses = Number.isFinite(mesesRaw) && mesesRaw > 0 ? Math.floor(mesesRaw) : 12;
+  const novaVigencia = isoDaquiAMeses(meses);
+
+  // GUARD DE NÍVEL (mesmo espírito de sincronizarSubscription): o 12x é boost ADITIVO,
+  // nunca uma regressão. Um Empresa ATIVO que compra um Pro avulso não pode virar 'pro' nem
+  // perder o stripe_subscription_id, e a vigência maior é preservada. Sem isto, comprar o
+  // avulso rebaixava um assinante de nível maior.
+  const atual = await getAssinatura(env, userId);
+  let plano = 'pro';
+  let subscriptionId = null; // 12x puro não é subscription (nenhum evento de sub casa)
+  let vigencia = novaVigencia;
+  if (atual && !atual.error) {
+    const ativa = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status)
+      && atual.current_period_end && new Date(atual.current_period_end).getTime() > Date.now();
+    if (ativa && (NIVEL_PLANO[atual.plano] || 0) >= NIVEL_PLANO.pro) {
+      if ((NIVEL_PLANO[atual.plano] || 0) > NIVEL_PLANO.pro) plano = atual.plano; // preserva Empresa
+      if (atual.stripe_subscription_id) subscriptionId = atual.stripe_subscription_id;
+      if (new Date(atual.current_period_end).getTime() > new Date(novaVigencia).getTime()) {
+        vigencia = atual.current_period_end; // preserva a maior vigência
+      }
+    }
+  }
+
   const okDb = await upsertAssinatura(env, userId, {
-    plano: 'pro',
+    plano,
     status: 'active',
-    current_period_end: isoDaquiAMeses(meses),
+    current_period_end: vigencia,
     stripe_customer_id: typeof obj.customer === 'string' ? obj.customer : (obj.customer && obj.customer.id) || null,
-    stripe_subscription_id: null,
+    stripe_subscription_id: subscriptionId,
   });
   if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
   marcarEventoProcessado(evento && evento.id);
@@ -720,9 +746,10 @@ export async function handleWebhook(request, env) {
       // cartão a autorização é imediata, então 'paid' já chega neste evento.
       const eh12x = obj && obj.metadata && obj.metadata.origem === '12x';
       if (eh12x) {
-        if (obj.payment_status && obj.payment_status !== 'paid') {
-          // Ainda não pago (fluxo assíncrono): não libera agora — o acesso é
-          // liberado pelo checkout.session.async_payment_succeeded (tratado abaixo).
+        // 'no_payment_required' = cupom 100% off: NÃO é pagamento assíncrono, libera JÁ
+        // (senão ficava eternamente 'pendente', esperando um async que nunca vem). Só
+        // 'unpaid'/pendente real (Pix/boleto) espera o checkout.session.async_payment_succeeded.
+        if (obj.payment_status && obj.payment_status !== 'paid' && obj.payment_status !== 'no_payment_required') {
           console.error('[olli-stripe] 12x session ainda nao paga (aguarda async):', obj.id);
           return json({ ok: true, pendente: true });
         }

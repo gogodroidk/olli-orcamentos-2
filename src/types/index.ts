@@ -1,3 +1,5 @@
+import type { VerticalId, FerramentaId } from '../services/verticais';
+
 /**
  * Status do orçamento ao longo do ciclo comercial (mestre 13/35).
  *
@@ -109,6 +111,13 @@ export interface Empresa {
   assinaturaUri?: string;
   nomePrestador: string;
 
+  // OFÍCIO (personalização por vertical — F1 do docs/SISTEMA_SUPERIOR.md): deduzido do
+  // CNAE no onboarding, editável em "Meu ofício". VAZIO/AUSENTE = fluxo genérico (o mesmo
+  // de hoje — usuário existente não perde nada; o gate só ESCONDE p/ quem escolheu outra
+  // vertical). Ver src/services/verticais.ts (empresaMostraVertical / ferramentasSugeridas).
+  verticais?: VerticalId[];
+  ferramentasAtivas?: FerramentaId[];
+
   // Personalização — padrões usados para pré-preencher novos orçamentos e
   // documentos (o.corMarca segue prevalecendo por orçamento; aqui é só o
   // valor inicial sugerido). Tudo opcional: schema-less no SQLite (id + data
@@ -118,6 +127,15 @@ export interface Empresa {
   garantiaPadrao?: string;
   condicoesPagamentoPadrao?: string;
   observacoesPadrao?: string;
+
+  // DEDETIZAÇÃO (RDC 52/2009 art. 19 · RDC 622/2022) — dados de compliance da
+  // imunizadora usados no Certificado ANVISA. Preenchidos 1x (na 1ª emissão) e
+  // reaproveitados. Schema-less (SQLite id + JSON) → sem migração. Ver
+  // src/utils/certificadoAnvisaPdf.ts e CertificadoAnvisaScreen.
+  licencaSanitaria?: string;
+  licencaAmbiental?: string;
+  responsavelTecnico?: string;
+  responsavelTecnicoRegistro?: string;
   /** Modelo de PDF padrão para orçamentos novos (escolhido em Conta → Modelos de documento). */
   modeloPdfPadrao?: ModeloPdfId;
   /** Modelo padrão do recibo (escolhido em Conta → Modelos de documento). */

@@ -27,7 +27,7 @@
  * registrar a rota.
  */
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Platform, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -93,6 +93,14 @@ function EquipeAoVivoConteudo() {
       if (ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         await load();
+      } else {
+        // 3 estados: `false` não é "compartilhado com sucesso, sem novidade" — é falha
+        // (permissão negada, GPS off, sem org, erro de gravação). Antes o card só parava
+        // de girar sem explicar. Agora aponta a causa provável e o caminho.
+        Alert.alert(
+          'Não consegui compartilhar',
+          'Confira se a localização está permitida para o OLLI e o GPS ligado, e tente de novo.',
+        );
       }
     } finally {
       setCompartilhando(false);

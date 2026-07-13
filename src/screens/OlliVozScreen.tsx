@@ -18,6 +18,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { interpretarVoz, VozResultadoOk, VozItem } from '../services/olliAssistente';
 import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/reconhecimentoVoz';
+import { useReducedMotion } from '../theme/motion';
 import { useGravadorNuvem } from '../services/vozNuvem';
 import {
   getNextOrcamentoNumber, saveOrcamento, getServicos,
@@ -177,6 +178,7 @@ export default function OlliVozScreen() {
   // animação do "pulso" do microfone enquanto ouve — duas ondas concêntricas
   // defasadas simulam o indicador vivo de escuta (nunca fica parado enquanto
   // o motor de voz está de fato capturando áudio).
+  const reduzirMovimento = useReducedMotion();
   const pulse = useRef(new Animated.Value(0)).current;
   const pulseOuter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -187,6 +189,9 @@ export default function OlliVozScreen() {
       pulseOuter.setValue(0);
       return;
     }
+    // reduced-motion: sem pulso; o estado "ouvindo" ainda aparece (texto/ícone),
+    // só as ondas concêntricas não animam.
+    if (reduzirMovimento) { pulse.setValue(0); pulseOuter.setValue(0); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: useNativeAnimations }),
@@ -203,7 +208,7 @@ export default function OlliVozScreen() {
     loop.start();
     loopOuter.start();
     return () => { loop.stop(); loopOuter.stop(); };
-  }, [fase, pulse, pulseOuter]);
+  }, [fase, pulse, pulseOuter, reduzirMovimento]);
 
   const voz = useReconhecimentoVoz({
     onParcial: setParcial,

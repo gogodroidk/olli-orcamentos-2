@@ -1,5 +1,11 @@
 # Estrutura do Projeto
 
+> Resumo. A seção **"Estrutura"** do `README.md` é mais completa e mais nova — em caso de divergência,
+> o README manda. Além das camadas abaixo, o repo tem `src/hooks` (usePermissao/useTipoConta/usePlano/
+> useEhDesktop), `src/navigation` (AppNavigator + navigationRef), `src/screens/desktop` (telas web, com
+> barril `index.web.ts` real e `index.ts` stub para o Metro não empacotar no APK), `worker/` (Cloudflare)
+> e `site/` (worker de assets da landing).
+
 Este app está organizado por camada funcional:
 
 - `src/components`: peças reutilizáveis de interface, como cards, inputs, botões, header e logo.

@@ -465,9 +465,14 @@ function shell(inner, accentRaw = ACCENT) {
   .err-title{font-size:18px;font-weight:800;margin-top:10px}
   .err-sub{font-size:13.5px;color:#6B7686;margin-top:6px;line-height:1.5}
   .robot{width:26px;height:26px}
+  .olli-cta{text-align:center;margin:22px auto 10px;font-size:12px}
+  .olli-cta a{color:#8A95A6;text-decoration:none;font-weight:600}
+  .olli-cta a b{color:#0B6FCE}
 </style>
 </head>
-<body><div class="wrap">${inner}</div></body>
+<body><div class="wrap">${inner}</div>
+<div class="olli-cta"><a href="https://olliorcamentos.online/?utm_source=portal_cliente&utm_medium=rodape&utm_campaign=feito_com_olli" target="_blank" rel="noopener">Feito com <b>OLLI</b> · crie seu orçamento grátis</a></div>
+</body>
 </html>`;
 }
 

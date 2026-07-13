@@ -9,6 +9,7 @@ import { getCurrentUser } from '../../services/supabase';
 import { usePermissao, type Acao } from '../../hooks/usePermissao';
 import { useTipoConta } from '../../hooks/useTipoConta';
 import { usePlano } from '../../hooks/usePlano';
+import { useVerticais } from '../../hooks/useVerticais';
 import type { Recurso } from '../../services/planos';
 import { PressableWebState } from './pressableWebState';
 
@@ -56,6 +57,12 @@ type ItemMenu = {
    * em vez de abrir a rota. Ausente = item livre em qualquer plano.
    */
   recurso?: Recurso;
+  /**
+   * Item de HVAC/refrigeração (Equipamentos, Planos PMOC). Some para quem definiu
+   * OUTRA vertical no ofício (ex.: pintor). Sem ofício = mostra (backward-compat).
+   * Ver src/hooks/useVerticais.ts / docs/SISTEMA_SUPERIOR.md.
+   */
+  verticalHvac?: boolean;
 };
 
 /**
@@ -75,10 +82,10 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   { rota: 'OrdensTab', label: 'Ordens de serviço', icon: 'clipboard-check-outline' },
   // Equipamentos HVAC (PMOC Fase 1): inventário + etiqueta QR. Sem gate de plano
   // (não há Recurso PMOC no mapa) — recurso de campo visível para todos os papéis.
-  { rota: 'EquipamentosTab', label: 'Equipamentos', icon: 'air-conditioner' },
+  { rota: 'EquipamentosTab', label: 'Equipamentos', icon: 'air-conditioner', verticalHvac: true },
   // Planos PMOC (Fase 2): manutenção programada. Ação de gestão/dono — gateada por
   // 'ver_valores_agregados', então o técnico (que não gera nem edita plano) não a vê.
-  { rota: 'PmocTab', label: 'Planos PMOC', icon: 'calendar-sync-outline', acao: 'ver_valores_agregados' },
+  { rota: 'PmocTab', label: 'Planos PMOC', icon: 'calendar-sync-outline', acao: 'ver_valores_agregados', verticalHvac: true },
   // Recibos (financeiro). Técnico não emite recibos no menu enxuto → oculto.
   { rota: 'RecibosTab', label: 'Recibos', icon: 'receipt', acao: 'criar_orcamento', ocultarTecnico: true },
   // Relatórios: permissão (ver_relatorios) + recurso pago (relatorios → cadeado).
@@ -102,6 +109,7 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
   const { papel, pode, ehEmpresa } = usePermissao();
   const { tipo } = useTipoConta();
   const { temAcesso } = usePlano();
+  const { mostraHvac } = useVerticais();
   const rotaAtiva = state.routes[state.index]?.name;
 
   useEffect(() => {
@@ -131,9 +139,12 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
       if (item.ocultarTecnico && papel === 'tecnico') return false;
       // Gate de permissão: se o item exige uma ação e o papel não a tem, some.
       if (item.acao && !pode(item.acao)) return false;
+      // Gate de VERTICAL: itens de HVAC (Equipamentos, PMOC) somem para quem escolheu
+      // outra vertical no ofício. Sem ofício definido → mostraHvac=true → mostra tudo.
+      if (item.verticalHvac && !mostraHvac) return false;
       return true;
     });
-  }, [tipo, papel, pode]);
+  }, [tipo, papel, pode, mostraHvac]);
 
   function irPara(item: ItemMenu, trancado: boolean) {
     // Item pago sem acesso: em vez de abrir a rota, leva a Planos (mesmo destino

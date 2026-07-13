@@ -5,6 +5,7 @@ import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } fr
 import { Orcamento, FormaPagamento, Empresa } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
+import { CampoComVoz } from '../components/CampoComVoz';
 import { OlliButton } from '../components/OlliButton';
 import { todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
@@ -160,7 +161,10 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
             value={orc.sinalValor ?? 0}
             onChangeValue={v => {
               const clamped = Math.max(0, Math.min(orc.valorTotal, v));
-              onChange({ sinalValor: clamped, sinalPercentual: orc.subtotal ? Math.round((clamped / orc.subtotal) * 100) : 0 });
+              // Percentual derivado do valorTotal (pós-desconto) — a MESMA base do clamp
+              // acima e do "restante" (linha ~63). Antes usava o subtotal (pré-desconto),
+              // então "50%" não batia com o total real quando havia desconto.
+              onChange({ sinalValor: clamped, sinalPercentual: orc.valorTotal ? Math.round((clamped / orc.valorTotal) * 100) : 0 });
             }}
             containerStyle={{ flex: 1, marginRight: 10 }}
           />
@@ -187,8 +191,8 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
         <SectionTitle icon="file-document-outline">Condições e garantia</SectionTitle>
         <OlliInput label="Condições contratuais" value={orc.condicoesContratuais ?? ''} onChangeText={v => onChange({ condicoesContratuais: v })} placeholder="Prazo, materiais inclusos, responsabilidades..." multiline />
         <OlliInput label="Garantia" value={orc.garantia ?? ''} onChangeText={v => onChange({ garantia: v })} placeholder="Ex: 90 dias para mão de obra" multiline />
-        <OlliInput label="Informações adicionais" value={orc.informacoesAdicionais ?? ''} onChangeText={v => onChange({ informacoesAdicionais: v })} placeholder="Observações gerais" multiline />
-        <OlliInput label="Laudo técnico" value={orc.laudoTecnico ?? ''} onChangeText={v => onChange({ laudoTecnico: v })} placeholder="Diagnóstico técnico do equipamento" multiline containerStyle={{ marginBottom: 0 }} />
+        <CampoComVoz label="Informações adicionais" value={orc.informacoesAdicionais ?? ''} onChangeText={v => onChange({ informacoesAdicionais: v })} placeholder="Observações gerais (toque no microfone para ditar)" multiline />
+        <CampoComVoz label="Laudo técnico" value={orc.laudoTecnico ?? ''} onChangeText={v => onChange({ laudoTecnico: v })} placeholder="Diagnóstico técnico (toque no microfone para ditar)" multiline containerStyle={{ marginBottom: 0 }} />
       </View>
 
       {/* FOTOS DO SERVIÇO */}
