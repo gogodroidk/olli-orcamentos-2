@@ -2,6 +2,21 @@ import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { getEmpresa } from '../database/database';
 import { empresaMostraVertical, empresaMostraHvac, type VerticalId } from '../services/verticais';
+import { SEGMENTO_PARA_VERTICAL } from '../services/verticalSegmento';
+import type { Empresa } from '../types';
+
+/**
+ * Verticais EFETIVOS da empresa: os explícitos (`verticais`), senão DERIVADOS do `segmento`
+ * escolhido. A maioria das contas tem segmento (ex.: ar-condicionado) mas pode não ter
+ * `verticais` preenchido (dado anterior à personalização) — sem isto, o gate caía no
+ * backward-compat "sem ofício = mostra TUDO" e um HVAC via as ferramentas de pintura/ANVISA.
+ * Sem NENHUM dos dois = conta realmente sem nicho = mostra tudo (backward-compat de verdade).
+ */
+function verticaisEfetivos(emp: Empresa | null): VerticalId[] | undefined {
+  if (emp?.verticais && emp.verticais.length > 0) return emp.verticais;
+  if (emp?.segmento) return [SEGMENTO_PARA_VERTICAL[emp.segmento]];
+  return undefined;
+}
 
 /**
  * useVerticais — o GATE central da personalização por vertical (docs/SISTEMA_SUPERIOR.md).
@@ -27,7 +42,7 @@ async function revalidar(): Promise<void> {
   leituraEmAndamento = (async () => {
     try {
       const emp = await getEmpresa();
-      cache = emp?.verticais;
+      cache = verticaisEfetivos(emp);
     } catch {
       // mantém o último valor bom — nunca derruba para "sem ofício" por erro de leitura.
     } finally {
@@ -63,7 +78,7 @@ export async function verticalParaIA(): Promise<VerticalId | undefined> {
   if (carregou) return cache?.[0];
   try {
     const emp = await getEmpresa();
-    return emp?.verticais?.[0];
+    return verticaisEfetivos(emp)?.[0];
   } catch {
     return undefined;
   }
