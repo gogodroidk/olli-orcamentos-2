@@ -24,6 +24,7 @@ export { abrirWhatsApp } from './exportarDocumento';
  *     Empresa) => sem esse rodapé (dados legais/PIX/validade PERMANECEM).
  */
 import { qrSvg } from './qrcode';
+import { gerarPixCopiaECola } from './pixBrCode';
 
 export type CapaEstilo = 'logo' | 'foto' | 'nenhuma';
 
@@ -261,6 +262,41 @@ function renderLaudo(o: Orcamento): string {
     <div class="text-block">
       <div class="eyebrow">Laudo técnico</div>
       <div class="body">${escapeHtml(o.laudoTecnico)}</div>
+    </div>
+  `;
+}
+
+/**
+ * Bloco de COBRANÇA Pix — copia-e-cola + QR com o VALOR já embutido (o sinal quando
+ * há, senão o total). O cliente escaneia ou copia e paga na hora, direto na conta do
+ * prestador. 100% offline (qrSvg local, sem API externa) e NÃO processa pagamento —
+ * é só o "código do banco". Só aparece quando há chave Pix E o Pix está nas formas de
+ * pagamento (o prestador controla ligando/desligando no orçamento).
+ */
+function renderPixCobranca(o: Orcamento, empresa: Empresa): string {
+  const chave = (o.chavePix || empresa.chavePix || '').trim();
+  if (!chave || !o.formasPagamento?.pix) return '';
+  const temSinal = !!(o.sinalValor && o.sinalValor > 0);
+  const valor = temSinal ? o.sinalValor! : o.valorTotal;
+  if (!valor || valor <= 0) return '';
+  const brcode = gerarPixCopiaECola({
+    chave,
+    valor,
+    nome: empresa.nome,
+    cidade: empresa.cidade || '',
+    txid: o.numero,
+  });
+  if (!brcode) return '';
+  const rotulo = temSinal ? 'Pague o sinal por Pix' : 'Pague por Pix';
+  return `
+    <div class="pix-cobranca">
+      <div class="pix-cob-qr">${qrSvg(brcode)}</div>
+      <div class="pix-cob-info">
+        <div class="pix-cob-rotulo">${rotulo}</div>
+        <div class="pix-cob-valor">${formatCurrency(valor)}</div>
+        <div class="pix-cob-instr">Abra o app do banco → Pix → escaneie o QR, ou copie o código:</div>
+        <div class="pix-cob-code">${escapeHtml(brcode)}</div>
+      </div>
     </div>
   `;
 }
@@ -575,6 +611,7 @@ export function gerarHtmlOrcamento(
   const approvalGuideHtml = renderApprovalGuide(o, opts?.linkPublico);
   const observacoesHtml = renderObservacoes(o);
   const laudoHtml = renderLaudo(o);
+  const pixCobrancaHtml = renderPixCobranca(o, empresa);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
   const accentSoft = mixWhite(accent, 0.09);   // fundo do TOTAL / pílula
@@ -705,6 +742,14 @@ export function gerarHtmlOrcamento(
   .cond-col { flex: 1; }
   .cond-label { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
   .cond-val { font-size: 12.5px; color: #3C4756; margin-top: 6px; line-height: 1.55; }
+  .pix-cobranca { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 20px; align-items: center; page-break-inside: avoid; }
+  .pix-cob-qr { flex: 0 0 auto; width: 108px; height: 108px; }
+  .pix-cob-qr svg { width: 108px; height: 108px; display: block; }
+  .pix-cob-info { flex: 1; min-width: 0; }
+  .pix-cob-rotulo { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
+  .pix-cob-valor { font-size: 20px; font-weight: 800; color: #0A2540; margin: 2px 0 6px; }
+  .pix-cob-instr { font-size: 11px; color: #6B7484; margin-bottom: 6px; }
+  .pix-cob-code { font-family: 'Courier New', monospace; font-size: 9px; color: #3C4756; word-break: break-all; line-height: 1.4; background: #FFFFFF; border: 1px solid #E7E9EE; border-radius: 8px; padding: 8px 10px; }
   .approval-guide { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 22px; align-items: flex-start; page-break-inside: avoid; }
   /* Variante com QR: empilha o texto sobre os dois cartões de ação. */
   .approval-guide-qr { display: block; }
@@ -823,6 +868,9 @@ ${renderCapa(o, empresa, planoCapa)}
 
     <!-- CONDIÇÕES -->
     ${condicoesHtml}
+
+    <!-- COBRANÇA PIX (copia-e-cola + QR com o valor) -->
+    ${pixCobrancaHtml}
     ${approvalGuideHtml}
 
     <!-- CONDIÇÕES CONTRATUAIS (texto livre, opcional) -->
