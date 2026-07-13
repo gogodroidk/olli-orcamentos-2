@@ -18,6 +18,7 @@ import { usePermissao } from '../hooks/usePermissao';
 import { usePlano } from '../hooks/usePlano';
 import { useVerticais } from '../hooks/useVerticais';
 import type { VerticalId } from '../services/verticais';
+import { haCalculoParaOficio } from '../services/calculosOficio';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
@@ -120,6 +121,9 @@ interface Ferramenta {
   /** Ferramenta ÚNICA de um ofício (ex.: calculadora de tinta → 'pintura'). Só
    *  aparece para quem tem essa vertical. Genérico, sucessor do verticalHvac. */
   vertical?: VerticalId;
+  /** Hub de calculadoras do ofício — some para quem não tem nenhuma calculadora
+   *  no ramo (ex.: elétrica hoje). Gate por `haCalculoParaOficio`. */
+  calcHub?: boolean;
 }
 
 // Ferramentas que JÁ existem no app (todas no stack). Só listamos o que funciona de verdade.
@@ -135,6 +139,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: '#F7B23B', route: 'CalculadoraTinta', vertical: 'pintura' },
     { key: 'anvisa', icon: 'file-certificate-outline', label: 'Certificado ANVISA', desc: 'Comprovante RDC 52 de dedetização', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
+    { key: 'calcOficio', icon: 'calculator-variant-outline', label: 'Calculadoras do ofício', desc: 'Cálculos técnicos do seu ramo', color: c.accentLight, route: 'FerramentasOficio', calcHub: true },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
     { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
@@ -160,7 +165,8 @@ export default function ContaScreen() {
     (f) =>
       !(f.ocultarTecnico && (papel === 'tecnico' || carregandoPermissao)) &&
       !(f.verticalHvac && !mostraHvac) &&
-      !(f.vertical && !mostraVertical(f.vertical)),
+      !(f.vertical && !mostraVertical(f.vertical)) &&
+      !(f.calcHub && !haCalculoParaOficio(mostraVertical)),
   );
   // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
   const { plano } = usePlano();

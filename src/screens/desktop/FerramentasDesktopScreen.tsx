@@ -9,6 +9,7 @@ import { PressableWebState } from '../../components/web/pressableWebState';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { useVerticais } from '../../hooks/useVerticais';
 import type { VerticalId } from '../../services/verticais';
+import { haCalculoParaOficio } from '../../services/calculosOficio';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -23,6 +24,8 @@ interface Ferramenta {
   verticalHvac?: boolean;
   /** Ferramenta única de um ofício (ex.: calculadora de tinta → 'pintura'). */
   vertical?: VerticalId;
+  /** Hub de calculadoras do ofício — some para ramos sem calculadora. */
+  calcHub?: boolean;
 }
 
 /**
@@ -43,6 +46,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: c.warning, route: 'CalculadoraTinta', vertical: 'pintura' },
     { key: 'anvisa', icon: 'file-certificate-outline', label: 'Certificado ANVISA', desc: 'Comprovante RDC 52 de dedetização', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
+    { key: 'calcOficio', icon: 'calculator-variant-outline', label: 'Calculadoras do ofício', desc: 'Cálculos técnicos do seu ramo', color: c.accentLight, route: 'FerramentasOficio', calcHub: true },
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos' },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo' },
@@ -58,7 +62,10 @@ export default function FerramentasDesktopScreen() {
   const styles = useEstilos(criarEstilos);
   const { mostraHvac, mostraVertical } = useVerticais();
   const ferramentas = useEstilos(criarFerramentas).filter(
-    (f) => !(f.verticalHvac && !mostraHvac) && !(f.vertical && !mostraVertical(f.vertical)),
+    (f) =>
+      !(f.verticalHvac && !mostraHvac) &&
+      !(f.vertical && !mostraVertical(f.vertical)) &&
+      !(f.calcHub && !haCalculoParaOficio(mostraVertical)),
   );
 
   return (
