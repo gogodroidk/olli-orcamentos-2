@@ -38,6 +38,9 @@
     { "name": "ETA_RL", "namespace_id": "1005", "simple": { "limit": 20, "period": 60 } },
     // /cnpj por usuário: consulta a BrasilAPI (grátis, mas com fair-use) e evita
     // que usem o worker pra raspar CNPJ em massa. Baixo volume (cadastro), teto folgado.
-    { "name": "CNPJ_RL", "namespace_id": "1006", "simple": { "limit": 20, "period": 60 } }
+    { "name": "CNPJ_RL", "namespace_id": "1006", "simple": { "limit": 20, "period": 60 } },
+    // Rotas Pix AbacatePay (criar cobrança/status) por usuário: barra criação em
+    // massa de cobranças. Não cobre o webhook (servidor-a-servidor da AbacatePay).
+    { "name": "ABACATE_RL", "namespace_id": "1007", "simple": { "limit": 12, "period": 60 } }
   ]
 }
