@@ -46,8 +46,8 @@ function Orbe({ cor, cfg, intensidade, animar }: {
     // Vai-e-volta suave (0→1→0) num loop longo; o delay defasa os orbes.
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(t, { toValue: 1, duration: cfg.dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(t, { toValue: 0, duration: cfg.dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(t, { toValue: 1, duration: cfg.dur, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(t, { toValue: 0, duration: cfg.dur, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
       ]),
     );
     const timer = setTimeout(() => anim.start(), cfg.delay);

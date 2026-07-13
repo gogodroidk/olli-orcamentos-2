@@ -1,5 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform } from 'react-native';
+
+// react-native-web NÃO tem driver nativo de Animated: com useNativeDriver:true na web,
+// todo restart do loop cai pro driver JS e roda no thread JS PARA SEMPRE (jank + a página
+// nunca fica ociosa). Na web, driver JS explícito e — combinado com pulse={false} no Hero —
+// nada de loop infinito acima da dobra.
+const USA_DRIVER_NATIVO = Platform.OS !== 'web';
 import { OlliLogo } from './OlliLogo';
 import { useReducedMotion } from '../theme/motion';
 
@@ -36,8 +42,8 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(translateY, { toValue: -size * 0.06, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: -size * 0.06, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: USA_DRIVER_NATIVO }),
+        Animated.timing(translateY, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: USA_DRIVER_NATIVO }),
       ]),
     );
     loop.start();
@@ -52,8 +58,8 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(breath, { toValue: 1.035, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breath, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breath, { toValue: 1.035, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: USA_DRIVER_NATIVO }),
+        Animated.timing(breath, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.ease), useNativeDriver: USA_DRIVER_NATIVO }),
       ]),
     );
     loop.start();
@@ -74,8 +80,8 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
       timeoutId = setTimeout(() => {
         if (cancelado) return;
         Animated.sequence([
-          Animated.timing(blinkOpacity, { toValue: 0.72, duration: 90, useNativeDriver: true }),
-          Animated.timing(blinkOpacity, { toValue: 1, duration: 90, useNativeDriver: true }),
+          Animated.timing(blinkOpacity, { toValue: 0.72, duration: 90, useNativeDriver: USA_DRIVER_NATIVO }),
+          Animated.timing(blinkOpacity, { toValue: 1, duration: 90, useNativeDriver: USA_DRIVER_NATIVO }),
         ]).start(() => {
           if (!cancelado) agendarPiscada();
         });

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react';
 import {
-  Animated, Dimensions, NativeScrollEvent, NativeSyntheticEvent, View, ViewStyle,
+  Animated, Dimensions, NativeScrollEvent, NativeSyntheticEvent, Platform, View, ViewStyle,
 } from 'react-native';
 import { Motion, useReducedMotion } from '../theme/motion';
 
@@ -46,7 +46,8 @@ export function Revelar({
       if (!vivo || revelado.current) return;
       revelado.current = true;
       Animated.timing(t, {
-        toValue: 1, duration: Motion.dur.slow, easing: Motion.easing.standard, useNativeDriver: true,
+        // Na web, driver JS (não há nativo no RNW) — de tiro único, sem loop.
+        toValue: 1, duration: Motion.dur.slow, easing: Motion.easing.standard, useNativeDriver: Platform.OS !== 'web',
       }).start();
     };
     const checar = () => {

@@ -152,7 +152,7 @@ export function HeroLanding({ ehDesktop, onCriarConta, onVerPlanos }: HeroProps)
               dele continuam (scale/opacity), o deslize vertical fica só com o Flutuar. */}
           <Parallax fator={Motion.web.parallax.fator} style={styles.heroMascoteWrap}>
             <Flutuar>
-              <OlliMascot size={72} float={false} />
+              <OlliMascot size={72} float={false} pulse={false} />
             </Flutuar>
           </Parallax>
         </AnimatedEntrance>

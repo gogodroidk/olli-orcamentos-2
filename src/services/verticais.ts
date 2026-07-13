@@ -191,8 +191,11 @@ export function empresaMostraVertical(
   verticaisEmpresa: readonly VerticalId[] | undefined,
   id: VerticalId,
 ): boolean {
-  if (!verticaisEmpresa || verticaisEmpresa.length === 0) return true; // sem ofício = mostra tudo
-  if (verticaisEmpresa.includes('geral')) return true;
+  // BACKWARD-COMPAT: SEM ofício (undefined/vazio) = mostra tudo (todo usuário antigo).
+  if (!verticaisEmpresa || verticaisEmpresa.length === 0) return true;
+  // 'geral' (Serviços em Geral) é ofício ESCOLHIDO, não "sem ofício": vê só o núcleo
+  // genérico e ESCONDE ferramentas de nicho (nenhuma é 'geral'). NÃO é coringa — era o
+  // que fazia HVAC/dedetização/etc. verem pintura.
   return verticaisEmpresa.includes(id);
 }
 
