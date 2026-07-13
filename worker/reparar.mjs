@@ -65,6 +65,11 @@ const secrets = [
   // e segue) em vez de recriar o secret com um valor fixo.
   ['ADMIN_EMAIL', env.OLLI_ADMIN_EMAIL],
   ['OLLI_ROUTES_API_KEY', env.OLLI_ROUTES_API_KEY],
+  // Pix AbacatePay: chave da API (v2) + secret do webhook (a defesa real do
+  // /abacate/webhook — o mesmo valor precisa estar registrado no dashboard da
+  // AbacatePay como ?webhookSecret=). Ambos vêm do cofre.
+  ['ABACATEPAY_API_KEY', env.ABACATEPAY_API_KEY],
+  ['ABACATE_WEBHOOK_SECRET', env.ABACATE_WEBHOOK_SECRET],
 ];
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {
