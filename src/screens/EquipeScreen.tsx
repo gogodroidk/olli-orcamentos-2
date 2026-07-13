@@ -82,10 +82,9 @@ export default function EquipeScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function handleToggleAtivo(m: MembroEquipe) {
-    if (!org || m.papel === 'owner') return; // o dono nunca é desativado por aqui
+  async function aplicarAtivo(m: MembroEquipe, novo: boolean) {
+    if (!org) return;
     Haptics.selectionAsync().catch(() => {});
-    const novo = !m.ativo;
     setAlterandoId(m.userId);
     try {
       await definirAtivoMembro(org.id, m.userId, novo);
@@ -95,6 +94,25 @@ export default function EquipeScreen() {
       Alert.alert('Não deu', e?.message ?? 'Não consegui alterar esse membro agora.');
     }
     setAlterandoId(null);
+  }
+
+  function handleToggleAtivo(m: MembroEquipe) {
+    if (!org || m.papel === 'owner') return; // o dono nunca é desativado por aqui
+    const novo = !m.ativo;
+    // DESATIVAR tira o acesso do membro — pede confirmação (o Switch dispara direto, então
+    // sem isto um toque acidental derruba alguém). Reativar é inócuo e vai direto.
+    if (!novo) {
+      Alert.alert(
+        'Desativar este membro?',
+        'Ele perderá o acesso à equipe até ser reativado.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Desativar', style: 'destructive', onPress: () => { void aplicarAtivo(m, novo); } },
+        ],
+      );
+      return;
+    }
+    void aplicarAtivo(m, novo);
   }
 
   // ─── guardas de estado ─────────────────────────────────────

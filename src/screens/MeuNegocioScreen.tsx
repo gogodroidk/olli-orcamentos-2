@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, Alert, Image, Modal, KeyboardAvoidingView, Platform,
@@ -98,6 +98,24 @@ function MeuNegocioConteudo() {
   const extraiuCoresRef = React.useRef(false);
 const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  // Guarda contra perda silenciosa: sair com alterações não salvas (botão voltar do header,
+  // gesto ou botão físico) pede confirmação antes de descartar os campos editados.
+  useEffect(() => {
+    const remover = nav.addListener('beforeRemove', (e: any) => {
+      if (!dirty) return;
+      e.preventDefault();
+      Alert.alert(
+        'Descartar alterações?',
+        'Você tem alterações não salvas em "Meu negócio".',
+        [
+          { text: 'Continuar editando', style: 'cancel' },
+          { text: 'Descartar', style: 'destructive', onPress: () => nav.dispatch(e.data.action) },
+        ],
+      );
+    });
+    return remover;
+  }, [nav, dirty]);
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [showDep, setShowDep] = useState(false);
   const [newDep, setNewDep] = useState<Partial<Depoimento>>({ estrelas: 5 });
