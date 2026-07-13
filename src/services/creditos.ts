@@ -29,3 +29,52 @@ export async function getMeuSaldo(): Promise<number | null> {
 export function formatarCreditos(n: number): string {
   return `${n.toLocaleString('pt-BR')} crédito${n === 1 ? '' : 's'}`;
 }
+
+/** Uma linha do extrato de créditos (o app SÓ LÊ; a RLS restringe ao próprio usuário). */
+export interface LancamentoCredito {
+  delta: number;
+  origem: string;
+  descricao: string;
+  criadoEm: string;
+}
+
+/** Rótulo amigável da origem de um lançamento (para o extrato). */
+export function rotuloOrigemCredito(origem: string): string {
+  switch (origem) {
+    case 'stripe': return 'Recarga (cartão)';
+    case 'pix': return 'Recarga (Pix)';
+    case 'iap': return 'Recarga (app)';
+    case 'promo': return 'Bônus';
+    case 'referral': return 'Indicação';
+    case 'mesada': return 'Créditos do plano';
+    case 'consumo': return 'Uso';
+    case 'ajuste': return 'Ajuste';
+    default: return origem;
+  }
+}
+
+/**
+ * Extrato de créditos do usuário (mais novo primeiro, até `limite`). `null` =
+ * indisponível (offline/erro/sem nuvem) — não confundir com "extrato vazio" ([]).
+ * Nunca lança. Lê direto o ledger; a policy `credit_ledger_select_own` garante que
+ * o usuário só vê as PRÓPRIAS linhas.
+ */
+export async function getMeuExtrato(limite = 50): Promise<LancamentoCredito[] | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('credit_ledger')
+      .select('delta, origem, descricao, criado_em')
+      .order('criado_em', { ascending: false })
+      .limit(limite);
+    if (error || !Array.isArray(data)) return null;
+    return data.map((r: any) => ({
+      delta: typeof r.delta === 'number' ? r.delta : 0,
+      origem: typeof r.origem === 'string' ? r.origem : 'ajuste',
+      descricao: typeof r.descricao === 'string' ? r.descricao : '',
+      criadoEm: typeof r.criado_em === 'string' ? r.criado_em : '',
+    }));
+  } catch {
+    return null;
+  }
+}
