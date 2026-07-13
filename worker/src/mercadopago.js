@@ -287,6 +287,11 @@ async function checarStatus(request, env, url) {
 
   const { ok, data } = await mpGet(env, `/v1/payments/${encodeURIComponent(id)}`);
   if (!ok || !data) return json({ ok: false, erro: 'falha_status' }, 502);
+  // POSSE: o pagamento tem que ser DESTE usuário (external_reference olli:<cr|pl>:<userId>:…).
+  // Sem isso qualquer conta autenticada consultaria o status de pagamentos alheios — os ids do
+  // MP são sequenciais — e poderia tatear ids de plano aprovados p/ tentar replay no webhook.
+  const partes = String(data.external_reference || '').split(':');
+  if (partes[0] !== 'olli' || partes[2] !== user.id) return json({ ok: false, erro: 'nao_encontrado' }, 404);
   return json({ ok: true, status: data.status || 'pending', pago: data.status === 'approved' });
 }
 
@@ -334,14 +339,29 @@ async function concederCredito(env, { userId, pacoteKey, paymentId }) {
   return json({ ok: true, duplicado: res.duplicado });
 }
 
-/** Libera N meses de plano (Pix avulso), sem regredir nível nem vigência já paga. */
-async function concederPlanoPeriodo(env, { userId, planoKey }) {
+/**
+ * Libera N meses de plano (Pix avulso). IDEMPOTENTE POR REPLAY: a vigência é
+ * DETERMINÍSTICA a partir da DATA DE APROVAÇÃO do pagamento (não de 'agora'), então
+ * reenviar o mesmo webhook (o MP reenvia até receber 200; e /mp/webhook é público)
+ * produz a MESMA vigência → o `preserva maior` não estende nada. Sem isso, um único
+ * Pix de R$39 viraria acesso perpétuo bastando repetir a chamada.
+ * (Empilhar 2 Pix curtos credita ~o maior, não a soma — borda aceitável; o pacote
+ * anual já entrega 12 meses num pagamento só.) Preserva nível/vigência maiores já pagos.
+ */
+async function concederPlanoPeriodo(env, { userId, planoKey, dataAprovacao }) {
   const cfg = PLANO_PIX[planoKey];
   if (!cfg) return json({ ok: true, sem_vinculo: true });
-  let plano = cfg.plano;
-  let vigencia = isoMaisMeses(cfg.meses);
   const atual = await getAssinatura(env, userId);
-  if (atual && !atual.error) {
+  // 3 estados: erro de leitura (indisponível) NÃO decide regressão às cegas → 5xx p/ o MP reenviar.
+  if (atual && atual.error) return json({ erro: 'indisponivel' }, 503);
+
+  let plano = cfg.plano;
+  const base = dataAprovacao ? new Date(dataAprovacao) : new Date();
+  const dv = new Date(base);
+  dv.setMonth(dv.getMonth() + cfg.meses);
+  let vigencia = Number.isNaN(dv.getTime()) ? isoMaisMeses(cfg.meses) : dv.toISOString();
+
+  if (atual) { // null = sem assinatura (segue normal)
     const ativa = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status)
       && atual.current_period_end && new Date(atual.current_period_end).getTime() > Date.now();
     if (ativa) {
@@ -396,7 +416,7 @@ async function webhook(request, env, url) {
     const key = partes[4];
     if (!userId) return json({ ok: true, sem_vinculo: true });
     if (kind === 'cr') return concederCredito(env, { userId, pacoteKey: key, paymentId: String(data.id) });
-    if (kind === 'pl') return concederPlanoPeriodo(env, { userId, planoKey: key });
+    if (kind === 'pl') return concederPlanoPeriodo(env, { userId, planoKey: key, dataAprovacao: data.date_approved || data.date_created });
     return json({ ok: true, sem_vinculo: true });
   }
 
@@ -412,19 +432,33 @@ async function webhook(request, env, url) {
     if (!userId || !cfg) return json({ ok: true, sem_vinculo: true });
     const st = data.status; // pending | authorized | paused | cancelled
     const ativo = st === 'authorized';
-    const proximo = data.next_payment_date || isoMaisMeses(1);
+    let plano = cfg.plano;
+    let vigencia = ativo ? (data.next_payment_date || isoMaisMeses(1)) : (data.next_payment_date || null);
+    // Guard nível/vigência (igual concederPlanoPeriodo e o sincronizarSubscription da Stripe):
+    // uma assinatura de nível MENOR não rebaixa um plano MAIOR já pago e vigente.
+    if (ativo) {
+      const atual = await getAssinatura(env, userId);
+      if (atual && atual.error) return json({ erro: 'indisponivel' }, 503); // 5xx → MP reenvia
+      if (atual) {
+        const ativaAtual = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status)
+          && atual.current_period_end && new Date(atual.current_period_end).getTime() > Date.now();
+        if (ativaAtual) {
+          if ((NIVEL_PLANO[atual.plano] || 0) > (NIVEL_PLANO[plano] || 0)) plano = atual.plano;
+          if (vigencia && new Date(atual.current_period_end).getTime() > new Date(vigencia).getTime()) vigencia = atual.current_period_end;
+        }
+      }
+    }
     const okDb = await upsertAssinatura(env, userId, {
-      plano: cfg.plano,
-      status: ativo ? 'active' : 'canceled',
-      current_period_end: ativo ? proximo : (data.next_payment_date || null),
-      stripe_subscription_id: null,
+      plano, status: ativo ? 'active' : 'canceled', current_period_end: vigencia, stripe_subscription_id: null,
     });
     if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
     return json({ ok: true });
   }
 
-  // Cobrança recorrente individual: apenas confirma que o ciclo pagou; a vigência
-  // vem do preapproval. 200 sem ação evita reprocessar.
+  // Cobrança recorrente individual (renovação mensal do cartão). Hoje é no-op: a
+  // assinatura por cartão (Preapproval) ainda NÃO está exposta na UI — nenhum
+  // preapproval é criado em produção. QUANDO for ligada, aqui deve buscar o
+  // preapproval relacionado e avançar current_period_end (TODO). 200 evita reenvio.
   if (tipo === 'subscription_authorized_payment') return json({ ok: true });
 
   return json({ ok: true }); // qualquer outro evento: 200
