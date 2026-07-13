@@ -120,8 +120,9 @@ function sbHeaders(env, extra = {}) {
   };
 }
 
-/** Lê a linha de assinatura do usuário. null se não houver; { error:true } em falha. */
-async function getAssinatura(env, userId) {
+/** Lê a linha de assinatura do usuário. null se não houver; { error:true } em falha.
+ *  Exportada para o módulo do Mercado Pago reusar (mesma tabela `assinaturas`). */
+export async function getAssinatura(env, userId) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}` +
@@ -141,8 +142,9 @@ async function getAssinatura(env, userId) {
  * Upsert idempotente em public.assinaturas (on_conflict=user_id, merge-duplicates).
  * `patch` são só as colunas a gravar; user_id é sempre incluído para o merge.
  * Retorna true em sucesso, false em falha (o webhook usa isso para decidir o HTTP).
+ * Exportada para o módulo do Mercado Pago reusar (mesma tabela `assinaturas`).
  */
-async function upsertAssinatura(env, userId, patch) {
+export async function upsertAssinatura(env, userId, patch) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/assinaturas?on_conflict=user_id`,

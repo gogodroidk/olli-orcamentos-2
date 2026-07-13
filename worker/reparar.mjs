@@ -70,6 +70,11 @@ const secrets = [
   // AbacatePay como ?webhookSecret=). Ambos vêm do cofre.
   ['ABACATEPAY_API_KEY', env.ABACATEPAY_API_KEY],
   ['ABACATE_WEBHOOK_SECRET', env.ABACATE_WEBHOOK_SECRET],
+  // Mercado Pago (gateway único de produção): access token da conta + secret do
+  // webhook (o "Assinatura secreta" configurado no painel do MP, usado no HMAC do
+  // x-signature). Ambos vêm do cofre.
+  ['MP_ACCESS_TOKEN', env.MP_ACCESS_TOKEN],
+  ['MP_WEBHOOK_SECRET', env.MP_WEBHOOK_SECRET],
 ];
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {

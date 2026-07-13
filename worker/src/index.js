@@ -35,6 +35,7 @@ import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleAbacate } from './abacate.js';
+import { handleMercadoPago } from './mercadopago.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
@@ -829,6 +830,13 @@ export default {
     // própria. handleAbacate cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/abacate/')) {
       return handleAbacate(request, env, url);
+    }
+
+    // ── PAGAMENTOS MERCADO PAGO (gateway único: créditos Pix + planos) ──
+    // Mesmo perfil: fora do gate da IA; o webhook autentica por x-signature
+    // (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
+    if (url.pathname.startsWith('/mp/')) {
+      return handleMercadoPago(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──

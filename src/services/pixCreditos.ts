@@ -2,10 +2,10 @@ import { supabase } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
 
 /**
- * pixCreditos.ts — compra de CRÉDITOS OLLI por Pix (gateway AbacatePay), app-side.
+ * pixCreditos.ts — compra de CRÉDITOS OLLI por Pix (gateway Mercado Pago), app-side.
  *
- * O app NUNCA fala direto com a AbacatePay nem vê a chave: fala com o worker
- * (mesmo de pagamentos, /abacate/*) usando o JWT do Supabase — igual ao Stripe.
+ * O app NUNCA fala direto com o Mercado Pago nem vê o token: fala com o worker
+ * (mesmo de pagamentos, /mp/*) usando o JWT do Supabase — igual ao Stripe.
  * O worker cria a cobrança, e o CRÉDITO só é concedido pelo WEBHOOK após o
  * pagamento confirmar (o app nunca credita otimista). Aqui só: listar pacotes,
  * criar a cobrança (recebe QR + copia-e-cola) e consultar o status (polling de
@@ -60,7 +60,7 @@ function pacoteValido(p: any): p is PacotePix {
 export async function getPacotesPix(): Promise<PacotePix[]> {
   if (!PAGAMENTOS_URL) return [];
   try {
-    const r = await fetch(`${PAGAMENTOS_URL}/abacate/pacotes`);
+    const r = await fetch(`${PAGAMENTOS_URL}/mp/pacotes`);
     if (!r.ok) return [];
     const d = await r.json();
     if (!d || d.ok !== true || !Array.isArray(d.pacotes)) return [];
@@ -76,7 +76,7 @@ export async function criarCobrancaPix(pacoteId: string): Promise<CobrancaPix | 
   const token = await getToken();
   if (!token) return null;
   try {
-    const r = await fetch(`${PAGAMENTOS_URL}/abacate/pix`, {
+    const r = await fetch(`${PAGAMENTOS_URL}/mp/pix`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ pacote: pacoteId }),
@@ -108,7 +108,7 @@ export async function checarStatusPix(id: string): Promise<StatusPix | null> {
   const token = await getToken();
   if (!token) return null;
   try {
-    const r = await fetch(`${PAGAMENTOS_URL}/abacate/status?id=${encodeURIComponent(id)}`, {
+    const r = await fetch(`${PAGAMENTOS_URL}/mp/status?id=${encodeURIComponent(id)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!r.ok) return null;
