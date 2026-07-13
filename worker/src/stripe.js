@@ -326,12 +326,14 @@ export async function handleCheckout(request, env) {
     // (customer.subscription.updated/deleted) casa o evento com a linha certa.
     fields['subscription_data[metadata][user_id]'] = user.id;
   } else {
-    // AVULSO 12x: SÓ cartão (parcelamento não existe em boleto/Pix; fixar o
-    // método elimina o caminho de pagamento assíncrono e a autorização é
-    // imediata, então payment_status='paid' já chega no checkout.completed).
-    fields['payment_method_types[0]'] = 'card';
-    // Habilita o parcelamento sem juros do cartão BR no Checkout e marca a
-    // session como o fluxo de 12 meses para o webhook derivar plano/vigência.
+    // AVULSO (pagamento único → 12 meses de acesso). Antes fixava SÓ cartão para
+    // evitar o caminho assíncrono; agora OMITE payment_method_types para o Checkout
+    // oferecer os métodos ATIVOS da conta: cartão parcelado hoje, e Pix (mode=payment,
+    // à vista) entra SOZINHO assim que o dono ativar o Pix no dashboard da Stripe —
+    // sem mudar código. O caminho assíncrono do Pix JÁ é tratado: o webhook em
+    // checkout.session.completed defere quando payment_status != 'paid' e libera em
+    // checkout.session.async_payment_succeeded (processar12x). Pix não parcela, então
+    // a opção de installments abaixo se aplica só ao cartão (o Stripe ignora no Pix).
     fields['payment_method_options[card][installments][enabled]'] = 'true';
     fields['metadata[origem]'] = '12x';
     fields['metadata[meses_acesso]'] = '12';
