@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Spacing, Fonts, useCores, useEstilos, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput } from '../components/OlliInput';
+import { CampoComVoz } from '../components/CampoComVoz';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
 import { OverlayProgresso } from '../components/OverlayProgresso';
@@ -156,7 +157,7 @@ export default function CertificadoAnvisaScreen() {
 
           <Text style={styles.secao}>Orientações ao cliente</Text>
           <OlliCard style={styles.card}>
-            <OlliInput label="Observações" value={observacoes} onChangeText={setObservacoes} multiline leftIcon="text" placeholder="Prazo de reentrada, cuidados…" />
+            <CampoComVoz label="Observações" value={observacoes} onChangeText={setObservacoes} multiline placeholder="Prazo de reentrada, cuidados… (toque no microfone para ditar)" />
           </OlliCard>
 
           <OlliButton label="Gerar certificado (PDF)" icon="file-document-outline" variant="gradient" fullWidth onPress={gerar} loading={gerando} style={styles.cta} />
