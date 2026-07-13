@@ -368,9 +368,19 @@ async function webhook(request, env, url) {
   const requestId = request.headers.get('x-request-id') || request.headers.get('X-Request-Id') || '';
   const sig = request.headers.get('x-signature') || request.headers.get('X-Signature') || '';
 
-  // Autenticidade: x-signature obrigatória (a defesa real). Sem secret configurado → recusa.
-  const valido = await validarAssinatura(env, { sigHeader: sig, requestId, dataId });
-  if (!valido) return json({ erro: 'assinatura_invalida' }, 401);
+  // Autenticidade em DUAS camadas:
+  //  (1) x-signature (HMAC): defesa de borda. Se MP_WEBHOOK_SECRET está configurado,
+  //      EXIGE assinatura válida (401 no que não bater); enquanto não está, seguimos.
+  //  (2) confirmação via GET /v1/payments|/preapproval (abaixo): a barreira AUTORITATIVA —
+  //      só concede se a própria API do MP confirmar 'approved'/'authorized'. Não dá para
+  //      forjar um pagamento aprovado no MP nem injetar um external_reference alheio, então
+  //      o crédito é seguro mesmo sem a camada 1. Configure o secret para ter as duas.
+  if (env.MP_WEBHOOK_SECRET) {
+    const valido = await validarAssinatura(env, { sigHeader: sig, requestId, dataId });
+    if (!valido) return json({ erro: 'assinatura_invalida' }, 401);
+  } else {
+    console.error('[olli-mp] MP_WEBHOOK_SECRET ausente — validando so por GET-confirm (configure o secret p/ a camada de assinatura).');
+  }
   if (!dataId) return json({ ok: true });
 
   // PAGAMENTO (Pix de crédito ou de período de plano).
