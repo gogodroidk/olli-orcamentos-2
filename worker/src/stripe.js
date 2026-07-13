@@ -651,12 +651,34 @@ async function processar12x(env, obj, evento) {
   }
   const mesesRaw = Number(obj.metadata && obj.metadata.meses_acesso);
   const meses = Number.isFinite(mesesRaw) && mesesRaw > 0 ? Math.floor(mesesRaw) : 12;
+  const novaVigencia = isoDaquiAMeses(meses);
+
+  // GUARD DE NÍVEL (mesmo espírito de sincronizarSubscription): o 12x é boost ADITIVO,
+  // nunca uma regressão. Um Empresa ATIVO que compra um Pro avulso não pode virar 'pro' nem
+  // perder o stripe_subscription_id, e a vigência maior é preservada. Sem isto, comprar o
+  // avulso rebaixava um assinante de nível maior.
+  const atual = await getAssinatura(env, userId);
+  let plano = 'pro';
+  let subscriptionId = null; // 12x puro não é subscription (nenhum evento de sub casa)
+  let vigencia = novaVigencia;
+  if (atual && !atual.error) {
+    const ativa = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status)
+      && atual.current_period_end && new Date(atual.current_period_end).getTime() > Date.now();
+    if (ativa && (NIVEL_PLANO[atual.plano] || 0) >= NIVEL_PLANO.pro) {
+      if ((NIVEL_PLANO[atual.plano] || 0) > NIVEL_PLANO.pro) plano = atual.plano; // preserva Empresa
+      if (atual.stripe_subscription_id) subscriptionId = atual.stripe_subscription_id;
+      if (new Date(atual.current_period_end).getTime() > new Date(novaVigencia).getTime()) {
+        vigencia = atual.current_period_end; // preserva a maior vigência
+      }
+    }
+  }
+
   const okDb = await upsertAssinatura(env, userId, {
-    plano: 'pro',
+    plano,
     status: 'active',
-    current_period_end: isoDaquiAMeses(meses),
+    current_period_end: vigencia,
     stripe_customer_id: typeof obj.customer === 'string' ? obj.customer : (obj.customer && obj.customer.id) || null,
-    stripe_subscription_id: null,
+    stripe_subscription_id: subscriptionId,
   });
   if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
   marcarEventoProcessado(evento && evento.id);
@@ -722,9 +744,10 @@ export async function handleWebhook(request, env) {
       // cartão a autorização é imediata, então 'paid' já chega neste evento.
       const eh12x = obj && obj.metadata && obj.metadata.origem === '12x';
       if (eh12x) {
-        if (obj.payment_status && obj.payment_status !== 'paid') {
-          // Ainda não pago (fluxo assíncrono): não libera agora — o acesso é
-          // liberado pelo checkout.session.async_payment_succeeded (tratado abaixo).
+        // 'no_payment_required' = cupom 100% off: NÃO é pagamento assíncrono, libera JÁ
+        // (senão ficava eternamente 'pendente', esperando um async que nunca vem). Só
+        // 'unpaid'/pendente real (Pix/boleto) espera o checkout.session.async_payment_succeeded.
+        if (obj.payment_status && obj.payment_status !== 'paid' && obj.payment_status !== 'no_payment_required') {
           console.error('[olli-stripe] 12x session ainda nao paga (aguarda async):', obj.id);
           return json({ ok: true, pendente: true });
         }

@@ -81,7 +81,11 @@ export async function consumirCreditos(env, { userId, custo, acao, ref, descrica
     userId,
     delta: -Math.abs(custo),
     origem: 'consumo',
-    ref: ref ?? `${acao}:${userId}:${saldo}`,
+    // Idempotência é do CHAMADOR: passe `ref` = id único da ação (ex.: id da mensagem/
+    // requisição) para que UMA ação não seja debitada 2x num retry. Sem `ref`, o default é
+    // um UUID POR TENTATIVA — NUNCA derivado do saldo (duas ações concorrentes leem o mesmo
+    // saldo e produziriam o MESMO ref, colidindo no índice único e "sumindo" um débito real).
+    ref: ref ?? `${acao}:${userId}:${crypto.randomUUID()}`,
     descricao: descricao ?? acao ?? 'consumo',
   });
   if (!res.ok) return { ok: false, motivo: 'falha', saldo };
