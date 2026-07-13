@@ -82,24 +82,35 @@ async function getToken(): Promise<string | null> {
   }
 }
 
+// Último resumo BOM lido (por usuário) — rede de segurança contra "erro vira vazio":
+// uma FALHA de rede não pode rebaixar um pagante para "grátis" (só uma resposta que
+// AFIRMA não haver assinatura faz isso). Chaveado por userId para não vazar entre contas.
+let cacheResumo: { userId: string; resumo: ResumoAssinatura } | null = null;
+
 /**
- * Lê a linha de assinatura do usuário e deriva o estado exibível.
- * Nunca lança: qualquer falha (offline, sem client) devolve "grátis".
+ * Lê a linha de assinatura do usuário e deriva o estado exibível. 3 ESTADOS: em ERRO de
+ * rede/indisponibilidade, reaproveita o último resumo bom DESTE usuário (não rebaixa para
+ * grátis); só uma resposta afirmando "sem assinatura" (`!data`) devolve grátis. Nunca lança.
  */
 export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
   const gratis: ResumoAssinatura = { planoEfetivo: 'gratis', planoContratado: 'gratis', ativo: false };
   if (!supabase) return gratis;
+  let userId: string | undefined;
   try {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData.user;
     if (!user) return gratis;
+    userId = user.id;
 
     const { data, error } = await supabase
       .from('assinaturas')
       .select('plano, status, current_period_end')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (error || !data) return gratis;
+    // ERRO (rede/RLS/5xx) ≠ "não tem assinatura": preserva o último bom deste usuário.
+    if (error) return cacheResumo && cacheResumo.userId === userId ? cacheResumo.resumo : gratis;
+    // Resposta afirmativa SEM linha: genuinamente grátis (e memoriza como bom).
+    if (!data) { cacheResumo = { userId, resumo: gratis }; return gratis; }
 
     const status = typeof data.status === 'string' ? data.status : undefined;
     const proximaCobranca = typeof data.current_period_end === 'string' ? data.current_period_end : undefined;
@@ -111,15 +122,17 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
       if (!Number.isNaN(fim) && fim < Date.now()) pago = false;
     }
 
-    return {
+    const resumo: ResumoAssinatura = {
       planoEfetivo: pago ? planoContratado : 'gratis',
       planoContratado,
       status,
       proximaCobranca,
       ativo: pago,
     };
+    cacheResumo = { userId, resumo };
+    return resumo;
   } catch {
-    return gratis;
+    return userId && cacheResumo && cacheResumo.userId === userId ? cacheResumo.resumo : gratis;
   }
 }
 
