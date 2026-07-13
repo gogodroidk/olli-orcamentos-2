@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Animated, StyleSheet, ViewStyle, Easing, LayoutChangeEvent } from 'react-native';
+import { View, Animated, StyleSheet, ViewStyle, Easing, LayoutChangeEvent, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BorderRadius, comAlfa, useTema } from '../theme';
 import { useReducedMotion } from '../theme/motion';
@@ -23,9 +23,10 @@ export function OlliSkeleton({ width = '100%', height = 16, radius = BorderRadiu
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // reduced-motion: sem shimmer (o box de superfície estático já sinaliza o
-    // carregamento). Sem o loop, t=0 → o brilho fica fora da tela, invisível.
-    if (reduzir) return;
+    // reduced-motion OU web: sem shimmer (o box estático já sinaliza o carregamento).
+    // Na web o loop contínuo rodaria pra sempre no thread JS (RNW sem driver nativo) —
+    // como o skeleton aparece em TODO loading, era um dos maiores focos de jank.
+    if (reduzir || Platform.OS === 'web') return;
     const loop = Animated.loop(
       Animated.timing(t, {
         toValue: 1,

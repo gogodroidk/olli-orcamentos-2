@@ -42,7 +42,10 @@ function Orbe({ cor, cfg, intensidade, animar }: {
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!animar) { t.stopAnimation(); t.setValue(0); return; }
+    // Na WEB, orbes ESTÁTICAS: o loop contínuo rodaria pra sempre no thread JS
+    // (RNW sem driver nativo) e travaria a tela de login/onboarding. Fundo parado
+    // continua bonito e a página assenta.
+    if (!animar || Platform.OS === 'web') { t.stopAnimation(); t.setValue(0); return; }
     // Vai-e-volta suave (0→1→0) num loop longo; o delay defasa os orbes.
     const anim = Animated.loop(
       Animated.sequence([

@@ -36,7 +36,7 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
   useEffect(() => {
     // Acessibilidade: com "Reduzir movimento" ligado, a OLLI fica parada no
     // estado final (sem flutuação) — mesmo símbolo, sem o loop infinito.
-    if (!float || reduzirMovimento) {
+    if (!float || reduzirMovimento || !USA_DRIVER_NATIVO) {
       translateY.setValue(0);
       return;
     }
@@ -52,7 +52,7 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
 
   // Respiração: escala sutil em loop contínuo.
   useEffect(() => {
-    if (!pulse || reduzirMovimento) {
+    if (!pulse || reduzirMovimento || !USA_DRIVER_NATIVO) {
       breath.setValue(1);
       return;
     }
@@ -68,7 +68,7 @@ export function OlliMascot({ size = 48, float = true, approved = false, pulse = 
 
   // Piscada: a cada 4-7s, um pulso rápido de opacidade — timers com cleanup rigoroso.
   useEffect(() => {
-    if (!pulse || reduzirMovimento) {
+    if (!pulse || reduzirMovimento || !USA_DRIVER_NATIVO) {
       blinkOpacity.setValue(1);
       return;
     }

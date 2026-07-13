@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Text, StyleSheet, Animated, Easing } from 'react-native';
+import { Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
@@ -21,9 +21,9 @@ function FloatingIcon({ icon }: { icon: keyof typeof MaterialCommunityIcons.glyp
   const reduzirMovimento = useReducedMotion();
 
   useEffect(() => {
-    // Acessibilidade: com "Reduzir movimento" ligado, o ícone fica parado
-    // no estado final — sem o loop infinito de flutuação.
-    if (reduzirMovimento) {
+    // "Reduzir movimento" OU web: ícone parado, sem o loop infinito de flutuação
+    // (na web o loop rodaria pra sempre no thread JS — jank).
+    if (reduzirMovimento || Platform.OS === 'web') {
       translateY.setValue(0);
       return;
     }
