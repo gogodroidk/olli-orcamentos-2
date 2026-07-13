@@ -42,7 +42,7 @@ export default function FerramentasOficioScreen() {
   const styles = useEstilos(criarEstilos);
   const { verticais } = useVerticais();
 
-  const lista = useMemo(() => calculosDoOficio(verticais?.[0]), [verticais]);
+  const lista = useMemo(() => calculosDoOficio(verticais), [verticais]);
   const [abertoId, setAbertoId] = useState<string | null>(null);
   const [valores, setValores] = useState<Record<string, string>>({});
 

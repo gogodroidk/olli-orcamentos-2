@@ -52,7 +52,14 @@ export interface CalculoOficio {
 
 // ── helpers ────────────────────────────────────────────────
 const num = (s: string | undefined) => {
-  const n = parseFloat((s ?? '').replace(',', '.'));
+  let t = (s ?? '').trim();
+  if (!t) return 0;
+  // Formato BR: vírgula = decimal, ponto = milhar. "1.234,56" → 1234.56.
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  // Sem vírgula, mas com grupos de milhar ("1.234" / "1.234.567") → remove os pontos.
+  // (Um único "10.5" NÃO casa esse padrão e continua sendo decimal.)
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
 };
 const br = (n: number, casas = 0) =>
@@ -257,10 +264,15 @@ export const CALCULOS: CalculoOficio[] = [
   },
 ];
 
-/** As calculadoras que um ofício vê (gate por vertical). Sem vertical/undefined = todas. */
-export function calculosDoOficio(vertical: VerticalId | undefined): CalculoOficio[] {
-  if (!vertical || vertical === 'geral') return CALCULOS;
-  return CALCULOS.filter((c) => c.verticais.includes(vertical));
+/**
+ * As calculadoras que um ofício vê (gate por vertical). Aceita a LISTA de verticais
+ * da empresa (multi-ofício) — mostra as calculadoras de QUALQUER uma. Sem vertical,
+ * lista vazia, ou 'geral' = todas.
+ */
+export function calculosDoOficio(verticais: VerticalId | VerticalId[] | undefined): CalculoOficio[] {
+  const arr = verticais == null ? [] : Array.isArray(verticais) ? verticais : [verticais];
+  if (arr.length === 0 || arr.includes('geral')) return CALCULOS;
+  return CALCULOS.filter((c) => c.verticais.some((v) => arr.includes(v)));
 }
 
 /**

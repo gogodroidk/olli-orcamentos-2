@@ -47,6 +47,18 @@ async function getToken(): Promise<string | null> {
   }
 }
 
+/** fetch com timeout (rede móvel instável pendura a Promise pra sempre sem isto).
+ *  O abort vira exceção → cai no catch de cada função (que devolve null/[]). */
+async function fetchComTimeout(url: string, opts: RequestInit = {}, ms = 12000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function pacoteValido(p: any): p is PacotePix {
   return (
     p && typeof p.id === 'string' &&
@@ -60,7 +72,7 @@ function pacoteValido(p: any): p is PacotePix {
 export async function getPacotesPix(): Promise<PacotePix[]> {
   if (!PAGAMENTOS_URL) return [];
   try {
-    const r = await fetch(`${PAGAMENTOS_URL}/mp/pacotes`);
+    const r = await fetchComTimeout(`${PAGAMENTOS_URL}/mp/pacotes`);
     if (!r.ok) return [];
     const d = await r.json();
     if (!d || d.ok !== true || !Array.isArray(d.pacotes)) return [];
@@ -76,7 +88,7 @@ export async function criarCobrancaPix(pacoteId: string): Promise<CobrancaPix | 
   const token = await getToken();
   if (!token) return null;
   try {
-    const r = await fetch(`${PAGAMENTOS_URL}/mp/pix`, {
+    const r = await fetchComTimeout(`${PAGAMENTOS_URL}/mp/pix`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ pacote: pacoteId }),
@@ -108,7 +120,7 @@ export async function checarStatusPix(id: string): Promise<StatusPix | null> {
   const token = await getToken();
   if (!token) return null;
   try {
-    const r = await fetch(`${PAGAMENTOS_URL}/mp/status?id=${encodeURIComponent(id)}`, {
+    const r = await fetchComTimeout(`${PAGAMENTOS_URL}/mp/status?id=${encodeURIComponent(id)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!r.ok) return null;
