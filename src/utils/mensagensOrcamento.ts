@@ -86,14 +86,28 @@ export function montarMensagemReconquista(nome: string, meses: number, nomePrest
  * "N dias" quando isso ajuda (>= 3 dias parado); orçamento aprovado ontem não
  * precisa soar como cobrança atrasada.
  */
-export function montarMensagemCobranca(orc: Orcamento, diasParado: number): string {
+export function montarMensagemCobranca(orc: Orcamento, diasParado: number, pixCopiaECola?: string): string {
+  // Tom escalonado por tempo parado (dunning cordial): recém-aprovado é leve;
+  // quanto mais dias, mais direto — sem nunca soar a cobrança agressiva.
+  const corpo =
+    diasParado >= 7
+      ? `Já faz ${diasParado} dias e o pagamento ainda não caiu — consigo te ajudar a resolver isso hoje?`
+      : diasParado >= 3
+        ? `Já faz ${diasParado} dias e ainda não recebi o pagamento — posso te ajudar a fechar isso?`
+        : 'Posso te ajudar a fechar o pagamento?';
+
   const linhas = [
     `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`,
-    diasParado >= 3
-      ? `Já faz ${diasParado} dias e ainda não recebi o pagamento — posso te ajudar a fechar isso?`
-      : 'Posso te ajudar a fechar o pagamento?',
-    'Qualquer dúvida sobre forma de pagamento, é só me chamar por aqui.',
+    corpo,
   ];
+  // Pix Copia e Cola PRONTO (valor já embutido): o cliente copia e paga na hora.
+  // Fica na ÚLTIMA linha, sozinho, para ser fácil de selecionar/copiar no WhatsApp.
+  if (pixCopiaECola) {
+    linhas.push('Se preferir, dá pra pagar por Pix copiando o código abaixo (já vem com o valor):');
+    linhas.push(pixCopiaECola);
+  } else {
+    linhas.push('Qualquer dúvida sobre forma de pagamento, é só me chamar por aqui.');
+  }
   return linhas.filter(Boolean).join('\n');
 }
 

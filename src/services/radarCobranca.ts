@@ -29,9 +29,10 @@
  * `orcamentosParaCobrar()` (mesmo contrato do Radar de clientes), não deste
  * service.
  */
-import { getOrcamentos, getRecibos, getClientes } from '../database/database';
+import { getOrcamentos, getRecibos, getClientes, getEmpresa } from '../database/database';
 import { getReciboDoOrcamento } from './pagamentos';
 import { montarMensagemCobranca } from '../utils/mensagensOrcamento';
+import { gerarPixCopiaECola } from '../utils/pixBrCode';
 import { Cliente, Orcamento } from '../types';
 
 const MS_POR_DIA = 86400000;
@@ -45,6 +46,10 @@ export interface OrcamentoParaCobrar {
   cliente: Cliente | null;
   diasParado: number;
   valor: number;
+  /** Pix Copia e Cola PRONTO (valor embutido) para o WhatsApp; '' quando não há
+   *  chave Pix cadastrada. Pré-computado aqui (empresa lida 1x) para a tela não
+   *  precisar montar o BR Code por item. */
+  pixCopiaECola: string;
 }
 
 /** Data (ISO) usada como proxy de "quando este orçamento foi aprovado". */
@@ -66,8 +71,8 @@ function diasDesde(iso: string): number {
  * propaga a exceção e é a TELA quem decide o estado de erro (3 estados).
  */
 export async function orcamentosParaCobrar(): Promise<OrcamentoParaCobrar[]> {
-  const [orcamentos, recibos, clientes] = await Promise.all([
-    getOrcamentos(), getRecibos(), getClientes(),
+  const [orcamentos, recibos, clientes, empresa] = await Promise.all([
+    getOrcamentos(), getRecibos(), getClientes(), getEmpresa(),
   ]);
   const clientesPorId = new Map(clientes.map(c => [c.id, c] as const));
 
@@ -75,11 +80,24 @@ export async function orcamentosParaCobrar(): Promise<OrcamentoParaCobrar[]> {
   for (const o of orcamentos) {
     if (o.status !== 'aprovado') continue;
     if (getReciboDoOrcamento(o.id, recibos)) continue; // já tem recibo: não é mais "parado"
+    // Pix pronto (valor = total devido) para a cobrança por WhatsApp. A chave vem do
+    // orçamento ou da empresa; sem chave, string vazia (a mensagem cai no texto padrão).
+    const chave = (o.chavePix || empresa?.chavePix || '').trim();
+    const pixCopiaECola = chave
+      ? gerarPixCopiaECola({
+          chave,
+          valor: o.valorTotal,
+          nome: empresa?.nome || '',
+          cidade: empresa?.cidade || '',
+          txid: o.numero,
+        })
+      : '';
     resultado.push({
       orcamento: o,
       cliente: clientesPorId.get(o.clienteId) ?? null,
       diasParado: diasDesde(dataAprovacao(o)),
       valor: o.valorTotal,
+      pixCopiaECola,
     });
   }
 
@@ -93,5 +111,5 @@ export async function orcamentosParaCobrar(): Promise<OrcamentoParaCobrar[]> {
  * valor, dias parado), nada inventado.
  */
 export function mensagemCobranca(item: OrcamentoParaCobrar): string {
-  return montarMensagemCobranca(item.orcamento, item.diasParado);
+  return montarMensagemCobranca(item.orcamento, item.diasParado, item.pixCopiaECola || undefined);
 }
