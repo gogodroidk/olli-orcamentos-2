@@ -172,6 +172,7 @@ async function criarPixCredito(request, env) {
     descricao: `OLLI ${pacote.nome}`,
     email: user.email,
     externalRef,
+    itemId: pacote.id,
   });
   if (!res.ok) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
   return json({ ok: true, ...res.pix, pacote: { id: pacote.id, nome: pacote.nome, creditos: pacote.creditos, amount: pacote.amount } });
@@ -195,21 +196,37 @@ async function criarPixPlano(request, env) {
     descricao: plano.nome,
     email: user.email,
     externalRef,
+    itemId: plano.id,
   });
   if (!res.ok) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
   return json({ ok: true, ...res.pix, plano: { id: plano.id, nome: plano.nome, meses: plano.meses } });
 }
 
-/** Cria um pagamento Pix no MP e extrai o QR. Retorna { ok, pix:{ id, brCode, brCodeBase64, status, expiresAt } }. */
-async function criarPagamentoPix(env, { valorReais, descricao, email, externalRef }) {
+/** Cria um pagamento Pix no MP e extrai o QR. Retorna { ok, pix:{ id, brCode, brCodeBase64, status, expiresAt } }.
+ *  Envia os campos que a "medição de qualidade" do MP avalia (email, external_reference,
+ *  notification_url, additional_info.items, statement_descriptor) — melhora o índice de
+ *  aprovação e é o que a homologação exige. */
+async function criarPagamentoPix(env, { valorReais, descricao, email, externalRef, itemId }) {
+  const valor = Number(valorReais.toFixed(2));
   const { ok, data } = await mpPost(env, '/v1/payments', {
-    transaction_amount: Number(valorReais.toFixed(2)),
+    transaction_amount: valor,
     description: descricao,
     payment_method_id: 'pix',
     payer: { email: email || 'sem-email@olliorcamentos.online' },
     external_reference: externalRef,
     notification_url: `${WORKER_BASE}/mp/webhook`,
     date_of_expiration: isoDaquiA(30),
+    statement_descriptor: 'OLLI',
+    additional_info: {
+      items: [{
+        id: itemId || 'olli',
+        title: descricao,
+        description: descricao,
+        category_id: 'services',
+        quantity: 1,
+        unit_price: valor,
+      }],
+    },
   }, crypto.randomUUID());
   const td = data && data.point_of_interaction && data.point_of_interaction.transaction_data;
   if (!ok || !td || !td.qr_code) return { ok: false };
