@@ -12,8 +12,8 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useCallback, useRef, useState } from "react";
-import { COLUMN_ORDER, findColumnId, useKanbanStore } from "../utils/store";
 import { createRestrictToContainer } from "../utils/restrict-to-container";
+import { COLUMN_ORDER, findColumnId, useKanbanStore } from "../utils/store";
 import BoardColumn from "./board-column";
 import TaskCard from "./task-card";
 

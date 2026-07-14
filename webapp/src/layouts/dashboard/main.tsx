@@ -1,12 +1,12 @@
+import { clone, concat } from "ramda";
+import { Suspense } from "react";
+import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { LineLoading } from "@/components/loading";
 import Page403 from "@/pages/sys/error/Page403";
 import { useSettings } from "@/store/settingStore";
 import { cn } from "@/utils";
 import { flattenTrees } from "@/utils/tree";
-import { clone, concat } from "ramda";
-import { Suspense } from "react";
-import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { frontendNavData } from "./nav/nav-data/nav-data-frontend";
 
 /**

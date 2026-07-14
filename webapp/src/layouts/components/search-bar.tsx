@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useBoolean } from "react-use";
 import { Icon } from "@/components/icon";
 import useLocale from "@/locales/use-locale";
 import { useRouter } from "@/routes/hooks";
@@ -6,8 +8,6 @@ import { Button } from "@/ui/button";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandSeparator } from "@/ui/command";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Text } from "@/ui/typography";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useBoolean } from "react-use";
 import { useFilteredNavData } from "../dashboard/nav";
 
 interface SearchItem {

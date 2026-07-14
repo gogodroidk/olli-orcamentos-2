@@ -1,9 +1,9 @@
+import type { LucideIcon } from "lucide-react";
+import { Calendar, ClipboardList, FileText, Package, Users, Wrench } from "lucide-react";
+import { Link } from "react-router";
 import { useMinhaEmpresa, useOlliCount } from "@/olli/data";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
-import { Calendar, ClipboardList, FileText, Package, Users, Wrench } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { Link } from "react-router";
 
 const KPIS: { table: string; label: string; to: string; Icon: LucideIcon }[] = [
 	{ table: "orcamentos", label: "Orçamentos", to: "/orcamentos", Icon: FileText },

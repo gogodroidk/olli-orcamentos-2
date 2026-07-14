@@ -1,9 +1,13 @@
+import { type Dispatch, type SetStateAction, useCallback } from "react";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { useRouter } from "@/routes/hooks";
-import { type Dispatch, type SetStateAction, useCallback } from "react";
 import type { KeepAliveTab } from "../types";
 
-export function useTabOperations(tabs: KeepAliveTab[], setTabs: Dispatch<SetStateAction<KeepAliveTab[]>>, activeTabRoutePath: string) {
+export function useTabOperations(
+	tabs: KeepAliveTab[],
+	setTabs: Dispatch<SetStateAction<KeepAliveTab[]>>,
+	activeTabRoutePath: string,
+) {
 	const { push } = useRouter();
 
 	const closeTab = useCallback(

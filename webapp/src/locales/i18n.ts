@@ -1,8 +1,8 @@
-import { getStringItem } from "@/utils/storage";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 import { LocalEnum, StorageEnum } from "#/enum";
+import { getStringItem } from "@/utils/storage";
 import en_US from "./lang/en_US";
 import pt_BR from "./lang/pt_BR";
 import zh_CN from "./lang/zh_CN";

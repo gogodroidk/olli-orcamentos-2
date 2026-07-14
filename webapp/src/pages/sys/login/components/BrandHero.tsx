@@ -19,7 +19,14 @@ function OlliMascot({ className }: { className?: string }) {
 			<rect x="13" y="11.5" width="38" height="15" rx="9" fill="#ffffff" fillOpacity="0.1" />
 			<rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5" />
 			<rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5" />
-			<path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke="#EAFEFF" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+			<path
+				d="M19 41 l6.6 6.9 l16 -15"
+				fill="none"
+				stroke="#EAFEFF"
+				strokeWidth="6"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
 		</svg>
 	);
 }
@@ -62,7 +69,13 @@ function BrandHero() {
 						<li key={text} className="flex items-center gap-3">
 							<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#2BE39A]/15 ring-1 ring-[#2BE39A]/40">
 								<svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
-									<path d="M4 10.5 l3.5 3.5 l8 -8.5" stroke="#2BE39A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+									<path
+										d="M4 10.5 l3.5 3.5 l8 -8.5"
+										stroke="#2BE39A"
+										strokeWidth="2.5"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
 								</svg>
 							</span>
 							<span className="text-base text-white/90 xl:text-lg">{text}</span>

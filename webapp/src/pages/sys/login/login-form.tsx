@@ -1,19 +1,19 @@
-import type { SignInReq } from "@/api/services/userService";
-import { supabase } from "@/lib/supabase";
-import { Icon } from "@/components/icon";
-import { GLOBAL_CONFIG } from "@/global-config";
-import { useSignIn } from "@/store/userStore";
-import { Button } from "@/ui/button";
-import { Checkbox } from "@/ui/checkbox";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
-import { Input } from "@/ui/input";
-import { cn } from "@/utils";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+import type { SignInReq } from "@/api/services/userService";
+import { Icon } from "@/components/icon";
+import { GLOBAL_CONFIG } from "@/global-config";
+import { supabase } from "@/lib/supabase";
+import { useSignIn } from "@/store/userStore";
+import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
+import { Input } from "@/ui/input";
+import { cn } from "@/utils";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"form">) {
@@ -84,7 +84,13 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 							<FormItem>
 								<FormLabel>{t("sys.login.password")}</FormLabel>
 								<FormControl>
-									<Input type="password" autoComplete="current-password" placeholder="••••••••" {...field} suppressHydrationWarning />
+									<Input
+										type="password"
+										autoComplete="current-password"
+										placeholder="••••••••"
+										{...field}
+										suppressHydrationWarning
+									/>
 								</FormControl>
 								<FormMessage />
 							</FormItem>

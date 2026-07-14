@@ -1,7 +1,7 @@
+import { useMemo } from "react";
 import type { NavItemDataProps } from "@/components/nav/types";
 import { useUserPermissions } from "@/store/userStore";
 import { checkAny } from "@/utils";
-import { useMemo } from "react";
 import { frontendNavData } from "./nav-data-frontend";
 
 const navData = frontendNavData;

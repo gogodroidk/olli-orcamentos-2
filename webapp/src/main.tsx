@@ -2,7 +2,7 @@ import "./global.css";
 import "./theme/theme.css";
 import "./locales/i18n";
 import ReactDOM from "react-dom/client";
-import { Outlet, RouterProvider, createBrowserRouter } from "react-router";
+import { createBrowserRouter, Outlet, RouterProvider } from "react-router";
 import App from "./App";
 import menuService from "./api/services/menuService";
 import { registerLocalIcons } from "./components/icon";

@@ -1,6 +1,6 @@
+import { useTranslation } from "react-i18next";
 import { Icon } from "@/components/icon";
 import { Button } from "@/ui/button";
-import { useTranslation } from "react-i18next";
 
 interface ReturnButtonProps {
 	onClick?: () => void;

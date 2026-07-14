@@ -1,23 +1,49 @@
+import { AlertTriangle, Inbox, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useOlliList } from "@/olli/data";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
-import { AlertTriangle, Inbox, Search } from "lucide-react";
-import { useMemo, useState } from "react";
 
 /** Colunas internas que não interessam ao usuário. */
 const HIDDEN = new Set([
-	"id", "user_id", "owner_user_id", "org_id", "organizacao_id", "created_at", "updated_at",
-	"deleted_at", "criado_em", "atualizado_em", "excluido_em", "sync_at", "remote_id",
+	"id",
+	"user_id",
+	"owner_user_id",
+	"org_id",
+	"organizacao_id",
+	"created_at",
+	"updated_at",
+	"deleted_at",
+	"criado_em",
+	"atualizado_em",
+	"excluido_em",
+	"sync_at",
+	"remote_id",
 ]);
 
 function prettify(key: string): string {
 	const map: Record<string, string> = {
-		nome: "Nome", telefone: "Telefone", email: "E-mail", cidade: "Cidade", estado: "UF",
-		endereco: "Endereço", bairro: "Bairro", cep: "CEP", cnpj: "CNPJ", cpf: "CPF",
-		valor: "Valor", total: "Total", preco: "Preço", custo: "Custo", status: "Status",
-		numero: "Nº", descricao: "Descrição", unidade: "Un.", observacoes: "Observações",
+		nome: "Nome",
+		telefone: "Telefone",
+		email: "E-mail",
+		cidade: "Cidade",
+		estado: "UF",
+		endereco: "Endereço",
+		bairro: "Bairro",
+		cep: "CEP",
+		cnpj: "CNPJ",
+		cpf: "CPF",
+		valor: "Valor",
+		total: "Total",
+		preco: "Preço",
+		custo: "Custo",
+		status: "Status",
+		numero: "Nº",
+		descricao: "Descrição",
+		unidade: "Un.",
+		observacoes: "Observações",
 	};
 	return map[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -77,7 +103,11 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 		if (!q.trim()) return list;
 		const needle = q.toLowerCase();
 		return list.filter((r) =>
-			Object.values(r as Record<string, unknown>).some((v) => String(v ?? "").toLowerCase().includes(needle)),
+			Object.values(r as Record<string, unknown>).some((v) =>
+				String(v ?? "")
+					.toLowerCase()
+					.includes(needle),
+			),
 		);
 	}, [data, q]);
 
@@ -109,7 +139,9 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 					<AlertTriangle className="size-8 text-warning" />
 					<div>
 						<p className="font-semibold text-text-primary">Não foi possível carregar</p>
-						<p className="mt-1 text-sm text-text-secondary">{(error as Error)?.message ?? "Erro ao consultar os dados."}</p>
+						<p className="mt-1 text-sm text-text-secondary">
+							{(error as Error)?.message ?? "Erro ao consultar os dados."}
+						</p>
 					</div>
 					<button
 						type="button"
@@ -123,7 +155,9 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 				<Card className="flex flex-col items-center justify-center gap-3 p-12 text-center">
 					<Inbox className="size-8 text-text-disabled" />
 					<p className="font-semibold text-text-primary">{q ? "Nada encontrado" : "Ainda não há registros"}</p>
-					<p className="text-sm text-text-secondary">{q ? "Tente outro termo de busca." : "Quando você criar o primeiro, ele aparece aqui."}</p>
+					<p className="text-sm text-text-secondary">
+						{q ? "Tente outro termo de busca." : "Quando você criar o primeiro, ele aparece aqui."}
+					</p>
 				</Card>
 			) : (
 				<Card className="overflow-hidden p-0">
@@ -132,13 +166,18 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 							<thead>
 								<tr className="border-b border-border bg-bg-neutral/40 text-left text-xs uppercase tracking-wide text-text-secondary">
 									{cols.map((c) => (
-										<th key={c} className="whitespace-nowrap px-4 py-3 font-semibold">{prettify(c)}</th>
+										<th key={c} className="whitespace-nowrap px-4 py-3 font-semibold">
+											{prettify(c)}
+										</th>
 									))}
 								</tr>
 							</thead>
 							<tbody>
 								{rows.map((r, i) => (
-									<tr key={(r as { id?: string }).id ?? i} className="border-b border-border/60 transition hover:bg-bg-neutral/30">
+									<tr
+										key={(r as { id?: string }).id ?? i}
+										className="border-b border-border/60 transition hover:bg-bg-neutral/30"
+									>
 										{cols.map((c) => {
 											const val = (r as Record<string, unknown>)[c];
 											return (
@@ -156,7 +195,9 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 							</tbody>
 						</table>
 					</div>
-					<div className="border-t border-border px-4 py-2.5 text-xs text-text-secondary">{rows.length} registro(s)</div>
+					<div className="border-t border-border px-4 py-2.5 text-xs text-text-secondary">
+						{rows.length} registro(s)
+					</div>
 				</Card>
 			)}
 		</div>

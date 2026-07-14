@@ -1,7 +1,7 @@
-import { useRouter } from "@/routes/hooks";
 import { Tabs } from "antd";
 import { useEffect, useRef } from "react";
 import styled from "styled-components";
+import { useRouter } from "@/routes/hooks";
 import SortableContainer from "./components/sortable-container";
 import { SortableItem } from "./components/sortable-item";
 import { TabItem } from "./components/tab-item";

@@ -1,12 +1,10 @@
+import { toast } from "sonner";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-
-import { type SignInReq } from "@/api/services/userService";
-import { supabase } from "@/lib/supabase";
-
-import { toast } from "sonner";
 import type { UserInfo, UserToken } from "#/entity";
 import { StorageEnum } from "#/enum";
+import type { SignInReq } from "@/api/services/userService";
+import { supabase } from "@/lib/supabase";
 
 type UserStore = {
 	userInfo: Partial<UserInfo>;

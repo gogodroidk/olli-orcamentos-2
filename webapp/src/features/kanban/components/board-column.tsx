@@ -2,7 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Badge } from "@/ui/badge";
 import { cn } from "@/utils";
-import { type ColumnId, COLUMN_TITLES, type Orcamento } from "../utils/store";
+import { COLUMN_TITLES, type ColumnId, type Orcamento } from "../utils/store";
 import TaskCard from "./task-card";
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });

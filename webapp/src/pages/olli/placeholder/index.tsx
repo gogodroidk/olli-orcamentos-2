@@ -1,5 +1,5 @@
-import { Card } from "@/ui/card";
 import { Hammer } from "lucide-react";
+import { Card } from "@/ui/card";
 
 /** Tela ainda não portada do app do OLLI — honesta, não quebrada. */
 export default function OlliPlaceholderPage({ title, hint }: { title: string; hint?: string }) {
@@ -12,7 +12,8 @@ export default function OlliPlaceholderPage({ title, hint }: { title: string; hi
 				</div>
 				<p className="font-semibold text-text-primary">Chegando já</p>
 				<p className="max-w-md text-sm text-text-secondary">
-					{hint ?? "Esta tela está sendo trazida do app do OLLI e conectada aos seus dados. Em breve ela aparece aqui, completa."}
+					{hint ??
+						"Esta tela está sendo trazida do app do OLLI e conectada aos seus dados. Em breve ela aparece aqui, completa."}
 				</p>
 			</Card>
 		</div>

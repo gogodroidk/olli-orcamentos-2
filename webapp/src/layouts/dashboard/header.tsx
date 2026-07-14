@@ -1,7 +1,7 @@
+import type { ReactNode } from "react";
 import LocalePicker from "@/components/locale-picker";
 import { useSettings } from "@/store/settingStore";
 import { cn } from "@/utils";
-import type { ReactNode } from "react";
 import AccountDropdown from "../components/account-dropdown";
 import BreadCrumb from "../components/bread-crumb";
 import SearchBar from "../components/search-bar";

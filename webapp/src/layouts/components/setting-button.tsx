@@ -1,3 +1,7 @@
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import screenfull from "screenfull";
+import { ThemeLayout, ThemeMode } from "#/enum";
 import CyanBlur from "@/assets/images/background/cyan-blur.png";
 import RedBlur from "@/assets/images/background/red-blur.png";
 import { Icon } from "@/components/icon";
@@ -13,11 +17,6 @@ import { Switch } from "@/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { Text } from "@/ui/typography";
 import { cn } from "@/utils";
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
-
-import { useTranslation } from "react-i18next";
-import screenfull from "screenfull";
-import { ThemeLayout, ThemeMode } from "#/enum";
 
 export default function SettingButton() {
 	const { t } = useTranslation();

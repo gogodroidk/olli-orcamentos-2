@@ -1,6 +1,6 @@
-import { cn } from "@/utils";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { cn } from "@/utils";
 import { useMultiTabsContext } from "../providers/multi-tabs-provider";
 import type { KeepAliveTab } from "../types";
 import { TabItem } from "./tab-item";
