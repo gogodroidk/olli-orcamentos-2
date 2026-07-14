@@ -1,192 +1,260 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import ThermalScroll from '../components/ThermalScroll.tsx';
-import SetpointComparador from '../components/SetpointComparador.tsx';
-import Subsolo from '../components/Subsolo.tsx';
-import BarraConfianca from '../components/secoes/BarraConfianca.astro';
-import ComoFunciona from '../components/secoes/ComoFunciona.astro';
-import DiagnosticoIA from '../components/secoes/DiagnosticoIA.astro';
-import Pmoc from '../components/secoes/Pmoc.astro';
-import BolsoContraEscritorio from '../components/secoes/BolsoContraEscritorio.astro';
-import Depoimentos from '../components/secoes/Depoimentos.astro';
-import Planos from '../components/secoes/Planos.astro';
-import Faq from '../components/secoes/Faq.astro';
-import CtaFinal from '../components/secoes/CtaFinal.astro';
-import Rodape from '../components/secoes/Rodape.astro';
+import OlliLogo from '../components/OlliLogo.astro';
+import HeroDevices from '../components/HeroDevices.tsx';
+
+const APP_URL = '/app';
+
+const recursos = [
+  { icon: '🧾', titulo: 'Orçamento em minutos', texto: 'Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.' },
+  { icon: '🛠️', titulo: 'Ordem de serviço', texto: 'Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.' },
+  { icon: '🧠', titulo: 'IA que entende o defeito', texto: 'Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.' },
+  { icon: '❄️', titulo: 'PMOC (Lei 13.589)', texto: 'Planos de manutenção, lembretes e certificado — a papelada da climatização resolvida.' },
+  { icon: '📇', titulo: 'Clientes e cobrança', texto: 'Cadastro, histórico e radar de quem sumiu ou está para cobrar.' },
+  { icon: '🧮', titulo: 'Calculadoras de ofício', texto: 'BTU, carga de gás, caixa d\'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.' },
+  { icon: '📅', titulo: 'Agenda e equipe', texto: 'Agendamentos, técnicos com papéis e permissões, e a equipe no mapa.' },
+  { icon: '📄', titulo: 'Recibo e PDF bonito', texto: 'Recibo e documentos com a sua marca — do orçamento ao comprovante, sem planilha.' },
+];
+
+const passos = [
+  { n: '01', titulo: 'Chega a conversa', texto: 'O cliente manda o áudio no WhatsApp: "meu ar tá pingando e não gela".' },
+  { n: '02', titulo: 'A OLLI organiza', texto: 'Vira orçamento com itens e a IA aponta o provável defeito e a peça.' },
+  { n: '03', titulo: 'Fecha o negócio', texto: 'Cliente aprova pelo link, você emite a OS e o recibo. Tudo guardado.' },
+];
+
+const planos = [
+  {
+    nome: 'Grátis', preco: 'R$ 0', periodo: '/mês', destaque: false,
+    desc: 'Pra sair do caderno e do grupo de WhatsApp.',
+    itens: ['Orçamentos, recibos, clientes e agenda ilimitados', 'Diagnóstico HVAC por código de erro', 'Link do orçamento pro cliente aprovar', 'IA de diagnóstico: 3 usos/mês'],
+    cta: 'Começar grátis', primary: true,
+  },
+  {
+    nome: 'Pro', preco: 'R$ 39', periodo: '/mês', destaque: true,
+    desc: 'Pra quem vive de campo e já não cabe no grátis.',
+    itens: ['Tudo do Grátis', 'IA sem limite de uso', 'Tira a marca OLLI do PDF', 'Relatórios, metas e radar de clientes', 'Todos os modelos de documento'],
+    cta: 'Assinar o Pro', primary: true,
+  },
+  {
+    nome: 'Empresa', preco: 'R$ 99', periodo: '/mês', destaque: false,
+    desc: 'Pra equipe que atende em campo todo dia.',
+    itens: ['Tudo do Pro', 'Equipe com papéis e permissões', 'Equipe ao vivo no mapa', 'Painel de gestão da empresa'],
+    cta: 'Falar com a gente', primary: false,
+  },
+];
+
+const faq = [
+  { q: 'Preciso pagar para testar?', a: 'Não. O plano Grátis é de verdade: orçamento, recibo, cliente e agenda sem limite. Sem cartão, sem fidelidade.' },
+  { q: 'Funciona no celular e no computador?', a: 'Sim. É o mesmo sistema no app do celular e no navegador do computador — você escolhe onde trabalhar.' },
+  { q: 'Serve pro meu ofício?', a: 'Climatização, elétrica, hidráulica, pintura, dedetização, jardinagem e mais. Você escolhe o ofício e a OLLI mostra só as ferramentas que fazem sentido pra você.' },
+  { q: 'Meus dados ficam seguros?', a: 'Sim. Seus dados são seus, guardados na nuvem com isolamento por conta. Você pode exportar e excluir quando quiser.' },
+];
 ---
 
 <Layout>
-  <!-- termostato: rolagem -> --temp (a página esfria conforme desce) -->
-  <ThermalScroll client:idle />
-
-  <!-- ══════════════════ NAV ══════════════════ -->
-  <header class="fixed inset-x-0 top-0 z-50">
-    <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-      <a href="/" class="display text-2xl tracking-tight text-papel" style="font-stretch:125%">
-        OLLI<span class="text-fluido">.</span>
-      </a>
-      <div class="flex items-center gap-3">
-        <a href="#" class="hidden px-4 py-2 text-sm font-medium text-gelo/70 transition hover:text-gelo sm:block">Entrar</a>
-        <a
-          href="#comecar"
-          class="rounded-full bg-fluido px-5 py-2.5 text-sm font-semibold text-maquinas shadow-lg shadow-fluido/20 transition hover:bg-fluido-forte"
-        >Teste grátis</a>
+  <!-- ══════════ NAV ══════════ -->
+  <header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
+    <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
+      <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
+      <div class="hidden items-center gap-8 md:flex">
+        <a href="#como" class="text-sm font-medium text-slate transition hover:text-ink">Como funciona</a>
+        <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
+        <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href={APP_URL} class="hidden rounded-lg px-4 py-2 text-sm font-semibold text-slate transition hover:text-ink sm:block">Entrar</a>
+        <a href={APP_URL} class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
       </div>
     </nav>
   </header>
 
-  <!-- ══════════════════ HERO — DUAS TEMPERATURAS ══════════════════ -->
-  <section class="relative min-h-screen overflow-hidden bg-graxa">
-    <!-- painel FRIO cortado na diagonal ~78° sobre a base quente -->
-    <div
-      class="absolute inset-0 bg-maquinas"
-      style="clip-path: polygon(100% 0, 100% 100%, 0 100%, 62% 0)"
-    ></div>
-    <!-- brilho de fluido no canto frio -->
-    <div
-      class="pointer-events-none absolute -right-40 top-1/3 h-[36rem] w-[36rem] rounded-full opacity-40 blur-[120px]"
-      style="background: radial-gradient(closest-side, var(--color-fluido), transparent)"
-    ></div>
+  <!-- ══════════ HERO ══════════ -->
+  <section class="relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 -z-10">
+      <div class="absolute -right-40 -top-40 h-[38rem] w-[38rem] rounded-full opacity-60 blur-3xl" style="background: radial-gradient(closest-side, rgba(63,216,234,.28), transparent)"></div>
+      <div class="absolute -left-40 top-40 h-[34rem] w-[34rem] rounded-full opacity-50 blur-3xl" style="background: radial-gradient(closest-side, rgba(11,111,206,.20), transparent)"></div>
+    </div>
 
-    <div class="relative mx-auto grid min-h-screen max-w-7xl grid-cols-1 items-center gap-12 px-6 pt-28 pb-16 lg:grid-cols-[1.05fr_0.95fr]">
-      <!-- ── coluna do texto ── -->
+    <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
       <div>
-        <span class="etiqueta mb-8">● Nativa de climatização</span>
-
-        <h1 class="display text-papel" style="font-size: clamp(2.75rem, 8vw, 8rem)">
-          O caos entra.<br />
-          <span class="text-fluido">A ordem sai.</span>
+        <span class="eyebrow">● Sistema de campo do prestador de serviço</span>
+        <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
+          Do <span class="brand-text">áudio no WhatsApp</span><br />
+          ao orçamento fechado.
         </h1>
-
-        <p class="mt-7 max-w-xl text-lg leading-relaxed text-gelo/80 sm:text-xl">
-          O áudio do cliente vira <strong class="font-semibold text-gelo">orçamento, ordem de serviço, PMOC e recibo</strong> — no seu celular, até sem sinal. Com a IA que entende <strong class="font-semibold text-fluido">o defeito do equipamento</strong>, não só a nota fiscal.
+        <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
+          A OLLI transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço, PMOC e recibo</strong> — no celular e no computador. Com a IA que entende <strong class="text-brand">o defeito do equipamento</strong>, não só a nota fiscal.
         </p>
-
-        <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <a
-            href="#comecar"
-            class="rounded-full bg-fluido px-7 py-3.5 text-center text-base font-semibold text-maquinas shadow-xl shadow-fluido/25 transition hover:bg-fluido-forte"
-          >Criar meu primeiro orçamento — grátis</a>
-          <a
-            href="#ia"
-            class="rounded-full border border-cobre/60 px-7 py-3.5 text-center text-base font-medium text-gelo/90 transition hover:border-cobre hover:bg-cobre/10"
-          >Ver a IA diagnosticar um defeito</a>
+        <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+          <a href={APP_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
+            Criar meu primeiro orçamento — grátis
+          </a>
+          <a href="#como" class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
+            Ver como funciona
+          </a>
         </div>
-
-        <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-gelo/50">
-          <span class="etiqueta">◇ Funciona sem sinal — sincroniza depois</span>
-          <span>Sem cartão · sem fidelidade</span>
+        <div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+          <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem cartão pra testar</span>
+          <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem fidelidade</span>
+          <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Celular + computador</span>
         </div>
       </div>
 
-      <!-- ── coluna visual: o celular emitindo os documentos frios ── -->
-      <div class="relative mx-auto w-full max-w-md">
-        <!-- bolha de áudio do WhatsApp (fase quente) flutuando atrás -->
-        <div class="absolute -left-4 -top-6 z-0 w-64 rotate-[-4deg] rounded-2xl rounded-bl-sm bg-[#1f1a16] p-3 shadow-2xl ring-1 ring-laranja/20 sm:-left-10">
-          <div class="flex items-center gap-2">
-            <div class="grid h-8 w-8 place-items-center rounded-full bg-laranja/20 text-laranja">▶</div>
-            <div class="flex h-6 flex-1 items-center gap-[2px]">
-              {Array.from({ length: 26 }).map((_, i) => (
-                <span
-                  class="w-[2px] rounded-full bg-laranja/60"
-                  style={`height:${20 + Math.round(60 * Math.abs(Math.sin(i * 1.3)))}%`}
-                ></span>
+      <div class="lg:pl-6">
+        <HeroDevices client:load />
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ BARRA DE CONFIANÇA ══════════ -->
+  <section class="border-y border-line bg-paper">
+    <div class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-6 py-10 sm:grid-cols-4">
+      {[
+        { k: '698', v: 'códigos de erro HVAC' },
+        { k: 'IA', v: 'diagnóstico por sintoma' },
+        { k: 'PMOC', v: 'Lei 13.589 resolvida' },
+        { k: 'R$ 0', v: 'para começar' },
+      ].map((s) => (
+        <div class="text-center">
+          <div class="text-3xl font-extrabold tracking-tight text-ink tnum">{s.k}</div>
+          <div class="mt-1 text-sm text-muted">{s.v}</div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════════ COMO FUNCIONA ══════════ -->
+  <section id="como" class="mx-auto max-w-7xl px-6 py-24">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="eyebrow">Como funciona</span>
+      <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Três passos. Zero planilha.</h2>
+    </div>
+    <div class="mt-14 grid gap-6 md:grid-cols-3">
+      {passos.map((p) => (
+        <div class="relative rounded-2xl border border-line bg-white p-7">
+          <div class="text-sm font-extrabold text-brand tnum">{p.n}</div>
+          <h3 class="mt-3 text-xl font-bold text-ink">{p.titulo}</h3>
+          <p class="mt-2 text-slate">{p.texto}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════════ RECURSOS ══════════ -->
+  <section id="recursos" class="border-y border-line bg-paper">
+    <div class="mx-auto max-w-7xl px-6 py-24">
+      <div class="mx-auto max-w-2xl text-center">
+        <span class="eyebrow">Tudo num lugar só</span>
+        <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Do orçamento ao recibo, sem sair da OLLI.</h2>
+      </div>
+      <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {recursos.map((r) => (
+          <div class="rounded-2xl border border-line bg-white p-6 transition hover:-translate-y-1 hover:shadow-lg hover:shadow-brand/5">
+            <div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-xl">{r.icon}</div>
+            <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-slate">{r.texto}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ DESTAQUE IA ══════════ -->
+  <section class="mx-auto max-w-7xl px-6 py-24">
+    <div class="overflow-hidden rounded-3xl bg-brand-ink text-white">
+      <div class="grid items-center gap-10 p-10 md:grid-cols-2 md:p-14">
+        <div>
+          <span class="eyebrow !text-cyan">IA de diagnóstico</span>
+          <h2 class="mt-4 text-[clamp(1.8rem,3.5vw,2.8rem)] font-extrabold leading-tight">A IA que fala a língua do técnico.</h2>
+          <p class="mt-4 max-w-md text-white/70">
+            Descreva o sintoma ou informe o código de erro: a OLLI aponta o provável componente, a faixa da peça e um grau de confiança. São <strong class="text-white">698 códigos de erro</strong> de climatização e diagnóstico por sintoma — pra você chegar com a peça certa.
+          </p>
+        </div>
+        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+          <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Diagnóstico</div>
+          <p class="mt-3 text-sm text-white/80">Provável: <strong class="text-cyan">capacitor do compressor</strong> <span class="tnum">— 45/5 µF</span></p>
+          <div class="mt-3 flex items-center gap-3">
+            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+              <div class="h-full rounded-full brand-gradient" style="width:82%"></div>
+            </div>
+            <span class="tnum text-xs text-white/70">confiança 82%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ PLANOS ══════════ -->
+  <section id="planos" class="border-y border-line bg-paper">
+    <div class="mx-auto max-w-7xl px-6 py-24">
+      <div class="mx-auto max-w-2xl text-center">
+        <span class="eyebrow">Planos</span>
+        <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Comece de graça. Pague quando crescer.</h2>
+        <p class="mt-4 text-slate">O grátis é sério e sem prazo. Planos pagos também no anual (−20%) ou em até 12×.</p>
+      </div>
+      <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
+        {planos.map((p) => (
+          <div class={`flex h-full flex-col rounded-2xl border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
+            {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-tint px-3 py-1 text-xs font-bold text-brand">Recomendado</span>}
+            <h3 class="text-lg font-bold text-ink">{p.nome}</h3>
+            <p class="mt-1 text-sm text-muted">{p.desc}</p>
+            <div class="mt-5 flex items-baseline gap-1">
+              <span class="text-4xl font-extrabold tracking-tight text-ink tnum">{p.preco}</span>
+              <span class="text-base font-medium text-muted">{p.periodo}</span>
+            </div>
+            <ul class="mt-6 flex-1 space-y-3 text-sm text-slate">
+              {p.itens.map((i) => (
+                <li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-mint">✓</span><span>{i}</span></li>
               ))}
-            </div>
-            <span class="mono text-[10px] text-gelo/50">1:47</span>
+            </ul>
+            <a href={APP_URL} class={`mt-7 block rounded-xl px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}>{p.cta}</a>
           </div>
-          <p class="mt-2 text-xs text-gelo/60">"meu ar tá pingando e não gela"</p>
-        </div>
-
-        <!-- documento frio: ORÇAMENTO com o diagnóstico da IA -->
-        <article class="relative z-10 ml-8 mt-16 rounded-2xl bg-papel p-5 text-tinta shadow-2xl ring-1 ring-black/5">
-          <header class="flex items-center justify-between border-b border-tinta/10 pb-3">
-            <span class="mono text-xs font-semibold tracking-wider text-tinta/60">ORÇAMENTO Nº 0472</span>
-            <span class="etiqueta !border-fluido-forte/40 !text-fluido-forte">Aprovado</span>
-          </header>
-          <div class="mt-3 space-y-2 text-sm">
-            <div class="flex justify-between"><span class="text-tinta/70">Diagnóstico e reparo</span><span class="mono font-semibold">R$ 480,00</span></div>
-            <div class="flex justify-between"><span class="text-tinta/70">Higienização (2×)</span><span class="mono font-semibold">R$ 360,00</span></div>
-          </div>
-          <!-- a cena-âncora: a IA aponta o COMPONENTE com % de confiança -->
-          <div class="mt-4 rounded-xl bg-maquinas p-3 text-gelo">
-            <span class="etiqueta !border-fluido/40 !text-fluido">IA · Diagnóstico</span>
-            <p class="mt-2 text-sm leading-snug">
-              Provável: <strong class="text-fluido">capacitor do compressor</strong>
-              <span class="mono">— 45/5 µF</span>
-            </p>
-            <div class="mt-2 flex items-center gap-2">
-              <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-                <div class="h-full rounded-full bg-fluido" style="width:82%"></div>
-              </div>
-              <span class="mono text-xs text-gelo/70">confiança 82%</span>
-            </div>
-          </div>
-          <footer class="mt-4 flex items-center justify-between border-t border-tinta/10 pt-3">
-            <span class="text-sm text-tinta/60">Total</span>
-            <span class="mono text-lg font-bold text-tinta">R$ 840,00</span>
-          </footer>
-        </article>
-
-        <!-- pilha dos outros documentos (OS + PMOC) espiando por baixo -->
-        <div class="absolute -bottom-4 left-2 z-0 h-24 w-[88%] rounded-2xl bg-papel/70"></div>
-        <div class="absolute -bottom-8 left-6 h-24 w-[80%] rounded-2xl bg-papel/40"></div>
-        <div class="absolute -bottom-7 right-0 z-20 flex gap-2">
-          <span class="etiqueta bg-maquinas">OS agendada</span>
-          <span class="etiqueta bg-maquinas">PMOC · Lei 13.589</span>
-        </div>
+        ))}
       </div>
+      <p class="mt-10 text-center text-sm text-muted">Sem cartão pra testar. Sem fidelidade. Cancela quando quiser.</p>
     </div>
   </section>
 
-  <!-- ══════════════════ BARRA DE CONFIANÇA ══════════════════ -->
-  <BarraConfianca />
-
-  <!-- ══════════════════ A LINHA DE SETPOINT (comparador interativo) ══════════════════ -->
-  <section id="comparador" class="relative mx-auto max-w-7xl px-6 py-24 md:py-32">
-    <div class="mx-auto max-w-4xl text-center">
-      <span class="etiqueta">Antes × Depois</span>
-      <h2 class="display mt-5 text-papel" style="font-size: clamp(2rem, 5.5vw, 4.5rem)">
-        O mesmo serviço.<br /><span class="text-fluido">Duas temperaturas.</span>
-      </h2>
-      <p class="mx-auto mt-4 max-w-xl text-lg text-gelo/70">
-        Arraste o termostato e veja a diferença entre perder o orçamento no WhatsApp e fechar em minutos.
-      </p>
+  <!-- ══════════ FAQ ══════════ -->
+  <section class="mx-auto max-w-3xl px-6 py-24">
+    <div class="text-center">
+      <span class="eyebrow">Perguntas</span>
+      <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Ainda na dúvida?</h2>
     </div>
-    <div class="mt-14">
-      <SetpointComparador client:visible />
+    <div class="mt-12 divide-y divide-line rounded-2xl border border-line bg-white">
+      {faq.map((f) => (
+        <details class="group px-6 py-5">
+          <summary class="flex cursor-pointer list-none items-center justify-between text-base font-semibold text-ink">
+            {f.q}
+            <span class="text-brand transition group-open:rotate-45">＋</span>
+          </summary>
+          <p class="mt-3 text-slate">{f.a}</p>
+        </details>
+      ))}
     </div>
   </section>
 
-  <!-- ══════════════════ COMO FUNCIONA + IA DE DIAGNÓSTICO ══════════════════ -->
-  <ComoFunciona />
-  <DiagnosticoIA />
+  <!-- ══════════ CTA FINAL ══════════ -->
+  <section class="mx-auto max-w-7xl px-6 pb-24">
+    <div class="relative overflow-hidden rounded-3xl brand-gradient px-8 py-16 text-center text-white">
+      <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
+      <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
+      <a href={APP_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
+    </div>
+  </section>
 
-  <!-- ══════════════════ O SUBSOLO (offline como prova) ══════════════════ -->
-  <section id="offline" class="relative bg-maquinas/40 py-24 md:py-32">
-    <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 lg:grid-cols-2">
-      <div>
-        <span class="etiqueta">◇ Funciona sem sinal</span>
-        <h2 class="display mt-5 text-papel" style="font-size: clamp(2rem, 5vw, 4rem)">
-          A internet<br /><span class="text-laranja">cai.</span> <span class="text-fluido">A OLLI não.</span>
-        </h2>
-        <p class="mt-5 max-w-md text-lg text-gelo/70">
-          Casa de máquinas, subsolo, sítio sem sinal. Enquanto o ERP online trava, a OLLI segue no
-          seu aparelho — orçamento, OS e assinatura do cliente — e
-          <strong class="text-gelo">sincroniza sozinha</strong> quando a internet volta. Nada se perde.
-        </p>
-        <p class="mono mt-6 text-sm text-cobre">Ao lado: uma OS sendo fechada com <span class="text-laranja">zero barra de sinal</span>.</p>
+  <!-- ══════════ RODAPÉ ══════════ -->
+  <footer class="border-t border-line bg-paper">
+    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 py-10 sm:flex-row">
+      <OlliLogo size={32} />
+      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+        <a href="#planos" class="transition hover:text-ink">Planos</a>
+        <a href="#recursos" class="transition hover:text-ink">Recursos</a>
+        <a href="/legal/privacidade" class="transition hover:text-ink">Privacidade</a>
+        <a href="/legal/termos" class="transition hover:text-ink">Termos</a>
+        <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
       </div>
-      <Subsolo client:visible />
+      <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>
     </div>
-  </section>
-
-  <!-- ══════════════════ PMOC · vs ERP · DEPOIMENTOS · PLANOS · FAQ · CTA · RODAPÉ ══════════════════ -->
-  <Pmoc />
-  <BolsoContraEscritorio />
-  <Depoimentos />
-  <Planos />
-  <Faq />
-  <CtaFinal />
-  <Rodape />
+  </footer>
 </Layout>
