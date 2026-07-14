@@ -7,8 +7,11 @@ import Toast from "./components/toast";
 import { GLOBAL_CONFIG } from "./global-config";
 import { AntdAdapter } from "./theme/adapter/antd.adapter";
 import { ThemeProvider } from "./theme/theme-provider";
+import { useAuthSync } from "./store/userStore";
 
 function App({ children }: { children: React.ReactNode }) {
+	// Espelha a sessão do Supabase no userStore (OAuth + expiração de sessão).
+	useAuthSync();
 	return (
 		<HelmetProvider>
 			<QueryClientProvider client={new QueryClient()}>

@@ -123,17 +123,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 						{t("sys.login.loginButton")}
 					</Button>
 
-					{/* 手机登录/二维码登录 */}
-					<div className="grid gap-4 sm:grid-cols-2">
-						<Button variant="outline" className="w-full" onClick={() => setLoginState(LoginStateEnum.MOBILE)}>
-							<Icon icon="uil:mobile-android" size={20} />
-							{t("sys.login.mobileSignInFormTitle")}
-						</Button>
-						<Button variant="outline" className="w-full" onClick={() => setLoginState(LoginStateEnum.QR_CODE)}>
-							<Icon icon="uil:qrcode-scan" size={20} />
-							{t("sys.login.qrSignInFormTitle")}
-						</Button>
-					</div>
+					{/* Login por celular/QR do template ficam escondidos até terem backend real. */}
 
 					{/* 其他登录方式 */}
 					<div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">

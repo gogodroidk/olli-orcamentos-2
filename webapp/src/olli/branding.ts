@@ -49,11 +49,25 @@ export function pickBrandColor(empresa: Record<string, unknown> | null | undefin
 	return null;
 }
 
+/**
+ * Volta a cor primária pro padrão OLLI (remove o override inline no <html>).
+ * Usar no LOGOUT e quando a empresa não tem cor — senão, num logout SPA (sem
+ * reload), o próximo tenant herdaria a marca do anterior na mesma aba.
+ */
+export function resetBrandColor() {
+	const root = document.documentElement.style;
+	for (const name of ["lighter", "light", "default", "dark", "darker"]) {
+		root.removeProperty(`--colors-palette-primary-${name}`);
+		root.removeProperty(`--colors-palette-primary-${name}Channel`);
+	}
+}
+
 /** Hook: aplica a cor da marca da empresa logada assim que ela carrega. */
 export function useApplyBranding() {
 	const { data: empresa } = useMinhaEmpresa();
 	useEffect(() => {
 		const hex = pickBrandColor(empresa as Record<string, unknown> | null);
 		if (hex) applyBrandColor(hex);
+		else resetBrandColor(); // sem cor da empresa → padrão OLLI (não herda tenant anterior)
 	}, [empresa]);
 }

@@ -58,8 +58,11 @@ function formatValue(key: string, v: unknown): string {
 		return String(v);
 	}
 	if (typeof v === "string") {
-		// data ISO -> dd/mm/aaaa
-		if (/^\d{4}-\d{2}-\d{2}/.test(v)) {
+		// data pura YYYY-MM-DD: formata cru (new Date() a trata como UTC e no BR
+		// mostraria 1 dia a menos). Com hora (…T…) o fuso já vem embutido.
+		const dataPura = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+		if (dataPura) return `${dataPura[3]}/${dataPura[2]}/${dataPura[1]}`;
+		if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
 			const d = new Date(v);
 			if (!Number.isNaN(d.getTime())) return d.toLocaleDateString("pt-BR");
 		}

@@ -1,8 +1,11 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router";
+import { resetBrandColor } from "@/olli/branding";
 import { useLoginStateContext } from "@/pages/sys/login/providers/login-provider";
 import { useRouter } from "@/routes/hooks";
-import { useUserActions, useUserInfo } from "@/store/userStore";
+import { useSignOut, useUserInfo } from "@/store/userStore";
+import { Avatar, AvatarFallback, AvatarImage } from "@/ui/avatar";
 import { Button } from "@/ui/button";
 import {
 	DropdownMenu,
@@ -18,15 +21,20 @@ import {
 export default function AccountDropdown() {
 	const { replace } = useRouter();
 	const { username, email, avatar } = useUserInfo();
-	const { clearUserInfoAndToken } = useUserActions();
+	const signOut = useSignOut();
+	const queryClient = useQueryClient();
 	const { backToLogin } = useLoginStateContext();
 	const { t } = useTranslation();
-	const logout = () => {
+	const initial = (email || username || "?").trim().charAt(0).toUpperCase();
+
+	const logout = async () => {
 		try {
-			clearUserInfoAndToken();
+			await signOut(); // encerra a sessão no Supabase + limpa o store
+			queryClient.clear(); // não vaza dados cacheados de um tenant p/ outro
+			resetBrandColor(); // volta a cor da marca pro padrão OLLI
 			backToLogin();
 		} catch (error) {
-			console.log(error);
+			console.error(error);
 		} finally {
 			replace("/auth/login");
 		}
@@ -36,23 +44,24 @@ export default function AccountDropdown() {
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button variant="ghost" size="icon" className="rounded-full">
-					<img className="h-6 w-6 rounded-full" src={avatar} alt="" />
+					<Avatar className="h-6 w-6">
+						<AvatarImage src={avatar} alt="" />
+						<AvatarFallback className="text-xs">{initial}</AvatarFallback>
+					</Avatar>
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent className="w-56">
 				<div className="flex items-center gap-2 p-2">
-					<img className="h-10 w-10 rounded-full" src={avatar} alt="" />
+					<Avatar className="h-10 w-10">
+						<AvatarImage src={avatar} alt="" />
+						<AvatarFallback>{initial}</AvatarFallback>
+					</Avatar>
 					<div className="flex flex-col items-start">
 						<div className="text-text-primary text-sm font-medium">{username}</div>
 						<div className="text-text-secondary text-xs">{email}</div>
 					</div>
 				</div>
 				<DropdownMenuSeparator />
-				<DropdownMenuItem asChild>
-					<NavLink to="https://docs-admin.slashspaces.com/" target="_blank">
-						{t("sys.docs")}
-					</NavLink>
-				</DropdownMenuItem>
 				<DropdownMenuItem asChild>
 					<NavLink to="/meu-negocio">Meu negócio</NavLink>
 				</DropdownMenuItem>

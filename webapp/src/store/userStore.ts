@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -98,5 +99,45 @@ export const useSignOut = () => {
 		}
 	};
 };
+
+/**
+ * Sincroniza a sessão do Supabase com o userStore (usado no boot do app).
+ *
+ * Por que existe: o guard de rota olha o `userStore.accessToken`. Sem isto:
+ *  - login social (Google/Apple) grava a sessão no supabase-js mas NÃO no store
+ *    → o guard barra e o usuário nunca entra;
+ *  - se a sessão do Supabase expira/é revogada, o token velho persistido no store
+ *    mantém o guard "aberto" e toda query dá 401 → o usuário fica preso em telas
+ *    de erro sem voltar pro login.
+ * Aqui a gente hidrata do `getSession()` no boot e escuta `onAuthStateChange`
+ * (SIGNED_OUT → limpa; SIGNED_IN/refresh → atualiza). Uma fonte de verdade só.
+ */
+export function useAuthSync() {
+	const { setUserToken, setUserInfo, clearUserInfoAndToken } = useUserActions();
+	useEffect(() => {
+		let active = true;
+		const hydrate = (session: { access_token: string; refresh_token: string; user: any } | null) => {
+			if (!session) return;
+			setUserToken({ accessToken: session.access_token, refreshToken: session.refresh_token });
+			setUserInfo({
+				id: session.user?.id ?? "",
+				email: session.user?.email ?? "",
+				username: session.user?.email ?? "",
+				avatar: session.user?.user_metadata?.avatar_url || undefined,
+			} as UserInfo);
+		};
+		supabase.auth.getSession().then(({ data }) => {
+			if (active) hydrate(data.session);
+		});
+		const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+			if (event === "SIGNED_OUT" || !session) clearUserInfoAndToken();
+			else hydrate(session);
+		});
+		return () => {
+			active = false;
+			sub.subscription.unsubscribe();
+		};
+	}, []);
+}
 
 export default useUserStore;
