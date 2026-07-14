@@ -89,11 +89,14 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 		if (columns) return columns;
 		const first = data?.[0];
 		if (!first) return [];
+		const isIdish = (v: unknown) => typeof v === "string" && /^[0-9a-f]{16,}$/i.test(v.replace(/-/g, ""));
 		return Object.keys(first)
-			.filter((k) => !HIDDEN.has(k))
+			.filter((k) => !HIDDEN.has(k) && !/(_id|_por|_by)$/i.test(k)) // esconde chaves estrangeiras
 			.filter((k) => {
 				const val = (first as Record<string, unknown>)[k];
-				return typeof val !== "object" || val === null; // pula json/arrays
+				if (typeof val === "object" && val !== null) return false; // pula json/arrays
+				if (isIdish(val)) return false; // pula colunas de UUID/hash
+				return true;
 			})
 			.slice(0, 6);
 	}, [data, columns]);
