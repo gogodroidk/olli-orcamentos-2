@@ -1,0 +1,19 @@
+{
+	"common": {
+		"okText": "OK",
+		"closeText": "Fechar",
+		"cancelText": "Cancelar",
+		"loadingText": "Carregando...",
+		"saveText": "Salvar",
+		"delText": "Excluir",
+		"resetText": "Limpar",
+		"searchText": "Buscar",
+		"queryText": "Buscar",
+		"inputText": "Digite",
+		"chooseText": "Selecione",
+		"redo": "Atualizar",
+		"back": "Voltar",
+		"light": "Claro",
+		"dark": "Escuro"
+	}
+}
