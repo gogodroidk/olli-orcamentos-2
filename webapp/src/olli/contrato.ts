@@ -28,6 +28,7 @@ import type {
 	Recibo,
 	ServicoItem,
 } from "@dominio";
+import { brParaIso } from "./datas";
 
 /** Tabelas que o painel sabe gravar. Nome = tabela LOCAL do app. */
 export type TabelaOlli =
@@ -166,7 +167,15 @@ function reciboToRow(r: Recibo): Record<string, unknown> {
 		cliente_nome: r.clienteNome ?? null,
 		valor_recebido: r.valorRecebido ?? null,
 		forma_pagamento: r.formaPagamento ?? null,
-		data_recebimento: r.dataRecebimento ?? null,
+
+		// ⚠️ AQUI O PAINEL DIVERGE DO APP DE PROPÓSITO — e é a única divergência.
+		// `r.dataRecebimento` é 'DD/MM/AAAA' (formato do blob). O app manda essa
+		// string CRUA para esta coluna, que é `timestamptz`, e o Postgres (DateStyle
+		// ISO,MDY) lê como MM/DD: "10/07/2026" vira 7 de OUTUBRO, e dia > 12 faz o
+		// upsert INTEIRO falhar — o recibo nunca sobe (bug vivo, confirmado no banco).
+		// Convertemos para ISO. O BLOB abaixo continua em DD/MM/AAAA: é o que o app lê.
+		data_recebimento: brParaIso(r.dataRecebimento),
+
 		dados: r,
 		criado_em: r.criadoEm,
 		excluido_em: r.excluidoEm ?? null,

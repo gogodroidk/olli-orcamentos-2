@@ -86,14 +86,18 @@ export function useContextoDeEscrita() {
 /* ─────────────────────────────  2. Numeração  ──────────────────────────────── */
 
 /**
- * Próximo número de documento (orçamento / recibo / OS), no formato do app:
- * sequencial de 3 dígitos + ano com 2 dígitos → `00126`.
+ * Próximo número de ORÇAMENTO (`00126` = sequencial 3 dígitos + ano 2 dígitos) ou
+ * de RECIBO (`REC-00126`). Espelha `proximoNaSequencia` + `getNextOrcamentoNumber`.
  *
- * Espelha `proximoNaSequencia` + `getNextOrcamentoNumber` do app: lê `contadores`,
- * e se a chave não existir ainda, SEMEIA com a contagem de linhas da tabela (é o
- * que impede o painel de recomeçar do 001 numa conta que já tem 14 orçamentos).
+ * O `semear` existe porque a chave pode não estar em `contadores` ainda: sem ele o
+ * painel emitiria "001" numa conta que já tem 14 orçamentos, repetindo número.
+ *
+ * ⚠️ Chame só NA HORA DE SALVAR — nunca ao abrir o formulário. Abrir e desistir
+ * queimaria um número, e aí o documento 003 nunca existiria.
  */
-export async function proximoNumero(chave: "orcamento" | "recibo" | "os", tabelaParaSemear: string): Promise<string> {
+export async function proximoNumeroDocumento(chave: "orcamento" | "recibo"): Promise<string> {
+	const tabelaParaSemear = chave === "orcamento" ? "orcamentos" : "recibos";
+
 	const { data: linha, error } = await supabase
 		.from("contadores")
 		.select("valor")
@@ -117,7 +121,28 @@ export async function proximoNumero(chave: "orcamento" | "recibo" | "os", tabela
 	if (erroUpsert) throw erroUpsert;
 
 	const ano = new Date().getFullYear().toString().slice(-2);
-	return `${String(proximo).padStart(3, "0")}${ano}`;
+	const sufixo = `${String(proximo).padStart(3, "0")}${ano}`;
+	return chave === "recibo" ? `REC-${sufixo}` : sufixo;
+}
+
+/**
+ * Próximo número de ORDEM DE SERVIÇO — `OS-0001`.
+ *
+ * A OS NÃO usa `contadores`: o app deriva do MAIOR sufixo numérico já existente em
+ * `ordens_servico`, **incluindo as excluídas** (por isso o `incluirExcluidos`). Se
+ * ignorássemos a lixeira, uma OS apagada liberaria o número e duas OS diferentes
+ * acabariam com o mesmo `OS-0007` — em documento que vai pro cliente.
+ */
+export async function proximoNumeroOs(): Promise<string> {
+	const { data, error } = await supabase.from("ordens_servico").select("numero");
+	if (error) throw error;
+
+	const maior = (data ?? []).reduce((max, linha) => {
+		const m = /(\d+)\s*$/.exec(String((linha as { numero?: string }).numero ?? ""));
+		return m ? Math.max(max, Number(m[1])) : max;
+	}, 0);
+
+	return `OS-${String(maior + 1).padStart(4, "0")}`;
 }
 
 /* ───────────────────────────  3. Salvar e excluir  ─────────────────────────── */

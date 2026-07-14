@@ -9,12 +9,24 @@ import { AntdAdapter } from "./theme/adapter/antd.adapter";
 import { ThemeProvider } from "./theme/theme-provider";
 import { useAuthSync } from "./store/userStore";
 
+/**
+ * O QueryClient vive FORA do componente, de propósito.
+ *
+ * Antes ele era `new QueryClient()` dentro do JSX: a cada re-render nascia um
+ * cliente NOVO, e com ele um cache novo. Efeito prático quando o painel passou a
+ * gravar: o usuário salvava um cliente, o `invalidateQueries` marcava o cache
+ * antigo — que já tinha sido jogado fora — e a lista NÃO atualizava. O registro
+ * estava salvo no banco, mas a tela dizia que não. Cache tem que sobreviver ao
+ * render.
+ */
+const queryClient = new QueryClient();
+
 function App({ children }: { children: React.ReactNode }) {
 	// Espelha a sessão do Supabase no userStore (OAuth + expiração de sessão).
 	useAuthSync();
 	return (
 		<HelmetProvider>
-			<QueryClientProvider client={new QueryClient()}>
+			<QueryClientProvider client={queryClient}>
 				<ThemeProvider adapters={[AntdAdapter]}>
 					<Helmet>
 						<title>{GLOBAL_CONFIG.appName}</title>
