@@ -76,7 +76,7 @@ export const useSignIn = () => {
 				id: user?.id ?? "",
 				email: user?.email ?? "",
 				username: user?.email ?? "",
-				avatar: user?.user_metadata?.avatar_url ?? "",
+				avatar: user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
 		} catch (err: any) {
 			toast.error(err?.message ?? "Não foi possível entrar. Confira e-mail e senha.", {
