@@ -3,13 +3,14 @@ import Layout from '../layouts/Layout.astro';
 import OlliLogo from '../components/OlliLogo.astro';
 import HeroDevices from '../components/HeroDevices.tsx';
 
-const APP_URL = '/app';
+// O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
+const APP_URL = 'https://app.olliorcamentos.online';
 
 const recursos = [
   { icon: '🧾', titulo: 'Orçamento em minutos', texto: 'Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.' },
   { icon: '🛠️', titulo: 'Ordem de serviço', texto: 'Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.' },
   { icon: '🧠', titulo: 'IA que entende o defeito', texto: 'Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.' },
-  { icon: '❄️', titulo: 'PMOC (Lei 13.589)', texto: 'Planos de manutenção, lembretes e certificado — a papelada da climatização resolvida.' },
+  { icon: '❄️', titulo: 'PMOC (Lei 13.589)', texto: 'Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.' },
   { icon: '📇', titulo: 'Clientes e cobrança', texto: 'Cadastro, histórico e radar de quem sumiu ou está para cobrar.' },
   { icon: '🧮', titulo: 'Calculadoras de ofício', texto: 'BTU, carga de gás, caixa d\'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.' },
   { icon: '📅', titulo: 'Agenda e equipe', texto: 'Agendamentos, técnicos com papéis e permissões, e a equipe no mapa.' },
@@ -226,7 +227,7 @@ const faq = [
         <details class="group px-6 py-5">
           <summary class="flex cursor-pointer list-none items-center justify-between text-base font-semibold text-ink">
             {f.q}
-            <span class="text-brand transition group-open:rotate-45">＋</span>
+            <span class="text-brand transition group-open:rotate-45" aria-hidden="true">＋</span>
           </summary>
           <p class="mt-3 text-slate">{f.a}</p>
         </details>
@@ -236,7 +237,7 @@ const faq = [
 
   <!-- ══════════ CTA FINAL ══════════ -->
   <section class="mx-auto max-w-7xl px-6 pb-24">
-    <div class="relative overflow-hidden rounded-3xl brand-gradient px-8 py-16 text-center text-white">
+    <div class="relative overflow-hidden rounded-3xl px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
       <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
       <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
       <a href={APP_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>

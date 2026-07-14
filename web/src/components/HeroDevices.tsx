@@ -1,35 +1,44 @@
-import { motion, useReducedMotion } from "motion/react";
-import { useRef, useState } from "react";
+import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
+import type { MouseEvent } from "react";
+import { useRef } from "react";
 
 /**
  * Hero 3D do OLLI — mostra o produto DE VERDADE: a página web (browser com o
  * print real do painel) e o app (celular com um orçamento). Os dois "sobem
- * girando" na entrada, flutuam de leve e reagem ao mouse (parallax 3D).
- * Tudo em CSS 3D + Motion (transform-only = leve). Respeita prefers-reduced-motion.
+ * girando" UMA vez na entrada e reagem ao mouse (parallax 3D).
+ *
+ * Perf: SEM loop de animação contínuo (o projeto já matou "loops contínuos na
+ * web" — perfil P0). O parallax usa MotionValues + spring, então NÃO dispara
+ * re-render do React a cada mousemove. Respeita prefers-reduced-motion.
  */
 export default function HeroDevices() {
 	const reduce = useReducedMotion();
 	const ref = useRef<HTMLDivElement>(null);
-	const [tilt, setTilt] = useState({ x: 0, y: 0 });
 
-	function onMove(e: React.MouseEvent<HTMLDivElement>) {
+	// Parallax sem setState: MotionValues -> spring -> transform de rotação.
+	const px = useMotionValue(0);
+	const py = useMotionValue(0);
+	const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [6, -6]), { stiffness: 120, damping: 18 });
+	const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-10, 10]), { stiffness: 120, damping: 18 });
+
+	function onMove(e: MouseEvent<HTMLDivElement>) {
 		if (reduce) return;
 		const el = ref.current;
 		if (!el) return;
 		const r = el.getBoundingClientRect();
-		const px = (e.clientX - r.left) / r.width - 0.5;
-		const py = (e.clientY - r.top) / r.height - 0.5;
-		setTilt({ x: py * -6, y: px * 10 });
+		px.set((e.clientX - r.left) / r.width - 0.5);
+		py.set((e.clientY - r.top) / r.height - 0.5);
 	}
-
-	const floatBrowser = reduce ? {} : { y: [0, -12, 0] };
-	const floatPhone = reduce ? {} : { y: [0, -16, 0] };
+	function onLeave() {
+		px.set(0);
+		py.set(0);
+	}
 
 	return (
 		<div
 			ref={ref}
 			onMouseMove={onMove}
-			onMouseLeave={() => setTilt({ x: 0, y: 0 })}
+			onMouseLeave={onLeave}
 			className="relative mx-auto w-full max-w-xl"
 			style={{ perspective: "1200px" }}
 		>
@@ -45,12 +54,7 @@ export default function HeroDevices() {
 				/>
 			</div>
 
-			<motion.div
-				className="relative"
-				style={{ transformStyle: "preserve-3d" }}
-				animate={{ rotateX: tilt.x, rotateY: tilt.y }}
-				transition={{ type: "spring", stiffness: 120, damping: 18 }}
-			>
+			<motion.div className="relative" style={{ transformStyle: "preserve-3d", rotateX, rotateY }}>
 				{/* BROWSER — a página web (print real do painel) */}
 				<motion.div
 					className="relative z-10"
@@ -59,11 +63,7 @@ export default function HeroDevices() {
 					animate={{ opacity: 1, y: 0, rotateY: -12 }}
 					transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
 				>
-					<motion.div
-						animate={floatBrowser}
-						transition={{ duration: 6, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-						className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_40px_80px_-20px_rgba(10,37,71,.35)] ring-1 ring-black/5"
-					>
+					<div className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_40px_80px_-20px_rgba(10,37,71,.35)] ring-1 ring-black/5">
 						<div className="flex items-center gap-1.5 border-b border-line bg-paper px-3 py-2.5">
 							<span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
 							<span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
@@ -71,7 +71,7 @@ export default function HeroDevices() {
 							<span className="ml-3 rounded-md bg-white px-3 py-1 text-[11px] text-muted tnum">app.olliorcamentos.online</span>
 						</div>
 						<img src="/olli-painel.png" alt="Painel do OLLI no navegador" className="block w-full" width={1440} height={900} />
-					</motion.div>
+					</div>
 				</motion.div>
 
 				{/* PHONE — o app no celular (mini orçamento) */}
@@ -82,11 +82,7 @@ export default function HeroDevices() {
 					animate={{ opacity: 1, y: 0, rotateY: 10 }}
 					transition={{ duration: 0.95, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
 				>
-					<motion.div
-						animate={floatPhone}
-						transition={{ duration: 7, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut", delay: 0.4 }}
-						className="rounded-[2rem] border-[5px] border-[#0a1626] bg-[#0a1626] p-1 shadow-[0_30px_60px_-15px_rgba(10,37,71,.5)]"
-					>
+					<div className="rounded-[2rem] border-[5px] border-[#0a1626] bg-[#0a1626] p-1 shadow-[0_30px_60px_-15px_rgba(10,37,71,.5)]">
 						<div className="overflow-hidden rounded-[1.5rem] bg-white">
 							<div className="brand-gradient px-3 pb-5 pt-3 text-white">
 								<div className="text-[10px] font-bold tracking-wide opacity-90">OLLI</div>
@@ -111,7 +107,7 @@ export default function HeroDevices() {
 								</div>
 							</div>
 						</div>
-					</motion.div>
+					</div>
 				</motion.div>
 			</motion.div>
 		</div>
