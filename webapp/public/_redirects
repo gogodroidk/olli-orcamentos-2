@@ -1,0 +1,4 @@
+# O painel é uma SPA (react-router com histórico do navegador): qualquer rota
+# interna (/inicio, /clientes/…) precisa devolver o index.html com status 200,
+# senão abrir/recarregar um link direto cai em 404.
+/*    /index.html   200

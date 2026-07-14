@@ -76,8 +76,12 @@ const faq = [
       <div class="absolute -left-40 top-40 h-[34rem] w-[34rem] rounded-full opacity-50 blur-3xl" style="background: radial-gradient(closest-side, rgba(11,111,206,.20), transparent)"></div>
     </div>
 
+    <!-- min-w-0 nos dois filhos: item de grid tem `min-width: auto`, ou seja, se
+         recusa a encolher abaixo do próprio conteúdo. O mockup do painel tem
+         conteúdo largo, então ele esticava a coluna (446px numa tela de 390px) e
+         empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. -->
     <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
-      <div>
+      <div class="min-w-0">
         <span class="eyebrow">● Sistema de campo do prestador de serviço</span>
         <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
           Do <span class="brand-text">áudio no WhatsApp</span><br />
@@ -101,7 +105,7 @@ const faq = [
         </div>
       </div>
 
-      <div class="lg:pl-6">
+      <div class="min-w-0 lg:pl-6">
         <HeroDevices client:load />
       </div>
     </div>

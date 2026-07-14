@@ -55,10 +55,14 @@ export default function HeroDevices() {
 			</div>
 
 			<motion.div className="relative" style={{ transformStyle: "preserve-3d", rotateX, rotateY }}>
-				{/* BROWSER — a página web (print real do painel). Levemente recuado à
-				    direita para abrir espaço ao celular protagonista à esquerda. */}
+				{/* BROWSER — o painel, DESENHADO EM CÓDIGO (não é print).
+				    Antes aqui havia um /olli-painel.png que era, na verdade, a demo do
+				    template Slash: menu em inglês (Workbench, Error Page…), botão "Join
+				    Discord" e números falsos em dólar. Estávamos anunciando o produto com
+				    a tela de outro produto. Em código a tela é sempre a nossa, fica nítida
+				    em qualquer resolução e não custa 200KB de imagem. */}
 				<motion.div
-					className="relative z-10 ml-auto w-[93%]"
+					className="relative z-10 ml-auto hidden w-[93%] sm:block"
 					style={{ transformStyle: "preserve-3d" }}
 					initial={reduce ? false : { opacity: 0, y: 48, rotateY: 20 }}
 					animate={{ opacity: 1, y: 0, rotateY: -12 }}
@@ -71,12 +75,12 @@ export default function HeroDevices() {
 							<span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
 							<span className="ml-3 rounded-md bg-white px-3 py-1 text-[11px] text-muted tnum">app.olliorcamentos.online</span>
 						</div>
-						<img src="/olli-painel.png" alt="Painel do OLLI no navegador" className="block w-full" width={1440} height={900} />
+						<BrowserScreen />
 					</div>
 				</motion.div>
 
 				{/* PHONE — protagonista: smartphone premium com o app OLLI. */}
-				<div className="absolute -bottom-10 left-[-0.75rem] z-30 w-52 sm:-bottom-12 sm:left-[-2.25rem] sm:w-60 lg:w-[16.5rem]">
+				<div className="relative z-30 mx-auto w-56 sm:absolute sm:-bottom-12 sm:left-[-2.25rem] sm:mx-0 sm:w-60 lg:w-[16.5rem]">
 					<motion.div
 						style={{ transformStyle: "preserve-3d" }}
 						initial={reduce ? false : { opacity: 0, y: 72, rotateY: -22 }}
@@ -87,6 +91,165 @@ export default function HeroDevices() {
 					</motion.div>
 				</div>
 			</motion.div>
+		</div>
+	);
+}
+
+/* ─────────────────────────  TELA DO PAINEL (NAVEGADOR)  ────────────────────── */
+
+/** Itens do menu — os MESMOS do painel de verdade (webapp/), em português. */
+const MENU = ["Início", "Orçamentos", "Clientes", "Ordens de serviço", "Agenda", "Quadro", "Equipe"];
+
+/** Fatias do donut. Somam 100 — o dasharray depende disso. */
+const STATUS = [
+	{ rotulo: "Aprovados", pct: 52, cor: "#2BE39A" },
+	{ rotulo: "Enviados", pct: 31, cor: "#0B6FCE" },
+	{ rotulo: "Rascunho", pct: 17, cor: "#D8E3F0" },
+];
+
+function BrowserScreen() {
+	return (
+		<div className="flex aspect-[16/10] bg-paper">
+			{/* Menu lateral */}
+			<aside className="flex w-[23%] shrink-0 flex-col border-r border-line bg-white px-2 py-2.5">
+				<div className="flex items-center gap-1.5 px-1.5">
+					<OlliMark tone="marca" />
+					<span className="text-[11px] font-extrabold tracking-tight text-ink">OLLI</span>
+				</div>
+				<nav className="mt-3 space-y-[3px]">
+					{MENU.map((item, i) => (
+						<span
+							key={item}
+							className={`flex items-center gap-1.5 rounded-md px-1.5 py-[5px] text-[8.5px] font-semibold ${
+								i === 0 ? "bg-tint text-brand" : "text-slate"
+							}`}
+						>
+							<span className={`h-1.5 w-1.5 rounded-full ${i === 0 ? "bg-brand" : "bg-line"}`} />
+							{item}
+						</span>
+					))}
+				</nav>
+			</aside>
+
+			{/* Conteúdo */}
+			<div className="flex min-w-0 flex-1 flex-col">
+				<div className="flex items-center justify-between border-b border-line bg-white px-3 py-2">
+					<span className="text-[10px] font-bold text-ink">Início</span>
+					<span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[7.5px] font-bold text-white">
+						IR
+					</span>
+				</div>
+
+				<div className="flex flex-1 flex-col gap-2 p-2.5">
+					<div>
+						<p className="text-[11px] font-extrabold leading-tight text-ink">Boa tarde, Igor 👋</p>
+						<p className="text-[7.5px] font-medium text-muted">Você tem 3 orçamentos aguardando resposta.</p>
+					</div>
+
+					<div className="grid grid-cols-4 gap-1.5">
+						<MiniStat rotulo="Orçamentos" valor="38" delta="+12%" />
+						<MiniStat rotulo="Aprovados" valor="24" delta="+8%" />
+						<MiniStat rotulo="Faturado" valor="R$ 42,1k" delta="+21%" />
+						<MiniStat rotulo="Clientes" valor="126" delta="+5%" />
+					</div>
+
+					<div className="grid min-h-0 flex-1 grid-cols-[0.85fr_1fr] gap-1.5">
+						{/* Rosca de status */}
+						<div className="flex flex-col rounded-lg border border-line bg-white p-2">
+							<p className="text-[7px] font-bold uppercase tracking-[0.12em] text-muted">Por status</p>
+							<div className="flex flex-1 items-center gap-2">
+								<DonutStatus />
+								<div className="space-y-[3px]">
+									{STATUS.map((s) => (
+										<span key={s.rotulo} className="flex items-center gap-1 text-[7px] font-semibold text-slate">
+											<span className="h-1.5 w-1.5 rounded-full" style={{ background: s.cor }} />
+											{s.rotulo}
+										</span>
+									))}
+								</div>
+							</div>
+						</div>
+
+						{/* Orçamentos recentes */}
+						<div className="flex flex-col rounded-lg border border-line bg-white p-2">
+							<p className="mb-1.5 text-[7px] font-bold uppercase tracking-[0.12em] text-muted">Recentes</p>
+							<div className="space-y-1.5">
+								<PainelRow nome="Clínica Vida & Saúde" valor="R$ 2.480" status="Aprovado" tom="mint" />
+								<PainelRow nome="Ar Frio Refrigeração" valor="R$ 640" status="Enviado" tom="brand" />
+								<PainelRow nome="Padaria Pão Quente" valor="R$ 1.150" status="Rascunho" tom="muted" />
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function MiniStat({ rotulo, valor, delta }: { rotulo: string; valor: string; delta: string }) {
+	return (
+		<div className="rounded-lg border border-line bg-white px-1.5 py-1.5">
+			<p className="truncate text-[6.5px] font-bold uppercase tracking-[0.1em] text-muted">{rotulo}</p>
+			<p className="mt-0.5 text-[11px] font-extrabold leading-none text-ink tnum">{valor}</p>
+			<p className="mt-0.5 text-[6.5px] font-bold text-[#0f9d63] tnum">{delta}</p>
+		</div>
+	);
+}
+
+function DonutStatus() {
+	// Truque do raio 15.9155: a circunferência vira ~100, então o dasharray
+	// aceita a porcentagem direto, sem conta.
+	let offset = 25; // começa no topo
+	return (
+		<svg viewBox="0 0 42 42" className="h-[52px] w-[52px] shrink-0" aria-hidden="true">
+			<circle cx="21" cy="21" r="15.9155" fill="none" stroke="#EEF3F9" strokeWidth="5" />
+			{STATUS.map((s) => {
+				const dash = `${s.pct} ${100 - s.pct}`;
+				const el = (
+					<circle
+						key={s.rotulo}
+						cx="21"
+						cy="21"
+						r="15.9155"
+						fill="none"
+						stroke={s.cor}
+						strokeWidth="5"
+						strokeDasharray={dash}
+						strokeDashoffset={offset}
+						transform="rotate(-90 21 21)"
+					/>
+				);
+				offset -= s.pct;
+				return el;
+			})}
+			<text x="21" y="22.6" textAnchor="middle" className="fill-ink text-[7px] font-extrabold">
+				38
+			</text>
+		</svg>
+	);
+}
+
+function PainelRow({
+	nome,
+	valor,
+	status,
+	tom,
+}: {
+	nome: string;
+	valor: string;
+	status: string;
+	tom: "mint" | "brand" | "muted";
+}) {
+	const cores = {
+		mint: "bg-mint/15 text-[#0f9d63]",
+		brand: "bg-tint text-brand",
+		muted: "bg-paper text-muted",
+	}[tom];
+	return (
+		<div className="flex items-center gap-1.5">
+			<span className="min-w-0 flex-1 truncate text-[8px] font-semibold text-ink">{nome}</span>
+			<span className={`shrink-0 rounded-full px-1.5 py-[2px] text-[6.5px] font-bold ${cores}`}>{status}</span>
+			<span className="w-12 shrink-0 text-right text-[8px] font-bold text-ink tnum">{valor}</span>
 		</div>
 	);
 }
@@ -319,14 +482,23 @@ function CheckIcon() {
 	);
 }
 
-function OlliMark() {
+/**
+ * Mascote OLLI (balão + olhos + check).
+ * - `tone="branco"` (padrão): balão branco, traços azuis — para o cabeçalho com
+ *   gradiente do app.
+ * - `tone="marca"`: balão azul, traços brancos — para fundo claro (menu do painel),
+ *   onde o balão branco simplesmente sumiria.
+ */
+function OlliMark({ tone = "branco" }: { tone?: "branco" | "marca" }) {
+	const balao = tone === "marca" ? "#0B6FCE" : "#fff";
+	const traco = tone === "marca" ? "#fff" : "#0B6FCE";
 	return (
 		<svg viewBox="0 0 64 64" className="h-[22px] w-[22px]" aria-hidden="true">
-			<rect x="9" y="8" width="46" height="44" rx="14.5" fill="#fff" />
-			<path d="M22 49 L12 59.5 L30 50 Z" fill="#fff" />
-			<rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill="#0B6FCE" />
-			<rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill="#0B6FCE" />
-			<path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke="#0B6FCE" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+			<rect x="9" y="8" width="46" height="44" rx="14.5" fill={balao} />
+			<path d="M22 49 L12 59.5 L30 50 Z" fill={balao} />
+			<rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill={traco} />
+			<rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill={traco} />
+			<path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke={traco} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
 		</svg>
 	);
 }

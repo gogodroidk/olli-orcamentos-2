@@ -1,5 +1,6 @@
 import { addCollection } from "@iconify/react";
 import { parseSVGContent } from "@iconify/utils/lib/svg/parse";
+import { colecoesOffline } from "./icons-offline";
 
 interface IconifyIcon {
 	body: string;
@@ -37,6 +38,14 @@ export default async function registerLocalIcons() {
 	// If icons are already registered, return early
 	if (iconCollection) {
 		return;
+	}
+
+	// Bibliotecas de terceiros (solar, lucide, eva…) embutidas no bundle. Sem
+	// isso o @iconify/react sai buscando cada ícone na api.iconify.design em
+	// runtime — o painel ficaria sem ícones se aquele servidor caísse, e o CSP
+	// (corretamente) bloqueia a chamada. Gerado por scripts/gerar-icones-offline.mjs.
+	for (const colecao of colecoesOffline) {
+		addCollection(colecao);
 	}
 
 	const svgModules = import.meta.glob("../../assets/icons/*.svg", {

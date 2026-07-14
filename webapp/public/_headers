@@ -1,0 +1,10 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self), microphone=(), camera=(), payment=()
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://yiaeplqinnnnniyvwtls.supabase.co wss://yiaeplqinnnnniyvwtls.supabase.co https://diagnostico.olliorcamentos.online https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+
+# Os arquivos com hash no nome são imutáveis — cache agressivo é seguro.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
