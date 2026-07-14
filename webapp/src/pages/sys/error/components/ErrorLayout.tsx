@@ -26,7 +26,7 @@ export default function ErrorLayout({
 	svg,
 	helmetTitle,
 	homePath = GLOBAL_CONFIG.defaultRoute,
-	buttonText = "Go to Home",
+	buttonText = "Voltar ao início",
 	slots = {},
 }: ErrorLayoutProps) {
 	return (

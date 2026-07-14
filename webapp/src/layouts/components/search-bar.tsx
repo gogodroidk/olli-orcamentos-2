@@ -108,10 +108,10 @@ const SearchBar = () => {
 			</Button>
 
 			<CommandDialog open={open} onOpenChange={setOpen}>
-				<CommandInput placeholder="Type a command or search..." value={searchQuery} onValueChange={setSearchQuery} />
+				<CommandInput placeholder={t("sys.search.placeholder")} value={searchQuery} onValueChange={setSearchQuery} />
 				<ScrollArea className="h-[400px]">
-					<CommandEmpty>No results found.</CommandEmpty>
-					<CommandGroup heading="Navigations">
+					<CommandEmpty>{t("sys.search.empty")}</CommandEmpty>
+					<CommandGroup heading={t("sys.search.group")}>
 						{flattenedItems.map(({ key, label }) => (
 							<CommandItem key={key} onSelect={() => handleSelect(key)} className="flex flex-col items-start">
 								<div className="font-medium">
@@ -129,15 +129,15 @@ const SearchBar = () => {
 					<div className="flex items-center gap-1">
 						<Badge variant="info">↑</Badge>
 						<Badge variant="info">↓</Badge>
-						<Text variant="caption">to navigate</Text>
+						<Text variant="caption">{t("sys.search.navigate")}</Text>
 					</div>
 					<div className="flex items-center gap-1">
 						<Badge variant="info">↵</Badge>
-						<Text variant="caption">to select</Text>
+						<Text variant="caption">{t("sys.search.select")}</Text>
 					</div>
 					<div className="flex items-center gap-1">
 						<Badge variant="info">ESC</Badge>
-						<Text variant="caption">to close</Text>
+						<Text variant="caption">{t("sys.search.close")}</Text>
 					</div>
 				</div>
 			</CommandDialog>

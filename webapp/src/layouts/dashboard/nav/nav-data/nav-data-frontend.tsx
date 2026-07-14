@@ -14,6 +14,7 @@ export const frontendNavData: NavProps["data"] = [
 	{
 		name: "Comercial",
 		items: [
+			{ title: "Quadro", path: "/quadro", icon: <Icon icon="solar:checklist-minimalistic-bold-duotone" size="24" /> },
 			{ title: "Orçamentos", path: "/orcamentos", icon: <Icon icon="solar:document-text-bold-duotone" size="24" /> },
 			{ title: "Clientes", path: "/clientes", icon: <Icon icon="solar:users-group-rounded-bold-duotone" size="24" /> },
 			{ title: "Produtos", path: "/produtos", icon: <Icon icon="solar:box-bold-duotone" size="24" /> },

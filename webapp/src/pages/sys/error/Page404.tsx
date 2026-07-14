@@ -58,9 +58,9 @@ export default function Page404() {
 	);
 	return (
 		<ErrorLayout
-			title="Oops! Page not found!"
-			helmetTitle="404 Page Not Found!"
-			desc="The page you’re looking for doesn’t exist or has been moved."
+			title="Ops! Página não encontrada!"
+			helmetTitle="404 Página não encontrada!"
+			desc="A página que você procura não existe ou foi movida."
 			svg={svg}
 		/>
 	);

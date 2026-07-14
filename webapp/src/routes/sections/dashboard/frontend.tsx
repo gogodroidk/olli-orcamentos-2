@@ -6,6 +6,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 	const frontendDashboardRoutes: RouteObject[] = [
 		// ─── OLLI (menu real) ───────────────────────────────────
 		{ path: "inicio", element: Component("/pages/olli/inicio") },
+		{ path: "quadro", element: Component("/pages/olli/quadro") },
 		{ path: "orcamentos", element: Component("/pages/olli/list", { table: "orcamentos", title: "Orçamentos", subtitle: "Seus orçamentos" }) },
 		{ path: "clientes", element: Component("/pages/olli/list", { table: "clientes", title: "Clientes", subtitle: "Sua carteira de clientes" }) },
 		{ path: "produtos", element: Component("/pages/olli/list", { table: "produtos", title: "Produtos", subtitle: "Catálogo de produtos" }) },

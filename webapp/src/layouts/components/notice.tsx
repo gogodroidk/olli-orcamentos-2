@@ -38,7 +38,7 @@ export default function NoticeButton() {
 			<Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
 				<SheetContent side="right" className="sm:max-w-md p-0 [&>button]:hidden flex flex-col" style={style}>
 					<SheetHeader className="flex flex-row items-center justify-between p-4 h-16 shrink-0">
-						<SheetTitle>Notifications</SheetTitle>
+						<SheetTitle>Notificações</SheetTitle>
 						<Button
 							variant="ghost"
 							size="icon"
@@ -56,9 +56,9 @@ export default function NoticeButton() {
 					</div>
 					<SheetFooter className="flex flex-row h-16 w-full items-center justify-between p-4 shrink-0">
 						<Button variant="outline" className="flex-1 mr-2">
-							Archive all
+							Arquivar todas
 						</Button>
-						<Button className="flex-1 ml-2">Mark all as read</Button>
+						<Button className="flex-1 ml-2">Marcar todas como lidas</Button>
 					</SheetFooter>
 				</SheetContent>
 			</Sheet>
@@ -72,9 +72,9 @@ function NoticeTab() {
 			id: 1,
 			type: "mention",
 			user: "Joe Lincoln",
-			action: "mentioned you in",
+			action: "mencionou você em",
 			target: "Latest Trends",
-			targetType: "topic",
+			targetType: "tópico",
 			time: "18 mins ago",
 			department: "Web Design 2024",
 			message: "@Cody For an expert opinion, check out what Mike has to say on this topic!",
@@ -85,7 +85,7 @@ function NoticeTab() {
 			id: 2,
 			type: "tags",
 			user: "Leslie Alexander",
-			action: "added new tags to",
+			action: "adicionou novas tags em",
 			target: "Web Redesign 2024",
 			time: "53 mins ago",
 			department: "ACME",
@@ -96,9 +96,9 @@ function NoticeTab() {
 			id: 3,
 			type: "access",
 			user: "Guy Hawkins",
-			action: "requested access to",
+			action: "solicitou acesso a",
 			target: "AirSpace",
-			targetType: "project",
+			targetType: "projeto",
 			time: "14 hours ago",
 			department: "Dev Team",
 			hasActions: true,
@@ -108,7 +108,7 @@ function NoticeTab() {
 			id: 4,
 			type: "file",
 			user: "Jane Perez",
-			action: "invites you to review a file.",
+			action: "convidou você para revisar um arquivo.",
 			time: "3 hours ago",
 			fileSize: "742kb",
 			fileName: "Launch_nov24.pptx",
@@ -120,7 +120,7 @@ function NoticeTab() {
 			id: 5,
 			type: "article",
 			user: "Raymond Pawell",
-			action: "posted a new article",
+			action: "publicou um novo artigo",
 			target: "2024 Roadmap",
 			time: "1 hour ago",
 			department: "Roadmap",
@@ -130,7 +130,7 @@ function NoticeTab() {
 			id: 6,
 			type: "project",
 			user: "Tyler Hero",
-			action: "wants to view your design project",
+			action: "quer ver seu projeto de design",
 			time: "3 day ago",
 			department: "Metronic Launcher mockups",
 			fileName: "Launcher-UIkit.fig",
@@ -145,7 +145,7 @@ function NoticeTab() {
 			id: 1,
 			type: "user_request",
 			user: "Samuel Lee",
-			action: "requested to add user to",
+			action: "solicitou adicionar usuário em",
 			target: "TechSynergy",
 			time: "22 hours ago",
 			department: "Dev Team",
@@ -157,7 +157,7 @@ function NoticeTab() {
 		{
 			id: 2,
 			type: "success",
-			message: "You have successfully verified your account",
+			message: "Você verificou sua conta com sucesso",
 			time: "2 days ago",
 			isSuccess: true,
 		},
@@ -165,7 +165,7 @@ function NoticeTab() {
 			id: 3,
 			type: "file",
 			user: "Ava Peterson",
-			action: "uploaded attachment",
+			action: "enviou um anexo",
 			time: "3 days ago",
 			department: "ACME",
 			fileName: "Redesign-2024.xls",
@@ -177,9 +177,9 @@ function NoticeTab() {
 			id: 4,
 			type: "task",
 			user: "Ethan Parker",
-			action: "created a new tasks to",
+			action: "criou uma nova tarefa em",
 			target: "Site Sculpt",
-			targetType: "project",
+			targetType: "projeto",
 			time: "3 days ago",
 			department: "Web Designer",
 			taskTitle: "Location history is erased after Logging In",
@@ -192,7 +192,7 @@ function NoticeTab() {
 			id: 5,
 			type: "upgrade",
 			user: "Benjamin Harris",
-			action: "requested to upgrade plan",
+			action: "solicitou upgrade de plano",
 			time: "4 days ago",
 			department: "Marketing",
 			hasActions: true,
@@ -202,9 +202,9 @@ function NoticeTab() {
 			id: 6,
 			type: "mention",
 			user: "Isaac Morgan",
-			action: "mentioned you in",
+			action: "mencionou você em",
 			target: "Data Transmission",
-			targetType: "topic",
+			targetType: "tópico",
 			time: "6 days ago",
 			department: "Dev Team",
 			hasAvatar: true,
@@ -216,7 +216,7 @@ function NoticeTab() {
 			id: 1,
 			type: "meeting",
 			user: "Nova Hawthorne",
-			action: "sent you an meeting invitation",
+			action: "enviou um convite de reunião",
 			time: "2 days ago",
 			department: "Dev Team",
 			meetingTitle: "Preparation For Release",
@@ -230,7 +230,7 @@ function NoticeTab() {
 			id: 2,
 			type: "article",
 			user: "Adrian Vale",
-			action: "posted a new article",
+			action: "publicou um novo artigo",
 			target: "Marketing",
 			targetDate: "13 May",
 			time: "2 days ago",
@@ -241,7 +241,7 @@ function NoticeTab() {
 			id: 3,
 			type: "upload",
 			user: "Skylar Frost",
-			action: "uploaded 2 attachments",
+			action: "enviou 2 anexos",
 			time: "3 days ago",
 			department: "Web Design",
 			files: [
@@ -254,7 +254,7 @@ function NoticeTab() {
 			id: 4,
 			type: "comment",
 			user: "Selene Silverleaf",
-			action: "commented on",
+			action: "comentou em",
 			target: "SiteSculpt",
 			time: "4 days ago",
 			department: "Manager",
@@ -266,7 +266,7 @@ function NoticeTab() {
 			id: 5,
 			type: "invitation",
 			user: "Thalia Fox",
-			action: "has invited you to join",
+			action: "convidou você para participar de",
 			target: "Design Research",
 			time: "4 days ago",
 			department: "Dev Team",
@@ -353,7 +353,7 @@ function NoticeTab() {
 									{notification.targetDate && (
 										<Text variant="subTitle2" color="secondary">
 											{" "}
-											to {notification.targetDate}
+											para {notification.targetDate}
 										</Text>
 									)}
 								</Text>
@@ -394,7 +394,7 @@ function NoticeTab() {
 									</Text>
 								</div>
 								<Button variant="outline" size="sm">
-									Go to profile
+									Ver perfil
 								</Button>
 							</div>
 						</div>
@@ -439,7 +439,7 @@ function NoticeTab() {
 								<Text variant="subTitle2">{notification.fileName}</Text>
 								<Text variant="caption" color="secondary">
 									{notification.fileSize}
-									{notification.editedTime && ` • Edited ${notification.editedTime}`}
+									{notification.editedTime && ` • Editado ${notification.editedTime}`}
 								</Text>
 							</div>
 							<Button variant="outline" size="sm">
@@ -477,7 +477,7 @@ function NoticeTab() {
 									<div className="mt-2">
 										<Text variant="subTitle2">{artwork.title}</Text>
 										<Text variant="caption" color="secondary">
-											Token ID: {artwork.id}
+											ID do token: {artwork.id}
 										</Text>
 									</div>
 								</div>
@@ -503,7 +503,7 @@ function NoticeTab() {
 								<div className="flex-1">
 									<Text variant="subTitle2">{notification.taskTitle}</Text>
 									<Text variant="caption" color="secondary">
-										Due Date: {notification.dueDate}
+										Vencimento: {notification.dueDate}
 									</Text>
 									<div className="flex items-center space-x-2 mt-2">
 										{notification.tags?.map((tag: string) => (
@@ -530,33 +530,33 @@ function NoticeTab() {
 						<div className="mt-3 flex space-x-2">
 							<Button size="sm">
 								{notification.type === "access"
-									? "Accept"
+									? "Aceitar"
 									: notification.type === "user_request"
-										? "Accept"
+										? "Aceitar"
 										: notification.type === "meeting"
-											? "Accept"
+											? "Aceitar"
 											: notification.type === "upgrade"
-												? "Accept"
+												? "Aceitar"
 												: notification.type === "invitation"
-													? "Accept"
+													? "Aceitar"
 													: notification.type === "edit_request"
-														? "Accept"
-														: "Accept"}
+														? "Aceitar"
+														: "Aceitar"}
 							</Button>
 							<Button variant="outline" size="sm">
 								{notification.type === "access"
-									? "Decline"
+									? "Recusar"
 									: notification.type === "user_request"
-										? "Decline"
+										? "Recusar"
 										: notification.type === "meeting"
-											? "Decline"
+											? "Recusar"
 											: notification.type === "upgrade"
-												? "Decline"
+												? "Recusar"
 												: notification.type === "invitation"
-													? "Decline"
+													? "Recusar"
 													: notification.type === "edit_request"
-														? "Decline"
-														: "Decline"}
+														? "Recusar"
+														: "Recusar"}
 							</Button>
 						</div>
 					)}
@@ -565,7 +565,7 @@ function NoticeTab() {
 					{notification.hasReply && (
 						<div className="mt-3">
 							<div className="flex items-center space-x-2">
-								<Input placeholder="Reply " />
+								<Input placeholder="Responder " />
 								<Button variant="ghost" size="sm">
 									<Icon icon="solar:gallery-linear" size={16} />
 								</Button>
@@ -578,10 +578,10 @@ function NoticeTab() {
 						<div className="mt-3 flex items-center space-x-2">
 							<div className="flex items-center space-x-2 text-sm text-gray-600">
 								<Icon icon="solar:check-circle-bold" size={16} className="text-green-600" />
-								<span>Connected</span>
+								<span>Conectado</span>
 							</div>
 							<Button variant="outline" size="sm">
-								Go to profile
+								Ver perfil
 							</Button>
 						</div>
 					)}
@@ -594,15 +594,15 @@ function NoticeTab() {
 		<Tabs defaultValue="all" className="w-full h-full flex flex-col">
 			<TabsList className="gap-2 w-full flex justify-between items-center shrink-0">
 				<TabsTrigger value="all" className="flex items-center gap-1">
-					<span>All</span>
+					<span>Todas</span>
 					<Badge variant="default">{allNotifications.length}</Badge>
 				</TabsTrigger>
 				<TabsTrigger value="inbox" className="flex items-center gap-1">
-					<span>Inbox</span>
+					<span>Caixa de entrada</span>
 					<Badge variant="info">{inboxNotifications.length}</Badge>
 				</TabsTrigger>
 				<TabsTrigger value="team" className="flex items-center gap-1">
-					<span>Team</span>
+					<span>Equipe</span>
 					<Badge variant="success">{teamNotifications.length}</Badge>
 				</TabsTrigger>
 			</TabsList>

@@ -67,9 +67,9 @@ export default function Page403() {
 	);
 	return (
 		<ErrorLayout
-			title="Access Denied"
-			helmetTitle="403 Access Denied!"
-			desc="You do not have permission to access this resource."
+			title="Acesso negado"
+			helmetTitle="403 Acesso negado!"
+			desc="Você não tem permissão para acessar este recurso."
 			svg={svg}
 		/>
 	);

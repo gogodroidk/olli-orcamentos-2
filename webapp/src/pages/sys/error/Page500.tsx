@@ -107,9 +107,9 @@ export default function Page500() {
 	);
 	return (
 		<ErrorLayout
-			title="Internal Server Error!"
-			helmetTitle="500 Internal Server Error!"
-			desc="Sorry for the inconvenience."
+			title="Erro interno do servidor!"
+			helmetTitle="500 Erro interno do servidor!"
+			desc="Desculpe pelo transtorno."
 			svg={svg}
 		/>
 	);
