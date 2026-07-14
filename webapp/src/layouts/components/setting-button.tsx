@@ -3,7 +3,6 @@ import RedBlur from "@/assets/images/background/red-blur.png";
 import { Icon } from "@/components/icon";
 import { type SettingsType, useSettingActions, useSettings } from "@/store/settingStore";
 import { themeVars } from "@/theme/theme.css";
-import { presetsColors } from "@/theme/tokens/color";
 import { FontFamilyPreset } from "@/theme/tokens/typography";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -18,12 +17,12 @@ import { type CSSProperties, useCallback, useEffect, useState } from "react";
 
 import { useTranslation } from "react-i18next";
 import screenfull from "screenfull";
-import { type ThemeColorPresets, ThemeLayout, ThemeMode } from "#/enum";
+import { ThemeLayout, ThemeMode } from "#/enum";
 
 export default function SettingButton() {
 	const { t } = useTranslation();
 	const settings = useSettings();
-	const { themeMode, themeColorPresets, themeLayout, themeStretch, breadCrumb, fontSize, fontFamily } = settings;
+	const { themeMode, themeLayout, themeStretch, breadCrumb, fontSize, fontFamily } = settings;
 	const { setSettings } = useSettingActions();
 
 	const updateSettings = (partialSettings: Partial<SettingsType>) => {

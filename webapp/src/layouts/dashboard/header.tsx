@@ -1,6 +1,5 @@
 import LocalePicker from "@/components/locale-picker";
 import { useSettings } from "@/store/settingStore";
-import { Button } from "@/ui/button";
 import { cn } from "@/utils";
 import type { ReactNode } from "react";
 import AccountDropdown from "../components/account-dropdown";
