@@ -111,7 +111,10 @@ export function mascaraTelefone(v: string): string {
 
 export function mascaraCpf(v: string): string {
 	const d = soDigitos(v).slice(0, 11);
-	return d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+	return d
+		.replace(/(\d{3})(\d)/, "$1.$2")
+		.replace(/(\d{3})(\d)/, "$1.$2")
+		.replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 }
 
 export function mascaraCnpj(v: string): string {

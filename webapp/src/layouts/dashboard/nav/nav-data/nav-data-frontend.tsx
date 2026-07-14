@@ -36,7 +36,10 @@ export const frontendNavData: NavProps["data"] = [
 			},
 			{ title: "Agenda", path: "/agenda", icon: <Icon icon="solar:calendar-bold-duotone" size="24" /> },
 			{ title: "Equipe", path: "/equipe", icon: <Icon icon="solar:users-group-two-rounded-bold-duotone" size="24" /> },
-			{ title: "Equipamentos", path: "/equipamentos", icon: <Icon icon="solar:cpu-bolt-bold-duotone" size="24" /> },
+			// Era `solar:cpu-bolt-bold-duotone` — um CHIP DE PROCESSADOR, que não diz nada
+			// sobre equipamento de campo. Os campos da tabela são BTU, refrigerante e
+			// tensão: é ar-condicionado.
+			{ title: "Equipamentos", path: "/equipamentos", icon: <Icon icon="mdi:air-conditioner" size="24" /> },
 		],
 	},
 	{

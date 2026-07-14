@@ -21,9 +21,9 @@ import {
 	CONFLITO,
 	type DominioPorTabela,
 	PARA_LINHA,
+	TABELAS_DO_TENANT_DO_DONO,
 	type TabelaOlli,
 	tabelaRemota,
-	TABELAS_DO_TENANT_DO_DONO,
 } from "./contrato";
 
 /* ─────────────────────────  1. Contexto de escrita (tenant)  ───────────────── */
@@ -98,11 +98,7 @@ export function useContextoDeEscrita() {
 export async function proximoNumeroDocumento(chave: "orcamento" | "recibo"): Promise<string> {
 	const tabelaParaSemear = chave === "orcamento" ? "orcamentos" : "recibos";
 
-	const { data: linha, error } = await supabase
-		.from("contadores")
-		.select("valor")
-		.eq("chave", chave)
-		.maybeSingle();
+	const { data: linha, error } = await supabase.from("contadores").select("valor").eq("chave", chave).maybeSingle();
 	if (error) throw error;
 
 	let atual = linha?.valor as number | undefined;
@@ -171,7 +167,9 @@ export function useSalvar<T extends TabelaOlli>(tabela: T) {
 			// TRAVA DO TENANT: sem saber o papel, não grava (ver cabeçalho do arquivo).
 			if (contexto.isLoading) throw new Error("Carregando seu perfil… tente de novo em um instante.");
 			if (contexto.isError || !contexto.data) {
-				throw new Error("Não consegui confirmar a qual empresa este registro pertence. Recarregue a página e tente de novo.");
+				throw new Error(
+					"Não consegui confirmar a qual empresa este registro pertence. Recarregue a página e tente de novo.",
+				);
 			}
 
 			const linha = PARA_LINHA[tabela](objeto);
@@ -180,9 +178,7 @@ export function useSalvar<T extends TabelaOlli>(tabela: T) {
 				linha.user_id = ownerUserId;
 			}
 
-			const { error } = await supabase
-				.from(tabelaRemota(tabela))
-				.upsert(linha, { onConflict: CONFLITO[tabela] });
+			const { error } = await supabase.from(tabelaRemota(tabela)).upsert(linha, { onConflict: CONFLITO[tabela] });
 			if (error) throw error;
 			return objeto;
 		},

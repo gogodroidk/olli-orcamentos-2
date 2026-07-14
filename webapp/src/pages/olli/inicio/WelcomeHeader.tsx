@@ -1,4 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
+import { Link } from "react-router";
 import { useMinhaEmpresa } from "@/olli/data";
 import { Skeleton } from "@/ui/skeleton";
 import { dataLonga, saudacao } from "./helpers";
@@ -7,6 +8,10 @@ import { dataLonga, saudacao } from "./helpers";
  * Cabeçalho de boas-vindas: "Olá, {empresa}" + saudação pelo horário e data por
  * extenso. Nome vem REAL de `useMinhaEmpresa`; no carregando mostra skeleton, no
  * erro/ausência só omite o nome (nunca inventa).
+ *
+ * À direita, o CTA "Novo orçamento" — SEMPRE visível, em qualquer estado da tela
+ * (carregando, erro ou vazio). É a ação que gera receita: ela não pode depender de
+ * uma consulta ter dado certo.
  */
 export function WelcomeHeader() {
 	const { data: empresa, isLoading } = useMinhaEmpresa();
@@ -30,10 +35,13 @@ export function WelcomeHeader() {
 					<p className="mt-0.5 text-sm text-text-secondary">{dataLonga()}</p>
 				</div>
 			</div>
-			<span className="hidden items-center gap-2 self-start rounded-full border border-border bg-bg-neutral/40 px-3.5 py-1.5 text-xs font-medium text-text-secondary sm:inline-flex">
-				<span className="size-1.5 rounded-full bg-success" aria-hidden />
-				Resumo do seu negócio
-			</span>
+			<Link
+				to="/orcamentos?novo=1"
+				className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+			>
+				<Plus className="size-4" strokeWidth={2.5} />
+				Novo orçamento
+			</Link>
 		</div>
 	);
 }

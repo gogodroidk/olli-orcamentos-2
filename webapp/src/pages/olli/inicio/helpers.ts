@@ -8,6 +8,7 @@
  * de Badge usada na lista de recentes. Slug desconhecido nunca quebra: cai no
  * fallback neutro (regra de nunca "sumir" com dado que existe).
  */
+import type { Orcamento, Recibo } from "@dominio";
 
 /** Linha crua da tabela relacional `orcamentos` (o que o `select('*')` devolve). */
 export interface OrcamentoRow {
@@ -18,6 +19,45 @@ export interface OrcamentoRow {
 	valor_total?: number | null;
 	subtotal?: number | null;
 	criado_em?: string | null;
+	/** Última escrita — é por ela que medimos "parado há N dias". */
+	atualizado_em?: string | null;
+	/**
+	 * O BLOB. É a VERDADE do orçamento (as colunas acima são espelhos). Daqui sai o
+	 * `clienteTelefone` — que NÃO tem coluna espelho — para o botão de WhatsApp.
+	 * Tipado com o tipo do app (`@dominio`): se o app mudar o campo, isto para de
+	 * compilar em vez de gerar um link de WhatsApp para um telefone que não existe.
+	 */
+	dados?: Orcamento | null;
+}
+
+/** Linha crua da tabela `recibos`. */
+export interface ReciboRow {
+	id?: string | null;
+	numero?: string | null;
+	orcamento_id?: string | null;
+	cliente_nome?: string | null;
+	valor_recebido?: number | null;
+	/**
+	 * ⚠️ NÃO USE esta coluna para saber QUANDO o dinheiro entrou. O app grava aqui a
+	 * string 'DD/MM/AAAA' crua numa coluna timestamptz (DateStyle ISO,MDY): "10/07"
+	 * vira 7 de OUTUBRO e dia > 12 faz o upsert falhar. A data honesta está no BLOB
+	 * (`dados.dataRecebimento`). Ver `webapp/src/olli/datas.ts`.
+	 */
+	data_recebimento?: string | null;
+	criado_em?: string | null;
+	dados?: Recibo | null;
+}
+
+/** Linha crua da tabela `agendamentos` (`inicio`/`fim` são timestamptz de verdade). */
+export interface AgendamentoRow {
+	id?: string | null;
+	cliente_nome?: string | null;
+	titulo?: string | null;
+	tipo?: string | null;
+	inicio?: string | null;
+	fim?: string | null;
+	endereco?: string | null;
+	status?: string | null;
 }
 
 export type BadgeVariant = "default" | "secondary" | "info" | "warning" | "success" | "error";
@@ -84,11 +124,42 @@ export function formatInt(v: number): string {
 	return INT.format(v);
 }
 
-/** Melhor esforço para o valor do orçamento: total → subtotal. */
+/**
+ * Melhor esforço para o valor do orçamento: coluna → blob → subtotal.
+ * Devolve `null` quando NÃO EXISTE valor — quem soma precisa saber a diferença
+ * entre "zero reais" e "não sei", senão o painel mente sobre o caixa.
+ */
 export function valorOrcamento(o: OrcamentoRow): number | null {
-	if (typeof o.valor_total === "number") return o.valor_total;
-	if (typeof o.subtotal === "number") return o.subtotal;
+	const candidatos = [o.valor_total, o.dados?.valorTotal, o.subtotal, o.dados?.subtotal];
+	for (const c of candidatos) {
+		if (typeof c === "number" && Number.isFinite(c)) return c;
+	}
 	return null;
+}
+
+/** Percentual inteiro pt-BR (ex.: "62%"). `null` (sem base de cálculo) vira "—". */
+export function formatPct(v: number | null): string {
+	if (v === null || !Number.isFinite(v)) return "—";
+	return `${Math.round(v)}%`;
+}
+
+/** Concordância de número: `plural(1,"orçamento")` → "1 orçamento". */
+export function plural(n: number, singular: string, pluralForma = `${singular}s`): string {
+	return `${formatInt(n)} ${n === 1 ? singular : pluralForma}`;
+}
+
+const HORA = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+/** ISO → "HH:mm" no fuso local. String inválida vira "—" (nunca inventa horário). */
+export function horaLocal(iso?: string | null): string {
+	if (!iso) return "—";
+	const d = new Date(iso);
+	return Number.isNaN(d.getTime()) ? "—" : HORA.format(d);
+}
+
+/** Mês por extenso do período corrente (ex.: "julho de 2026"). */
+export function mesPorExtenso(d = new Date()): string {
+	return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(d);
 }
 
 /** Nome do cliente com fallback amigável. */

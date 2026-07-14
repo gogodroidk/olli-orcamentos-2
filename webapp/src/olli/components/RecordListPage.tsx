@@ -1,8 +1,10 @@
-import { AlertTriangle, Inbox, RotateCw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, Inbox, MoreHorizontal, Plus, RotateCw, Search } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useOlliList } from "@/olli/data";
 import { Badge } from "@/ui/badge";
+import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
@@ -77,18 +79,61 @@ function formatValue(key: string, v: unknown): string {
 	return "—";
 }
 
+/** Linha crua da tabela (o `select('*')` do Supabase, em snake_case). */
+export type Linha = Record<string, unknown>;
+
+/** Um item do menu "…" de cada linha. */
+export interface AcaoDeLinha {
+	rotulo: string;
+	aoClicar: (linha: Linha) => void;
+	icone?: ReactNode;
+	/** Vermelho + separado do resto (ex.: "Excluir"). */
+	destrutiva?: boolean;
+}
+
 interface Props {
 	table: string;
 	title: string;
 	subtitle?: string;
 	orderBy?: string;
+	/** Ordem crescente (padrão: decrescente, que é o certo para data). Nome pede `true`. */
+	ascending?: boolean;
 	/** Colunas explícitas; se ausente, deriva das chaves da primeira linha. */
 	columns?: string[];
+
+	/* ── CRUD (tudo OPCIONAL: sem estas props, a lista é só leitura, como antes) ── */
+
+	/** Botão primário do cabeçalho — e do estado vazio, onde ele mais importa. */
+	acaoNova?: { rotulo: string; aoClicar: () => void };
+	/**
+	 * Abrir/editar o registro. Liga o clique na linha E um botão de verdade na
+	 * coluna principal — porque `onClick` numa `<tr>` não existe para quem usa
+	 * teclado. O menu "…" repete a ação, então há sempre 2 caminhos sem mouse.
+	 */
+	aoAbrirLinha?: (linha: Linha) => void;
+	/** Itens do menu "…" da linha (ex.: Editar, Excluir). */
+	acoesDaLinha?: AcaoDeLinha[];
+	/** Textos do estado vazio de verdade (sem busca ativa). */
+	vazioTitulo?: string;
+	vazioDescricao?: string;
 }
 
-export default function RecordListPage({ table, title, subtitle, orderBy, columns }: Props) {
-	const { data, isLoading, isError, error, refetch } = useOlliList(table, { orderBy });
+export default function RecordListPage({
+	table,
+	title,
+	subtitle,
+	orderBy,
+	ascending,
+	columns,
+	acaoNova,
+	aoAbrirLinha,
+	acoesDaLinha,
+	vazioTitulo,
+	vazioDescricao,
+}: Props) {
+	const { data, isLoading, isError, error, refetch } = useOlliList(table, { orderBy, ascending });
 	const [q, setQ] = useState("");
+	const temMenu = !!acoesDaLinha?.length;
 
 	const cols = useMemo(() => {
 		if (columns) return columns;
@@ -134,6 +179,65 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 		return formatValue(col, val);
 	};
 
+	/** Como o registro se chama — para o `aria-label` do menu e do botão de abrir. */
+	const nomeDaLinha = (row: Linha) => (primaryCol ? formatValue(primaryCol, row[primaryCol]) : "registro");
+
+	/**
+	 * A coluna principal vira um BOTÃO de verdade quando dá para abrir o registro.
+	 * É ele — não o `onClick` da `<tr>` — que dá o caminho de teclado (Tab + Enter).
+	 */
+	const celulaPrincipal = (col: string, row: Linha) => {
+		const conteudo = renderCell(col, row);
+		if (!aoAbrirLinha) return conteudo;
+		return (
+			<button
+				type="button"
+				onClick={() => aoAbrirLinha(row)}
+				aria-label={`Abrir ${nomeDaLinha(row)}`}
+				className="-mx-1 rounded-md px-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+			>
+				{conteudo}
+			</button>
+		);
+	};
+
+	const menuDaLinha = (row: Linha) => (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					className="size-8 text-text-secondary"
+					aria-label={`Ações de ${nomeDaLinha(row)}`}
+					// A linha inteira é clicável no mouse; o clique no menu não pode
+					// abrir o registro por baixo.
+					onClick={(e) => e.stopPropagation()}
+				>
+					<MoreHorizontal className="size-4" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-48">
+				{acoesDaLinha?.map((a) => (
+					<DropdownMenuItem
+						key={a.rotulo}
+						onSelect={() => a.aoClicar(row)}
+						className={cn("gap-2", a.destrutiva && "text-error focus:text-error")}
+					>
+						{a.icone}
+						{a.rotulo}
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+
+	const botaoNovo = acaoNova && (
+		<Button type="button" onClick={acaoNova.aoClicar} className="gap-2">
+			<Plus className="size-4" />
+			{acaoNova.rotulo}
+		</Button>
+	);
+
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
 			{/* Cabeçalho rico */}
@@ -149,14 +253,17 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 					</div>
 					{subtitle && <p className="mt-1 text-sm text-text-secondary">{subtitle}</p>}
 				</div>
-				<div className="relative w-full sm:w-72">
-					<Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-disabled" />
-					<Input
-						value={q}
-						onChange={(e) => setQ(e.target.value)}
-						placeholder="Buscar…"
-						className="h-10 rounded-full pl-10"
-					/>
+				<div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+					<div className="relative w-full sm:w-72">
+						<Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-disabled" />
+						<Input
+							value={q}
+							onChange={(e) => setQ(e.target.value)}
+							placeholder="Buscar…"
+							className="h-10 rounded-full pl-10"
+						/>
+					</div>
+					{botaoNovo}
 				</div>
 			</div>
 
@@ -212,12 +319,16 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 					</div>
 					<div>
 						<p className="text-base font-semibold text-text-primary">
-							{q ? "Nada encontrado" : "Ainda não há registros"}
+							{q ? "Nada encontrado" : (vazioTitulo ?? "Ainda não há registros")}
 						</p>
 						<p className="mx-auto mt-1 max-w-sm text-sm text-text-secondary">
-							{q ? "Tente outro termo de busca." : "Quando você criar o primeiro, ele aparece aqui."}
+							{q
+								? "Tente outro termo de busca."
+								: (vazioDescricao ?? "Quando você criar o primeiro, ele aparece aqui.")}
 						</p>
 					</div>
+					{/* O botão também mora aqui: base vazia é exatamente onde ele é a próxima ação. */}
+					{!q && botaoNovo}
 				</Card>
 			) : (
 				<Card className="overflow-hidden p-0">
@@ -234,15 +345,25 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 											{prettify(c)}
 										</th>
 									))}
+									{temMenu && <th className="w-12 px-4 py-3 font-semibold sr-only">Ações</th>}
 								</tr>
 							</thead>
 							<tbody>
 								{rows.map((r, i) => {
 									const row = r as Record<string, unknown>;
 									return (
+										// O `onClick` da <tr> é conveniência de MOUSE, e só. Quem usa teclado
+										// tem 2 caminhos equivalentes e focáveis: o botão da coluna principal
+										// (Tab + Enter) e o item "Editar" do menu "…". Pôr tabIndex/role na
+										// própria <tr> quebraria a semântica da tabela e criaria uma parada de
+										// foco duplicada por linha.
 										<tr
 											key={(r as { id?: string }).id ?? i}
-											className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+											onClick={aoAbrirLinha ? () => aoAbrirLinha(row) : undefined}
+											className={cn(
+												"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
+												aoAbrirLinha && "cursor-pointer",
+											)}
 										>
 											{cols.map((c) => (
 												<td
@@ -256,9 +377,10 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 																: "whitespace-nowrap text-text-secondary",
 													)}
 												>
-													{renderCell(c, row)}
+													{c === primaryCol ? celulaPrincipal(c, row) : renderCell(c, row)}
 												</td>
 											))}
+											{temMenu && <td className="px-2 py-3.5 text-right align-middle">{menuDaLinha(row)}</td>}
 										</tr>
 									);
 								})}
@@ -276,7 +398,9 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 								<div key={(r as { id?: string }).id ?? i} className="p-4">
 									<div className="flex items-start justify-between gap-3">
 										<div className="min-w-0 text-sm">
-											{primaryCol && isNameKey(primaryCol) ? (
+											{primaryCol && aoAbrirLinha ? (
+												celulaPrincipal(primaryCol, row)
+											) : primaryCol && isNameKey(primaryCol) ? (
 												<NameCell name={formatValue(primaryCol, row[primaryCol])} />
 											) : (
 												<span className="font-medium text-text-primary">
@@ -284,7 +408,10 @@ export default function RecordListPage({ table, title, subtitle, orderBy, column
 												</span>
 											)}
 										</div>
-										{statusCol && <StatusBadge value={row[statusCol]} className="shrink-0" />}
+										<div className="flex shrink-0 items-center gap-1">
+											{statusCol && <StatusBadge value={row[statusCol]} className="shrink-0" />}
+											{temMenu && menuDaLinha(row)}
+										</div>
 									</div>
 									{restCols.length > 0 && (
 										<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
