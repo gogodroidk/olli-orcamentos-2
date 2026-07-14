@@ -5,9 +5,12 @@ import { ThemeLayout } from "#/enum";
 import Header from "./header";
 import Main from "./main";
 import { NavHorizontalLayout, NavMobileLayout, NavVerticalLayout, useFilteredNavData } from "./nav";
+import { useApplyBranding } from "@/olli/branding";
 
 export default function DashboardLayout() {
 	const isMobile = useMediaQuery(down("md"));
+	// White-label: pinta o painel com a cor da marca da empresa logada.
+	useApplyBranding();
 
 	return (
 		<div data-slot="slash-layout-root" className="w-full min-h-screen bg-background">

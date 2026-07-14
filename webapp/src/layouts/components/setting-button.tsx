@@ -257,32 +257,8 @@ export default function SettingButton() {
 							</div>
 						</div>
 
-						{/* theme presets */}
-						<div className="flex flex-col gap-2">
-							<Text variant="subTitle1">{t("sys.settings.presetThemes")}</Text>
-							<div className="flex flex-wrap gap-1">
-								{Object.entries(presetsColors).map(([preset, color]) => (
-									<div
-										key={preset}
-										className={cn(
-											"relative flex h-13 w-5 cursor-pointer items-center justify-center rounded transition-all duration-300 ease-in-out p-1",
-											themeColorPresets === preset && "w-13",
-										)}
-										style={{ backgroundColor: color.default }}
-										onClick={() => updateSettings({ themeColorPresets: preset as ThemeColorPresets })}
-									>
-										<div
-											className={cn(
-												"w-full h-full flex items-center justify-center hover:bg-white/30 transition-all duration-300 ease-in-out rounded",
-												themeColorPresets === preset && "bg-white/30",
-											)}
-										>
-											{themeColorPresets === preset && <Icon icon="bi:check-all" size={24} color="white" />}
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
+						{/* Sem seletor de cor: a cor primária é WHITE-LABEL — vem da marca
+						    da empresa logada (ver useApplyBranding / olli/branding.ts). */}
 
 						{/* font */}
 						<div className="flex flex-col gap-2">
