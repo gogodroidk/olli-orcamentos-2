@@ -1,245 +1,47 @@
 import { Icon } from "@/components/icon";
 import type { NavProps } from "@/components/nav";
-import { Badge } from "@/ui/badge";
 
+/**
+ * Menu do painel OLLI (pt-BR). Os `title` são texto direto — o i18next
+ * devolve a própria string quando não acha a chave, então não precisa de
+ * tradução para renderizar em português.
+ */
 export const frontendNavData: NavProps["data"] = [
 	{
-		name: "sys.nav.dashboard",
+		name: "Painel",
+		items: [{ title: "Início", path: "/inicio", icon: <Icon icon="solar:home-smile-bold-duotone" size="24" /> }],
+	},
+	{
+		name: "Comercial",
 		items: [
-			{
-				title: "sys.nav.workbench",
-				path: "/workbench",
-				icon: <Icon icon="local:ic-workbench" size="24" />,
-			},
-			{
-				title: "sys.nav.analysis",
-				path: "/analysis",
-				icon: <Icon icon="local:ic-analysis" size="24" />,
-			},
+			{ title: "Orçamentos", path: "/orcamentos", icon: <Icon icon="solar:document-text-bold-duotone" size="24" /> },
+			{ title: "Clientes", path: "/clientes", icon: <Icon icon="solar:users-group-rounded-bold-duotone" size="24" /> },
+			{ title: "Produtos", path: "/produtos", icon: <Icon icon="solar:box-bold-duotone" size="24" /> },
+			{ title: "Serviços", path: "/servicos", icon: <Icon icon="solar:settings-minimalistic-bold-duotone" size="24" /> },
+			{ title: "Recibos", path: "/recibos", icon: <Icon icon="solar:bill-list-bold-duotone" size="24" /> },
 		],
 	},
 	{
-		name: "sys.nav.pages",
+		name: "Operação",
 		items: [
-			// management
-			{
-				title: "sys.nav.management",
-				path: "/management",
-				icon: <Icon icon="local:ic-management" size="24" />,
-				children: [
-					{
-						title: "sys.nav.user.index",
-						path: "/management/user",
-						children: [
-							{
-								title: "sys.nav.user.profile",
-								path: "/management/user/profile",
-							},
-							{
-								title: "sys.nav.user.account",
-								path: "/management/user/account",
-							},
-						],
-					},
-					{
-						title: "sys.nav.system.index",
-						path: "/management/system",
-						children: [
-							{
-								title: "sys.nav.system.permission",
-								path: "/management/system/permission",
-							},
-							{
-								title: "sys.nav.system.role",
-								path: "/management/system/role",
-							},
-							{
-								title: "sys.nav.system.user",
-								path: "/management/system/user",
-							},
-						],
-					},
-				],
-			},
-			// menulevel
-			{
-				title: "sys.nav.menulevel.index",
-				path: "/menu_level",
-				icon: <Icon icon="local:ic-menulevel" size="24" />,
-				children: [
-					{
-						title: "sys.nav.menulevel.1a",
-						path: "/menu_level/1a",
-					},
-					{
-						title: "sys.nav.menulevel.1b.index",
-						path: "/menu_level/1b",
-						children: [
-							{
-								title: "sys.nav.menulevel.1b.2a",
-								path: "/menu_level/1b/2a",
-							},
-							{
-								title: "sys.nav.menulevel.1b.2b.index",
-								path: "/menu_level/1b/2b",
-								children: [
-									{
-										title: "sys.nav.menulevel.1b.2b.3a",
-										path: "/menu_level/1b/2b/3a",
-									},
-									{
-										title: "sys.nav.menulevel.1b.2b.3b",
-										path: "/menu_level/1b/2b/3b",
-									},
-								],
-							},
-						],
-					},
-				],
-			},
-			// errors
-			{
-				title: "sys.nav.error.index",
-				path: "/error",
-				icon: <Icon icon="bxs:error-alt" size="24" />,
-				children: [
-					{
-						title: "sys.nav.error.403",
-						path: "/error/403",
-					},
-					{
-						title: "sys.nav.error.404",
-						path: "/error/404",
-					},
-					{
-						title: "sys.nav.error.500",
-						path: "/error/500",
-					},
-				],
-			},
+			{ title: "Ordens de serviço", path: "/ordens-servico", icon: <Icon icon="solar:clipboard-list-bold-duotone" size="24" /> },
+			{ title: "Agenda", path: "/agenda", icon: <Icon icon="solar:calendar-bold-duotone" size="24" /> },
+			{ title: "Equipe", path: "/equipe", icon: <Icon icon="solar:users-group-two-rounded-bold-duotone" size="24" /> },
+			{ title: "Equipamentos", path: "/equipamentos", icon: <Icon icon="solar:cpu-bolt-bold-duotone" size="24" /> },
 		],
 	},
 	{
-		name: "sys.nav.ui",
+		name: "Ferramentas",
 		items: [
-			// components
-			{
-				title: "sys.nav.components",
-				path: "/components",
-				icon: <Icon icon="solar:widget-5-bold-duotone" size="24" />,
-				caption: "sys.nav.custom_ui_components",
-				children: [
-					{
-						title: "sys.nav.icon",
-						path: "/components/icon",
-					},
-					{
-						title: "sys.nav.animate",
-						path: "/components/animate",
-					},
-					{
-						title: "sys.nav.scroll",
-						path: "/components/scroll",
-					},
-					{
-						title: "sys.nav.i18n",
-						path: "/components/multi-language",
-					},
-					{
-						title: "sys.nav.upload",
-						path: "/components/upload",
-					},
-					{
-						title: "sys.nav.chart",
-						path: "/components/chart",
-					},
-					{
-						title: "sys.nav.toast",
-						path: "/components/toast",
-					},
-				],
-			},
-			// functions
-			{
-				title: "sys.nav.functions",
-				path: "/functions",
-				icon: <Icon icon="solar:plain-2-bold-duotone" size="24" />,
-				children: [
-					{
-						title: "sys.nav.clipboard",
-						path: "/functions/clipboard",
-					},
-					{
-						title: "sys.nav.token_expired",
-						path: "/functions/token_expired",
-					},
-				],
-			},
+			{ title: "Ferramentas de ofício", path: "/ferramentas", icon: <Icon icon="solar:widget-5-bold-duotone" size="24" /> },
+			{ title: "Diagnóstico IA", path: "/diagnostico", icon: <Icon icon="solar:magic-stick-3-bold-duotone" size="24" /> },
 		],
 	},
 	{
-		name: "sys.nav.others",
+		name: "Conta",
 		items: [
-			{
-				title: "sys.nav.permission",
-				path: "/permission",
-				icon: <Icon icon="mingcute:safe-lock-fill" size="24" />,
-			},
-			{
-				title: "sys.nav.permission.page_test",
-				path: "/permission/page-test",
-				icon: <Icon icon="mingcute:safe-lock-fill" size="24" />,
-				auth: ["permission:read"],
-				hidden: true,
-			},
-			{
-				title: "sys.nav.calendar",
-				path: "/calendar",
-				icon: <Icon icon="solar:calendar-bold-duotone" size="24" />,
-				info: <Badge variant="warning">+12</Badge>,
-			},
-			{
-				title: "sys.nav.kanban",
-				path: "/kanban",
-				icon: <Icon icon="solar:clipboard-bold-duotone" size="24" />,
-			},
-			{
-				title: "sys.nav.disabled",
-				path: "/disabled",
-				icon: <Icon icon="local:ic-disabled" size="24" />,
-				disabled: true,
-			},
-			{
-				title: "sys.nav.label",
-				path: "#label",
-				icon: <Icon icon="local:ic-label" size="24" />,
-				info: (
-					<Badge variant="info">
-						<Icon icon="solar:bell-bing-bold-duotone" size={14} />
-						New
-					</Badge>
-				),
-			},
-			{
-				title: "sys.nav.link",
-				path: "/link",
-				icon: <Icon icon="local:ic-external" size="24" />,
-				children: [
-					{
-						title: "sys.nav.external_link",
-						path: "/link/external-link",
-					},
-					{
-						title: "sys.nav.iframe",
-						path: "/link/iframe",
-					},
-				],
-			},
-			{
-				title: "sys.nav.blank",
-				path: "/blank",
-				icon: <Icon icon="local:ic-blank" size="24" />,
-			},
+			{ title: "Planos", path: "/planos", icon: <Icon icon="solar:crown-bold-duotone" size="24" /> },
+			{ title: "Meu negócio", path: "/meu-negocio", icon: <Icon icon="solar:shop-2-bold-duotone" size="24" /> },
 		],
 	},
 ];
