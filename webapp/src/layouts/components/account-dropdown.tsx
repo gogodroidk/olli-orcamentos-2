@@ -48,10 +48,10 @@ export default function AccountDropdown() {
 					</NavLink>
 				</DropdownMenuItem>
 				<DropdownMenuItem asChild>
-					<NavLink to="/management/user/profile">{t("sys.nav.user.profile")}</NavLink>
+					<NavLink to="/meu-negocio">Meu negócio</NavLink>
 				</DropdownMenuItem>
 				<DropdownMenuItem asChild>
-					<NavLink to="/management/user/account">{t("sys.nav.user.account")}</NavLink>
+					<NavLink to="/planos">Planos</NavLink>
 				</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem className="font-bold text-warning" onClick={logout}>
