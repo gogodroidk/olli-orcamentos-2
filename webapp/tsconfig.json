@@ -29,7 +29,17 @@
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["src/*"],
-			"#/*": ["src/types/*"]
+			"#/*": ["src/types/*"],
+
+			// PONTE DE DOMÍNIO — aponta para os tipos do APP DO CELULAR (../src/types).
+			// Por que: o painel grava nas MESMAS tabelas que o app, e a coluna `dados`
+			// (jsonb) guarda o objeto de domínio INTEIRO. Se o painel tivesse uma cópia
+			// própria dos tipos, as duas divergiriam com o tempo e o painel passaria a
+			// gravar um blob que o app não sabe ler — corrompendo o dado do cliente.
+			// Importando daqui, divergir vira erro de compilação.
+			// É seguro: `src/types/index.ts` é TypeScript puro (só type-importa
+			// `services/verticais`, que não importa nada) — não arrasta React Native.
+			"@dominio": ["../src/types/index.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

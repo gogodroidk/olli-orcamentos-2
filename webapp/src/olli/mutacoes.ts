@@ -1,0 +1,182 @@
+/**
+ * GRAVAÇÃO (criar / editar / excluir) — a camada que faltava no painel.
+ *
+ * Três travas, todas por um motivo já sofrido neste projeto:
+ *
+ * 1. CONTRATO — grava pelo `PARA_LINHA` de `contrato.ts` (espelho do app), então o
+ *    blob `dados` sai completo e o app do celular consegue ler o que o painel criou.
+ *
+ * 2. TENANT — se quem grava é um MEMBRO NÃO-DONO, a linha nasce no tenant do DONO.
+ *    E se não der pra SABER o papel (rede caiu, RLS negou), a gravação é BLOQUEADA
+ *    em vez de "chutar dono": chutar errado faz o registro nascer invisível para a
+ *    empresa e sumir em silêncio. Erro nunca vira suposição.
+ *
+ * 3. SOFT DELETE — excluir é carimbar `excluidoEm` (no blob) + `excluido_em` (coluna).
+ *    Apagar de verdade ressuscitaria o registro no próximo sync do celular.
+ */
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import {
+	agora,
+	CONFLITO,
+	type DominioPorTabela,
+	PARA_LINHA,
+	type TabelaOlli,
+	tabelaRemota,
+	TABELAS_DO_TENANT_DO_DONO,
+} from "./contrato";
+
+/* ─────────────────────────  1. Contexto de escrita (tenant)  ───────────────── */
+
+export interface ContextoDeEscrita {
+	/** `null` = conta pessoal / dono → grava no próprio tenant (default `auth.uid()`). */
+	ownerUserId: string | null;
+	papel: string;
+}
+
+/**
+ * Descobre em QUAL tenant este usuário deve gravar.
+ *
+ * Regra idêntica à do app (`cloudSync.ts`): membro com papel != 'owner' grava no
+ * tenant do dono da organização. Sem membresia = conta pessoal = próprio tenant.
+ *
+ * A query pode falhar — e nesse caso o hook fica em `isError`. Quem grava é
+ * obrigado a checar (ver `useSalvar`): sem resposta, não grava.
+ */
+export function useContextoDeEscrita() {
+	return useQuery({
+		queryKey: ["olli", "contexto-escrita"],
+		queryFn: async (): Promise<ContextoDeEscrita> => {
+			const { data: sessao } = await supabase.auth.getUser();
+			const meuId = sessao.user?.id;
+			if (!meuId) throw new Error("Sessão não encontrada.");
+
+			// RLS já restringe as linhas às minhas. `maybeSingle` porque a conta
+			// pessoal (sem organização) simplesmente não tem membresia.
+			const { data: membro, error } = await supabase
+				.from("organizacao_membros")
+				.select("org_id, papel, ativo")
+				.eq("user_id", meuId)
+				.eq("ativo", true)
+				.maybeSingle();
+			if (error) throw error;
+
+			if (!membro || membro.papel === "owner") {
+				return { ownerUserId: null, papel: membro?.papel ?? "pessoal" };
+			}
+
+			const { data: org, error: erroOrg } = await supabase
+				.from("organizacoes")
+				.select("owner_user_id")
+				.eq("id", membro.org_id)
+				.maybeSingle();
+			if (erroOrg) throw erroOrg;
+			if (!org?.owner_user_id) {
+				// Sou membro não-dono mas não achei o dono: gravar aqui criaria a linha
+				// no MEU tenant e a empresa nunca a veria. Falhar alto é o certo.
+				throw new Error("Não foi possível identificar o dono da sua organização.");
+			}
+			return { ownerUserId: org.owner_user_id as string, papel: membro.papel as string };
+		},
+		staleTime: 5 * 60_000,
+		retry: 1,
+	});
+}
+
+/* ─────────────────────────────  2. Numeração  ──────────────────────────────── */
+
+/**
+ * Próximo número de documento (orçamento / recibo / OS), no formato do app:
+ * sequencial de 3 dígitos + ano com 2 dígitos → `00126`.
+ *
+ * Espelha `proximoNaSequencia` + `getNextOrcamentoNumber` do app: lê `contadores`,
+ * e se a chave não existir ainda, SEMEIA com a contagem de linhas da tabela (é o
+ * que impede o painel de recomeçar do 001 numa conta que já tem 14 orçamentos).
+ */
+export async function proximoNumero(chave: "orcamento" | "recibo" | "os", tabelaParaSemear: string): Promise<string> {
+	const { data: linha, error } = await supabase
+		.from("contadores")
+		.select("valor")
+		.eq("chave", chave)
+		.maybeSingle();
+	if (error) throw error;
+
+	let atual = linha?.valor as number | undefined;
+	if (atual == null) {
+		const { count, error: erroCount } = await supabase
+			.from(tabelaParaSemear)
+			.select("*", { count: "exact", head: true });
+		if (erroCount) throw erroCount;
+		atual = count ?? 0;
+	}
+
+	const proximo = atual + 1;
+	const { error: erroUpsert } = await supabase
+		.from("contadores")
+		.upsert({ chave, valor: proximo }, { onConflict: "user_id,chave" });
+	if (erroUpsert) throw erroUpsert;
+
+	const ano = new Date().getFullYear().toString().slice(-2);
+	return `${String(proximo).padStart(3, "0")}${ano}`;
+}
+
+/* ───────────────────────────  3. Salvar e excluir  ─────────────────────────── */
+
+/** Invalida tudo que a tela possa estar mostrando daquela tabela. */
+function useInvalidar() {
+	const qc = useQueryClient();
+	return (tabela: TabelaOlli) => {
+		const remota = tabelaRemota(tabela);
+		qc.invalidateQueries({ queryKey: ["olli", remota] });
+		qc.invalidateQueries({ queryKey: ["olli-count", remota] });
+		qc.invalidateQueries({ queryKey: ["olli", "resumo"] });
+	};
+}
+
+/**
+ * Cria OU atualiza (upsert por `id`). O objeto recebido é o de DOMÍNIO completo —
+ * é ele que vai para o blob `dados`, não um subconjunto.
+ */
+export function useSalvar<T extends TabelaOlli>(tabela: T) {
+	const invalidar = useInvalidar();
+	const contexto = useContextoDeEscrita();
+
+	return useMutation({
+		mutationFn: async (objeto: DominioPorTabela[T]) => {
+			// TRAVA DO TENANT: sem saber o papel, não grava (ver cabeçalho do arquivo).
+			if (contexto.isLoading) throw new Error("Carregando seu perfil… tente de novo em um instante.");
+			if (contexto.isError || !contexto.data) {
+				throw new Error("Não consegui confirmar a qual empresa este registro pertence. Recarregue a página e tente de novo.");
+			}
+
+			const linha = PARA_LINHA[tabela](objeto);
+			const { ownerUserId } = contexto.data;
+			if (ownerUserId && TABELAS_DO_TENANT_DO_DONO.has(tabela)) {
+				linha.user_id = ownerUserId;
+			}
+
+			const { error } = await supabase
+				.from(tabelaRemota(tabela))
+				.upsert(linha, { onConflict: CONFLITO[tabela] });
+			if (error) throw error;
+			return objeto;
+		},
+		onSuccess: () => invalidar(tabela),
+	});
+}
+
+/**
+ * Exclui (soft delete). Carimba `excluidoEm` DENTRO do objeto e reaproveita o
+ * `salvar` — assim a coluna-espelho `excluido_em` e o blob ficam coerentes. Se
+ * gravássemos só a coluna, o app do celular (que lê o blob) continuaria mostrando
+ * o registro como ativo.
+ */
+export function useExcluir<T extends TabelaOlli>(tabela: T) {
+	const salvar = useSalvar(tabela);
+	return useMutation({
+		mutationFn: async (objeto: DominioPorTabela[T]) => {
+			const carimbado = { ...objeto, excluidoEm: agora(), atualizadoEm: agora() } as DominioPorTabela[T];
+			return salvar.mutateAsync(carimbado);
+		},
+	});
+}

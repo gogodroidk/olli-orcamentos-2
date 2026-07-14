@@ -11,12 +11,16 @@ import { supabase } from "@/lib/supabase";
  */
 export function useOlliList<T = Record<string, unknown>>(
 	table: string,
-	opts?: { orderBy?: string; ascending?: boolean; limit?: number },
+	opts?: { orderBy?: string; ascending?: boolean; limit?: number; incluirExcluidos?: boolean },
 ) {
 	return useQuery({
 		queryKey: ["olli", table, opts],
 		queryFn: async (): Promise<T[]> => {
 			let q = supabase.from(table).select("*");
+			// A exclusão no OLLI é SOFT (carimba `excluido_em`) — apagar de verdade faria
+			// o celular ressuscitar a linha no próximo sync. Sem este filtro, o que o
+			// usuário "excluiu" continuaria na lista e o botão pareceria quebrado.
+			if (!opts?.incluirExcluidos) q = q.is("excluido_em", null);
 			if (opts?.orderBy) q = q.order(opts.orderBy, { ascending: opts?.ascending ?? false });
 			if (opts?.limit) q = q.limit(opts.limit);
 			const { data, error } = await q;
@@ -27,12 +31,15 @@ export function useOlliList<T = Record<string, unknown>>(
 	});
 }
 
-/** Contagem exata de linhas visíveis (para KPIs). Respeita RLS. */
+/** Contagem exata de linhas visíveis (para KPIs). Respeita RLS e ignora a lixeira. */
 export function useOlliCount(table: string) {
 	return useQuery({
 		queryKey: ["olli-count", table],
 		queryFn: async (): Promise<number> => {
-			const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true });
+			const { count, error } = await supabase
+				.from(table)
+				.select("*", { count: "exact", head: true })
+				.is("excluido_em", null);
 			if (error) throw error;
 			return count ?? 0;
 		},
