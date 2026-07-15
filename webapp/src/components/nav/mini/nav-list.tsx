@@ -1,5 +1,5 @@
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/ui/hover-card";
 import { useLocation } from "react-router";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/ui/hover-card";
 import type { NavListProps } from "../types";
 import { NavRootItem } from "./nav-root-item";
 import { NavSubItem } from "./nav-sub-item";

@@ -11,13 +11,16 @@
  * recente no topo), e isso está escrito na tela.
  */
 import {
+	type Announcements,
 	closestCorners,
 	DndContext,
 	type DragEndEvent,
+	type DragOverEvent,
 	DragOverlay,
 	type DragStartEvent,
 	KeyboardSensor,
 	PointerSensor,
+	type ScreenReaderInstructions,
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
@@ -33,6 +36,15 @@ import BoardColumn from "./board-column";
 import { CartaoFantasma } from "./task-card";
 
 const ESQUELETO_CARDS = ["e1", "e2", "e3"];
+
+/** Instruções e anúncios do drag em pt-BR: o dnd-kit fala inglês por padrão, e o
+ *  leitor de tela é o único jeito de saber o que o arraste fez para quem não vê o quadro. */
+const INSTRUCOES_LEITOR_DE_TELA: ScreenReaderInstructions = {
+	draggable:
+		"Para pegar um orçamento, pressione a barra de espaço. " +
+		"Enquanto arrasta, use as setas do teclado para mover entre colunas. " +
+		"Pressione espaço novamente para soltar na nova coluna, ou Esc para cancelar.",
+};
 
 export default function KanbanBoard() {
 	const { colunas, total, isLoading, isError, error, refetch, mover, emVoo, erro, limparErro } = useQuadro();
@@ -56,6 +68,28 @@ export default function KanbanBoard() {
 		}
 		return null;
 	}, [arrastando, colunas]);
+
+	/** Número do orçamento pelo id do card, e título da coluna pelo id da coluna —
+	 *  para os anúncios de leitor de tela falarem a língua do usuário, não o id técnico. */
+	const numeroDoCartao = (id: string) => colunas.flatMap((c) => c.cartoes).find((c) => c.id === id)?.numero ?? id;
+	const tituloDaColuna = (id: string) => COLUNAS.find((c) => c.id === id)?.titulo ?? id;
+
+	const anuncios: Announcements = useMemo(
+		() => ({
+			onDragStart: ({ active }) => `Orçamento ${numeroDoCartao(String(active.id))} selecionado para arrastar.`,
+			onDragOver: ({ active, over }: DragOverEvent) =>
+				over
+					? `Orçamento ${numeroDoCartao(String(active.id))} sobre a coluna ${tituloDaColuna(String(over.id))}.`
+					: `Orçamento ${numeroDoCartao(String(active.id))} fora de qualquer coluna.`,
+			onDragEnd: ({ active, over }) =>
+				over
+					? `Orçamento ${numeroDoCartao(String(active.id))} solto na coluna ${tituloDaColuna(String(over.id))}.`
+					: `Orçamento ${numeroDoCartao(String(active.id))} solto fora de uma coluna. Nada foi movido.`,
+			onDragCancel: ({ active }) =>
+				`Arraste cancelado. Orçamento ${numeroDoCartao(String(active.id))} voltou ao lugar.`,
+		}),
+		[colunas],
+	);
 
 	const aoSoltar = (evento: DragEndEvent) => {
 		setArrastando(null);
@@ -153,6 +187,7 @@ export default function KanbanBoard() {
 				sensors={sensores}
 				collisionDetection={closestCorners}
 				modifiers={[restringirAoQuadro]}
+				accessibility={{ announcements: anuncios, screenReaderInstructions: INSTRUCOES_LEITOR_DE_TELA }}
 				onDragStart={(e: DragStartEvent) => setArrastando(String(e.active.id))}
 				onDragEnd={aoSoltar}
 				onDragCancel={() => setArrastando(null)}

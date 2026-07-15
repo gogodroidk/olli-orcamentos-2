@@ -25,6 +25,7 @@
  */
 import type { CategoriaHvac, CriticidadeEquipamento, Equipamento, SituacaoEquipamento } from "@dominio";
 import { STATUS_EQUIP_LABELS } from "@dominio";
+import { X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Campo } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
@@ -33,6 +34,7 @@ import { novoId } from "@/olli/contrato";
 import { useOlliList } from "@/olli/data";
 import { agoraIso } from "@/olli/datas";
 import { useSalvar } from "@/olli/mutacoes";
+import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { CATEGORIAS, CRITICIDADES, formatarBtu, REFRIGERANTES_SUGERIDOS, TENSOES_SUGERIDAS } from "./equipamento";
@@ -196,11 +198,32 @@ export default function FormEquipamento({ aberto, aoFechar, equipamento }: Props
 				{/* ── Identificação ── */}
 				<div className="grid gap-4 sm:grid-cols-2">
 					<Campo rotulo="Cliente" dica="De quem é o equipamento." className="sm:col-span-2">
-						<SeletorCliente
-							valor={clienteSelecionado}
-							aoSelecionar={(c) => setClienteId(c.clienteId)}
-							disabled={salvar.isPending}
-						/>
+						<div className="flex items-center gap-2">
+							<div className="min-w-0 flex-1">
+								<SeletorCliente
+									valor={clienteSelecionado}
+									aoSelecionar={(c) => setClienteId(c.clienteId)}
+									disabled={salvar.isPending}
+								/>
+							</div>
+							{/* Paridade com o app desktop: lá dá para desvincular o cliente
+							    sem trocar por outro. Sem este botão, o único jeito de "limpar"
+							    era escolher outro cliente qualquer. */}
+							{clienteId && (
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon"
+									className="size-10 shrink-0 text-text-secondary hover:text-error"
+									onClick={() => setClienteId(undefined)}
+									disabled={salvar.isPending}
+									aria-label="Remover vínculo com o cliente"
+									title="Remover vínculo"
+								>
+									<X className="size-4" />
+								</Button>
+							)}
+						</div>
 					</Campo>
 
 					<Campo rotulo="Categoria">

@@ -1,8 +1,8 @@
+import { useToggle } from "react-use";
 import { Icon } from "@/components/icon";
 import useLocale from "@/locales/use-locale";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { cn } from "@/utils";
-import { useToggle } from "react-use";
 import type { NavGroupProps } from "../types";
 import { NavList } from "./nav-list";
 
@@ -29,22 +29,35 @@ function Group({ name, open, onClick }: { name?: string; open: boolean; onClick:
 	const { t } = useLocale();
 	return (
 		name && (
-			<div
+			<button
+				type="button"
+				aria-expanded={open}
 				className={cn(
 					"group w-full inline-flex items-center justify-start relative gap-2 cursor-pointer pt-4 pr-2 pb-2 pl-3 transition-all duration-300 ease-in-out",
-					"hover:pl-4",
+					"hover:pl-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm",
 				)}
 				onClick={() => onClick(!open)}
 			>
 				<Icon
 					icon="eva:arrow-ios-forward-fill"
-					className={cn("absolute left-[-4px] h-4 w-4 inline-flex shrink-0 transition-all duration-300 ease-in-out", "opacity-0 group-hover:opacity-100", {
-						"rotate-90": open,
-					})}
+					className={cn(
+						"absolute left-[-4px] h-4 w-4 inline-flex shrink-0 transition-all duration-300 ease-in-out",
+						"opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+						{
+							"rotate-90": open,
+						},
+					)}
 				/>
 
-				<span className={cn("text-xs font-medium transition-all duration-300 ease-in-out text-text-disabled", "hover:text-text-primary")}>{t(name)}</span>
-			</div>
+				<span
+					className={cn(
+						"text-xs font-medium transition-all duration-300 ease-in-out text-text-disabled",
+						"group-hover:text-text-primary",
+					)}
+				>
+					{t(name)}
+				</span>
+			</button>
 		)
 	);
 }

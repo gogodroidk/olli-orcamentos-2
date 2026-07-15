@@ -122,8 +122,12 @@
 	border-bottom-color: rgba(var(--colors-palette-gray-500Channel) / 0.6);
 }
 
+/* 0,55 apagava o texto do evento cancelado abaixo do mínimo legível (o texto já
+   herda `--colors-text-primary`, então esta opacidade multiplica DIRETO em cima
+   do contraste dele). O riscado no título (abaixo) já carrega o sinal "cancelado"
+   — a opacidade só precisa acompanhar, não pode ser o único contraste que sobra. */
 .olli-agenda .fc .ag-cancelado {
-	opacity: 0.55;
+	opacity: 0.75;
 }
 
 .olli-agenda .fc .ag-cancelado .ag-titulo {
@@ -135,7 +139,11 @@
 }
 
 /* Botão "⋮" do evento: o caminho de teclado/celular para reagendar (arrastar não
-   funciona em nenhum dos dois). Fica discreto, mas SEMPRE visível no foco. */
+   funciona em nenhum dos dois). Fica discreto, mas SEMPRE visível no foco.
+   20px/opacidade 0,45 era pequeno e quase invisível DEMAIS no toque: errar por
+   2mm abria a edição que ninguém pediu. Repouso sobe para 0,6 (ainda discreto,
+   mas achável sem precisar passar o mouse) e, em telas de toque, o alvo cresce
+   para 40px via margem negativa — sem inflar o layout do evento ao redor. */
 .olli-agenda .fc .ag-menu-btn {
 	display: flex;
 	align-items: center;
@@ -144,10 +152,19 @@
 	width: 20px;
 	height: 20px;
 	border-radius: 6px;
-	opacity: 0.45;
+	opacity: 0.6;
 	transition:
 		opacity 120ms ease,
 		background-color 120ms ease;
+}
+
+@media (pointer: coarse) {
+	.olli-agenda .fc .ag-menu-btn {
+		width: 40px;
+		height: 40px;
+		opacity: 0.8;
+		margin: -8px -6px -8px 0;
+	}
 }
 
 .olli-agenda .fc .fc-event:hover .ag-menu-btn,

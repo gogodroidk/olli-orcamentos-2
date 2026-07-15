@@ -57,7 +57,10 @@ export default function FormDialog({
 				</ScrollArea>
 
 				{erro && (
-					<p role="alert" className="rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error">
+					<p
+						role="alert"
+						className="rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error-dark dark:text-error"
+					>
 						{erro}
 					</p>
 				)}

@@ -10,6 +10,13 @@ import { useMinhaEmpresa } from "./data";
  * gente SOBRESCREVE essas variáveis inline no <html> com a cor da empresa
  * logada — então cada dono vê o sistema na cor DELE, sem seletor de demo.
  * Reaproveita a mesma ideia do `coresMarca`/`extrairCoresLogo` do app.
+ *
+ * GUARDA DE CONTRASTE: a cor da empresa é livre (vem do cadastro), então pode
+ * cair perto do branco (ex.: Ciano #19D3E6 ≈ 1,66:1 sobre branco). O painel usa
+ * essa cor como fundo com texto claro por cima (botões, badges) — sem escolher
+ * o foreground certo, o texto fica ilegível. Por isso calculamos
+ * `--primary-foreground` com luminância relativa (mesma fórmula do app,
+ * `contrasteTextoSobre`) em vez de assumir branco sempre.
  */
 export function applyBrandColor(hex: string) {
 	try {
@@ -32,19 +39,46 @@ export function applyBrandColor(hex: string) {
 			const [r, g, b] = c.rgb().array();
 			root.setProperty(`--colors-palette-primary-${name}Channel`, `${Math.round(r)} ${Math.round(g)} ${Math.round(b)}`);
 		}
+		// Foreground legível sobre a cor "default" (é a que os botões/pills usam
+		// como fundo, via `text-primary-foreground`). Luminância relativa
+		// aproximada de WCAG — mesma fórmula do app (`contrasteTextoSobre` em
+		// meu-negocio/constantes.ts). `--primary-foreground` é a variável que o
+		// Shadcn/Tailwind deste projeto já lê (global.css) — sem sobrescrevê-la,
+		// o texto continua branco fixo mesmo sobre cor clara (ex.: Ciano).
+		const foreground = luminanciaRelativa(base) > 0.5 ? black : white;
+		root.setProperty("--primary-foreground", foreground.hex());
 	} catch {
 		// hex inválido → mantém a cor padrão OLLI (azul). Nunca quebra a UI.
 	}
 }
 
+function luminanciaRelativa(c: Color): number {
+	const canal = (v: number) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+	const [r, g, b] = c
+		.rgb()
+		.array()
+		.map((v) => canal(v / 255));
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 const HEX = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
 
-/** Acha a cor de marca da empresa entre os nomes de coluna plausíveis. */
+/**
+ * Acha a cor de marca da empresa entre os nomes de coluna plausíveis — E dentro
+ * do blob `dados` (é lá que ela realmente mora: a tabela `empresa` só tem
+ * `user_id`/`dados`/`atualizado_em`, ver contrato em meu-negocio/index.tsx).
+ * Sem olhar o blob, a cor salva nunca repinta o painel fora de "Meu Negócio"
+ * (o layout chama `resetBrandColor()` a cada carregamento).
+ */
 export function pickBrandColor(empresa: Record<string, unknown> | null | undefined): string | null {
 	if (!empresa) return null;
-	for (const k of ["cor_marca", "corMarca", "cor", "brand_color", "cor_primaria", "cor_padrao", "color"]) {
-		const v = empresa[k];
-		if (typeof v === "string" && HEX.test(v.trim())) return v.trim();
+	const blob =
+		(empresa.dados && typeof empresa.dados === "object" ? (empresa.dados as Record<string, unknown>) : null) ?? empresa;
+	for (const alvo of [blob, empresa]) {
+		for (const k of ["corMarca", "cor_marca", "cor", "brand_color", "cor_primaria", "cor_padrao", "color"]) {
+			const v = alvo[k];
+			if (typeof v === "string" && HEX.test(v.trim())) return v.trim();
+		}
 	}
 	return null;
 }
@@ -60,6 +94,7 @@ export function resetBrandColor() {
 		root.removeProperty(`--colors-palette-primary-${name}`);
 		root.removeProperty(`--colors-palette-primary-${name}Channel`);
 	}
+	root.removeProperty("--primary-foreground");
 }
 
 /** Hook: aplica a cor da marca da empresa logada assim que ela carrega. */

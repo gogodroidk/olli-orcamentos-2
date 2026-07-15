@@ -30,12 +30,14 @@ export default function AccountDropdown() {
 	const logout = async () => {
 		try {
 			await signOut(); // encerra a sessão no Supabase + limpa o store
-			queryClient.clear(); // não vaza dados cacheados de um tenant p/ outro
-			resetBrandColor(); // volta a cor da marca pro padrão OLLI
 			backToLogin();
 		} catch (error) {
 			console.error(error);
 		} finally {
+			// Sempre limpar, mesmo se o signOut falhar: nunca deixar cache/marca
+			// do tenant anterior vazando para a próxima sessão nesta aba.
+			queryClient.clear(); // não vaza dados cacheados de um tenant p/ outro
+			resetBrandColor(); // volta a cor da marca pro padrão OLLI
 			replace("/auth/login");
 		}
 	};
@@ -43,7 +45,7 @@ export default function AccountDropdown() {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="rounded-full">
+				<Button variant="ghost" size="icon" className="rounded-full" aria-label="Minha conta">
 					<Avatar className="h-6 w-6">
 						<AvatarImage src={avatar} alt="" />
 						<AvatarFallback className="text-xs">{initial}</AvatarFallback>
@@ -69,7 +71,7 @@ export default function AccountDropdown() {
 					<NavLink to="/planos">Planos</NavLink>
 				</DropdownMenuItem>
 				<DropdownMenuSeparator />
-				<DropdownMenuItem className="font-bold text-warning" onClick={logout}>
+				<DropdownMenuItem className="font-bold text-warning-darker dark:text-warning" onClick={logout}>
 					{t("sys.login.logout")}
 				</DropdownMenuItem>
 			</DropdownMenuContent>

@@ -93,7 +93,7 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 						<div className="mt-1.5 text-xs text-text-secondary">{detalhe}</div>
 					)}
 					{!isLoading && aviso && (
-						<div className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
+						<div className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning-darker dark:text-warning">
 							<AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
 							<span>{aviso}</span>
 						</div>

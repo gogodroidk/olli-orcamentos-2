@@ -149,6 +149,12 @@ export default function AgendaPage() {
 	 *  usuário precisa entender por quê — um toast some antes de ele olhar. */
 	const [erroMover, setErroMover] = useState<string | null>(null);
 
+	/** Falha de "Marcar como concluído" (disparada de DENTRO do menu do evento).
+	 *  Não reaproveita `erroMover`: aquele banner vive na página, atrás do <Dialog>
+	 *  do menu — com overlay por cima, o dono não vê o aviso e acha que travou. Este
+	 *  erro é renderizado DENTRO do próprio diálogo. */
+	const [erroMenu, setErroMenu] = useState<string | null>(null);
+
 	const salvar = useSalvar("agendamentos");
 	const excluir = useExcluir("agendamentos");
 
@@ -160,7 +166,14 @@ export default function AgendaPage() {
 		if (ehCelular && vistaEscolhida && !VISTAS_CELULAR.some((o) => o.v === vistaEscolhida)) {
 			setVistaEscolhida("listDay");
 		}
-		if (!ehCelular && vistaEscolhida === "listDay") setVistaEscolhida(null);
+		// Espelho da checagem acima: uma vista só-celular (listDay, e também listWeek —
+		// "Semana" no celular é lista, não grade) escolhida no telefone não existe entre
+		// as opções do desktop. Sem generalizar para QUALQUER vista fora de
+		// VISTAS_DESKTOP (e não só "listDay"), voltar ao desktop vindo de "Semana"
+		// deixava o seletor sem nenhum botão marcado como ativo.
+		if (!ehCelular && vistaEscolhida && !VISTAS_DESKTOP.some((o) => o.v === vistaEscolhida)) {
+			setVistaEscolhida(null);
+		}
 	}, [ehCelular, vistaEscolhida]);
 
 	useEffect(() => {
@@ -297,6 +310,13 @@ export default function AgendaPage() {
 
 	/** Esticar a borda do bloco é um ato DELIBERADO sobre o término — aqui, sim, grava. */
 	const aoRedimensionar = (arg: EventResizeDoneArg) => {
+		// Redimensionar só faz sentido na grade de horas. Na faixa "Sem hora" (allDay,
+		// visão de mês) o bloco não tem hora nenhuma — esticá-lo gravaria um término
+		// 00:00 que ninguém marcou, fingindo um horário que não existe.
+		if (arg.event.allDay) {
+			arg.revert();
+			return;
+		}
 		const ag = arg.event.extendedProps.ag as Agendamento;
 		const inicio = arg.event.start;
 		const fim = arg.event.end;
@@ -318,7 +338,7 @@ export default function AgendaPage() {
 			});
 			setMenuDe(null);
 		} catch (e) {
-			setErroMover(mensagemDeErro(e, "Não foi possível mudar o status."));
+			setErroMenu(mensagemDeErro(e, "Não foi possível mudar o status."));
 		}
 	};
 
@@ -358,6 +378,10 @@ export default function AgendaPage() {
 					</div>
 					<div className="truncate text-[0.7rem] opacity-75">
 						{ag.clienteNome}
+						{/* `displayEventEnd:false` (ver FullCalendar acima) tira o término ESTIMADO
+						    da coluna de hora do roteiro. Quando o término é REAL (ag.fim existe),
+						    ele não pode simplesmente sumir — volta aqui, na linha secundária. */}
+						{emLista && ag.fim && ` · até ${hhmm(ag.fim)}`}
 						{estimado && ` · ≈ ${rotuloDuracao(duracaoEstimadaMin(ag.tipo))}`}
 						{ag.status === "cancelado" && " · cancelado"}
 					</div>
@@ -370,7 +394,10 @@ export default function AgendaPage() {
 					data-menu-evento
 					className="ag-menu-btn"
 					aria-label={`Ações de ${ag.titulo}`}
-					onClick={() => setMenuDe(ag)}
+					onClick={() => {
+						setErroMenu(null);
+						setMenuDe(ag);
+					}}
 				>
 					<MoreVertical className="size-3.5" aria-hidden="true" />
 				</button>
@@ -455,7 +482,7 @@ export default function AgendaPage() {
 			{erroMover && (
 				<div
 					role="alert"
-					className="mb-3 flex items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error"
+					className="mb-3 flex items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error-dark dark:text-error"
 				>
 					<Undo2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
 					<span className="flex-1">{erroMover}</span>
@@ -555,6 +582,16 @@ export default function AgendaPage() {
 							eventResize={aoRedimensionar}
 							eventContent={conteudoDoEvento}
 							noEventsContent="Nada agendado neste período."
+							/* O ROTEIRO (lista) mostra a coluna de hora para cada evento — inclusive
+							   os que não têm término REAL, cujo `end` aqui é só a duração ESTIMADA
+							   (ver `fimEfetivo`). Sem isto, o roteiro do celular mostra "09:00 – 10:00"
+							   como se o técnico tivesse confirmado que termina às 10h, quando 10h é
+							   só o nosso palpite. O término real (quando existe) volta na linha
+							   secundária do evento como "até HH:mm" — ver `conteudoDoEvento`. */
+							views={{
+								listDay: { displayEventEnd: false },
+								listWeek: { displayEventEnd: false },
+							}}
 						/>
 					</Card>
 
@@ -586,7 +623,10 @@ export default function AgendaPage() {
 
 			<MenuDoEvento
 				agendamento={menuDe}
-				aoFechar={() => setMenuDe(null)}
+				aoFechar={() => {
+					setMenuDe(null);
+					setErroMenu(null);
+				}}
 				aoEditar={(ag) => {
 					setMenuDe(null);
 					setEditando(ag);
@@ -603,6 +643,7 @@ export default function AgendaPage() {
 					setExcluindo(ag);
 				}}
 				salvando={salvar.isPending}
+				erro={erroMenu}
 			/>
 
 			<DialogReagendar
@@ -645,6 +686,7 @@ function MenuDoEvento({
 	aoAlternarConclusao,
 	aoExcluir,
 	salvando,
+	erro,
 }: {
 	agendamento: Agendamento | null;
 	aoFechar: () => void;
@@ -653,6 +695,9 @@ function MenuDoEvento({
 	aoAlternarConclusao: (a: Agendamento) => void;
 	aoExcluir: (a: Agendamento) => void;
 	salvando: boolean;
+	/** Falha de "Marcar como concluído" — precisa aparecer DENTRO do diálogo: o
+	 *  banner da página fica atrás do overlay e o dono não o veria. */
+	erro: string | null;
 }) {
 	if (!ag) return null;
 	const info = INFO_TIPO[ag.tipo];
@@ -697,6 +742,15 @@ function MenuDoEvento({
 					)}
 				</div>
 
+				{erro && (
+					<p
+						role="alert"
+						className="rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error-dark dark:text-error"
+					>
+						{erro}
+					</p>
+				)}
+
 				<div className="grid gap-2">
 					{/* REAGENDAR em destaque: é a ação que o arrasto faz — e a única que o
 					    teclado e o celular não conseguiriam fazer sem ela. */}
@@ -726,7 +780,7 @@ function MenuDoEvento({
 					<Button
 						variant="outline"
 						onClick={() => aoExcluir(ag)}
-						className="justify-start gap-2 text-error hover:text-error"
+						className="justify-start gap-2 text-error-dark hover:text-error-dark dark:text-error dark:hover:text-error"
 						disabled={salvando}
 					>
 						<Trash2 className="size-4" aria-hidden="true" />
@@ -877,7 +931,10 @@ function DialogReagendar({
 					)}
 
 					{erro && (
-						<p role="alert" className="rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error">
+						<p
+							role="alert"
+							className="rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error-dark dark:text-error"
+						>
 							{erro}
 						</p>
 					)}

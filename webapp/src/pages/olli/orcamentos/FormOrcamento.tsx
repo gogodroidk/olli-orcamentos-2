@@ -32,7 +32,8 @@
 import type { ItemOrcamento, Orcamento, ProdutoItem, ServicoItem } from "@dominio";
 import { propostaJaEnviada, STATUS_LABELS } from "@dominio";
 import { AlertTriangle, Boxes, Check, Copy, Loader2, Plus, RotateCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { Campo, CampoMoeda, formatarMoeda } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
@@ -58,11 +59,15 @@ import { cn } from "@/utils";
  * Status em que a edição é BLOQUEADA — o cliente já recebeu o documento.
  *
  * `propostaJaEnviada` é a fonte única do domínio (enviado · visualizado ·
- * em_negociacao · aguardando_assinatura). O `aprovado` entra aqui além dela: além
- * de visto, foi ACEITO — mexer nele depois é alterar o que o cliente contratou.
+ * em_negociacao · aguardando_assinatura). Dois status entram aqui além dela:
+ *   • `aprovado`: além de visto, foi ACEITO — mexer nele depois é alterar o que o
+ *     cliente contratou.
+ *   • `convertido`: já virou recibo. Editar por cima descasaria o orçamento do
+ *     recibo que registra o pagamento — dois documentos dizendo coisas diferentes.
+ * O caminho honesto para os dois é DUPLICAR como novo rascunho.
  */
 export function edicaoBloqueada(status: Orcamento["status"]): boolean {
-	return propostaJaEnviada(status) || status === "aprovado";
+	return propostaJaEnviada(status) || status === "aprovado" || status === "convertido";
 }
 
 /** Validade padrão quando a empresa não configurou a dela (igual ao `novoOrcamentoVazio`). */
@@ -197,8 +202,40 @@ const normalizar = (s: string) =>
 /** Quantidade em pt-BR: 2,5 (e não 2.5). O valor guardado continua sendo `number`. */
 const qtdParaTexto = (n: number) => String(n).replace(".", ",");
 
-/** Texto → número. Devolve NaN quando não dá para ler — quem chama decide o que fazer. */
-const textoParaNumero = (t: string) => Number(t.replace(/\./g, "").replace(",", "."));
+/**
+ * Texto → número. Devolve NaN quando não dá para ler — quem chama decide o que fazer.
+ *
+ * O ponto do teclado numérico é DECIMAL, não separador de milhar: quando não há
+ * vírgula e há exatamente UM ponto ("2.5"), ele é a vírgula decimal (2,5) — sem
+ * este caso, `replace(/\./g,"")` transformaria "2.5" em 25 e multiplicaria por 10
+ * a quantidade/desconto em silêncio, indo pro PDF do cliente. O formato pt-BR
+ * completo ("1.234,56", com vírgula) continua caindo no ramo de baixo.
+ */
+const textoParaNumero = (t: string) => {
+	const s = (t ?? "").trim();
+	if (!s.includes(",") && (s.match(/\./g) ?? []).length === 1) return Number(s);
+	return Number(s.replace(/\./g, "").replace(",", "."));
+};
+
+/** Padrão do app quando o campo `formasPagamento` falta no blob (`defaultFormas`). */
+const FORMAS_PADRAO = { credito: false, debito: false, dinheiro: false, pix: true } as const;
+
+/**
+ * Defaults defensivos para blob LEGADO. Um orçamento antigo pode ter subido sem
+ * `formasPagamento` (o campo é mais novo que a base); sem isto, `orc.formasPagamento[chave]`
+ * na renderização quebra a tela inteira com TypeError. Também blinda `itens`
+ * (lido por `calcularTotais`), `clienteNome` (`.trim()` no submit) e `desconto`.
+ */
+function comDefaults(o: Orcamento): Orcamento {
+	return {
+		...o,
+		clienteNome: o.clienteNome ?? "",
+		itens: Array.isArray(o.itens) ? o.itens : [],
+		desconto: Number.isFinite(o.desconto) ? o.desconto : 0,
+		descontoTipo: o.descontoTipo ?? "valor",
+		formasPagamento: o.formasPagamento ?? { ...FORMAS_PADRAO },
+	};
+}
 
 /** Máscara de data DD/MM/AAAA (a validade do orçamento é string, não Date). */
 function mascaraDataBr(v: string): string {
@@ -256,9 +293,15 @@ function Editor({
 	ehNovo: boolean;
 }) {
 	// O estado NASCE do blob inteiro e só é PATCHED — ver motivo 1 do cabeçalho.
-	const [orc, setOrc] = useState<Orcamento>(inicial);
+	// `comDefaults` blinda blob legado (sem formasPagamento/itens) contra TypeError.
+	const [orc, setOrc] = useState<Orcamento>(() => comDefaults(inicial));
 	const [erro, setErro] = useState<string | null>(null);
 	const [enviando, setEnviando] = useState(false);
+
+	// Número já COMPRADO num submit anterior que falhou depois de gerá-lo. Guardado
+	// aqui para o retry reaproveitá-lo — gerar outro deixaria um buraco na sequência
+	// (o 003 nunca existiria). Sobrevive a re-render; não dispara render (por isso ref).
+	const numeroCompradoRef = useRef<string>("");
 
 	// Buffers de texto: sem eles, derivar o texto de volta do número a cada tecla
 	// apaga a vírgula que o usuário acabou de digitar ("2," vira "2").
@@ -405,6 +448,9 @@ function Editor({
 		const precoRuim = orc.itens.find((i) => !Number.isFinite(i.preco) || i.preco < 0);
 		if (precoRuim) return `O preço de "${precoRuim.nome}" está inválido.`;
 
+		// Desconto negativo faria o total ficar MAIOR que o subtotal, sem linha de
+		// desconto visível no rodapé (o rodapé só mostra descontoEmReais > 0).
+		if (orc.desconto < 0) return "O desconto não pode ser negativo.";
 		if (orc.descontoTipo === "percentual" && orc.desconto > 100) {
 			return "O desconto não pode passar de 100%.";
 		}
@@ -419,13 +465,6 @@ function Editor({
 	async function enviar(e: React.FormEvent) {
 		e.preventDefault();
 
-		// Trava defensiva: o `FormOrcamento` já bloqueou a abertura, mas o status pode
-		// ter mudado (o cliente abriu o link enquanto a aba estava parada aqui).
-		if (!ehNovo && edicaoBloqueada(inicial.status)) {
-			setErro("Este orçamento já foi enviado ao cliente e não pode mais ser editado. Feche e duplique-o.");
-			return;
-		}
-
 		const problema = validar();
 		if (problema) {
 			setErro(problema);
@@ -435,13 +474,72 @@ function Editor({
 		setErro(null);
 		setEnviando(true);
 		try {
-			// `comTotais` recalcula subtotais/desconto/sinal como o app faz — o mesmo
-			// orçamento tem que fechar no mesmo centavo nos dois lugares.
-			let final = comTotais({ ...orc, atualizadoEm: agoraIso() });
+			// Base do que será salvo. Para um documento EXISTENTE, relemos o blob FRESCO
+			// do servidor (não o cache que abriu a tela). Isso resolve duas coisas de uma vez:
+			//
+			//   • TRAVA VIVA: a checagem de "já enviado" ao abrir olhava a prop capturada,
+			//     que — tendo passado pelo gate — é SEMPRE não-bloqueada; era código morto.
+			//     Aqui o status vem do BANCO, então um documento que virou enviado/aprovado/
+			//     convertido enquanto a aba ficou parada não é mais sobrescrito.
+			//
+			//   • LOST UPDATE: entre abrir e salvar, o app do celular pode ter anexado foto,
+			//     assinatura ou sinal. Mesclamos os campos deste formulário SOBRE o blob
+			//     fresco, então o que a tela não edita é preservado em vez de apagado.
+			let base = orc;
+			if (!ehNovo) {
+				const { data: atual, error: erroLeitura } = await supabase
+					.from("orcamentos")
+					.select("dados, status")
+					.eq("id", orc.id)
+					.maybeSingle();
+				if (erroLeitura) throw erroLeitura;
 
-			// O número nasce AQUI, não ao abrir o formulário (ver cabeçalho).
+				const blobFresco = (atual?.dados ?? null) as Orcamento | null;
+				const statusFresco = (atual?.status ?? blobFresco?.status) as Orcamento["status"] | undefined;
+
+				if (statusFresco && edicaoBloqueada(statusFresco)) {
+					throw new Error(
+						"Este orçamento mudou de status em outro aparelho e não pode mais ser editado por aqui. Feche a janela e duplique-o como novo rascunho.",
+					);
+				}
+
+				// Só mesclo sobre um blob fresco íntegro. Se a releitura não trouxe blob
+				// (linha legada/corrompida), fico com o estado local — não invento base.
+				if (blobFresco && typeof blobFresco === "object" && Array.isArray(blobFresco.itens)) {
+					base = {
+						...blobFresco,
+						clienteId: orc.clienteId,
+						clienteNome: orc.clienteNome,
+						clienteTelefone: orc.clienteTelefone,
+						clienteCpfCnpj: orc.clienteCpfCnpj,
+						clienteEndereco: orc.clienteEndereco,
+						itens: orc.itens,
+						desconto: orc.desconto,
+						descontoTipo: orc.descontoTipo,
+						garantia: orc.garantia,
+						validadeOrcamento: orc.validadeOrcamento,
+						condicoesPagamento: orc.condicoesPagamento,
+						formasPagamento: orc.formasPagamento,
+						informacoesAdicionais: orc.informacoesAdicionais,
+						laudoTecnico: orc.laudoTecnico,
+					};
+				}
+			}
+
+			// `comTotais` recalcula subtotais/desconto/sinal como o app faz — o mesmo
+			// orçamento tem que fechar no mesmo centavo nos dois lugares. Roda sobre a base
+			// já mesclada: o sinal vindo do celular é reclampado ao novo total.
+			let final = comTotais({ ...base, atualizadoEm: agoraIso() });
+
+			// O número nasce AQUI, não ao abrir o formulário (ver cabeçalho). Se um submit
+			// anterior já comprou um número mas falhou DEPOIS (ex.: rede caiu no upsert),
+			// o retry reusa AQUELE número (via ref) em vez de queimar outro — senão a
+			// sequência ganharia um buraco (o 003 nunca existiria).
 			if (!final.numero.trim()) {
-				final = { ...final, numero: await proximoNumeroDocumento("orcamento") };
+				if (!numeroCompradoRef.current) {
+					numeroCompradoRef.current = await proximoNumeroDocumento("orcamento");
+				}
+				final = { ...final, numero: numeroCompradoRef.current };
 			}
 
 			await salvar.mutateAsync(final);
@@ -471,7 +569,7 @@ function Editor({
 			descricao={
 				ehNovo
 					? "O número do documento é gerado quando você salvar."
-					: "Rascunho — o cliente ainda não recebeu este documento."
+					: `Status atual: ${STATUS_LABELS[inicial.status]}. As alterações passam a valer quando você salvar.`
 			}
 			erro={erro}
 			salvando={enviando}
@@ -772,7 +870,9 @@ function Editor({
 											const texto = e.target.value;
 											setDescontoTexto(texto);
 											const n = textoParaNumero(texto);
-											patch({ desconto: Number.isFinite(n) && texto.trim() ? n : 0 });
+											// Rejeita negativo já na digitação: um % negativo AUMENTARIA o total
+											// sem linha de desconto visível no rodapé.
+											patch({ desconto: Number.isFinite(n) && texto.trim() && n >= 0 ? n : 0 });
 										}}
 										onBlur={() => setDescontoTexto(null)}
 									/>
@@ -804,7 +904,9 @@ function Editor({
 									<dt className="text-text-secondary">
 										Desconto{orc.descontoTipo === "percentual" ? ` (${t.desconto}%)` : ""}
 									</dt>
-									<dd className="tabular-nums text-error">− R$ {formatarMoeda(t.descontoEmReais)}</dd>
+									<dd className="tabular-nums text-error-dark dark:text-error">
+										− R$ {formatarMoeda(t.descontoEmReais)}
+									</dd>
 								</div>
 							)}
 							<div className="flex items-baseline justify-between border-t border-border pt-2.5">

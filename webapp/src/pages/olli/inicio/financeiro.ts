@@ -257,6 +257,14 @@ export function listarParados(orcamentos: OrcamentoRow[], minDias = 3, agora: Da
 /* ─────────────────────────  WHATSAPP  ───────────────────────── */
 
 /**
+ * Cor da marca WhatsApp e o texto que passa AA em cima dela. Branco sobre #25D366
+ * dá 2,0:1 (reprova); este escuro dá 7,7:1. Constante única para o painel não
+ * reinventar (e errar de novo) a cada botão de "ação WhatsApp".
+ */
+export const WHATSAPP_VERDE = "#25D366";
+export const WHATSAPP_TEXTO = "#0A2547";
+
+/**
  * Telefone BR → número do wa.me (55 + DDD + número), ou `null` quando o telefone
  * não dá para um celular brasileiro plausível. Devolver `null` é obrigatório: um
  * link montado com número torto abre uma conversa com um DESCONHECIDO.

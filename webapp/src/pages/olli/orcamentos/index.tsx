@@ -366,7 +366,7 @@ export default function OrcamentosPage() {
 												<NameCell name={l.cliente_nome || "—"} />
 												{semBlob && (
 													// Aviso honesto: a linha existe, o documento não veio inteiro.
-													<span className="mt-1 flex items-center gap-1 text-xs text-warning">
+													<span className="mt-1 flex items-center gap-1 text-xs text-warning-darker dark:text-warning">
 														<AlertTriangle className="size-3" />
 														Sem os dados completos — não dá para editar por aqui.
 													</span>
@@ -412,7 +412,7 @@ export default function OrcamentosPage() {
 										</span>
 									</div>
 									{blobDe(l) === null && (
-										<p className="mt-2 flex items-center gap-1 text-xs text-warning">
+										<p className="mt-2 flex items-center gap-1 text-xs text-warning-darker dark:text-warning">
 											<AlertTriangle className="size-3" />
 											Sem os dados completos — não dá para editar por aqui.
 										</p>

@@ -35,6 +35,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, Check, CheckCircle2, ImageOff, Loader2, Lock, RotateCw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useBlocker } from "react-router";
 import { supabase } from "@/lib/supabase";
 import { applyBrandColor } from "@/olli/branding";
 import { Campo, CampoMascarado, cnpjValido, cpfValido } from "@/olli/components/campos";
@@ -120,20 +121,16 @@ export default function MeuNegocio() {
 	const cor = (form?.corMarca ?? "").trim();
 
 	// PRÉVIA DA MARCA: a cor escolhida repinta o painel na hora — é o que a pessoa
-	// está comprando (white-label). O `setTimeout(0)` NÃO é enfeite: o layout (pai)
-	// roda `useApplyBranding` DEPOIS dos efeitos desta página (React executa efeitos
-	// de baixo para cima) e hoje ele chama `resetBrandColor()` porque procura a cor
-	// numa COLUNA da linha `empresa` — coluna que não existe (a cor mora no blob,
-	// `dados.corMarca`). Sem este reagendamento, a cor piscaria de volta ao azul a
-	// cada refetch. Ver "pendências" no retorno da tarefa: o conserto certo é de
-	// uma linha, em olli/branding.ts (arquivo do orquestrador).
+	// está comprando (white-label). `pickBrandColor` (olli/branding.ts) já olha
+	// `dados.corMarca` no blob, então o `useApplyBranding` do layout reaplica a
+	// MESMA cor salva a cada refetch — este efeito só cobre a prévia de uma cor
+	// ainda não salva (rascunho), sem precisar de setTimeout.
 	useEffect(() => {
-		// `revisao` (dataUpdatedAt) é dependência DE PROPÓSITO: cada refetch da empresa é
-		// justamente o momento em que o layout reseta a cor — e em que temos de reaplicá-la.
+		// `revisao` (dataUpdatedAt) é dependência DE PROPÓSITO: cada refetch da empresa
+		// é um momento em que o layout reaplica a cor salva — e esta prévia tem que
+		// vencer de novo se houver um rascunho diferente na tela.
 		void revisao;
-		if (!HEX.test(cor)) return;
-		const t = window.setTimeout(() => applyBrandColor(cor), 0);
-		return () => window.clearTimeout(t);
+		if (HEX.test(cor)) applyBrandColor(cor);
 	}, [cor, revisao]);
 
 	const sujo = useMemo(() => {
@@ -150,6 +147,21 @@ export default function MeuNegocio() {
 		window.addEventListener("beforeunload", aviso);
 		return () => window.removeEventListener("beforeunload", aviso);
 	}, [sujo]);
+
+	// `beforeunload` só cobre fechar/recarregar a ABA — navegar pelo MENU (SPA,
+	// react-router) não passa por lá, e o rascunho some sem aviso nenhum. `useBlocker`
+	// intercepta a troca de rota dentro do próprio app.
+	const bloqueador = useBlocker(
+		({ currentLocation, nextLocation }) => sujo && currentLocation.pathname !== nextLocation.pathname,
+	);
+	useEffect(() => {
+		if (bloqueador.state !== "blocked") return;
+		if (window.confirm("Você tem alterações não salvas. Sair mesmo assim?")) {
+			bloqueador.proceed();
+		} else {
+			bloqueador.reset();
+		}
+	}, [bloqueador]);
 
 	/* ─────────────  Quem pode gravar (RLS: escrita só do dono)  ───────────── */
 	const papel = contexto.data?.papel;
@@ -246,15 +258,34 @@ export default function MeuNegocio() {
 		const v = validar(form);
 		setErros(v);
 		if (Object.keys(v).length > 0) {
-			document.querySelector<HTMLElement>("[data-erro='1']")?.focus();
+			// Alguns campos com erro são <input> diretos (data-erro cai no elemento em
+			// si); CNPJ/CPF usam CampoMascarado (não repassa props extra pro Input), por
+			// isso o data-erro fica num <div> WRAPPER — busca o input dentro dele.
+			const alvo = document.querySelector<HTMLElement>("[data-erro='1']");
+			if (alvo) {
+				alvo.scrollIntoView({ block: "center", behavior: "smooth" });
+				(alvo.matches("input,textarea,select")
+					? alvo
+					: alvo.querySelector<HTMLElement>("input,textarea,select")
+				)?.focus();
+			}
 			return;
 		}
 		setSalvoEm(null);
 		salvar.mutate(form);
 	}
 
-	const set = <K extends keyof Empresa>(chave: K, valor: Empresa[K]) =>
+	const set = <K extends keyof Empresa>(chave: K, valor: Empresa[K]) => {
 		setForm((p) => (p ? { ...p, [chave]: valor } : p));
+		// Corrigir o campo limpa o erro dele na hora — não fica preso até o próximo Salvar.
+		setErros((e) => {
+			const k = chave as unknown as keyof Erros;
+			if (!(k in e)) return e;
+			const proximo = { ...e };
+			delete proximo[k];
+			return proximo;
+		});
+	};
 
 	/* ───────────────────────────  3 estados  ─────────────────────────── */
 
@@ -270,9 +301,12 @@ export default function MeuNegocio() {
 		);
 	}
 
-	if (empresaQ.isError) {
+	if (empresaQ.isError && !form) {
 		// ERRO NUNCA VIRA FORMULÁRIO VAZIO: um formulário em branco convidaria o dono a
 		// redigitar tudo — e o "salvar" desse formulário apagaria o cadastro real.
+		// Isto só roda quando NUNCA houve dado nesta sessão (form ainda é null) — uma
+		// falha de REFETCH em segundo plano (form já preenchido, com rascunho ou não)
+		// não pode substituir a tela inteira: ver o Aviso inline logo abaixo.
 		return (
 			<Pagina>
 				<Card className="flex flex-col items-center gap-3 p-12 text-center">
@@ -315,6 +349,21 @@ export default function MeuNegocio() {
 							type="button"
 							className="font-semibold underline underline-offset-2"
 							onClick={() => contexto.refetch()}
+						>
+							Tentar de novo
+						</button>
+					</Aviso>
+				)}
+				{/* Falha de REFETCH em segundo plano (já havia formulário na tela, com ou sem
+				    rascunho): avisa sem derrubar o formulário — trocar por um card de erro
+				    faria o dono achar que o cadastro sumiu e "descartaria" o rascunho dele. */}
+				{empresaQ.isError && (
+					<Aviso tom="erro" Icone={AlertTriangle}>
+						Não consegui atualizar o cadastro agora. O que está na tela continua aqui, sem alteração.{" "}
+						<button
+							type="button"
+							className="font-semibold underline underline-offset-2"
+							onClick={() => empresaQ.refetch()}
 						>
 							Tentar de novo
 						</button>
@@ -364,13 +413,21 @@ export default function MeuNegocio() {
 							/>
 						</Campo>
 
-						<Campo rotulo="CNPJ" erro={erros.cnpj} dica="Opcional — deixe em branco se você não tem CNPJ.">
-							<CampoMascarado tipo="cnpj" disabled={bloqueado} valor={form.cnpj} aoMudar={(v) => set("cnpj", v)} />
-						</Campo>
+						{/* CampoMascarado não repassa props extras pro <input> (não é o dono deste
+						    componente — vive em olli/components/campos.tsx); por isso o
+						    data-erro vai no <div> wrapper, e o foco/scroll de erro busca o
+						    <input> ali dentro (ver aoSubmeter). */}
+						<div data-erro={erros.cnpj ? "1" : undefined}>
+							<Campo rotulo="CNPJ" erro={erros.cnpj} dica="Opcional — deixe em branco se você não tem CNPJ.">
+								<CampoMascarado tipo="cnpj" disabled={bloqueado} valor={form.cnpj} aoMudar={(v) => set("cnpj", v)} />
+							</Campo>
+						</div>
 
-						<Campo rotulo="CPF" erro={erros.cpf} dica="Opcional — use se você trabalha como pessoa física.">
-							<CampoMascarado tipo="cpf" disabled={bloqueado} valor={form.cpf} aoMudar={(v) => set("cpf", v)} />
-						</Campo>
+						<div data-erro={erros.cpf ? "1" : undefined}>
+							<Campo rotulo="CPF" erro={erros.cpf} dica="Opcional — use se você trabalha como pessoa física.">
+								<CampoMascarado tipo="cpf" disabled={bloqueado} valor={form.cpf} aoMudar={(v) => set("cpf", v)} />
+							</Campo>
+						</div>
 
 						<Campo rotulo="Endereço" className="sm:col-span-2">
 							<Input
@@ -628,18 +685,27 @@ export default function MeuNegocio() {
 				<div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-background/95 backdrop-blur md:left-[var(--layout-nav-width,0px)]">
 					<div className="mx-auto flex w-full max-w-5xl flex-col gap-2 p-3 md:flex-row md:items-center md:justify-between md:px-6">
 						<div className="min-w-0 text-sm">
+							{/* Ordem IMPORTA: erro de mutação > validação falhou > rascunho sujo >
+							    salvo > tudo salvo. "sujo" TEM que vencer "salvoEm" — senão a barra
+							    continua dizendo "Alterações salvas" mesmo depois de uma edição nova
+							    (salvoEm só é limpo no próximo submit, não a cada tecla). */}
 							{salvar.isError ? (
-								<p role="alert" className="flex items-start gap-2 font-medium text-error">
+								<p role="alert" className="flex items-start gap-2 font-medium text-error-dark dark:text-error">
 									<AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
 									<span>{(salvar.error as Error).message}</span>
 								</p>
-							) : salvoEm ? (
-								<p className="flex items-center gap-2 font-medium text-success">
-									<CheckCircle2 className="size-4" aria-hidden />
-									Alterações salvas às {salvoEm}
+							) : Object.keys(erros).length > 0 ? (
+								<p role="alert" className="flex items-start gap-2 font-medium text-error-dark dark:text-error">
+									<AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+									<span>Confira os campos destacados acima.</span>
 								</p>
 							) : sujo ? (
 								<p className="text-text-secondary">Você tem alterações não salvas.</p>
+							) : salvoEm ? (
+								<p className="flex items-center gap-2 font-medium text-success-dark dark:text-success">
+									<CheckCircle2 className="size-4" aria-hidden />
+									Alterações salvas às {salvoEm}
+								</p>
 							) : (
 								<p className="text-text-disabled">Tudo salvo.</p>
 							)}

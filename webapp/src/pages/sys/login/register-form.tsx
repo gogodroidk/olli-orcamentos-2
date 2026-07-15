@@ -1,34 +1,59 @@
-import { useMutation } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import userService from "@/api/services/userService";
+import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { mapAuthErrorMessage } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
 
+interface RegisterFormValues {
+	email: string;
+	password: string;
+	confirmPassword: string;
+}
+
+// Landing (Astro) publica os termos e a política — fica fora do domínio do
+// painel, então o link é absoluto (não depende de o painel estar no mesmo
+// domínio) e abre em nova aba para não perder o cadastro em andamento.
+const LANDING_ORIGIN = "https://olliorcamentos.online";
+
 function RegisterForm() {
 	const { t } = useTranslation();
 	const { loginState, backToLogin } = useLoginStateContext();
+	const [loading, setLoading] = useState(false);
 
-	const signUpMutation = useMutation({
-		mutationFn: userService.signup,
-	});
-
-	const form = useForm({
+	const form = useForm<RegisterFormValues>({
 		defaultValues: {
-			username: "",
 			email: "",
 			password: "",
 			confirmPassword: "",
 		},
 	});
 
-	const onFinish = async (values: any) => {
-		console.log("Received values of form: ", values);
-		await signUpMutation.mutateAsync(values);
-		backToLogin();
+	const onFinish = async (values: RegisterFormValues) => {
+		if (loading) return;
+		setLoading(true);
+		try {
+			const { error } = await supabase.auth.signUp({
+				email: values.email.trim(),
+				password: values.password,
+				options: { emailRedirectTo: `${window.location.origin}/auth/login` },
+			});
+			if (error) throw error;
+			toast.success("Conta criada! Confira seu e-mail para confirmar o cadastro.", {
+				position: "top-center",
+			});
+			backToLogin();
+		} catch (err) {
+			toast.error(mapAuthErrorMessage(err), { position: "top-center" });
+		} finally {
+			setLoading(false);
+		}
 	};
 
 	if (loginState !== LoginStateEnum.REGISTER) return null;
@@ -42,26 +67,15 @@ function RegisterForm() {
 
 				<FormField
 					control={form.control}
-					name="username"
-					rules={{ required: t("sys.login.accountPlaceholder") }}
-					render={({ field }) => (
-						<FormItem>
-							<FormControl>
-								<Input placeholder={t("sys.login.userName")} {...field} />
-							</FormControl>
-							<FormMessage />
-						</FormItem>
-					)}
-				/>
-
-				<FormField
-					control={form.control}
 					name="email"
-					rules={{ required: t("sys.login.emaildPlaceholder") }}
+					rules={{
+						required: t("sys.login.emaildPlaceholder"),
+						pattern: { value: /^\S+@\S+\.\S+$/, message: t("sys.login.emaildPlaceholder") },
+					}}
 					render={({ field }) => (
 						<FormItem>
 							<FormControl>
-								<Input placeholder={t("sys.login.email")} {...field} />
+								<Input type="email" autoComplete="email" placeholder={t("sys.login.email")} {...field} />
 							</FormControl>
 							<FormMessage />
 						</FormItem>
@@ -71,11 +85,14 @@ function RegisterForm() {
 				<FormField
 					control={form.control}
 					name="password"
-					rules={{ required: t("sys.login.passwordPlaceholder") }}
+					rules={{
+						required: t("sys.login.passwordPlaceholder"),
+						minLength: { value: 6, message: "A senha precisa ter pelo menos 6 caracteres." },
+					}}
 					render={({ field }) => (
 						<FormItem>
 							<FormControl>
-								<Input type="password" placeholder={t("sys.login.password")} {...field} />
+								<Input type="password" autoComplete="new-password" placeholder={t("sys.login.password")} {...field} />
 							</FormControl>
 							<FormMessage />
 						</FormItem>
@@ -92,24 +109,40 @@ function RegisterForm() {
 					render={({ field }) => (
 						<FormItem>
 							<FormControl>
-								<Input type="password" placeholder={t("sys.login.confirmPassword")} {...field} />
+								<Input
+									type="password"
+									autoComplete="new-password"
+									placeholder={t("sys.login.confirmPassword")}
+									{...field}
+								/>
 							</FormControl>
 							<FormMessage />
 						</FormItem>
 					)}
 				/>
 
-				<Button type="submit" className="w-full">
+				<Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
+					{loading && <Loader2 className="animate-spin mr-2" />}
 					{t("sys.login.registerButton")}
 				</Button>
 
 				<div className="mb-2 text-xs text-gray">
 					<span>{t("sys.login.registerAndAgree")}</span>
-					<a href="./" className="text-sm underline! text-primary!">
+					<a
+						href={`${LANDING_ORIGIN}/legal/termos`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-sm underline! text-primary!"
+					>
 						{t("sys.login.termsOfService")}
 					</a>
 					{" & "}
-					<a href="./" className="text-sm underline! text-primary!">
+					<a
+						href={`${LANDING_ORIGIN}/legal/privacidade`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-sm underline! text-primary!"
+					>
 						{t("sys.login.privacyPolicy")}
 					</a>
 				</div>

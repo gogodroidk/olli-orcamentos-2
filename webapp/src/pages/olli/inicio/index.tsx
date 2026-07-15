@@ -61,6 +61,16 @@ export default function Inicio() {
 	const avisoSemValor = (n?: number) =>
 		n && n > 0 ? `${plural(n, "orçamento")} sem valor no cadastro — fora da conta.` : undefined;
 
+	// "Recebido no mês" pode perder recibos por DOIS motivos independentes: sem data
+	// (não dá para saber o mês) e sem valor (não dá para somar). Os dois precisam
+	// aparecer — antes só o semData virava aviso e o semValor sumia em silêncio.
+	const avisoRecebido = (semData?: number, semValor?: number) => {
+		const partes: string[] = [];
+		if (semData && semData > 0) partes.push(`${plural(semData, "recibo")} sem data de recebimento`);
+		if (semValor && semValor > 0) partes.push(`${plural(semValor, "recibo")} sem valor no cadastro`);
+		return partes.length > 0 ? `${partes.join(" e ")} — fora da conta.` : undefined;
+	};
+
 	return (
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
 			<WelcomeHeader />
@@ -113,11 +123,7 @@ export default function Inicio() {
 							? `${plural(recebido.itens, "recibo")} em ${mesPorExtenso()}`
 							: `Recebimentos de ${mesPorExtenso()}`
 					}
-					aviso={
-						recebido && recebido.semData > 0
-							? `${plural(recebido.semData, "recibo")} sem data de recebimento — fora da conta.`
-							: undefined
-					}
+					aviso={avisoRecebido(recebido?.semData, recebido?.semValor)}
 					to="/recibos"
 					Icon={Banknote}
 					color="#2BE39A"
@@ -160,11 +166,21 @@ export default function Inicio() {
 					/>
 				</div>
 				<div className="lg:col-span-2">
-					<StatusDonutCard rows={orcQ.data} isLoading={orcQ.isLoading} isError={orcQ.isError} />
+					<StatusDonutCard
+						rows={orcQ.data}
+						isLoading={orcQ.isLoading}
+						isError={orcQ.isError}
+						onRetry={() => orcQ.refetch()}
+					/>
 				</div>
 			</div>
 
-			<RecentOrcamentosCard rows={orcQ.data} isLoading={orcQ.isLoading} isError={orcQ.isError} />
+			<RecentOrcamentosCard
+				rows={orcQ.data}
+				isLoading={orcQ.isLoading}
+				isError={orcQ.isError}
+				onRetry={() => orcQ.refetch()}
+			/>
 		</div>
 	);
 }

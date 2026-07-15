@@ -1,4 +1,10 @@
-import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "motion/react";
+import {
+	motion,
+	useMotionValue,
+	useReducedMotion,
+	useSpring,
+	useTransform,
+} from "motion/react";
 import type { MouseEvent, ReactNode } from "react";
 import { useRef } from "react";
 
@@ -18,8 +24,14 @@ export default function HeroDevices() {
 	// Parallax sem setState: MotionValues -> spring -> transform de rotação.
 	const px = useMotionValue(0);
 	const py = useMotionValue(0);
-	const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [6, -6]), { stiffness: 120, damping: 18 });
-	const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-10, 10]), { stiffness: 120, damping: 18 });
+	const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [6, -6]), {
+		stiffness: 120,
+		damping: 18,
+	});
+	const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-10, 10]), {
+		stiffness: 120,
+		damping: 18,
+	});
 
 	function onMove(e: MouseEvent<HTMLDivElement>) {
 		if (reduce) return;
@@ -39,6 +51,7 @@ export default function HeroDevices() {
 			ref={ref}
 			onMouseMove={onMove}
 			onMouseLeave={onLeave}
+			aria-hidden="true"
 			className="relative mx-auto w-full max-w-xl"
 			style={{ perspective: "1200px" }}
 		>
@@ -46,15 +59,24 @@ export default function HeroDevices() {
 			<div className="pointer-events-none absolute -inset-12 -z-10">
 				<div
 					className="absolute right-0 top-4 h-72 w-72 rounded-full blur-3xl"
-					style={{ background: "radial-gradient(closest-side, rgba(63,216,234,.55), transparent)" }}
+					style={{
+						background:
+							"radial-gradient(closest-side, rgba(63,216,234,.55), transparent)",
+					}}
 				/>
 				<div
 					className="absolute -left-8 bottom-0 h-80 w-80 rounded-full blur-3xl"
-					style={{ background: "radial-gradient(closest-side, rgba(11,111,206,.5), transparent)" }}
+					style={{
+						background:
+							"radial-gradient(closest-side, rgba(11,111,206,.5), transparent)",
+					}}
 				/>
 			</div>
 
-			<motion.div className="relative" style={{ transformStyle: "preserve-3d", rotateX, rotateY }}>
+			<motion.div
+				className="relative"
+				style={{ transformStyle: "preserve-3d", rotateX, rotateY }}
+			>
 				{/* BROWSER — o painel, DESENHADO EM CÓDIGO (não é print).
 				    Antes aqui havia um /olli-painel.png que era, na verdade, a demo do
 				    template Slash: menu em inglês (Workbench, Error Page…), botão "Join
@@ -73,14 +95,16 @@ export default function HeroDevices() {
 							<span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
 							<span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
 							<span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-							<span className="ml-3 rounded-md bg-white px-3 py-1 text-[11px] text-muted tnum">app.olliorcamentos.online</span>
+							<span className="ml-3 rounded-md bg-white px-3 py-1 text-[11px] text-muted tnum">
+								app.olliorcamentos.online
+							</span>
 						</div>
 						<BrowserScreen />
 					</div>
 				</motion.div>
 
 				{/* PHONE — protagonista: smartphone premium com o app OLLI. */}
-				<div className="relative z-30 mx-auto w-56 sm:absolute sm:-bottom-12 sm:left-[-2.25rem] sm:mx-0 sm:w-60 lg:w-[16.5rem]">
+				<div className="relative z-30 mx-auto w-56 sm:absolute sm:-bottom-6 sm:left-[-2.25rem] sm:mx-0 sm:w-60 lg:-bottom-12 lg:w-[16.5rem]">
 					<motion.div
 						style={{ transformStyle: "preserve-3d" }}
 						initial={reduce ? false : { opacity: 0, y: 72, rotateY: -22 }}
@@ -98,7 +122,15 @@ export default function HeroDevices() {
 /* ─────────────────────────  TELA DO PAINEL (NAVEGADOR)  ────────────────────── */
 
 /** Itens do menu — os MESMOS do painel de verdade (webapp/), em português. */
-const MENU = ["Início", "Orçamentos", "Clientes", "Ordens de serviço", "Agenda", "Quadro", "Equipe"];
+const MENU = [
+	"Início",
+	"Orçamentos",
+	"Clientes",
+	"Ordens de serviço",
+	"Agenda",
+	"Quadro",
+	"Equipe",
+];
 
 /** Fatias do donut. Somam 100 — o dasharray depende disso. */
 const STATUS = [
@@ -114,7 +146,9 @@ function BrowserScreen() {
 			<aside className="flex w-[23%] shrink-0 flex-col border-r border-line bg-white px-2 py-2.5">
 				<div className="flex items-center gap-1.5 px-1.5">
 					<OlliMark tone="marca" />
-					<span className="text-[11px] font-extrabold tracking-tight text-ink">OLLI</span>
+					<span className="text-[11px] font-extrabold tracking-tight text-ink">
+						OLLI
+					</span>
 				</div>
 				<nav className="mt-3 space-y-[3px]">
 					{MENU.map((item, i) => (
@@ -124,7 +158,9 @@ function BrowserScreen() {
 								i === 0 ? "bg-tint text-brand" : "text-slate"
 							}`}
 						>
-							<span className={`h-1.5 w-1.5 rounded-full ${i === 0 ? "bg-brand" : "bg-line"}`} />
+							<span
+								className={`h-1.5 w-1.5 rounded-full ${i === 0 ? "bg-brand" : "bg-line"}`}
+							/>
 							{item}
 						</span>
 					))}
@@ -142,8 +178,12 @@ function BrowserScreen() {
 
 				<div className="flex flex-1 flex-col gap-2 p-2.5">
 					<div>
-						<p className="text-[11px] font-extrabold leading-tight text-ink">Boa tarde, Igor 👋</p>
-						<p className="text-[7.5px] font-medium text-muted">Você tem 3 orçamentos aguardando resposta.</p>
+						<p className="text-[11px] font-extrabold leading-tight text-ink">
+							Boa tarde, Igor 👋
+						</p>
+						<p className="text-[7.5px] font-medium text-muted">
+							Você tem 3 orçamentos aguardando resposta.
+						</p>
 					</div>
 
 					<div className="grid grid-cols-4 gap-1.5">
@@ -156,13 +196,21 @@ function BrowserScreen() {
 					<div className="grid min-h-0 flex-1 grid-cols-[0.85fr_1fr] gap-1.5">
 						{/* Rosca de status */}
 						<div className="flex flex-col rounded-lg border border-line bg-white p-2">
-							<p className="text-[7px] font-bold uppercase tracking-[0.12em] text-muted">Por status</p>
+							<p className="text-[7px] font-bold uppercase tracking-[0.12em] text-muted">
+								Por status
+							</p>
 							<div className="flex flex-1 items-center gap-2">
 								<DonutStatus />
 								<div className="space-y-[3px]">
 									{STATUS.map((s) => (
-										<span key={s.rotulo} className="flex items-center gap-1 text-[7px] font-semibold text-slate">
-											<span className="h-1.5 w-1.5 rounded-full" style={{ background: s.cor }} />
+										<span
+											key={s.rotulo}
+											className="flex items-center gap-1 text-[7px] font-semibold text-slate"
+										>
+											<span
+												className="h-1.5 w-1.5 rounded-full"
+												style={{ background: s.cor }}
+											/>
 											{s.rotulo}
 										</span>
 									))}
@@ -172,11 +220,28 @@ function BrowserScreen() {
 
 						{/* Orçamentos recentes */}
 						<div className="flex flex-col rounded-lg border border-line bg-white p-2">
-							<p className="mb-1.5 text-[7px] font-bold uppercase tracking-[0.12em] text-muted">Recentes</p>
+							<p className="mb-1.5 text-[7px] font-bold uppercase tracking-[0.12em] text-muted">
+								Recentes
+							</p>
 							<div className="space-y-1.5">
-								<PainelRow nome="Clínica Vida & Saúde" valor="R$ 2.480" status="Aprovado" tom="mint" />
-								<PainelRow nome="Ar Frio Refrigeração" valor="R$ 640" status="Enviado" tom="brand" />
-								<PainelRow nome="Padaria Pão Quente" valor="R$ 1.150" status="Rascunho" tom="muted" />
+								<PainelRow
+									nome="Clínica Vida & Saúde"
+									valor="R$ 2.480"
+									status="Aprovado"
+									tom="mint"
+								/>
+								<PainelRow
+									nome="Ar Frio Refrigeração"
+									valor="R$ 640"
+									status="Enviado"
+									tom="brand"
+								/>
+								<PainelRow
+									nome="Padaria Pão Quente"
+									valor="R$ 1.150"
+									status="Rascunho"
+									tom="muted"
+								/>
 							</div>
 						</div>
 					</div>
@@ -186,12 +251,26 @@ function BrowserScreen() {
 	);
 }
 
-function MiniStat({ rotulo, valor, delta }: { rotulo: string; valor: string; delta: string }) {
+function MiniStat({
+	rotulo,
+	valor,
+	delta,
+}: {
+	rotulo: string;
+	valor: string;
+	delta: string;
+}) {
 	return (
 		<div className="rounded-lg border border-line bg-white px-1.5 py-1.5">
-			<p className="truncate text-[6.5px] font-bold uppercase tracking-[0.1em] text-muted">{rotulo}</p>
-			<p className="mt-0.5 text-[11px] font-extrabold leading-none text-ink tnum">{valor}</p>
-			<p className="mt-0.5 text-[6.5px] font-bold text-[#0f9d63] tnum">{delta}</p>
+			<p className="truncate text-[6.5px] font-bold uppercase tracking-[0.1em] text-muted">
+				{rotulo}
+			</p>
+			<p className="mt-0.5 text-[11px] font-extrabold leading-none text-ink tnum">
+				{valor}
+			</p>
+			<p className="mt-0.5 text-[6.5px] font-bold text-[#0f9d63] tnum">
+				{delta}
+			</p>
 		</div>
 	);
 }
@@ -201,8 +280,19 @@ function DonutStatus() {
 	// aceita a porcentagem direto, sem conta.
 	let offset = 25; // começa no topo
 	return (
-		<svg viewBox="0 0 42 42" className="h-[52px] w-[52px] shrink-0" aria-hidden="true">
-			<circle cx="21" cy="21" r="15.9155" fill="none" stroke="#EEF3F9" strokeWidth="5" />
+		<svg
+			viewBox="0 0 42 42"
+			className="h-[52px] w-[52px] shrink-0"
+			aria-hidden="true"
+		>
+			<circle
+				cx="21"
+				cy="21"
+				r="15.9155"
+				fill="none"
+				stroke="#EEF3F9"
+				strokeWidth="5"
+			/>
 			{STATUS.map((s) => {
 				const dash = `${s.pct} ${100 - s.pct}`;
 				const el = (
@@ -222,7 +312,12 @@ function DonutStatus() {
 				offset -= s.pct;
 				return el;
 			})}
-			<text x="21" y="22.6" textAnchor="middle" className="fill-ink text-[7px] font-extrabold">
+			<text
+				x="21"
+				y="22.6"
+				textAnchor="middle"
+				className="fill-ink text-[7px] font-extrabold"
+			>
 				38
 			</text>
 		</svg>
@@ -247,9 +342,17 @@ function PainelRow({
 	}[tom];
 	return (
 		<div className="flex items-center gap-1.5">
-			<span className="min-w-0 flex-1 truncate text-[8px] font-semibold text-ink">{nome}</span>
-			<span className={`shrink-0 rounded-full px-1.5 py-[2px] text-[6.5px] font-bold ${cores}`}>{status}</span>
-			<span className="w-12 shrink-0 text-right text-[8px] font-bold text-ink tnum">{valor}</span>
+			<span className="min-w-0 flex-1 truncate text-[8px] font-semibold text-ink">
+				{nome}
+			</span>
+			<span
+				className={`shrink-0 rounded-full px-1.5 py-[2px] text-[6.5px] font-bold ${cores}`}
+			>
+				{status}
+			</span>
+			<span className="w-12 shrink-0 text-right text-[8px] font-bold text-ink tnum">
+				{valor}
+			</span>
 		</div>
 	);
 }
@@ -322,7 +425,9 @@ function PhoneScreen() {
 						<OlliMark />
 						<div className="leading-none">
 							<p className="text-[14px] font-extrabold tracking-tight">OLLI</p>
-							<p className="mt-1 text-[9px] font-medium text-white/75">Meus orçamentos</p>
+							<p className="mt-1 text-[9px] font-medium text-white/75">
+								Meus orçamentos
+							</p>
 						</div>
 					</div>
 					<span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-[10px] font-bold ring-1 ring-white/25">
@@ -337,8 +442,12 @@ function PhoneScreen() {
 				<div className="rounded-2xl border border-line bg-white p-3.5 shadow-[0_12px_26px_-14px_rgba(10,37,71,.28)]">
 					<div className="flex items-start justify-between gap-2">
 						<div className="min-w-0">
-							<p className="text-[8px] font-bold uppercase tracking-[0.15em] text-muted">Orçamento Nº 0472</p>
-							<p className="mt-1 truncate text-[13px] font-extrabold leading-tight text-ink">Clínica Vida &amp; Saúde</p>
+							<p className="text-[8px] font-bold uppercase tracking-[0.15em] text-muted">
+								Orçamento Nº 0472
+							</p>
+							<p className="mt-1 truncate text-[13px] font-extrabold leading-tight text-ink">
+								Clínica Vida &amp; Saúde
+							</p>
 						</div>
 						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-mint/15 px-2 py-1 text-[9px] font-bold text-[#0f9d63]">
 							<CheckIcon />
@@ -371,14 +480,21 @@ function PhoneScreen() {
 				<div className="flex items-start gap-1.5 rounded-xl bg-tint px-2.5 py-2 text-[9.5px] leading-snug text-brand-ink">
 					<span className="mt-[1px] text-[10px]">✨</span>
 					<span>
-						<b className="text-brand">IA:</b> manutenção sugerida a cada 90 dias · confiança 94%
+						<b className="text-brand">IA:</b> manutenção sugerida a cada 90 dias
+						· confiança 94%
 					</span>
 				</div>
 
 				{/* Recentes — cara de feed de app real */}
 				<div className="rounded-xl border border-line bg-white p-2.5">
-					<p className="mb-1.5 text-[8px] font-bold uppercase tracking-[0.15em] text-muted">Recentes</p>
-					<RecentRow nome="Ar Frio Refrigeração" valor="R$ 640" status="Enviado" />
+					<p className="mb-1.5 text-[8px] font-bold uppercase tracking-[0.15em] text-muted">
+						Recentes
+					</p>
+					<RecentRow
+						nome="Ar Frio Refrigeração"
+						valor="R$ 640"
+						status="Enviado"
+					/>
 				</div>
 
 				<div className="flex-1" />
@@ -417,23 +533,58 @@ function ServiceRow({ nome, preco }: { nome: string; preco: string }) {
 	);
 }
 
-function RecentRow({ nome, valor, status, muted }: { nome: string; valor: string; status: string; muted?: boolean }) {
+function RecentRow({
+	nome,
+	valor,
+	status,
+	muted,
+}: {
+	nome: string;
+	valor: string;
+	status: string;
+	muted?: boolean;
+}) {
 	return (
 		<div className="flex items-center gap-2">
-			<span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-tint text-[11px]">🧾</span>
+			<span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-tint text-[11px]">
+				🧾
+			</span>
 			<div className="min-w-0 flex-1">
 				<p className="truncate text-[10.5px] font-semibold text-ink">{nome}</p>
-				<p className={`text-[8.5px] font-medium ${muted ? "text-muted" : "text-brand"}`}>{status}</p>
+				<p
+					className={`text-[8.5px] font-medium ${muted ? "text-muted" : "text-brand"}`}
+				>
+					{status}
+				</p>
 			</div>
 			<span className="text-[10.5px] font-bold text-ink tnum">{valor}</span>
 		</div>
 	);
 }
 
-function TabIcon({ label, active, children }: { label: string; active?: boolean; children: ReactNode }) {
+function TabIcon({
+	label,
+	active,
+	children,
+}: {
+	label: string;
+	active?: boolean;
+	children: ReactNode;
+}) {
 	return (
-		<span className={`flex flex-col items-center gap-0.5 ${active ? "text-brand" : "text-muted"}`}>
-			<svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+		<span
+			className={`flex flex-col items-center gap-0.5 ${active ? "text-brand" : "text-muted"}`}
+		>
+			<svg
+				viewBox="0 0 20 20"
+				className="h-[18px] w-[18px]"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.6"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				aria-hidden="true"
+			>
 				{children}
 			</svg>
 			<span className="text-[7.5px] font-semibold">{label}</span>
@@ -445,7 +596,12 @@ function TabIcon({ label, active, children }: { label: string; active?: boolean;
 
 function SignalIcon() {
 	return (
-		<svg viewBox="0 0 18 12" className="h-[9px] w-auto" fill="currentColor" aria-hidden="true">
+		<svg
+			viewBox="0 0 18 12"
+			className="h-[9px] w-auto"
+			fill="currentColor"
+			aria-hidden="true"
+		>
 			<rect x="0" y="8" width="3" height="4" rx="1" />
 			<rect x="5" y="5.5" width="3" height="6.5" rx="1" />
 			<rect x="10" y="3" width="3" height="9" rx="1" />
@@ -456,7 +612,12 @@ function SignalIcon() {
 
 function WifiIcon() {
 	return (
-		<svg viewBox="0 0 16 13" className="h-[9px] w-auto" fill="currentColor" aria-hidden="true">
+		<svg
+			viewBox="0 0 16 13"
+			className="h-[9px] w-auto"
+			fill="currentColor"
+			aria-hidden="true"
+		>
 			<path d="M8 2.3c2.6 0 5 1 6.8 2.7L13.3 6.6A7.6 7.6 0 0 0 8 4.5 7.6 7.6 0 0 0 2.7 6.6L1.2 5A9.8 9.8 0 0 1 8 2.3Z" />
 			<path d="M8 6.1c1.5 0 2.9.6 3.9 1.6l-1.6 1.6A3.3 3.3 0 0 0 8 8.3c-.9 0-1.7.3-2.3.9L4.1 7.7A5.5 5.5 0 0 1 8 6.1Z" />
 			<circle cx="8" cy="10.7" r="1.4" />
@@ -467,16 +628,42 @@ function WifiIcon() {
 function BatteryIcon() {
 	return (
 		<svg viewBox="0 0 26 12" className="h-[9px] w-auto" aria-hidden="true">
-			<rect x="0.5" y="0.5" width="22" height="11" rx="3" fill="none" stroke="currentColor" strokeOpacity="0.55" />
+			<rect
+				x="0.5"
+				y="0.5"
+				width="22"
+				height="11"
+				rx="3"
+				fill="none"
+				stroke="currentColor"
+				strokeOpacity="0.55"
+			/>
 			<rect x="2" y="2" width="17" height="8" rx="1.6" fill="currentColor" />
-			<rect x="24" y="4" width="2" height="4" rx="1" fill="currentColor" fillOpacity="0.55" />
+			<rect
+				x="24"
+				y="4"
+				width="2"
+				height="4"
+				rx="1"
+				fill="currentColor"
+				fillOpacity="0.55"
+			/>
 		</svg>
 	);
 }
 
 function CheckIcon() {
 	return (
-		<svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+		<svg
+			viewBox="0 0 12 12"
+			className="h-2.5 w-2.5"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2.4"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
 			<path d="M2.5 6.2 5 8.6l4.5-5.2" />
 		</svg>
 	);
@@ -498,14 +685,26 @@ function OlliMark({ tone = "branco" }: { tone?: "branco" | "marca" }) {
 			<path d="M22 49 L12 59.5 L30 50 Z" fill={balao} />
 			<rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill={traco} />
 			<rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill={traco} />
-			<path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke={traco} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+			<path
+				d="M19 41 l6.6 6.9 l16 -15"
+				fill="none"
+				stroke={traco}
+				strokeWidth="6"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
 		</svg>
 	);
 }
 
 function WhatsAppGlyph() {
 	return (
-		<svg viewBox="0 0 24 24" className="h-[14px] w-[14px]" fill="currentColor" aria-hidden="true">
+		<svg
+			viewBox="0 0 24 24"
+			className="h-[14px] w-[14px]"
+			fill="currentColor"
+			aria-hidden="true"
+		>
 			<path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-2.8.9.9-2.7-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.1-.3.2-.5.1-.7-.3-1.5-.6-2.1-1.4-.5-.6.3-.6 1-1.9.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.7.7-1 1.7-.6 2.8.5 1.6 1.6 3.1 3.5 4 1.9.9 2.3.7 2.8.6.5 0 1.5-.6 1.7-1.1.2-.6.2-1 .1-1.1-.1-.1-.3-.2-.5-.3Z" />
 		</svg>
 	);

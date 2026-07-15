@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useId } from "react";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import { cn } from "@/utils";
@@ -14,6 +15,15 @@ import { cn } from "@/utils";
 
 /* ─────────────────────────────  Casca de campo  ────────────────────────────── */
 
+/**
+ * Rótulo associado ao input de verdade (não só visual): sem `htmlFor`/`id`, leitor
+ * de tela não anuncia nome nenhum ao focar o campo — eram ~95 campos assim.
+ *
+ * O filho pode já trazer o próprio `id` (muitos forms passam `id={idBase-algo}`);
+ * nesse caso ele é reaproveitado. Só quando o filho não tem `id` é que geramos um.
+ * O primeiro elemento válido entre os filhos é quem recebe `id`/`aria-invalid`/
+ * `aria-describedby` — irmãos depois dele (textos de apoio, avisos) ficam intactos.
+ */
 export function Campo({
 	rotulo,
 	erro,
@@ -29,19 +39,44 @@ export function Campo({
 	children: ReactNode;
 	className?: string;
 }) {
+	const idGerado = useId();
+	const listaFilhos = Children.toArray(children);
+	const indicePrincipal = listaFilhos.findIndex(isValidElement);
+	const filhoPrincipal =
+		indicePrincipal >= 0 ? (listaFilhos[indicePrincipal] as ReactElement<Record<string, unknown>>) : null;
+	const idCampo = (filhoPrincipal?.props.id as string | undefined) || idGerado;
+	const mensagem = erro || dica;
+	const idMensagem = mensagem ? `${idCampo}-msg` : undefined;
+
+	const filhos = filhoPrincipal
+		? listaFilhos.map((filho, i) => {
+				if (i !== indicePrincipal) return filho;
+				const descricaoAtual = filhoPrincipal.props["aria-describedby"] as string | undefined;
+				return cloneElement(filhoPrincipal, {
+					id: idCampo,
+					"aria-invalid": erro ? true : filhoPrincipal.props["aria-invalid"],
+					"aria-describedby": [descricaoAtual, idMensagem].filter(Boolean).join(" ") || undefined,
+				});
+			})
+		: children;
+
 	return (
 		<div className={cn("space-y-1.5", className)}>
-			<Label className="text-sm font-medium text-text-primary">
+			<Label htmlFor={idCampo} className="text-sm font-medium text-text-primary">
 				{rotulo}
-				{obrigatorio && <span className="ml-0.5 text-error">*</span>}
+				{obrigatorio && <span className="ml-0.5 text-error-dark dark:text-error">*</span>}
 			</Label>
-			{children}
+			{filhos}
 			{erro ? (
-				<p role="alert" className="text-xs font-medium text-error">
+				<p id={idMensagem} role="alert" className="text-xs font-medium text-error-dark dark:text-error">
 					{erro}
 				</p>
 			) : (
-				dica && <p className="text-xs text-text-secondary">{dica}</p>
+				dica && (
+					<p id={idMensagem} className="text-xs text-text-secondary">
+						{dica}
+					</p>
+				)
 			)}
 		</div>
 	);
@@ -62,29 +97,38 @@ export function formatarMoeda(valor: number): string {
  * valores espera — bem menos erro do que deixar o usuário posicionar a vírgula.
  * Emite SEMPRE um `number`.
  */
+type RestoDoInput = Omit<
+	ComponentProps<"input">,
+	"value" | "onChange" | "id" | "placeholder" | "disabled" | "type" | "className"
+>;
+
 export function CampoMoeda({
 	valor,
 	aoMudar,
 	id,
 	placeholder = "0,00",
 	disabled,
+	className,
+	...rest
 }: {
 	valor: number;
 	aoMudar: (v: number) => void;
 	id?: string;
 	placeholder?: string;
 	disabled?: boolean;
-}) {
+	className?: string;
+} & RestoDoInput) {
 	return (
 		<div className="relative">
 			<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-text-secondary">
 				R$
 			</span>
 			<Input
+				{...rest}
 				id={id}
 				inputMode="numeric"
 				disabled={disabled}
-				className="pl-9 text-right font-medium tabular-nums"
+				className={cn("pl-9 text-right font-medium tabular-nums", className)}
 				placeholder={placeholder}
 				value={formatarMoeda(valor)}
 				onChange={(e) => {
@@ -142,6 +186,7 @@ export function CampoMascarado({
 	id,
 	placeholder,
 	disabled,
+	...rest
 }: {
 	tipo: "telefone" | "cpf" | "cnpj" | "cep";
 	valor: string;
@@ -149,7 +194,7 @@ export function CampoMascarado({
 	id?: string;
 	placeholder?: string;
 	disabled?: boolean;
-}) {
+} & RestoDoInput) {
 	const mascaras = { telefone: mascaraTelefone, cpf: mascaraCpf, cnpj: mascaraCnpj, cep: mascaraCep };
 	const padroes = {
 		telefone: "(11) 98765-4321",
@@ -159,6 +204,7 @@ export function CampoMascarado({
 	};
 	return (
 		<Input
+			{...rest}
 			id={id}
 			inputMode="numeric"
 			disabled={disabled}

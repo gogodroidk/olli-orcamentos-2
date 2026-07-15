@@ -14,11 +14,10 @@
  */
 import type { Equipamento, SituacaoEquipamento } from "@dominio";
 import { STATUS_EQUIP_LABELS } from "@dominio";
-import { AlertTriangle, Inbox, Pencil, Plus, QrCode, RotateCw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Inbox, Pencil, Plus, QrCode, RotateCw, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
-import { StatusBadge } from "@/olli/components/record-list-helpers";
 import { useOlliList } from "@/olli/data";
 import { useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -27,7 +26,14 @@ import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
-import { type LinhaAsset, linhaParaEquipamento, nomeEquipamento, rotuloCategoria, subEquipamento } from "./equipamento";
+import {
+	type LinhaAsset,
+	linhaParaEquipamento,
+	nomeEquipamento,
+	rotuloCategoria,
+	STATUS_EQUIP_VARIANT,
+	subEquipamento,
+} from "./equipamento";
 import FormEquipamento from "./FormEquipamento";
 
 /** Chaves estáveis para os placeholders de carregamento (nunca o índice). */
@@ -62,6 +68,17 @@ function CelulaCliente({ vinculo }: { vinculo: Vinculo }) {
 				</span>
 			);
 	}
+}
+
+/** Badge da situação do ativo — cor vem do mapa FECHADO (STATUS_EQUIP_VARIANT), nunca
+ *  do regex genérico de `StatusBadge` (que casaria "desativado" com "ativo" por
+ *  conter a substring "ativa" — ver record-list-helpers.tsx). */
+function SituacaoBadge({ situacao, className }: { situacao: SituacaoEquipamento; className?: string }) {
+	return (
+		<Badge variant={STATUS_EQUIP_VARIANT[situacao]} className={cn("font-medium", className)}>
+			{STATUS_EQUIP_LABELS[situacao]}
+		</Badge>
+	);
 }
 
 /** Estado da etiqueta QR — é o adesivo que está colado no equipamento do cliente. */
@@ -220,8 +237,11 @@ export default function EquipamentosPage() {
 				</div>
 			</div>
 
-			{/* ── Filtro por situação (só as situações que existem de fato) ── */}
-			{!isLoading && !isError && situacoesPresentes.length > 1 && (
+			{/* ── Filtro por situação (só as situações que existem de fato) ──
+			    Mostra a barra também com 1 situação presente SE ela já estiver
+			    filtrada — senão o chip que filtrou some e o usuário fica preso
+			    numa lista (talvez vazia) sem UI para limpar o filtro. */}
+			{!isLoading && !isError && (situacoesPresentes.length > 1 || filtroSituacao !== "todas") && (
 				<div className="mb-4 flex flex-wrap gap-2">
 					<ChipSituacao
 						ativo={filtroSituacao === "todas"}
@@ -286,7 +306,20 @@ export default function EquipamentosPage() {
 								: "Cadastre o primeiro equipamento do seu cliente — ele ganha uma etiqueta QR automaticamente."}
 						</p>
 					</div>
-					{!temFiltro && (
+					{temFiltro ? (
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => {
+								setBusca("");
+								setFiltroSituacao("todas");
+							}}
+							className="gap-2 rounded-full"
+						>
+							<X className="size-4" />
+							Limpar filtros
+						</Button>
+					) : (
 						<Button type="button" onClick={abrirNovo} className="gap-2 rounded-full">
 							<Plus className="size-4" />
 							Novo equipamento
@@ -341,7 +374,7 @@ export default function EquipamentosPage() {
 											)}
 										</td>
 										<td className="whitespace-nowrap px-4 py-3.5">
-											<StatusBadge value={STATUS_EQUIP_LABELS[e.situacao]} />
+											<SituacaoBadge situacao={e.situacao} />
 										</td>
 										<td className="whitespace-nowrap px-4 py-3.5">
 											<BadgeQr e={e} />
@@ -372,7 +405,7 @@ export default function EquipamentosPage() {
 											<p className="truncate text-xs text-text-secondary">{subEquipamento(e) || "—"}</p>
 										</div>
 									</div>
-									<StatusBadge value={STATUS_EQUIP_LABELS[e.situacao]} className="shrink-0" />
+									<SituacaoBadge situacao={e.situacao} className="shrink-0" />
 								</div>
 
 								<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
@@ -453,7 +486,10 @@ function ChipSituacao({
 			)}
 		>
 			{rotulo}
-			<span className={cn("tabular-nums", ativo ? "text-white/75" : "text-text-disabled")}>{quantidade}</span>
+			{/* Contador é DADO (quantos existem), não estado desabilitado — não usa o
+			    token de "disabled". Ativo: branco quase sólido (o antigo /75 reprovava
+			    AA sobre --primary). Inativo: text-secondary, legível no claro e no escuro. */}
+			<span className={cn("tabular-nums", ativo ? "text-white/90" : "text-text-secondary")}>{quantidade}</span>
 		</button>
 	);
 }

@@ -60,11 +60,6 @@ export const TABELA_DO_TIPO = { produto: "produtos", servico: "servicos" } as co
 
 export const ROTULO_DO_TIPO: Record<TipoCatalogo, string> = { produto: "produto", servico: "serviço" };
 
-/** `true` quando o item é um produto — e só então `marca`/`modelo` existem. */
-export function ehProduto(item: ItemCatalogo | null | undefined): item is ProdutoItem {
-	return !!item && "marca" in item;
-}
-
 /* ─────────────────────────────────  Unidades  ──────────────────────────────── */
 
 /**
@@ -197,15 +192,22 @@ interface Rascunho {
 	modelo: string;
 }
 
-function itemParaRascunho(item?: ItemCatalogo | null): Rascunho {
+/**
+ * `tipo` vem da PÁGINA (a rota já sabe se é produto ou serviço) — não se infere do
+ * formato do objeto. Um produto sem marca não tem a chave `marca` (o app omite chave
+ * vazia, nota 2): inferir "é produto?" por `'marca' in item` daria FALSO nesse caso e
+ * zeraria o `modelo` do rascunho — apagando-o em silêncio na próxima gravação.
+ */
+function itemParaRascunho(tipo: TipoCatalogo, item?: ItemCatalogo | null): Rascunho {
+	const prod = tipo === "produto" ? (item as ProdutoItem | null | undefined) : null;
 	return {
 		nome: item?.nome ?? "",
 		descricao: item?.descricao ?? "",
 		preco: item?.preco ?? 0,
 		custo: item?.custo ?? 0,
 		unidade: item?.unidade || UNIDADE_PADRAO,
-		marca: (ehProduto(item) && item.marca) || "",
-		modelo: (ehProduto(item) && item.modelo) || "",
+		marca: prod?.marca ?? "",
+		modelo: prod?.modelo ?? "",
 	};
 }
 
@@ -262,7 +264,7 @@ export default function FormItemCatalogo({ aberto, tipo, item, aoFechar, aoSalva
 	const rotulo = ROTULO_DO_TIPO[tipo];
 	const editando = !!item;
 
-	const [r, setR] = useState<Rascunho>(() => itemParaRascunho(item));
+	const [r, setR] = useState<Rascunho>(() => itemParaRascunho(tipo, item));
 	const [erroNome, setErroNome] = useState<string | null>(null);
 	/** O submit que avisa do preço zerado NÃO salva; o próximo salva (nota 4). */
 	const [confirmaPrecoZero, setConfirmaPrecoZero] = useState(false);
@@ -275,11 +277,11 @@ export default function FormItemCatalogo({ aberto, tipo, item, aoFechar, aoSalva
 	// e o erro da gravação passada continuaria vermelho embaixo de um item novo.
 	useEffect(() => {
 		if (!aberto) return;
-		setR(itemParaRascunho(item));
+		setR(itemParaRascunho(tipo, item));
 		setErroNome(null);
 		setConfirmaPrecoZero(false);
 		resetarMutacao();
-	}, [aberto, item, resetarMutacao]);
+	}, [aberto, item, tipo, resetarMutacao]);
 
 	const margem = useMemo(() => margemInfo(r.preco, r.custo), [r.preco, r.custo]);
 	const prejuizo = abaixoDoCusto(r.preco, r.custo);

@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { Link } from "react-router";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
-import { linkWhatsapp, listarParados, paramStatus, STATUS_EM_JOGO } from "./financeiro";
+import { linkWhatsapp, listarParados, paramStatus, STATUS_EM_JOGO, WHATSAPP_TEXTO, WHATSAPP_VERDE } from "./financeiro";
 import { formatBRL, metaStatus, type OrcamentoRow, plural } from "./helpers";
 
 interface Props {
@@ -122,7 +122,9 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 											>
 												{meta.label}
 											</span>
-											<span className="font-semibold text-warning tabular-nums">há {plural(p.dias, "dia")}</span>
+											<span className="font-semibold text-warning-darker tabular-nums dark:text-warning">
+												há {plural(p.dias, "dia")}
+											</span>
 										</div>
 									</div>
 
@@ -132,7 +134,8 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 											target="_blank"
 											rel="noopener noreferrer"
 											aria-label={`Cobrar ${p.cliente} pelo WhatsApp`}
-											className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#25D366] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60"
+											style={{ backgroundColor: WHATSAPP_VERDE, color: WHATSAPP_TEXTO }}
+											className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60"
 										>
 											<MessageCircle className="size-3.5" />
 											Cobrar

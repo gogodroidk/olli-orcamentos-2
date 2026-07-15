@@ -5,7 +5,6 @@ import { MotionLazy } from "./components/animate/motion-lazy";
 import { RouteLoadingProgress } from "./components/loading";
 import Toast from "./components/toast";
 import { GLOBAL_CONFIG } from "./global-config";
-import { AntdAdapter } from "./theme/adapter/antd.adapter";
 import { ThemeProvider } from "./theme/theme-provider";
 import { useAuthSync } from "./store/userStore";
 
@@ -27,7 +26,7 @@ function App({ children }: { children: React.ReactNode }) {
 	return (
 		<HelmetProvider>
 			<QueryClientProvider client={queryClient}>
-				<ThemeProvider adapters={[AntdAdapter]}>
+				<ThemeProvider>
 					<Helmet>
 						<title>{GLOBAL_CONFIG.appName}</title>
 						<link rel="icon" href={Logo} />

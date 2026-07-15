@@ -36,58 +36,62 @@
 }
 
 :root {
-  color-scheme: light;
+	color-scheme: light;
 }
 
 html {
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  scroll-behavior: smooth;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	scroll-behavior: smooth;
 }
 
 body {
-  margin: 0;
-  font-family: var(--font-sans);
-  color: var(--color-ink);
-  background: #ffffff;
-  overflow-x: hidden;
+	margin: 0;
+	font-family: var(--font-sans);
+	color: var(--color-ink);
+	background: #ffffff;
+	overflow-x: hidden;
 }
 
 /* Números com aparência de dado (tabular). */
 .tnum {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: "tnum" 1;
 }
 
 /* Etiqueta/eyebrow de seção. */
 .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-brand);
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--color-brand);
 }
 
 /* Gradiente de marca reutilizável. */
 .brand-gradient {
-  background: linear-gradient(135deg, var(--color-cyan), var(--color-brand));
+	background: linear-gradient(135deg, var(--color-cyan), var(--color-brand));
 }
 .brand-text {
-  background: linear-gradient(120deg, var(--color-brand), var(--color-cyan));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+	background: linear-gradient(120deg, var(--color-brand), var(--color-cyan));
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
 }
 
 /* Reduced-motion: mata toda animação/transição contínua. */
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+	html {
+		scroll-behavior: auto;
+	}
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
 }

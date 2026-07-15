@@ -8,7 +8,7 @@ interface ReturnButtonProps {
 export function ReturnButton({ onClick }: ReturnButtonProps) {
 	const { t } = useTranslation();
 	return (
-		<Button variant="link" onClick={onClick} className="w-full cursor-pointer text-accent-foreground">
+		<Button type="button" variant="link" onClick={onClick} className="w-full cursor-pointer text-accent-foreground">
 			<Icon icon="solar:alt-arrow-left-linear" size={20} />
 			<span className="text-sm">{t("sys.login.backSignIn")}</span>
 		</Button>

@@ -16,11 +16,15 @@ interface SearchItem {
 	path: string;
 }
 
+// Escapa caracteres especiais de regex antes de montar o RegExp com o texto digitado
+// pelo usuário — sem isso, digitar "(" ou "*" lança SyntaxError e quebra a busca.
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // 高亮文本组件
 const HighlightText = ({ text, query }: { text: string; query: string }) => {
 	if (!query) return <>{text}</>;
 
-	const parts = text.split(new RegExp(`(${query})`, "gi"));
+	const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, "gi"));
 
 	return (
 		<>
@@ -40,7 +44,7 @@ const HighlightText = ({ text, query }: { text: string; query: string }) => {
 
 const SearchBar = () => {
 	const { t } = useLocale();
-	const { replace } = useRouter();
+	const { push } = useRouter();
 	const [open, setOpen] = useBoolean(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const navData = useFilteredNavData();
@@ -89,19 +93,27 @@ const SearchBar = () => {
 
 	const handleSelect = useCallback(
 		(path: string) => {
-			replace(path);
+			push(path); // push (não replace) — não pode apagar o histórico e quebrar o Voltar
 			setOpen(false);
 		},
-		[replace, setOpen],
+		[push, setOpen],
 	);
+
+	const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 	return (
 		<>
-			<Button variant="ghost" className="bg-action-selected px-2 rounded-lg" size="sm" onClick={() => setOpen(true)}>
+			<Button
+				variant="ghost"
+				className="bg-action-selected px-2 rounded-lg"
+				size="sm"
+				onClick={() => setOpen(true)}
+				aria-label={`Buscar (${isMac ? "Cmd" : "Ctrl"}+K)`}
+			>
 				<div className="flex items-center justify-center gap-4">
 					<Icon icon="local:ic-search" size="20" />
 					<kbd className="flex items-center justify-center rounded-md bg-primary/80 text-common-white px-1.5 py-0.5 text-sm font-semibold">
-						<Icon icon="qlementine-icons:key-cmd-16" />
+						{isMac ? <Icon icon="qlementine-icons:key-cmd-16" /> : <span>Ctrl</span>}
 						<span>K</span>
 					</kbd>
 				</div>

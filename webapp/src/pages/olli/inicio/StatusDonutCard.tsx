@@ -1,23 +1,31 @@
-import { AlertTriangle, PieChart } from "lucide-react";
-import { useMemo } from "react";
-import { Chart, useChart } from "@/components/chart";
+import { AlertTriangle, PieChart, RotateCw } from "lucide-react";
+import { lazy, Suspense, useMemo } from "react";
+import { useChart } from "@/components/chart/useChart";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { agruparPorStatus, formatInt, type OrcamentoRow } from "./helpers";
+
+// Import PREGUIÇOSO: react-apexcharts (~152KB gzip) só entra no bundle quando este
+// card realmente renderiza o gráfico — a rota padrão do painel (Início) não pode
+// esperar essa dependência inteira baixar por causa de UM donut. `useChart` (acima)
+// não puxa a lib de verdade — só o tipo `ApexOptions` (import type, apagado no build).
+const Chart = lazy(() => import("@/components/chart/chart").then((m) => ({ default: m.Chart })));
 
 interface Props {
 	rows: OrcamentoRow[] | undefined;
 	isLoading: boolean;
 	isError: boolean;
+	onRetry: () => void;
 }
 
 /**
  * Card grande com DONUT "Orçamentos por status" — dados REAIS agrupados pelo
- * campo `status`. Cores da marca (ver helpers). 3 estados: skeleton, erro ("—")
- * e vazio bonito. Legenda própria à direita (nº + %). Sem animação em loop:
- * o donut só anima 1x na montagem (perfil do projeto proíbe loop contínuo).
+ * campo `status`. Cores da marca (ver helpers). 3 estados: skeleton, erro (com
+ * "Tentar de novo") e vazio bonito. Legenda própria à direita (nº + %). Sem
+ * animação em loop: o donut só anima 1x na montagem (perfil do projeto proíbe
+ * loop contínuo).
  */
-export function StatusDonutCard({ rows, isLoading, isError }: Props) {
+export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
 	const grupos = useMemo(() => (rows ? agruparPorStatus(rows) : []), [rows]);
 	const total = useMemo(() => grupos.reduce((s, g) => s + g.total, 0), [grupos]);
 
@@ -78,10 +86,20 @@ export function StatusDonutCard({ rows, isLoading, isError }: Props) {
 						</div>
 					</div>
 				) : isError ? (
-					<div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+					<div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
 						<AlertTriangle className="size-7 text-warning" />
-						<p className="text-sm font-semibold text-text-primary">Não foi possível carregar</p>
-						<p className="text-xs text-text-secondary">Tente novamente em instantes.</p>
+						<div>
+							<p className="text-sm font-semibold text-text-primary">Não foi possível carregar</p>
+							<p className="text-xs text-text-secondary">Tente novamente em instantes.</p>
+						</div>
+						<button
+							type="button"
+							onClick={onRetry}
+							className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-text-primary transition hover:bg-bg-neutral/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+						>
+							<RotateCw className="size-3.5" />
+							Tentar de novo
+						</button>
 					</div>
 				) : total === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
@@ -96,7 +114,9 @@ export function StatusDonutCard({ rows, isLoading, isError }: Props) {
 				) : (
 					<div className="grid items-center gap-6 md:grid-cols-[minmax(0,210px)_1fr]">
 						<div className="mx-auto w-full max-w-[240px]">
-							<Chart type="donut" series={series} options={chartOptions} height={230} />
+							<Suspense fallback={<Skeleton className="mx-auto size-[200px] rounded-full" />}>
+								<Chart type="donut" series={series} options={chartOptions} height={230} />
+							</Suspense>
 						</div>
 						<ul className="grid gap-2.5">
 							{grupos.map((g) => {

@@ -10,16 +10,18 @@ import { GLOBAL_CONFIG } from "@/global-config";
 import { supabase } from "@/lib/supabase";
 import { useSignIn } from "@/store/userStore";
 import { Button } from "@/ui/button";
-import { Checkbox } from "@/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
 
+type OAuthProvider = "google" | "apple";
+const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", apple: "Apple" };
+
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"form">) {
 	const { t } = useTranslation();
 	const [loading, setLoading] = useState(false);
-	const [remember, setRemember] = useState(true);
+	const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 	const navigatge = useNavigate();
 
 	const { loginState, setLoginState } = useLoginStateContext();
@@ -38,15 +40,36 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 				: { username: "", password: "" },
 	});
 
-	const signInWithProvider = (provider: "google" | "apple") =>
-		supabase.auth.signInWithOAuth({
-			provider,
-			options: { redirectTo: window.location.origin },
-		});
+	// Antes o retorno { error } era descartado: se o provider falhasse (ou não
+	// estivesse configurado no Supabase), a tela simplesmente não fazia nada —
+	// parecia travada. Agora espera a resposta, mostra loading no botão certo
+	// e avisa em pt-BR quando dá errado.
+	const signInWithProvider = async (provider: OAuthProvider) => {
+		setOauthLoading(provider);
+		try {
+			const { error } = await supabase.auth.signInWithOAuth({
+				provider,
+				options: { redirectTo: window.location.origin },
+			});
+			if (error) {
+				toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {
+					position: "top-center",
+				});
+			}
+			// Sucesso navega o navegador inteiro pro provider — não há mais nada a fazer aqui.
+		} catch {
+			toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {
+				position: "top-center",
+			});
+		} finally {
+			setOauthLoading(null);
+		}
+	};
 
 	if (loginState !== LoginStateEnum.LOGIN) return null;
 
 	const handleFinish = async (values: SignInReq) => {
+		if (loading) return; // trava clique duplo: um segundo submit no meio do primeiro logaria duas vezes
 		setLoading(true);
 		try {
 			await signIn(values);
@@ -104,28 +127,15 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 						)}
 					/>
 
-					{/* 记住我/忘记密码 */}
-					<div className="flex flex-row justify-between">
-						<div className="flex items-center space-x-2">
-							<Checkbox
-								id="remember"
-								checked={remember}
-								onCheckedChange={(checked) => setRemember(checked === "indeterminate" ? false : checked)}
-							/>
-							<label
-								htmlFor="remember"
-								className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-							>
-								{t("sys.login.rememberMe")}
-							</label>
-						</div>
-						<Button variant="link" onClick={() => setLoginState(LoginStateEnum.RESET_PASSWORD)} size="sm">
+					{/* Esqueceu a senha */}
+					<div className="flex flex-row justify-end">
+						<Button type="button" variant="link" onClick={() => setLoginState(LoginStateEnum.RESET_PASSWORD)} size="sm">
 							{t("sys.login.forgetPassword")}
 						</Button>
 					</div>
 
 					{/* 登录按钮 */}
-					<Button type="submit" className="w-full">
+					<Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
 						{loading && <Loader2 className="animate-spin mr-2" />}
 						{t("sys.login.loginButton")}
 					</Button>
@@ -137,12 +147,34 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 						<span className="relative z-10 bg-background px-2 text-muted-foreground">{t("sys.login.otherSignIn")}</span>
 					</div>
 					<div className="flex justify-center gap-3">
-						<Button type="button" variant="outline" className="flex-1" onClick={() => signInWithProvider("google")}>
-							<Icon icon="logos:google-icon" size={18} />
+						<Button
+							type="button"
+							variant="outline"
+							className="flex-1"
+							onClick={() => signInWithProvider("google")}
+							disabled={oauthLoading !== null}
+							aria-busy={oauthLoading === "google"}
+						>
+							{oauthLoading === "google" ? (
+								<Loader2 className="animate-spin" size={18} />
+							) : (
+								<Icon icon="logos:google-icon" size={18} />
+							)}
 							<span className="ml-2">Google</span>
 						</Button>
-						<Button type="button" variant="outline" className="flex-1" onClick={() => signInWithProvider("apple")}>
-							<Icon icon="mdi:apple" size={20} />
+						<Button
+							type="button"
+							variant="outline"
+							className="flex-1"
+							onClick={() => signInWithProvider("apple")}
+							disabled={oauthLoading !== null}
+							aria-busy={oauthLoading === "apple"}
+						>
+							{oauthLoading === "apple" ? (
+								<Loader2 className="animate-spin" size={20} />
+							) : (
+								<Icon icon="mdi:apple" size={20} />
+							)}
 							<span className="ml-2">Apple</span>
 						</Button>
 					</div>
@@ -150,7 +182,12 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 					{/* 注册 */}
 					<div className="text-center text-sm">
 						{t("sys.login.noAccount")}
-						<Button variant="link" className="px-1" onClick={() => setLoginState(LoginStateEnum.REGISTER)}>
+						<Button
+							type="button"
+							variant="link"
+							className="px-1"
+							onClick={() => setLoginState(LoginStateEnum.REGISTER)}
+						>
 							{t("sys.login.signUpFormTitle")}
 						</Button>
 					</div>

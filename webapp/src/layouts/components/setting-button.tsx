@@ -1,4 +1,12 @@
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import {
+	type CSSProperties,
+	type KeyboardEvent as ReactKeyboardEvent,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import screenfull from "screenfull";
 import { ThemeLayout, ThemeMode } from "#/enum";
@@ -9,7 +17,6 @@ import { type SettingsType, useSettingActions, useSettings } from "@/store/setti
 import { themeVars } from "@/theme/theme.css";
 import { FontFamilyPreset } from "@/theme/tokens/typography";
 import { Button } from "@/ui/button";
-import { Card } from "@/ui/card";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/ui/sheet";
 import { Slider } from "@/ui/slider";
@@ -17,6 +24,100 @@ import { Switch } from "@/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { Text } from "@/ui/typography";
 import { cn } from "@/utils";
+
+type RadioOption<T extends string> = {
+	value: T;
+	label: string;
+	content: ReactNode;
+	className?: string;
+};
+
+/**
+ * Grupo de opções acessível (tema/layout/fonte do painel de Configurações).
+ * Antes eram <Card onClick> — só funcionavam com mouse. Agora é um role="radiogroup"
+ * real: setas movem e selecionam, Tab entra só uma vez (roving tabindex), e a seleção
+ * é indicada por borda + selo de check (não só cor) para não depender de percepção de cor.
+ */
+function SettingRadioGroup<T extends string>({
+	ariaLabel,
+	value,
+	options,
+	onChange,
+	containerClassName,
+	itemClassName,
+}: {
+	ariaLabel: string;
+	value: T;
+	options: RadioOption<T>[];
+	onChange: (value: T) => void;
+	containerClassName?: string;
+	itemClassName?: string;
+}) {
+	const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+	const focusAt = (index: number) => {
+		const len = options.length;
+		itemRefs.current[((index % len) + len) % len]?.focus();
+	};
+
+	const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+		if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+			event.preventDefault();
+			const next = index + 1 >= options.length ? 0 : index + 1;
+			onChange(options[next].value);
+			focusAt(next);
+		} else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+			event.preventDefault();
+			const prev = index - 1 < 0 ? options.length - 1 : index - 1;
+			onChange(options[prev].value);
+			focusAt(prev);
+		} else if (event.key === "Home") {
+			event.preventDefault();
+			onChange(options[0].value);
+			focusAt(0);
+		} else if (event.key === "End") {
+			event.preventDefault();
+			onChange(options[options.length - 1].value);
+			focusAt(options.length - 1);
+		}
+	};
+
+	return (
+		<div role="radiogroup" aria-label={ariaLabel} className={containerClassName}>
+			{options.map((option, index) => {
+				const checked = option.value === value;
+				return (
+					// biome-ignore lint/a11y/useSemanticElements: <input type="radio"> nativo não comporta o conteúdo visual rico do cartão (ícone/miniatura + texto); button+role="radio" é o padrão ARIA APG (Radio Group).
+					<button
+						key={option.value}
+						ref={(el) => {
+							itemRefs.current[index] = el;
+						}}
+						type="button"
+						role="radio"
+						aria-checked={checked}
+						aria-label={option.label}
+						tabIndex={checked ? 0 : -1}
+						onClick={() => onChange(option.value)}
+						onKeyDown={(event) => handleKeyDown(event, index)}
+						className={cn(
+							"relative rounded-xl border bg-card text-card-foreground shadow-sm cursor-pointer transition-colors",
+							"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+							checked ? "border-primary" : "border-border",
+							itemClassName,
+							option.className,
+						)}
+					>
+						{option.content}
+						{checked && (
+							<Icon icon="carbon:checkmark-filled" size={14} className="absolute top-1 right-1 text-primary" />
+						)}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
 
 export default function SettingButton() {
 	const { t } = useTranslation();
@@ -77,7 +178,15 @@ export default function SettingButton() {
 	return (
 		<Sheet modal={false}>
 			<SheetTrigger asChild>
-				<Button variant="ghost" size="icon" className="rounded-full animate-slow-spin">
+				{/* Girava infinito antes (animate-slow-spin sempre ligado) — motion decorativo
+				    sem respeitar prefers-reduced-motion. Agora só gira no hover/foco, e só
+				    quando o SO não pediu movimento reduzido (variant motion-safe). */}
+				<Button
+					variant="ghost"
+					size="icon"
+					className="rounded-full motion-safe:hover:animate-slow-spin motion-safe:focus-visible:animate-slow-spin"
+					aria-label="Configurações de aparência"
+				>
 					<Icon icon="local:ic-setting" size={24} />
 				</Button>
 			</SheetTrigger>
@@ -91,155 +200,178 @@ export default function SettingButton() {
 						{/* theme mode */}
 						<div className="flex flex-col gap-2">
 							<Text variant="subTitle1">{t("sys.settings.mode")}</Text>
-							<div className="flex flex-row gap-4">
-								<Card
-									onClick={() => updateSettings({ themeMode: ThemeMode.Light })}
-									className="flex flex-1 h-20 cursor-pointer items-center justify-center"
-								>
-									<Icon
-										icon="local:ic-settings-mode-sun"
-										size="24"
-										color={themeMode === ThemeMode.Light ? themeVars.colors.palette.primary.default : ""}
-									/>
-								</Card>
-								<Card
-									onClick={() => updateSettings({ themeMode: ThemeMode.Dark })}
-									className="flex flex-1 h-20 cursor-pointer items-center justify-center"
-								>
-									<Icon
-										icon="local:ic-settings-mode-moon"
-										size="24"
-										color={themeMode === ThemeMode.Dark ? themeVars.colors.palette.primary.default : ""}
-									/>
-								</Card>
-							</div>
+							<SettingRadioGroup
+								ariaLabel={t("sys.settings.mode")}
+								value={themeMode}
+								onChange={(next) => updateSettings({ themeMode: next })}
+								containerClassName="flex flex-row gap-4"
+								itemClassName="flex flex-1 h-20 items-center justify-center"
+								options={[
+									{
+										value: ThemeMode.Light,
+										label: "Tema claro",
+										content: (
+											<Icon
+												icon="local:ic-settings-mode-sun"
+												size="24"
+												color={themeMode === ThemeMode.Light ? themeVars.colors.palette.primary.default : ""}
+											/>
+										),
+									},
+									{
+										value: ThemeMode.Dark,
+										label: "Tema escuro",
+										content: (
+											<Icon
+												icon="local:ic-settings-mode-moon"
+												size="24"
+												color={themeMode === ThemeMode.Dark ? themeVars.colors.palette.primary.default : ""}
+											/>
+										),
+									},
+								]}
+							/>
 						</div>
 
 						{/* theme layout */}
 						<div className="flex flex-col gap-2">
 							<Text variant="subTitle1">{t("sys.settings.layout")}</Text>
 
-							<div className="grid grid-cols-3 gap-4">
-								{/* vertical */}
-								<Card
-									onClick={() => updateSettings({ themeLayout: ThemeLayout.Vertical })}
-									className="flex h-16 cursor-pointer flex-1 flex-row p-0 gap-1"
-								>
-									<div className="flex h-full w-5 flex-col gap-1 p-1">
-										<div
-											className="h-2 w-2 shrink-0 rounded"
-											style={{
-												background: layoutBackground(ThemeLayout.Vertical),
-											}}
-										/>
-										<div
-											className="h-1 w-full shrink-0 rounded opacity-50"
-											style={{
-												background: layoutBackground(ThemeLayout.Vertical),
-											}}
-										/>
-										<div
-											className="h-1 max-w-[12px] shrink-0 rounded opacity-20"
-											style={{
-												background: layoutBackground(ThemeLayout.Vertical),
-											}}
-										/>
-									</div>
-									<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
-										<div
-											className="w-full h-1.5 rounded opacity-20"
-											style={{ background: layoutBackground(ThemeLayout.Vertical) }}
-										/>
-										<div
-											className={cn(
-												"flex-1 w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
-												!themeStretch && "w-10",
-											)}
-											style={{
-												background: layoutBackground(ThemeLayout.Vertical),
-											}}
-										/>
-									</div>
-								</Card>
-
-								{/* mini */}
-								<Card
-									onClick={() => updateSettings({ themeLayout: ThemeLayout.Mini })}
-									className="h-16 cursor-pointer flex-1 p-0 gap-0 flex-row"
-								>
-									<div className="flex h-full w-3 gap-1 p-1 items-center flex-0 flex-col">
-										<div
-											className="h-2 w-2 shrink-0 rounded"
-											style={{ background: layoutBackground(ThemeLayout.Mini) }}
-										/>
-										<div
-											className="h-1 w-full shrink-0 rounded opacity-50"
-											style={{ background: layoutBackground(ThemeLayout.Mini) }}
-										/>
-										<div
-											className="h-1 w-full shrink-0 rounde opacity-20"
-											style={{ background: layoutBackground(ThemeLayout.Mini) }}
-										/>
-									</div>
-									<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
-										<div
-											className="w-full h-1.5 rounded opacity-20"
-											style={{ background: layoutBackground(ThemeLayout.Mini) }}
-										/>
-										<div
-											className={cn(
-												"flex-1 w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
-												!themeStretch && "w-10",
-											)}
-											style={{
-												background: layoutBackground(ThemeLayout.Mini),
-											}}
-										/>
-									</div>
-								</Card>
-
-								{/* horizontal */}
-								<Card
-									onClick={() => updateSettings({ themeLayout: ThemeLayout.Horizontal })}
-									className="flex h-16 cursor-pointer flex-1 p-0 gap-0"
-								>
-									<div className="flex h-full w-full gap-1 p-1 items-center flex-0">
-										<div
-											className="h-2 w-2 shrink-0 rounded"
-											style={{
-												background: layoutBackground(ThemeLayout.Horizontal),
-											}}
-										/>
-										<div
-											className="h-1 w-4 shrink-0 rounded opacity-50"
-											style={{
-												background: layoutBackground(ThemeLayout.Horizontal),
-											}}
-										/>
-										<div
-											className="h-1 w-3 shrink-0 rounded opacity-20"
-											style={{
-												background: layoutBackground(ThemeLayout.Horizontal),
-											}}
-										/>
-									</div>
-									<div
-										className="h-1.5 rounded opacity-20 mx-1"
-										style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
-									/>
-									<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
-										<div
-											className={cn(
-												"h-full w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
-												!themeStretch && "w-10",
-											)}
-											style={{
-												background: layoutBackground(ThemeLayout.Horizontal),
-											}}
-										/>
-									</div>
-								</Card>
-							</div>
+							<SettingRadioGroup
+								ariaLabel={t("sys.settings.layout")}
+								value={themeLayout}
+								onChange={(next) => updateSettings({ themeLayout: next })}
+								containerClassName="grid grid-cols-3 gap-4"
+								itemClassName="h-16 p-0"
+								options={[
+									{
+										value: ThemeLayout.Vertical,
+										label: "Layout vertical",
+										className: "flex flex-row gap-1",
+										content: (
+											<>
+												<div className="flex h-full w-5 flex-col gap-1 p-1">
+													<div
+														className="h-2 w-2 shrink-0 rounded"
+														style={{
+															background: layoutBackground(ThemeLayout.Vertical),
+														}}
+													/>
+													<div
+														className="h-1 w-full shrink-0 rounded opacity-50"
+														style={{
+															background: layoutBackground(ThemeLayout.Vertical),
+														}}
+													/>
+													<div
+														className="h-1 max-w-[12px] shrink-0 rounded opacity-20"
+														style={{
+															background: layoutBackground(ThemeLayout.Vertical),
+														}}
+													/>
+												</div>
+												<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
+													<div
+														className="w-full h-1.5 rounded opacity-20"
+														style={{ background: layoutBackground(ThemeLayout.Vertical) }}
+													/>
+													<div
+														className={cn(
+															"flex-1 w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
+															!themeStretch && "w-10",
+														)}
+														style={{
+															background: layoutBackground(ThemeLayout.Vertical),
+														}}
+													/>
+												</div>
+											</>
+										),
+									},
+									{
+										value: ThemeLayout.Mini,
+										label: "Layout mini",
+										className: "flex flex-row gap-0",
+										content: (
+											<>
+												<div className="flex h-full w-3 gap-1 p-1 items-center flex-0 flex-col">
+													<div
+														className="h-2 w-2 shrink-0 rounded"
+														style={{ background: layoutBackground(ThemeLayout.Mini) }}
+													/>
+													<div
+														className="h-1 w-full shrink-0 rounded opacity-50"
+														style={{ background: layoutBackground(ThemeLayout.Mini) }}
+													/>
+													<div
+														className="h-1 w-full shrink-0 rounde opacity-20"
+														style={{ background: layoutBackground(ThemeLayout.Mini) }}
+													/>
+												</div>
+												<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
+													<div
+														className="w-full h-1.5 rounded opacity-20"
+														style={{ background: layoutBackground(ThemeLayout.Mini) }}
+													/>
+													<div
+														className={cn(
+															"flex-1 w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
+															!themeStretch && "w-10",
+														)}
+														style={{
+															background: layoutBackground(ThemeLayout.Mini),
+														}}
+													/>
+												</div>
+											</>
+										),
+									},
+									{
+										value: ThemeLayout.Horizontal,
+										label: "Layout horizontal",
+										className: "flex flex-row gap-0",
+										content: (
+											<>
+												<div className="flex h-full w-full gap-1 p-1 items-center flex-0">
+													<div
+														className="h-2 w-2 shrink-0 rounded"
+														style={{
+															background: layoutBackground(ThemeLayout.Horizontal),
+														}}
+													/>
+													<div
+														className="h-1 w-4 shrink-0 rounded opacity-50"
+														style={{
+															background: layoutBackground(ThemeLayout.Horizontal),
+														}}
+													/>
+													<div
+														className="h-1 w-3 shrink-0 rounded opacity-20"
+														style={{
+															background: layoutBackground(ThemeLayout.Horizontal),
+														}}
+													/>
+												</div>
+												<div
+													className="h-1.5 rounded opacity-20 mx-1"
+													style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
+												/>
+												<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
+													<div
+														className={cn(
+															"h-full w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
+															!themeStretch && "w-10",
+														)}
+														style={{
+															background: layoutBackground(ThemeLayout.Horizontal),
+														}}
+													/>
+												</div>
+											</>
+										),
+									},
+								]}
+							/>
 							<div className="flex flex-row items-center justify-between">
 								<Tooltip delayDuration={700} defaultOpen={false} disableHoverableContent>
 									<TooltipTrigger>
@@ -263,26 +395,31 @@ export default function SettingButton() {
 							<Text variant="subTitle1">{t("sys.settings.font")}</Text>
 
 							<Text variant="subTitle2">{t("sys.settings.family")}</Text>
-							<div className="flex flex-row gap-3">
-								{Object.entries(FontFamilyPreset).map(([font, family]) => (
-									<Card
-										key={font}
-										className={cn(
-											"flex h-20 w-full cursor-pointer items-center justify-center text-text-disabled",
-											fontFamily === family && "text-primary font-medium",
-											family === FontFamilyPreset.inter && "font-inter",
-											family === FontFamilyPreset.openSans && "font-openSans",
-										)}
-										onClick={() => updateSettings({ fontFamily: family })}
-									>
-										<div className="text-center text-lg">
-											<span>A</span>
-											<span className="opacity-50 ml-0.5">a</span>
-										</div>
-										<span className="text-sm text-text-primary">{family.replace("Variable", "")}</span>
-									</Card>
-								))}
-							</div>
+							<SettingRadioGroup
+								ariaLabel={t("sys.settings.family")}
+								value={fontFamily}
+								onChange={(next) => updateSettings({ fontFamily: next })}
+								containerClassName="flex flex-row gap-3"
+								itemClassName="flex h-20 w-full items-center justify-center text-text-disabled"
+								options={Object.entries(FontFamilyPreset).map(([, family]) => ({
+									value: family,
+									label: `Fonte ${family.replace("Variable", "")}`,
+									className: cn(
+										fontFamily === family && "text-primary font-medium",
+										family === FontFamilyPreset.inter && "font-inter",
+										family === FontFamilyPreset.openSans && "font-openSans",
+									),
+									content: (
+										<>
+											<div className="text-center text-lg">
+												<span>A</span>
+												<span className="opacity-50 ml-0.5">a</span>
+											</div>
+											<span className="text-sm text-text-primary">{family.replace("Variable", "")}</span>
+										</>
+									),
+								}))}
+							/>
 
 							<Text variant="subTitle2">{t("sys.settings.size")}</Text>
 							<Slider

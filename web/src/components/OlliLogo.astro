@@ -1,11 +1,16 @@
 ---
 interface Props {
-  size?: number;
-  withText?: boolean;
-  textClass?: string;
-  class?: string;
+	size?: number;
+	withText?: boolean;
+	textClass?: string;
+	class?: string;
 }
-const { size = 38, withText = true, textClass = "text-ink", class: className = "" } = Astro.props;
+const {
+	size = 38,
+	withText = true,
+	textClass = "text-ink",
+	class: className = "",
+} = Astro.props;
 ---
 <span class={`inline-flex items-center gap-2.5 ${className}`}>
   <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

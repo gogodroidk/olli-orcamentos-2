@@ -286,10 +286,15 @@ export default function FormAgendamento({ aberto, aoFechar, agendamento, inicioS
 				</Campo>
 
 				{/* ─── Início / fim ─── */}
+				{/* Dois `datetime-local` lado a lado, sem `htmlFor` do `Campo` (o rótulo
+				    visível não está associado ao input — ver pendência de campos.tsx):
+				    sem `aria-label`, um leitor de tela anuncia os dois como "editar data"
+				    idênticos, sem dizer qual é início e qual é término. */}
 				<div className="grid gap-4 sm:grid-cols-2">
 					<Campo rotulo="Início" obrigatorio erro={erros.inicio}>
 						<Input
 							type="datetime-local"
+							aria-label="Início"
 							value={r.inicio}
 							onChange={(e) => set({ inicio: e.target.value })}
 							aria-invalid={!!erros.inicio}
@@ -303,6 +308,7 @@ export default function FormAgendamento({ aberto, aoFechar, agendamento, inicioS
 					>
 						<Input
 							type="datetime-local"
+							aria-label="Término"
 							value={r.fim}
 							min={r.inicio || undefined}
 							onChange={(e) => set({ fim: e.target.value })}

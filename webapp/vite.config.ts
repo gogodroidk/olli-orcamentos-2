@@ -51,18 +51,30 @@ export default defineConfig(({ mode }) => {
 			chunkSizeWarningLimit: 1500,
 			rollupOptions: {
 				output: {
-					manualChunks: {
-						"vendor-core": ["react", "react-dom", "react-router"],
-						"vendor-ui": ["antd", "@ant-design/cssinjs", "styled-components"],
-						"vendor-utils": ["axios", "dayjs", "i18next", "zustand", "@iconify/react"],
-						"vendor-charts": ["apexcharts", "react-apexcharts"],
+					// Forma-função: casa qualquer módulo dentro da pasta do pacote em
+					// node_modules, não só o entrypoint. Antes react-dom (o maior módulo)
+					// escapava do vendor-core porque o array só pegava match exato de
+					// especificador, e caía sozinho num chunk que muda a cada deploy.
+					manualChunks(id) {
+						if (/node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/.test(id)) {
+							return "vendor-core";
+						}
+						if (/node_modules[\\/](styled-components|antd|@ant-design[\\/]cssinjs)[\\/]/.test(id)) {
+							return "vendor-ui";
+						}
+						if (/node_modules[\\/](axios|dayjs|i18next|zustand|@iconify[\\/]react)[\\/]/.test(id)) {
+							return "vendor-utils";
+						}
+						if (/node_modules[\\/](apexcharts|react-apexcharts)[\\/]/.test(id)) {
+							return "vendor-charts";
+						}
 					},
 				},
 			},
 		},
 
 		optimizeDeps: {
-			include: ["react", "react-dom", "react-router", "antd", "axios", "dayjs"],
+			include: ["react", "react-dom", "react-router", "axios", "dayjs"],
 			exclude: ["@iconify/react"],
 		},
 

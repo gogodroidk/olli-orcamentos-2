@@ -1,58 +1,159 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import OlliLogo from '../components/OlliLogo.astro';
-import HeroDevices from '../components/HeroDevices.tsx';
+import HeroDevices from "../components/HeroDevices.tsx";
+import OlliLogo from "../components/OlliLogo.astro";
+import Layout from "../layouts/Layout.astro";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
-const APP_URL = 'https://app.olliorcamentos.online';
+const APP_URL = "https://app.olliorcamentos.online";
+// WhatsApp oficial de vendas/suporte (mesmo número usado no app, ver src/config.ts).
+const WHATSAPP_URL = "https://wa.me/5511941727487";
 
 const recursos = [
-  { icon: '🧾', titulo: 'Orçamento em minutos', texto: 'Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.' },
-  { icon: '🛠️', titulo: 'Ordem de serviço', texto: 'Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.' },
-  { icon: '🧠', titulo: 'IA que entende o defeito', texto: 'Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.' },
-  { icon: '❄️', titulo: 'PMOC (Lei 13.589)', texto: 'Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.' },
-  { icon: '📇', titulo: 'Clientes e cobrança', texto: 'Cadastro, histórico e radar de quem sumiu ou está para cobrar.' },
-  { icon: '🧮', titulo: 'Calculadoras de ofício', texto: 'BTU, carga de gás, caixa d\'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.' },
-  { icon: '📅', titulo: 'Agenda e equipe', texto: 'Agendamentos, técnicos com papéis e permissões, e a equipe no mapa.' },
-  { icon: '📄', titulo: 'Recibo e PDF bonito', texto: 'Recibo e documentos com a sua marca — do orçamento ao comprovante, sem planilha.' },
+	{
+		icon: "🧾",
+		titulo: "Orçamento em minutos",
+		texto:
+			"Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.",
+	},
+	{
+		icon: "🛠️",
+		titulo: "Ordem de serviço",
+		texto:
+			"Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.",
+	},
+	{
+		icon: "🧠",
+		titulo: "IA que entende o defeito",
+		texto:
+			"Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.",
+	},
+	{
+		icon: "❄️",
+		titulo: "PMOC (Lei 13.589)",
+		texto:
+			"Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.",
+	},
+	{
+		icon: "📇",
+		titulo: "Clientes e cobrança",
+		texto: "Cadastro, histórico e radar de quem sumiu ou está para cobrar.",
+	},
+	{
+		icon: "🧮",
+		titulo: "Calculadoras de ofício",
+		texto:
+			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.",
+	},
+	{
+		icon: "📅",
+		titulo: "Agenda e equipe",
+		texto:
+			"Agendamentos, técnicos com papéis e permissões, e a equipe no mapa.",
+	},
+	{
+		icon: "📄",
+		titulo: "Recibo e PDF bonito",
+		texto:
+			"Recibo e documentos com a sua marca — do orçamento ao comprovante, sem planilha.",
+	},
 ];
 
 const passos = [
-  { n: '01', titulo: 'Chega a conversa', texto: 'O cliente manda o áudio no WhatsApp: "meu ar tá pingando e não gela".' },
-  { n: '02', titulo: 'A OLLI organiza', texto: 'Vira orçamento com itens e a IA aponta o provável defeito e a peça.' },
-  { n: '03', titulo: 'Fecha o negócio', texto: 'Cliente aprova pelo link, você emite a OS e o recibo. Tudo guardado.' },
+	{
+		n: "01",
+		titulo: "Chega a conversa",
+		texto:
+			'O cliente manda o áudio no WhatsApp: "meu ar tá pingando e não gela".',
+	},
+	{
+		n: "02",
+		titulo: "A OLLI organiza",
+		texto:
+			"Vira orçamento com itens e a IA aponta o provável defeito e a peça.",
+	},
+	{
+		n: "03",
+		titulo: "Fecha o negócio",
+		texto:
+			"Cliente aprova pelo link, você emite a OS e o recibo. Tudo guardado.",
+	},
 ];
 
 const planos = [
-  {
-    nome: 'Grátis', preco: 'R$ 0', periodo: '/mês', destaque: false,
-    desc: 'Pra sair do caderno e do grupo de WhatsApp.',
-    itens: ['Orçamentos, recibos, clientes e agenda ilimitados', 'Diagnóstico HVAC por código de erro', 'Link do orçamento pro cliente aprovar', 'IA de diagnóstico: 3 usos/mês'],
-    cta: 'Começar grátis', primary: true,
-  },
-  {
-    nome: 'Pro', preco: 'R$ 39', periodo: '/mês', destaque: true,
-    desc: 'Pra quem vive de campo e já não cabe no grátis.',
-    itens: ['Tudo do Grátis', 'IA sem limite de uso', 'Tira a marca OLLI do PDF', 'Relatórios, metas e radar de clientes', 'Todos os modelos de documento'],
-    cta: 'Assinar o Pro', primary: true,
-  },
-  {
-    nome: 'Empresa', preco: 'R$ 99', periodo: '/mês', destaque: false,
-    desc: 'Pra equipe que atende em campo todo dia.',
-    itens: ['Tudo do Pro', 'Equipe com papéis e permissões', 'Equipe ao vivo no mapa', 'Painel de gestão da empresa'],
-    cta: 'Falar com a gente', primary: false,
-  },
+	{
+		nome: "Grátis",
+		preco: "R$ 0",
+		periodo: "/mês",
+		destaque: false,
+		desc: "Pra sair do caderno e do grupo de WhatsApp.",
+		itens: [
+			"Orçamentos, recibos, clientes e agenda ilimitados",
+			"Diagnóstico HVAC por código de erro",
+			"Link do orçamento pro cliente aprovar",
+			"IA de diagnóstico: 3 usos/mês",
+		],
+		cta: "Começar grátis",
+		primary: true,
+		href: APP_URL,
+	},
+	{
+		nome: "Pro",
+		preco: "R$ 39",
+		periodo: "/mês",
+		destaque: true,
+		desc: "Pra quem vive de campo e já não cabe no grátis.",
+		itens: [
+			"Tudo do Grátis",
+			"IA sem limite de uso",
+			"Tira a marca OLLI do PDF",
+			"Relatórios, metas e radar de clientes",
+			"Todos os modelos de documento",
+		],
+		cta: "Assinar o Pro",
+		primary: true,
+		href: APP_URL,
+	},
+	{
+		nome: "Empresa",
+		preco: "R$ 99",
+		periodo: "/mês",
+		destaque: false,
+		desc: "Pra equipe que atende em campo todo dia.",
+		itens: [
+			"Tudo do Pro",
+			"Equipe com papéis e permissões (em breve)",
+			"Equipe ao vivo no mapa (em breve)",
+			"Painel de gestão da empresa (em breve)",
+		],
+		cta: "Falar com a gente",
+		primary: false,
+		href: WHATSAPP_URL,
+	},
 ];
 
 const faq = [
-  { q: 'Preciso pagar para testar?', a: 'Não. O plano Grátis é de verdade: orçamento, recibo, cliente e agenda sem limite. Sem cartão, sem fidelidade.' },
-  { q: 'Funciona no celular e no computador?', a: 'Sim. É o mesmo sistema no app do celular e no navegador do computador — você escolhe onde trabalhar.' },
-  { q: 'Serve pro meu ofício?', a: 'Climatização, elétrica, hidráulica, pintura, dedetização, jardinagem e mais. Você escolhe o ofício e a OLLI mostra só as ferramentas que fazem sentido pra você.' },
-  { q: 'Meus dados ficam seguros?', a: 'Sim. Seus dados são seus, guardados na nuvem com isolamento por conta. Você pode exportar e excluir quando quiser.' },
+	{
+		q: "Preciso pagar para testar?",
+		a: "Não. O plano Grátis é de verdade: orçamento, recibo, cliente e agenda sem limite. Sem cartão, sem fidelidade.",
+	},
+	{
+		q: "Funciona no celular e no computador?",
+		a: "Sim. É o mesmo sistema no app do celular e no navegador do computador — você escolhe onde trabalhar.",
+	},
+	{
+		q: "Serve pro meu ofício?",
+		a: "Climatização, elétrica, hidráulica, pintura, dedetização, jardinagem e mais. Você escolhe o ofício e a OLLI mostra só as ferramentas que fazem sentido pra você.",
+	},
+	{
+		q: "Meus dados ficam seguros?",
+		a: "Sim. Seus dados são seus, guardados na nuvem com isolamento por conta. Você pode exportar e excluir quando quiser.",
+	},
 ];
 ---
 
 <Layout>
+  <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
+
   <!-- ══════════ NAV ══════════ -->
   <header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
     <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
@@ -63,12 +164,13 @@ const faq = [
         <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
       </div>
       <div class="flex items-center gap-2">
-        <a href={APP_URL} class="hidden rounded-lg px-4 py-2 text-sm font-semibold text-slate transition hover:text-ink sm:block">Entrar</a>
+        <a href={APP_URL} class="rounded-lg px-4 py-2 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
         <a href={APP_URL} class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
       </div>
     </nav>
   </header>
 
+  <main id="conteudo">
   <!-- ══════════ HERO ══════════ -->
   <section class="relative overflow-hidden">
     <div class="pointer-events-none absolute inset-0 -z-10">
@@ -195,7 +297,7 @@ const faq = [
       <div class="mx-auto max-w-2xl text-center">
         <span class="eyebrow">Planos</span>
         <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Comece de graça. Pague quando crescer.</h2>
-        <p class="mt-4 text-slate">O grátis é sério e sem prazo. Planos pagos também no anual (−20%) ou em até 12×.</p>
+        <p class="mt-4 text-slate">O grátis é sério e sem prazo. O Pro ainda sai em até 12×.</p>
       </div>
       <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
         {planos.map((p) => (
@@ -212,7 +314,12 @@ const faq = [
                 <li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-mint">✓</span><span>{i}</span></li>
               ))}
             </ul>
-            <a href={APP_URL} class={`mt-7 block rounded-xl px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}>{p.cta}</a>
+            <a
+              href={p.href}
+              target={p.href === WHATSAPP_URL ? '_blank' : undefined}
+              rel={p.href === WHATSAPP_URL ? 'noopener' : undefined}
+              class={`mt-7 block rounded-xl px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}
+            >{p.cta}</a>
           </div>
         ))}
       </div>
@@ -228,12 +335,12 @@ const faq = [
     </div>
     <div class="mt-12 divide-y divide-line rounded-2xl border border-line bg-white">
       {faq.map((f) => (
-        <details class="group px-6 py-5">
-          <summary class="flex cursor-pointer list-none items-center justify-between text-base font-semibold text-ink">
+        <details class="group">
+          <summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
             {f.q}
             <span class="text-brand transition group-open:rotate-45" aria-hidden="true">＋</span>
           </summary>
-          <p class="mt-3 text-slate">{f.a}</p>
+          <p class="px-6 pb-5 text-slate">{f.a}</p>
         </details>
       ))}
     </div>
@@ -247,6 +354,7 @@ const faq = [
       <a href={APP_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
     </div>
   </section>
+  </main>
 
   <!-- ══════════ RODAPÉ ══════════ -->
   <footer class="border-t border-line bg-paper">

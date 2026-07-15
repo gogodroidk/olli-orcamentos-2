@@ -14,6 +14,7 @@
  */
 import type { CategoriaHvac, CriticidadeEquipamento, Equipamento, SituacaoEquipamento } from "@dominio";
 import { CATEGORIAS_HVAC } from "@dominio";
+import type { BadgeVariant } from "@/olli/components/record-list-helpers";
 
 /** A linha da tabela `assets` como o Supabase a devolve (snake_case). */
 export interface LinhaAsset {
@@ -111,6 +112,29 @@ export function nomeEquipamento(e: Equipamento): string {
 export function subEquipamento(e: Equipamento): string {
 	return [rotuloCategoria(e.categoria), formatarBtu(e.capacidadeBtu)].filter(Boolean).join(" · ");
 }
+
+/**
+ * Cor do badge de situação — espelho de `STATUS_EQUIP_CORES` do app (types/index.ts),
+ * mapeado para as variantes do design system (o Badge não tem "roxo"/"pedra": os
+ * estados finais do ciclo de vida caem em `secondary`, igual ao cinza do app).
+ *
+ * Existe porque `getStatusVariant` (record-list-helpers.tsx) é um regex genérico por
+ * PALAVRA-CHAVE pensado para status de documento (orçamento/OS/recibo) — ele casa
+ * "ativ[oa]" e pega "desativado" por engano (contém "ativa"), e não sabe nada sobre
+ * "interditado". Aqui a situação é um ENUM FECHADO e conhecido: mapa explícito,
+ * sem chance de o regex errar por causa de uma substring.
+ */
+export const STATUS_EQUIP_VARIANT: Record<SituacaoEquipamento, BadgeVariant> = {
+	ativo: "success",
+	reserva: "info",
+	parado: "secondary",
+	em_manutencao: "warning",
+	interditado: "error",
+	desativado: "secondary",
+	retirado: "secondary",
+	substituido: "secondary",
+	descartado: "secondary",
+};
 
 /** Criticidade — mesmos rótulos de `criarCriticidades` (EquipamentosDesktopScreen.tsx:62). */
 export const CRITICIDADES: { id: CriticidadeEquipamento; label: string }[] = [

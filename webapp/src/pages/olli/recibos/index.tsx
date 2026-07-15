@@ -16,6 +16,7 @@ import {
 	AlertTriangle,
 	FileWarning,
 	Inbox,
+	Lock,
 	MoreHorizontal,
 	Pencil,
 	Plus,
@@ -26,7 +27,7 @@ import {
 import { useMemo, useState } from "react";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { NameCell } from "@/olli/components/record-list-helpers";
-import { useExcluir } from "@/olli/mutacoes";
+import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -39,6 +40,15 @@ import FormRecibo from "./FormRecibo";
 
 const ESQUELETOS = ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6"];
 
+/**
+ * Valor de UMA linha (não a soma do rodapé). `reais(null)` formata como "R$ 0,00" —
+ * bug crônico da casa: "não sei" viraria "recebeu zero" e o dono acharia que aquele
+ * pagamento nunca entrou. Aqui, sem valor conhecido, a célula mostra "—" mesmo.
+ */
+function valorExibivel(v: number | null | undefined): string {
+	return v == null ? "—" : reais(v);
+}
+
 /** Linha da tela: o domínio (do blob) + a linha crua, para o caso degradado. */
 interface ItemLista {
 	linha: LinhaRecibo;
@@ -48,6 +58,18 @@ interface ItemLista {
 export default function RecibosPage() {
 	const { data, isLoading, isError, error, refetch, isFetching } = useRecibos();
 	const excluir = useExcluir("recibos");
+
+	/**
+	 * GATE DE PAPEL: recibo é emitido pelo DONO (mesma regra do Meu Negócio). Membro
+	 * não-dono vê a lista, mas "Novo recibo"/Editar/Excluir ficam escondidos — e
+	 * quando o papel é DESCONHECIDO (carregando ou erro), bloqueia também: "não sei
+	 * quem é" nunca pode virar "deixa gravar".
+	 */
+	const contexto = useContextoDeEscrita();
+	const papel = contexto.data?.papel;
+	const ehDono = papel === "owner" || papel === "pessoal";
+	const permissaoDesconhecida = contexto.isLoading || contexto.isError || !papel;
+	const podeEscrever = !permissaoDesconhecida && ehDono;
 
 	const [busca, setBusca] = useState("");
 	const [formAberto, setFormAberto] = useState(false);
@@ -139,19 +161,55 @@ export default function RecibosPage() {
 							className="h-10 rounded-full pl-10"
 						/>
 					</div>
-					<Button type="button" onClick={abrirNovo} className="h-10 shrink-0 gap-2">
-						<Plus aria-hidden="true" className="size-4" />
-						Novo recibo
-					</Button>
+					{podeEscrever && (
+						<Button type="button" onClick={abrirNovo} className="h-10 shrink-0 gap-2">
+							<Plus aria-hidden="true" className="size-4" />
+							Novo recibo
+						</Button>
+					)}
 				</div>
 			</div>
+
+			{/* ─────────────  Aviso de permissão — honesto sobre POR QUE está travado  ───────────── */}
+			{!podeEscrever && (
+				<div
+					className={cn(
+						"mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-sm text-text-primary",
+						permissaoDesconhecida ? "bg-error/10" : "bg-warning/10",
+					)}
+				>
+					{permissaoDesconhecida ? (
+						<AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-error-dark dark:text-error" />
+					) : (
+						<Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning" />
+					)}
+					<span>
+						{permissaoDesconhecida ? (
+							<>
+								Não consegui confirmar seu papel nesta empresa, então novo recibo e edição ficam bloqueados.{" "}
+								<button
+									type="button"
+									className="font-semibold underline underline-offset-2"
+									onClick={() => contexto.refetch()}
+								>
+									Tentar de novo
+								</button>
+							</>
+						) : (
+							"Recibos são emitidos pelo dono da conta. Você pode conferir os pagamentos aqui; para registrar ou alterar um recebimento, peça ao dono."
+						)}
+					</span>
+				</div>
+			)}
 
 			{/* ─────────────────  Resumo (só quando os dados são reais)  ───────────────── */}
 			{!isLoading && !isError && filtrados.length > 0 && (
 				<div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-border bg-bg-neutral/40 px-4 py-3">
 					<div>
 						<p className="text-[11px] uppercase tracking-wide text-text-disabled">Total recebido</p>
-						<p className="mt-0.5 text-lg font-semibold tabular-nums text-success">{reais(totalRecebido)}</p>
+						<p className="mt-0.5 text-lg font-semibold tabular-nums text-success-dark dark:text-success">
+							{reais(totalRecebido)}
+						</p>
 					</div>
 					<div>
 						<p className="text-[11px] uppercase tracking-wide text-text-disabled">Recibos</p>
@@ -160,7 +218,7 @@ export default function RecibosPage() {
 					{semPdf > 0 && (
 						<div>
 							<p className="text-[11px] uppercase tracking-wide text-text-disabled">PDF pendente</p>
-							<p className="mt-0.5 flex items-center gap-1.5 text-lg font-semibold tabular-nums text-warning">
+							<p className="mt-0.5 flex items-center gap-1.5 text-lg font-semibold tabular-nums text-warning-darker dark:text-warning">
 								<FileWarning aria-hidden="true" className="size-4" />
 								{semPdf}
 							</p>
@@ -214,7 +272,7 @@ export default function RecibosPage() {
 								: "Quando você registrar um pagamento, ele aparece aqui."}
 						</p>
 					</div>
-					{!busca && (
+					{!busca && podeEscrever && (
 						<Button type="button" onClick={abrirNovo} className="gap-2 rounded-full">
 							<Plus aria-hidden="true" className="size-4" />
 							Registrar o primeiro
@@ -267,11 +325,12 @@ export default function RecibosPage() {
 											{recibo?.dataRecebimento || "—"}
 										</td>
 										<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
-											{reais(recibo?.valorRecebido ?? linha.valor_recebido)}
+											{valorExibivel(recibo?.valorRecebido ?? linha.valor_recebido)}
 										</td>
 										<td className="px-2 py-3.5 text-right">
 											<AcoesRecibo
 												recibo={recibo}
+												podeEscrever={podeEscrever}
 												aoEditar={abrirEdicao}
 												aoExcluir={(r) => {
 													setErroExclusao(null);
@@ -299,11 +358,12 @@ export default function RecibosPage() {
 										</div>
 									</div>
 									<div className="flex shrink-0 items-center gap-1">
-										<span className="text-sm font-semibold tabular-nums text-success">
-											{reais(recibo?.valorRecebido ?? linha.valor_recebido)}
+										<span className="text-sm font-semibold tabular-nums text-success-dark dark:text-success">
+											{valorExibivel(recibo?.valorRecebido ?? linha.valor_recebido)}
 										</span>
 										<AcoesRecibo
 											recibo={recibo}
+											podeEscrever={podeEscrever}
 											aoEditar={abrirEdicao}
 											aoExcluir={(r) => {
 												setErroExclusao(null);
@@ -384,24 +444,41 @@ export default function RecibosPage() {
  * Sem o blob (`recibo === null`, que não deveria acontecer: `dados` é NOT NULL) as
  * ações ficam TRAVADAS. Editar/excluir a partir das colunas gravaria um blob sem
  * `itens` e com a data errada, destruindo o recibo em vez de corrigi-lo.
+ *
+ * GATE DE PAPEL: membro não-dono (ou papel DESCONHECIDO) não vê Editar/Excluir —
+ * recibo é emitido pelo dono da conta (ver cabeçalho da página).
  */
 function AcoesRecibo({
 	recibo,
+	podeEscrever,
 	aoEditar,
 	aoExcluir,
 }: {
 	recibo: Recibo | null;
+	podeEscrever: boolean;
 	aoEditar: (r: Recibo) => void;
 	aoExcluir: (r: Recibo) => void;
 }) {
 	if (!recibo) {
 		return (
 			<span
-				className="inline-flex items-center gap-1 text-xs text-warning"
+				className="inline-flex items-center gap-1 text-xs text-warning-darker dark:text-warning"
 				title="Este recibo veio sem os dados completos. Abra-o no aplicativo do celular."
 			>
 				<FileWarning aria-hidden="true" className="size-4" />
 				<span className="sr-only">Recibo sem dados completos — ações indisponíveis</span>
+			</span>
+		);
+	}
+
+	if (!podeEscrever) {
+		return (
+			<span
+				className="inline-flex items-center gap-1 text-xs text-text-disabled"
+				title="Recibos são emitidos pelo dono da conta."
+			>
+				<Lock aria-hidden="true" className="size-4" />
+				<span className="sr-only">Ações indisponíveis — recibos são emitidos pelo dono da conta</span>
 			</span>
 		);
 	}
@@ -419,7 +496,10 @@ function AcoesRecibo({
 					<Pencil aria-hidden="true" className="mr-2 size-4" />
 					Editar
 				</DropdownMenuItem>
-				<DropdownMenuItem onSelect={() => aoExcluir(recibo)} className="text-error focus:text-error">
+				<DropdownMenuItem
+					onSelect={() => aoExcluir(recibo)}
+					className="text-error-dark focus:text-error-dark dark:text-error dark:focus:text-error"
+				>
 					<Trash2 aria-hidden="true" className="mr-2 size-4" />
 					Excluir
 				</DropdownMenuItem>

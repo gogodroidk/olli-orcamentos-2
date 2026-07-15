@@ -45,10 +45,10 @@ export function NavVerticalLayout({ data, className }: Props) {
 				<div className="flex items-center justify-center">
 					<Logo />
 					<span
-						className="text-xl font-bold transition-all duration-300 ease-in-out"
+						className="text-xl font-bold transition-all duration-300 ease-in-out overflow-hidden"
 						style={{
 							opacity: themeLayout === ThemeLayout.Mini ? 0 : 1,
-							maxWidth: themeLayout === ThemeLayout.Mini ? 0 : "auto",
+							maxWidth: themeLayout === ThemeLayout.Mini ? 0 : "200px",
 							whiteSpace: "nowrap",
 							marginLeft: themeLayout === ThemeLayout.Mini ? 0 : "8px",
 						}}
@@ -61,6 +61,7 @@ export function NavVerticalLayout({ data, className }: Props) {
 					variant="outline"
 					size="icon"
 					onClick={handleToggle}
+					aria-label={themeLayout === ThemeLayout.Mini ? "Expandir menu" : "Recolher menu"}
 					className="h-7 w-7 absolute right-0 translate-x-1/2"
 				>
 					{themeLayout === ThemeLayout.Mini ? (

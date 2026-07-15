@@ -19,9 +19,10 @@
  * A descrição dos planos vem de `planos-base.ts` (cópia do app) — nunca de memória.
  */
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, Crown, MessageCircle, RotateCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, Crown, MessageCircle, RotateCw, Sparkles, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { paraBr } from "@/olli/datas";
+import { useContextoDeEscrita } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -74,6 +75,19 @@ function useMinhaAssinatura() {
 export default function Planos() {
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
 
+	// A tabela `assinaturas` é lida pelo MEU user_id — mas quem é membro não-dono
+	// (técnico/gestor) não tem linha própria: a assinatura pertence ao DONO da
+	// organização. Sem checar o papel, esta tela leria "sem linha" como "Grátis" e
+	// mostraria "Você está no plano Grátis" pra quem trabalha numa empresa PAGANTE.
+	const contexto = useContextoDeEscrita();
+	const papel = contexto.data?.papel;
+	const ehDono = papel === "owner" || papel === "pessoal";
+	// Só tratamos como "membro não-dono" quando o papel foi CONFIRMADO — carregando
+	// ou com erro, cai no caminho normal (mesma cautela do "papel indeterminado
+	// bloqueia" usado em Meu Negócio: aqui não bloqueia leitura, só não afirma nada
+	// que não sabemos).
+	const membroNaoDono = !contexto.isLoading && !contexto.isError && !!papel && !ehDono;
+
 	return (
 		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">
 			<header className="mb-5">
@@ -82,7 +96,11 @@ export default function Planos() {
 			</header>
 
 			{/* ─── 1. O SEU ESTADO (o mais importante da tela) ─── */}
-			{isLoading ? (
+			{contexto.isLoading ? (
+				<Skeleton className="h-28 w-full rounded-xl" />
+			) : membroNaoDono ? (
+				<CardMembro />
+			) : isLoading ? (
 				<Skeleton className="h-28 w-full rounded-xl" />
 			) : isError ? (
 				<CardErro mensagem={(error as Error)?.message} aoTentar={() => refetch()} tentando={isFetching} />
@@ -99,7 +117,9 @@ export default function Planos() {
 						plano={p}
 						// Sem leitura confiável, NENHUM plano é marcado como atual: marcar "Grátis"
 						// por padrão seria exatamente o rebaixamento que esta tela existe para evitar.
-						atual={resumo && !isError ? resumo.planoEfetivo === p.id : null}
+						// Membro não-dono: idem — a linha lida é a DELE, não a da empresa.
+						atual={resumo && !isError && !membroNaoDono ? resumo.planoEfetivo === p.id : null}
+						escritaBloqueada={membroNaoDono}
 					/>
 				))}
 			</div>
@@ -135,6 +155,26 @@ function CardErro({ mensagem, aoTentar, tentando }: { mensagem?: string; aoTenta
 					{tentando ? <RotateCw className="size-4 animate-spin" /> : <RotateCw className="size-4" />}
 					Tentar de novo
 				</Button>
+			</div>
+		</Card>
+	);
+}
+
+/** Membro não-dono: a assinatura é da empresa, não dele — não afirmamos plano nenhum. */
+function CardMembro() {
+	return (
+		<Card className="gap-0 border-border p-5">
+			<div className="flex items-start gap-3">
+				<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+					<Users className="size-5" />
+				</span>
+				<div>
+					<p className="font-semibold text-text-primary">O plano da sua empresa é gerenciado pelo dono</p>
+					<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">
+						Sua conta é de um membro da equipe — a assinatura e a cobrança ficam com quem é dono da empresa. Fale com
+						ele para saber qual plano está ativo ou para mudar de plano.
+					</p>
+				</div>
 			</div>
 		</Card>
 	);
@@ -269,10 +309,13 @@ function Faixa({
 function CardPlano({
 	plano,
 	atual,
+	escritaBloqueada,
 }: {
 	plano: (typeof PLANOS_BASE)[number];
 	/** true/false quando sabemos; `null` quando a leitura falhou (não marcamos nada). */
 	atual: boolean | null;
+	/** Membro não-dono: quem assina/troca de plano é o dono da empresa, não ele. */
+	escritaBloqueada?: boolean;
 }) {
 	const ehAtual = atual === true;
 	const mensagem: Record<PlanoId, string> = {
@@ -317,7 +360,9 @@ function CardPlano({
 			</ul>
 
 			<div className="mt-6">
-				{ehAtual ? (
+				{escritaBloqueada ? (
+					<p className="text-center text-xs text-text-secondary">Fale com o dono da conta para mudar de plano.</p>
+				) : ehAtual ? (
 					<Button variant="outline" className="w-full" disabled>
 						Seu plano atual
 					</Button>

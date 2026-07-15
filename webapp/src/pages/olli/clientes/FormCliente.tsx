@@ -156,7 +156,10 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 
 	// Guarda o último CEP consultado para não repetir a chamada a cada tecla depois
 	// do 8º dígito (backspace + redigitar o mesmo número dispararia de novo).
-	const ultimoCepBuscado = useRef<string>("");
+	// Inicializado com o CEP que já veio no registro: ao ABRIR um cliente para
+	// editar, o mount não pode disparar uma busca e sobrescrever cidade/UF que o
+	// usuário já corrigiu à mão — só busca quando o USUÁRIO muda o campo.
+	const ultimoCepBuscado = useRef<string>(soDigitos(cliente?.cep));
 	// Corrida: se o usuário troca o CEP enquanto a 1ª busca está no ar, a resposta
 	// velha não pode sobrescrever o endereço da nova.
 	const cepEmFoco = useRef<string>("");
@@ -165,6 +168,7 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 		const cep = campos.cep;
 		if (cep.length !== 8) {
 			ultimoCepBuscado.current = "";
+			cepEmFoco.current = ""; // descarta qualquer resposta em voo: o CEP foi apagado/editado
 			setEstadoCep("parado");
 			return;
 		}
@@ -228,6 +232,12 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 		// Regras copiadas do app: só valida o que foi preenchido.
 		if (campos.telefone.length > 0 && campos.telefone.length < 10) {
 			e.telefone = "Telefone incompleto — informe DDD + número.";
+		}
+		// >11 dígitos (ex.: telefone legado com +55) seria truncado em silêncio pela
+		// máscara ao salvar — "+55 11 98765-4321" viraria "(55) 11987-6543". Recusa
+		// em vez de corromper o dado do cliente sem avisar.
+		if (campos.telefone.length > 11) {
+			e.telefone = "Telefone com dígitos demais — confira o número.";
 		}
 		if (campos.cpf.length > 0 && !cpfValido(campos.cpf)) e.cpf = "CPF inválido.";
 		if (campos.cnpj.length > 0 && !cnpjValido(campos.cnpj)) e.cnpj = "CNPJ inválido.";
@@ -321,7 +331,7 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 
 				{/* Aviso de duplicidade — logo abaixo dos campos que o disparam. */}
 				{duplicados.length > 0 && (
-					<div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+					<div className="rounded-lg border border-warning/40 bg-warning/10 p-3" role="status" aria-live="polite">
 						<p className="flex items-center gap-2 text-sm font-medium text-text-primary">
 							<UserRoundSearch className="size-4 shrink-0" aria-hidden="true" />
 							{duplicados.length === 1 ? "Já existe um cliente com esses dados" : "Já existem clientes com esses dados"}
@@ -387,8 +397,12 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 										Buscando endereço…
 									</span>
 								)}
-								{estadoCep === "ok" && <span className="text-success">Endereço preenchido.</span>}
-								{estadoCep === "nao_encontrado" && <span className="text-warning">CEP não encontrado.</span>}
+								{estadoCep === "ok" && (
+									<span className="text-success-dark dark:text-success">Endereço preenchido.</span>
+								)}
+								{estadoCep === "nao_encontrado" && (
+									<span className="text-warning-darker dark:text-warning">CEP não encontrado.</span>
+								)}
 								{estadoCep === "falhou" && (
 									<span className="text-text-secondary">Sem conexão com a busca de CEP — preencha à mão.</span>
 								)}

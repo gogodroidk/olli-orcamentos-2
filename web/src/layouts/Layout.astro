@@ -1,15 +1,18 @@
 ---
-import '../styles/global.css';
+import "../styles/global.css";
 
 interface Props {
-  titulo?: string;
-  descricao?: string;
+	titulo?: string;
+	descricao?: string;
 }
 const {
-  titulo = 'OLLI — do orçamento ao recibo, sem planilha',
-  descricao = 'O sistema de campo do prestador de serviço: orçamento, ordem de serviço, PMOC e recibo no celular e no computador — com IA que entende o defeito do equipamento, não só a nota. Grátis para começar.',
+	titulo = "OLLI — do orçamento ao recibo, sem planilha",
+	descricao = "O sistema de campo do prestador de serviço: orçamento, ordem de serviço, PMOC e recibo no celular e no computador — com IA que entende o defeito do equipamento, não só a nota. Grátis para começar.",
 } = Astro.props;
-const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://olliorcamentos.online').href;
+const canonical = new URL(
+	Astro.url.pathname,
+	Astro.site ?? "https://olliorcamentos.online",
+).href;
 ---
 
 <!doctype html>

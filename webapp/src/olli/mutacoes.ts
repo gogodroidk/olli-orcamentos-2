@@ -51,15 +51,19 @@ export function useContextoDeEscrita() {
 			const meuId = sessao.user?.id;
 			if (!meuId) throw new Error("Sessão não encontrada.");
 
-			// RLS já restringe as linhas às minhas. `maybeSingle` porque a conta
-			// pessoal (sem organização) simplesmente não tem membresia.
-			const { data: membro, error } = await supabase
+			// RLS já restringe as linhas às minhas. NÃO usamos `maybeSingle`: um usuário
+			// pode ser membro de DUAS organizações, e aí `maybeSingle` lançaria erro e
+			// BLOQUEARIA toda gravação dele. Pegamos a membresia mais ANTIGA (determinístico,
+			// igual ao app). Conta pessoal (sem organização) simplesmente não tem linha.
+			const { data: membros, error } = await supabase
 				.from("organizacao_membros")
 				.select("org_id, papel, ativo")
 				.eq("user_id", meuId)
 				.eq("ativo", true)
-				.maybeSingle();
+				.order("criado_em", { ascending: true })
+				.limit(1);
 			if (error) throw error;
+			const membro = membros?.[0];
 
 			if (!membro || membro.papel === "owner") {
 				return { ownerUserId: null, papel: membro?.papel ?? "pessoal" };
@@ -86,36 +90,55 @@ export function useContextoDeEscrita() {
 /* ─────────────────────────────  2. Numeração  ──────────────────────────────── */
 
 /**
- * Próximo número de ORÇAMENTO (`00126` = sequencial 3 dígitos + ano 2 dígitos) ou
- * de RECIBO (`REC-00126`). Espelha `proximoNaSequencia` + `getNextOrcamentoNumber`.
+ * Extrai o SEQUENCIAL de um número de documento. O formato é
+ * `<seq><aa>` (orçamento `00126` = seq 1 + ano 26) ou `REC-<seq><aa>`
+ * (recibo `REC-00126`): o sequencial é TUDO menos os 2 últimos dígitos (o ano).
+ * Devolve 0 para número ausente/legado sem o formato esperado.
+ */
+function extrairSequencia(numero: unknown): number {
+	const bruto = String(numero ?? "").replace(/^REC-/i, "");
+	const m = /(\d+)(\d{2})\s*$/.exec(bruto);
+	return m ? Number(m[1]) : 0;
+}
+
+/**
+ * Próximo número de ORÇAMENTO (`00126` = sequencial 3+ dígitos + ano 2 dígitos) ou
+ * de RECIBO (`REC-00126`).
  *
- * O `semear` existe porque a chave pode não estar em `contadores` ainda: sem ele o
- * painel emitiria "001" numa conta que já tem 14 orçamentos, repetindo número.
+ * Por que NÃO lemos mais a tabela `contadores`: aquele contador tem RLS owner-only
+ * e é por-USUÁRIO — dono e membro (ou duas abas) mantinham contadores separados sobre
+ * o MESMO conjunto e emitiam o MESMO número num documento que vai pro cliente. Além
+ * disso o ciclo select→upsert não era atômico. Aqui derivamos o próximo do MAIOR
+ * sequencial entre os documentos VISÍVEIS ao tenant — mesma técnica de `proximoNumeroOs`,
+ * imune ao split-brain por-usuário e compartilhada por toda a equipe (o RLS já mostra
+ * ao membro os documentos do dono).
  *
- * ⚠️ Chame só NA HORA DE SALVAR — nunca ao abrir o formulário. Abrir e desistir
- * queimaria um número, e aí o documento 003 nunca existiria.
+ * INCLUI a lixeira (sem filtro de `excluido_em`): um documento apagado NÃO pode liberar
+ * o número, senão dois documentos diferentes acabariam com o mesmo `00126`.
+ *
+ * Ordenamos por `criado_em` desc: como o sequencial só cresce, o documento mais recente
+ * carrega o maior número — então, mesmo se o PostgREST capar a resposta em ~1000 linhas,
+ * a página devolvida (as mais recentes) já contém o máximo real, sem duplicar.
+ *
+ * ⚠️ Chame só NA HORA DE SALVAR — nunca ao abrir o formulário.
  */
 export async function proximoNumeroDocumento(chave: "orcamento" | "recibo"): Promise<string> {
-	const tabelaParaSemear = chave === "orcamento" ? "orcamentos" : "recibos";
+	const tabela = chave === "orcamento" ? "orcamentos" : "recibos";
 
-	const { data: linha, error } = await supabase.from("contadores").select("valor").eq("chave", chave).maybeSingle();
+	// Teto de linhas do PostgREST (~1000). Ordenado por `criado_em` desc, as mais
+	// recentes vêm primeiro — e o maior número está entre elas (sequencial monotônico).
+	const { data, error } = await supabase
+		.from(tabela)
+		.select("numero")
+		.order("criado_em", { ascending: false })
+		.limit(1000);
 	if (error) throw error;
 
-	let atual = linha?.valor as number | undefined;
-	if (atual == null) {
-		const { count, error: erroCount } = await supabase
-			.from(tabelaParaSemear)
-			.select("*", { count: "exact", head: true });
-		if (erroCount) throw erroCount;
-		atual = count ?? 0;
-	}
+	const maior = (data ?? []).reduce((max, linha) => {
+		return Math.max(max, extrairSequencia((linha as { numero?: string }).numero));
+	}, 0);
 
-	const proximo = atual + 1;
-	const { error: erroUpsert } = await supabase
-		.from("contadores")
-		.upsert({ chave, valor: proximo }, { onConflict: "user_id,chave" });
-	if (erroUpsert) throw erroUpsert;
-
+	const proximo = maior + 1;
 	const ano = new Date().getFullYear().toString().slice(-2);
 	const sufixo = `${String(proximo).padStart(3, "0")}${ano}`;
 	return chave === "recibo" ? `REC-${sufixo}` : sufixo;

@@ -2,8 +2,20 @@ import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
 import { cn } from "@/utils";
 
-/** Variantes de cor do Badge (shadcn) usadas para status. */
-type BadgeVariant = "default" | "secondary" | "destructive" | "info" | "warning" | "success" | "error" | "outline";
+/** Variantes de cor do Badge (shadcn) usadas para status. Exportado: telas com um
+ *  mapa de situação FECHADO e conhecido (ex.: equipamentos) devem montar seu próprio
+ *  `Record<Situacao, BadgeVariant>` explícito em vez de confiar no regex genérico
+ *  abaixo — que casa por palavra-chave e pode errar em enums que ele não previu
+ *  (ver `getStatusVariant`: "desativado" cai errado porque contém "ativ"). */
+export type BadgeVariant =
+	| "default"
+	| "secondary"
+	| "destructive"
+	| "info"
+	| "warning"
+	| "success"
+	| "error"
+	| "outline";
 
 /** Uma coluna é "status" quando a chave fala de status/situação. */
 export function isStatusKey(key: string): boolean {

@@ -1,27 +1,27 @@
 import { AlertTriangle, CalendarClock, MapPin, RotateCw } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
-import { useOlliList } from "@/olli/data";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { agendamentosDeHoje } from "./financeiro";
-import { type AgendamentoRow, horaLocal, plural } from "./helpers";
+import { horaLocal, plural } from "./helpers";
+import { useAgendamentosDoDia } from "./useAgendamentosDoDia";
 
 /**
  * FAIXA "HOJE" — o que o dono (ou o técnico) tem para fazer hoje.
  *
- * Lê `agendamentos` direto (é o único lugar da tela que precisa dessa tabela).
+ * Lê `agendamentos` já filtrado no SERVIDOR pelo dia de hoje (`useAgendamentosDoDia`) —
+ * é o único lugar da tela que precisa dessa tabela, e baixar tudo para filtrar em
+ * memória estoura o cap de 1000 linhas do PostgREST em contas com histórico grande.
  * `inicio` é timestamptz de VERDADE nesta tabela — pode usar `new Date()` sem medo;
  * quem tem a data podre é `recibos.data_recebimento` (ver financeiro.ts).
  * 3 estados: skeleton · erro com "Tentar de novo" (nunca vira "agenda vazia", o que
  * faria o dono perder uma visita) · vazio de verdade.
  */
 export function FaixaHoje() {
-	const { data, isLoading, isError, refetch } = useOlliList<AgendamentoRow>("agendamentos", {
-		orderBy: "inicio",
-		ascending: true,
-	});
+	const { data, isLoading, isError, refetch } = useAgendamentosDoDia();
 
+	// O servidor já devolveu só hoje; aqui só filtra "cancelado" e garante a ordem.
 	const hoje = useMemo(() => (data ? agendamentosDeHoje(data) : []), [data]);
 
 	return (

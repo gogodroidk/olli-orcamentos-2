@@ -36,7 +36,7 @@ import { StatusBadge } from "@/olli/components/record-list-helpers";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
 import { novoId } from "@/olli/contrato";
 import { agoraIso, brParaYmd, hojeYmd, ymdParaBr } from "@/olli/datas";
-import { proximoNumeroDocumento, useSalvar } from "@/olli/mutacoes";
+import { proximoNumeroDocumento, useContextoDeEscrita, useSalvar } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/ui/command";
@@ -75,6 +75,19 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 	const editando = !!recibo;
 	const salvar = useSalvar("recibos");
 
+	/**
+	 * GATE DE PAPEL: recibo é emitido pelo DONO (regra idêntica ao app — ver Meu
+	 * Negócio). A tela de lista já esconde "Novo"/"Editar"/"Excluir" para quem não é
+	 * dono; esta checagem é a DEFESA EM PROFUNDIDADE — bloqueia o salvamento mesmo se
+	 * o diálogo for aberto por outro caminho. Papel DESCONHECIDO (carregando ou erro)
+	 * também bloqueia: "não sei quem é" nunca pode virar "deixa gravar".
+	 */
+	const contexto = useContextoDeEscrita();
+	const papel = contexto.data?.papel;
+	const ehDono = papel === "owner" || papel === "pessoal";
+	const permissaoDesconhecida = contexto.isLoading || contexto.isError || !papel;
+	const podeEscrever = !permissaoDesconhecida && ehDono;
+
 	/* ─────────────────────────────  estado do form  ──────────────────────────── */
 	const [orcamentoId, setOrcamentoId] = useState<string | null>(null);
 	const [cliente, setCliente] = useState<ClienteSelecionado | null>(null);
@@ -88,7 +101,10 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 	const [valorTocado, setValorTocado] = useState(false);
 
 	/* ───────────────────────────────  dados  ─────────────────────────────────── */
-	const listaOrcamentos = useOrcamentos();
+	// enabled: aberto — só baixa TODOS os orçamentos quando o formulário está de fato
+	// na tela. O diálogo fica montado o tempo todo (para a animação de fechar), então
+	// sem isso visitar /recibos baixaria o blob inteiro de orçamentos à toa.
+	const listaOrcamentos = useOrcamentos({ enabled: aberto });
 	const listaRecibos = useRecibos();
 
 	const orcamentos = useMemo(() => listaOrcamentos.data ?? [], [listaOrcamentos.data]);
@@ -193,6 +209,14 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 		e.preventDefault();
 		setTentouSalvar(true);
 		setErro(null);
+		if (!podeEscrever) {
+			setErro(
+				permissaoDesconhecida
+					? "Não consegui confirmar seu papel nesta empresa. Recarregue a página e tente de novo."
+					: "Recibos são emitidos pelo dono da conta. Peça a ele, ou fale com o suporte.",
+			);
+			return;
+		}
 		if (invalido || !cliente) return;
 
 		setSalvando(true);
@@ -278,6 +302,29 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 			rotuloSalvar={editando ? "Salvar" : "Registrar recebimento"}
 		>
 			<form id={formId} onSubmit={aoEnviar} className="space-y-5">
+				{/* GATE DE PAPEL — avisa ANTES de tentar salvar, não só depois do clique. */}
+				{!podeEscrever && (
+					<output
+						className={cn(
+							"flex items-start gap-2 rounded-lg px-3 py-2 text-sm text-text-primary",
+							permissaoDesconhecida ? "bg-error/10" : "bg-warning/10",
+						)}
+					>
+						<AlertTriangle
+							aria-hidden="true"
+							className={cn(
+								"mt-0.5 size-4 shrink-0",
+								permissaoDesconhecida ? "text-error-dark dark:text-error" : "text-warning-darker dark:text-warning",
+							)}
+						/>
+						<span>
+							{permissaoDesconhecida
+								? "Não consegui confirmar seu papel nesta empresa, então o salvamento está bloqueado."
+								: "Recibos são emitidos pelo dono da conta. Você pode conferir os dados aqui, mas não pode salvar."}
+						</span>
+					</output>
+				)}
+
 				{/* ───────────────  Orçamento (opcional, mas é o fluxo principal)  ────────────── */}
 				<Campo
 					rotulo="Recebendo de um orçamento"
@@ -351,7 +398,10 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 				    quando ele aparece, sem roubar o foco de quem está digitando o valor. */}
 				{ultrapassa && falta !== null && (
 					<output className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-text-primary">
-						<AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+						<AlertTriangle
+							aria-hidden="true"
+							className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning"
+						/>
 						<span>
 							Este valor passa do que falta receber deste orçamento (<strong>{reais(falta)}</strong>). Se for de
 							propósito (acréscimo, taxa), pode salvar — só confira antes.
@@ -428,7 +478,7 @@ function PainelParcial({
 	if (sumido) {
 		return (
 			<p className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-text-primary">
-				<AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+				<AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning" />
 				<span>
 					Não achei este orçamento na lista (pode ter ido para a lixeira). O vínculo do recibo continua intacto — só não
 					dá para mostrar o total nem preencher os itens a partir dele.
@@ -492,7 +542,12 @@ function PainelParcial({
 				</div>
 				<div>
 					<dt className="text-[11px] uppercase tracking-wide text-text-disabled">Falta receber</dt>
-					<dd className={cn("mt-0.5 font-semibold tabular-nums", quitado ? "text-success" : "text-text-primary")}>
+					<dd
+						className={cn(
+							"mt-0.5 font-semibold tabular-nums",
+							quitado ? "text-success-dark dark:text-success" : "text-text-primary",
+						)}
+					>
 						{falta !== null ? reais(falta) : "—"}
 					</dd>
 				</div>

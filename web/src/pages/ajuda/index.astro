@@ -1,14 +1,14 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import OlliLogo from '../../components/OlliLogo.astro';
 import {
-  CATEGORIAS_AJUDA,
-  getArtigosDaCategoria,
-} from '../../../../src/content/ajuda/index';
+	CATEGORIAS_AJUDA,
+	getArtigosDaCategoria,
+} from "../../../../src/content/ajuda/index";
+import OlliLogo from "../../components/OlliLogo.astro";
+import Layout from "../../layouts/Layout.astro";
 
 const categorias = CATEGORIAS_AJUDA.map((cat) => ({
-  ...cat,
-  artigos: getArtigosDaCategoria(cat.id),
+	...cat,
+	artigos: getArtigosDaCategoria(cat.id),
 })).filter((cat) => cat.artigos.length > 0);
 ---
 

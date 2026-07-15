@@ -1,4 +1,4 @@
-import { AlertTriangle, FileText, Inbox } from "lucide-react";
+import { AlertTriangle, FileText, Inbox, RotateCw } from "lucide-react";
 import { Link } from "react-router";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
@@ -9,14 +9,15 @@ interface Props {
 	rows: OrcamentoRow[] | undefined;
 	isLoading: boolean;
 	isError: boolean;
+	onRetry: () => void;
 }
 
 /**
  * Card "Orçamentos recentes" — os 6 mais novos (dados REAIS). Cada linha: nº,
  * cliente, valor em R$ e badge de status COLORIDO. 3 estados: skeleton, erro
- * ("—", nunca vira vazio) e vazio bonito.
+ * (com "Tentar de novo", nunca vira vazio) e vazio bonito.
  */
-export function RecentOrcamentosCard({ rows, isLoading, isError }: Props) {
+export function RecentOrcamentosCard({ rows, isLoading, isError, onRetry }: Props) {
 	const recentes = (rows ?? []).slice(0, 6);
 
 	return (
@@ -49,10 +50,20 @@ export function RecentOrcamentosCard({ rows, isLoading, isError }: Props) {
 						))}
 					</div>
 				) : isError ? (
-					<div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+					<div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
 						<AlertTriangle className="size-7 text-warning" />
-						<p className="text-sm font-semibold text-text-primary">Não foi possível carregar</p>
-						<p className="text-xs text-text-secondary">Os valores aparecem assim que a conexão voltar.</p>
+						<div>
+							<p className="text-sm font-semibold text-text-primary">Não foi possível carregar</p>
+							<p className="text-xs text-text-secondary">Os valores aparecem assim que a conexão voltar.</p>
+						</div>
+						<button
+							type="button"
+							onClick={onRetry}
+							className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-text-primary transition hover:bg-bg-neutral/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+						>
+							<RotateCw className="size-3.5" />
+							Tentar de novo
+						</button>
 					</div>
 				) : recentes.length === 0 ? (
 					<div className="flex flex-col items-center justify-center gap-2 py-14 text-center">

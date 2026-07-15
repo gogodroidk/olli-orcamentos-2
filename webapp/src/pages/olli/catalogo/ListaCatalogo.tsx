@@ -16,9 +16,11 @@
  *   do custo aparece em vermelho na lista inteira — não só dentro do formulário.
  * • Sem animação decorativa: tabela densa, motion só funcional (hover/foco).
  */
+import type { ProdutoItem } from "@dominio";
 import {
 	AlertTriangle,
 	Inbox,
+	Lock,
 	MoreHorizontal,
 	Package,
 	Pencil,
@@ -29,9 +31,10 @@ import {
 	Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { useOlliList } from "@/olli/data";
-import { useExcluir } from "@/olli/mutacoes";
+import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -41,7 +44,6 @@ import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import FormItemCatalogo, {
 	abaixoDoCusto,
-	ehProduto,
 	emReais,
 	type ItemCatalogo,
 	type LinhaCatalogo,
@@ -52,6 +54,21 @@ import FormItemCatalogo, {
 	TABELA_DO_TIPO,
 	type TipoCatalogo,
 } from "./FormItemCatalogo";
+
+/** "Marca · Modelo" de um produto. `""` para serviço ou produto sem os dois campos.
+ *  O `tipo` vem da rota — nunca se infere pelo formato do objeto (ver FormItemCatalogo). */
+function marcaModelo(tipo: TipoCatalogo, item: ItemCatalogo): string {
+	if (tipo !== "produto") return "";
+	const p = item as ProdutoItem;
+	return [p.marca, p.modelo].filter(Boolean).join(" · ");
+}
+
+/** `true` se o item casa com o termo JÁ NORMALIZADO. Mesmos campos do filtro do celular. */
+function casaBusca(tipo: TipoCatalogo, item: ItemCatalogo, termo: string): boolean {
+	const p = tipo === "produto" ? (item as ProdutoItem) : null;
+	const campos = [item.nome, item.descricao ?? "", p?.marca ?? "", p?.modelo ?? ""];
+	return campos.some((c) => normalizar(c).includes(termo));
+}
 
 /** Ignora acento, caixa e hífen: "r410" acha "R-410A", "servico" acha "Serviço". */
 const normalizar = (s: string) =>
@@ -77,7 +94,7 @@ function CelulaMargem({ item }: { item: ItemCatalogo }) {
 	const m = margemInfo(item.preco, item.custo);
 	if (abaixoDoCusto(item.preco, item.custo)) {
 		return (
-			<span className="font-medium tabular-nums text-error" title="Preço abaixo do custo">
+			<span className="font-medium tabular-nums text-error-dark dark:text-error" title="Preço abaixo do custo">
 				{m ? `${m.pct}%` : "prejuízo"}
 			</span>
 		);
@@ -89,7 +106,7 @@ function CelulaMargem({ item }: { item: ItemCatalogo }) {
 			</span>
 		);
 	}
-	return <span className="font-medium tabular-nums text-success">{m.pct}%</span>;
+	return <span className="font-medium tabular-nums text-success-dark dark:text-success">{m.pct}%</span>;
 }
 
 /** Editar / Excluir. Menu do Radix: abre no teclado (Enter/Espaço), navega nas setas. */
@@ -145,21 +162,35 @@ export default function ListaCatalogo({ tipo }: Props) {
 
 	const excluir = useExcluir(tabela);
 
+	/*
+	 * GATE DE PAPEL — o catálogo é escrita do DONO (`produtos`/`servicos` não estão em
+	 * TABELAS_DO_TENANT_DO_DONO): um membro não-dono que salvasse gravaria no tenant
+	 * DELE, e a empresa nunca veria o item. `ownerUserId != null` só é verdade quando
+	 * já CONFIRMAMOS que o usuário é membro não-dono — então escondemos as ações de
+	 * escrita e viramos a tela em somente-leitura. Enquanto o papel é desconhecido
+	 * (carregando/erro), os controles seguem visíveis: a escrita continua barrada pelo
+	 * RLS e traduzida em `mensagemDeErro` (o 42501) como rede de segurança.
+	 */
+	const contextoEscrita = useContextoDeEscrita();
+	const somenteLeitura = contextoEscrita.data?.ownerUserId != null;
+	const podeEditar = !somenteLeitura;
+
 	const itens = useMemo(() => (data ?? []).map((l) => linhaParaItem(tipo, l)), [data, tipo]);
 
 	const filtrados = useMemo(() => {
 		const termo = normalizar(busca.trim());
 		if (!termo) return itens;
-		return itens.filter((i) => {
-			const campos = [
-				i.nome,
-				i.descricao ?? "",
-				ehProduto(i) ? (i.marca ?? "") : "",
-				ehProduto(i) ? (i.modelo ?? "") : "",
-			];
-			return campos.some((c) => normalizar(c).includes(termo));
-		});
-	}, [itens, busca]);
+		return itens.filter((i) => casaBusca(tipo, i, termo));
+	}, [itens, busca, tipo]);
+
+	// Gravação SUBIU. Se havia busca ativa e o item salvo NÃO casa com o filtro atual,
+	// ele sumiria da lista sem explicação — o dono acha que falhou e recadastra (duplica).
+	// Limpar a busca traz o item de volta à vista; o toast confirma que subiu.
+	const aoSalvarItem = (item: ItemCatalogo) => {
+		const termo = normalizar(busca.trim());
+		if (termo && !casaBusca(tipo, item, termo)) setBusca("");
+		toast.success(`${tipo === "produto" ? "Produto" : "Serviço"} salvo`);
+	};
 
 	const confirmarExclusao = () => {
 		if (!paraExcluir) return;
@@ -207,13 +238,26 @@ export default function ListaCatalogo({ tipo }: Props) {
 							className="h-10 rounded-full pl-10"
 						/>
 					</div>
-					<Button type="button" className="h-10 shrink-0 gap-2" onClick={() => setEmEdicao(null)}>
-						<Plus className="size-4" />
-						<span className="hidden sm:inline">Novo {rotulo}</span>
-						<span className="sm:hidden">Novo</span>
-					</Button>
+					{podeEditar && (
+						<Button type="button" className="h-10 shrink-0 gap-2" onClick={() => setEmEdicao(null)}>
+							<Plus className="size-4" />
+							<span className="hidden sm:inline">Novo {rotulo}</span>
+							<span className="sm:hidden">Novo</span>
+						</Button>
+					)}
 				</div>
 			</div>
+
+			{/* Aviso de permissão — honesto sobre POR QUE não dá para cadastrar/editar. */}
+			{somenteLeitura && (
+				<div className="mb-4 flex items-start gap-2.5 rounded-xl bg-info/10 px-4 py-3 text-sm text-info-dark dark:text-info-light">
+					<Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+					<p>
+						O catálogo é da empresa, e só o <strong>dono</strong> pode alterá-lo. Você pode consultar os {plural} aqui;
+						para cadastrar ou corrigir um {rotulo}, fale com o dono da conta.
+					</p>
+				</div>
+			)}
 
 			{/* ─────────────────────  3 estados: carregando · erro · vazio  ────────── */}
 			{isLoading ? (
@@ -262,10 +306,12 @@ export default function ListaCatalogo({ tipo }: Props) {
 						<p className="mx-auto mt-1 max-w-sm text-sm text-text-secondary">
 							{busca.trim()
 								? "Tente outro termo — a busca olha nome, descrição, marca e modelo."
-								: `Cadastre um ${rotulo} uma vez e ele passa a estar a um clique de qualquer orçamento.`}
+								: podeEditar
+									? `Cadastre um ${rotulo} uma vez e ele passa a estar a um clique de qualquer orçamento.`
+									: `Ainda não há ${plural} no catálogo da empresa. Só o dono da conta pode cadastrar.`}
 						</p>
 					</div>
-					{!busca.trim() && (
+					{!busca.trim() && podeEditar && (
 						<Button type="button" className="gap-2" onClick={() => setEmEdicao(null)}>
 							<Plus className="size-4" />
 							Cadastrar {rotulo}
@@ -329,9 +375,7 @@ export default function ListaCatalogo({ tipo }: Props) {
 
 										{tipo === "produto" && (
 											<td className="whitespace-nowrap px-4 py-3.5 align-middle text-text-secondary">
-												{ehProduto(item) && (item.marca || item.modelo)
-													? [item.marca, item.modelo].filter(Boolean).join(" · ")
-													: "—"}
+												{marcaModelo(tipo, item) || "—"}
 											</td>
 										)}
 
@@ -350,7 +394,7 @@ export default function ListaCatalogo({ tipo }: Props) {
 										</td>
 
 										<td className="px-2 py-3.5 text-right align-middle">
-											<MenuAcoes item={item} aoEditar={setEmEdicao} aoExcluir={pedirExclusao} />
+											{podeEditar && <MenuAcoes item={item} aoEditar={setEmEdicao} aoExcluir={pedirExclusao} />}
 										</td>
 									</tr>
 								))}
@@ -372,13 +416,13 @@ export default function ListaCatalogo({ tipo }: Props) {
 											<Icone aria-hidden="true" className="size-4 shrink-0 text-text-disabled" />
 											<span className="truncate">{item.nome || "(sem nome)"}</span>
 										</span>
-										{ehProduto(item) && (item.marca || item.modelo) && (
+										{marcaModelo(tipo, item) && (
 											<span className="mt-0.5 block truncate pl-6 text-xs text-text-secondary">
-												{[item.marca, item.modelo].filter(Boolean).join(" · ")}
+												{marcaModelo(tipo, item)}
 											</span>
 										)}
 									</button>
-									<MenuAcoes item={item} aoEditar={setEmEdicao} aoExcluir={pedirExclusao} />
+									{podeEditar && <MenuAcoes item={item} aoEditar={setEmEdicao} aoExcluir={pedirExclusao} />}
 								</div>
 
 								<dl className="mt-3 grid grid-cols-3 gap-x-4">
@@ -415,7 +459,13 @@ export default function ListaCatalogo({ tipo }: Props) {
 
 			{/* ──────────────────────────────  Formulário  ──────────────────────────── */}
 			{emEdicao !== undefined && (
-				<FormItemCatalogo aberto tipo={tipo} item={emEdicao} aoFechar={() => setEmEdicao(undefined)} />
+				<FormItemCatalogo
+					aberto
+					tipo={tipo}
+					item={emEdicao}
+					aoFechar={() => setEmEdicao(undefined)}
+					aoSalvar={aoSalvarItem}
+				/>
 			)}
 
 			{/* ───────────────────────────────  Exclusão  ───────────────────────────── */}

@@ -6,6 +6,44 @@ import type { UserInfo, UserToken } from "#/entity";
 import { StorageEnum } from "#/enum";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
+import { resetBrandColor } from "@/olli/branding";
+
+/**
+ * Traduz os códigos de erro do Supabase Auth (AuthApiError.code) para pt-BR.
+ * Sem isto o usuário via a mensagem crua em inglês do GoTrue
+ * ("Invalid login credentials"). Fallback: a mensagem original do Supabase
+ * (melhor que nada quando o código não está mapeado).
+ */
+export function mapAuthErrorMessage(err: unknown): string {
+	const code = (err as { code?: string } | null | undefined)?.code;
+	const fallback =
+		(err as { message?: string } | null | undefined)?.message ?? "Não foi possível concluir. Tente de novo.";
+	switch (code) {
+		case "invalid_credentials":
+			return "E-mail ou senha incorretos.";
+		case "email_not_confirmed":
+			return "Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.";
+		case "over_request_rate_limit":
+		case "over_email_send_rate_limit":
+			return "Muitas tentativas. Aguarde um instante e tente de novo.";
+		case "user_already_exists":
+		case "email_exists":
+		case "identity_already_exists":
+			return "Já existe uma conta com este e-mail.";
+		case "weak_password":
+			return "Senha fraca. Use pelo menos 6 caracteres, com letras e números.";
+		case "user_banned":
+			return "Esta conta está temporariamente bloqueada.";
+		case "email_address_invalid":
+		case "validation_failed":
+		case "bad_json":
+			return "E-mail inválido.";
+		case "signup_disabled":
+			return "Cadastro por e-mail está desativado no momento.";
+		default:
+			return fallback;
+	}
+}
 
 type UserStore = {
 	userInfo: Partial<UserInfo>;
@@ -78,7 +116,7 @@ export const useSignIn = () => {
 				avatar: user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
 		} catch (err: any) {
-			toast.error(err?.message ?? "Não foi possível entrar. Confira e-mail e senha.", {
+			toast.error(mapAuthErrorMessage(err), {
 				position: "top-center",
 			});
 			throw err;
@@ -130,8 +168,22 @@ export function useAuthSync() {
 			if (active) hydrate(data.session);
 		});
 		const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-			if (event === "SIGNED_OUT" || !session) clearUserInfoAndToken();
-			else hydrate(session);
+			if (event === "SIGNED_OUT" || !session) {
+				clearUserInfoAndToken();
+				// Volta a cor da marca pro padrão OLLI: sem isto, uma sessão que
+				// termina por expiração/token revogado (não pelo botão Sair) deixa
+				// o white-label do tenant anterior pintado até o próximo login.
+				resetBrandColor();
+				// NOTA: o cache do React Query (queryClient.clear()) NÃO é limpo
+				// aqui de propósito — o QueryClient vive em App.tsx (fora do escopo
+				// deste arquivo) e useQueryClient() não resolve fora da árvore do
+				// QueryClientProvider quando chamado a partir de useAuthSync (que é
+				// invocado em App() antes do Provider ser renderizado). O logout
+				// manual (account-dropdown.tsx) já chama queryClient.clear(); falta
+				// cobrir os caminhos SIGNED_OUT que não passam por ali (expiração/
+				// revogação de sessão) — exportar o `queryClient` de App.tsx e
+				// importá-lo aqui resolve, mas é edição fora do lote login-auth.
+			} else hydrate(session);
 		});
 		return () => {
 			active = false;

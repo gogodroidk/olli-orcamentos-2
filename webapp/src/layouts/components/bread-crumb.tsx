@@ -1,12 +1,20 @@
-import type { NavItemDataProps } from "@/components/nav";
-import { useFilteredNavData } from "@/layouts/dashboard/nav";
-import useLocale from "@/locales/use-locale";
-import { Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/ui/breadcrumb";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import * as React from "react";
 import { useCallback, useMemo } from "react";
 import { Link, useMatches } from "react-router";
+import type { NavItemDataProps } from "@/components/nav";
+import { useFilteredNavData } from "@/layouts/dashboard/nav";
+import useLocale from "@/locales/use-locale";
+import {
+	Breadcrumb,
+	BreadcrumbEllipsis,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/ui/breadcrumb";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
 
 interface BreadCrumbProps {
 	maxItems?: number;

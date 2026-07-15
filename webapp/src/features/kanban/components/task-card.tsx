@@ -65,8 +65,13 @@ function Miolo({ cartao, coluna, salvando }: { cartao: Cartao; coluna: Coluna; s
 					</>
 				) : (
 					<>
-						<Clock className={cn("size-3", esfriando ? "text-warning" : "text-text-disabled")} aria-hidden />
-						<span className={cn(esfriando ? "font-medium text-warning" : "text-text-secondary")}>
+						<Clock
+							className={cn("size-3", esfriando ? "text-warning-darker dark:text-warning" : "text-text-disabled")}
+							aria-hidden
+						/>
+						<span
+							className={cn(esfriando ? "font-medium text-warning-darker dark:text-warning" : "text-text-secondary")}
+						>
 							{rotuloParado(cartao.diasParado)}
 						</span>
 						<span className="sr-only">sem movimentação. Status atual: {rotuloDoStatus(cartao.status)}.</span>
@@ -109,8 +114,8 @@ export default function TaskCard({ cartao, coluna, salvando, onMover }: Props) {
 					aria-label={`Arrastar orçamento ${cartao.numero}. Ou use o menu Mover para.`}
 					disabled={salvando}
 					className={cn(
-						"-ml-1 mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-text-disabled",
-						"hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+						"-ml-1 mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-text-secondary",
+						"hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
 						"active:cursor-grabbing disabled:cursor-not-allowed",
 					)}
 				>
@@ -126,7 +131,7 @@ export default function TaskCard({ cartao, coluna, salvando, onMover }: Props) {
 							size="icon"
 							disabled={salvando}
 							aria-label={`Mover ${cartao.numero} para outro estágio`}
-							className="-mr-1 size-7 shrink-0 text-text-disabled hover:text-text-primary"
+							className="-mr-1 size-7 shrink-0 text-text-secondary hover:text-text-primary"
 						>
 							<MoreVertical className="size-4" aria-hidden />
 						</Button>
