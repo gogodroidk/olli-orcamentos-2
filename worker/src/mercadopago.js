@@ -215,7 +215,11 @@ async function criarPagamentoPix(env, { valorReais, descricao, email, externalRe
     payer: { email: email || 'sem-email@olliorcamentos.online' },
     external_reference: externalRef,
     notification_url: `${WORKER_BASE}/mp/webhook`,
-    date_of_expiration: isoDaquiA(30),
+    // MP exige date_of_expiration >= agora+30min (o mínimo do Pix). Marcar EXATAMENTE
+    // 30min corre risco de o MP recusar por latência de rede/desvio de relógio (o valor
+    // chega < 30min no relógio DELE) — o usuário veria "falha_criar_pix". 60min sai da
+    // borda com folga e ainda dá tempo real de abrir o app do banco e pagar.
+    date_of_expiration: isoDaquiA(60),
     statement_descriptor: 'OLLI',
     additional_info: {
       items: [{
