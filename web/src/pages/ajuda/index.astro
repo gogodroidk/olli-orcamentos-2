@@ -1,0 +1,113 @@
+---
+import {
+	CATEGORIAS_AJUDA,
+	getArtigosDaCategoria,
+} from "../../../../src/content/ajuda/index";
+import OlliLogo from "../../components/OlliLogo.astro";
+import Layout from "../../layouts/Layout.astro";
+
+const categorias = CATEGORIAS_AJUDA.map((cat) => ({
+	...cat,
+	artigos: getArtigosDaCategoria(cat.id),
+})).filter((cat) => cat.artigos.length > 0);
+---
+
+<Layout
+  titulo="Central de Ajuda — OLLI"
+  descricao="Guias diretos pra usar a OLLI no dia a dia: orçamentos, link do cliente, ordens de serviço, equipe, planos, backup, offline e privacidade."
+>
+  <!-- ══════════ CABEÇALHO ══════════ -->
+  <header class="border-b border-line bg-white/85 backdrop-blur">
+    <nav class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+      <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
+      <a href="/" class="text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
+    </nav>
+  </header>
+
+  <!-- ══════════ HERO ══════════ -->
+  <section class="mx-auto max-w-4xl px-6 pt-14 sm:pt-20">
+    <span class="eyebrow">Central de Ajuda</span>
+    <h1 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">
+      Como podemos ajudar?
+    </h1>
+    <p class="mt-4 max-w-2xl text-lg leading-relaxed text-slate">
+      Guias diretos pra usar a OLLI no dia a dia — cada artigo descreve o que o app realmente faz.
+    </p>
+
+    <!-- Índice das categorias -->
+    <nav class="mt-8 flex flex-wrap gap-2.5">
+      {categorias.map((cat) => (
+        <a
+          href={`#${cat.id}`}
+          class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+        >
+          {cat.titulo}
+        </a>
+      ))}
+    </nav>
+  </section>
+
+  <!-- ══════════ CATEGORIAS + ARTIGOS ══════════ -->
+  <main class="mx-auto max-w-4xl px-6 py-16">
+    <div class="space-y-16">
+      {categorias.map((cat) => (
+        <section id={cat.id} class="scroll-mt-24">
+          <h2 class="text-2xl font-extrabold tracking-tight text-ink">{cat.titulo}</h2>
+
+          <div class="mt-6 space-y-5">
+            {cat.artigos.map((artigo) => (
+              <article class="rounded-2xl border border-line bg-white p-6 sm:p-7">
+                <h3 class="text-lg font-bold text-ink">{artigo.titulo}</h3>
+                <p class="mt-1.5 text-sm leading-relaxed text-muted">{artigo.resumo}</p>
+
+                <div class="mt-5 space-y-4">
+                  {artigo.corpo.map((bloco) => (
+                    <>
+                      {bloco.tipo === 'paragrafo' && (
+                        <p class="leading-relaxed text-slate">{bloco.conteudo}</p>
+                      )}
+
+                      {bloco.tipo === 'passos' && Array.isArray(bloco.conteudo) && (
+                        <ol class="space-y-2.5">
+                          {bloco.conteudo.map((passo, i) => (
+                            <li class="flex gap-3">
+                              <span class="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand tnum">
+                                {i + 1}
+                              </span>
+                              <span class="leading-relaxed text-slate">{passo}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+
+                      {bloco.tipo === 'aviso' && (
+                        <div class="flex gap-3 rounded-xl border border-line bg-tint px-4 py-3">
+                          <span class="shrink-0 text-mint" aria-hidden="true">✓</span>
+                          <p class="text-sm leading-relaxed text-slate">{bloco.conteudo}</p>
+                        </div>
+                      )}
+                    </>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  </main>
+
+  <!-- ══════════ RODAPÉ ══════════ -->
+  <footer class="border-t border-line bg-paper">
+    <div class="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+      <OlliLogo size={28} />
+      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+        <a href="/legal/privacidade" class="transition hover:text-ink">Privacidade</a>
+        <a href="/legal/termos" class="transition hover:text-ink">Termos</a>
+        <a href="/ajuda" class="transition hover:text-ink">Ajuda</a>
+        <a href="/" class="transition hover:text-ink">Início</a>
+      </div>
+      <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>
+    </div>
+  </footer>
+</Layout>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://olliorcamentos.online/sitemap-index.xml

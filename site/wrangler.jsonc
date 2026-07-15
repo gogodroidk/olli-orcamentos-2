@@ -25,13 +25,17 @@
   "compatibility_date": "2026-06-29",
 
   "assets": {
-    "directory": "../dist",
-    // A landing e o app são uma SPA (app.json: web.output = "single"): qualquer
-    // rota desconhecida devolve o index.html. Os arquivos REAIS (sitemap.xml,
-    // robots.txt, og-image.png) continuam sendo servidos com o próprio
-    // Content-Type — é isso que faz /sitemap.xml voltar como application/xml em
-    // vez de cair no catch-all e virar text/html.
-    "not_found_handling": "single-page-application"
+    // 2026-07-14: a raiz passou a servir a LANDING NOVA (Astro, pasta `web/`) no
+    // lugar do export do app Expo (`dist/`), que era a web antiga. Publicar com:
+    //   cd web && npm run build     (gera web/dist + o _headers com o CSP)
+    //   cd site && npx wrangler deploy
+    "directory": "../web/dist",
+
+    // A landing NÃO é mais SPA: o Astro gera um .html de verdade por rota
+    // (/, /ajuda, /legal/…), então rota desconhecida deve cair no 404.html com
+    // status 404 — e não devolver a home com status 200, que enganaria o Google
+    // e mostraria a home pra quem clicou num link quebrado.
+    "not_found_handling": "404-page"
   },
 
   "observability": { "enabled": true }

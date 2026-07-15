@@ -1,0 +1,227 @@
+/*
+ * TEMA DO FULLCALENDAR — o passo que ninguém pula sem quebrar o modo escuro.
+ *
+ * O FullCalendar v6 injeta o CSS dele em <head> EM TEMPO DE EXECUÇÃO (no import),
+ * declarando os defaults `--fc-*` no `:root` — todos assumindo fundo BRANCO
+ * (`--fc-page-bg-color: #fff`, `--fc-border-color: #ddd`, texto preto). No tema
+ * escuro do painel isso vira linha cinza-clara sobre preto e evento com texto
+ * branco sobre fundo claro: ilegível.
+ *
+ * Como corrigimos SEM brigar por ordem de cascata: redeclaramos os `--fc-*` no
+ * WRAPPER (`.olli-agenda`). Variável CSS resolve pelo ancestral MAIS PRÓXIMO que a
+ * declarou — então a nossa vence o `:root` do FullCalendar independentemente de
+ * qual folha de estilo entrou primeiro (que, em produção, é a nossa: o FC injeta
+ * depois e ganharia qualquer empate de especificidade).
+ *
+ * Pelo mesmo motivo, as poucas regras que NÃO são variável são escritas como
+ * `.olli-agenda .fc …` (0,3,0) — especificidade maior que a do FC (`.fc …`, 0,2,0).
+ * Nunca dependa de "a minha vem depois". Não vem.
+ *
+ * As cores saem dos tokens do painel (`--colors-*`, gerados por tema em
+ * `:root[data-theme-mode=…]`), então claro e escuro seguem sozinhos — sem duas
+ * paletas para manter em sincronia.
+ */
+
+.olli-agenda {
+	/* Superfície e traço */
+	--fc-page-bg-color: var(--colors-background-paper);
+	--fc-border-color: rgba(var(--colors-palette-gray-500Channel) / 0.2);
+	--fc-neutral-bg-color: rgba(var(--colors-palette-gray-500Channel) / 0.08);
+	--fc-neutral-text-color: var(--colors-text-secondary);
+	--fc-small-font-size: 0.78em;
+
+	/* Hoje / agora / seleção — sinal, não decoração */
+	--fc-today-bg-color: rgba(var(--colors-palette-primary-defaultChannel) / 0.06);
+	--fc-now-indicator-color: var(--colors-palette-error-default);
+	--fc-highlight-color: rgba(var(--colors-palette-primary-defaultChannel) / 0.14);
+	--fc-non-business-color: rgba(var(--colors-palette-gray-500Channel) / 0.05);
+
+	/* Eventos. O texto herda a cor do tema (o fundo do evento é um tint translúcido
+	   da cor do TIPO — ver `corDeFundo()` no index.tsx). O default do FC aqui é
+	   branco, que sobre um tint claro no tema claro fica invisível. */
+	--fc-event-text-color: var(--colors-text-primary);
+	--fc-event-bg-color: rgba(var(--colors-palette-primary-defaultChannel) / 0.15);
+	--fc-event-border-color: var(--colors-palette-primary-default);
+	--fc-event-selected-overlay-color: rgba(var(--colors-palette-primary-defaultChannel) / 0.12);
+
+	/* "+2 mais" no mês */
+	--fc-more-link-bg-color: rgba(var(--colors-palette-gray-500Channel) / 0.12);
+	--fc-more-link-text-color: var(--colors-text-primary);
+
+	/* Lista (o ROTEIRO DO DIA, visão padrão no celular) */
+	--fc-list-event-hover-bg-color: rgba(var(--colors-palette-gray-500Channel) / 0.08);
+
+	color: var(--colors-text-primary);
+}
+
+/* ─────────────────────────  Tipografia e cromo  ───────────────────────────── */
+
+.olli-agenda .fc {
+	font-family: inherit;
+}
+
+/* Cabeçalho de coluna (Seg 14) e régua de horas: são RÓTULOS, não conteúdo —
+   secundários, para o olho ir direto no evento. */
+.olli-agenda .fc .fc-col-header-cell-cushion,
+.olli-agenda .fc .fc-timegrid-axis-cushion,
+.olli-agenda .fc .fc-timegrid-slot-label-cushion {
+	color: var(--colors-text-secondary);
+	font-weight: 500;
+	font-size: 0.8rem;
+	text-decoration: none;
+}
+
+/* O dia de HOJE no cabeçalho ganha peso — é a âncora de leitura do painel. */
+.olli-agenda .fc .fc-day-today .fc-col-header-cell-cushion {
+	color: var(--colors-palette-primary-default);
+	font-weight: 700;
+}
+
+.olli-agenda .fc .fc-daygrid-day-number {
+	color: var(--colors-text-primary);
+	font-size: 0.8rem;
+	text-decoration: none;
+}
+
+.olli-agenda .fc .fc-day-other .fc-daygrid-day-number {
+	color: var(--colors-text-disabled);
+}
+
+/* Sem foco visível, a navegação por teclado fica cega (regra 10 do projeto). */
+.olli-agenda .fc a:focus-visible,
+.olli-agenda .fc button:focus-visible,
+.olli-agenda .fc [tabindex]:focus-visible {
+	outline: 2px solid var(--colors-palette-primary-default);
+	outline-offset: 1px;
+	border-radius: 6px;
+}
+
+/* ────────────────────────────────  Eventos  ───────────────────────────────── */
+
+.olli-agenda .fc .fc-event {
+	border-radius: 8px;
+	border-width: 0;
+	border-left-width: 3px; /* a cor do TIPO vive aqui: a faixa é o código de cor */
+	border-left-style: solid;
+	padding: 0;
+	font-size: 0.78rem;
+	line-height: 1.25;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.olli-agenda .fc .fc-event:hover {
+	filter: brightness(1.06);
+}
+
+/* SEM FIM DEFINIDO: a duração mostrada é ESTIMADA (derivada do tipo). A borda
+   tracejada no pé do bloco diz "não sei quando termina" — pintar um bloco sólido
+   seria afirmar um horário de término que ninguém marcou. */
+.olli-agenda .fc .ag-estimado {
+	border-bottom: 1px dashed currentColor;
+	border-bottom-color: rgba(var(--colors-palette-gray-500Channel) / 0.6);
+}
+
+/* 0,55 apagava o texto do evento cancelado abaixo do mínimo legível (o texto já
+   herda `--colors-text-primary`, então esta opacidade multiplica DIRETO em cima
+   do contraste dele). O riscado no título (abaixo) já carrega o sinal "cancelado"
+   — a opacidade só precisa acompanhar, não pode ser o único contraste que sobra. */
+.olli-agenda .fc .ag-cancelado {
+	opacity: 0.75;
+}
+
+.olli-agenda .fc .ag-cancelado .ag-titulo {
+	text-decoration: line-through;
+}
+
+.olli-agenda .fc .ag-concluido {
+	opacity: 0.8;
+}
+
+/* Botão "⋮" do evento: o caminho de teclado/celular para reagendar (arrastar não
+   funciona em nenhum dos dois). Fica discreto, mas SEMPRE visível no foco.
+   20px/opacidade 0,45 era pequeno e quase invisível DEMAIS no toque: errar por
+   2mm abria a edição que ninguém pediu. Repouso sobe para 0,6 (ainda discreto,
+   mas achável sem precisar passar o mouse) e, em telas de toque, o alvo cresce
+   para 40px via margem negativa — sem inflar o layout do evento ao redor. */
+.olli-agenda .fc .ag-menu-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	border-radius: 6px;
+	opacity: 0.6;
+	transition:
+		opacity 120ms ease,
+		background-color 120ms ease;
+}
+
+@media (pointer: coarse) {
+	.olli-agenda .fc .ag-menu-btn {
+		width: 40px;
+		height: 40px;
+		opacity: 0.8;
+		margin: -8px -6px -8px 0;
+	}
+}
+
+.olli-agenda .fc .fc-event:hover .ag-menu-btn,
+.olli-agenda .fc .ag-menu-btn:focus-visible {
+	opacity: 1;
+	background-color: rgba(var(--colors-palette-gray-500Channel) / 0.22);
+}
+
+/* ──────────────────────────  Lista / roteiro do dia  ──────────────────────── */
+
+.olli-agenda .fc .fc-list {
+	border-radius: 12px;
+	border-color: var(--fc-border-color);
+}
+
+.olli-agenda .fc .fc-list-day-cushion {
+	background-color: var(--fc-neutral-bg-color);
+}
+
+.olli-agenda .fc .fc-list-day-text,
+.olli-agenda .fc .fc-list-day-side-text {
+	color: var(--colors-text-primary);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.olli-agenda .fc .fc-list-event-time {
+	color: var(--colors-text-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	vertical-align: top;
+}
+
+/* No celular a régua de 24h é inutilizável — por isso o padrão é o ROTEIRO
+   (lista). Aqui só damos ao roteiro o alvo de toque decente (44px).
+   Vem ANTES do `:hover` de propósito: regra menos específica primeiro, senão a
+   cascata fica dependendo de sorte (é o que o `noDescendingSpecificity` cobra). */
+.olli-agenda .fc .fc-list-event td {
+	padding: 12px 10px;
+}
+
+.olli-agenda .fc .fc-list-event:hover td {
+	background-color: var(--fc-list-event-hover-bg-color);
+}
+
+.olli-agenda .fc .fc-list-empty {
+	background-color: transparent;
+}
+
+/* ────────────────────────────  Faixa "sem hora"  ──────────────────────────── */
+
+/* A faixa do topo (all-day) é onde mora o agendamento SEM HORA MARCADA. O rótulo
+   default do FC seria "o dia todo", que é outra coisa — o texto certo vem por
+   `allDayText` no index.tsx. */
+.olli-agenda .fc .fc-timegrid-axis-cushion {
+	max-width: 60px;
+	white-space: normal;
+	line-height: 1.15;
+	font-size: 0.68rem;
+}

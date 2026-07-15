@@ -1,0 +1,31 @@
+---
+interface Props {
+	size?: number;
+	withText?: boolean;
+	textClass?: string;
+	class?: string;
+}
+const {
+	size = 38,
+	withText = true,
+	textClass = "text-ink",
+	class: className = "",
+} = Astro.props;
+---
+<span class={`inline-flex items-center gap-2.5 ${className}`}>
+  <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="olliLogoGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#3FD8EA"></stop>
+        <stop offset="1" stop-color="#0B6FCE"></stop>
+      </linearGradient>
+    </defs>
+    <path d="M22 49 L12 59.5 L30 50 Z" fill="url(#olliLogoGrad)"></path>
+    <rect x="9" y="8" width="46" height="44" rx="14.5" fill="url(#olliLogoGrad)"></rect>
+    <rect x="13" y="11.5" width="38" height="15" rx="9" fill="#ffffff" fill-opacity="0.1"></rect>
+    <rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5"></rect>
+    <rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5"></rect>
+    <path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke="#EAFEFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path>
+  </svg>
+  {withText && <span class={`text-xl font-extrabold tracking-tight ${textClass}`}>OLLI</span>}
+</span>
