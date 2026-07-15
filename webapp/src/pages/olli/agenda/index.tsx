@@ -94,8 +94,8 @@ import FormAgendamento from "./FormAgendamento";
 type Vista = "timeGridWeek" | "dayGridMonth" | "timeGridDay" | "listDay" | "listWeek";
 
 const VISTAS_DESKTOP: { v: Vista; label: string }[] = [
-	{ v: "timeGridWeek", label: "Semana" },
 	{ v: "dayGridMonth", label: "Mês" },
+	{ v: "timeGridWeek", label: "Semana" },
 	{ v: "timeGridDay", label: "Dia" },
 ];
 
@@ -132,7 +132,9 @@ export default function AgendaPage() {
 
 	/* ──────────────────────────  Estado da tela  ────────────────────── */
 	const [vistaEscolhida, setVistaEscolhida] = useState<Vista | null>(null);
-	const vista: Vista = vistaEscolhida ?? (ehCelular ? "listDay" : "timeGridWeek");
+	// MÊS é o padrão do desktop: é a visão que dá o panorama do compromisso — a
+	// grade de horas (Semana/Dia) fica a um clique, para quando o dono já sabe o dia.
+	const vista: Vista = vistaEscolhida ?? (ehCelular ? "listDay" : "dayGridMonth");
 	const opcoesDeVista = ehCelular ? VISTAS_CELULAR : VISTAS_DESKTOP;
 
 	const [periodo, setPeriodo] = useState("");

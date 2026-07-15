@@ -34,6 +34,7 @@ import {
 	STATUS_EQUIP_VARIANT,
 	subEquipamento,
 } from "./equipamento";
+import EtiquetaQrDialog from "./etiquetaQr";
 import FormEquipamento from "./FormEquipamento";
 
 /** Chaves estáveis para os placeholders de carregamento (nunca o índice). */
@@ -120,6 +121,7 @@ export default function EquipamentosPage() {
 	const [formAberto, setFormAberto] = useState(false);
 	const [emEdicao, setEmEdicao] = useState<Equipamento | null>(null);
 	const [aExcluir, setAExcluir] = useState<Equipamento | null>(null);
+	const [etiquetaDe, setEtiquetaDe] = useState<Equipamento | null>(null);
 
 	const excluir = useExcluir("equipamentos");
 
@@ -380,7 +382,7 @@ export default function EquipamentosPage() {
 											<BadgeQr e={e} />
 										</td>
 										<td className="whitespace-nowrap px-4 py-3.5 text-right">
-											<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+											<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
 										</td>
 									</tr>
 								))}
@@ -423,7 +425,7 @@ export default function EquipamentosPage() {
 
 								<div className="mt-3 flex items-center justify-between gap-2">
 									<BadgeQr e={e} />
-									<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+									<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
 								</div>
 							</div>
 						))}
@@ -437,6 +439,8 @@ export default function EquipamentosPage() {
 			)}
 
 			<FormEquipamento aberto={formAberto} aoFechar={() => setFormAberto(false)} equipamento={emEdicao} />
+
+			<EtiquetaQrDialog aberto={!!etiquetaDe} aoFechar={() => setEtiquetaDe(null)} equipamento={etiquetaDe} />
 
 			<ConfirmarExclusao
 				aberto={!!aExcluir}
@@ -494,19 +498,32 @@ function ChipSituacao({
 	);
 }
 
-/** Editar / Excluir. Botões de verdade: alcançáveis por Tab, com nome acessível. */
+/** Etiqueta / Editar / Excluir. Botões de verdade: alcançáveis por Tab, com nome acessível. */
 function AcoesLinha({
 	e,
 	aoEditar,
 	aoExcluir,
+	aoVerEtiqueta,
 }: {
 	e: Equipamento;
 	aoEditar: (e: Equipamento) => void;
 	aoExcluir: (e: Equipamento) => void;
+	aoVerEtiqueta: (e: Equipamento) => void;
 }) {
 	const nome = nomeEquipamento(e);
 	return (
 		<div className="inline-flex items-center gap-1">
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				className="size-8"
+				onClick={() => aoVerEtiqueta(e)}
+				aria-label={`Etiqueta QR de ${nome}`}
+				title="Etiqueta QR"
+			>
+				<QrCode className="size-4" />
+			</Button>
 			<Button
 				type="button"
 				variant="ghost"

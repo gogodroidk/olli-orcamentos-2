@@ -28,36 +28,15 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		{ path: "agenda", element: Component("/pages/olli/agenda") },
 		{ path: "equipamentos", element: Component("/pages/olli/equipamentos") },
 
-		// Equipe segue somente-leitura: convidar/mudar papel é outro fluxo, com
-		// regras de permissão próprias — não é um CRUD de tabela.
-		{
-			path: "equipe",
-			element: Component("/pages/olli/list", {
-				table: "organizacao_membros",
-				title: "Equipe",
-				subtitle: "Membros da sua organização",
-			}),
-		},
+		{ path: "equipe", element: Component("/pages/olli/equipe") },
+
+		// ─── Ferramentas ────────────────────────────────────────
+		{ path: "ferramentas", element: Component("/pages/olli/ferramentas") },
+		{ path: "diagnostico", element: Component("/pages/olli/diagnostico") },
 
 		// ─── Conta ──────────────────────────────────────────────
 		{ path: "meu-negocio", element: Component("/pages/olli/meu-negocio") },
 		{ path: "planos", element: Component("/pages/olli/planos") },
-
-		// ─── Ainda não portadas do app ──────────────────────────
-		{
-			path: "ferramentas",
-			element: Component("/pages/olli/placeholder", {
-				title: "Ferramentas de ofício",
-				hint: "Calculadoras, códigos de erro e PMOC — chegando aqui.",
-			}),
-		},
-		{
-			path: "diagnostico",
-			element: Component("/pages/olli/placeholder", {
-				title: "Diagnóstico IA",
-				hint: "A IA de diagnóstico de climatização vai morar aqui.",
-			}),
-		},
 	];
 	return frontendDashboardRoutes;
 }
