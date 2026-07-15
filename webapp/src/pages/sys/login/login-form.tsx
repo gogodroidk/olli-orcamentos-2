@@ -25,10 +25,17 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 	const { loginState, setLoginState } = useLoginStateContext();
 	const signIn = useSignIn();
 
+	// Prefill de conveniência SÓ em DEV, e SÓ a partir de variáveis de ambiente
+	// locais (.env, fora do git). A credencial NUNCA fica no código: este é um
+	// repositório PÚBLICO — hardcodar senha aqui vaza a conta pra qualquer um.
 	const form = useForm<SignInReq>({
-		defaultValues: import.meta.env.DEV
-			? { username: "demo@grtech.com.br", password: "GrTechDemo2026" }
-			: { username: "", password: "" },
+		defaultValues:
+			import.meta.env.DEV && import.meta.env.VITE_DEMO_EMAIL
+				? {
+						username: import.meta.env.VITE_DEMO_EMAIL,
+						password: import.meta.env.VITE_DEMO_PASSWORD ?? "",
+					}
+				: { username: "", password: "" },
 	});
 
 	const signInWithProvider = (provider: "google" | "apple") =>
