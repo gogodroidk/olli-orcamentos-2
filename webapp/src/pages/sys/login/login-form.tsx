@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -8,7 +8,7 @@ import type { SignInReq } from "@/api/services/userService";
 import { Icon } from "@/components/icon";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { supabase } from "@/lib/supabase";
-import { useSignIn } from "@/store/userStore";
+import { useSignIn, useUserToken } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
@@ -26,6 +26,15 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 
 	const { loginState, setLoginState } = useLoginStateContext();
 	const signIn = useSignIn();
+
+	// Depois do login com Google/Apple, o Supabase volta pra ESTA tela com a sessão
+	// já criada. Sem isto, ela ficava mostrando o formulário e o usuário tinha que
+	// clicar "Entrar" de novo. Assim que a sessão aparece (via useAuthSync), entra
+	// direto no sistema.
+	const { accessToken } = useUserToken();
+	useEffect(() => {
+		if (accessToken) navigatge(GLOBAL_CONFIG.defaultRoute, { replace: true });
+	}, [accessToken, navigatge]);
 
 	// Prefill de conveniência SÓ em DEV, e SÓ a partir de variáveis de ambiente
 	// locais (.env, fora do git). A credencial NUNCA fica no código: este é um

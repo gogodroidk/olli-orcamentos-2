@@ -65,11 +65,13 @@ export default function RecibosPage() {
 	 * quando o papel é DESCONHECIDO (carregando ou erro), bloqueia também: "não sei
 	 * quem é" nunca pode virar "deixa gravar".
 	 */
+	// O botão "Novo recibo" fica SEMPRE visível — só some se você for, com CERTEZA,
+	// um membro não-dono (ownerUserId preenchido). Enquanto carrega, dá erro ou é
+	// conta própria/dono, o botão aparece: esconder por "não sei ainda" trava o uso.
+	// A proteção de tenant de verdade continua na gravação (mutacoes.ts), não aqui.
 	const contexto = useContextoDeEscrita();
-	const papel = contexto.data?.papel;
-	const ehDono = papel === "owner" || papel === "pessoal";
-	const permissaoDesconhecida = contexto.isLoading || contexto.isError || !papel;
-	const podeEscrever = !permissaoDesconhecida && ehDono;
+	const ehMembroConfirmado = contexto.data?.ownerUserId != null;
+	const podeEscrever = !ehMembroConfirmado;
 
 	const [busca, setBusca] = useState("");
 	const [formAberto, setFormAberto] = useState(false);
@@ -170,34 +172,14 @@ export default function RecibosPage() {
 				</div>
 			</div>
 
-			{/* ─────────────  Aviso de permissão — honesto sobre POR QUE está travado  ───────────── */}
-			{!podeEscrever && (
-				<div
-					className={cn(
-						"mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-sm text-text-primary",
-						permissaoDesconhecida ? "bg-error/10" : "bg-warning/10",
-					)}
-				>
-					{permissaoDesconhecida ? (
-						<AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-error-dark dark:text-error" />
-					) : (
-						<Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning" />
-					)}
+			{/* Aviso SÓ para quem é, com certeza, membro não-dono. Enquanto carrega ou
+			    dá erro, não trava nada nem mostra alarme — o botão fica disponível. */}
+			{ehMembroConfirmado && (
+				<div className="mb-4 flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-text-primary">
+					<Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning" />
 					<span>
-						{permissaoDesconhecida ? (
-							<>
-								Não consegui confirmar seu papel nesta empresa, então novo recibo e edição ficam bloqueados.{" "}
-								<button
-									type="button"
-									className="font-semibold underline underline-offset-2"
-									onClick={() => contexto.refetch()}
-								>
-									Tentar de novo
-								</button>
-							</>
-						) : (
-							"Recibos são emitidos pelo dono da conta. Você pode conferir os pagamentos aqui; para registrar ou alterar um recebimento, peça ao dono."
-						)}
+						Recibos são emitidos pelo dono da conta. Você pode conferir os pagamentos aqui; para registrar ou
+						alterar um recebimento, peça ao dono.
 					</span>
 				</div>
 			)}

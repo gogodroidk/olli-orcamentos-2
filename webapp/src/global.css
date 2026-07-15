@@ -28,18 +28,6 @@
 	}
 }
 
-/* Motion funcional, não decorativo: respeita a preferência do sistema. */
-@media (prefers-reduced-motion: reduce) {
-	*,
-	*::before,
-	*::after {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
-		scroll-behavior: auto !important;
-	}
-}
-
 @theme {
 	--animate-collapsible-down: collapsible-down 0.2s ease-in-out;
 	--animate-collapsible-up: collapsible-up 0.2s ease-in-out;
