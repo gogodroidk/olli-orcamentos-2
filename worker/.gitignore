@@ -1,0 +1,5 @@
+# Saída do `wrangler deploy --dry-run --outdir=.dry` (validação local do bundle).
+# É artefato de build: nunca versionar.
+.dry/
+.base/
+.wrangler/

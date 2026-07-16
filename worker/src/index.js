@@ -31,6 +31,7 @@
  *   POST /o/<token> → grava a resposta do cliente
  */
 
+import * as Sentry from '@sentry/cloudflare';
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
@@ -804,7 +805,7 @@ async function handleChat(bodyText, env) {
   return json({ ok: true, resposta: text });
 }
 
-export default {
+const handler = {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
@@ -987,3 +988,34 @@ export default {
     }
   },
 };
+
+/**
+ * Sentry — crash reporting do worker.
+ *
+ * withSentry envolve o handler inteiro: pega exceção não tratada em QUALQUER
+ * rota (IA, Stripe, Mercado Pago, admin, link público) sem tocar no código
+ * delas. Os try/catch existentes continuam mandando — o Sentry só vê o que
+ * escapa deles, que é justamente o que hoje some sem deixar rastro.
+ *
+ * Exige "compatibility_flags": ["nodejs_compat"] no wrangler.jsonc
+ * (AsyncLocalStorage). Sem a flag, o deploy passa e o worker quebra em runtime.
+ *
+ * A DSN é pública por natureza e está fixa de propósito: em env/secret, uma
+ * variável faltando desligaria o monitoramento em silêncio — o padrão
+ * "erro vira vazio". E secret a mais é secret a mais pra um push apagar.
+ *
+ * dataCollection.httpBodies: [] — NUNCA enviar corpo de requisição. Aqui passa
+ * webhook de pagamento e prompt de cliente: corpo é dado pessoal (LGPD) e
+ * assinatura HMAC. Só metadado vai.
+ */
+export default Sentry.withSentry(
+  () => ({
+    dsn: 'https://b015159326e49e2534d36452c334611f@o4511745793327104.ingest.us.sentry.io/4511745841889280',
+    environment: 'production',
+    sendDefaultPii: false,
+    dataCollection: { httpBodies: [] },
+    // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
+    tracesSampleRate: 0.1,
+  }),
+  handler,
+);

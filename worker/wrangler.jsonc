@@ -3,6 +3,15 @@
   "name": "olli-diagnostico",
   "main": "src/index.js",
   "compatibility_date": "2025-06-01",
+  // nodejs_compat é EXIGIDO pelo @sentry/cloudflare: o SDK precisa de
+  // AsyncLocalStorage para propagar o escopo entre await. Sem esta flag o
+  // deploy PASSA e o worker quebra em runtime.
+  //
+  // ATENÇÃO — isto muda o RUNTIME de um backend vivo (pagamentos/webhooks/IA):
+  // adiciona globais do Node e altera resolução de módulos. Não é cosmético.
+  // Antes do primeiro deploy com esta flag, confira que as rotas de pagamento
+  // continuam respondendo (ver README).
+  "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put GEMINI_API_KEY

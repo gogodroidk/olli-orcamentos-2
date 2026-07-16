@@ -1,0 +1,16 @@
+{
+  "name": "olli-diagnostico",
+  "private": true,
+  "type": "module",
+  "description": "Worker de IA/pagamentos do OLLI. Deploy manual: wrangler deploy (NUNCA por Git — o build por Git apaga os secrets).",
+  "scripts": {
+    "check": "wrangler deploy --dry-run --outdir=.dry",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@sentry/cloudflare": "^10.66.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
