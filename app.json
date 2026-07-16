@@ -92,6 +92,14 @@
             "enableShrinkResourcesInReleaseBuilds": true
           }
         }
+      ],
+      [
+        "@sentry/react-native",
+        {
+          "organization": "olli-p7",
+          "project": "olli-app",
+          "url": "https://sentry.io/"
+        }
       ]
     ],
     "extra": {

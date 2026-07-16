@@ -48,6 +48,13 @@ for (const arquivo of arquivosHtml(DIST)) {
 const CF_ANALYTICS_SCRIPT = "https://static.cloudflareinsights.com";
 const CF_ANALYTICS_BEACON = "https://cloudflareinsights.com";
 
+// Mesma armadilha do beacon acima, agora pro Sentry: o SDK manda o erro via fetch
+// pro endpoint de ingestão. Sem este domínio no connect-src, o navegador bloqueia
+// o envio e o monitoramento fica MUDO — configurado, sem erro visível, e sem
+// nenhum evento chegando. Este host é o da DSN (ver web/sentry.client.config.js);
+// se a org do Sentry mudar, ele muda junto.
+const SENTRY_INGEST = "https://o4511745793327104.ingest.us.sentry.io";
+
 const scriptSrc = ["'self'", CF_ANALYTICS_SCRIPT, ...hashes].join(" ");
 
 // style-src precisa de 'unsafe-inline': o Astro/Tailwind emitem atributos style=""
@@ -59,7 +66,7 @@ const csp = [
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' data:",
 	"font-src 'self' data:",
-	`connect-src 'self' ${CF_ANALYTICS_BEACON}`,
+	`connect-src 'self' ${CF_ANALYTICS_BEACON} ${SENTRY_INGEST}`,
 	"form-action 'self'",
 	"base-uri 'self'",
 	"frame-ancestors 'none'",
