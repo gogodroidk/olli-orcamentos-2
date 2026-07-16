@@ -3,6 +3,35 @@
 > O que já foi ENTREGUE, com evidência (commit ou arquivo). Atualizar ao fim de cada onda.
 > Última atualização: 2026-07-12.
 
+## ⚖️ FONTE ÚNICA DE ESTADO (decidido em 2026-07-16 — item O0-5)
+
+**Este arquivo + [`FOLLOWUPS.md`](FOLLOWUPS.md) são o registro OFICIAL do que existe no OLLI.**
+Estado só é real aqui com evidência **verificável**: hash de commit, migration aplicada, exit code,
+HTTP status. Divergiu de qualquer outro documento? **Estes dois vencem** — e o outro documento é que
+está errado. Quem for escrever plano, roadmap ou auditoria começa por aqui, não por síntese.
+
+Por que a regra existe: três camadas de documentação divergiam e cada leitor novo priorizava
+fantasma. No mesmo dia (14/07) o MESMO painel tirou **7,5/10** numa auditoria aba-por-aba e
+**4,6/10** noutra feita sobre o bundle — a diferença não era o painel, era o material lido.
+
+| Fonte | O que é | Como tratar |
+|---|---|---|
+| `docs/EXECUTION_LOG.md` + `docs/FOLLOWUPS.md` | Registro vivo, com commit/migration/teste | **OFICIAL — é o estado** |
+| `C:\ollx\h` (bundle de handoff) | **Snapshot** de ~15/07. Verificado em 16/07: **não tem `.git`** e o `src/` só contém `types/` — o app mobile inteiro (`services/`, `screens/`, `database/`) **não está lá**. Foi ele que gerou o "4,6/10, build quebrado, módulos ausentes": a auditoria acusou a ausência do bundle, não do produto. | **Aspiracional/parcial — NUNCA como estado corrente** |
+| `C:\ollx\h\olli-program` (kit de programa) | Template **nunca aplicado**. Verificado em 16/07: **82 itens `"status":"not_started"` e ZERO em qualquer outro status** — nenhum item jamais avançou, inclusive coisas comprovadamente em produção (RLS, admin fail-closed). O `EXECUTION_LEDGER.md` dele tem 5 linhas. | **Template em branco — não é registro de progresso** |
+| `Entregas Claude\OLLI-Plano-Mestre\` | **Síntese** e priorização (o "porquê" e a ordem) | Ótimo para decidir; **não é inventário** |
+| `docs/PILOTO/LEDGER.md` | Trilha append-only do piloto automático | Complementa este log; a FILA é do dono |
+
+**Contradições conhecidas que esta regra resolve** (o lado errado é sempre o de fora):
+`WEB_ESTADO_E_PLANO` diz "falta CRUD de escrita" enquanto os `Form*.tsx` existem completos no código ·
+`CURRENT_STATE` diz que `verticais.ts` não existe, mas há commit (`06a5269`) ·
+docs de PMOC do bundle dizem "nada implementado", mas as Fases 1-2 estão aplicadas e testadas 5/5 ·
+`FEATURE_MATRIX` ainda trata o webhook Stripe como fonte da verdade do plano, ignorando a decisão
+posterior do dono pelo Mercado Pago como gateway único.
+
+*Regra da casa que nasce daqui: **copy/preço/feature só derivada da fonte** (`PLANOS_BASE`, types,
+Stripe live) — nunca de memória. Já mentiu 5 vezes.*
+
 ## Ciclo v1–v8 (pré-roadmap atual)
 
 | Versão | Commit | Entrega | Evidência |

@@ -5,6 +5,24 @@
 > ou atacá-los diretamente. Todos são melhorias fora do caminho crítico —
 > nenhum bloqueia o que já está no ar.
 
+## ⚖️ FONTE ÚNICA DE ESTADO (decidido em 2026-07-16 — item O0-5)
+
+**Este arquivo + [`EXECUTION_LOG.md`](EXECUTION_LOG.md) são o registro OFICIAL do estado do OLLI.**
+A tabela completa (o que é oficial, o que é aspiracional e por quê) mora no
+[`EXECUTION_LOG.md`](EXECUTION_LOG.md) — **leia lá antes de escrever qualquer plano ou auditoria**.
+
+Resumo da divisão de trabalho entre os dois:
+- **`EXECUTION_LOG.md`** = o que **existe**, com evidência (commit, migration, exit code).
+- **`FOLLOWUPS.md`** (este) = o que **falta e é conhecido**: dívida, achado adiado, borda aberta.
+  Um item aqui é um **débito reconhecido**, não uma ideia solta — se não tem dono nem gravidade,
+  não entra.
+
+O que **não** é estado, por mais convincente que pareça: o bundle `C:\ollx\h` (snapshot sem `.git`,
+e cujo `src/` só tem `types/` — o mobile não está lá), o kit `olli-program` (82 itens
+`not_started`, **zero** em qualquer outro status: template jamais aplicado) e o Plano-Mestre em
+`Entregas Claude\` (síntese e priorização, não inventário). Divergência entre eles e estes dois
+arquivos: **estes dois vencem**.
+
 ## RE-AUDITORIA 2026-07-12 — onda de correção codável (checklist para o enxame)
 
 > Detalhe e severidade em `docs/AUDITORIA_GERAL.md`. Ordem por gravidade. Os P0-A/B/C são de INTEGRIDADE
