@@ -18,7 +18,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
 import { classificarContextoEquipe, decidirEscritaEquipe } from './contextoEquipe';
 import type { ContextoEquipe } from './contextoEquipe';
-import { getDb } from '../database/database';
+import { abrirParticaoDoUsuario, donoDoBancoAberto, getDb } from '../database/database';
+import { podeSincronizar } from '../database/particao';
 import {
   CHECKLIST_KEY,
   CHECKLIST_STAMP_KEY,
@@ -2115,6 +2116,23 @@ export async function syncOnLogin(): Promise<void> {
   const geracao = syncGeneration;
   try {
     if (!(await hasSession())) return;
+
+    // PARTIÇÃO (O0-2) — antes de QUALQUER leitura/escrita: garante que o SQLite
+    // aberto é o deste usuário. Num aparelho onde outra conta saiu "mantendo os
+    // dados", sem isto o pushAllLocal abaixo empurraria os clientes/orçamentos
+    // DELA para o tenant deste usuário. Falhou? Não sincroniza: um sync sobre o
+    // banco de outra pessoa é pior do que sync nenhum.
+    const usuario = await getCurrentUser();
+    if (!usuario?.id) return;
+    try {
+      await abrirParticaoDoUsuario(usuario.id);
+    } catch {
+      return;
+    }
+    // Cinto e suspensório: só seguimos se o banco aberto for PROVADAMENTE o dele.
+    // `indeterminado` (não sei de quem é) NÃO passa — erro nunca vira permissão.
+    if (!podeSincronizar(await donoDoBancoAberto(usuario.id))) return;
+
     // Descobre se o usuário é membro não-dono de uma org ANTES de empurrar, para
     // gravar orçamentos/agendamentos no tenant do dono (ver contextoEquipe).
     // Releitura forçada (não `garantir...`): no login o contexto pode ser de outra

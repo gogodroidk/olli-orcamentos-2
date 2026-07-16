@@ -7,7 +7,14 @@ import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOr
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
-import { APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
+import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
+import {
+  DB_LEGADO,
+  donoDoBanco,
+  type DonoDoBanco,
+  type MapaParticoes,
+  resolverParticao,
+} from './particao';
 import { generateId } from '../utils/id';
 
 /**
@@ -63,6 +70,73 @@ function registrarExclusao(table: string, id: string): void {
 }
 
 let db: SQLite.SQLiteDatabase | null = null;
+/** Arquivo .db aberto agora. `null` = ainda não abrimos nada nesta sessão. */
+let dbNome: string | null = null;
+
+/** Nome do banco aberto — para o sync conferir se o banco é mesmo do usuário logado. */
+export function nomeDoBancoAberto(): string | null {
+  return dbNome;
+}
+
+/**
+ * De quem é o banco aberto agora? 3 estados (`meu` | `de-outro` | `indeterminado`).
+ * Quem for sincronizar DEVE passar por aqui: `indeterminado` não é permissão.
+ */
+export async function donoDoBancoAberto(userId: string | null | undefined): Promise<DonoDoBanco> {
+  return donoDoBanco(userId, dbNome, await lerMapaParticoes());
+}
+
+/** Lê o mapa de partições. Nunca lança: mapa ilegível = `{}` (ninguém dono). */
+async function lerMapaParticoes(): Promise<MapaParticoes> {
+  try {
+    const cru = await AsyncStorage.getItem(DB_PARTICOES_KEY);
+    if (!cru) return {};
+    const obj = JSON.parse(cru);
+    return obj && typeof obj === 'object' ? (obj as MapaParticoes) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Garante que o banco ABERTO é a partição de `userId` — troca de arquivo se for
+ * preciso. Chame no login, ANTES de qualquer leitura/sync (ver `syncOnLogin`).
+ *
+ * Sem isto, o usuário B que entra num aparelho onde A saiu "mantendo os dados"
+ * herda o SQLite de A e o `pushAllLocal` empurra os clientes/orçamentos de A para
+ * o tenant de B — vazamento de A e corrupção da nuvem de B (O0-2).
+ *
+ * A gravação do mapa acontece ANTES de abrir: se o app morrer no meio, o pior
+ * caso é um mapa apontando para um arquivo ainda não criado (o open cria), e
+ * nunca dois usuários disputando o mesmo arquivo.
+ */
+export async function abrirParticaoDoUsuario(userId: string): Promise<string> {
+  const mapa = await lerMapaParticoes();
+  const r = resolverParticao(userId, mapa);
+  if (r.mapa !== mapa) {
+    try {
+      await AsyncStorage.setItem(DB_PARTICOES_KEY, JSON.stringify(r.mapa));
+    } catch {
+      // Não conseguimos registrar a posse. Abrir assim mesmo arriscaria a próxima
+      // sessão "readotar" o legado e misturar contas: melhor falhar alto.
+      throw new Error('Não foi possível preparar os dados deste aparelho. Tente de novo.');
+    }
+  }
+  if (dbNome === r.db && db) return r.db; // já estamos no arquivo certo
+
+  // Fecha o banco do usuário anterior antes de abrir o novo: dois handles abertos
+  // no mesmo processo é a receita de escrita cruzada.
+  if (db) {
+    try {
+      await db.closeAsync();
+    } catch {
+      // best-effort: um handle que não fecha não pode impedir a troca de conta
+    }
+    db = null;
+  }
+  dbNome = r.db;
+  return r.db;
+}
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
@@ -72,9 +146,15 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
     // retentaria a migração e a sessão inteira rodaria com metade das tabelas sem
     // a coluna nova ("no such column"). Falhando, nada fica em cache e a próxima
     // chamada tenta de novo.
-    const aberto = await SQLite.openDatabaseAsync('olli_orcamentos.db');
+    //
+    // `dbNome ?? DB_LEGADO`: antes do login (tela Entrar, banner de migração) não
+    // há usuário e o legado é o único banco possível — é o comportamento de
+    // sempre. Depois do login, `abrirParticaoDoUsuario` já fixou a partição.
+    const alvo = dbNome ?? DB_LEGADO;
+    const aberto = await SQLite.openDatabaseAsync(alvo);
     await initDb(aberto);
     db = aberto;
+    dbNome = alvo;
   }
   return db;
 }

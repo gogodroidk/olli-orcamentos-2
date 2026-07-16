@@ -353,6 +353,14 @@ export default function ContaScreen() {
           onPress: async () => {
             setBusy(true);
             try {
+              // Interrompe o sync ANTES do signOut (o "apagar dados" já fazia isso;
+              // aqui faltava): um pull em voo continuaria gravando no SQLite depois
+              // da saída, e o contexto de equipe de quem está saindo poderia
+              // carimbar linha do próximo a entrar. `abortarSyncEmAndamento` também
+              // esquece esse contexto (ver cloudSync).
+              // Os dados FICAM no aparelho, como o botão promete: eles moram na
+              // partição desta conta (database/particao.ts) e ninguém mais os abre.
+              abortarSyncEmAndamento();
               // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
               // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
               // competir com ele (corrida de navegação).

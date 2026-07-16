@@ -8,6 +8,20 @@
  * services e screens sem risco de ciclo de import.
  */
 
+/**
+ * Mapa `userId → arquivo .db` da partição local (ver `database/particao.ts`).
+ *
+ * ⚠️ **NÃO** entre com esta chave em `APP_DATA_STORAGE_KEYS`, por mais que o nome
+ * pareça "dado de usuário". Ela é o REGISTRO DE POSSE dos bancos do aparelho e
+ * precisa SOBREVIVER ao logout e ao "apagar dados".
+ *
+ * Se ela sumisse, o mapa voltaria vazio → o próximo usuário veria o banco legado
+ * "sem dono" e o **adotaria**, herdando os dados de quem estava ali antes. Ou
+ * seja: apagar esta chave reintroduz exatamente o vazamento entre contas que a
+ * partição existe para impedir — só que ao contrário.
+ */
+export const DB_PARTICOES_KEY = 'olli.db.particoes';
+
 /** Checklist do dia (HojeScreen). */
 export const CHECKLIST_KEY = 'olli.hoje.checklist';
 /** Histórico do chat com a OLLI (OlliChatScreen). */

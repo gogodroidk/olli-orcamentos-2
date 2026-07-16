@@ -342,6 +342,10 @@ export default function ContaDesktopScreen() {
     if (!(await confirmar('Sair da conta', 'Você continua com os dados salvos neste navegador. É só entrar de novo quando quiser.'))) return;
     setSaindo(true);
     try {
+      // Mesma ordem da mobile: aborta o sync ANTES do signOut. Sem isto um pull em
+      // voo grava depois da saída e o contexto de equipe de quem sai pode carimbar
+      // linha de quem entra (o "apagar dados" logo abaixo já fazia certo).
+      abortarSyncEmAndamento();
       await signOut();
     } catch (e: any) {
       avisar('Erro', e?.message ?? 'Não foi possível sair agora.');
