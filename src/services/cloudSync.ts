@@ -16,6 +16,8 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
+import { classificarContextoEquipe, decidirEscritaEquipe } from './contextoEquipe';
+import type { ContextoEquipe } from './contextoEquipe';
 import { getDb } from '../database/database';
 import {
   CHECKLIST_KEY,
@@ -552,18 +554,68 @@ export async function pushRow(table: SyncTable, objLocal: unknown): Promise<void
 // agendamentos que ele cria devem nascer no tenant do DONO (user_id=owner) para
 // a empresa enxergá-los — senão caem no tenant do próprio técnico (default
 // auth.uid()) e ficam invisíveis para a org. `criado_por` (default auth.uid())
-// já carimba a autoria. null = conta pessoal/dono → grava no próprio tenant.
-let contextoEquipeOwner: string | null = null;
+// já carimba a autoria.
+//
+// TRÊS ESTADOS, nunca dois (O0-4). O antigo `string | null` colapsava o ERRO no
+// mesmo valor da conta pessoal (`null`): uma falha de rede ao ler a org fazia o
+// técnico gravar no PRÓPRIO tenant e o dono nunca via a linha — o P1-3 ("cliente
+// cadastrado pelo técnico sumia"). Agora `desconhecido` é um estado distinto e
+// as escritas sensíveis a tenant são adiadas (fail-closed) até sabermos quem
+// somos. Nada se perde: o SQLite local é a fonte da verdade e o push é espelho.
+// A decisão pura mora em ./contextoEquipe (testável sem rede/SQLite).
+let contextoEquipe: ContextoEquipe = { status: 'desconhecido' };
 
-async function atualizarContextoEquipe(): Promise<void> {
+/**
+ * Tabelas cuja escrita depende de saber QUEM somos (dono vs membro). Só estas
+ * são adiadas quando o contexto é `desconhecido`. `empresa`/`servicos`/`produtos`/
+ * `recibos` seguem escrita só do dono (nunca recebem injeção de user_id), então
+ * não dependem do contexto e continuam passando.
+ */
+const TABELAS_TENANT_EQUIPE: ReadonlySet<SyncTable> = new Set<SyncTable>([
+  'clientes',
+  'orcamentos',
+  'agendamentos',
+  'ordens_servico',
+  'equipamentos',
+  'pmoc_planos',
+  'pmoc_plano_versoes',
+  'pmoc_ordens_geradas',
+]);
+
+/**
+ * Relê a organização e reclassifica o contexto. Usa `carregarMinhaOrganizacao`
+ * (3 estados) e NÃO `getMinhaOrganizacao` — esta última colapsa erro em `null`,
+ * e aqui o resultado decide TENANT de escrita, que é decisão de permissão.
+ * Nunca lança.
+ */
+async function atualizarContextoEquipe(): Promise<ContextoEquipe> {
   try {
     // import dinâmico evita qualquer aresta estática entre sync e equipe.
-    const { getMinhaOrganizacao } = await import('./equipe');
-    const org = await getMinhaOrganizacao();
-    contextoEquipeOwner = org && org.papel !== 'owner' ? org.ownerUserId : null;
+    const { carregarMinhaOrganizacao } = await import('./equipe');
+    contextoEquipe = classificarContextoEquipe(await carregarMinhaOrganizacao());
   } catch {
-    contextoEquipeOwner = null;
+    contextoEquipe = { status: 'desconhecido' };
   }
+  return contextoEquipe;
+}
+
+/**
+ * Resolve o contexto sob demanda quando ainda é `desconhecido`. Existe porque
+ * `pushRow` (disparado a CADA escrita local, database.ts) e o `pushAllLocal` do
+ * restore rodam FORA do `syncOnLogin` — sem isto, a única resolução do contexto
+ * acontecia no login e todo esse caminho escrevia com o tenant errado.
+ */
+async function garantirContextoEquipe(): Promise<ContextoEquipe> {
+  if (contextoEquipe.status !== 'desconhecido') return contextoEquipe;
+  return atualizarContextoEquipe();
+}
+
+/**
+ * Esquece quem somos. Chamado no logout/troca de conta (`abortarSyncEmAndamento`)
+ * para que o contexto do usuário ANTERIOR nunca carimbe uma linha do próximo.
+ */
+function resetarContextoEquipe(): void {
+  contextoEquipe = { status: 'desconhecido' };
 }
 
 async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<void> {
@@ -585,13 +637,15 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     // cadastrar cliente — a RLS de INSERT foi aberta a membro ativo em migration
     // dedicada (ver 20260719_clientes_insert_equipe.sql). (empresa/servicos/produtos/
     // recibos seguem escrita só do dono — não injetar.)
-    if (
-      contextoEquipeOwner &&
-      (table === 'clientes' || table === 'orcamentos' || table === 'agendamentos' ||
-       table === 'ordens_servico' || table === 'equipamentos' || table === 'pmoc_planos' ||
-       table === 'pmoc_plano_versoes' || table === 'pmoc_ordens_geradas')
-    ) {
-      (row as Record<string, unknown>).user_id = contextoEquipeOwner;
+    if (TABELAS_TENANT_EQUIPE.has(table)) {
+      const decisao = decidirEscritaEquipe(await garantirContextoEquipe());
+      // Não sabemos o tenant: NÃO chutar. Adiar o espelho é inócuo (o SQLite local
+      // já guardou a linha e o próximo sync a empurra); chutar grava no tenant
+      // errado e a linha some para a org — dano permanente.
+      if (decisao.adiar) return;
+      if (decisao.userIdOverride) {
+        (row as Record<string, unknown>).user_id = decisao.userIdOverride;
+      }
     }
     await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] });
     if (table === 'empresa') await marcarEmpresaVistaAgora();
@@ -2017,6 +2071,9 @@ let syncGeneration = 0;
 export function abortarSyncEmAndamento(): void {
   syncGeneration++;
   syncing = false;
+  // Troca de conta / logout: o contexto de equipe é de QUEM SAIU. Mantê-lo faria
+  // o próximo usuário carimbar linhas no tenant do anterior (mistura de tenant).
+  resetarContextoEquipe();
 }
 
 /**
@@ -2059,7 +2116,9 @@ export async function syncOnLogin(): Promise<void> {
   try {
     if (!(await hasSession())) return;
     // Descobre se o usuário é membro não-dono de uma org ANTES de empurrar, para
-    // gravar orçamentos/agendamentos no tenant do dono (ver contextoEquipeOwner).
+    // gravar orçamentos/agendamentos no tenant do dono (ver contextoEquipe).
+    // Releitura forçada (não `garantir...`): no login o contexto pode ser de outra
+    // conta. Se falhar, fica `desconhecido` e o push das tabelas de tenant é adiado.
     await atualizarContextoEquipe();
     await pullAll(geracao);
     if (syncAbortado(geracao)) return;

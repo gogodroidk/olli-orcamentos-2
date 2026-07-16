@@ -2,5 +2,23 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  // Este projeto é SÓ o app Expo/RN (`src/`, `App.tsx`). Sem `exclude`, o tsc
+  // varria a árvore inteira e compilava projetos vizinhos com o config errado —
+  // `npm run typecheck` (e o `preflight`, que depende dele) vivia vermelho com
+  // ~854 erros que não eram bugs, e sim o compilador do app lendo código que não
+  // é do app. Gate sempre vermelho não distingue regressão de ruído.
+  "exclude": [
+    "node_modules",
+    // Projeto separado: tem package.json, tsconfig.json, node_modules e build
+    // próprios (`tsc && vite build`). Quem checa o painel é o tsc DELE.
+    "webapp",
+    // Ferramentas Node (.mjs + testes que rodam via type stripping do Node, que
+    // exige import com extensão `.ts` — proibido pelo config do app).
+    "scripts",
+    // Cópias inteiras do repo feitas por worktrees do Claude: não são fonte.
+    ".claude",
+    "dist",
+    "web-build"
+  ]
 }

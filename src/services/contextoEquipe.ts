@@ -1,0 +1,60 @@
+/**
+ * Contexto de escrita da EQUIPE — a decisão PURA de "em qual tenant esta linha
+ * nasce", isolada de rede, Supabase e SQLite para poder ser testada de verdade.
+ *
+ * Por que existe (O0-4): o `cloudSync` guardava esse contexto como
+ * `string | null`, onde `null` significava ao mesmo tempo "é conta pessoal/dono"
+ * e "não consegui descobrir". Colapsar o ERRO no estado PERMISSIVO é o bug
+ * recorrente da casa (erro → null → "não tem" → permitido). Na prática: uma
+ * falha de rede ao ler a organização fazia um TÉCNICO gravar no próprio tenant,
+ * e o dono nunca via a linha (P1-3, "o cliente cadastrado pelo técnico sumia").
+ *
+ * A regra aqui é fail-closed e ela é barata: quando não sabemos quem somos, o
+ * espelho na nuvem é ADIADO, não adivinhado. Nada se perde — o SQLite local é a
+ * fonte da verdade e o próximo sync empurra a linha. Adivinhar, ao contrário,
+ * grava no tenant errado e o dano é permanente.
+ */
+import type { LeituraOrganizacao } from './equipe';
+
+/** Três estados. `desconhecido` NUNCA pode ser tratado como `pessoal`. */
+export type ContextoEquipe =
+  | { status: 'desconhecido' } // indeterminado: offline, RLS, servidor fora, ainda não lido
+  | { status: 'pessoal' } // resolvido: conta pessoal ou dono → grava no próprio tenant
+  | { status: 'membro'; ownerUserId: string }; // resolvido: membro não-dono → tenant do dono
+
+/**
+ * Traduz a leitura da organização (3 estados) no contexto de escrita (3 estados).
+ * Total e pura: mesma entrada, mesma saída, sem IO.
+ *
+ * `status: 'erro'` vira `desconhecido` — e não `pessoal` — porque "não consegui
+ * ler" não é prova de "não tem org". `org: null` com `status: 'ok'` é a única
+ * evidência real de conta pessoal: consultamos e o usuário não é membro.
+ * O próprio dono (`papel === 'owner'`) grava no tenant dele, logo `pessoal`.
+ */
+export function classificarContextoEquipe(r: LeituraOrganizacao): ContextoEquipe {
+  if (r.status === 'erro') return { status: 'desconhecido' };
+  if (r.org && r.org.papel !== 'owner') {
+    return { status: 'membro', ownerUserId: r.org.ownerUserId };
+  }
+  return { status: 'pessoal' };
+}
+
+/**
+ * O que fazer com uma linha de tabela sensível a tenant, dado o contexto.
+ * `adiar: true` = não espelhar agora (o local guarda; o próximo sync tenta).
+ * `userIdOverride: null` = deixar o default do banco (auth.uid()) valer.
+ */
+export type DecisaoEscrita =
+  | { adiar: true }
+  | { adiar: false; userIdOverride: string | null };
+
+export function decidirEscritaEquipe(ctx: ContextoEquipe): DecisaoEscrita {
+  switch (ctx.status) {
+    case 'desconhecido':
+      return { adiar: true };
+    case 'pessoal':
+      return { adiar: false, userIdOverride: null };
+    case 'membro':
+      return { adiar: false, userIdOverride: ctx.ownerUserId };
+  }
+}

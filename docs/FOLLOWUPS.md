@@ -252,3 +252,19 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     quebra corrigiu o `#0B6FCE` cravado — o recibo NÃO seguia a marca (nota falsa na tela, agora
     verdadeira). Restam ideias futuras: mais modelos, e um `modeloRecibo` por-recibo (hoje é só padrão
     global).
+
+29. **A mesma borda "erro → tenant errado" ainda vive em `clienteLink.ts` e `localizacaoEquipe.ts`.**
+    Achado ao fechar o O0-4 (que corrigiu só o `cloudSync.ts`, escopo do item na FILA).
+    `espelharVersaoNuvem` (`clienteLink.ts:446`) resolve o dono com `getMinhaOrganizacao()`, que
+    colapsa erro em `null` — e o comentário no código racionaliza: *"o pior caso de falha é gravar
+    no próprio tenant (comportamento de hoje), nunca vazamento"*. Não é vazamento, mas é exatamente
+    o **P1-4 que a própria função existe para evitar**: a versão nasce com o `user_id` do técnico e
+    **o dono nunca a vê** — pior, ela fica órfã, apontando para um orçamento que mora no tenant do
+    dono. Não foi corrigido junto porque o remédio do `cloudSync` (fail-closed: adiar o espelho)
+    **não serve aqui**: `orcamento_versoes` NÃO é `SyncTable`, logo não há `pushAllLocal` que tente
+    de novo — `espelharVersaoNuvem` é tiro único (`database.ts:1351`). Adiar ali = nunca espelhar.
+    O conserto certo exige primeiro dar retry à versão (entrar no pipeline de sync ou ganhar fila
+    própria) e só então aplicar `classificarContextoEquipe`. `localizacaoEquipe.ts:149,182` usa o
+    mesmo `getMinhaOrganizacao()` para achar o `org_id` — avaliar se um erro de rede ali vira
+    "sem equipe" em silêncio. A primitiva de 3 estados já existe e está testada:
+    `src/services/contextoEquipe.ts` (+ `npm run test:contexto-equipe`).
