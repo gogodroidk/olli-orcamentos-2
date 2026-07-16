@@ -23,7 +23,16 @@ fantasma. No mesmo dia (14/07) o MESMO painel tirou **7,5/10** numa auditoria ab
 | `docs/PILOTO/LEDGER.md` | Trilha append-only do piloto automático | Complementa este log; a FILA é do dono |
 
 **Contradições conhecidas que esta regra resolve** (o lado errado é sempre o de fora):
-`WEB_ESTADO_E_PLANO` diz "falta CRUD de escrita" enquanto os `Form*.tsx` existem completos no código ·
+~~`WEB_ESTADO_E_PLANO` diz "falta CRUD de escrita"~~ → **RESOLVIDA em 2026-07-16 (item O0-6): o doc
+estava errado, o CRUD está EM PRODUÇÃO.** 7 `Form*.tsx` + `ConvidarDialog`, todos importados pela
+página que os usa; 9 rotas registradas em `routes/sections/dashboard/frontend.tsx`; `pnpm build`
+(`tsc && vite build`) exit 0; o bundle de `app.olliorcamentos.online` serve
+`FormOrcamento-CDjBaQRp.js` (HTTP 200, 21.753 bytes = mesmo tamanho do build local) com a UI real
+dentro. A escrita é centralizada em `webapp/src/olli/mutacoes.ts` (`useSalvar`/`useExcluir`), com
+**trava de tenant de 3 estados** (carregando → espera; erro → **bloqueia**; confirmado → grava
+carimbando `user_id=ownerUserId` p/ membro não-dono) — verificada nos 89 chunks servidos
+(`mutacoes-FhDJ1ecc.js`). Soft delete carimba blob + coluna. Resíduo: smoke test autenticado na
+demo (exige senha; passo humano). Detalhe completo em `WEB_ESTADO_E_PLANO.md` §4.1. ·
 `CURRENT_STATE` diz que `verticais.ts` não existe, mas há commit (`06a5269`) ·
 docs de PMOC do bundle dizem "nada implementado", mas as Fases 1-2 estão aplicadas e testadas 5/5 ·
 `FEATURE_MATRIX` ainda trata o webhook Stripe como fonte da verdade do plano, ignorando a decisão

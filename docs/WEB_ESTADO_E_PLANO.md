@@ -93,9 +93,43 @@ projeto novo é de **upload direto**; push não derruba mais nada.
 
 ## 4. O QUE AINDA FALTA
 
-### 4.1 🟠 CRUD de escrita (criar/editar)
-- Hoje as telas **listam e buscam** (leitura). Falta **criar/editar** orçamento/cliente/etc.
-- **CRÍTICO — tenancy de escrita:** quando o autor é membro NÃO-dono (técnico/gestor), carimbar `user_id = ownerUserId` (via `getMinhaOrganizacao`), senão a linha nasce no tenant errado e o dono não vê. Writes normais não enviam `user_id` (RLS + `auth.uid()` preenchem). Fonte: `src/services/cloudSync.ts` (`toRow`).
+### 4.1 ~~🟠 CRUD de escrita (criar/editar)~~ → ✅ **FEITO. Esta seção estava ERRADA** (verificado 2026-07-16, item O0-6)
+
+> ⚠️ **Não replique o "falta CRUD" daqui.** Esta seção sobreviveu à própria entrega e virou a
+> contradição mais cara do projeto: planos e auditorias a citaram para orçar do zero um trabalho
+> que **já estava no ar**. Fonte de estado é `docs/EXECUTION_LOG.md` — ver "FONTE ÚNICA DE ESTADO".
+
+O CRUD de escrita **existe, está roteado, compila e está EM PRODUÇÃO**. Provas colhidas contra o
+mundo (não leitura de código):
+
+- **Existe e está ligado:** 7 formulários (`FormOrcamento` 1014 linhas, `FormRecibo` 750, `FormOs`
+  505, `FormItemCatalogo` 482, `FormCliente` 462, `FormEquipamento` 385, `FormAgendamento` 378) +
+  `ConvidarDialog`. Cada um é importado pelo `index.tsx` da sua página — nenhum é órfão.
+- **Roteado:** `src/routes/sections/dashboard/frontend.tsx` registra as 9 rotas
+  (`orcamentos`, `clientes`, `produtos`, `servicos`, `recibos`, `ordens-servico`, `agenda`,
+  `equipamentos`, `equipe`).
+- **Compila:** `pnpm build` (que é `tsc && vite build`) → **exit 0**, e o Vite emite
+  `FormOrcamento-*.js` como chunk lazy próprio (código morto não vira chunk de rota).
+- **Está no ar:** o bundle servido em `app.olliorcamentos.online` referencia
+  `FormOrcamento-CDjBaQRp.js` / `FormCliente-*.js` / `FormOs-*.js`; o chunk baixa (HTTP 200,
+  21.753 bytes — **o mesmo tamanho do build local**, logo o deploy bate com o fonte) e contém a
+  UI real ("Novo orçamento", "Editar orçamento", "Adicionar item", "Desconto", "Validade").
+- **A escrita é centralizada** em `webapp/src/olli/mutacoes.ts` (`useSalvar` / `useExcluir`),
+  não espalhada nos formulários.
+
+**A tenancy de escrita já está resolvida — e melhor do que o texto antigo pedia.** O antigo mandava
+usar `getMinhaOrganizacao`, que **colapsa erro em `null`** e faria justamente a linha nascer no
+tenant errado. O `useSalvar` faz o certo: **3 estados**. `isLoading` → "Carregando seu perfil…";
+`isError`/sem dado → **bloqueia a gravação** ("Não consegui confirmar a qual empresa este registro
+pertence"); só com o papel confirmado grava, carimbando `user_id = ownerUserId` para membro não-dono
+(`TABELAS_DO_TENANT_DO_DONO`). Confirmado **em produção**: varridos os 89 chunks servidos, as duas
+mensagens estão em `mutacoes-FhDJ1ecc.js`. Exclusão é **soft delete** (carimba `excluidoEm` no blob
++ `excluido_em` na coluna), senão o próximo sync do celular ressuscitaria o registro.
+
+**O que de fato falta aqui (o resíduo honesto):** um *smoke test* autenticado na conta demo —
+abrir `/orcamentos`, salvar e ver a linha no banco. Não foi feito porque exige digitar a senha da
+conta demo, coisa que o piloto não faz. É ~2 minutos do dono. Tudo que **não** depende de sessão
+já está provado acima.
 
 ### 4.2 🟡 OAuth Google/Apple (passo humano)
 - Os botões estão prontos. Falta **adicionar os redirect URLs no painel do Supabase** (e um OAuth client **Web** no Google Cloud — o atual é Android). Enquanto isso, login por email/senha funciona.
