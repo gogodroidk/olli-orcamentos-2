@@ -51,23 +51,32 @@ export default defineConfig(({ mode }) => {
 			chunkSizeWarningLimit: 1500,
 			rollupOptions: {
 				output: {
-					// Forma-função: casa qualquer módulo dentro da pasta do pacote em
-					// node_modules, não só o entrypoint. Antes react-dom (o maior módulo)
-					// escapava do vendor-core porque o array só pegava match exato de
-					// especificador, e caía sozinho num chunk que muda a cada deploy.
-					manualChunks(id) {
-						if (/node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/.test(id)) {
-							return "vendor-core";
-						}
-						if (/node_modules[\\/](styled-components|antd|@ant-design[\\/]cssinjs)[\\/]/.test(id)) {
-							return "vendor-ui";
-						}
-						if (/node_modules[\\/](axios|dayjs|i18next|zustand|@iconify[\\/]react)[\\/]/.test(id)) {
-							return "vendor-utils";
-						}
-						if (/node_modules[\\/](apexcharts|react-apexcharts)[\\/]/.test(id)) {
-							return "vendor-charts";
-						}
+					// NÃO troque isto por manualChunks(id) sem ler este comentário.
+					//
+					// Em e9a4efe isto virou forma-função (regex em node_modules) para forçar
+					// o react-dom no vendor-core e parar o churn de hash. Efeito colateral:
+					// TELA BRANCA no build de produção.
+					//   Uncaught TypeError: Cannot set properties of undefined (setting 'Children')
+					//   em vendor-core.js:1  — e o console parecia LIMPO, porque o erro estoura
+					//   durante a avaliação do módulo, antes de qualquer listener existir.
+					//
+					// Causa: a forma-função atribui cada módulo a um chunk, mas os helpers de
+					// interop CommonJS que o Rollup gera têm id virtual (\0commonjsHelpers) e
+					// não casam com o regex — caem no chunk de entrada. O entry importa o
+					// vendor-core, que executa ANTES, com o helper ainda não inicializado:
+					// `exports` fica undefined e `exports.Children = ...` estoura. O React 19
+					// ainda é CJS, então ele é a primeira vítima.
+					//
+					// A forma-array abaixo deixa o Rollup montar o grafo (ele resolve o helper
+					// junto) e é a que roda em produção HOJE, funcionando. O react-dom escapar
+					// pro chunk index é um custo de CACHE — irritante, mas cosmético. Tela
+					// branca não é. Se for otimizar de novo: valide com build+preview real,
+					// não só `build` exit 0 — o build passa mesmo quebrado.
+					manualChunks: {
+						"vendor-core": ["react", "react-dom", "react-router"],
+						"vendor-ui": ["antd", "@ant-design/cssinjs", "styled-components"],
+						"vendor-utils": ["axios", "dayjs", "i18next", "zustand", "@iconify/react"],
+						"vendor-charts": ["apexcharts", "react-apexcharts"],
 					},
 				},
 			},

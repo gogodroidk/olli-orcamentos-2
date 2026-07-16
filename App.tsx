@@ -38,6 +38,29 @@ import { criarLinkingConfig } from './src/navigation/linking';
 import { limparCacheTipoConta, resetarTipoConta } from './src/hooks/useTipoConta';
 import { DESKTOP_BREAKPOINT } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
+import * as Sentry from '@sentry/react-native';
+
+/**
+ * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
+ * erro de boot (foi assim que o v6 morreu no Hermes sem ninguém ver).
+ *
+ * Convive de propósito com `instalarCapturaDeErro` (src/services/errorReport.ts):
+ * aquele encadeia o ErrorUtils preservando o handler anterior, então instalando o
+ * Sentry primeiro (import) e o nosso depois (useEffect), OS DOIS recebem o erro —
+ * o Sentry com stack simbolizado, o nosso na caixa do /admin.
+ *
+ * A DSN é pública por natureza (vai dentro do bundle do APK de qualquer jeito);
+ * está fixa no código de propósito: em env var, uma variável faltando desligaria o
+ * monitoramento em silêncio — que é o bug "erro vira vazio" que estamos matando.
+ */
+Sentry.init({
+  dsn: 'https://5c5495085721aace9d32dbd79121c084@o4511745793327104.ingest.us.sentry.io/4511745839661061',
+  environment: __DEV__ ? 'development' : 'production',
+  // LGPD: nada de IP/dado pessoal. Mesma regra do errorReport.
+  sendDefaultPii: false,
+  // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
+  tracesSampleRate: 0.1,
+});
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -122,13 +145,17 @@ function BrandSplash() {
  * Raiz do app. O TemaProvider tem de ficar ACIMA de tudo que lê cor — inclusive do
  * PaperProvider, cujo tema deriva da nossa paleta.
  */
-export default function App() {
+function App() {
   return (
     <TemaProvider>
       <AppConteudo />
     </TemaProvider>
   );
 }
+
+// Sentry.wrap é exigido pelo SDK: instala o ErrorBoundary nativo e a instrumentação
+// de performance na raiz. Não substitui o nosso <ErrorBoundary> — envolve-o.
+export default Sentry.wrap(App);
 
 function AppConteudo() {
   const { modo, cores } = useTema();
