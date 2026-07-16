@@ -18,6 +18,40 @@ Este projeto **não é um app nativo puro** — ele é Expo/React Native. O Andr
 
 > **Jeito mais fácil (recomendado, SEM Android Studio):** veja a seção **"Opção B — EAS Build"** no fim. Gera o arquivo `.aab` pra Play Store com 1 comando, na nuvem. É bem mais simples que o Android Studio.
 
+### 🔑 O build de RELEASE exige `SENTRY_AUTH_TOKEN`
+
+Desde que o Sentry entrou (2026-07-16), **`./gradlew assembleRelease` FALHA sem o token**:
+
+```
+error: Auth token is required for this request. Please run `sentry-cli login`
+Execution failed for task ':app:createBundleReleaseJsAndAssets_SentryUpload_...'
+```
+
+Não é bug: o plugin do Sentry sobe o source map do Hermes durante o build. **Sem esse upload,
+o stack trace do crash chega ilegível** (o bundle é minificado) — e aí o Sentry não serve pra nada.
+Por isso ele falha alto em vez de passar quieto.
+
+**Antes de buildar release, exporte o token** (está no cofre, `credenciais-locais.env`):
+
+```bash
+# Git Bash
+export SENTRY_AUTH_TOKEN=$(grep -oP '(?<=^SENTRY_AUTH_TOKEN=).*' "/c/Users/ADMIN/Desktop/CONFIG CLAUDE/credenciais-locais.env")
+cd android && ./gradlew assembleRelease
+```
+```powershell
+# PowerShell
+$env:SENTRY_AUTH_TOKEN = (Select-String -Path "$HOME\Desktop\CONFIG CLAUDE\credenciais-locais.env" -Pattern '^SENTRY_AUTH_TOKEN=(.*)').Matches.Groups[1].Value
+cd android; .\gradlew assembleRelease
+```
+
+No **EAS Build**, cadastre `SENTRY_AUTH_TOKEN` como secret do projeto (visibilidade *sensitive*).
+
+**Escape de emergência** (build que NÃO precisa de Sentry — ex.: teste local rápido):
+`export SENTRY_DISABLE_AUTO_UPLOAD=true` pula o upload e o build passa. **Nunca use isso pra um
+APK que vai pra loja** — você estaria publicando um app cujo crash chega ilegível.
+
+Build de `debug` (`assembleDebug` / `expo run:android`) não precisa de token.
+
 ---
 
 ## Opção A — Compilar no Android Studio
