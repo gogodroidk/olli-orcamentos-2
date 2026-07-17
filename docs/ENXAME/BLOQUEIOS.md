@@ -28,6 +28,7 @@
 - [ ] **pg_dump --schema-only das 13 tabelas legadas** → baseline versionado (exige sessão com acesso live ao Supabase).
 
 ## Decisão de produto (do dono)
+- [ ] **IDENTIDADE VISUAL UNIFICADA** (achado da Onda 6, detalhe em `CATALOGO_VISUAL.md`) — hoje landing/painel/app parecem 3 empresas (4 famílias de ícone, fontes sem sobreposição, raio de botão 4× diferente, dark mode oposto). Escolher a direção: (a) família de ícone única, (b) painel adota Plus Jakarta+Spectral?, (c) escala de raio única, (d) dark navy no painel?, (e) emoji→SVG na landing. **Recomendação: convergir tudo pra linguagem do APP** (mais madura/documentada). Muda a cara do produto — não executo sem o dono ver.
 - [ ] **O2-19 numeração atômica** — 4 opções em FOLLOWUPS #31 (a "opção 4" sozinha tem furo). Depois de decidir, o SEED da migration por tenant precisa conferir o banco real.
 - [ ] **Emulador olli_phone** — prova ao vivo de O0-1/O0-2/O0-3 (exige digitar senha; o piloto não faz).
 - [ ] **APK final** — regra do dono: só builda quando o ciclo comercial estiver perfeito e testado; aprovação do momento é dele.
