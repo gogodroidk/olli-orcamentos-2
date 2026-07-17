@@ -65,13 +65,20 @@ export default function RecibosPage() {
 	 * quando o papel é DESCONHECIDO (carregando ou erro), bloqueia também: "não sei
 	 * quem é" nunca pode virar "deixa gravar".
 	 */
-	// O botão "Novo recibo" fica SEMPRE visível — só some se você for, com CERTEZA,
-	// um membro não-dono (ownerUserId preenchido). Enquanto carrega, dá erro ou é
-	// conta própria/dono, o botão aparece: esconder por "não sei ainda" trava o uso.
-	// A proteção de tenant de verdade continua na gravação (mutacoes.ts), não aqui.
+	// TRÊS estados (O3-31), nunca dois. O botão "Novo recibo" só SOME quando você é,
+	// com certeza, um membro não-dono — esconder por "não sei ainda" faria o botão
+	// piscar a cada carga. Mas "não sei ainda" também não pode LIBERAR: antes,
+	// `data?.ownerUserId != null` colapsava carregando/erro no mesmo valor de "sou o
+	// dono", o botão abria o formulário e o usuário só descobria no submit. Agora o
+	// desconhecido tem UI própria: botão visível e DESABILITADO, com o motivo.
+	// A proteção de tenant de verdade continua na gravação (mutacoes.ts) e no RLS.
 	const contexto = useContextoDeEscrita();
+	const permissaoDesconhecida = contexto.isLoading || contexto.isError || !contexto.data;
 	const ehMembroConfirmado = contexto.data?.ownerUserId != null;
+	/** Mostra o controle (não pisca). */
 	const podeEscrever = !ehMembroConfirmado;
+	/** Deixa AGIR — só com o papel confirmado. */
+	const escritaLiberada = !permissaoDesconhecida && !ehMembroConfirmado;
 
 	const [busca, setBusca] = useState("");
 	const [formAberto, setFormAberto] = useState(false);
@@ -164,7 +171,13 @@ export default function RecibosPage() {
 						/>
 					</div>
 					{podeEscrever && (
-						<Button type="button" onClick={abrirNovo} className="h-10 shrink-0 gap-2">
+						<Button
+							type="button"
+							onClick={abrirNovo}
+							className="h-10 shrink-0 gap-2"
+							disabled={!escritaLiberada}
+							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
+						>
 							<Plus aria-hidden="true" className="size-4" />
 							Novo recibo
 						</Button>
@@ -172,8 +185,9 @@ export default function RecibosPage() {
 				</div>
 			</div>
 
-			{/* Aviso SÓ para quem é, com certeza, membro não-dono. Enquanto carrega ou
-			    dá erro, não trava nada nem mostra alarme — o botão fica disponível. */}
+			{/* Aviso SÓ para quem é, com certeza, membro não-dono: alarmar por "ainda não
+			    sei" seria mentir. No estado desconhecido não há aviso — o botão continua
+			    na tela, apenas desabilitado, explicando-se pelo `title`. */}
 			{ehMembroConfirmado && (
 				<div className="mb-4 flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-text-primary">
 					<Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning" />
@@ -255,7 +269,13 @@ export default function RecibosPage() {
 						</p>
 					</div>
 					{!busca && podeEscrever && (
-						<Button type="button" onClick={abrirNovo} className="gap-2 rounded-full">
+						<Button
+							type="button"
+							onClick={abrirNovo}
+							className="gap-2 rounded-full"
+							disabled={!escritaLiberada}
+							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
+						>
 							<Plus aria-hidden="true" className="size-4" />
 							Registrar o primeiro
 						</Button>
@@ -312,7 +332,7 @@ export default function RecibosPage() {
 										<td className="px-2 py-3.5 text-right">
 											<AcoesRecibo
 												recibo={recibo}
-												podeEscrever={podeEscrever}
+												podeEscrever={escritaLiberada}
 												aoEditar={abrirEdicao}
 												aoExcluir={(r) => {
 													setErroExclusao(null);
@@ -345,7 +365,7 @@ export default function RecibosPage() {
 										</span>
 										<AcoesRecibo
 											recibo={recibo}
-											podeEscrever={podeEscrever}
+											podeEscrever={escritaLiberada}
 											aoEditar={abrirEdicao}
 											aoExcluir={(r) => {
 												setErroExclusao(null);

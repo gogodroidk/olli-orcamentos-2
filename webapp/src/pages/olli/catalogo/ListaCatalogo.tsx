@@ -163,17 +163,33 @@ export default function ListaCatalogo({ tipo }: Props) {
 	const excluir = useExcluir(tabela);
 
 	/*
-	 * GATE DE PAPEL — o catálogo é escrita do DONO (`produtos`/`servicos` não estão em
-	 * TABELAS_DO_TENANT_DO_DONO): um membro não-dono que salvasse gravaria no tenant
-	 * DELE, e a empresa nunca veria o item. `ownerUserId != null` só é verdade quando
-	 * já CONFIRMAMOS que o usuário é membro não-dono — então escondemos as ações de
-	 * escrita e viramos a tela em somente-leitura. Enquanto o papel é desconhecido
-	 * (carregando/erro), os controles seguem visíveis: a escrita continua barrada pelo
-	 * RLS e traduzida em `mensagemDeErro` (o 42501) como rede de segurança.
+	 * GATE DE PAPEL — TRÊS estados (O3-31), nunca dois.
+	 *
+	 * O catálogo é escrita do DONO (`produtos`/`servicos` são "so-dono" em
+	 * `TENANT_DA_TABELA`): um membro não-dono que salvasse gravaria no tenant DELE, e
+	 * a empresa nunca veria o item.
+	 *
+	 * Os três estados viram três UIs diferentes, de propósito:
+	 *  - MEMBRO CONFIRMADO (`ownerUserId != null`) → esconde as ações + aviso honesto.
+	 *  - DONO CONFIRMADO                           → ações liberadas.
+	 *  - DESCONHECIDO (carregando/erro)            → ação VISÍVEL porém DESABILITADA.
+	 *
+	 * O estado desconhecido não some da tela (esconder e reaparecer faria os botões
+	 * piscarem a cada carga) e também não libera: antes, `data?.ownerUserId != null`
+	 * colapsava carregando/erro no MESMO valor de "sou o dono" e o botão abria o
+	 * formulário — o usuário preenchia tudo para tomar um 42501 no submit. Agora ele
+	 * vê o botão apagado e o motivo. A trava de dado continua no `useSalvar`
+	 * (3 estados) e no RLS; isto aqui é a honestidade da interface.
 	 */
 	const contextoEscrita = useContextoDeEscrita();
+	const permissaoDesconhecida =
+		contextoEscrita.isLoading || contextoEscrita.isError || !contextoEscrita.data;
+	/** CONFIRMADO como membro não-dono — só aí a tela vira somente-leitura de verdade. */
 	const somenteLeitura = contextoEscrita.data?.ownerUserId != null;
+	/** Mostra o controle (não pisca enquanto carrega). */
 	const podeEditar = !somenteLeitura;
+	/** Deixa de fato AGIR — só com o papel confirmado. Desconhecido = desabilitado. */
+	const escritaLiberada = !permissaoDesconhecida && !somenteLeitura;
 
 	const itens = useMemo(() => (data ?? []).map((l) => linhaParaItem(tipo, l)), [data, tipo]);
 
@@ -239,7 +255,13 @@ export default function ListaCatalogo({ tipo }: Props) {
 						/>
 					</div>
 					{podeEditar && (
-						<Button type="button" className="h-10 shrink-0 gap-2" onClick={() => setEmEdicao(null)}>
+						<Button
+							type="button"
+							className="h-10 shrink-0 gap-2"
+							disabled={!escritaLiberada}
+							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
+							onClick={() => setEmEdicao(null)}
+						>
 							<Plus className="size-4" />
 							<span className="hidden sm:inline">Novo {rotulo}</span>
 							<span className="sm:hidden">Novo</span>
@@ -312,7 +334,13 @@ export default function ListaCatalogo({ tipo }: Props) {
 						</p>
 					</div>
 					{!busca.trim() && podeEditar && (
-						<Button type="button" className="gap-2" onClick={() => setEmEdicao(null)}>
+						<Button
+							type="button"
+							className="gap-2"
+							disabled={!escritaLiberada}
+							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
+							onClick={() => setEmEdicao(null)}
+						>
 							<Plus className="size-4" />
 							Cadastrar {rotulo}
 						</Button>
