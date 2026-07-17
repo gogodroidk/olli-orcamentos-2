@@ -11,12 +11,24 @@
   O plano-mestre (`Entregas Claude\OLLI-Plano-Mestre\`) é **síntese**, não inventário.
   O bundle `C:\ollx\h` e o kit `olli-program` são **aspiracionais** — não use como estado.
 
-- **PRÓXIMO ITEM:** ver `docs/PILOTO/FILA.md` (primeiro `[AUTO]` sem estado terminal no LEDGER).
+- **PRÓXIMO ITEM:** a FILA do piloto **ZEROU** em 16/07 (9 DONE · 9 BLOQUEADO-HUMANO · 0 TRAVADO).
+  Tudo em `claude/piloto-p0` (15 commits, **não pushado** — o merge é ato do dono).
+  Ler o **RESUMO FINAL** em `docs/PILOTO/LEDGER.md` antes de agir. Fila nova: só o dono escreve.
 
 - **BLOQUEADO EM HUMANO (não tente, só reporte):**
-  `MP_WEBHOOK_SECRET` no worker (o `MP_ACCESS_TOKEN` JÁ está lá — 16/07) · decisão F0d (grandfathering do paywall) ·
-  Stripe (Installments + 3 Prices) ·
-  TOTP admin · rotacionar senha da demo GR Tech.
+  `MP_WEBHOOK_SECRET` no worker (o `MP_ACCESS_TOKEN` JÁ está lá — 16/07) ·
+  **F0d (grandfathering)** — trava o MERGE do paywall Empresa: mergear sem decidir corta HOJE quem usa Equipe de graça ·
+  **emulador `olli_phone`** — única prova que falta da Onda 0 (O0-1/O0-2/O0-3 estão codados e provados em teste de lógica) ·
+  rodar `20260724_webhook_events.sql` **ANTES** de publicar o worker (sem a tabela, o webhook responde 500) ·
+  **decisão de produto do O2-19** (numeração: 4 opções em FOLLOWUPS #31) ·
+  Stripe (Installments + 3 Prices) · TOTP admin · rotacionar senha da demo GR Tech.
+
+- **APRENDIDO EM 16/07 (não repita):**
+  **A própria FILA estava velha.** 5 itens (O3-25..29) já tinham sido corrigidos por `e9a4efe`, e o DoD
+  do O2-19 pedia uma coluna (`organizacao_id`) que **não existe** no schema. Confira no repo vivo se o
+  item ainda é verdade ANTES de codar. Agora há gate de verdade: `npm test` (89 asserts, 5 arquivos) e
+  `npm run typecheck` (exit 0 — vivia vermelho com 854 erros que não eram bugs, era o tsconfig raiz
+  compilando o `webapp/` com o compilador do app).
 
 - **ARMADILHAS (P0, não são sugestão):**
   1. **Erro nunca vira vazio** — todo gate de plano/permissão/vertical exige **3 estados** (carregando | erro | valor).
