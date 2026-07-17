@@ -440,18 +440,36 @@ export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void
     if (!user) return;
 
     // Import dinâmico (mesmo motivo do cloudSync): evita aresta estática entre
-    // clienteLink e equipe. getMinhaOrganizacao() colapsa erro em null — aqui é
-    // caminho de escrita best-effort (não decide permissão), então o pior caso de
-    // falha é gravar no próprio tenant (comportamento de hoje), nunca vazamento.
-    const ownerUserId = await (async () => {
+    // clienteLink e sync.
+    //
+    // FOLLOWUPS #29 — aqui usava `getMinhaOrganizacao()`, que colapsa erro em `null`,
+    // e o comentário antigo racionalizava: "o pior caso é gravar no próprio tenant
+    // (comportamento de hoje), nunca vazamento". Não é vazamento, mas é EXATAMENTE o
+    // P1-4 que esta função existe para evitar: a versão nasce com o `user_id` do
+    // técnico, o dono nunca a vê, e ela fica ÓRFÃ — apontando para um orçamento que
+    // mora no tenant do dono. Uma oscilação de rede bastava.
+    //
+    // Agora são 3 estados (mesma primitiva do cloudSync). `desconhecido` NÃO espelha.
+    // Isso é estritamente melhor do que era: antes, o erro criava uma linha ERRADA na
+    // nuvem (invisível para o dono e poluindo o tenant do técnico); agora não cria
+    // linha nenhuma — o dono continua sem ver, mas nada errado é gravado, e o SQLite
+    // local segue com a versão.
+    //
+    // ⚠️ O que AINDA falta (registrado em FOLLOWUPS #29): retry. `orcamento_versoes`
+    // não está no pipeline de sync (não é `SyncTable`, não tem pull nem push em lote),
+    // então "adiar" aqui é "não espelhar desta vez" e ninguém tenta de novo. Fechar
+    // isso exige dar retry à versão antes — não dá para simplesmente adiar e torcer.
+    const decisao = await (async () => {
       try {
-        const { getMinhaOrganizacao } = await import('./equipe');
-        const org = await getMinhaOrganizacao();
-        return org && org.papel !== 'owner' ? org.ownerUserId : null;
+        const { garantirContextoEquipe } = await import('./cloudSync');
+        const { decidirEscritaEquipe } = await import('./contextoEquipe');
+        return decidirEscritaEquipe(await garantirContextoEquipe());
       } catch {
-        return null;
+        return { adiar: true } as const;
       }
     })();
+    if (decisao.adiar) return; // não sabemos o tenant: não chuta
+    const ownerUserId = decisao.userIdOverride;
 
     const payload = (numeroVersao: number) => {
       const linha: Record<string, unknown> = {

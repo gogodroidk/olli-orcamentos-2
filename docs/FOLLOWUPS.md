@@ -285,7 +285,14 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     verdadeira). Restam ideias futuras: mais modelos, e um `modeloRecibo` por-recibo (hoje é só padrão
     global).
 
-29. **A mesma borda "erro → tenant errado" ainda vive em `clienteLink.ts` e `localizacaoEquipe.ts`.**
+29. **~~A mesma borda "erro → tenant errado" em `clienteLink.ts`~~ — METADE FEITA (2026-07-17).** O
+    `espelharVersaoNuvem` agora usa os 3 estados (`garantirContextoEquipe` + `decidirEscritaEquipe`):
+    tenant desconhecido **não espelha**, em vez de gravar no tenant errado. É estritamente melhor que
+    antes — o erro deixou de CRIAR linha errada (órfã, invisível ao dono, poluindo o tenant do
+    técnico); agora não cria nada e o SQLite local segue com a versão. **AINDA FALTA o retry**, que é
+    o motivo de o item continuar aberto (detalhe abaixo). `localizacaoEquipe.ts` segue intocado.
+
+    ~~Texto original:~~
     Achado ao fechar o O0-4 (que corrigiu só o `cloudSync.ts`, escopo do item na FILA).
     `espelharVersaoNuvem` (`clienteLink.ts:446`) resolve o dono com `getMinhaOrganizacao()`, que
     colapsa erro em `null` — e o comentário no código racionaliza: *"o pior caso de falha é gravar
