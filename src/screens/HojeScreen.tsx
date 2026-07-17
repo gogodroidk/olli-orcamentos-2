@@ -193,26 +193,37 @@ export default function HojeScreen() {
   const [novo, setNovo] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira true quando a leitura de agenda/orçamentos falhou de verdade — sem
+  // isso, uma falha de rede/leitura virava silenciosamente "Tudo em dia!".
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
-    const [ag, orc, raw] = await Promise.all([
-      getAgendamentosDoDia(),
-      getOrcamentos(),
-      AsyncStorage.getItem(CHECKLIST_KEY),
-    ]);
-    setItens(ag.filter(a => a.status !== 'cancelado').sort((a, b) => a.inicio.localeCompare(b.inicio)));
-    setOrcamentos(orc);
-    if (raw) {
-      try {
-        const parsed: ChecklistItem[] = JSON.parse(raw);
-        // só mantém os itens de hoje (limpeza diária leve)
-        setChecklist(parsed.filter(i => i.data === todayKey()));
-      } catch { setChecklist([]); }
-    } else {
-      setChecklist([]);
+    setCarregandoErro(false);
+    try {
+      const [ag, orc, raw] = await Promise.all([
+        getAgendamentosDoDia(),
+        getOrcamentos(),
+        AsyncStorage.getItem(CHECKLIST_KEY),
+      ]);
+      setItens(ag.filter(a => a.status !== 'cancelado').sort((a, b) => a.inicio.localeCompare(b.inicio)));
+      setOrcamentos(orc);
+      if (raw) {
+        try {
+          const parsed: ChecklistItem[] = JSON.parse(raw);
+          // só mantém os itens de hoje (limpeza diária leve)
+          setChecklist(parsed.filter(i => i.data === todayKey()));
+        } catch { setChecklist([]); }
+      } else {
+        setChecklist([]);
+      }
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA colapsa em "nada pra hoje".
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
     }
-    setCarregando(false);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -370,6 +381,16 @@ export default function HojeScreen() {
               </AnimatedEntrance>
             ))}
           </View>
+        ) : carregandoErro ? (
+          <View style={styles.emptyDay}>
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar sua agenda de hoje. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={load}
+            />
+          </View>
         ) : itens.length === 0 ? (
           <View style={styles.emptyDay}>
             <EmptyState
@@ -499,7 +520,7 @@ export default function HojeScreen() {
         </AnimatedEntrance>
 
         {/* ESTADO 100% VAZIO E ELEGANTE */}
-        {!carregando && semNada && checklist.length === 0 && (
+        {!carregando && !carregandoErro && semNada && checklist.length === 0 && (
           <AnimatedEntrance index={1} from="scale" delay={120}>
             <View style={styles.allClear}>
               <OlliMascot size={48} onDark />

@@ -74,6 +74,10 @@ function EmitirReciboConteudo() {
   // Histórico de recibos já emitidos (aba "Emitidos").
   const [emitidos, setEmitidos] = useState<Recibo[]>([]);
   const [carregandoEmitidos, setCarregandoEmitidos] = useState(false);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `emitidosErro` só vira
+  // true quando a leitura falhou de verdade — sem isso, o usuário via "Nenhum
+  // recibo emitido" mesmo tendo recibos, só porque a leitura deu erro.
+  const [emitidosErro, setEmitidosErro] = useState(false);
   const [reenviandoId, setReenviandoId] = useState<string | null>(null);
 
   // Recibo com pagamento já registrado (ex.: pelo botão "Registrar pagamento" na
@@ -133,11 +137,13 @@ function EmitirReciboConteudo() {
 
   const carregarEmitidos = useCallback(async () => {
     setCarregandoEmitidos(true);
+    setEmitidosErro(false);
     try {
       const lista = await getRecibos();
       setEmitidos(lista);
     } catch {
-      setEmitidos([]);
+      // erro de verdade (leitura falhou) — NUNCA colapsa em "nenhum recibo".
+      setEmitidosErro(true);
     } finally {
       setCarregandoEmitidos(false);
     }
@@ -435,6 +441,14 @@ function EmitirReciboConteudo() {
               <View style={{ paddingTop: 40, alignItems: 'center' }}>
                 <ActivityIndicator color={cores.primary} />
               </View>
+            ) : emitidosErro ? (
+              <EmptyState
+                icon="alert-circle-outline"
+                title="Não deu para carregar"
+                subtitle="Não conseguimos buscar seus recibos agora. Verifique a conexão e tente de novo."
+                actionLabel="Tentar de novo"
+                onAction={carregarEmitidos}
+              />
             ) : (
               <EmptyState
                 icon="receipt"

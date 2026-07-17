@@ -10,10 +10,10 @@
 - [x] **Gate de teste quebrado** — `scripts/teste-webhook-events.ts:34` usava `SUPABASE_SERVICE_ROLE` (runtime lê `SUPABASE_SERVICE_ROLE_KEY`). Corrigido; `npm test` exit 0.
 - [x] **Gate de typecheck quebrado** — `tsconfig.json` raiz não excluía `web/`. Corrigido; `npm run typecheck` exit 0.
 - [x] **Skeleton infinito na Home** (Onda 2) — `HomeScreen.tsx` `load()` ganhou try/catch/finally + estado `carregandoErro`; `loadRadar` distingue erro; `refresh()` try/finally; UI com 3º ramo erro+retry; StarterCard guardado. typecheck exit 0.
-- [ ] **"Erro vira vazio" sistêmico (18+ sítios)** — `catch → setLista([])` sem estado de erro. Telas: TecnicoHomeScreen:68-83 (PIOR — única tela do técnico em campo), OrdemServicoScreen:130 e ~1104, EquipamentoScreen:137 e ~1223, LixeiraScreen:79, EmitirReciboScreen:~139, PmocPlanoScreen:162, HojeScreen:211, VisualizarOrcamentoScreen:125, HomeScreen.loadRadar:226, CreditosScreen.getPacotesPix:79, + espelhos desktop: EquipamentosDesktop:144, OrdensDesktop:86 + PainelNovaOS:132, LixeiraDesktop:111, InicioDesktop:168, PmocDesktop:164. Abordagem: primitiva compartilhada de 3 estados (base já existe em `contextoEquipe.ts`) + aplicar por tela. **Onda dedicada** (grande, mecânica).
-- [ ] **PlanosScreen sem catch** — `src/screens/PlanosScreen.tsx:177-188` `carregarPlano()` só tem finally; rejeição não avisa o usuário na tela de assinatura. Abordagem: catch + estado de erro.
-- [ ] **CreditosScreen inconsistente** — saldo/extrato fazem 3 estados certo, mas pacotes de recarga Pix (`:79`) usam `catch→[]`; tela de recarga parece "sem pacotes" numa falha de rede. Abordagem: mesmo padrão do saldo.
-- [ ] **PMOC fallback diverge mobile/desktop** — `PmocPlanoScreen` usa `{periodicidades}`, `PmocDesktopScreen:158` usa `{periodicidadeLabels}`; corrigir um lado quebra o outro em silêncio. Abordagem: unificar shape.
+- [x] **"Erro vira vazio" sistêmico** (Onda 2+3) — 3 estados+retry aplicados, reusando o padrão da HomeScreen. Feitos: HomeScreen (O2), TecnicoHome, Lixeira m+d, Creditos-pacotes, Equipamento m+d (+busca cliente), Ordens m+d + PainelNovaOS, EmitirRecibo, Hoje, VisualizarOrcamento (trilha do link), InicioDesktop, PMOC m+d. typecheck+test exit 0. **Resta** (não varridos, grandes/cosméticos): AgendaScreen (1140 l.), ContaScreen (1440 l.), Step4Personalizacao (depoimentos, cosmético), CodigosErro (contador cosmético). → Onda futura de fecho.
+- [x] **PlanosScreen sem catch** (Onda 3, A3) — `carregarPlano()` ganhou catch + estado de erro visível.
+- [x] **CreditosScreen inconsistente** (Onda 3, A3) — pacotes de recarga Pix agora fazem 3 estados+retry (saldo intacto).
+- [x] **PMOC fallback diverge mobile/desktop** (Onda 3, A8) — shape unificado: ambos os campos (`periodicidades` contagem + `periodicidadeLabels` rótulos) presentes nos dois lados; corrigido no arquivo certo (`PmocPlanosScreen` plural, não singular).
 
 ### Segurança
 - [x] **XSS no PDF do orçamento** (Onda 2) — os campos de texto JÁ eram escapados (commit c73d866). Buraco real: o helper `img()` devolvia data URI **crua** (o recibo escapa logoData/assinaturaData). Fix: `escapeHtml` dentro de `img()` (`src/utils/pdfGenerator.ts`) — no-op p/ base64 legítimo, mata URI adulterada. typecheck exit 0.
@@ -48,6 +48,7 @@
 - [ ] **Dado descartado: Sinal (R$+data) + Laudo técnico** — preenchidos em `Step3Detalhes`, nunca aparecem no PDF do cliente. Abordagem: incluir no `pdfGenerator`. (confiança percebida — pode subir pra P0.)
 
 ## Processo
-- [ ] **Sem CI** — não existe `.github/workflows`; push na main já deploya (Cloudflare Pages). Foi como os 2 gates quebrados passaram batido. Abordagem: Action rodando `npm test` + `typecheck` raiz + build webapp + `astro check` web em push/PR (NÃO wire deploy).
+- [x] **Sem CI** (Onda 3) — `.github/workflows/ci.yml` criado: 3 jobs (app-gate: typecheck+test em Node 22 por causa do type-stripping dos testes `.ts`; painel: pnpm build; landing: astro check+build), push+PR, sem deploy. Pega gate quebrado antes do merge.
+- [ ] **NOVO (Onda 3): `webapp/` tem 2 lockfiles** — `package-lock.json` (desatualizado, falta @sentry/react) + `pnpm-lock.yaml` (atual, é o mantido). Confunde e faria `npm ci` falhar. Abordagem: apagar o `package-lock.json` órfão do webapp.
 - [?] **Re-varrer AUDITORIA_ABA_POR_ABA.md** (152 achados, 07-14) — raízes 3,5,6,7,8 + ~140 P1-P3 NÃO re-verificados contra o código atual. Onda dedicada de sweep fresco.
 - [?] **Contraste tema CLARO do painel** — rigor pixel-a-pixel foi aplicado ao app mobile, sem evidência equivalente no painel (tokens warning/success/info no claro).

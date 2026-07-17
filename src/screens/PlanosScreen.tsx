@@ -165,6 +165,9 @@ export default function PlanosScreen() {
   const [periodo, setPeriodo] = useState<Periodo>('mensal');
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
   const [carregandoPlano, setCarregandoPlano] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `planoErro` só vira
+  // true numa falha de rede real; o plano exibido some do cache/última leitura.
+  const [planoErro, setPlanoErro] = useState(false);
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | 'portal' | null>(null);
 
   // Semeia com o plano do cache local ANTES da leitura de rede, para NÃO piscar
@@ -178,9 +181,12 @@ export default function PlanosScreen() {
     // cache no sucesso; apagar antes só destruía a rede de segurança da graça de 7 dias
     // (se a rede falhasse logo após, caía em 'gratis' e reexibia a venda a um pagante).
     setCarregandoPlano(true);
+    setPlanoErro(false);
     try {
       const resultado = await getPlanoAtual();
       setPlanoAtualId(resultado.plano);
+    } catch {
+      setPlanoErro(true);
     } finally {
       setCarregandoPlano(false);
     }
@@ -323,6 +329,15 @@ export default function PlanosScreen() {
       <GradientHeader title="Planos OLLI" subtitle="Escolha como crescer" onBack={() => goBackOrHome(nav)} />
 
       <ScrollView contentContainerStyle={[styles.scroll, ehDesktop && styles.scrollDesktop]} showsVerticalScrollIndicator={false}>
+        {planoErro ? (
+          <View style={styles.cobrancaAviso}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+            <Text style={styles.cobrancaAvisoTexto}>Não deu para atualizar seu plano agora. O que está na tela pode estar desatualizado.</Text>
+            <TouchableOpacity onPress={carregarPlano} activeOpacity={0.8}>
+              <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {ehPagante ? (
           /* PAGANTE — sem propaganda: card discreto que leva à AssinaturaScreen. */
           <AnimatedEntrance index={0}>
@@ -596,6 +611,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardPlainDesktop: { flex: 1, marginBottom: 0 },
   cardBodyDesktop: { flex: 1 },
   ctaSpacer: { flex: 1, minHeight: Spacing.base },
+
+  // Aviso de erro (mesmo padrão visual do cobrancaAviso em HomeScreen.tsx).
+  cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
+  cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
   // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.

@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # 1) App (raiz): typecheck + testes do app Expo/React Native.
+  app-gate:
+    name: app-gate
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # scripts/teste-*.ts rodam via `node arquivo.ts` direto, usando o type
+      # stripping nativo do Node — recurso que só existe a partir do Node 22.
+      # Em Node 20 esses testes quebram de cara com "Unknown file extension
+      # .ts", então este job (só ele) sobe em 22 em vez dos 20 dos outros.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências (npm ci — package-lock.json na raiz)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes
+        run: npm test
+
+  # 2) Painel (webapp/): build de produção (tsc && vite build) — pega erro de tipo.
+  painel:
+    name: painel
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # webapp/ declara "packageManager": "pnpm@10.8.0" e o pnpm-lock.yaml é
+      # o lockfile mantido de fato (tem o commit mais recente, inclui o fix
+      # do Sentry). Existe também um webapp/package-lock.json nesta pasta,
+      # mas está desatualizado — falta @sentry/react — e `npm ci` falharia
+      # de cara com "package.json and package-lock.json ... not in sync".
+      # Por isso este job usa pnpm, não npm, mesmo com os dois lockfiles presentes.
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Instalar dependências (pnpm — pnpm-lock.yaml em webapp/)
+        run: pnpm i --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+  # 3) Landing (web/): astro check (type-check) + build.
+  landing:
+    name: landing
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependências (npm ci — package-lock.json em web/)
+        run: npm ci
+
+      - name: Astro check
+        run: npx astro check
+
+      - name: Build
+        run: npm run build

@@ -125,6 +125,10 @@ export default function EquipamentoScreen() {
 
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `equipamentosErro` só
+  // vira true quando a LEITURA falha de verdade — nunca quando a lista está
+  // genuinamente vazia (mesmo padrão de HomeScreen.tsx).
+  const [equipamentosErro, setEquipamentosErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [filtro, setFiltro] = useState<SituacaoEquipamento | 'todas'>('todas');
   const [busca, setBusca] = useState('');
@@ -135,13 +139,15 @@ export default function EquipamentoScreen() {
   const [editando, setEditando] = useState<Equipamento | 'novo' | null>(null);
 
   const load = useCallback(async () => {
+    setEquipamentosErro(false);
     try {
       const lista = await getEquipamentos();
       // Mais recentes primeiro (atualizadoEm desc).
       lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
       setEquipamentos(lista);
     } catch {
-      setEquipamentos([]);
+      // erro de verdade (leitura falhou) — não vira "nenhum equipamento ainda".
+      setEquipamentosErro(true);
     } finally {
       setCarregando(false);
     }
@@ -407,6 +413,16 @@ export default function EquipamentoScreen() {
           <OlliSkeleton width="100%" height={92} radius={18} />
           <OlliSkeleton width="100%" height={92} radius={18} />
           <OlliSkeleton width="100%" height={92} radius={18} />
+        </View>
+      ) : equipamentosErro ? (
+        <View style={{ flex: 1, paddingHorizontal: Spacing.base }}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Não deu para carregar"
+            subtitle="Não conseguimos buscar seus equipamentos agora. Verifique a conexão e tente de novo."
+            actionLabel="Tentar de novo"
+            onAction={load}
+          />
         </View>
       ) : (
         <FlatList
@@ -1207,6 +1223,13 @@ function SeletorCliente({
   const [query, setQuery] = useState('');
   const [resultados, setResultados] = useState<Cliente[]>([]);
   const [buscou, setBuscou] = useState(false);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `buscaErro` só vira
+  // true quando a BUSCA falha de verdade — "não achou cliente" e "a busca
+  // falhou" viram mensagens diferentes na tela (mesmo padrão de HomeScreen.tsx).
+  const [buscaErro, setBuscaErro] = useState(false);
+  // Incrementado pelo botão "Tentar de novo" pra reexecutar a busca sem
+  // depender de o usuário mudar o texto (query não muda no retry).
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     let ativo = true;
@@ -1214,18 +1237,21 @@ function SeletorCliente({
     if (q.length < 2) {
       setResultados([]);
       setBuscou(false);
+      setBuscaErro(false);
       return;
     }
+    setBuscaErro(false);
     (async () => {
       try {
         const found = await searchClientes(q);
         if (ativo) { setResultados(found); setBuscou(true); }
       } catch {
-        if (ativo) { setResultados([]); setBuscou(true); }
+        // erro de verdade (busca falhou) — NUNCA vira "nenhum cliente encontrado".
+        if (ativo) { setBuscaErro(true); setBuscou(true); }
       }
     })();
     return () => { ativo = false; };
-  }, [query]);
+  }, [query, tentativa]);
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
@@ -1263,10 +1289,17 @@ function SeletorCliente({
                 <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
               </TouchableOpacity>
             ))}
-            {buscou && resultados.length === 0 ? (
+            {buscaErro ? (
+              <View>
+                <Text style={styles.vazioTexto}>Não deu para buscar agora. Verifique a conexão.</Text>
+                <TouchableOpacity onPress={() => setTentativa((t) => t + 1)} activeOpacity={0.8} style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+                  <Text style={styles.fotoBtnText}>Tentar de novo</Text>
+                </TouchableOpacity>
+              </View>
+            ) : buscou && resultados.length === 0 ? (
               <Text style={styles.vazioTexto}>Nenhum cliente encontrado. Cadastre-o na tela Clientes primeiro.</Text>
             ) : null}
-            {!buscou && query.trim().length < 2 ? (
+            {!buscaErro && !buscou && query.trim().length < 2 ? (
               <Text style={styles.vazioTexto}>Digite ao menos 2 letras para buscar.</Text>
             ) : null}
           </ScrollView>

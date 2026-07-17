@@ -72,16 +72,19 @@ export default function LixeiraScreen() {
   const corTipo = criarCorTipo(cores);
   const [itens, setItens] = useState<ItemLixeira[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [itensErro, setItensErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [esvaziando, setEsvaziando] = useState(false);
 
   const load = useCallback(async () => {
+    setItensErro(false);
     try {
       const lista = await getItensNaLixeira();
       setItens(lista);
     } catch {
-      setItens([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setItensErro(true);
     } finally {
       setCarregando(false);
     }
@@ -282,11 +285,21 @@ export default function LixeiraScreen() {
           contentContainerStyle={{ paddingTop: 10, paddingBottom: 80 + insets.bottom, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
           ListEmptyComponent={
-            <EmptyState
-              icon="delete-empty-outline"
-              title="Lixeira vazia"
-              subtitle="Nada foi excluído por aqui. O que você apagar aparece nesta tela e pode ser restaurado."
-            />
+            itensErro ? (
+              <EmptyState
+                icon="alert-circle-outline"
+                title="Não deu para carregar"
+                subtitle="Não conseguimos buscar sua lixeira agora. Verifique a conexão e tente de novo."
+                actionLabel="Tentar de novo"
+                onAction={load}
+              />
+            ) : (
+              <EmptyState
+                icon="delete-empty-outline"
+                title="Lixeira vazia"
+                subtitle="Nada foi excluído por aqui. O que você apagar aparece nesta tela e pode ser restaurado."
+              />
+            )
           }
         />
       )}

@@ -74,10 +74,20 @@ function diasAte(iso: string): number {
   return Math.round((alvo.getTime() - hoje.getTime()) / 86400000);
 }
 
-/** Resumo derivado por plano a partir da versão vigente — mesmo cálculo do mobile. */
+/**
+ * Resumo derivado por plano a partir da versão vigente — mesmo cálculo do mobile.
+ *
+ * `periodicidades` (contagem) acompanha `periodicidadeLabels` mesmo não sendo
+ * consumido nesta tela: é o MESMO shape de resumo que a tela mobile
+ * (PmocPlanosScreen) usa no chip "N periodicidades". Mantendo os dois campos
+ * alinhados nas duas telas, um ajuste futuro num lado não quebra o outro em
+ * silêncio por divergência de shape.
+ */
 interface ResumoPlano {
   equipamentos: number;
   numeroVersao?: number;
+  /** Contagem de periodicidades definidas. */
+  periodicidades: number;
   /** Rótulos únicos das frequências das periodicidades ("Mensal", "Trimestral"...). */
   periodicidadeLabels: string[];
   /**
@@ -122,12 +132,17 @@ export default function PmocDesktopScreen() {
   const [resumos, setResumos] = useState<Record<string, ResumoPlano>>({});
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `erro` só vira `true`
+  // se o load de fato falhar — a lista NÃO é esvaziada no catch, senão a tabela
+  // mostraria "nada por aqui" quando na verdade a leitura só falhou agora.
+  const [erro, setErro] = useState(false);
   const [gerandoId, setGerandoId] = useState<string | null>(null);
   const [painelVisivel, setPainelVisivel] = useState(false);
 
   const podeGerar = podeGerarPmoc(pode('ver_valores_agregados'));
 
   const carregar = useCallback(async () => {
+    setErro(false);
     try {
       const [lista, listaClientes] = await Promise.all([listarPlanos(), getClientes()]);
       setPlanos(lista);
@@ -152,18 +167,18 @@ export default function PmocDesktopScreen() {
             return [p.id, {
               equipamentos: vigente?.equipamentoIds.length ?? 0,
               numeroVersao: vigente?.numeroVersao,
+              periodicidades: pers.length,
               periodicidadeLabels: labels,
               proximaVisita: vencimentos[0] ?? null,
             }];
           } catch {
-            return [p.id, { equipamentos: 0, periodicidadeLabels: [], proximaVisita: null }];
+            return [p.id, { equipamentos: 0, periodicidades: 0, periodicidadeLabels: [], proximaVisita: null }];
           }
         }),
       );
       setResumos(Object.fromEntries(pares));
     } catch {
-      setPlanos([]);
-      setResumos({});
+      setErro(true);
     } finally {
       setCarregando(false);
     }
@@ -396,18 +411,31 @@ export default function PmocDesktopScreen() {
     >
       <TabelaDados<PmocPlano>
         colunas={colunas}
-        dados={linhas}
+        // Em erro, força "sem linhas" pra cair no `vazio` abaixo com o aviso de
+        // retry — em vez de listar dados possivelmente desatualizados de uma
+        // carga anterior enquanto a leitura atual falhou.
+        dados={erro ? [] : linhas}
         carregando={carregando}
         aoClicarLinha={(p) => abrirPlano(p.id)}
         ordenacaoInicial={{ chave: 'proximaVisita', direcao: 'asc' }}
         vazio={
-          <EmptyState
-            icon="clipboard-text-clock-outline"
-            title="Nenhum plano de manutenção ainda"
-            subtitle="Um plano PMOC organiza as visitas programadas dos equipamentos de um cliente. Crie o primeiro e defina as periodicidades."
-            actionLabel="Criar primeiro plano"
-            onAction={abrirNovo}
-          />
+          erro ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não foi possível carregar"
+              subtitle="Não conseguimos buscar os planos PMOC agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={carregar}
+            />
+          ) : (
+            <EmptyState
+              icon="clipboard-text-clock-outline"
+              title="Nenhum plano de manutenção ainda"
+              subtitle="Um plano PMOC organiza as visitas programadas dos equipamentos de um cliente. Crie o primeiro e defina as periodicidades."
+              actionLabel="Criar primeiro plano"
+              onAction={abrirNovo}
+            />
+          )
         }
       />
 

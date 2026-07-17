@@ -109,6 +109,7 @@ export default function OrdemServicoScreen() {
 
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [ordensErro, setOrdensErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [filtro, setFiltro] = useState<StatusOS | 'todas'>('todas');
   const [busca, setBusca] = useState('');
@@ -128,6 +129,7 @@ export default function OrdemServicoScreen() {
   }, []);
 
   const load = useCallback(async () => {
+    setOrdensErro(false);
     try {
       // Técnico só vê as próprias OS; sem id ainda, mostra vazio (não vaza tudo).
       const lista = ehTecnico
@@ -137,7 +139,8 @@ export default function OrdemServicoScreen() {
       lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
       setOrdens(lista);
     } catch {
-      setOrdens([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setOrdensErro(true);
     } finally {
       setCarregando(false);
     }
@@ -305,6 +308,14 @@ export default function OrdemServicoScreen() {
           <OlliSkeleton width="100%" height={92} radius={18} />
           <OlliSkeleton width="100%" height={92} radius={18} />
         </View>
+      ) : ordensErro ? (
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Não deu para carregar"
+          subtitle="Não conseguimos buscar suas ordens de serviço agora. Verifique a conexão e tente de novo."
+          actionLabel="Tentar de novo"
+          onAction={load}
+        />
       ) : (
         <FlatList
           data={filtradas}
@@ -1085,30 +1096,34 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
   const insets = useSafeAreaInsets();
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [orcamentosErro, setOrcamentosErro] = useState(false);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const ativoRef = useRef(true);
+  useEffect(() => () => { ativoRef.current = false; }, []);
 
-  useEffect(() => {
-    let ativo = true;
-    (async () => {
-      try {
-        const [todos, ordens] = await Promise.all([getOrcamentos(), getOrdens()]);
-        // Um orçamento gera no máximo uma OS: esconde os que já têm ordem gerada
-        // (cruza pelo orcamentoId) para o duplicado nem aparecer na lista.
-        const jaComOS = new Set(
-          ordens.map((os) => os.orcamentoId).filter((id): id is string => !!id),
-        );
-        const elegiveis = todos.filter(
-          (o) => (o.status === 'aprovado' || o.status === 'convertido') && !jaComOS.has(o.id),
-        );
-        if (ativo) setOrcamentos(elegiveis);
-      } catch {
-        if (ativo) setOrcamentos([]);
-      } finally {
-        if (ativo) setCarregando(false);
-      }
-    })();
-    return () => { ativo = false; };
+  const carregarOrcamentos = useCallback(async () => {
+    setCarregando(true);
+    setOrcamentosErro(false);
+    try {
+      const [todos, ordens] = await Promise.all([getOrcamentos(), getOrdens()]);
+      // Um orçamento gera no máximo uma OS: esconde os que já têm ordem gerada
+      // (cruza pelo orcamentoId) para o duplicado nem aparecer na lista.
+      const jaComOS = new Set(
+        ordens.map((os) => os.orcamentoId).filter((id): id is string => !!id),
+      );
+      const elegiveis = todos.filter(
+        (o) => (o.status === 'aprovado' || o.status === 'convertido') && !jaComOS.has(o.id),
+      );
+      if (ativoRef.current) setOrcamentos(elegiveis);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      if (ativoRef.current) setOrcamentosErro(true);
+    } finally {
+      if (ativoRef.current) setCarregando(false);
+    }
   }, []);
+
+  useEffect(() => { carregarOrcamentos(); }, [carregarOrcamentos]);
 
   if (carregando) {
     return (
@@ -1116,6 +1131,18 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
         <OlliSkeleton width="100%" height={70} radius={16} />
         <OlliSkeleton width="100%" height={70} radius={16} />
       </View>
+    );
+  }
+
+  if (orcamentosErro) {
+    return (
+      <EmptyState
+        icon="alert-circle-outline"
+        title="Não deu para carregar"
+        subtitle="Não conseguimos buscar os orçamentos elegíveis agora. Verifique a conexão e tente de novo."
+        actionLabel="Tentar de novo"
+        onAction={carregarOrcamentos}
+      />
     );
   }
 

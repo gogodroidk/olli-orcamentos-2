@@ -8,6 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SvgXml } from 'react-native-svg';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Fonts, useCores, useEstilos, type Cores } from '../theme';
+import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
@@ -50,6 +51,9 @@ export default function CreditosScreen() {
   const [saldo, setSaldo] = useState<number | null | undefined>(undefined); // undefined=carregando
   const [pacotes, setPacotes] = useState<PacotePix[]>([]);
   const [carregandoPacotes, setCarregandoPacotes] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `pacotesErro` só vira
+  // true numa falha de rede real; lista vazia por resposta válida é "indisponível".
+  const [pacotesErro, setPacotesErro] = useState(false);
   const [extrato, setExtrato] = useState<LancamentoCredito[] | null>(null);
 
   const [cobranca, setCobranca] = useState<CobrancaPix | null>(null);
@@ -72,13 +76,23 @@ export default function CreditosScreen() {
     getMeuExtrato(8).then(aplicarExtrato).catch(() => aplicarExtrato(null));
   }, [aplicarSaldo, aplicarExtrato]);
 
+  const carregarPacotes = useCallback(async () => {
+    setCarregandoPacotes(true);
+    setPacotesErro(false);
+    try {
+      const p = await getPacotesPix();
+      setPacotes(p);
+    } catch {
+      setPacotesErro(true);
+    } finally {
+      setCarregandoPacotes(false);
+    }
+  }, []);
+
   useEffect(() => {
     recarregarSaldo();
-    getPacotesPix()
-      .then(setPacotes)
-      .catch(() => setPacotes([]))
-      .finally(() => setCarregandoPacotes(false));
-  }, [recarregarSaldo]);
+    carregarPacotes();
+  }, [recarregarSaldo, carregarPacotes]);
 
   // Polling de UX enquanto a cobrança está aberta, não paga e não expirada. A
   // fonte de verdade é o saldo (o webhook credita); isto só antecipa o "pago!".
@@ -159,7 +173,7 @@ export default function CreditosScreen() {
     }
   }
 
-  const semPix = !carregandoPacotes && pacotes.length === 0;
+  const semPix = !carregandoPacotes && !pacotesErro && pacotes.length === 0;
 
   return (
     <View style={styles.tela}>
@@ -234,6 +248,16 @@ export default function CreditosScreen() {
             <Text style={styles.secaoTitulo}>Recarregar por Pix</Text>
             {carregandoPacotes ? (
               <ActivityIndicator style={{ marginVertical: Spacing.lg }} color={cores.accentLight} />
+            ) : pacotesErro ? (
+              <OlliCard style={styles.card} padding={Spacing.lg}>
+                <EmptyState
+                  icon="alert-circle-outline"
+                  title="Não deu para carregar"
+                  subtitle="Não conseguimos buscar os pacotes de recarga agora. Verifique a conexão e tente de novo."
+                  actionLabel="Tentar de novo"
+                  onAction={carregarPacotes}
+                />
+              </OlliCard>
             ) : semPix ? (
               <OlliCard style={styles.card} padding={Spacing.lg}>
                 <Text style={styles.indisponivel}>

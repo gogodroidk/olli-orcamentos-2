@@ -119,6 +119,10 @@ export default function InicioDesktopScreen() {
   const [carregando, setCarregando] = useState(true);
   const [radar, setRadar] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
+  // 3 estados explícitos: `radarErro` só vira `true` numa falha de leitura de
+  // verdade; lista vazia com sucesso é "nenhum cliente sumido" (não é a mesma
+  // coisa). Mesmo padrão do radar de cobrança logo abaixo.
+  const [radarErro, setRadarErro] = useState(false);
   const [larguraGrafico, setLarguraGrafico] = useState(0);
 
   // RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
@@ -162,11 +166,13 @@ export default function InicioDesktopScreen() {
   }, []);
 
   const loadRadar = useCallback(async () => {
+    setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
       setRadar(lista.slice(0, 3));
     } catch {
-      setRadar([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setRadarErro(true);
     } finally {
       setRadarCarregando(false);
     }
@@ -554,6 +560,13 @@ export default function InicioDesktopScreen() {
             {radarCarregando ? (
               <View style={{ gap: 8, marginTop: 10 }}>
                 <OlliSkeleton width="100%" height={44} />
+              </View>
+            ) : radarErro ? (
+              <View style={{ marginTop: 10, gap: 6 }}>
+                <Text style={styles.visitaVazioTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <OlliPressable onPress={loadRadar} haptic={false}>
+                  <Text style={styles.verTodos}>Tentar de novo</Text>
+                </OlliPressable>
               </View>
             ) : radar.length === 0 ? (
               <Text style={styles.visitaVazioTexto}>Nenhum cliente sumido no momento.</Text>

@@ -122,6 +122,10 @@ export default function EquipamentosDesktopScreen() {
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `equipamentosErro`
+  // só vira true quando a LEITURA falha de verdade — nunca quando a lista
+  // está genuinamente vazia (mesmo padrão de HomeScreen.tsx / EquipamentoScreen mobile).
+  const [equipamentosErro, setEquipamentosErro] = useState(false);
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FiltroSituacao>('todas');
 
@@ -136,13 +140,15 @@ export default function EquipamentosDesktopScreen() {
   const [osDetalheVisivel, setOsDetalheVisivel] = useState(false);
 
   const carregar = useCallback(async () => {
+    setEquipamentosErro(false);
     try {
       const [eqs, cls] = await Promise.all([getEquipamentos(), getClientes()]);
       eqs.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
       setEquipamentos(eqs);
       setClientes(cls);
     } catch {
-      setEquipamentos([]);
+      // erro de verdade (leitura falhou) — não vira "nenhum equipamento ainda".
+      setEquipamentosErro(true);
     } finally {
       setCarregando(false);
     }
@@ -320,17 +326,27 @@ export default function EquipamentosDesktopScreen() {
         aoClicarLinha={(e) => abrirEdicao(e)}
         ordenacaoInicial={{ chave: 'equipamento', direcao: 'asc' }}
         vazio={
-          <EmptyState
-            icon="air-conditioner"
-            title={busca || filtro !== 'todas' ? 'Nada por aqui' : 'Nenhum equipamento ainda'}
-            subtitle={
-              busca || filtro !== 'todas'
-                ? 'Nenhum equipamento bate com esse filtro. Tente outra busca.'
-                : 'Cadastre o primeiro ar-condicionado do inventário e gere a etiqueta QR para a porta.'
-            }
-            actionLabel={!busca && filtro === 'todas' ? 'Novo equipamento' : undefined}
-            onAction={!busca && filtro === 'todas' ? abrirNovo : undefined}
-          />
+          equipamentosErro ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar seus equipamentos agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={carregar}
+            />
+          ) : (
+            <EmptyState
+              icon="air-conditioner"
+              title={busca || filtro !== 'todas' ? 'Nada por aqui' : 'Nenhum equipamento ainda'}
+              subtitle={
+                busca || filtro !== 'todas'
+                  ? 'Nenhum equipamento bate com esse filtro. Tente outra busca.'
+                  : 'Cadastre o primeiro ar-condicionado do inventário e gere a etiqueta QR para a porta.'
+              }
+              actionLabel={!busca && filtro === 'todas' ? 'Novo equipamento' : undefined}
+              onAction={!busca && filtro === 'todas' ? abrirNovo : undefined}
+            />
+          )
         }
       />
 

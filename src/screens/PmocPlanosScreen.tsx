@@ -23,6 +23,7 @@ import { listarPlanos, criarPlano, periodoDe, vencimentoDe } from '../services/p
 // Leituras diretas do banco local (não editadas por esta frente): a versão
 // vigente dá o nº de equipamentos/periodicidades e as frequências das rotinas.
 import { getPmocVersaoVigente, getClientes } from '../database/database';
+import { FREQUENCIAS_PMOC } from '../types';
 import type { PmocPlano, SituacaoPmoc, Cliente } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -64,10 +65,20 @@ const SIT_PMOC_ORDEM: SituacaoPmoc[] = [
   'vigente', 'suspenso', 'substituido', 'encerrado',
 ];
 
-/** Resumo derivado por plano, montado a partir da versão vigente. */
+/**
+ * Resumo derivado por plano, montado a partir da versão vigente.
+ *
+ * `periodicidadeLabels` acompanha `periodicidades` (a contagem, usada nesta
+ * tela) mesmo não sendo consumido aqui: é o MESMO shape de resumo que a tela
+ * desktop (PmocDesktopScreen) usa para os chips de frequência. Mantendo os
+ * dois campos alinhados nas duas telas, um ajuste futuro num lado não quebra o
+ * outro em silêncio por divergência de shape.
+ */
 interface ResumoPlano {
   equipamentos: number;
   periodicidades: number;
+  /** Rótulos únicos das frequências das periodicidades ("Mensal", "Trimestral"...). */
+  periodicidadeLabels: string[];
   /**
    * ISO curta (YYYY-MM-DD) da próxima visita devida: o FIM do bloco de calendário
    * atual, calculado das periodicidades pelo próprio serviço (mesma matemática da
@@ -75,6 +86,11 @@ interface ResumoPlano {
    * afirmação de conformidade. `null` quando não há periodicidade calculável.
    */
   proximaVisita: string | null;
+}
+
+/** Rótulo PT-BR da frequência ('mensal' → 'Mensal'); cai no id se desconhecida. */
+function labelFrequencia(frequencia: string): string {
+  return FREQUENCIAS_PMOC.find((f) => f.id === frequencia)?.label ?? frequencia;
 }
 
 /** Data ISO (curta ou completa) → "12/03/2026". Vazio se inválida. */
@@ -120,6 +136,10 @@ function PmocPlanosConteudo() {
   const [resumos, setResumos] = useState<Record<string, ResumoPlano>>({});
   const [clientesMapa, setClientesMapa] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `erro` só vira `true`
+  // se o load de fato falhar — a lista NÃO é esvaziada no catch, senão a tela
+  // mostraria "nenhum plano" quando na verdade a leitura só falhou agora.
+  const [erro, setErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [filtro, setFiltro] = useState<SituacaoPmoc | 'todos'>('todos');
 
@@ -127,6 +147,7 @@ function PmocPlanosConteudo() {
   const [criando, setCriando] = useState(false);
 
   const load = useCallback(async () => {
+    setErro(false);
     try {
       const [lista, clientes] = await Promise.all([listarPlanos(), getClientes()]);
       setPlanos(lista);
@@ -148,20 +169,21 @@ function PmocPlanosConteudo() {
               })
               .filter((v): v is string => !!v)
               .sort();
+            const labels = Array.from(new Set(pers.map((per) => labelFrequencia(per.frequencia))));
             return [p.id, {
               equipamentos: vigente?.equipamentoIds.length ?? 0,
               periodicidades: pers.length,
+              periodicidadeLabels: labels,
               proximaVisita: vencimentos[0] ?? null,
             }];
           } catch {
-            return [p.id, { equipamentos: 0, periodicidades: 0, proximaVisita: null }];
+            return [p.id, { equipamentos: 0, periodicidades: 0, periodicidadeLabels: [], proximaVisita: null }];
           }
         }),
       );
       setResumos(Object.fromEntries(pares));
     } catch {
-      setPlanos([]);
-      setResumos({});
+      setErro(true);
     } finally {
       setCarregando(false);
     }
@@ -262,8 +284,8 @@ function PmocPlanosConteudo() {
         }
       />
 
-      {/* Filtro por situação (só quando há planos). */}
-      {planos.length > 0 && (
+      {/* Filtro por situação (só quando há planos de verdade — não durante erro). */}
+      {!erro && planos.length > 0 && (
         <View>
           <FlatList
             horizontal
@@ -293,6 +315,14 @@ function PmocPlanosConteudo() {
         <View style={{ paddingHorizontal: Spacing.base, paddingTop: 8, gap: 12 }}>
           {[0, 1, 2].map((i) => <OlliSkeleton key={i} height={104} radius={BorderRadius.lg} />)}
         </View>
+      ) : erro ? (
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Não foi possível carregar"
+          subtitle="Não conseguimos buscar os planos PMOC agora. Verifique a conexão e tente de novo."
+          actionLabel="Tentar de novo"
+          onAction={load}
+        />
       ) : filtrados.length === 0 ? (
         planos.length === 0 ? (
           <EmptyState

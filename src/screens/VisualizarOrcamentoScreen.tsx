@@ -89,6 +89,11 @@ export default function VisualizarOrcamentoScreen() {
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [versoes, setVersoes] = useState<OrcamentoVersao[]>([]);
   const [trilha, setTrilha] = useState<EventoTrilhaCliente[]>([]);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `trilhaErro` só vira
+  // `true` se a leitura da trilha (link público) de fato falhar — antes um
+  // catch(() => setTrilha([])) deixava "falha de rede" indistinguível de
+  // "cliente nunca abriu o link" (ambos mostravam a mesma ausência de card).
+  const [trilhaErro, setTrilhaErro] = useState(false);
   const [versoesAbertas, setVersoesAbertas] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -100,6 +105,15 @@ export default function VisualizarOrcamentoScreen() {
   // PDF ou link do cliente (mensagem varia conforme a ação em andamento).
   const [overlayInfo, setOverlayInfo] = useState<{ titulo: string; subtitulo: string } | null>(null);
   const statusAnteriorRef = useRef<StatusOrcamento | null>(null);
+
+  // Trilha do cliente (link público) — leitura VIVA, não bloqueia a tela: a
+  // página já mostra os dados locais e a trilha aparece quando a nuvem responde.
+  // Isolada em callback próprio para o botão "Tentar de novo" poder rechamar
+  // sem precisar recarregar o orçamento inteiro.
+  const loadTrilha = useCallback(() => {
+    setTrilhaErro(false);
+    trilhaDoLink(orcamentoId).then(setTrilha).catch(() => setTrilhaErro(true));
+  }, [orcamentoId]);
 
   useFocusEffect(useCallback(() => {
     async function load() {
@@ -120,9 +134,7 @@ export default function VisualizarOrcamentoScreen() {
       setVersoes(vs);
       setNaoEncontrado(false);
       setCarregando(false);
-      // Trilha do cliente (link público) — leitura VIVA, não bloqueia a tela: a
-      // página já mostra os dados locais e a trilha aparece quando a nuvem responde.
-      trilhaDoLink(orcamentoId).then(setTrilha).catch(() => setTrilha([]));
+      loadTrilha();
     }
     load();
     // sincronizarStatusLinks() nunca lança — traz de volta o status que o
@@ -137,7 +149,7 @@ export default function VisualizarOrcamentoScreen() {
     puxarVersoesNuvemParaOrcamento(orcamentoId).then(aplicadas => {
       if (aplicadas > 0) getVersoesOrcamento(orcamentoId).then(setVersoes).catch(() => {});
     }).catch(() => {});
-  }, [orcamentoId]));
+  }, [orcamentoId, loadTrilha]));
 
   async function handleShare() {
     if (!orc || !empresa) return;
@@ -428,8 +440,21 @@ export default function VisualizarOrcamentoScreen() {
           )}
         </OlliCard>
 
-        {/* TRILHA DO CLIENTE (link público) — o que o cliente fez com a proposta */}
-        {trilha.length > 0 && (
+        {/* TRILHA DO CLIENTE (link público) — o que o cliente fez com a proposta.
+            Ramo de erro ANTES do "vazio": falha de rede nunca deve parecer
+            "cliente nunca abriu o link" (que simplesmente não mostra o card). */}
+        {trilhaErro ? (
+          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+            <Text style={styles.cardTitle}>Trilha do cliente</Text>
+            <View style={styles.cobrancaAviso}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+              <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar a trilha do cliente agora.</Text>
+              <TouchableOpacity onPress={loadTrilha} activeOpacity={0.8}>
+                <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+              </TouchableOpacity>
+            </View>
+          </OlliCard>
+        ) : trilha.length > 0 && (
           <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
             <Text style={styles.cardTitle}>Trilha do cliente</Text>
             {trilha.map((ev, i) => (
@@ -658,6 +683,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   trilhaMotivoLabel: { fontSize: 10.5, fontWeight: '800', color: '#EF4444', textTransform: 'uppercase', letterSpacing: 0.4 },
   trilhaMotivoText: { fontSize: 13, color: c.onSurface, lineHeight: 19, marginTop: 3 },
+
+  // Banner de erro (mesmo visual do usado em HomeScreen para radar/cobrança).
+  cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginTop: 8 },
+  cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   // Histórico de versões
   versoesHeader: { flexDirection: 'row', alignItems: 'center' },
