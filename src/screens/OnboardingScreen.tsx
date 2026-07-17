@@ -227,10 +227,29 @@ export default function OnboardingScreen() {
     await marcarVisto();
   }
 
-  function irParaApp() {
-    // reset: o app abre normal nas abas e o usuário não consegue "voltar" para o onboarding
+  /**
+   * Sai do onboarding. `comPrimeiroOrcamento` manda o usuário direto para o wizard.
+   *
+   * POR QUE (prioridade 11 do plano): a meta declarada é "onboarding mágico terminando
+   * em 1º ORÇAMENTO ENVIADO", com 5 minutos até o primeiro — e a ativação do produto é
+   * definida como "orçamento real enviado em até 7 dias". Terminar o cadastro e largar
+   * a pessoa na home das abas deixa justamente o passo que ATIVA por conta dela: ela
+   * acabou de dizer o nome do negócio, o PIX e até um serviço, e a recompensa disso é
+   * uma tela de menu. O caminho mais curto entre "configurei" e "vi valor" é o
+   * orçamento — então é nele que o onboarding desemboca.
+   *
+   * `index: 1` com Tabs ABAIXO, e não um reset só para o wizard: o botão voltar leva
+   * para o app normal. É um convite, não um sequestro — quem não quiser orçar agora
+   * volta com um toque, e o onboarding continua irretornável (o que era o ponto do
+   * reset original).
+   */
+  function irParaApp(comPrimeiroOrcamento = false) {
     nav.dispatch(
-      CommonActions.reset({ index: 0, routes: [{ name: 'Tabs' }] }),
+      CommonActions.reset(
+        comPrimeiroOrcamento
+          ? { index: 1, routes: [{ name: 'Tabs' }, { name: 'NovoOrcamento' }] }
+          : { index: 0, routes: [{ name: 'Tabs' }] },
+      ),
     );
   }
 
@@ -323,7 +342,11 @@ export default function OnboardingScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       track(Eventos.onboardingCompleted, { comServico: !!servNome.trim() });
       await marcarConcluido();
-      irParaApp();
+      // Concluiu = quer usar: cai no wizard do primeiro orçamento (ver irParaApp).
+      // Quem PULOU não passa por aqui de propósito — ele disse que não queria
+      // configurar agora, e empurrar um wizard seria ignorar o que ele acabou de
+      // dizer. O "pular" segue direto para as abas.
+      irParaApp(true);
     } catch {
       Alert.alert('Ops', 'Não consegui salvar agora. Tente novamente.');
     } finally {
