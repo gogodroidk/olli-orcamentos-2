@@ -16,6 +16,7 @@
  * Escrita no Supabase é sempre via SERVICE_ROLE (bypassa RLS) — o usuário só tem
  * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
  */
+import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 // URLs de retorno do Checkout / Portal (o worker atende os dois subdomínios;
 // usamos o de diagnóstico, que serve estas páginas de sucesso/cancelado).
@@ -683,32 +684,17 @@ async function processar12x(env, obj, evento) {
     stripe_subscription_id: subscriptionId,
   });
   if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
-  marcarEventoProcessado(evento && evento.id);
+  await marcarEvento(env, { origem: 'stripe', eventId: evento && evento.id, status: 'processado' });
   return json({ ok: true });
 }
 
-// Dedup best-effort de eventos do webhook por `event.id`, em memória do
-// isolate. A Stripe reenvia eventos que não recebem 200 (e pode reenviar em
-// rajada mesmo com 200 se a latência de rede for alta); os upserts em si já
-// são idempotentes no RESULTADO final (merge por user_id), mas isto evita
-// reprocessar 2x um evento que chegou duplicado na mesma janela — sem exigir
-// tabela nova. Não substitui idempotência real (é por isolate, não global),
-// mas cobre o caso comum de retry imediato.
-const EVENTOS_PROCESSADOS = new Map(); // event.id -> timestamp
-const EVENTO_TTL_MS = 10 * 60 * 1000;
-
-function eventoJaProcessado(id) {
-  if (!id) return false;
-  const limite = Date.now() - EVENTO_TTL_MS;
-  for (const [k, t] of EVENTOS_PROCESSADOS) if (t < limite) EVENTOS_PROCESSADOS.delete(k);
-  return EVENTOS_PROCESSADOS.has(id);
-}
-
-function marcarEventoProcessado(id) {
-  if (!id) return;
-  if (EVENTOS_PROCESSADOS.size > 1000) EVENTOS_PROCESSADOS.clear();
-  EVENTOS_PROCESSADOS.set(id, Date.now());
-}
+// Idempotência do webhook: agora é o BANCO (item O2-17), não memória de isolate.
+// O que havia aqui era um `Map` por isolate com TTL de 10 min, e o comentário
+// original já admitia: "não substitui idempotência real (é por isolate, não
+// global)". Cada isolate tinha o SEU Map, o isolate morre quando quer, e a Stripe
+// reenvia por dias — a proteção era acidental. `webhook_events` tem índice ÚNICO em
+// (origem, event_id): quem insere processa, quem toma 409 sabe que outro já pegou.
+// Vale entre isolates, deploys e regiões. Ver worker/src/webhookEvents.js.
 
 export async function handleWebhook(request, env) {
   // RAW body ANTES de qualquer parse — a assinatura é calculada sobre ele.
@@ -728,9 +714,20 @@ export async function handleWebhook(request, env) {
   const tipo = evento && evento.type;
   const obj = evento && evento.data ? evento.data.object : null;
 
-  // Evento já visto nesta janela: responde 200 sem reprocessar (idempotência
-  // best-effort — ver comentário acima do cache).
-  if (evento && eventoJaProcessado(evento.id)) return json({ ok: true, duplicado: true });
+  // REIVINDICA o evento ANTES de processar (persistir antes de agir).
+  //  - duplicado → outro isolate já pegou: 200, sem reprocessar.
+  //  - ok:false  → NÃO deu para saber (banco fora). Devolve 500 de propósito, para a
+  //    Stripe REENVIAR. Processar às cegas arriscaria efeito duplo no dia em que um
+  //    handler não for idempotente; engolir com 200 perderia o pagamento de vez.
+  //    "Não sei" não vira nem "é novo" nem "é duplicado".
+  const claim = await reivindicarEvento(env, {
+    origem: 'stripe',
+    eventId: evento && evento.id,
+    tipo,
+    payload: evento,
+  });
+  if (claim.duplicado) return json({ ok: true, duplicado: true });
+  if (!claim.ok) return json({ erro: 'idempotencia_indisponivel' }, 500);
 
   try {
     if (tipo === 'checkout.session.completed') {
@@ -806,12 +803,22 @@ export async function handleWebhook(request, env) {
     console.error('[olli-stripe] webhook falhou:', e && (e.message || e));
     // 500 → a Stripe reenvia. Upserts são idempotentes, então reenvio é seguro.
     // NÃO marca como processado: queremos que o reenvio da Stripe seja tentado de novo.
+    // Marca 'falhou' só para a trilha: `reivindicarEvento` trata 'falhou' e
+    // 'recebido' como "não terminou" e LIBERA o reprocessamento — só 'processado'
+    // faz o reenvio ser pulado. Sem isso, a linha de claim viraria uma lápide e o
+    // evento nunca mais rodaria.
+    await marcarEvento(env, {
+      origem: 'stripe',
+      eventId: evento && evento.id,
+      status: 'falhou',
+      erro: e && (e.message || String(e)),
+    });
     return json({ erro: 'falha_interna' }, 500);
   }
 
   // Só marca como processado depois do sucesso — assim uma falha (acima) deixa
   // o evento livre para reprocessar no próximo reenvio da Stripe.
-  marcarEventoProcessado(evento && evento.id);
+  await marcarEvento(env, { origem: 'stripe', eventId: evento && evento.id, status: 'processado' });
   return json({ ok: true });
 }
 
