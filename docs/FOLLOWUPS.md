@@ -286,3 +286,11 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     mesmo `getMinhaOrganizacao()` para achar o `org_id` — avaliar se um erro de rede ali vira
     "sem equipe" em silêncio. A primitiva de 3 estados já existe e está testada:
     `src/services/contextoEquipe.ts` (+ `npm run test:contexto-equipe`).
+
+30. **`webapp/src/pages/olli/ferramentas/calculos.ts` não tem nenhum chamador.** Achado ao varrer os
+    gates (O3-31). É o motor de cálculo por ofício copiado do app (`CALCULOS`, `calcular()`,
+    `calculosDoOficio`, `haCalculoParaOficio` — ~1.100 linhas), mas nenhuma tela do painel importa
+    essas funções: as calculadoras de ofício existem no mobile e o painel carrega o código sem usar.
+    Ou a tela de ferramentas do painel nunca foi ligada (paridade mobile↔desktop que o dono pediu na
+    personalização por vertical), ou o arquivo é resíduo e sai do bundle. Decidir qual — não é bug,
+    é código órfão com custo de bundle.
