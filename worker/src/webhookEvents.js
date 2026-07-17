@@ -19,8 +19,8 @@
 /** Cabeçalhos do service_role (o worker é o único que escreve nesta tabela). */
 function sbHeaders(env, extra = {}) {
   return {
-    apikey: env.SUPABASE_SERVICE_ROLE,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
     ...extra,
   };
 }
@@ -41,7 +41,7 @@ function sbHeaders(env, extra = {}) {
  * cegas. Erro nunca vira vazio, nem aqui.
  */
 export async function reivindicarEvento(env, { origem, eventId, tipo, payload }) {
-  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE) return { ok: false, duplicado: false };
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return { ok: false, duplicado: false };
   if (!origem || !eventId) return { ok: false, duplicado: false };
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/webhook_events`, {
@@ -109,7 +109,7 @@ async function estadoDoEvento(env, origem, eventId) {
  * pagamento — o efeito de negócio está feito; isto é a trilha.
  */
 export async function marcarEvento(env, { origem, eventId, status, erro }) {
-  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE) return;
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return;
   try {
     const url =
       `${env.SUPABASE_URL}/rest/v1/webhook_events` +
