@@ -38,6 +38,10 @@ const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
 const schemaOrganizacao = {
 	"@context": "https://schema.org",
 	"@type": "Organization",
+	// @id nomeia o nó para o WebSite abaixo referenciá-lo em vez de repetir a
+	// organização inteira. Sem ele, o `publisher` do WebSite apontaria pra um nó
+	// inexistente — e referência pendurada é schema quebrado, pior que schema ausente.
+	"@id": `${ORIGEM}#organizacao`,
 	name: "OLLI",
 	url: ORIGEM,
 	logo: new URL("/og-image.png", ORIGEM).href,
@@ -61,7 +65,25 @@ const schemaApp = {
 	],
 };
 
-const jsonLd = [schemaOrganizacao, schemaApp, ...schemas];
+/**
+ * WebSite — diz ao Google COMO CHAMAR o site no resultado de busca. Sem isto ele
+ * adivinha a partir do domínio ("olliorcamentos.online"); com isto, é "OLLI".
+ *
+ * SEM `potentialAction`/SearchAction DE PROPÓSITO: a landing não tem busca interna.
+ * Declarar uma seria schema mentindo sobre o conteúdo — a mesma classe de erro que
+ * o aggregateRating fake que esta casa já recusou.
+ */
+const schemaWebSite = {
+	"@context": "https://schema.org",
+	"@type": "WebSite",
+	name: "OLLI Orçamentos",
+	alternateName: "OLLI",
+	url: ORIGEM,
+	inLanguage: "pt-BR",
+	publisher: { "@id": `${ORIGEM}#organizacao` },
+};
+
+const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
 ---
 
 <!doctype html>

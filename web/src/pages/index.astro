@@ -72,10 +72,17 @@ const passos = [
 			'O cliente manda o áudio no WhatsApp: "meu ar tá pingando e não gela".',
 	},
 	{
+		// HONESTIDADE DO MECANISMO: a OLLI não lê o áudio do WhatsApp. Não há
+		// integração com o WhatsApp em lugar nenhum do produto, e o painel web não
+		// captura voz (grep SpeechRecognition|MediaRecorder|getUserMedia em
+		// webapp/src: zero). Quem ouve o áudio é o prestador — a OLLI entra depois,
+		// e o que ela faz de verdade (montar o orçamento, apontar defeito e peça)
+		// já é forte o bastante. Vender ingestão de áudio que não existe queimaria
+		// o primeiro cliente exatamente no primeiro uso.
 		n: "02",
-		titulo: "A OLLI organiza",
+		titulo: "Você monta em minutos",
 		texto:
-			"Vira orçamento com itens e a IA aponta o provável defeito e a peça.",
+			"Itens, preço e fotos no lugar — e a IA aponta o provável defeito e a peça.",
 	},
 	{
 		n: "03",
@@ -243,7 +250,7 @@ const schemaFaq = {
           ao orçamento fechado.
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
-          A OLLI transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
+          Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
           <a href={APP_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
