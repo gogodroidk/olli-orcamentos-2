@@ -24,8 +24,26 @@ export function useLoginStateContext() {
 	return context;
 }
 
+/**
+ * Estado inicial da tela, lido da URL UMA vez.
+ *
+ * CC-01: todos os CTAs da landing ("Criar meu primeiro orçamento", "Teste grátis")
+ * caíam na tela de LOGIN — o cadastro era um sub-estado sem deep-link, escondido
+ * atrás de um link. Agora `/auth/login?modo=cadastro` (ou `?screen=register`) abre
+ * direto no cadastro. Lê de `window.location.search` no inicializador do useState
+ * (roda uma vez, no primeiro render) em vez de um hook de router, pra não depender
+ * da ordem de montagem do Provider dentro da árvore de rotas.
+ */
+function estadoInicial(): LoginStateEnum {
+	if (typeof window === "undefined") return LoginStateEnum.LOGIN;
+	const p = new URLSearchParams(window.location.search);
+	const modo = (p.get("modo") ?? p.get("screen") ?? "").toLowerCase();
+	if (modo === "cadastro" || modo === "register" || modo === "signup") return LoginStateEnum.REGISTER;
+	return LoginStateEnum.LOGIN;
+}
+
 export function LoginProvider({ children }: PropsWithChildren) {
-	const [loginState, setLoginState] = useState(LoginStateEnum.LOGIN);
+	const [loginState, setLoginState] = useState(estadoInicial);
 
 	function backToLogin() {
 		setLoginState(LoginStateEnum.LOGIN);

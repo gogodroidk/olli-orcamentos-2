@@ -6,6 +6,10 @@ import { OFICIOS, OFICIO_GERAL, SLUG_POR_OFICIO, TOTAL_CALCULADORAS } from "../d
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
+// CC-01: o CTA de CADASTRO abre a tela de conta direto (o provider do painel lê
+// ?modo=cadastro). Sem isto, "Criar meu primeiro orçamento" caía na tela de
+// LOGIN e o cadastro ficava escondido atrás de um link. "Entrar" continua no APP_URL.
+const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
 // WhatsApp oficial de vendas/suporte (mesmo número usado no app, ver src/config.ts).
 const WHATSAPP_URL = "https://wa.me/5511941727487";
 
@@ -107,7 +111,7 @@ const planos = [
 		],
 		cta: "Começar grátis",
 		primary: true,
-		href: APP_URL,
+		href: APP_CADASTRO_URL,
 	},
 	{
 		nome: "Pro",
@@ -124,7 +128,7 @@ const planos = [
 		],
 		cta: "Assinar o Pro",
 		primary: true,
-		href: APP_URL,
+		href: APP_CADASTRO_URL,
 	},
 	{
 		nome: "Empresa",
@@ -225,7 +229,7 @@ const schemaFaq = {
       </div>
       <div class="flex items-center gap-2">
         <a href={APP_URL} class="rounded-lg px-4 py-2 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-        <a href={APP_URL} class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+        <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
       </div>
     </nav>
   </header>
@@ -253,7 +257,7 @@ const schemaFaq = {
           Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-          <a href={APP_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
+          <a href={APP_CADASTRO_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
             Criar meu primeiro orçamento — grátis
           </a>
           <a href="#como" class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
@@ -471,7 +475,7 @@ const schemaFaq = {
     <div class="relative overflow-hidden rounded-3xl px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
       <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
       <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
-      <a href={APP_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
+      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
     </div>
   </section>
   </main>

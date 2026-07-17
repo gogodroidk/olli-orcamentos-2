@@ -53,9 +53,13 @@ export function getStatusVariant(value: unknown): BadgeVariant {
 		.toLowerCase()
 		.trim();
 	if (!v) return "secondary";
-	if (/aprovad|convertid|pag[oa]|conclu[ií]|finaliz|ativ[oa]|ganho|aceit|sucesso|receb|quitad/.test(v))
+	// `(?<![a-z])ativ[oa]`: o `ativ[oa]` cru casava DENTRO de "des-ativa-do" e pintava
+	// de VERDE um registro DESATIVADO (achado do 21st-sweep). A lookbehind exige que
+	// "ativo/ativa" comece um token — "ativo" casa, "desativado"/"inativa" não. O par
+	// disso está na linha de baixo: "desativ" entra no mesmo grupo que "inativ" já usava.
+	if (/aprovad|convertid|pag[oa]|conclu[ií]|finaliz|(?<![a-z])ativ[oa]|ganho|aceit|sucesso|receb|quitad/.test(v))
 		return "success";
-	if (/recusad|cancelad|reprovad|rejeitad|perdid|inativ|vencid|atrasad|expirad|falh|erro|estornad/.test(v))
+	if (/recusad|cancelad|reprovad|rejeitad|perdid|desativ|inativ|vencid|atrasad|expirad|falh|erro|estornad/.test(v))
 		return "error";
 	if (/enviad|negocia|andamento|em_?aberto|process|analise|análise|revis|agendad/.test(v)) return "info";
 	if (/pendente|aguard|em_?espera|novo|nova|previst/.test(v)) return "warning";

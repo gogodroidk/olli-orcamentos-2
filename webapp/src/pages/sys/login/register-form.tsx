@@ -8,6 +8,7 @@ import { mapAuthErrorMessage } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
+import { OAuthButtons } from "./components/OAuthButtons";
 import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
 
@@ -63,6 +64,21 @@ function RegisterForm() {
 			<form onSubmit={form.handleSubmit(onFinish)} className="space-y-4">
 				<div className="flex flex-col items-center gap-2 text-center">
 					<h1 className="text-2xl font-bold">{t("sys.login.signUpFormTitle")}</h1>
+				</div>
+
+				{/*
+					OAuth ANTES do e-mail: signInWithOAuth cria a conta no 1º acesso, sem
+					confirmação de e-mail nem senha — é 1 clique contra os 7+ passos do
+					cadastro por e-mail. Quem chega da landing pra experimentar não quer
+					preencher formulário; quer estar dentro. O formulário de e-mail
+					continua abaixo pra quem preferir. (CC-01)
+				*/}
+				<OAuthButtons />
+
+				<div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
+					<span className="relative z-10 bg-background px-2 text-muted-foreground">
+						{t("sys.login.registerButton")}
+					</span>
 				</div>
 
 				<FormField

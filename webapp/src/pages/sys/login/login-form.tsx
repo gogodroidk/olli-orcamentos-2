@@ -5,23 +5,18 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import type { SignInReq } from "@/api/services/userService";
-import { Icon } from "@/components/icon";
 import { GLOBAL_CONFIG } from "@/global-config";
-import { supabase } from "@/lib/supabase";
 import { useSignIn, useUserToken } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
+import { OAuthButtons } from "./components/OAuthButtons";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
-
-type OAuthProvider = "google" | "apple";
-const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", apple: "Apple" };
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"form">) {
 	const { t } = useTranslation();
 	const [loading, setLoading] = useState(false);
-	const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 	const navigatge = useNavigate();
 
 	const { loginState, setLoginState } = useLoginStateContext();
@@ -48,32 +43,6 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 					}
 				: { username: "", password: "" },
 	});
-
-	// Antes o retorno { error } era descartado: se o provider falhasse (ou não
-	// estivesse configurado no Supabase), a tela simplesmente não fazia nada —
-	// parecia travada. Agora espera a resposta, mostra loading no botão certo
-	// e avisa em pt-BR quando dá errado.
-	const signInWithProvider = async (provider: OAuthProvider) => {
-		setOauthLoading(provider);
-		try {
-			const { error } = await supabase.auth.signInWithOAuth({
-				provider,
-				options: { redirectTo: window.location.origin },
-			});
-			if (error) {
-				toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {
-					position: "top-center",
-				});
-			}
-			// Sucesso navega o navegador inteiro pro provider — não há mais nada a fazer aqui.
-		} catch {
-			toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {
-				position: "top-center",
-			});
-		} finally {
-			setOauthLoading(null);
-		}
-	};
 
 	if (loginState !== LoginStateEnum.LOGIN) return null;
 
@@ -151,42 +120,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 
 					{/* Login por celular/QR do template ficam escondidos até terem backend real. */}
 
-					{/* 其他登录方式 */}
-					<div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
-						<span className="relative z-10 bg-background px-2 text-muted-foreground">{t("sys.login.otherSignIn")}</span>
-					</div>
-					<div className="flex justify-center gap-3">
-						<Button
-							type="button"
-							variant="outline"
-							className="flex-1"
-							onClick={() => signInWithProvider("google")}
-							disabled={oauthLoading !== null}
-							aria-busy={oauthLoading === "google"}
-						>
-							{oauthLoading === "google" ? (
-								<Loader2 className="animate-spin" size={18} />
-							) : (
-								<Icon icon="logos:google-icon" size={18} />
-							)}
-							<span className="ml-2">Google</span>
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							className="flex-1"
-							onClick={() => signInWithProvider("apple")}
-							disabled={oauthLoading !== null}
-							aria-busy={oauthLoading === "apple"}
-						>
-							{oauthLoading === "apple" ? (
-								<Loader2 className="animate-spin" size={20} />
-							) : (
-								<Icon icon="mdi:apple" size={20} />
-							)}
-							<span className="ml-2">Apple</span>
-						</Button>
-					</div>
+					<OAuthButtons />
 
 					{/* 注册 */}
 					<div className="text-center text-sm">
