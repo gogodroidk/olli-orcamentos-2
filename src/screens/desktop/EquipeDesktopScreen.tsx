@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, Pressable, Switch, ActivityIndicator, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { GatePro } from '../../components/GatePro';
+import { GateEquipe } from '../../components/GateEquipe';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
@@ -800,12 +800,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
  */
 export default function EquipeDesktopScreen() {
   return (
-    <GatePro
+    <GateEquipe
       recurso="equipe"
-      plano="empresa"
       beneficio="Convide técnicos, defina papéis e veja o trabalho de todo mundo num lugar só."
     >
       <EquipeDesktopConteudo />
-    </GatePro>
+    </GateEquipe>
   );
 }

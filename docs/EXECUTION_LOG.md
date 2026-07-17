@@ -3,6 +3,30 @@
 > O que já foi ENTREGUE, com evidência (commit ou arquivo). Atualizar ao fim de cada onda.
 > Última atualização: 2026-07-12.
 
+## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
+
+**Org que já existia quando o paywall entrou continua podendo usar Equipe/Mapa. Org NOVA
+precisa do plano Empresa.** Decisão delegada pelo dono ao piloto e tomada com base no
+Plano-Mestre ("v1 nasce com Empresa grandfathered/aberto").
+
+**Por quê:** não há como afirmar quantas contas reais usam Equipe de graça hoje — e "não
+sei" não vira "não tem". Sob incerteza escolhe-se o REVERSÍVEL: o grandfathering se desfaz
+com um `update public.organizacoes set equipe_grandfathered = false;`, enquanto o usuário
+cortado churna e não volta — cortado justo às vésperas de a gente cobrar dele, num produto
+cuja tese é "a confiança é o produto". O paywall passa a faturar em cima de **quem chega**,
+que é onde o crescimento está.
+
+| onde | o que faz |
+|---|---|
+| `20260725_equipe_grandfathering.sql` | coluna `equipe_grandfathered` (default **false**) + backfill `true` no que existir no instante da aplicação. A fronteira é o momento da migration, não uma data no código. |
+| `worker/src/equipe.js` (`orgTemEmpresaAtivo`) | **enforcement real**: grandfathered → `'sim'` antes de olhar o plano. 3 estados e fail-closed intactos. |
+| `src/services/entitlementEquipe.ts` | a regra pura ("esta conta PODE X", nunca "É Empresa" — regra 11.2 do plano). |
+| `src/components/GateEquipe.tsx` | UX nas 3 telas: pode → conteúdo · não-pode-com-certeza → muro · **indeterminado → conteúdo sem muro** (não acusa por erro de rede). |
+
+Prova: `npm run test:entitlement-equipe` (11 asserts, exit 0), incl. coluna ausente ≠ acesso
+grátis. **Ordem de aplicação: migration ANTES de publicar o worker** (sem a coluna, o select
+falha → `'erro'` → 503 em todo convite; chato, mas não vaza).
+
 ## ⚖️ FONTE ÚNICA DE ESTADO (decidido em 2026-07-16 — item O0-5)
 
 **Este arquivo + [`FOLLOWUPS.md`](FOLLOWUPS.md) são o registro OFICIAL do que existe no OLLI.**

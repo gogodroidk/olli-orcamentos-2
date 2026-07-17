@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
-import { GatePro } from '../components/GatePro';
+import { GateEquipe } from '../components/GateEquipe';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -563,18 +563,21 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
  * falhar, o `usePlano` mantém o último plano bom do cache — quem paga não perde a tela
  * por causa de uma oscilação.
  *
+ * F0d (17/07): quem decide é o `GateEquipe`, e não o `GatePro` cru — org que já
+ * existia quando o paywall entrou continua podendo (grandfathering). Ver
+ * `services/entitlementEquipe.ts`.
+ *
  * ⚠️ Isto é a camada de UX. O enforcement de verdade é server-side, no worker
- * (`handleConvite` checa `orgTemEmpresaAtivo`) — paywall no client é vitrine, não
- * fechadura.
+ * (`handleConvite` checa `orgTemEmpresaAtivo`, que respeita o mesmo F0d) — paywall
+ * no client é vitrine, não fechadura.
  */
 export default function EquipeScreen() {
   return (
-    <GatePro
+    <GateEquipe
       recurso="equipe"
-      plano="empresa"
       beneficio="Convide técnicos, defina papéis e veja o trabalho de todo mundo num lugar só."
     >
       <EquipeConteudo />
-    </GatePro>
+    </GateEquipe>
   );
 }

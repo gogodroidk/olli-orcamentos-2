@@ -152,15 +152,26 @@ const PLANO_TERMINADO = new Set(['canceled', 'unpaid', 'incomplete_expired']);
 
 /** owner_user_id da org. Retorna string ('' se ausente) ou { error:true } em falha. */
 async function getOwnerDaOrg(env, orgId) {
+  const org = await getOrg(env, orgId);
+  if (org && org.error) return { error: true };
+  return org ? (org.owner_user_id || '') : '';
+}
+
+/**
+ * Lê a org: dono + flag de grandfathering (F0d), numa ida só. Devolve
+ * `{ error: true }` em falha, `null` quando a org não existe.
+ */
+async function getOrg(env, orgId) {
   try {
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/organizacoes?id=eq.${encodeURIComponent(orgId)}&select=owner_user_id&limit=1`,
+      `${env.SUPABASE_URL}/rest/v1/organizacoes?id=eq.${encodeURIComponent(orgId)}` +
+        `&select=owner_user_id,equipe_grandfathered&limit=1`,
       { headers: sbHeaders(env) },
     );
     if (!r.ok) return { error: true };
     const arr = await r.json().catch(() => null);
     if (!Array.isArray(arr)) return { error: true };
-    return arr.length ? (arr[0].owner_user_id || '') : '';
+    return arr.length ? arr[0] : null;
   } catch {
     return { error: true };
   }
@@ -173,10 +184,24 @@ async function getOwnerDaOrg(env, orgId) {
  * (olli-gate-erro-vira-vazio): 'sim' | 'nao' | 'erro'. Uma falha de backend NUNCA
  * pode virar "nao tem plano" nem "tem" — devolve 'erro', e o chamador falha FECHADO
  * (503, tente de novo), para nunca conceder equipe de graça por um erro transitório.
+ *
+ * F0d: uma org com `equipe_grandfathered = true` devolve 'sim' sem olhar o plano —
+ * ela já existia quando o paywall entrou e não pode ser cortada agora. É reversível
+ * num UPDATE (ver a migration 20260725).
  */
 async function orgTemEmpresaAtivo(env, orgId) {
-  const owner = await getOwnerDaOrg(env, orgId);
-  if (owner && owner.error) return 'erro';
+  const org = await getOrg(env, orgId);
+  if (org && org.error) return 'erro';
+  if (!org) return 'nao'; // org inexistente = sem plano Empresa comprovável
+
+  // F0d — GRANDFATHERING (decisão de 2026-07-17, ver
+  // supabase/migrations/20260725_equipe_grandfathering.sql): org que já existia
+  // quando o paywall entrou continua convidando. Vem ANTES da consulta ao plano
+  // de propósito: para a conta grandfathered, o plano é irrelevante e uma falha
+  // ao lê-lo não pode virar 402 na cara de quem sempre pôde usar.
+  if (org.equipe_grandfathered === true) return 'sim';
+
+  const owner = org.owner_user_id || '';
   if (!owner) return 'nao'; // org sem dono resolvível = sem plano Empresa comprovável
   try {
     const r = await fetch(

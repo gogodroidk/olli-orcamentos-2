@@ -51,6 +51,16 @@ export interface Organizacao {
   papel: Papel;
   /** user_id do DONO da org — usado pelo cloudSync p/ o técnico gravar dados no tenant do dono. */
   ownerUserId: string;
+  /**
+   * F0d — esta org já existia quando o paywall do Empresa entrou, então usa
+   * Equipe/Mapa sem assinar (ver `20260725_equipe_grandfathering.sql`). O worker
+   * decide o mesmo em `orgTemEmpresaAtivo`; aqui é só para a UI não mostrar um muro
+   * de pagamento a quem o servidor vai deixar passar.
+   *
+   * `undefined` = NÃO SEI (schema antigo, coluna ausente, leitura parcial) — e não
+   * sei nunca vira "é grandfathered": sem certeza, o gate de plano normal decide.
+   */
+  equipeGrandfathered?: boolean;
 }
 
 export interface MembroEquipe {
@@ -105,7 +115,7 @@ export async function carregarMinhaOrganizacao(): Promise<LeituraOrganizacao> {
 
     const { data: orgs, error: erroOrg } = await supabase
       .from('organizacoes')
-      .select('id, nome, owner_user_id')
+      .select('id, nome, owner_user_id, equipe_grandfathered')
       .eq('id', membro.org_id)
       .limit(1);
 
@@ -116,7 +126,17 @@ export async function carregarMinhaOrganizacao(): Promise<LeituraOrganizacao> {
     if (!org) return { status: 'erro' };
     return {
       status: 'ok',
-      org: { id: org.id, nome: org.nome ?? 'Minha empresa', papel: normalizarPapel(membro.papel), ownerUserId: (org as any).owner_user_id },
+      org: {
+        id: org.id,
+        nome: org.nome ?? 'Minha empresa',
+        papel: normalizarPapel(membro.papel),
+        ownerUserId: (org as any).owner_user_id,
+        // `=== true` de propósito: qualquer outra coisa (null, undefined, coluna
+        // que não existe ainda no schema) NÃO é "grandfathered". Liberar por dúvida
+        // seria dar o plano Empresa de graça — o inverso do bug da casa, mas o mesmo
+        // erro: tratar "não sei" como um valor.
+        equipeGrandfathered: (org as any).equipe_grandfathered === true,
+      },
     };
   } catch {
     return { status: 'erro' };

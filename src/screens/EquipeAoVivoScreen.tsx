@@ -33,7 +33,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { GatePro } from '../components/GatePro';
+import { GateEquipe } from '../components/GateEquipe';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliCard } from '../components/OlliCard';
@@ -76,15 +76,14 @@ function estaRecente(iso: string): boolean {
 export default function EquipeAoVivoScreen() {
   // Agenda/rota da equipe inteira é de gestão — o técnico só vê a própria.
   return (
-    <GatePro
+    <GateEquipe
       recurso="mapa_equipe"
-      plano="empresa"
       beneficio="Veja onde cada técnico está agora e quem chega primeiro no chamado."
     >
       <GuardaPapel acao="ver_agenda_equipe" area="Equipe ao vivo">
         <EquipeAoVivoConteudo />
       </GuardaPapel>
-    </GatePro>
+    </GateEquipe>
   );
 }
 
