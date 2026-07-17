@@ -33,12 +33,21 @@ arquivos: **estes dois vencem**.
   (`tem`/`não tem`/`não sei`); `não sei` (erro de rede) → tela de retry, NUNCA Onboarding. E o Onboarding
   (`salvarTudo`) faz MERGE, nunca overwrite de campo já preenchido remotamente. `empresaNuvemMudouDesdeUltimoPull`
   deve falhar FECHADO (não empurrar) quando não há carimbo local e a origem foi o Onboarding pós-login.
-- [ ] **Logout "Sair e manter dados" não pode contaminar o próximo usuário.** `ContaScreen.tsx:323-344` +
-  `cloudSync.pullAll` aditivo: marcar o SQLite com o `user_id` dono e, no login de outra conta, exigir "apagar
-  dados" (ou isolar por conta) antes do primeiro pull.
-- [ ] **Backup de membro não pode ressuscitar dados do dono.** `database.exportAllData` + `backup.ts` +
-  role gate na UI: o backup do técnico não deve snapshotar o tenant do dono; e o restore não pode reintroduzir
-  itens com `excluido_em` (respeitar tombstones da nuvem).
+- [x] **Logout "Sair e manter dados" não pode contaminar o próximo usuário.** **FEITO (2026-07-16, O0-2,
+  commit `6f10eee`)** — resolvido por PARTIÇÃO (melhor que exigir "apagar dados": o usuário A mantém os
+  dados dele, como o botão promete, e B nunca os vê). `src/database/particao.ts`: cada usuário abre o SEU
+  arquivo `.db`; o 1º usuário pós-atualização ADOTA o `olli_orcamentos.db` existente (carimbo, zero cópia de
+  arquivo — ninguém perde nada no update); usuário diferente ganha arquivo novo. `syncOnLogin` abre a partição
+  ANTES de qualquer leitura e só sincroniza se o banco for provadamente dele (3 estados). "Sair e manter dados"
+  agora aborta o sync antes do signOut (mobile e desktop). ⚠️ Falta provar em emulador.
+- [x] **Backup de membro não pode ressuscitar dados do dono.** **FEITO (2026-07-16, O0-3, commit `8737c52`)**
+  — o restore só propaga para a NUVEM se quem restaura for DONO do tenant (`restaurePodeTocarNaNuvem`):
+  membro e papel desconhecido não limpam tombstone (nem local nem na nuvem) e não fazem `pushAllLocal`. O elo
+  fatal era `limparTombstonesNuvem` — apagava a PROVA da exclusão do dono, e o botão "Restaurar" usa
+  `pushToCloud: true`, então subia a linha velha de volta para a equipe inteira. O restore do membro segue
+  valendo LOCALMENTE e o `pullAll` seguinte reconcilia. ⚠️ Falta provar em emulador.
+  (O snapshot ainda LEVA os dados do dono: o SQLite local não tem coluna de tenant. Não vaza mais para a
+  nuvem, mas o arquivo de backup do técnico contém dados da empresa — decisão de produto pendente.)
 
 **P1 — dinheiro, segurança, entrega ao cliente:**
 - [ ] **Paywall do plano Empresa** (worker `handleConvite` checa plano do owner + `GatePro` nas rotas de Equipe).
@@ -46,8 +55,13 @@ arquivos: **estes dois vencem**.
 - [ ] **XSS em `modeloPdf`** do orçamento (`pdfGenerator.ts`) — mesma blindagem `modeloSeguro()` do recibo.
 - [ ] **`/stripe/webhook` e `/transcrever`**: teto de payload + rate-limit por IP ANTES de bufferizar o corpo;
   `/transcrever` deve validar plano/cota mensal (hoje só client-side).
-- [ ] **`contextoEquipeOwner` com 3 estados** — usar `carregarMinhaOrganizacao` (não o wrapper que colapsa);
-  `erro` ⇒ não empurra escrita de equipe / re-tenta. `cloudSync.ts:558`.
+- [x] **`contextoEquipeOwner` com 3 estados** — **FEITO (2026-07-16, O0-4, commit `9d8e849`)**. Agora usa
+  `carregarMinhaOrganizacao` (3 estados); `erro` vira `desconhecido` e o push das 8 tabelas de tenant é ADIADO
+  (fail-closed) — nada se perde, o SQLite local é a fonte da verdade e o próximo sync empurra. A decisão pura
+  mora em `src/services/contextoEquipe.ts` e tem teste (`npm run test:contexto-equipe`). Era pior que o
+  relatado: `atualizarContextoEquipe()` só rodava no `syncOnLogin`, mas `pushRow` dispara a CADA escrita local
+  (`database.ts:21`) e o restore chama `pushAllLocal` fora dele — esses caminhos usavam o contexto que
+  sobrasse. Resolvido com `garantirContextoEquipe()` (resolve sob demanda) + reset no logout.
 - [ ] **Gate de papel na UI de clientes** (edição/exclusão do técnico não pode falhar em silêncio) + **tombstone
   `exclusoes` multi-tenant** + **query de `OrdensDesktopScreen` fail-closed** enquanto o papel resolve.
 - [ ] **Sinal (R$ + data) e Laudo técnico no PDF** (`Step3Detalhes`/`pdfGenerator` — hoje somem na entrega).
