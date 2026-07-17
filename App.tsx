@@ -33,6 +33,7 @@ import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
+import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
 import { limparCacheTipoConta, resetarTipoConta } from './src/hooks/useTipoConta';
@@ -284,6 +285,12 @@ function AppConteudo() {
         // demais. A hidratação também confere o dono, mas limpar é a defesa direta.
         resetarTipoConta();
         void limparCacheTipoConta();
+        // Mesmo motivo, para o funil: o pseudônimo do PostHog fica em memória para
+        // não re-hashear a cada evento. Sem esta linha, o primeiro evento do PRÓXIMO
+        // usuário no mesmo aparelho sairia com o `distinct_id` de quem acabou de sair
+        // — duas pessoas viram uma só no funil, e o dado fica errado justamente onde
+        // ele existe para medir conversão.
+        esquecerPseudonimo();
         if (navigationRef.isReady()) {
           navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
         }
