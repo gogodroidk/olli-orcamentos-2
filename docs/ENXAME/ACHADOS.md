@@ -32,15 +32,15 @@
 - [ ] **NOVO (Onda 2): benefício órfão `dashboard_empresa`** — "Painel de gestão e metas da equipe" era anunciado como benefício mas **não existe tela nenhuma** (entitlement `dashboard_empresa` só aparece na tabela + texto do GatePro, sem implementação). c2 REMOVEU a linha de `PlanosScreen` (não dá pra vender o que não existe). **Decisão do dono:** construir a tela OU manter removido. Se construir, precisa regatear a entitlement. → também em BLOQUEIOS.
 - [x] **Diagnóstico IA sem gate de vertical** (Onda 4, B3) — novo `webapp/src/olli/verticais.ts` (espelha o app); gate no menu + na rota `/diagnostico`, só HVAC vê; sem ofício = vê tudo (backward-compat), 3 estados (nunca esconde por "não sei"). webapp typecheck exit 0.
 - [ ] **Equipe no painel é só leitura** — trocar papel/desativar/remover exige o app celular (honesto no ConvidarDialog, mas lacuna pra quem só usa web). Abordagem: decidir se traz CRUD de papel ao painel (produto).
-- [ ] **Sem onboarding guiado no painel** — cai em `/inicio` zerado sem tour/checklist de primeiros passos. Abordagem: empty-state com CTA "criar 1º orçamento/cliente".
-- [ ] **Nav da Home não linka #oficios** — hub das 6 páginas /para só acessível rolando. Abordagem: item no header.
+- [x] **Sem onboarding guiado no painel** (Onda 5, C3) — bloco "Primeiros passos" no `/inicio` (novo `PrimeirosPassosCard.tsx`), 3 CTAs (orçamento/cliente/empresa), só p/ conta nova (zero orçamentos E zero clientes), 3 estados (nunca durante carregando/erro). webapp tsc exit 0.
+- [x] **Nav da Home não linka #oficios** (Onda 5, C2) — item "Seu ofício" no header, âncora `#oficios`.
 - [x] **reduced-motion** (Onda 4, B4) — 3 dos 4 já respeitavam (`useReducedMotion` em `theme/motion.ts`); faltava só o container do wizard `NovoOrcamentoScreen` — corrigido (pula animação, aplica estado final).
-- [ ] **NovoOrcamentoScreen usa window.alert/confirm cru** — trocar por ConfirmDialog temático.
-- [ ] **Notificação: deep-link morto + vazamento** — `addNotificationResponseReceivedListener` não navega (código morto); falta teto de lembretes PMOC (~500 Android) e cancelar lembretes no logout "sair e manter dados" (vaza nome/endereço). Abordagem: implementar navegação por payload + teto + cancelar no logout.
-- [ ] **Badges PMOC usam matiz de categoria como cor de texto** (2 telas) — aplicar `corCategoriaEmChip`.
+- [x] **NovoOrcamentoScreen usa window.alert/confirm cru** (Onda 5, C4) — trocado por `avisar`/`confirmar` (dialogo temático `DialogoDesktopHost`, montado no App.tsx).
+- [x] **Notificação: deep-link morto + vazamento** (Onda 5, C5) — cold-start navega (fila no `onReady`); "sair e manter dados" cancela lembretes antes do signOut (parava de vazar nome/endereço); teto de 150 visitas PMOC (≤450 notificações).
+- [x] **Badges PMOC usam matiz de categoria como cor de texto** (Onda 5, C1) — as 2 mobile já faziam certo; corrigido o `StatusPmocBadge` do `PmocDesktopScreen` com `corCategoriaEmChip`.
 
 ## P2 — limpeza / dead code / perf
-- [ ] **Rota morta TecnicoHome** — `AppNavigator.tsx:552` registrada, sem path em linking.ts nem navigate. Remover.
+- [x] **Rota morta TecnicoHome** (Onda 5, C1) — `<Stack.Screen name="TecnicoHome">` + entrada órfã no `RootStackParamList` removidas; import preservado (a Tab Home do técnico ainda usa a tela).
 - [ ] **Lixo do template Slash (painel)** — `routes/sections/dashboard/backend.tsx`, `nav-data-backend.tsx`, `menuService.ts` (routerMode 'backend' nunca setado), `userService.ts` (auth real é supabase.auth direto), `pages/olli/list/index.tsx` + `placeholder/index.tsx` (órfãos), `sys/login/mobile-form.tsx` + `qrcode-form.tsx` (LoginStateEnum.MOBILE/QR_CODE inalcançáveis), `_mock/**` (só DEV). Abordagem: safe-delete com typecheck + comentário desatualizado em `frontend.tsx:11`. **Verificar imports antes de apagar.**
 - [ ] **codigos_erro.json (365KB) estático no boot** — carregar sob demanda.
 - [ ] **Sem code-splitting na web** — visitante anônimo baixa o ERP inteiro.

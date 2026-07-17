@@ -27,6 +27,8 @@ import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
+import { cancelarTodosLembretes } from '../services/agenda';
+import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../services/supabase';
 import {
@@ -361,6 +363,16 @@ export default function ContaScreen() {
               // Os dados FICAM no aparelho, como o botão promete: eles moram na
               // partição desta conta (database/particao.ts) e ninguém mais os abre.
               abortarSyncEmAndamento();
+              // Cancela os lembretes locais (agenda + vencimento PMOC) ANTES do
+              // signOut: como os dados FICAM no aparelho neste fluxo, o
+              // `clearAllLocalData` (que também cancela) não roda aqui — sem esta
+              // chamada, os lembretes da conta que está saindo continuariam
+              // disparando depois, mostrando nome/endereço do cliente para quem
+              // logar em seguida no mesmo aparelho (vazamento de dado entre
+              // contas). Best-effort e nunca lança; a próxima sessão (mesma conta
+              // ou outra) reagenda os seus via resincronizarLembretes* no sync.
+              await cancelarTodosLembretes().catch(() => {});
+              await cancelarTodosLembretesPmoc().catch(() => {});
               // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
               // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
               // competir com ele (corrida de navegação).

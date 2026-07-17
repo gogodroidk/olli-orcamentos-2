@@ -192,19 +192,33 @@ function AppConteudo() {
   // em qualquer tela (achado da re-auditoria). As rotas OrdemServico/Agenda não recebem
   // id (ver RootStackParamList), então navegamos para a TELA/ABA relevante; abrir o item
   // específico exigiria um param novo nessas rotas (follow-up). Nunca derruba o app.
+  //
+  // APP FRIO: quando o toque abre o app do zero (estava morto), este efeito monta e
+  // `getLastNotificationResponseAsync` resolve ANTES do NavigationContainer existir
+  // (ele só monta quando `ready` vira true — fontes + banco). Sem fila, `tratar`
+  // achava `navigationRef.isReady() === false` e descartava o toque em silêncio: o
+  // deep link morria justo no caso mais comum (app fechado, lembrete tocado). O ref
+  // abaixo guarda o payload pendente; o `onReady` do NavigationContainer (mais abaixo)
+  // o consome assim que a navegação realmente existir.
+  const notificacaoPendenteRef = useRef<{ ordemId?: string; agendamentoId?: string } | null>(null);
   useEffect(() => {
     function tratar(resposta: Notifications.NotificationResponse | null) {
       if (!resposta) return;
       try {
         const data = resposta.notification.request.content.data as { ordemId?: string; agendamentoId?: string };
-        if (!navigationRef.isReady()) return;
+        if (!data?.ordemId && !data?.agendamentoId) return;
+        if (!navigationRef.isReady()) {
+          notificacaoPendenteRef.current = data;
+          return;
+        }
         // `as never`: navigate com nome de rota dinâmico não casa os overloads do ref.
-        if (data?.ordemId) navigationRef.navigate('OrdemServico' as never);
-        else if (data?.agendamentoId) navigationRef.navigate('Agenda' as never);
+        if (data.ordemId) navigationRef.navigate('OrdemServico' as never);
+        else navigationRef.navigate('Agenda' as never);
       } catch { /* best-effort: nunca derruba o app */ }
     }
     const sub = Notifications.addNotificationResponseReceivedListener(tratar);
-    // App aberto A PARTIR do toque (estava fechado): melhor-esforço se a navegação já montou.
+    // App aberto A PARTIR do toque (estava fechado): se a navegação ainda não montou,
+    // `tratar` enfileira acima em vez de descartar.
     Notifications.getLastNotificationResponseAsync().then(tratar).catch(() => {});
     return () => sub.remove();
   }, []);
@@ -352,6 +366,21 @@ function AppConteudo() {
                     initialRoute === ROTA_DESLOGADO || initialRoute === 'Onboarding';
                   if (precisaDePorta && atual && !ROTAS_PUBLICAS.has(atual)) {
                     navigationRef.reset({ index: 0, routes: [{ name: initialRoute }] });
+                    // Sessão não está dentro do app agora (porta/onboarding): não
+                    // navega para uma tela protegida por cima do reset acima. Um
+                    // lembrete tocado sem sessão válida não deve arrastar ninguém
+                    // para dentro do app — descarta o pendente.
+                    notificacaoPendenteRef.current = null;
+                    return;
+                  }
+                  // Toque em lembrete com o app FRIO (ver useEffect acima): a
+                  // navegação não existia quando a resposta chegou; processa agora
+                  // que o NavigationContainer está de pé.
+                  const pendente = notificacaoPendenteRef.current;
+                  if (pendente) {
+                    notificacaoPendenteRef.current = null;
+                    if (pendente.ordemId) navigationRef.navigate('OrdemServico' as never);
+                    else if (pendente.agendamentoId) navigationRef.navigate('Agenda' as never);
                   }
                 }}
               >

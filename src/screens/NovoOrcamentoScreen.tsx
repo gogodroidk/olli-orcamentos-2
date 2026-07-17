@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Animated,
+  View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -315,11 +315,7 @@ export default function NovoOrcamentoScreen() {
         nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
       }
     } catch {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
-      } else {
-        Alert.alert('Erro', 'Não foi possível salvar o orçamento agora. Tente novamente.');
-      }
+      avisar('Não foi possível salvar', 'Tente novamente em instantes.');
     } finally {
       setSaving(false);
     }
@@ -336,15 +332,11 @@ export default function NovoOrcamentoScreen() {
         return;
       }
       // Feedback não bloqueante: haptic de sucesso + volta direto, sem exigir
-      // toque em "OK" para sair (o Alert só entra no caminho de erro abaixo).
+      // toque em "OK" para sair (o aviso só entra no caminho de erro abaixo).
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       goBackOrHome(nav);
     } catch {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
-      } else {
-        Alert.alert('Erro', 'Não foi possível salvar o rascunho agora. Tente novamente.');
-      }
+      avisar('Não foi possível salvar', 'Tente novamente em instantes.');
     } finally {
       setSaving(false);
     }
@@ -352,15 +344,8 @@ export default function NovoOrcamentoScreen() {
 
   function handleBack() {
     if (step === 0) {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
-          .then(ok => { if (ok) goBackOrHome(nav); });
-        return;
-      }
-      Alert.alert('Cancelar orçamento', 'Deseja descartar este orçamento?', [
-        { text: 'Continuar editando', style: 'cancel' },
-        { text: 'Descartar', style: 'destructive', onPress: () => goBackOrHome(nav) },
-      ]);
+      void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
+        .then(ok => { if (ok) goBackOrHome(nav); });
       return;
     }
     const novoStep = step - 1;

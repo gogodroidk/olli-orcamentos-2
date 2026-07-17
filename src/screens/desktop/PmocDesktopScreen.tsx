@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
@@ -105,7 +105,7 @@ function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
   const cor = criarSitPmocCor(cores)[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
-      <Text style={[styles.statusBadgeText, { color: cor }]} numberOfLines={1}>
+      <Text style={[styles.statusBadgeText, { color: corCategoriaEmChip(cor, cores.surface) }]} numberOfLines={1}>
         {SIT_PMOC_LABEL[situacao] ?? situacao}
       </Text>
     </View>

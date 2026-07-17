@@ -14,6 +14,7 @@ import {
 import { formatBRL, formatPct, mesPorExtenso, type OrcamentoRow, plural, type ReciboRow } from "./helpers";
 import { KpiDinheiroCard } from "./KpiDinheiroCard";
 import { ParadosCard } from "./ParadosCard";
+import { PrimeirosPassosCard } from "./PrimeirosPassosCard";
 import { RecentOrcamentosCard } from "./RecentOrcamentosCard";
 import { StatusDonutCard } from "./StatusDonutCard";
 import { WelcomeHeader } from "./WelcomeHeader";
@@ -40,9 +41,19 @@ import { WelcomeHeader } from "./WelcomeHeader";
 export default function Inicio() {
 	const orcQ = useOlliList<OrcamentoRow>("orcamentos", { orderBy: "criado_em", ascending: false });
 	const recQ = useOlliList<ReciboRow>("recibos", { orderBy: "criado_em", ascending: false });
+	// Leitura mínima só para saber SE existe cliente (1 linha, 1 coluna) — não entra
+	// em nenhum cálculo, serve só para o gate do onboarding abaixo.
+	const cliQ = useOlliList<{ id?: string | null }>("clientes", { limit: 1, colunas: "id" });
 	const { data: empresa } = useMinhaEmpresa();
 
 	const nomeEmpresa = ((empresa?.nome as string | undefined) ?? "").trim() || undefined;
+
+	// Conta claramente NOVA: as duas consultas TERMINARAM com sucesso (não é
+	// "carregando" nem "erro" travestido de vazio) e as duas vieram vazias. Só aí
+	// mostramos o guia de primeiros passos — nunca durante loading/erro, senão um
+	// erro de rede apagaria os dados reais do dono da tela.
+	const contaNova =
+		orcQ.isSuccess && (orcQ.data?.length ?? -1) === 0 && cliQ.isSuccess && (cliQ.data?.length ?? -1) === 0;
 
 	const emJogo = useMemo(() => (orcQ.data ? calcularEmJogo(orcQ.data) : null), [orcQ.data]);
 	const aReceber = useMemo(
@@ -74,6 +85,8 @@ export default function Inicio() {
 	return (
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
 			<WelcomeHeader />
+
+			{contaNova && <PrimeirosPassosCard />}
 
 			{/* Os 4 números que decidem o mês. Cada um leva à lista já filtrada. */}
 			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
