@@ -23,6 +23,8 @@ import { isoToBR } from '../utils/masks';
 import { generateId } from '../utils/id';
 import { exportarHtmlComoPdf, abrirWhatsApp } from '../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
+import { usePlano } from '../hooks/usePlano';
+import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { montarMensagemPedidoAvaliacao } from '../utils/mensagensOrcamento';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -46,6 +48,8 @@ export default function EmitirReciboScreen() {
 }
 
 function EmitirReciboConteudo() {
+  // D-07: Pro/Empresa não levam a marca OLLI em NENHUM documento — nem no recibo.
+  const { temAcesso } = usePlano();
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const cores = useCores();
@@ -147,7 +151,11 @@ function EmitirReciboConteudo() {
     if (!empresa) return '';
     // Delega ao util compartilhado (mesmo HTML usado na prévia de Modelos de
     // documento): recibo agora segue a cor de marca e o modelo escolhido.
-    return montarHtmlRecibo(r, empresa, { modelo: empresa.modeloReciboPadrao, corMarca: empresa.corMarca });
+    return montarHtmlRecibo(r, empresa, {
+      modelo: empresa.modeloReciboPadrao,
+      corMarca: empresa.corMarca,
+      removerMarca: temAcesso(RECURSO_REMOVE_MARCA),
+    });
   }
 
   async function handleGerar() {

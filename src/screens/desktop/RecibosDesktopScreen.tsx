@@ -16,6 +16,8 @@ import { marcarReciboComoPdfEmitido } from '../../services/pagamentos';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { exportarHtmlComoPdf, abrirWhatsApp } from '../../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../../utils/reciboPdf';
+import { usePlano } from '../../hooks/usePlano';
+import { RECURSO_REMOVE_MARCA } from '../../services/planos';
 import { montarMensagemPedidoAvaliacao } from '../../utils/mensagensOrcamento';
 import { formatCurrency } from '../../utils/currency';
 import { parseDateBR } from '../../utils/date';
@@ -82,6 +84,8 @@ function dataRecebimentoISO(r: Recibo): string {
  * recibo já registrado, só gerar/reenviar o PDF.
  */
 export default function RecibosDesktopScreen() {
+  // D-07: Pro/Empresa não levam a marca OLLI em NENHUM documento — nem no recibo.
+  const { temAcesso } = usePlano();
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -137,7 +141,11 @@ export default function RecibosDesktopScreen() {
     // Delega ao util compartilhado (mesmo HTML da EmitirReciboScreen mobile e
     // da prévia de Modelos de documento): segue a cor de marca e o modelo
     // escolhido pela empresa.
-    return montarHtmlRecibo(r, empresa, { modelo: empresa.modeloReciboPadrao, corMarca: empresa.corMarca });
+    return montarHtmlRecibo(r, empresa, {
+      modelo: empresa.modeloReciboPadrao,
+      corMarca: empresa.corMarca,
+      removerMarca: temAcesso(RECURSO_REMOVE_MARCA),
+    });
   }, [empresa]);
 
   // Gera/reenvia o PDF do recibo — mesma função para os dois estados

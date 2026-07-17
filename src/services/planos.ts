@@ -7,7 +7,10 @@ const CACHE_KEY = 'olli.plano.cache';
 /** Janela de graça offline: usa o cache mesmo sem conseguir consultar a nuvem. */
 const GRACA_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type PlanoId = 'gratis' | 'pro' | 'empresa';
+export type { PlanoId, Recurso } from './entitlements';
+export { RECURSOS_POR_PLANO, RECURSO_REMOVE_MARCA, temAcessoRecurso } from './entitlements';
+import type { PlanoId, Recurso } from './entitlements';
+import { temAcessoRecurso } from './entitlements';
 
 export interface PlanoAtual {
   plano: PlanoId;
@@ -142,61 +145,7 @@ export function invalidarCachePlano(): void {
  * `false` no grátis: no grátis eles têm 3 usos/mês (contador local), então o
  * gate deles é por COTA, não por plano — ver usosIaRestantes/consumirUsoIa.
  */
-export type Recurso =
-  | 'ia_ilimitada'      // IA sem cota mensal (voz nuvem + chat + diagnóstico IA)
-  | 'relatorios'        // relatórios de faturamento e conversão
-  | 'metas'             // metas de vendas e acompanhamento
-  | 'radar_clientes'    // radar de clientes sumidos (lista completa)
-  | 'relatorio_dia'     // relatório do dia falado
-  | 'modelos_pdf_premium' // modelos premium de PDF (Onda 5)
-  | 'remove_olli_brand' // remove a marca discreta OLLI do PDF/documento (Onda 7)
-  | 'equipe'            // vários técnicos e papéis
-  | 'mapa_equipe'       // equipe ao vivo no mapa
-  | 'dashboard_empresa'; // painel de gestão da empresa
-
-/**
- * RECURSOS_POR_PLANO — o que cada plano libera.
- *
- * gratis: orçamentos/recibos/clientes/agenda ilimitados, diagnóstico offline e
- *   link do cliente são livres (não passam pelo mapa: nunca se gateiam). IA tem
- *   3 usos/mês (cota, não plano). Nenhum recurso Pro/Empresa.
- * pro: toda a IA sem cota, relatórios, metas, radar, relatório do dia falado,
- *   os modelos premium de PDF e a remoção da marca OLLI do documento (D-07).
- * empresa: tudo do Pro + equipe/papéis/mapa/dashboard da empresa.
- */
-export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
-  gratis: new Set<Recurso>(),
-  pro: new Set<Recurso>([
-    'ia_ilimitada',
-    'relatorios',
-    'metas',
-    'radar_clientes',
-    'relatorio_dia',
-    'modelos_pdf_premium',
-    'remove_olli_brand',
-  ]),
-  empresa: new Set<Recurso>([
-    'ia_ilimitada',
-    'relatorios',
-    'metas',
-    'radar_clientes',
-    'relatorio_dia',
-    'modelos_pdf_premium',
-    'remove_olli_brand',
-    'equipe',
-    'mapa_equipe',
-    'dashboard_empresa',
-  ]),
-};
-
-/**
- * `true` se o `plano` dá acesso ao `recurso`. Recurso desconhecido → false
- * (nega por padrão: mais seguro do que liberar por engano). Empresa é
- * superconjunto do Pro pelo próprio mapa, então não precisa de cascata aqui.
- */
-export function temAcessoRecurso(plano: PlanoId, recurso: Recurso): boolean {
-  return RECURSOS_POR_PLANO[plano]?.has(recurso) ?? false;
-}
+// (entitlements movidos para ./entitlements — re-exportados no topo deste arquivo)
 
 // ─── Cota de IA do plano Grátis (3 usos/mês, contador local) ────────────────
 // Contamos em AsyncStorage, por mês corrente. Não é fonte de verdade fiscal —

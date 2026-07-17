@@ -13,6 +13,8 @@ import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getEmpresa, saveEmpresa } from '../database/database';
 import { Empresa } from '../types';
 import { montarHtmlCertificadoAnvisa } from '../utils/certificadoAnvisaPdf';
+import { usePlano } from '../hooks/usePlano';
+import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
 import { todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
@@ -29,6 +31,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * salvos na empresa e reaproveitados nas próximas emissões.
  */
 export default function CertificadoAnvisaScreen() {
+  // D-07: Pro/Empresa não levam a marca OLLI em NENHUM documento — nem no certificado.
+  const { temAcesso } = usePlano();
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -112,6 +116,7 @@ export default function CertificadoAnvisaScreen() {
           observacoes: observacoes.trim() || undefined,
         },
         empAtualizada,
+        { removerMarca: temAcesso(RECURSO_REMOVE_MARCA) },
       );
       await exportarHtmlComoPdf(html, `Certificado-${numero}`, { dialogTitle: `Certificado ${numero}` });
     } catch (e: any) {

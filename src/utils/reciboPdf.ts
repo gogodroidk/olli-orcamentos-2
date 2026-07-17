@@ -35,7 +35,21 @@ function modeloSeguro(m?: ModeloReciboId): ModeloReciboId {
 export async function montarHtmlRecibo(
   r: Recibo,
   empresa: Empresa,
-  opts?: { modelo?: ModeloReciboId; corMarca?: string },
+  opts?: {
+    modelo?: ModeloReciboId;
+    corMarca?: string;
+    /**
+     * true (Pro/Empresa) remove o selo OLLI — MESMO entitlement do orçamento
+     * (`remove_olli_brand`, D-07). Default false = grátis mantém o selo, que é o
+     * motor de conversão.
+     *
+     * Existe porque o selo era incondicional aqui: quem pagava removia a marca do
+     * ORÇAMENTO e ela continuava no RECIBO — mesmo cliente, mesmo prestador, marca
+     * de outra empresa no documento que ele acabou de pagar para tirar. O
+     * entitlement é do PRODUTO, não de uma tela.
+     */
+    removerMarca?: boolean;
+  },
 ): Promise<string> {
   const modelo = modeloSeguro(opts?.modelo);
   // Escurece a marca até TEXTO BRANCO passar 4.5:1 sobre ela. Isso resolve os dois
@@ -166,7 +180,7 @@ export async function montarHtmlRecibo(
   </div>
 
   <div class="footer">${empresaNome} · CNPJ: ${empresaCnpj} · ${empresaTelefone}</div>
-  <div class="footer-seal">${footerSeloOlliHtml()}</div>
+  ${opts?.removerMarca === true ? '' : `<div class="footer-seal">${footerSeloOlliHtml()}</div>`}
 </div>
 </body>
 </html>`;

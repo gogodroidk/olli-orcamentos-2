@@ -10,7 +10,7 @@ import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { getDepoimentos } from '../database/database';
 import { adicionarFotoGaleria, removerFoto } from '../utils/fotosOrcamento';
 import { usePlano } from '../hooks/usePlano';
-import type { Recurso } from '../services/planos';
+import { RECURSO_REMOVE_MARCA } from '../services/planos';
 
 interface Props {
   orc: Orcamento;
@@ -58,7 +58,6 @@ const COLOR_SWATCHES = CORES_MARCA;
 // 'remove_olli_brand' ao type Recurso em services/planos; codificamos contra o
 // NOME do contrato. O cast mantém o call site válido até a união ser ampliada,
 // sem afrouxar a tipagem de temAcesso nos demais usos.
-const RECURSO_REMOVE_MARCA = 'remove_olli_brand' as Recurso;
 
 // Opções de CAPA do documento (Onda 7). Espelham o union Orcamento.capaEstilo.
 const CAPA_OPCOES: Array<{ id: NonNullable<Orcamento['capaEstilo']>; nome: string; desc: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [

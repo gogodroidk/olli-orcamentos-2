@@ -24,14 +24,13 @@ import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { usePlano } from '../hooks/usePlano';
-import type { Recurso } from '../services/planos';
+import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
 // Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
 // 'remove_olli_brand' ao type Recurso; codificamos contra o NOME do contrato.
 // O cast mantém o call site válido até a união ser ampliada.
-const RECURSO_REMOVE_MARCA = 'remove_olli_brand' as Recurso;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'VisualizarOrcamento'>;

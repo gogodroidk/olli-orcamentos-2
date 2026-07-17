@@ -69,7 +69,14 @@ function linha(rotulo: string, valor?: string): string {
 export async function montarHtmlCertificadoAnvisa(
   dados: CertificadoAnvisaDados,
   empresa: Empresa,
-  opts?: { corMarca?: string },
+  opts?: {
+    corMarca?: string;
+    /**
+     * true (Pro/Empresa) remove o selo OLLI — mesmo entitlement do orçamento e do
+     * recibo (`remove_olli_brand`, D-07). Default false = grátis mantém o selo.
+     */
+    removerMarca?: boolean;
+  },
 ): Promise<string> {
   const cor = ajustarParaContraste(
     hex6(safeHexColor(opts?.corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT)),
@@ -191,7 +198,7 @@ export async function montarHtmlCertificadoAnvisa(
     saneantes desinfestantes registrados na ANVISA, sob responsabilidade do responsável técnico identificado.
   </div>
 
-  ${footerSeloOlliHtml()}
+  ${opts?.removerMarca === true ? '' : footerSeloOlliHtml()}
 </body>
 </html>`;
 }
