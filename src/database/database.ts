@@ -4,7 +4,8 @@ import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOr
 // codigos_erro.json (~365 KB) é carregado SOB DEMANDA em seedCodigosErro (lazy
 // require), não como import estático — assim o boot não paga o parse quando o
 // seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
-import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem } from '../services/cloudSync';
+import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem, garantirContextoEquipe } from '../services/cloudSync';
+import { restaurePodeTocarNaNuvem } from '../services/contextoEquipe';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
@@ -2274,6 +2275,11 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     ...equipamentos.map((e) => ({ tabela: 'equipamentos', itemId: e.id })),
   ];
 
+  // QUEM está restaurando (O0-3). Resolvido ANTES da transação: dentro dela uma
+  // ida à rede seguraria o banco travado. Se não der para saber, vem
+  // `desconhecido` — e aí o restore não toca na nuvem (fail-closed).
+  const ctxEquipe = await garantirContextoEquipe();
+
   const db = await getDb();
   // Dentro da transação usamos upserts LOCAIS SILENCIOSOS (runAsync direto, SEM
   // mirrorPush) para não disparar uma tempestade de rede no meio da restauração.
@@ -2420,8 +2426,16 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
 
     // Restore RECUPERA itens: remove os tombstones LOCAIS desses ids para o
     // pushLocalTombstones não os re-excluir. (Os da nuvem são limpos após o commit.)
-    for (const { tabela, itemId } of idsRestaurados) {
-      await db.runAsync('DELETE FROM exclusoes WHERE tabela = ? AND item_id = ?', [tabela, itemId]);
+    //
+    // ...MAS só quando quem restaura é o dono dos dados (O0-3). Num aparelho de
+    // MEMBRO o SQLite tem, por sync de equipe, as linhas do DONO — e o backup as
+    // levou junto (não há coluna de tenant local para separar). Apagar o tombstone
+    // aqui ressuscitaria, para o time inteiro, o que o dono apagou. `desconhecido`
+    // também não passa: não saber de quem é o dado nunca autoriza recuperá-lo.
+    if (restaurePodeTocarNaNuvem(ctxEquipe)) {
+      for (const { tabela, itemId } of idsRestaurados) {
+        await db.runAsync('DELETE FROM exclusoes WHERE tabela = ? AND item_id = ?', [tabela, itemId]);
+      }
     }
   });
 
@@ -2429,7 +2443,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   // No RESTORE da nuvem (padrão) NÃO pushamos: o snapshot pode ser mais ANTIGO que
   // as tabelas relacionais atuais, e um push cego as reverteria (perda de dados). A
   // próxima sincronização (pullAll com guarda de timestamp) reconcilia com segurança.
-  if (opts.pushToCloud) {
+  //
+  // `restaurePodeTocarNaNuvem` (O0-3): num aparelho de MEMBRO, esse push subiria as
+  // linhas VELHAS do dono (que vieram no backup via sync de equipe) por cima das
+  // atuais — o upsert não compara timestamp. Restore de membro fica LOCAL; o próximo
+  // sync reconcilia a partir da nuvem, que é a fonte da verdade do tenant.
+  if (opts.pushToCloud && restaurePodeTocarNaNuvem(ctxEquipe)) {
     try {
       void pushAllLocal().catch(() => {});
     } catch {
@@ -2440,7 +2459,11 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   // Limpa na NUVEM os tombstones dos ids restaurados — senão o próximo syncOnLogin
   // (applyCloudTombstones) re-excluiria o que o restore acabou de recuperar. O botão
   // "Restaurar" passa a recuperar de verdade. Fire-and-forget: offline = no-op.
-  if (idsRestaurados.length) {
+  //
+  // SÓ o dono (O0-3): apagar o tombstone é apagar a PROVA de que o dono excluiu
+  // aquilo. Vindo do aparelho de um membro, essa linha ressuscitava o item para a
+  // equipe inteira — era o elo final do P0 nº 3.
+  if (idsRestaurados.length && restaurePodeTocarNaNuvem(ctxEquipe)) {
     try {
       void limparTombstonesNuvem(idsRestaurados).catch(() => {});
     } catch {

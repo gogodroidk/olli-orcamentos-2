@@ -606,7 +606,7 @@ async function atualizarContextoEquipe(): Promise<ContextoEquipe> {
  * restore rodam FORA do `syncOnLogin` — sem isto, a única resolução do contexto
  * acontecia no login e todo esse caminho escrevia com o tenant errado.
  */
-async function garantirContextoEquipe(): Promise<ContextoEquipe> {
+export async function garantirContextoEquipe(): Promise<ContextoEquipe> {
   if (contextoEquipe.status !== 'desconhecido') return contextoEquipe;
   return atualizarContextoEquipe();
 }

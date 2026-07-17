@@ -12,6 +12,7 @@
 import {
   classificarContextoEquipe,
   decidirEscritaEquipe,
+  restaurePodeTocarNaNuvem,
   type ContextoEquipe,
 } from '../src/services/contextoEquipe.ts';
 import type { LeituraOrganizacao } from '../src/services/equipe.ts';
@@ -99,6 +100,19 @@ for (const ctx of TODOS) {
   const d = decidirEscritaEquipe(ctx);
   checar(`${ctx.status} => decisão definida`, d !== undefined && d !== null, true);
 }
+
+console.log('\n6) O0-3 — restore de TÉCNICO não pode ressuscitar o que o DONO apagou');
+// O aparelho do técnico tem, por sync de equipe, as linhas do dono; o backup dele
+// as levou junto. Se o restore apagar o tombstone da NUVEM (a prova da exclusão) e
+// der push, o item volta para a equipe inteira. Só o dono propaga restore.
+checar('membro (técnico) NÃO propaga restore p/ a nuvem',
+  restaurePodeTocarNaNuvem(classificarContextoEquipe(TECNICO_ORG)), false);
+checar('dono da org propaga (é dono dos dados)',
+  restaurePodeTocarNaNuvem(classificarContextoEquipe(DONO_ORG)), true);
+checar('conta pessoal propaga (os dados são dela)',
+  restaurePodeTocarNaNuvem(classificarContextoEquipe(PESSOAL)), true);
+checar('desconhecido NÃO propaga (fail-closed)',
+  restaurePodeTocarNaNuvem(classificarContextoEquipe(ERRO)), false);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

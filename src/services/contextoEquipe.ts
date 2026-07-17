@@ -58,3 +58,28 @@ export function decidirEscritaEquipe(ctx: ContextoEquipe): DecisaoEscrita {
       return { adiar: false, userIdOverride: ctx.ownerUserId };
   }
 }
+
+/**
+ * Um RESTORE de backup pode propagar para a NUVEM (limpar tombstones + push)? (O0-3)
+ *
+ * Só o dono do tenant. O motivo é o P0 nº 3 da auditoria — "o backup do técnico
+ * ressuscita dados apagados do dono":
+ *
+ * 1. o aparelho do técnico puxa, por sync de equipe, as linhas do DONO;
+ * 2. o SQLite local NÃO tem coluna de tenant (as linhas são blobs), então o backup
+ *    do técnico leva junto os dados do dono — e não há como separar depois;
+ * 3. o dono apaga um cliente → nasce um tombstone em `exclusoes` (nuvem);
+ * 4. o técnico restaura um backup ANTIGO → o restore reinsere o cliente E apaga o
+ *    tombstone DA NUVEM, que era justamente a prova da exclusão. Sem ele, o próximo
+ *    `pullAll` de todo mundo não re-exclui nada, e o `pushAllLocal` (o botão
+ *    "Restaurar" usa `pushToCloud: true`) sobe a linha velha de volta.
+ *    Resultado: o que o dono apagou volta para a EQUIPE INTEIRA.
+ *
+ * Por isso: membro NUNCA propaga restore para a nuvem, e `desconhecido` também não
+ * (fail-closed — não saber de quem é o dado nunca autoriza mexer nele). O restore
+ * do membro continua valendo LOCALMENTE, e o próximo sync reconcilia sozinho: o
+ * `pullAll` reaplica os tombstones da nuvem e traz as linhas novas. Nada se perde.
+ */
+export function restaurePodeTocarNaNuvem(ctx: ContextoEquipe): boolean {
+  return ctx.status === 'pessoal';
+}
