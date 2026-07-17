@@ -17,6 +17,14 @@ export default defineConfig({
   // torna a barra a forma canônica; combinado com os hrefs já corrigidos pra ter barra,
   // o 307 some. `build.format: 'directory'` (padrão) já gera /ajuda/index.html.
   trailingSlash: 'always',
+  // A URL de privacidade documentada nas lojas (docs/LOJAS.md, docs/STORE_LISTING.md)
+  // é /privacidade, mas a página real vive em /legal/privacidade/ — sem este redirect
+  // 301, quem chega por ela (loja, e-mail antigo, link salvo) cai num 404. O destino já
+  // sai com a barra final para respeitar o `trailingSlash: 'always'` acima e não
+  // encadear um segundo redirect até a forma canônica.
+  redirects: {
+    '/privacidade': '/legal/privacidade/',
+  },
   // O sentry() só carrega opções de BUILD (org/project/authToken p/ source map).
   // A DSN e o resto do runtime moram em sentry.client.config.js — passar dsn aqui
   // está deprecado no SDK 10 ("vai parar de funcionar numa versão futura").

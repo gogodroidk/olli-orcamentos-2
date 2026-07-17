@@ -27,7 +27,7 @@
  * via (origem,ref) único no ledger; upsert por user_id nas assinaturas).
  */
 import { lancarCreditos } from './creditos.js';
-import { rateOkSensivel } from './rateLimit.js';
+import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 import { upsertAssinatura, getAssinatura } from './stripe.js';
 
 const MP_API = 'https://api.mercadopago.com';
@@ -378,7 +378,16 @@ async function concederPlanoPeriodo(env, { userId, planoKey, dataAprovacao }) {
 
 // ── POST /mp/webhook ─────────────────────────────────────────
 async function webhook(request, env, url) {
+  // TETO DE PAYLOAD (B1/O2-18) — mesmo padrão do handleWebhook da Stripe (ver
+  // worker/src/stripe.js e worker/src/rateLimit.js): rejeita pelo Content-Length
+  // ANTES de bufferizar (a rota é pública, só a x-signature protege, e validá-la
+  // exige ler o corpo inteiro primeiro); depois confere o tamanho REAL em bytes
+  // (pega quem mentiu no header ou usou chunked). Notificação do MP é minúscula
+  // (só data.id/type); 128 KB é folga enorme.
+  const teto = cabeNoTeto(request, TETO.WEBHOOK);
+  if (!teto.ok) return json({ erro: 'payload_grande' }, 413);
   const rawBody = await request.text();
+  if (!textoCabeNoTeto(rawBody, TETO.WEBHOOK)) return json({ erro: 'payload_grande' }, 413);
   let body = {};
   try { body = rawBody ? JSON.parse(rawBody) : {}; } catch { /* MP às vezes manda só query */ }
 

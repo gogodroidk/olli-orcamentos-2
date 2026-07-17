@@ -136,6 +136,6 @@ OLLI, e screenshot que não bate com o app instalado é motivo comum de rejeiç�
 
 | Campo | Valor |
 | --- | --- |
-| Política de privacidade (obrigatório nas duas lojas) | `https://olliorcamentos.online/privacidade` — confirme que está no ar antes de enviar |
+| Política de privacidade (obrigatório nas duas lojas) | `https://olliorcamentos.online/legal/privacidade/` — confirme que está no ar antes de enviar |
 | Site de suporte (Apple exige URL de suporte) | `https://olliorcamentos.online` |
 | E-mail de contato (Play Console e App Store Connect) | e-mail do dono, a definir na hora do cadastro |

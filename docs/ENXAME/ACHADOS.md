@@ -17,7 +17,7 @@
 
 ### Segurança
 - [x] **XSS no PDF do orçamento** (Onda 2) — os campos de texto JÁ eram escapados (commit c73d866). Buraco real: o helper `img()` devolvia data URI **crua** (o recibo escapa logoData/assinaturaData). Fix: `escapeHtml` dentro de `img()` (`src/utils/pdfGenerator.ts`) — no-op p/ base64 legítimo, mata URI adulterada. typecheck exit 0.
-- [ ] **Worker sem teto de payload / rate-limit por IP** — `/stripe/webhook` e `/transcrever` bufferizam corpo sem limite; `/transcrever` valida cota de IA só no client (worker não valida plano/cota). Abordagem: limite de bytes + rate-limit fail-closed (padrão de `rateLimit` já existe) + validar cota no worker.
+- [x] **Worker teto de payload / rate-limit** (Onda 4, B1) — stripe webhook + infra já existiam (O2-18). Adicionado: teto no **MP webhook** (128KB, 2 camadas) + pre-check Content-Length no `/transcrever` + **rate-limit por IP só no /transcrever** (fail-open; NÃO em webhooks — derrubaria evento de pagamento). Novo binding `TRANSCREVER_RL` → precisa `wrangler deploy` (humano, ver BLOQUEIOS). node --check + 8 testes verdes. **Resta:** `/transcrever` ainda valida cota de IA só no client (worker não checa plano/cota) — item maior, pendente. **Novo:** `abacate.js` webhook sem teto (AbacatePay fora de produção — baixo).
 
 ### Painel (webapp/)
 - [x] **Links de filtro KPI mortos** (Onda 2) — `OrcamentosPage` agora lê `?status=` (useSearchParams v7), valida contra os slugs reais num `Set`, aplica até o dono mexer no dropdown. Slugs batem 1:1 (sem normalização). ⚠️ não typechecado local (webapp sem node_modules) — CI cobre.
@@ -30,11 +30,11 @@
 ## P1 — coerência / UX / venda
 - [x] **Feature paga invisível: EquipeAoVivoScreen** (Onda 2) — botão "Equipe ao vivo no mapa" adicionado em `EquipeScreen.tsx` (card) e `EquipeDesktopScreen.tsx` (header); navega p/ a rota (GateEquipe interno trata não-Empresa). Copy "(em breve)" removida de `PlanosScreen.tsx`. typecheck exit 0. ⚠️ falta clicar no botão em runtime (QC visual — Onda de screenshots).
 - [ ] **NOVO (Onda 2): benefício órfão `dashboard_empresa`** — "Painel de gestão e metas da equipe" era anunciado como benefício mas **não existe tela nenhuma** (entitlement `dashboard_empresa` só aparece na tabela + texto do GatePro, sem implementação). c2 REMOVEU a linha de `PlanosScreen` (não dá pra vender o que não existe). **Decisão do dono:** construir a tela OU manter removido. Se construir, precisa regatear a entitlement. → também em BLOQUEIOS.
-- [ ] **Diagnóstico IA sem gate de vertical** — painel `nav-data-frontend.tsx` mostra "Diagnóstico IA" (HVAC-only, `diagnostico/hvac.ts`) pra qualquer ofício, ao contrário de Ferramentas (filtra por VerticalId). Abordagem: gate por vertical no menu.
+- [x] **Diagnóstico IA sem gate de vertical** (Onda 4, B3) — novo `webapp/src/olli/verticais.ts` (espelha o app); gate no menu + na rota `/diagnostico`, só HVAC vê; sem ofício = vê tudo (backward-compat), 3 estados (nunca esconde por "não sei"). webapp typecheck exit 0.
 - [ ] **Equipe no painel é só leitura** — trocar papel/desativar/remover exige o app celular (honesto no ConvidarDialog, mas lacuna pra quem só usa web). Abordagem: decidir se traz CRUD de papel ao painel (produto).
 - [ ] **Sem onboarding guiado no painel** — cai em `/inicio` zerado sem tour/checklist de primeiros passos. Abordagem: empty-state com CTA "criar 1º orçamento/cliente".
 - [ ] **Nav da Home não linka #oficios** — hub das 6 páginas /para só acessível rolando. Abordagem: item no header.
-- [ ] **reduced-motion faltando** — shimmer `OlliSkeleton`, pulso mic `OlliVozScreen`, "digitando" `OlliChatScreen`, container do wizard `NovoOrcamentoScreen`. Abordagem: fechar os 20% restantes do sweep (80% já respeitam).
+- [x] **reduced-motion** (Onda 4, B4) — 3 dos 4 já respeitavam (`useReducedMotion` em `theme/motion.ts`); faltava só o container do wizard `NovoOrcamentoScreen` — corrigido (pula animação, aplica estado final).
 - [ ] **NovoOrcamentoScreen usa window.alert/confirm cru** — trocar por ConfirmDialog temático.
 - [ ] **Notificação: deep-link morto + vazamento** — `addNotificationResponseReceivedListener` não navega (código morto); falta teto de lembretes PMOC (~500 Android) e cancelar lembretes no logout "sair e manter dados" (vaza nome/endereço). Abordagem: implementar navegação por payload + teto + cancelar no logout.
 - [ ] **Badges PMOC usam matiz de categoria como cor de texto** (2 telas) — aplicar `corCategoriaEmChip`.
@@ -45,7 +45,7 @@
 - [ ] **codigos_erro.json (365KB) estático no boot** — carregar sob demanda.
 - [ ] **Sem code-splitting na web** — visitante anônimo baixa o ERP inteiro.
 - [ ] **HojeScreen + radares fora do dashboard-agregado SQL** — mover pro agregado.
-- [ ] **Dado descartado: Sinal (R$+data) + Laudo técnico** — preenchidos em `Step3Detalhes`, nunca aparecem no PDF do cliente. Abordagem: incluir no `pdfGenerator`. (confiança percebida — pode subir pra P0.)
+- [x] **Sinal (R$+data) + Laudo técnico no PDF** (Onda 4, B2) — achado STALE: já corrigido no commit 90265fc (12/07), confirmado (renderizado escapado + persistido no blob). Nada a fazer.
 
 ## Processo
 - [x] **Sem CI** (Onda 3) — `.github/workflows/ci.yml` criado: 3 jobs (app-gate: typecheck+test em Node 22 por causa do type-stripping dos testes `.ts`; painel: pnpm build; landing: astro check+build), push+PR, sem deploy. Pega gate quebrado antes do merge.

@@ -1,5 +1,6 @@
 import { MessageSquareText, Stethoscope, TicketCheck } from "lucide-react";
 import { useState } from "react";
+import { useVerticaisPainel } from "@/olli/verticais";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import type { HvacCodigo } from "./hvac";
 import { PorCodigo } from "./PorCodigo";
@@ -17,10 +18,18 @@ import { PorSintoma, type SementeSintoma } from "./PorSintoma";
  *
  * As abas se conversam: em qualquer código, "Aprofundar com a OLLI" leva o
  * contexto (marca + código) para a aba Por sintoma já com uma pergunta pronta.
+ *
+ * GATE POR OFÍCIO: a base é 100% HVAC — quem não é do ramo (elétrica, pintura…)
+ * não tem o que fazer aqui. O item de menu já some para essas contas (ver
+ * `@/olli/verticais` + `nav-data/index.ts`), mas o link direto continua
+ * navegável, então a ROTA também bloqueia — em defesa, não em duplicidade.
+ * Enquanto a empresa carrega, o gate fica aberto (3 estados: "não sei" nunca
+ * vira "não tem"); só bloqueia depois de saber, com certeza, que o ofício é outro.
  */
 export default function DiagnosticoIA() {
 	const [aba, setAba] = useState("codigo");
 	const [semente, setSemente] = useState<SementeSintoma | undefined>();
+	const { carregando, mostraVertical } = useVerticaisPainel();
 
 	function aprofundar(c: HvacCodigo) {
 		const detalhe = c.falha ? ` (${c.falha})` : "";
@@ -31,6 +40,23 @@ export default function DiagnosticoIA() {
 			nonce: Date.now(),
 		});
 		setAba("sintoma");
+	}
+
+	if (!carregando && !mostraVertical("refrigeracao")) {
+		return (
+			<div className="mx-auto w-full max-w-4xl p-4 md:p-6">
+				<div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border p-14 text-center">
+					<div className="grid size-11 place-items-center rounded-2xl bg-muted text-text-disabled">
+						<Stethoscope className="size-5" />
+					</div>
+					<p className="font-semibold text-text-primary">Diagnóstico IA é de climatização/refrigeração</p>
+					<p className="max-w-sm text-sm text-text-secondary">
+						Hoje esta ferramenta só cobre a base de ar-condicionado — ainda não há base para o seu ofício. O
+						ofício da empresa se ajusta em "Meu negócio", no app do celular.
+					</p>
+				</div>
+			</div>
+		);
 	}
 
 	return (

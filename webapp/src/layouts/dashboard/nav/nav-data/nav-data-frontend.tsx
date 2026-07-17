@@ -51,6 +51,10 @@ export const frontendNavData: NavProps["data"] = [
 				icon: <Icon icon="solar:widget-5-bold-duotone" size="24" />,
 			},
 			{
+				// A base é 100% HVAC (climatização/refrigeração) — só aparece pra quem
+				// tem esse ofício, via o gate de `ITENS_SOMENTE_VERTICAL` em
+				// `nav-data/index.ts` (@/olli/verticais). Backward-compat: sem ofício
+				// definido, mostra normalmente.
 				title: "Diagnóstico IA",
 				path: "/diagnostico",
 				icon: <Icon icon="solar:magic-stick-3-bold-duotone" size="24" />,

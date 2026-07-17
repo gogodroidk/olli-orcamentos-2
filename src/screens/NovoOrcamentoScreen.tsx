@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
-import { Motion } from '../theme/motion';
+import { Motion, useReducedMotion } from '../theme/motion';
 import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
@@ -171,8 +171,18 @@ export default function NovoOrcamentoScreen() {
   const fade = useRef(new Animated.Value(1)).current;
   // Preenchimento animado da barra de progresso do wizard (0 a 1 = passo 1 a 4).
   const stepProgress = useRef(new Animated.Value(0)).current;
+  const reduzirMovimento = useReducedMotion();
 
   const animateStep = useCallback((dir: 1 | -1, novoStep: number) => {
+    const progressoFinal = novoStep / (STEPS.length - 1);
+    // reduced-motion: troca de passo direto no estado final — sem slide, sem
+    // fade, sem preenchimento animado da barra de progresso.
+    if (reduzirMovimento) {
+      slide.setValue(0);
+      fade.setValue(1);
+      stepProgress.setValue(progressoFinal);
+      return;
+    }
     slide.setValue(dir * 40);
     fade.setValue(0);
     Animated.parallel([
@@ -180,12 +190,12 @@ export default function NovoOrcamentoScreen() {
       Animated.timing(fade, { toValue: 1, duration: Motion.dur.base, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }),
     ]).start();
     Animated.timing(stepProgress, {
-      toValue: novoStep / (STEPS.length - 1),
+      toValue: progressoFinal,
       duration: Motion.dur.base,
       easing: Motion.easing.standard,
       useNativeDriver: false,
     }).start();
-  }, [slide, fade, stepProgress]);
+  }, [slide, fade, stepProgress, reduzirMovimento]);
 
   function goNext() {
     if (!canAdvance()) return;

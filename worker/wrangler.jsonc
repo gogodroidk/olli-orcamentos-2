@@ -53,6 +53,10 @@
     { "name": "ABACATE_RL", "namespace_id": "1007", "simple": { "limit": 12, "period": 60 } },
     // Rotas Mercado Pago (criar cobrança Pix/assinatura/status) por usuário. Não
     // cobre o webhook (servidor-a-servidor do MP, autenticado por x-signature).
-    { "name": "MP_RL", "namespace_id": "1008", "simple": { "limit": 12, "period": 60 } }
+    { "name": "MP_RL", "namespace_id": "1008", "simple": { "limit": 12, "period": 60 } },
+    // /transcrever por IP (B1/O2-18): complementa o IA_RL (que é por usuário) —
+    // barra abuso via várias contas atrás do mesmo IP no endpoint de maior corpo
+    // (áudio, até 4MB) e maior custo por chamada. Checado ANTES de bufferizar.
+    { "name": "TRANSCREVER_RL", "namespace_id": "1009", "simple": { "limit": 20, "period": 60 } }
   ]
 }

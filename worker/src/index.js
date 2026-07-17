@@ -40,6 +40,7 @@ import { handleMercadoPago } from './mercadopago.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
+import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -78,6 +79,10 @@ const MAX_ETA_BODY_BYTES = 4096;
  * link.js/responderLink, replicada aqui para as rotas de custo (IA + Google).
  * Consome o body stream (só pode ser chamado 1x por request); quem chama
  * reaproveita `raw` para o parse — nunca lê a request de novo.
+ *
+ * Quem chama primeiro tenta `cabeNoTeto` (Content-Length) — corpo nem foi
+ * lido, rejeita ANTES de bufferizar. Isto aqui é a segunda camada, obrigatória
+ * porque chunked/sem header escapa da primeira (B1/O2-18, ver rateLimit.js).
  */
 async function bodyMuitoGrande(request, max) {
   let raw = '';
@@ -942,12 +947,33 @@ const handler = {
     }
     if (request.method !== 'POST') return json({ ok: false, erro: 'metodo_nao_suportado' }, 405);
 
-    // Rejeita payload grande ANTES de auth/rate-limit/parse — lê o corpo com o
-    // teto real (não confia em content-length; chunked escaparia, ver
-    // bodyMuitoGrande) e evita gastar 1 validação de token ou 1 dos 20 tokens/min
-    // do usuário com um body que nem vamos processar. Limite depende da rota:
-    // /transcrever aceita áudio em base64 (bem maior).
-    const corpoIa = await bodyMuitoGrande(request, url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
+    // RATE-LIMIT POR IP em /transcrever (B1/O2-18). Áudio é o maior corpo aceito
+    // (até 4MB) e o de maior custo (Gemini) por requisição — o teto de payload
+    // abaixo barra UM pedido gigante, mas não barra MUITOS pedidos médios vindos
+    // da MESMA origem em contas diferentes (o IA_RL logo abaixo é por usuário e
+    // não pega isso). Checado ANTES de ler o corpo, de propósito: sem isto, um IP
+    // abusivo ainda forçaria N bufferizações de até 4MB antes de qualquer outra
+    // barreira. Não é rota de dinheiro/convite (não é fail-closed, ver O2-18):
+    // se o binding sumir, segue — mesma política de IA_RL/LINK_RL logo abaixo.
+    if (url.pathname === '/transcrever') {
+      const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+      const estadoIp = await checarLimite(env.TRANSCREVER_RL, ip);
+      if (!deixaPassar(estadoIp, { sensivel: false })) {
+        return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+      }
+    }
+
+    // Rejeita payload grande ANTES de auth/rate-limit/parse. Limite depende da
+    // rota: /transcrever aceita áudio em base64 (bem maior). Duas camadas
+    // (B1/O2-18): `cabeNoTeto` rejeita pelo Content-Length SEM ler nada (rápido,
+    // mas confia num header que quem chama controla); `bodyMuitoGrande` confere o
+    // tamanho REAL depois — não confia em content-length, porque chunked não traz
+    // esse header (Number(null)=0) e escaparia da 1ª camada sozinha. Evita gastar
+    // 1 validação de token ou 1 dos 20 tokens/min do usuário com um body que nem
+    // vamos processar.
+    const maxBodyIa = url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
+    if (!cabeNoTeto(request, maxBodyIa).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
+    const corpoIa = await bodyMuitoGrande(request, maxBodyIa);
     if (corpoIa.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).

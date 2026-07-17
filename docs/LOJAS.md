@@ -205,7 +205,7 @@ npx eas build -p android --profile preview
 ### 2.4 Subir na Play Console
 1. Play Console → "Criar app" → nome `OLLI Orçamentos`, idioma padrão pt-BR, tipo "App", gratuito.
 2. Preencher a ficha da loja (texto pronto em `docs/STORE_LISTING.md`).
-3. **Política de privacidade**: URL obrigatória. Use `https://olliorcamentos.online/privacidade`
+3. **Política de privacidade**: URL obrigatória. Use `https://olliorcamentos.online/legal/privacidade/`
    (mesma URL já referenciada em `LEIA-ANDROID.md`) — confirme que a página existe e está no ar
    antes de enviar; se não existir ainda, publicá-la é pré-requisito, não algo pra fazer depois.
 4. **Teste fechado primeiro** (se aplicável — ver 2.1): Console → Testar e lançar → Teste fechado →
