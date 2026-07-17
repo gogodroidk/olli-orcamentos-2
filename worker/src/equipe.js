@@ -22,6 +22,7 @@
  *    é restritivo.
  */
 import { rateOkSensivel } from './rateLimit.js';
+import { enviarConvite } from './email.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -346,7 +347,25 @@ export async function handleConvite(request, env) {
   });
   if (!ins.ok) return json({ ok: false, erro: 'falha_convite' }, 502);
 
-  return json({ ok: true, token, link: `${LINK_BASE}/equipe/convite/${token}` });
+  const link = `${LINK_BASE}/equipe/convite/${token}`;
+
+  // E-MAIL DO CONVITE (prioridade 14). Até aqui, o endereço do convidado era gravado
+  // e NUNCA usado — o comentário do próprio código dizia "opcional, só para lembrar
+  // quem foi convidado". O convite só chegava se o dono lembrasse de mandar o link
+  // pelo WhatsApp.
+  //
+  // BEST-EFFORT DE PROPÓSITO, e a resposta NÃO espera por ele:
+  //  - sem RESEND_API_KEY no cofre, é no-op (a rota se comporta como antes);
+  //  - se o Resend recusar ou a rede cair, o convite CONTINUA VÁLIDO — o link existe,
+  //    está na resposta, e o app oferece o `Share`. Derrubar o convite porque o e-mail
+  //    falhou trocaria um problema pequeno (não avisou) por um grande (não convidou).
+  // Por isso `enviarConvite` nunca lança e o resultado nem é aguardado.
+  if (email) {
+    const nomeOrg = await getNomeOrg(env, membership.org_id);
+    void enviarConvite(env, { para: email, empresa: nomeOrg, papel, link }).catch(() => {});
+  }
+
+  return json({ ok: true, token, link });
 }
 
 // ─── GET /equipe/convite/<token> — página web do convite ─────

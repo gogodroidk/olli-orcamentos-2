@@ -35,3 +35,20 @@ Trocar o modelo: edite `GEMINI_MODEL` em `wrangler.jsonc` (ex.: `gemini-2.5-flas
 
 Sem a chave, o Worker responde `{ ok:false, motivo:'ia_nao_configurada' }` e o app usa
 o fallback offline (602 códigos) — nunca quebra.
+
+## RESEND_API_KEY / RESEND_FROM — e-mail transacional (prioridade 14, OPCIONAL)
+
+Sem `RESEND_API_KEY` no cofre, o worker **não manda e-mail** e se comporta exatamente
+como antes: o convite continua válido, o link vai na resposta e o app oferece o
+compartilhar. É no-op, não erro.
+
+Para ligar, nesta ordem:
+1. Crie a conta em resend.com e gere uma API key.
+2. **Verifique o domínio** no painel do Resend (registros DNS). O Resend só entrega de
+   domínio verificado — sem este passo, a chave existe e o envio falha calado.
+3. Guarde `RESEND_API_KEY` no cofre do worker (gate humano — ver o protocolo).
+4. Opcional: `RESEND_FROM` (padrão `OLLI <nao-responda@olliorcamentos.online>`). Tem de
+   ser um endereço do domínio verificado no passo 2.
+
+Usado hoje no convite de equipe (`POST /equipe/convite`, quando o e-mail é informado).
+Envio best-effort: falhar não derruba o convite.
