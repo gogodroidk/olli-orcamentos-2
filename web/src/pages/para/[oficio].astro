@@ -97,9 +97,61 @@ const schemaBreadcrumb = {
 		{ "@type": "ListItem", position: 2, name: oficio.label, item: Astro.url.href },
 	],
 };
+
+const WHATSAPP_URL = "https://wa.me/5511941727487";
+const waMsg = encodeURIComponent(`Oi! Sou ${profissao} e quero saber como a OLLI funciona pro meu ofício.`);
+
+/**
+ * FAQ POR OFÍCIO (ST-07 / AEO-1 / BC-05) — antes só o index tinha FAQ + FAQPage.
+ * As 6 páginas de ofício, que são o destino do anúncio e onde a IA busca resposta
+ * ("existe app de orçamento grátis pra eletricista?"), não tinham nenhuma.
+ *
+ * Geradas DA FONTE, não escritas à mão por ofício: profissão, contagem e nomes das
+ * calculadoras, dor e preços saem dos dados que a página já usa. Adicionar uma
+ * calculadora ao app muda a resposta aqui sozinho — a regra da casa (copy derivada
+ * da fonte) aplicada à FAQ. A #2 só entra se o ofício tem calculadora.
+ */
+const nomesCalc = calculos.map((c) => c.nome).join(", ");
+const faqs = [
+	{
+		q: `Existe app de orçamento grátis para ${profissao}?`,
+		a: `Sim. O plano Grátis da OLLI faz orçamento, ordem de serviço e recibo sem limite para ${profissao}, sem prazo e sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no plano Pro (R$ 39/mês).`,
+	},
+	...(calculos.length > 0
+		? [
+				{
+					q: `Quais calculadoras a OLLI tem para ${profissao}?`,
+					a: `${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo, cada uma aterrada em norma ou fórmula real e com o resultado virando item do orçamento: ${nomesCalc}.`,
+				},
+			]
+		: []),
+	{
+		q: `A OLLI serve pra ${profissao} autônomo?`,
+		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Empresa (R$ 99/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
+	},
+	{
+		q: `Precisa instalar alguma coisa pra usar como ${profissao}?`,
+		a: `Não. A OLLI roda no navegador do celular e do computador — você entra e já começa, sem instalar app nem configurar nada.`,
+	},
+];
+
+/**
+ * FAQPage serializado do MESMO array `faqs` que a tela renderiza — schema que
+ * diverge do texto visível é conteúdo enganoso pro Google. Gerar do array garante
+ * que não podem divergir.
+ */
+const schemaFaq = {
+	"@context": "https://schema.org",
+	"@type": "FAQPage",
+	mainEntity: faqs.map((f) => ({
+		"@type": "Question",
+		name: f.q,
+		acceptedAnswer: { "@type": "Answer", text: f.a },
+	})),
+};
 ---
 
-<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb]}>
+<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]}>
 	<header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
 		<nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
 			<a href="/" aria-label="OLLI — início"><OlliLogo /></a>
@@ -237,6 +289,37 @@ const schemaBreadcrumb = {
 					>
 				</div>
 			</div>
+		</section>
+
+		<!-- ══════════ FAQ DO OFÍCIO (ST-07/AEO-1) — mesmo <details> do index ══════════ -->
+		<section class="mx-auto max-w-3xl px-6 py-20">
+			<h2 class="text-[clamp(1.7rem,3.5vw,2.4rem)] font-extrabold tracking-tight text-ink">
+				Perguntas de quem é {profissao}
+			</h2>
+			<div class="mt-8 divide-y divide-line rounded-2xl border border-line bg-white">
+				{faqs.map((f) => (
+					<details class="group">
+						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
+							{f.q}
+							<span class="text-brand transition group-open:rotate-45" aria-hidden="true">＋</span>
+						</summary>
+						<p class="px-6 pb-5 text-slate">{f.a}</p>
+					</details>
+				))}
+			</div>
+
+			<!-- BC-04: as /para/* não tinham CTA de WhatsApp — canal nº1 do público. Link
+			     puro (sem script), mensagem pré-preenchida por ofício, preserva CSP e LCP. -->
+			<p class="mt-8 text-center text-sm text-muted">
+				Prefere falar com uma pessoa?
+				<a
+					href={`${WHATSAPP_URL}?text=${waMsg}`}
+					target="_blank"
+					rel="noopener"
+					class="font-semibold text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
+					>Chama no WhatsApp</a
+				>.
+			</p>
 		</section>
 
 		<!-- ══════════ OUTROS OFÍCIOS (links internos = o hub-and-spoke) ══════════ -->
