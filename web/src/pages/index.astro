@@ -2,6 +2,7 @@
 import HeroDevices from "../components/HeroDevices.tsx";
 import OlliLogo from "../components/OlliLogo.astro";
 import Layout from "../layouts/Layout.astro";
+import { OFICIOS, OFICIO_GERAL, TOTAL_CALCULADORAS } from "../data/oficios";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -121,7 +122,13 @@ const planos = [
 		desc: "Pra equipe que atende em campo todo dia.",
 		itens: [
 			"Tudo do Pro",
-			"Equipe com papéis e permissões (em breve)",
+			// Equipe NÃO é "(em breve)": a Onda 2 está CONCLUÍDA no EXECUTION_LOG
+			// (organizacoes + organizacao_membros com papéis owner/admin/gestor/tecnico
+			// + convites com token/expiração, RLS testada). Dizer "em breve" aqui era
+			// SUBvender a feature principal do plano de R$ 99.
+			"Equipe com papéis e permissões",
+			// Este "(em breve)" é VERDADE e fica: a captura de localização em background
+			// depende do prebuild com expo-location (Onda 8). Hoje só funciona na web.
 			"Equipe ao vivo no mapa (em breve)",
 			"Painel de gestão da empresa (em breve)",
 		],
@@ -148,10 +155,51 @@ const faq = [
 		q: "Meus dados ficam seguros?",
 		a: "Sim. Seus dados são seus, guardados na nuvem com isolamento por conta. Você pode exportar e excluir quando quiser.",
 	},
+	// ── Expansão 4 → 9 (LANDING_BRIEF, Fase 2). Escritas como a pessoa pergunta pra
+	// IA, resposta auto-suficiente nas 2 primeiras frases e com número concreto —
+	// os preços saem do array `planos` acima, que espelha o Stripe live (R$ 0/39/99);
+	// as contagens saem de `data/oficios.ts`, que lê o código do app.
+	{
+		q: "Quanto custa um app de orçamento?",
+		a: "Na OLLI: R$ 0 no plano Grátis, sem prazo pra acabar. O Pro custa R$ 39/mês e o Empresa R$ 99/mês — os dois abaixo do DAS do MEI. Concorrentes de campo no Brasil cobram de R$ 119 a R$ 5.000/mês, e os gringos cobram por técnico.",
+	},
+	{
+		q: "Existe app grátis de ordem de serviço?",
+		a: "Sim — o plano Grátis da OLLI faz ordem de serviço sem limite, com checklist, fotos e assinatura do cliente na tela. Não é teste de 7 dias: é grátis sem prazo, sem cartão e sem fidelidade. O PDF do Grátis sai com uma marca discreta da OLLI, que some no Pro.",
+	},
+	{
+		q: "Serve pra eletricista, encanador ou pintor?",
+		a: "Serve. A OLLI tem 21 calculadoras de campo divididas por ofício — 3 de elétrica, 4 de hidráulica, 4 de pintura, 5 de climatização, 4 de jardinagem e 1 de dedetização — e mostra só as do seu. Ofício fora da lista continua usando orçamento, OS e recibo normalmente.",
+	},
+	{
+		q: "O que é PMOC e quem é obrigado a ter?",
+		a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI o PMOC é um módulo pronto: inventário dos equipamentos, etiqueta QR por máquina e as ordens de manutenção geradas na periodicidade certa.",
+	},
+	{
+		q: "Funciona sem internet, no meio do serviço?",
+		a: "Funciona. O app guarda tudo no próprio celular e sincroniza quando a rede volta — você faz orçamento e OS no subsolo, no elevador ou no sítio. É raro no setor: das 25 ferramentas comparadas num benchmark de 108 recursos, só 2 operam offline de verdade.",
+	},
 ];
+
+/**
+ * FAQPage — serializado do MESMO array `faq` que a tela renderiza logo abaixo.
+ *
+ * Isso não é preciosismo: schema que diverge do texto visível é considerado
+ * conteúdo enganoso pelo Google (e vira penalidade). Gerando do array, as duas
+ * coisas não PODEM divergir — quem editar a pergunta edita as duas de uma vez.
+ */
+const schemaFaq = {
+	"@context": "https://schema.org",
+	"@type": "FAQPage",
+	mainEntity: faq.map((f) => ({
+		"@type": "Question",
+		name: f.q,
+		acceptedAnswer: { "@type": "Answer", text: f.a },
+	})),
+};
 ---
 
-<Layout>
+<Layout schemas={[schemaFaq]}>
   <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
 
   <!-- ══════════ NAV ══════════ -->
@@ -184,13 +232,13 @@ const faq = [
          empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. -->
     <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
       <div class="min-w-0">
-        <span class="eyebrow">● Sistema de campo do prestador de serviço</span>
+        <span class="eyebrow">● Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
         <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
           Do <span class="brand-text">áudio no WhatsApp</span><br />
           ao orçamento fechado.
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
-          A OLLI transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço, PMOC e recibo</strong> — no celular e no computador. Com a IA que entende <strong class="text-brand">o defeito do equipamento</strong>, não só a nota fiscal.
+          A OLLI transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
           <a href={APP_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
@@ -199,6 +247,18 @@ const faq = [
           <a href="#como" class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
             Ver como funciona
           </a>
+        </div>
+        <!-- Chips de ofício: a multi-verticalidade plantada acima da dobra, sem
+             mexer no H1 (que já é agnóstico). Derivados de verticais.ts. -->
+        <div class="mt-7 flex flex-wrap gap-2">
+          {OFICIOS.map((o) => (
+            <a
+              href="#oficios"
+              class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+            >
+              <span aria-hidden="true">{o.emoji}</span>{o.label}
+            </a>
+          ))}
         </div>
         <div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
           <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem cartão pra testar</span>
@@ -228,6 +288,50 @@ const faq = [
         </div>
       ))}
     </div>
+  </section>
+
+  <!-- ══════════ FEITO PRO SEU OFÍCIO ══════════
+       Camada 2 da arquitetura do LANDING_BRIEF: a prova por ofício, no meio da
+       página. Os cards NÃO são escritos à mão — vêm de `data/oficios.ts`, que lê
+       `verticais.ts` e conta as calculadoras com a MESMA função de gate do app
+       (`calculosDoOficio`). Se alguém adicionar uma vertical, ela aparece aqui
+       sozinha; se remover, o build quebra em vez de a página mentir.
+
+       Só entra ferramenta com `disponivel: true`. É por isso que Elétrica mostra
+       "3 calculadoras" e NÃO "checklist NR-10": o checklist existe no catálogo mas
+       está marcado como indisponível, e vender "(em breve)" como pronto é o erro que
+       esta landing já cometeu antes. -->
+  <section id="oficios" class="mx-auto max-w-7xl px-6 py-24">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="eyebrow">Feito pro seu ofício</span>
+      <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">
+        A OLLI se veste do seu serviço.
+      </h2>
+      <p class="mt-5 text-lg leading-relaxed text-slate">
+        São <strong class="text-ink">{TOTAL_CALCULADORAS} calculadoras de campo</strong> aterradas em norma e
+        fórmula real — e você só vê as do seu ofício. O resto some da tela.
+      </p>
+    </div>
+
+    <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {OFICIOS.map((o) => (
+        <div class="rounded-2xl border border-line bg-white p-6 transition hover:border-brand/40">
+          <div class="text-3xl" aria-hidden="true">{o.emoji}</div>
+          <h3 class="mt-3 text-lg font-bold text-ink">{o.label}</h3>
+          <p class="mt-1.5 text-sm leading-relaxed text-slate">{o.tagline}</p>
+        </div>
+      ))}
+      <div class="rounded-2xl border border-dashed border-line bg-paper p-6">
+        <div class="text-3xl" aria-hidden="true">{OFICIO_GERAL.emoji}</div>
+        <h3 class="mt-3 text-lg font-bold text-ink">{OFICIO_GERAL.label}</h3>
+        <p class="mt-1.5 text-sm leading-relaxed text-slate">{OFICIO_GERAL.tagline}</p>
+      </div>
+    </div>
+
+    <p class="mx-auto mt-10 max-w-2xl text-center text-sm text-muted">
+      Escolheu o ofício no cadastro? A OLLI já deduz pelo seu CNPJ. Sem ofício definido, você vê tudo —
+      o filtro só esconde o que é de outro serviço, nunca bloqueia.
+    </p>
   </section>
 
   <!-- ══════════ COMO FUNCIONA ══════════ -->

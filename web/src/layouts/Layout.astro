@@ -4,8 +4,15 @@ import "../styles/global.css";
 interface Props {
 	titulo?: string;
 	descricao?: string;
+	/**
+	 * JSON-LD EXTRA da página (FAQPage, BreadcrumbList…). O `Organization` e o
+	 * `SoftwareApplication` já saem em toda página por padrão — a página só manda o
+	 * que é dela. Cada item vira uma tag `<script type="application/ld+json">`.
+	 */
+	schemas?: unknown[];
 }
 const {
+	schemas = [],
 	titulo = "OLLI — do orçamento ao recibo, sem planilha",
 	descricao = "O sistema de campo do prestador de serviço: orçamento, ordem de serviço, PMOC e recibo no celular e no computador — com IA que entende o defeito do equipamento, não só a nota. Grátis para começar.",
 } = Astro.props;
@@ -13,6 +20,48 @@ const canonical = new URL(
 	Astro.url.pathname,
 	Astro.site ?? "https://olliorcamentos.online",
 ).href;
+/**
+ * STRUCTURED DATA (gap nº 1 do LANDING_BRIEF: a landing tinha ZERO JSON-LD).
+ *
+ * É o que faz o Google e os buscadores de IA entenderem O QUE é a OLLI e QUANTO
+ * custa — sem isso a página é só texto bonito para um robô.
+ *
+ * DELIBERADAMENTE SEM `aggregateRating`: o produto ainda não tem avaliação real, e
+ * inventar nota é penalidade do Google (e mentira). Entra quando houver avaliação —
+ * é a mesma regra de "copy derivada da fonte", aplicada a schema.
+ *
+ * Os `offers` espelham o Stripe live (R$ 0 / 39 / 99). Quem mexer em preço tem de
+ * mexer aqui também — por isso os três estão juntos e comentados.
+ */
+const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
+
+const schemaOrganizacao = {
+	"@context": "https://schema.org",
+	"@type": "Organization",
+	name: "OLLI",
+	url: ORIGEM,
+	logo: new URL("/og-image.png", ORIGEM).href,
+	description: "Sistema de campo para prestadores de serviço no Brasil: orçamento, ordem de serviço e recibo.",
+	areaServed: { "@type": "Country", name: "Brasil" },
+};
+
+const schemaApp = {
+	"@context": "https://schema.org",
+	"@type": "SoftwareApplication",
+	name: "OLLI",
+	applicationCategory: "BusinessApplication",
+	operatingSystem: "Android, Web",
+	inLanguage: "pt-BR",
+	url: ORIGEM,
+	// Preços do Stripe live. SEM aggregateRating — ver o comentário acima.
+	offers: [
+		{ "@type": "Offer", name: "Grátis", price: "0", priceCurrency: "BRL" },
+		{ "@type": "Offer", name: "Pro", price: "39", priceCurrency: "BRL" },
+		{ "@type": "Offer", name: "Empresa", price: "99", priceCurrency: "BRL" },
+	],
+};
+
+const jsonLd = [schemaOrganizacao, schemaApp, ...schemas];
 ---
 
 <!doctype html>
@@ -41,6 +90,9 @@ const canonical = new URL(
     <meta name="twitter:title" content={titulo} />
     <meta name="twitter:description" content={descricao} />
     <meta name="twitter:image" content={new URL('/og-image.png', Astro.site ?? 'https://olliorcamentos.online').href} />
+    {jsonLd.map((schema) => (
+      <script type="application/ld+json" set:html={JSON.stringify(schema)} />
+    ))}
   </head>
   <body>
     <slot />
