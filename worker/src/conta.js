@@ -16,6 +16,7 @@
  *    (DELETE /auth/v1/admin/users/<id>). O client nunca vê a service role.
  *  - O secret da Stripe (para cancelar a assinatura) vive só no worker.
  */
+import { rateOkSensivel } from './rateLimit.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -90,15 +91,10 @@ export async function getAssinatura(env, userId) {
 
 // ─── rate limit (reusa o namespace do Stripe) ────────────────
 /** true se PODE seguir, false se estourou. Sem binding → não bloqueia. */
+// FAIL-CLOSED (O2-18): exclusão de conta é destrutiva e irreversível — se não dá
+// para limitar, não deixa passar. Ver worker/src/rateLimit.js.
 async function rateOk(env, key) {
-  const rl = env.CONTA_RL || env.STRIPE_RL;
-  if (!rl) return true;
-  try {
-    const { success } = await rl.limit({ key });
-    return !!success;
-  } catch {
-    return true;
-  }
+  return rateOkSensivel(env, env.CONTA_RL || env.STRIPE_RL, key);
 }
 
 /**

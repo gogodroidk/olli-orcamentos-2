@@ -27,6 +27,7 @@
  * via (origem,ref) único no ledger; upsert por user_id nas assinaturas).
  */
 import { lancarCreditos } from './creditos.js';
+import { rateOkSensivel } from './rateLimit.js';
 import { upsertAssinatura, getAssinatura } from './stripe.js';
 
 const MP_API = 'https://api.mercadopago.com';
@@ -94,14 +95,9 @@ async function getUser(request, env) {
   }
 }
 
+// FAIL-CLOSED (O2-18): rota de dinheiro (Pix) — ver worker/src/rateLimit.js.
 async function rateOk(env, key) {
-  if (!env.MP_RL) return true;
-  try {
-    const { success } = await env.MP_RL.limit({ key });
-    return !!success;
-  } catch {
-    return true;
-  }
+  return rateOkSensivel(env, env.MP_RL, key);
 }
 
 /** Comparação de strings em tempo constante (evita timing attack). */

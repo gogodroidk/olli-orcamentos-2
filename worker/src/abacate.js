@@ -23,6 +23,7 @@
  * verificado ao vivo: o `check` NÃO devolve metadata, mas o objeto da cobrança sim).
  */
 import { lancarCreditos } from './creditos.js';
+import { rateOkSensivel } from './rateLimit.js';
 
 const ABACATE_API = 'https://api.abacatepay.com/v2';
 
@@ -78,14 +79,9 @@ async function getUser(request, env) {
 }
 
 /** Aplica o ABACATE_RL por chave. true = pode seguir. Fail-open se o binding faltar. */
+// FAIL-CLOSED (O2-18): rota de dinheiro — ver worker/src/rateLimit.js.
 async function rateOk(env, key) {
-  if (!env.ABACATE_RL) return true;
-  try {
-    const { success } = await env.ABACATE_RL.limit({ key });
-    return !!success;
-  } catch {
-    return true;
-  }
+  return rateOkSensivel(env, env.ABACATE_RL, key);
 }
 
 /** Comparação de strings em tempo constante (evita timing attack). */

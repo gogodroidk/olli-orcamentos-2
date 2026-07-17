@@ -21,6 +21,7 @@
  *  - TODO dado do usuário é escapado antes de entrar no HTML (anti-XSS) e o CSP
  *    é restritivo.
  */
+import { rateOkSensivel } from './rateLimit.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -237,17 +238,10 @@ async function getConvite(env, token) {
 
 // ─── rate limit (reusa o namespace do Stripe se existir) ─────
 /** Aplica o rate limit por chave. true se PODE seguir, false se estourou. */
+// FAIL-CLOSED (O2-18): convite dá ACESSO ao tenant — sem vigia, não passa.
+// Reaproveita o STRIPE_RL (mesmo perfil de rota autenticada e pouco frequente).
 async function rateOk(env, key) {
-  // Reaproveita o STRIPE_RL (mesmo perfil de rota autenticada e pouco frequente);
-  // se o binding não existir em algum ambiente, não bloqueia.
-  const rl = env.EQUIPE_RL || env.STRIPE_RL;
-  if (!rl) return true;
-  try {
-    const { success } = await rl.limit({ key });
-    return !!success;
-  } catch {
-    return true;
-  }
+  return rateOkSensivel(env, env.EQUIPE_RL || env.STRIPE_RL, key);
 }
 
 // ─── geração de token (128 bits, base64url sem padding = 22 chars) ──

@@ -17,6 +17,7 @@
  * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
  */
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
+import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 
 // URLs de retorno do Checkout / Portal (o worker atende os dois subdomínios;
 // usamos o de diagnóstico, que serve estas páginas de sucesso/cancelado).
@@ -213,14 +214,11 @@ async function stripeGet(env, path) {
 
 // ─── rate limit (namespace próprio das rotas Stripe) ─────────
 /** Aplica o STRIPE_RL por chave. Retorna true se PODE seguir, false se estourou. */
+// FAIL-CLOSED (O2-18): rota de dinheiro. Antes isto devolvia `true` quando o
+// binding sumia ou o limiter lançava — a proteção evaporava calada, e um build por
+// Git já apagou os 5 rate limiters em produção uma vez. Agora "não sei" nega.
 async function rateOk(env, key) {
-  if (!env.STRIPE_RL) return true; // binding ausente em algum ambiente: não bloqueia
-  try {
-    const { success } = await env.STRIPE_RL.limit({ key });
-    return !!success;
-  } catch {
-    return true;
-  }
+  return rateOkSensivel(env, env.STRIPE_RL, key);
 }
 
 /**
@@ -697,8 +695,18 @@ async function processar12x(env, obj, evento) {
 // Vale entre isolates, deploys e regiões. Ver worker/src/webhookEvents.js.
 
 export async function handleWebhook(request, env) {
+  // TETO DE PAYLOAD (O2-18) — ANTES de bufferizar. `await request.text()` sem teto
+  // é deixar qualquer um escolher quanta memória do isolate gastar: a rota é
+  // pública (só a assinatura HMAC a protege, e verificá-la exige ler o corpo
+  // inteiro primeiro). Evento da Stripe tem ~4-20 KB; 128 KB é 6x de folga.
+  const teto = cabeNoTeto(request, TETO.WEBHOOK);
+  if (!teto.ok) return json({ erro: 'payload_grande' }, 413);
+
   // RAW body ANTES de qualquer parse — a assinatura é calculada sobre ele.
   const rawBody = await request.text();
+  // Content-Length é dica, não promessa: confere o tamanho REAL (em bytes, não em
+  // caracteres) para pegar quem mentiu no header ou omitiu.
+  if (!textoCabeNoTeto(rawBody, TETO.WEBHOOK)) return json({ erro: 'payload_grande' }, 413);
   const sig = request.headers.get('Stripe-Signature') || request.headers.get('stripe-signature');
 
   const valido = await verificarAssinatura(rawBody, sig, env.STRIPE_WEBHOOK_SECRET);
