@@ -22,9 +22,13 @@
  *   válido (dígito verificador) — documento errado no PDF é pior que nenhum.
  * • COR DA MARCA: paleta fechada, não color picker. A cor pinta o cabeçalho do PDF
  *   com TEXTO BRANCO em cima; amarelo livre = orçamento ilegível na mão do cliente.
- * • LOGO: sem upload. Não há bucket de storage, e o que o celular grava é um
- *   `file://` do próprio aparelho — que o navegador não consegue exibir. Fingir um
- *   upload aqui geraria um logo que some. Dizemos a verdade e mostramos o que dá.
+ * • LOGO: upload SEM bucket. O motivo do antigo "sem upload" era técnico (não há
+ *   storage, e o `file://` do celular não abre na web) — resolvido guardando o logo
+ *   como DATA URI no próprio blob `dados.logoUri` (redimensionado no cliente, ver
+ *   logoUpload.ts). A cadeia inteira já fala data URI: `logoExibivel()` exibe na web
+ *   e `imagemParaDataUri()` do app repassa `data:` como está pro PDF do celular. O
+ *   `file://` antigo continua inexibível aqui; dizemos a verdade e oferecemos o
+ *   upload como o caminho de ver o logo em todo lugar.
  * • ESCRITA SÓ DO DONO (RLS `empresa_owner_write`): um membro da equipe que salvasse
  *   aqui criaria uma SEGUNDA linha `empresa` (a dele) em vez de editar a do dono.
  *   Então: quem não é dono vê a tela em leitura. E se não der para SABER o papel,
@@ -33,8 +37,19 @@
 import type { Empresa } from "@dominio";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, Check, CheckCircle2, ImageOff, Loader2, Lock, RotateCw, Save } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+	AlertTriangle,
+	Check,
+	CheckCircle2,
+	ImageOff,
+	ImagePlus,
+	Loader2,
+	Lock,
+	RotateCw,
+	Save,
+	Trash2,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker } from "react-router";
 import { supabase } from "@/lib/supabase";
 import { applyBrandColor } from "@/olli/branding";
@@ -56,6 +71,7 @@ import {
 	VALIDADE_DIAS_DEFAULT,
 	VALIDADES_PADRAO,
 } from "./constantes";
+import { arquivoParaLogoDataUri, LOGO_TIPOS_ACEITOS } from "./logoUpload";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -103,6 +119,12 @@ export default function MeuNegocio() {
 	const [semeadoEm, setSemeadoEm] = useState<string | null>(null);
 	const [erros, setErros] = useState<Erros>({});
 	const [salvoEm, setSalvoEm] = useState<string | null>(null);
+	// Upload de logo: erro do ÚLTIMO arquivo escolhido (fica FORA de `erros` — não é
+	// um campo do submit, não deve travar nem rolar a página no Salvar) + estado de
+	// processamento do canvas + ref do <input type="file"> escondido.
+	const [erroLogo, setErroLogo] = useState<string | null>(null);
+	const [processandoLogo, setProcessandoLogo] = useState(false);
+	const inputLogoRef = useRef<HTMLInputElement | null>(null);
 
 	// Semeia o formulário com o blob REAL (e o mantém alinhado quando a linha
 	// recarrega). `empresaEmBranco()` embaixo garante que nenhuma string obrigatória
@@ -230,6 +252,11 @@ export default function MeuNegocio() {
 			if (observacoes !== undefined) dados.observacoesPadrao = observacoes;
 			const linkGoogle = opcional(f.linkGoogleAvaliacoes, base.linkGoogleAvaliacoes);
 			if (linkGoogle !== undefined) dados.linkGoogleAvaliacoes = linkGoogle;
+			// Logo: mesmo contrato dos demais opcionais — data URI novo grava por cima
+			// (inclusive do `file://` do celular: é a troca que o dono pediu), "Remover"
+			// grava '' (limpar TEM que persistir), e quem nunca teve logo não ganha chave.
+			const logoUri = opcional(f.logoUri, base.logoUri);
+			if (logoUri !== undefined) dados.logoUri = logoUri;
 			if (f.validadeDiasPadrao !== undefined) dados.validadeDiasPadrao = f.validadeDiasPadrao;
 
 			// 4. Grava. `user_id` NÃO vai no payload: a coluna tem default `auth.uid()` e o
@@ -286,6 +313,24 @@ export default function MeuNegocio() {
 			return proximo;
 		});
 	};
+
+	/** Arquivo escolhido → data URI compacta no RASCUNHO (só persiste no Salvar). */
+	async function aoEscolherLogo(e: React.ChangeEvent<HTMLInputElement>) {
+		const arquivo = e.target.files?.[0];
+		// Zera o input JÁ: onChange não dispara se o valor não mudar — sem isto,
+		// re-escolher o MESMO arquivo depois de um erro não faria nada.
+		e.target.value = "";
+		if (!arquivo || bloqueado) return;
+		setErroLogo(null);
+		setProcessandoLogo(true);
+		const resultado = await arquivoParaLogoDataUri(arquivo);
+		setProcessandoLogo(false);
+		if (resultado.ok) {
+			set("logoUri", resultado.dataUri);
+		} else {
+			setErroLogo(resultado.erro);
+		}
+	}
 
 	/* ───────────────────────────  3 estados  ─────────────────────────── */
 
@@ -472,11 +517,55 @@ export default function MeuNegocio() {
 									</span>
 								</div>
 							)}
-							{/* HONESTIDADE: não existe upload aqui, e o `file://` do celular não abre na web. */}
+							{/* Input REAL escondido — o botão visível é um Button do design system. */}
+							<input
+								ref={inputLogoRef}
+								type="file"
+								accept={LOGO_TIPOS_ACEITOS}
+								className="hidden"
+								aria-label="Enviar arquivo de logo"
+								onChange={aoEscolherLogo}
+							/>
+							{!bloqueado && (
+								<div className="mt-2 flex flex-wrap gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										disabled={processandoLogo}
+										onClick={() => inputLogoRef.current?.click()}
+									>
+										{processandoLogo ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+										{logo || temLogoNaoExibivel ? "Trocar logo" : "Enviar logo"}
+									</Button>
+									{!!form.logoUri && (
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											disabled={processandoLogo}
+											onClick={() => {
+												setErroLogo(null);
+												set("logoUri", "");
+											}}
+										>
+											<Trash2 className="size-4" />
+											Remover
+										</Button>
+									)}
+								</div>
+							)}
+							{erroLogo && (
+								<p role="alert" className="mt-2 text-xs font-medium text-error-dark dark:text-error">
+									{erroLogo}
+								</p>
+							)}
+							{/* HONESTIDADE mantida: o `file://` do celular segue inexibível na web —
+							    o upload daqui (data URI no blob) é o que aparece em todo lugar. */}
 							<p className="mt-2 text-xs text-text-secondary">
 								{temLogoNaoExibivel
-									? "Seu logo foi enviado pelo app do celular e está guardado naquele aparelho — ele continua saindo nos PDFs gerados lá, mas o navegador não consegue exibi-lo aqui."
-									: "O envio de logo é feito pelo app do celular (Meu negócio → Logo). Ele sai no topo dos seus documentos."}
+									? "Seu logo atual foi enviado pelo app e está guardado naquele aparelho — ele sai nos PDFs gerados lá, mas o navegador não consegue exibi-lo. Envie o arquivo aqui para vê-lo também no painel."
+									: "PNG, JPG ou WebP. A imagem é reduzida automaticamente e sai no topo dos seus documentos."}
 							</p>
 						</div>
 

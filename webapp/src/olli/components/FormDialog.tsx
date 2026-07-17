@@ -18,6 +18,14 @@ interface Props {
 	children: ReactNode;
 	/** Largura maior para formulários densos (ex.: orçamento com itens). */
 	largo?: boolean;
+	/**
+	 * Guarda opcional contra descarte acidental: devolve true quando o formulário
+	 * tem alteração NÃO SALVA. Se fornecida e "suja", Esc/clique-fora/Cancelar
+	 * pedem confirmação antes de descartar. Opcional de propósito: cliente e
+	 * equipamento não precisam de confirmação; o orçamento (o documento que vira
+	 * dinheiro) precisa.
+	 */
+	confirmarSeSujo?: () => boolean;
 }
 
 /**
@@ -43,9 +51,25 @@ export default function FormDialog({
 	rotuloSalvar = "Salvar",
 	children,
 	largo,
+	confirmarSeSujo,
 }: Props) {
+	// Fechar SEM salvar (Esc, clique-fora, X, Cancelar) passa por aqui. Durante o
+	// salvamento nada fecha (comportamento que já existia). Com alteração não
+	// salva, pedimos confirmação — um Esc distraído não pode apagar em silêncio
+	// um orçamento preenchido. `window.confirm` de propósito: bloqueante e
+	// síncrono (o retorno decide o onOpenChange na hora), zero componente novo.
+	// O fluxo de SALVAR não passa por aqui: no sucesso, o formulário chama
+	// `aoFechar()` direto — a guarda nunca atrapalha quem salvou.
+	const fecharComGuarda = () => {
+		if (salvando) return;
+		if (confirmarSeSujo?.() && !window.confirm("Você tem alterações não salvas. Descartar mesmo assim?")) {
+			return;
+		}
+		aoFechar();
+	};
+
 	return (
-		<Dialog open={aberto} onOpenChange={(v) => !v && !salvando && aoFechar()}>
+		<Dialog open={aberto} onOpenChange={(v) => !v && fecharComGuarda()}>
 			<DialogContent className={largo ? "max-w-3xl" : "max-w-lg"}>
 				<DialogHeader>
 					<DialogTitle>{titulo}</DialogTitle>
@@ -66,7 +90,7 @@ export default function FormDialog({
 				)}
 
 				<DialogFooter>
-					<Button type="button" variant="outline" onClick={aoFechar} disabled={salvando}>
+					<Button type="button" variant="outline" onClick={fecharComGuarda} disabled={salvando}>
 						Cancelar
 					</Button>
 					<Button type="submit" form={formId} disabled={salvando}>

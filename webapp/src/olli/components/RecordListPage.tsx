@@ -303,14 +303,10 @@ export default function RecordListPage({
 							{(error as Error)?.message ?? "Erro ao consultar os dados."}
 						</p>
 					</div>
-					<button
-						type="button"
-						onClick={() => refetch()}
-						className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-					>
+					<Button type="button" variant="outline" onClick={() => refetch()} className="gap-2 rounded-full">
 						<RotateCw className="size-4" />
 						Tentar de novo
-					</button>
+					</Button>
 				</Card>
 			) : rows.length === 0 ? (
 				<Card className="flex flex-col items-center justify-center gap-4 p-12 text-center">

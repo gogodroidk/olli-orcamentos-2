@@ -32,7 +32,7 @@
 import type { ItemOrcamento, Orcamento, ProdutoItem, ServicoItem } from "@dominio";
 import { propostaJaEnviada, STATUS_LABELS } from "@dominio";
 import { AlertTriangle, Boxes, Check, Copy, Loader2, Plus, RotateCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Campo, CampoMoeda, formatarMoeda } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
@@ -304,6 +304,27 @@ function Editor({
 
 	const t = useMemo(() => calcularTotais(orc), [orc]);
 
+	// "SUJO" DERIVADO: o estado aqui é useState cru (sem isDirty de biblioteca),
+	// então comparo o rascunho atual com o ponto de partida. `comDefaults(inicial)`
+	// é EXATAMENTE o valor com que o estado nasceu, e os patches preservam a ordem
+	// das chaves — JSON.stringify basta (mesma técnica de meu-negocio/index.tsx).
+	// Campo esvaziado vira `undefined`, que o stringify omite dos DOIS lados, então
+	// abrir e fechar sem mexer nunca acusa sujeira. Buffers de texto
+	// (qtdTexto/descontoTexto) ficam de fora de propósito: só conta o que iria
+	// para o blob do documento.
+	const sujo = useMemo(() => JSON.stringify(orc) !== JSON.stringify(comDefaults(inicial)), [orc, inicial]);
+
+	// Fechar/recarregar a ABA com rascunho não salvo pede o aviso nativo do
+	// navegador — mesmo padrão de meu-negocio. Cobre o Ctrl+W, que a guarda do
+	// diálogo (Esc/clique-fora) não alcança. `aberto` na dependência: diálogo
+	// fechado não pode segurar a aba.
+	useEffect(() => {
+		if (!sujo || !aberto) return;
+		const aviso = (e: BeforeUnloadEvent) => e.preventDefault();
+		window.addEventListener("beforeunload", aviso);
+		return () => window.removeEventListener("beforeunload", aviso);
+	}, [sujo, aberto]);
+
 	/* ───────────────────────────────  Catálogo  ───────────────────────────────── */
 
 	const servicos = useOlliList<LinhaServico>("servicos", { orderBy: "nome", ascending: true });
@@ -559,6 +580,9 @@ function Editor({
 			}
 			erro={erro}
 			salvando={enviando}
+			// Esc/clique-fora/X/Cancelar com rascunho sujo pedem confirmação antes
+			// de descartar. `salvando` bloqueia o fechamento ANTES desta guarda.
+			confirmarSeSujo={() => sujo}
 			formId={formId}
 			rotuloSalvar={ehNovo ? "Criar orçamento" : "Salvar alterações"}
 		>
