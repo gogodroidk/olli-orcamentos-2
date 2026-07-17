@@ -8,7 +8,7 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TimePickerModal } from 'react-native-paper-dates';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corCategoriaEmChip, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { ChipsFiltro, ItemChipFiltro } from '../../components/web/ChipsFiltro';
@@ -316,7 +316,7 @@ export default function AgendaDesktopScreen() {
             onPress={() => abrirNovo()}
             style={({ hovered, focused }: PressableWebState) => [styles.novoBtn, hovered && styles.novoBtnHover, focused && styles.focoVisivel]}
           >
-            <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accent)} />
+            <MaterialCommunityIcons name="calendar-plus" size={18} color={cores.onPrimary} />
             <Text style={styles.novoBtnText}>Novo agendamento</Text>
           </Pressable>
         </View>
@@ -679,10 +679,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   hojeBtnText: { ...Typography.body, color: c.onSurface, fontSize: 13 },
   novoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, height: 36, borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.md, backgroundColor: c.accent, marginLeft: Spacing.sm,
+    paddingHorizontal: Spacing.md, backgroundColor: c.primary, marginLeft: Spacing.sm,
   },
   novoBtnHover: { opacity: 0.9 },
-  novoBtnText: { ...Typography.button, fontSize: 13, color: textoSobre(c.accent) },
+  novoBtnText: { ...Typography.button, fontSize: 13, color: c.onPrimary },
 
   grade: { flexDirection: 'row', gap: Spacing.sm, width: '100%' },
   coluna: {

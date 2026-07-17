@@ -270,7 +270,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   focoVisivel: { outlineWidth: 2, outlineColor: c.accent, outlineStyle: 'solid', outlineOffset: 2 } as any,
   raiz: { flex: 1, flexDirection: 'row' },
   fundoClicavel: { flex: 1, backgroundColor: 'rgba(5,12,22,0.60)' },
-  painel: { width: 460, height: '100%', backgroundColor: c.surface, borderLeftWidth: 1, borderLeftColor: c.outline },
+  painel: { width: 420, height: '100%', backgroundColor: c.surface, borderLeftWidth: 1, borderLeftColor: c.outline },
   cabecalho: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, borderBottomWidth: 1, borderBottomColor: c.outline,

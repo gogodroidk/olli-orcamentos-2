@@ -53,11 +53,19 @@ export function OlliButton({
     : variant === 'gradient' ? gradientes.sobreBrand
     : textoSobre(bg);
 
+  // O ícone chega de cada call-site muitas vezes com `color="#fff"` cravado —
+  // sobrescrevemos aqui com a MESMA cor calculada pra `color` acima (a que já
+  // respeita o contraste sobre `bg`), assim os 39 call-sites ficam corretos
+  // de uma vez sem precisar editar cada um.
+  const iconColorizado = icon && React.isValidElement(icon)
+    ? React.cloneElement(icon as React.ReactElement<any>, { color })
+    : icon;
+
   const content = loading ? (
     <ActivityIndicator size="small" color={color} />
   ) : (
     <View style={styles.contentRow}>
-      {icon}
+      {iconColorizado}
       <Text style={[styles.label, { color, fontSize: fs, marginLeft: icon ? 7 : 0 }, textStyle]} numberOfLines={1}>
         {label}
       </Text>

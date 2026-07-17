@@ -7,7 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
+import { Spacing, useCores, useEstilos, comAlfa, textoSobre, type Cores } from '../theme';
 import { Motion, useReducedMotion } from '../theme/motion';
 import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
@@ -390,7 +390,7 @@ export default function NovoOrcamentoScreen() {
             accessibilityHint="Abre a OLLI Voz para preencher cliente e itens deste orçamento."
             accessibilityLabel="Preencher orçamento por voz"
           >
-            <MaterialCommunityIcons name="microphone" size={16} color="#fff" />
+            <MaterialCommunityIcons name="microphone" size={16} color={textoSobre(cores.voice)} />
             <Text style={styles.voiceText} numberOfLines={1}>Preencher por voz</Text>
           </TouchableOpacity>
         }
@@ -573,5 +573,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
-  voiceText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  voiceText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.voice) },
 });

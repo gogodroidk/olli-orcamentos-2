@@ -268,7 +268,7 @@ function MiniStat({
 			<p className="mt-0.5 text-[11px] font-extrabold leading-none text-ink tnum">
 				{valor}
 			</p>
-			<p className="mt-0.5 text-[6.5px] font-bold text-[#0f9d63] tnum">
+			<p className="mt-0.5 text-[6.5px] font-bold text-check tnum">
 				{delta}
 			</p>
 		</div>
@@ -336,7 +336,7 @@ function PainelRow({
 	tom: "mint" | "brand" | "muted";
 }) {
 	const cores = {
-		mint: "bg-mint/15 text-[#0f9d63]",
+		mint: "bg-mint/15 text-check",
 		brand: "bg-tint text-brand",
 		muted: "bg-paper text-muted",
 	}[tom];
@@ -449,7 +449,7 @@ function PhoneScreen() {
 								Clínica Vida &amp; Saúde
 							</p>
 						</div>
-						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-mint/15 px-2 py-1 text-[9px] font-bold text-[#0f9d63]">
+						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-mint/15 px-2 py-1 text-[9px] font-bold text-check">
 							<CheckIcon />
 							Aprovado
 						</span>

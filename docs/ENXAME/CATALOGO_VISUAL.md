@@ -42,5 +42,8 @@ Hoje as 3 pontas parecem **produtos de empresas diferentes**, amarradas só pela
 - [ ] Painel: mistura Solar (menu) + lucide (conteúdo) — unificar em lucide (maioria).
 
 ## Plano de correção
-- **Onda 7 (agora):** P0 + P1 objetivos + landing polish + painel icon-family (dentro do painel) — bugs claros, sem redesign de identidade.
+- **Onda 7 ✅ (2026-07-17):** fechou os P0 + P1 objetivos. app typecheck+test + webapp tsc verdes.
+  - P0 OlliButton (ícone herda a cor de contraste do rótulo — cura 39 telas) · P0 PainelNovoPlano→`<Modal>`.
+  - P1: StepIndicator/`#A78BFA`/voice/plan (contraste) · largura painel 460→420 · CTA Agenda c.accent→c.primary (+onPrimary) · landing (hover corrigido, `#0f9d63`→text-check, toque CTA py-2.5, ＋→+, bullet aria) · painel unifica ícone (solar→lucide, mesma família do conteúdo).
+- **Resta objetivo (Onda futura):** P2/P3 — Footer/Header component na landing, pastilha de ícone nas calculadoras, chip squircle (raio único), fontSize fracionário do desktop→Typography, TabelaDados overflow, KpiGrid breakpoint.
 - **`[DONO]`:** a tabela cross (fontes/raio/dark/ícone unificado + emoji→SVG na landing) — ver BLOQUEIOS. Recomendo convergir pra linguagem do app; ele decide a direção.

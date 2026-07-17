@@ -229,8 +229,8 @@ const schemaFaq = {
         <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
       </div>
       <div class="flex items-center gap-2">
-        <a href={APP_URL} class="rounded-lg px-4 py-2 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-        <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+        <a href={APP_URL} class="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+        <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
       </div>
     </nav>
   </header>
@@ -249,7 +249,7 @@ const schemaFaq = {
          empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. -->
     <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
       <div class="min-w-0">
-        <span class="eyebrow">● Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
+        <span class="eyebrow"><span aria-hidden="true">●</span> Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
         <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
           Do <span class="brand-text">áudio no WhatsApp</span><br />
           ao orçamento fechado.
@@ -342,7 +342,7 @@ const schemaFaq = {
       {OFICIOS.map((o) => (
         <a
           href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-          class="group rounded-2xl border border-line bg-white p-6 transition hover:border-brand/40"
+          class="group rounded-2xl border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
         >
           <div class="text-3xl" aria-hidden="true">{o.emoji}</div>
           <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand">{o.label}</h3>
@@ -389,7 +389,7 @@ const schemaFaq = {
       </div>
       <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {recursos.map((r) => (
-          <div class="rounded-2xl border border-line bg-white p-6 transition hover:-translate-y-1 hover:shadow-lg hover:shadow-brand/5">
+          <div class="rounded-2xl border border-line bg-white p-6 transition">
             <div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-xl">{r.icon}</div>
             <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-slate">{r.texto}</p>
@@ -498,7 +498,7 @@ const schemaFaq = {
         <details class="group">
           <summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
             {f.q}
-            <span class="text-brand transition group-open:rotate-45" aria-hidden="true">＋</span>
+            <span class="text-brand transition group-open:rotate-45" aria-hidden="true">+</span>
           </summary>
           <p class="px-6 pb-5 text-slate">{f.a}</p>
         </details>

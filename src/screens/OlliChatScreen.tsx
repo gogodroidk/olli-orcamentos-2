@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
@@ -291,7 +291,7 @@ export default function OlliChatScreen() {
           activeOpacity={0.85}
           accessibilityLabel={iaEsgotada ? 'Ver planos' : 'Enviar mensagem'}
         >
-          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color="#fff" />
+          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color={textoSobre(iaEsgotada ? cores.plan : cores.primary)} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

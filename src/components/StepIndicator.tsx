@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, useEstilos, useGradientes, textoSobre, sobreSecundario, type Cores } from '../theme';
+import { Spacing, useCores, useEstilos, useGradientes, textoSobre, sobreSecundario, type Cores } from '../theme';
 
 interface Props {
   steps: string[];
@@ -10,6 +10,7 @@ interface Props {
 
 /** Indicador de passos desenhado para fundo em gradiente (texto claro). */
 export function StepIndicator({ steps, current }: Props) {
+  const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const gradientes = useGradientes();
   // Número e rótulo (inativos) ficam dentro/sob o header em gradiente — o círculo
@@ -29,7 +30,7 @@ export function StepIndicator({ steps, current }: Props) {
             <View style={styles.group}>
               <View style={[styles.circle, done && styles.circleDone, active && styles.circleActive]}>
                 {done ? (
-                  <MaterialCommunityIcons name="check" size={15} color="#fff" />
+                  <MaterialCommunityIcons name="check" size={15} color={textoSobre(cores.success)} />
                 ) : (
                   <Text style={[styles.num, { color: corNum }, active && styles.numActive]}>{i + 1}</Text>
                 )}

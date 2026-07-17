@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, type Cores } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, corCategoria, type Cores } from '../theme';
 import {
   getEmpresa, getClientes,
   getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getOrcamentosParadosAgregado, getUltimosOrcamentos,
@@ -798,7 +798,7 @@ export default function HomeScreen() {
             )}
             <Action icon="file-plus" label="Orçar" color={cores.accentLight} onPress={() => nav.navigate('NovoOrcamento', {})} />
             <Action icon="receipt" label="Recibo" color={cores.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
-            <Action icon="account-group" label="Clientes" color="#A78BFA" onPress={() => nav.navigate('Clientes')} />
+            <Action icon="account-group" label="Clientes" color={corCategoria('#A78BFA', cores.surface)} onPress={() => nav.navigate('Clientes')} />
             {!ehTecnico && (
               <Action icon="clipboard-check-outline" label={rotuloOS} color={cores.accentLight} onPress={() => nav.navigate('OrdemServico')} />
             )}

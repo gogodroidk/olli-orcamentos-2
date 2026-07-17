@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -527,94 +527,94 @@ function PainelNovoPlano({
     }
   }
 
-  if (!visivel) return null;
-
   return (
-    <View style={styles.raizPainel} accessibilityRole="none">
-      <Pressable style={styles.fundoClicavel} onPress={aoFechar} accessibilityRole="button" accessibilityLabel="Fechar" />
-      <View style={styles.painel}>
-        <View style={styles.cabecalho}>
-          <Text style={styles.tituloPainel}>Novo plano de manutenção</Text>
-          <Pressable
-            onPress={aoFechar}
-            accessibilityRole="button"
-            accessibilityLabel="Fechar"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={({ hovered, focused }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover, focused && styles.focoVisivel]}
-          >
-            <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
-          </Pressable>
-        </View>
+    <Modal visible={visivel} transparent animationType="fade" onRequestClose={aoFechar}>
+      <View style={styles.raizPainel} accessibilityRole="none">
+        <Pressable style={styles.fundoClicavel} onPress={aoFechar} accessibilityRole="button" accessibilityLabel="Fechar" />
+        <View style={styles.painel}>
+          <View style={styles.cabecalho}>
+            <Text style={styles.tituloPainel}>Novo plano de manutenção</Text>
+            <Pressable
+              onPress={aoFechar}
+              accessibilityRole="button"
+              accessibilityLabel="Fechar"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={({ hovered, focused }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover, focused && styles.focoVisivel]}
+            >
+              <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
+            </Pressable>
+          </View>
 
-        <ScrollView contentContainerStyle={styles.conteudoPainel} keyboardShouldPersistTaps="handled">
-          <OlliInput
-            label="Título do plano"
-            required
-            autoFocus
-            value={titulo}
-            onChangeText={setTitulo}
-            placeholder='Ex.: "PMOC — Edifício Aurora"'
-            leftIcon="clipboard-text-outline"
-            error={erro && !titulo.trim() ? erro : undefined}
-          />
+          <ScrollView contentContainerStyle={styles.conteudoPainel} keyboardShouldPersistTaps="handled">
+            <OlliInput
+              label="Título do plano"
+              required
+              autoFocus
+              value={titulo}
+              onChangeText={setTitulo}
+              placeholder='Ex.: "PMOC — Edifício Aurora"'
+              leftIcon="clipboard-text-outline"
+              error={erro && !titulo.trim() ? erro : undefined}
+            />
 
-          <Text style={styles.rotuloSecao}>Cliente (opcional)</Text>
-          <OlliInput
-            value={buscaCliente}
-            onChangeText={setBuscaCliente}
-            placeholder="Buscar cliente…"
-            leftIcon="magnify"
-          />
+            <Text style={styles.rotuloSecao}>Cliente (opcional)</Text>
+            <OlliInput
+              value={buscaCliente}
+              onChangeText={setBuscaCliente}
+              placeholder="Buscar cliente…"
+              leftIcon="magnify"
+            />
 
-          <Pressable
-            onPress={() => setClienteId(undefined)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: !clienteId }}
-            style={({ hovered, focused }: PressableWebState) => [
-              styles.clienteRow, !clienteId && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
-            ]}
-          >
-            <MaterialCommunityIcons name="account-off-outline" size={18} color={cores.onSurfaceVariant} />
-            <Text style={styles.clienteRowTexto}>Sem cliente vinculado</Text>
-            {!clienteId && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
-          </Pressable>
+            <Pressable
+              onPress={() => setClienteId(undefined)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !clienteId }}
+              style={({ hovered, focused }: PressableWebState) => [
+                styles.clienteRow, !clienteId && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
+              ]}
+            >
+              <MaterialCommunityIcons name="account-off-outline" size={18} color={cores.onSurfaceVariant} />
+              <Text style={styles.clienteRowTexto}>Sem cliente vinculado</Text>
+              {!clienteId && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
+            </Pressable>
 
-          {clientesFiltrados.slice(0, 30).map((c) => {
-            const sel = clienteId === c.id;
-            return (
-              <Pressable
-                key={c.id}
-                onPress={() => setClienteId(c.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: sel }}
-                style={({ hovered, focused }: PressableWebState) => [
-                  styles.clienteRow, sel && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
-                ]}
-              >
-                <MaterialCommunityIcons name="account-outline" size={18} color={sel ? cores.accentLight : cores.onSurfaceVariant} />
-                <Text style={[styles.clienteRowTexto, sel && { color: cores.onSurface }]} numberOfLines={1}>{c.nome}</Text>
-                {sel && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
-              </Pressable>
-            );
-          })}
+            {clientesFiltrados.slice(0, 30).map((c) => {
+              const sel = clienteId === c.id;
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => setClienteId(c.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sel }}
+                  style={({ hovered, focused }: PressableWebState) => [
+                    styles.clienteRow, sel && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
+                  ]}
+                >
+                  <MaterialCommunityIcons name="account-outline" size={18} color={sel ? cores.accentLight : cores.onSurfaceVariant} />
+                  <Text style={[styles.clienteRowTexto, sel && { color: cores.onSurface }]} numberOfLines={1}>{c.nome}</Text>
+                  {sel && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
+                </Pressable>
+              );
+            })}
 
-          {erro && titulo.trim() ? <Text style={styles.erroTexto}>{erro}</Text> : null}
-        </ScrollView>
+            {erro && titulo.trim() ? <Text style={styles.erroTexto}>{erro}</Text> : null}
+          </ScrollView>
 
-        <View style={styles.rodapePainel}>
-          <OlliButton
-            label="Criar plano"
-            variant="gradient"
-            size="lg"
-            fullWidth
-            loading={salvando}
-            onPress={salvar}
-            disabled={!titulo.trim() || salvando}
-            icon={<MaterialCommunityIcons name="plus" size={18} color="#fff" />}
-          />
+          <View style={styles.rodapePainel}>
+            <OlliButton
+              label="Criar plano"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              loading={salvando}
+              onPress={salvar}
+              disabled={!titulo.trim() || salvando}
+              icon={<MaterialCommunityIcons name="plus" size={18} color="#fff" />}
+            />
+          </View>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -665,13 +665,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   acaoIconeHover: { backgroundColor: c.surfacePressed },
 
-  // Painel lateral "Novo plano" — mesma casca do PainelCliente (420px, direita).
+  // Painel lateral "Novo plano" — mesma casca do PainelCliente (420px, direita),
+  // dentro de <Modal>: sem position/zIndex manual, o Modal já cobre o viewport.
   raizPainel: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    flex: 1,
     flexDirection: 'row',
-    zIndex: 20,
-  } as any,
+  },
   fundoClicavel: { flex: 1, backgroundColor: 'rgba(5,12,22,0.60)' },
   painel: {
     width: 420, height: '100%', backgroundColor: c.surface,

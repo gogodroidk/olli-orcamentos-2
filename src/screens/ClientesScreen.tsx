@@ -9,7 +9,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoria, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -594,7 +594,14 @@ export default function ClientesScreen() {
                   desc="Já com este cliente"
                   onPress={() => novoOrcamento(acoes)}
                 />
-                <SheetAction icon="calendar-plus" color="#A78BFA" label="Agendar visita" desc="Adicionar à agenda" onPress={() => agendarVisita(acoes)} />
+                <SheetAction
+                  icon="calendar-plus"
+                  color="#A78BFA" // contraste-ok: prop só vira o fundo/borda translúcidos do chip (color+'1E'/'3A' sobre c.surface — não se toca); o ícone real usa iconColor, ajustado por corCategoria contra cores.surface (mesmo padrão de "Novo orçamento" acima)
+                  iconColor={corCategoria('#A78BFA', cores.surface)}
+                  label="Agendar visita"
+                  desc="Adicionar à agenda"
+                  onPress={() => agendarVisita(acoes)}
+                />
                 <SheetAction icon="whatsapp" color={cores.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
                 <SheetAction icon="pencil-outline" color={cores.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
               </>
