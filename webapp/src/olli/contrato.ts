@@ -63,20 +63,43 @@ export const CONFLITO: Record<TabelaOlli, string> = {
 };
 
 /**
- * Tabelas em que um MEMBRO NÃO-DONO grava no tenant do DONO (`user_id = ownerUserId`).
+ * Em que tenant cada tabela nasce quando quem grava é um MEMBRO NÃO-DONO.
  *
- * Sem isto, o orçamento que o técnico cria nasce com o `user_id` DELE e **o dono
- * nunca o vê** — some em silêncio. `criado_por` (default `auth.uid()`) preserva a
- * autoria. Lista idêntica à do app (cloudSync.ts): `empresa`, `servicos`,
- * `produtos` e `recibos` ficam de FORA — escrita só do dono.
+ * - `"dono"`  → carimba `user_id = ownerUserId`. Sem isto, o orçamento que o
+ *   técnico cria nasce com o `user_id` DELE e **o dono nunca o vê** — some em
+ *   silêncio (P1-3). `criado_por` (default `auth.uid()`) preserva a autoria.
+ * - `"so-dono"` → escrita é privilégio do dono; a tela já barra o membro (com a
+ *   regra dos 3 estados — ver `FormRecibo`/`ListaCatalogo`/`meu-negocio`), então
+ *   não há o que carimbar. Espelha o app: `empresa`/`servicos`/`produtos`/
+ *   `recibos` seguem escrita só do dono.
+ *
+ * É um `Record` (e não o `Set` de antes) DE PROPÓSITO: um `Set` é silencioso
+ * sobre o que ficou de fora — bastava alguém acrescentar uma tabela nova a
+ * `TabelaOlli` e esquecer de classificá-la para as linhas do membro caírem no
+ * tenant errado, caladas. Com o `Record`, esquecer não compila: o TypeScript
+ * exige uma decisão explícita para CADA tabela. Tenancy é decisão, não default.
+ *
+ * ⚠️ Espelha `TABELAS_TENANT_EQUIPE` em `src/services/cloudSync.ts` (app). Lá a
+ * lista tem 3 tabelas a mais (`pmoc_planos`, `pmoc_plano_versoes`,
+ * `pmoc_ordens_geradas`) porque só o app escreve PMOC. No dia em que o painel
+ * ganhar uma tela de PMOC, ela entra em `TabelaOlli` e este `Record` vai OBRIGAR
+ * a classificá-la aqui — que é exatamente a proteção que se quer.
  */
-export const TABELAS_DO_TENANT_DO_DONO: ReadonlySet<TabelaOlli> = new Set<TabelaOlli>([
-	"clientes",
-	"orcamentos",
-	"agendamentos",
-	"ordens_servico",
-	"equipamentos",
-]);
+export const TENANT_DA_TABELA: Readonly<Record<TabelaOlli, "dono" | "so-dono">> = {
+	clientes: "dono",
+	orcamentos: "dono",
+	agendamentos: "dono",
+	ordens_servico: "dono",
+	equipamentos: "dono",
+	produtos: "so-dono",
+	servicos: "so-dono",
+	recibos: "so-dono",
+};
+
+/** Tabelas em que o membro não-dono grava no tenant do DONO. Derivado — não editar. */
+export const TABELAS_DO_TENANT_DO_DONO: ReadonlySet<TabelaOlli> = new Set<TabelaOlli>(
+	(Object.keys(TENANT_DA_TABELA) as TabelaOlli[]).filter((t) => TENANT_DA_TABELA[t] === "dono"),
+);
 
 /** ID do app = uuid v4 (`src/utils/id.ts`). No navegador, `crypto.randomUUID()` gera o mesmo formato. */
 export function novoId(): string {
