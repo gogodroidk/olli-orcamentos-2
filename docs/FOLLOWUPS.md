@@ -308,3 +308,42 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     Ou a tela de ferramentas do painel nunca foi ligada (paridade mobile↔desktop que o dono pediu na
     personalização por vertical), ou o arquivo é resíduo e sai do bundle. Decidir qual — não é bug,
     é código órfão com custo de bundle.
+
+31. **Numeração atômica de documento (item O2-19) — BLOQUEADO por decisão de produto, não por código.**
+    O item pede "RPC `SECURITY DEFINER` transacional + constraint única `(organizacao_id, tipo, numero)`".
+    Ao implementar, dois fatos do repo derrubam o desenho:
+
+    **(a) `organizacao_id` não existe nesses documentos.** O multi-tenant do OLLI é por `user_id` +
+    `donos_visiveis()` (`20260707_multitenant.sql`): a linha do técnico nasce com o `user_id` do DONO
+    (é o que o O0-4 conserta). Logo a constraint equivalente seria `(user_id, tipo, numero)` — que já
+    dá o efeito "por empresa", porque todo documento da org carrega o `user_id` do dono.
+
+    **(b) A constraint sozinha TROCA um bug por outro pior.** O app é offline-first e numera pelo
+    `contadores` do SQLite local (`proximoNaSequencia`). Dois aparelhos offline geram `00126`. No
+    sync, o índice único rejeitaria o segundo com 409 — e `pushRowUnchecked` engole erro num
+    `catch {}` silencioso. Resultado: o orçamento **nunca chega à nuvem e ninguém é avisado**.
+    Trocaríamos "dois documentos com o mesmo número" por "documento que some" — o risco existencial
+    do projeto ("a confiança é o produto"). Offline é vantagem rara (2/25 no benchmark): não pode
+    ser sacrificada por um índice.
+
+    **A decisão que falta é do dono, e é de produto, não técnica:** o que o usuário vê offline?
+    - **Opção 1 — número definitivo só no servidor.** RPC atômica atribui na criação; offline o
+      documento fica "rascunho / sem número". Mata a colisão de vez, mas quebra a promessa de
+      trabalhar sem sinal (o técnico não emite PDF numerado no cliente).
+    - **Opção 2 — número provisório + renumeração no sync.** Offline segue numerando; o servidor dá
+      o número final ao sincronizar. Preserva o offline, mas o número **muda depois de enviado** —
+      e se o cliente já recebeu o PDF/link com `00126`, o documento dele deixa de existir com esse
+      número. Inaceitável se já foi enviado; aceitável enquanto rascunho.
+    - **Opção 3 — número por origem.** Prefixo/faixa por aparelho ou por membro (`00126-A`), sem
+      colisão possível e sem renumerar. Muda o FORMATO do número que vai ao cliente.
+    - **Opção 4 (mínima, hoje) — só o caminho ONLINE via RPC.** Painel e app-com-rede pegam o número
+      numa RPC transacional; o offline segue como está. Elimina a colisão dono↔membro *real*
+      (dois usuários com rede, que é o caso relatado) sem arriscar o offline. Não fecha a borda
+      "dois offline", que continua rara e visível.
+
+    Só depois da escolha vale escrever a migration. Recomendação: **Opção 4 agora** (barata, sem
+    risco, resolve o caso que de fato acontece) e a 2 ou 3 quando houver decisão sobre o número
+    poder mudar. **Não criar a constraint única antes de resolver o (b)** — hoje ela apagaria
+    trabalho de campo em silêncio. Nota relacionada: o painel já abandonou `contadores` e deriva do
+    MAIOR número visível ao tenant (`webapp/src/olli/mutacoes.ts`), justamente por causa do
+    split-brain per-user do contador — o app ainda usa o contador local.
