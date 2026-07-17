@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, Pressable, Switch, ActivityIndicator, Modal, ScrollView, StyleSheet } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { GateEquipe } from '../../components/GateEquipe';
+import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
@@ -27,6 +29,7 @@ import { formatDate } from '../../utils/date';
 import { avisar } from './dialogo';
 
 type LinhaMembro = MembroEquipe & { id: string };
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * Cor do chip de papel — mesmo critério visual da EquipeScreen mobile (função,
@@ -55,6 +58,7 @@ function descricaoPapel(papel: Papel): string {
  * mobile — mesmo gate de conta (empresa + ver_equipe) — sem tocar nela.
  */
 function EquipeDesktopConteudo() {
+  const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { org, tipo, carregando: carregandoConta } = useTipoConta();
@@ -186,6 +190,17 @@ function EquipeDesktopConteudo() {
       acoes={
         <>
           <BarraBusca valor={busca} aoMudar={setBusca} placeholder="Buscar por nome ou e-mail…" />
+          {/* Onda 2 — atalho para a Equipe ao vivo no mapa (plano Empresa). A tela de
+              destino já traz o próprio GateEquipe/GuardaPapel — este botão só navega. */}
+          <Pressable
+            onPress={() => nav.navigate('EquipeAoVivo')}
+            accessibilityRole="button"
+            accessibilityLabel="Ver equipe ao vivo no mapa"
+            style={({ hovered, focused }: PressableWebState) => [styles.botaoMapa, hovered && styles.botaoMapaHover, focused && styles.focoVisivel]}
+          >
+            <MaterialCommunityIcons name="map-marker-radius-outline" size={18} color={cores.onSurface} />
+            <Text style={styles.botaoMapaLabel}>Equipe ao vivo</Text>
+          </Pressable>
           {podeGerenciar && (
             <Pressable
               onPress={() => setPainelVisivel(true)}
@@ -530,6 +545,25 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   botaoNovoLabel: {
     ...Typography.button,
     color: c.onPrimary,
+    fontSize: 13,
+  },
+  botaoMapa: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.outlineDark,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+  },
+  botaoMapaHover: {
+    backgroundColor: c.surfacePressed,
+  },
+  botaoMapaLabel: {
+    ...Typography.button,
+    color: c.onSurface,
     fontSize: 13,
   },
   celulaTexto: {

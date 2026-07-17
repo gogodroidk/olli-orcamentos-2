@@ -3,11 +3,15 @@ import OlliLogo from "../components/OlliLogo.astro";
 import Layout from "../layouts/Layout.astro";
 
 const APP_URL = "https://app.olliorcamentos.online";
+// CC-01: CTA de cadastro abre a conta direto (o provider do painel lê
+// ?modo=cadastro). Ver a mesma constante em pages/index.astro.
+const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
 ---
 
 <Layout
   titulo="Página não encontrada — OLLI"
   descricao="A página que você procura não existe ou foi movida."
+  noindex={true}
 >
   <header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
     <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
@@ -36,7 +40,7 @@ const APP_URL = "https://app.olliorcamentos.online";
         >Voltar para o início</a
       >
       <a
-        href={APP_URL}
+        href={APP_CADASTRO_URL}
         class="rounded-lg border border-line px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-tint"
         >Ir para o painel</a
       >

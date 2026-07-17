@@ -195,6 +195,28 @@ function EquipeConteudo() {
           </AnimatedEntrance>
         )}
 
+        {/* Onda 2 — atalho para a Equipe ao vivo no mapa (plano Empresa). A tela de
+            destino já traz o próprio GateEquipe/GuardaPapel — este botão só navega;
+            quem chega lá sem plano ou papel de gestão vê a oferta/aviso certos. */}
+        <AnimatedEntrance index={podeGerenciar ? 2 : 1}>
+          <TouchableOpacity
+            style={styles.mapaEquipeBtn}
+            activeOpacity={0.85}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('EquipeAoVivo'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Ver equipe ao vivo no mapa"
+          >
+            <View style={styles.mapaEquipeIcon}>
+              <MaterialCommunityIcons name="map-marker-radius-outline" size={20} color={cores.accentLight} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.mapaEquipeTitulo}>Equipe ao vivo no mapa</Text>
+              <Text style={styles.mapaEquipeSub}>Veja a última localização de cada técnico</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+          </TouchableOpacity>
+        </AnimatedEntrance>
+
         <Text style={styles.sectionTitle}>Membros</Text>
 
         {carregando ? (
@@ -496,6 +518,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   convidarBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.accentLight, borderRadius: BorderRadius.lg, paddingVertical: 14, marginHorizontal: Spacing.base, marginTop: Spacing.base },
   convidarBtnText: { fontSize: 15, fontWeight: '800', color: textoSobre(c.accentLight) },
+
+  mapaEquipeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: Spacing.md, paddingVertical: 12, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
+  mapaEquipeIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  mapaEquipeTitulo: { fontSize: 14.5, fontWeight: '700', color: c.onSurface },
+  mapaEquipeSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
 

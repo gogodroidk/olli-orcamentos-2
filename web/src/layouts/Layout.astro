@@ -10,11 +10,17 @@ interface Props {
 	 * que é dela. Cada item vira uma tag `<script type="application/ld+json">`.
 	 */
 	schemas?: unknown[];
+	/**
+	 * Páginas que não devem ser indexadas (404, por exemplo) passam `noindex`.
+	 * Sem isso o buscador pode indexar uma página de erro como se fosse conteúdo.
+	 */
+	noindex?: boolean;
 }
 const {
 	schemas = [],
 	titulo = "OLLI — do orçamento ao recibo, sem planilha",
 	descricao = "O sistema de campo do prestador de serviço: orçamento, ordem de serviço, PMOC e recibo no celular e no computador — com IA que entende o defeito do equipamento, não só a nota. Grátis para começar.",
+	noindex = false,
 } = Astro.props;
 const canonical = new URL(
 	Astro.url.pathname,
@@ -97,6 +103,7 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
     <meta name="description" content={descricao} />
     <link rel="canonical" href={canonical} />
     <meta name="theme-color" content="#0b6fce" />
+    {noindex && <meta name="robots" content="noindex" />}
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OLLI Orçamentos" />

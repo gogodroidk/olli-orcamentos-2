@@ -151,8 +151,13 @@ export default function HomeScreen() {
   const [olliMenu, setOlliMenu] = useState(false);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira `true` se o Promise.all de load() de fato falhar — sem isso o
+  // skeleton ficava preso pra sempre (setCarregando(false) nunca rodava).
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [radarTotal, setRadarTotal] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
+  const [radarErro, setRadarErro] = useState(false);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
 
@@ -204,33 +209,43 @@ export default function HomeScreen() {
   }, [temEta, buscarEta]);
 
   const load = useCallback(async () => {
-    const [total, aprov, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
-      getOrcamentosTotalAtivos(),
-      getOrcamentosAgregadoPorStatus(['aprovado']),
-      getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
-      getOrcamentosParadosAgregado(STATUS_PROPOSTA_ENVIADA, 5),
-      getUltimosOrcamentos(4),
-      getEmpresa(), getProximoAgendamento(), getClientes(),
-    ]);
-    setTotalOrcamentos(total);
-    setAprovadosResumo(aprov);
-    setEmAbertoResumo(aberto);
-    setParadosResumo(parados);
-    setRecentes(recentesLista);
-    setEmpresa(emp);
-    setProxima(prox);
-    setClientes(cli);
-    setCarregando(false);
+    setCarregandoErro(false);
+    try {
+      const [total, aprov, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
+        getOrcamentosTotalAtivos(),
+        getOrcamentosAgregadoPorStatus(['aprovado']),
+        getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
+        getOrcamentosParadosAgregado(STATUS_PROPOSTA_ENVIADA, 5),
+        getUltimosOrcamentos(4),
+        getEmpresa(), getProximoAgendamento(), getClientes(),
+      ]);
+      setTotalOrcamentos(total);
+      setAprovadosResumo(aprov);
+      setEmAbertoResumo(aberto);
+      setParadosResumo(parados);
+      setRecentes(recentesLista);
+      setEmpresa(emp);
+      setProxima(prox);
+      setClientes(cli);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira skeleton infinito nem
+      // colapsa em telas "vazias" enganosas (StarterCard, hero sem visita etc.).
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
+    }
   }, []);
 
   const loadRadar = useCallback(async () => {
+    setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
       // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser —
       // busca até 4 (1 mostrado + até 3 contados no "+N"); Pro vê os 3 de sempre.
       setRadarTotal(lista.slice(0, 4));
     } catch {
-      setRadarTotal([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setRadarErro(true);
     } finally {
       setRadarCarregando(false);
     }
@@ -255,7 +270,16 @@ export default function HomeScreen() {
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
   useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); }), [load, loadRadar, loadCobranca]);
 
-  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar(), loadCobranca()]); setRefreshing(false); };
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load(), loadRadar(), loadCobranca()]);
+    } finally {
+      // finally garante que o pull-to-refresh nunca fica preso, mesmo se algo
+      // além das 3 chamadas (que já se protegem com try/catch) rejeitar.
+      setRefreshing(false);
+    }
+  };
 
   async function chamarNoWhatsApp(item: ClienteParaReconquistar) {
     if (!item.cliente.telefone?.trim()) {
@@ -401,6 +425,16 @@ export default function HomeScreen() {
                 <MaterialCommunityIcons name="dots-horizontal" size={30} color={heroAcento} />
                 <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Carregando…</Text>
               </View>
+            ) : carregandoErro ? (
+              <View style={styles.heroEmpty}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={30} color={heroAcento} />
+                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Não deu para carregar</Text>
+                <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Não conseguimos buscar seus dados agora. Verifique a conexão e tente de novo.</Text>
+                <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); load(); }} activeOpacity={0.85}>
+                  <MaterialCommunityIcons name="refresh" size={18} color={textoSobre(cores.accentLight)} />
+                  <Text style={styles.heroBtnText}>Tentar de novo</Text>
+                </TouchableOpacity>
+              </View>
             ) : proxima ? (
               <View style={styles.heroFilled}>
                 <Text style={[styles.heroWhen, { color: heroAcento }]}>{quandoLabel(proxima.inicio)}</Text>
@@ -485,6 +519,16 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
+        ) : carregandoErro ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.sm }}>
+            <View style={styles.cobrancaAviso}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+              <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar seus números agora.</Text>
+              <TouchableOpacity onPress={load} activeOpacity={0.8}>
+                <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : (
           <AnimatedEntrance index={1}>
             <View style={styles.kpis}>
@@ -524,6 +568,19 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+        ) : radarErro ? (
+          <>
+            <Text style={styles.sectionTitle}>Radar de clientes</Text>
+            <View style={{ paddingHorizontal: Spacing.base }}>
+              <View style={styles.cobrancaAviso}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <TouchableOpacity onPress={loadRadar} activeOpacity={0.8}>
+                  <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
         ) : radar.length > 0 ? (
           <>
             <Text style={styles.sectionTitle}>Radar de clientes</Text>
@@ -722,7 +779,7 @@ export default function HomeScreen() {
           </View>
         </AnimatedEntrance>
 
-        {!carregando && totalOrcamentos === 0 && (
+        {!carregando && !carregandoErro && totalOrcamentos === 0 && (
           <AnimatedEntrance index={3}>
             <StarterCard
               onCreate={() => nav.navigate('NovoOrcamento', {})}
@@ -768,6 +825,16 @@ export default function HomeScreen() {
                 </View>
               </View>
             ))}
+          </View>
+        ) : carregandoErro ? (
+          <View style={styles.emptyRecent}>
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar seus orçamentos agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={load}
+            />
           </View>
         ) : recentes.length === 0 ? (
           <View style={styles.emptyRecent}>

@@ -63,9 +63,20 @@ function capaFotoUriDe(o: Orcamento): string | undefined {
  */
 let IMG_CACHE: Record<string, string> = {};
 
+/**
+ * Toda chamada de `img()` vai direto para um atributo `src="..."` no HTML — mesmo
+ * ponto que o recibo protege (reciboPdf.montarHtmlRecibo escapa `logoData`/
+ * `assinaturaData` antes de interpolar). Aqui a URI pode vir de `imagemParaDataUri`,
+ * que repassa um `data:` já pronto SEM validar o conteúdo (imagemDataUri.ts:109) —
+ * um campo sincronizado adulterado (ex.: `empresa.logoUri` escrito direto na API)
+ * poderia fechar o atributo `src="..."` e injetar HTML/`<script>`. `escapeHtml` aqui
+ * é no-op para um data URI base64 legítimo (o alfabeto base64 não tem `< > & " '`) e
+ * neutraliza qualquer valor adulterado — mesma defesa do recibo, um único ponto
+ * central em vez de escapar em cada um dos chamadores de `img()`.
+ */
 function img(uri?: string): string {
   if (!uri) return '';
-  return IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : '');
+  return escapeHtml(IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : ''));
 }
 
 async function populateImages(o: Orcamento, empresa: Empresa): Promise<void> {

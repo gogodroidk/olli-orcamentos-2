@@ -35,6 +35,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
@@ -93,6 +94,9 @@ const STATUS: StatusOrcamento[] = [
 	"convertido",
 ];
 
+/** Os mesmos slugs de `STATUS`, num Set — só pra validar o que a URL manda. */
+const STATUS_VALIDOS = new Set<string>(STATUS);
+
 /**
  * O blob, se ele existir DE VERDADE. Um `dados` sem `itens` não é um orçamento —
  * é ruído, e tratá-lo como documento faria o painel salvar um objeto meia-boca por
@@ -124,8 +128,27 @@ export default function OrcamentosPage() {
 	// A `empresa` também é uma tabela de BLOB: o objeto de domínio vive em `dados`.
 	const empresa = (empresaLinha?.dados as Empresa | undefined) ?? null;
 
+	// Os cartões do Início mandam pra cá com "?status=" — "Em jogo" chega como
+	// enviado,visualizado,em_negociacao,aguardando_assinatura; "A receber" e "Taxa de
+	// aprovação" chegam como aprovado,convertido (ver `paramStatus` em
+	// pages/olli/inicio/financeiro.ts). São os MESMOS slugs de `StatusOrcamento`, então
+	// não há nome pra traduzir — só filtrar fora um valor torto que não exista no funil.
+	const [searchParams] = useSearchParams();
+	const statusDaUrl = useMemo(() => {
+		const bruto = searchParams.get("status");
+		if (!bruto) return null;
+		const valores = bruto
+			.split(",")
+			.map((s) => s.trim())
+			.filter((s) => STATUS_VALIDOS.has(s));
+		return valores.length > 0 ? new Set(valores) : null;
+	}, [searchParams]);
+
 	const [busca, setBusca] = useState("");
 	const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusOrcamento>("todos");
+	// O filtro que veio da URL manda até o dono trocar o status manualmente no
+	// dropdown — a partir daí a escolha dele prevalece (mesmo que ele volte a "Todos").
+	const [filtroManual, setFiltroManual] = useState(false);
 
 	/** O editor aberto. `ehNovo` decide se o número será gerado no submit. */
 	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean } | null>(null);
@@ -136,13 +159,17 @@ export default function OrcamentosPage() {
 
 	const linhas = useMemo(() => {
 		let lista = data ?? [];
-		if (filtroStatus !== "todos") lista = lista.filter((l) => l.status === filtroStatus);
+		if (!filtroManual && statusDaUrl) {
+			lista = lista.filter((l) => l.status && statusDaUrl.has(l.status));
+		} else if (filtroStatus !== "todos") {
+			lista = lista.filter((l) => l.status === filtroStatus);
+		}
 		const termo = busca.trim().toLowerCase();
 		if (!termo) return lista;
 		return lista.filter(
 			(l) => (l.numero ?? "").toLowerCase().includes(termo) || (l.cliente_nome ?? "").toLowerCase().includes(termo),
 		);
-	}, [data, busca, filtroStatus]);
+	}, [data, busca, filtroStatus, statusDaUrl, filtroManual]);
 
 	const somaVisivel = useMemo(() => linhas.reduce((s, l) => s + (l.valor_total ?? 0), 0), [linhas]);
 
@@ -284,7 +311,13 @@ export default function OrcamentosPage() {
 						/>
 					</div>
 
-					<Select value={filtroStatus} onValueChange={(v) => setFiltroStatus(v as "todos" | StatusOrcamento)}>
+					<Select
+						value={filtroStatus}
+						onValueChange={(v) => {
+							setFiltroStatus(v as "todos" | StatusOrcamento);
+							setFiltroManual(true);
+						}}
+					>
 						<SelectTrigger className="h-10 w-full rounded-full sm:w-56" aria-label="Filtrar por status">
 							<SelectValue placeholder="Status" />
 						</SelectTrigger>
