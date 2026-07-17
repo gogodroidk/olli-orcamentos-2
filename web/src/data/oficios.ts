@@ -90,3 +90,51 @@ export const OFICIO_GERAL: OficioLanding = {
 
 /** Total REAL de calculadoras — a página não chuta número. */
 export const TOTAL_CALCULADORAS = CALCULOS.length;
+
+/* ───────────────────────── SEO: as páginas /para/[oficio] ─────────────────────── */
+
+/**
+ * `VerticalId` → slug da URL. É um `Record` EXAUSTIVO de propósito (mesmo truque do
+ * `TENANT_DA_TABELA` do painel): adicionar uma vertical nova em `verticais.ts` sem
+ * decidir o slug **não compila** — em vez de a página sumir do site em silêncio.
+ *
+ * Os slugs são a PROFISSÃO, não a categoria: quem procura no Google digita
+ * "app para eletricista", não "app para elétrica". A vertical é a nossa taxonomia
+ * interna; o slug é a palavra do usuário. Por isso os dois existem separados.
+ */
+export const SLUG_POR_OFICIO: Record<VerticalId, string> = {
+  refrigeracao: 'climatizacao-e-refrigeracao',
+  eletrica: 'eletricista',
+  hidraulica: 'encanador',
+  pintura: 'pintor',
+  dedetizacao: 'dedetizadora',
+  jardinagem: 'jardinagem',
+  geral: 'prestador-de-servico',
+};
+
+/** Como o profissional se chama (entra no H1 e no title). */
+export const PROFISSAO_POR_OFICIO: Record<VerticalId, string> = {
+  refrigeracao: 'climatização e refrigeração',
+  eletrica: 'eletricista',
+  hidraulica: 'encanador',
+  pintura: 'pintor',
+  dedetizacao: 'dedetizadora',
+  jardinagem: 'jardinagem e paisagismo',
+  geral: 'prestador de serviço',
+};
+
+/**
+ * A DOR de cada ofício, em uma linha. É o único texto desta página escrito à mão —
+ * e por isso é a única parte que pode envelhecer. Fica curto e sobre o CICLO
+ * (orçamento → OS → recibo), que é verdade para todos, em vez de prometer
+ * ferramenta que talvez não exista.
+ */
+export const DOR_POR_OFICIO: Record<VerticalId, string> = {
+  refrigeracao: 'Orçamento na hora da visita, PMOC sem planilha e o histórico de cada máquina no QR.',
+  eletrica: 'Orçamento de quadro, circuito e ponto — com o cálculo feito no celular, sem app de terceiro.',
+  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a OS assinada na tela.',
+  pintura: 'Quantos litros, quantas demãos, quanto cobrar — e o orçamento sai pronto do mesmo lugar.',
+  dedetizacao: 'Certificado ANVISA, dosagem calculada e o comprovante que o cliente exige.',
+  jardinagem: 'Poda, adubação e contrato mensal — orçamento e recibo sem caderninho.',
+  geral: 'Do áudio do cliente ao recibo pago, sem planilha e sem depender de escritório.',
+};

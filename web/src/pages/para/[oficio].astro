@@ -1,0 +1,216 @@
+---
+/**
+ * /para/[oficio] — as páginas de ofício (LANDING_BRIEF, arquitetura hub-and-spoke).
+ *
+ * É AQUI que mora o SEO: quem procura digita "app para eletricista", não "sistema de
+ * field service". A home é genérica de propósito; estas páginas são específicas.
+ *
+ * TEMPLATE ÚNICO, CONTEÚDO DA FONTE: as rotas saem de `VERTICAIS` (o mesmo catálogo
+ * do app) e as calculadoras vêm de `calculosDoOficio()` — a MESMA função de gate que
+ * a tela do app usa. Cada calculadora traz `nome`, `descricao` e `base` (a norma:
+ * "NBR 5410 §6.2.5", "NBR 5626"…), que é conteúdo técnico real, não texto de venda.
+ * Ninguém escreveu essas linhas para o site: elas são o produto se descrevendo.
+ *
+ * Consequência: adicionar uma calculadora ao app publica conteúdo novo aqui sozinho.
+ * E não há como esta página prometer uma ferramenta que o app não tem.
+ *
+ * Os ofícios do briefing que NÃO existem em `verticais.ts` (montador de móveis,
+ * marido de aluguel) NÃO viram página: página de SEO para um ofício sem ferramenta
+ * seria exatamente a promessa vazia que a regra da casa proíbe.
+ */
+import Layout from "../../layouts/Layout.astro";
+import OlliLogo from "../../components/OlliLogo.astro";
+import { calculosDoOficio } from "../../../../src/services/calculosOficio";
+import { VERTICAIS } from "../../../../src/services/verticais";
+import {
+	DOR_POR_OFICIO,
+	OFICIOS,
+	PROFISSAO_POR_OFICIO,
+	SLUG_POR_OFICIO,
+} from "../../data/oficios";
+
+const APP_URL = "https://app.olliorcamentos.online";
+
+export function getStaticPaths() {
+	return VERTICAIS.map((v) => ({
+		params: { oficio: SLUG_POR_OFICIO[v.id] },
+		props: { id: v.id },
+	}));
+}
+
+const { id } = Astro.props;
+const oficio = OFICIOS.find((o) => o.id === id)!;
+const profissao = PROFISSAO_POR_OFICIO[id];
+const dor = DOR_POR_OFICIO[id];
+const calculos = calculosDoOficio(id);
+
+const titulo = `App de orçamento e ordem de serviço para ${profissao} — OLLI`;
+const descricao = `${dor} Grátis para começar: orçamento, OS e recibo no celular, com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`;
+
+/**
+ * BreadcrumbList — o brief pede nas subpáginas. Ajuda o Google a entender a
+ * hierarquia (home → ofício) e rende o caminho no resultado de busca.
+ */
+const schemaBreadcrumb = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: [
+		{ "@type": "ListItem", position: 1, name: "OLLI", item: Astro.site?.origin },
+		{ "@type": "ListItem", position: 2, name: oficio.label, item: Astro.url.href },
+	],
+};
+---
+
+<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb]}>
+	<header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
+		<nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
+			<a href="/" aria-label="OLLI — início"><OlliLogo /></a>
+			<a
+				href={APP_URL}
+				class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-strong"
+				>Começar grátis</a
+			>
+		</nav>
+	</header>
+
+	<main id="conteudo">
+		<!-- ══════════ HERO DO OFÍCIO ══════════ -->
+		<section class="mx-auto max-w-4xl px-6 pb-16 pt-14">
+			<nav aria-label="Você está aqui" class="text-sm text-muted">
+				<a href="/" class="hover:text-brand">Início</a>
+				<span aria-hidden="true" class="mx-1.5">/</span>
+				<span class="text-slate">{oficio.label}</span>
+			</nav>
+
+			<span class="eyebrow mt-6 block">{oficio.emoji} {oficio.label}</span>
+			<h1 class="mt-4 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
+				App de orçamento e OS<br />para <span class="brand-text">{profissao}</span>.
+			</h1>
+			<p class="mt-6 max-w-2xl text-lg leading-relaxed text-slate">{dor}</p>
+
+			<div class="mt-8 flex flex-col gap-3 sm:flex-row">
+				<a
+					href={APP_URL}
+					class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+					>Criar meu primeiro orçamento — grátis</a
+				>
+				<a
+					href="/#planos"
+					class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+					>Ver os planos</a
+				>
+			</div>
+			<div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+				<span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem cartão pra testar</span>
+				<span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Funciona sem internet</span>
+				<span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Grátis sem prazo</span>
+			</div>
+		</section>
+
+		<!-- ══════════ AS FERRAMENTAS REAIS DO OFÍCIO ══════════
+		     Conteúdo 100% derivado de calculosOficio.ts: nome, descrição e a NORMA em
+		     que cada conta se apoia. É o que diferencia esta página de uma landing
+		     genérica — e é impossível ela mentir, porque é o próprio app falando. -->
+		{calculos.length > 0 && (
+			<section class="border-y border-line bg-paper">
+				<div class="mx-auto max-w-4xl px-6 py-20">
+					<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
+						{calculos.length} ferramenta{calculos.length > 1 ? "s" : ""} de {profissao}, dentro do orçamento.
+					</h2>
+					<p class="mt-4 max-w-2xl text-slate">
+						Cada conta é aterrada em norma ou fórmula real, e o resultado vira item do orçamento com um toque —
+						sem sair do app, sem calculadora de terceiro, sem sinal.
+					</p>
+
+					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
+						{calculos.map((c) => (
+							<li class="rounded-2xl border border-line bg-white p-6">
+								<div class="text-2xl" aria-hidden="true">{c.icon}</div>
+								<h3 class="mt-2.5 font-bold text-ink">{c.nome}</h3>
+								<p class="mt-1.5 text-sm leading-relaxed text-slate">{c.descricao}</p>
+								<p class="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{c.base}</p>
+							</li>
+						))}
+					</ul>
+				</div>
+			</section>
+		)}
+
+		<!-- ══════════ DOCUMENTOS PRONTOS (só os disponíveis) ══════════ -->
+		{oficio.documentos.length > 0 && (
+			<section class="mx-auto max-w-4xl px-6 py-20">
+				<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
+					A papelada de {profissao}, resolvida.
+				</h2>
+				<ul class="mt-8 flex flex-wrap gap-3">
+					{oficio.documentos.map((d) => (
+						<li class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate">
+							<span class="text-mint">✓</span> {d}
+						</li>
+					))}
+				</ul>
+			</section>
+		)}
+
+		<!-- ══════════ O CICLO (vale pra todo ofício) ══════════ -->
+		<section class="border-t border-line bg-paper">
+			<div class="mx-auto max-w-4xl px-6 py-20">
+				<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
+					Do áudio do cliente ao dinheiro na conta.
+				</h2>
+				<ol class="mt-8 grid gap-4 sm:grid-cols-3">
+					<li class="rounded-2xl border border-line bg-white p-6">
+						<div class="text-sm font-extrabold text-brand tnum">01</div>
+						<h3 class="mt-2 font-bold text-ink">Orçamento</h3>
+						<p class="mt-1.5 text-sm text-slate">Fala o serviço, a OLLI monta o PDF e manda o link pro cliente aprovar.</p>
+					</li>
+					<li class="rounded-2xl border border-line bg-white p-6">
+						<div class="text-sm font-extrabold text-brand tnum">02</div>
+						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
+						<p class="mt-1.5 text-sm text-slate">Aprovou, virou OS: checklist, fotos e assinatura do cliente na tela.</p>
+					</li>
+					<li class="rounded-2xl border border-line bg-white p-6">
+						<div class="text-sm font-extrabold text-brand tnum">03</div>
+						<h3 class="mt-2 font-bold text-ink">Recibo</h3>
+						<p class="mt-1.5 text-sm text-slate">Recebeu, emite o recibo. O histórico do cliente fica guardado pra próxima.</p>
+					</li>
+				</ol>
+
+				<div class="mt-12 rounded-2xl border border-line bg-white p-8 text-center">
+					<p class="text-lg font-semibold text-ink">Comece de graça, sem cartão.</p>
+					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
+						O plano Grátis faz orçamento, OS, cliente e agenda sem limite — e não tem prazo pra acabar.
+					</p>
+					<a
+						href={APP_URL}
+						class="mt-6 inline-block rounded-xl bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+						>Criar meu primeiro orçamento</a
+					>
+				</div>
+			</div>
+		</section>
+
+		<!-- ══════════ OUTROS OFÍCIOS (links internos = o hub-and-spoke) ══════════ -->
+		<section class="mx-auto max-w-4xl px-6 py-16">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-muted">A OLLI também serve</h2>
+			<ul class="mt-4 flex flex-wrap gap-2">
+				{OFICIOS.filter((o) => o.id !== id).map((o) => (
+					<li>
+						<a
+							href={`/para/${SLUG_POR_OFICIO[o.id]}`}
+							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+						>
+							<span aria-hidden="true">{o.emoji}</span>{o.label}
+						</a>
+					</li>
+				))}
+			</ul>
+		</section>
+	</main>
+
+	<footer class="border-t border-line bg-paper">
+		<div class="mx-auto max-w-7xl px-6 py-10 text-sm text-muted">
+			<a href="/" class="hover:text-brand">← Voltar para o início</a>
+		</div>
+	</footer>
+</Layout>
