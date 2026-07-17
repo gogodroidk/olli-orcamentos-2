@@ -82,7 +82,7 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
 
                       {bloco.tipo === 'aviso' && (
                         <div class="flex gap-3 rounded-xl border border-line bg-tint px-4 py-3">
-                          <span class="shrink-0 text-mint" aria-hidden="true">✓</span>
+                          <span class="shrink-0 text-check" aria-hidden="true">✓</span>
                           <p class="text-sm leading-relaxed text-slate">{bloco.conteudo}</p>
                         </div>
                       )}
@@ -102,9 +102,9 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
     <div class="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
       <OlliLogo size={28} />
       <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-        <a href="/legal/privacidade" class="transition hover:text-ink">Privacidade</a>
-        <a href="/legal/termos" class="transition hover:text-ink">Termos</a>
-        <a href="/ajuda" class="transition hover:text-ink">Ajuda</a>
+        <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
+        <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
+        <a href="/ajuda/" class="transition hover:text-ink">Ajuda</a>
         <a href="/" class="transition hover:text-ink">Início</a>
       </div>
       <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>

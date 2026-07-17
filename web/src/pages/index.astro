@@ -177,7 +177,7 @@ const faq = [
 	// as contagens saem de `data/oficios.ts`, que lê o código do app.
 	{
 		q: "Quanto custa um app de orçamento?",
-		a: "Na OLLI: R$ 0 no plano Grátis, sem prazo pra acabar. O Pro custa R$ 39/mês e o Empresa R$ 99/mês — os dois abaixo do DAS do MEI. Concorrentes de campo no Brasil cobram de R$ 119 a R$ 5.000/mês, e os gringos cobram por técnico.",
+		a: "Na OLLI: R$ 0 no plano Grátis, sem prazo pra acabar. O Pro custa R$ 39/mês e o Empresa R$ 99/mês — os dois abaixo do DAS do MEI. A maioria dos sistemas de campo no Brasil nem publica preço: você fala com um consultor e paga por técnico. Aqui o preço está nesta página, e o Grátis não é teste de 7 dias.",
 	},
 	{
 		q: "Existe app grátis de ordem de serviço?",
@@ -269,7 +269,7 @@ const schemaFaq = {
         <div class="mt-7 flex flex-wrap gap-2">
           {OFICIOS.map((o) => (
             <a
-              href={`/para/${SLUG_POR_OFICIO[o.id]}`}
+              href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
               class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
             >
               <span aria-hidden="true">{o.emoji}</span>{o.label}
@@ -277,9 +277,9 @@ const schemaFaq = {
           ))}
         </div>
         <div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
-          <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem cartão pra testar</span>
-          <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem fidelidade</span>
-          <span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Celular + computador</span>
+          <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
+          <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem fidelidade</span>
+          <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Celular + computador</span>
         </div>
       </div>
 
@@ -292,11 +292,19 @@ const schemaFaq = {
   <!-- ══════════ BARRA DE CONFIANÇA ══════════ -->
   <section class="border-y border-line bg-paper">
     <div class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-6 py-10 sm:grid-cols-4">
+      {/*
+        CC-05: a barra abria com "698 códigos HVAC" — 3 dos 4 números eram de
+        climatização, gritando o nicho errado logo abaixo de um hero que fala com 6
+        ofícios. Reordenada pra LIDERAR com o geral (grátis + amplitude) e deixar a
+        profundidade HVAC (698) por ÚLTIMO, como prova de "olha até onde vai", não
+        como manchete. Os números são reais e vêm da fonte: OFICIOS e
+        TOTAL_CALCULADORAS saem de data/oficios.ts (o mesmo catálogo do app).
+      */}
       {[
-        { k: '698', v: 'códigos de erro HVAC' },
-        { k: 'IA', v: 'diagnóstico por sintoma' },
-        { k: 'PMOC', v: 'Lei 13.589 resolvida' },
-        { k: 'R$ 0', v: 'para começar' },
+        { k: 'R$ 0', v: 'grátis, sem prazo' },
+        { k: String(OFICIOS.length), v: 'ofícios atendidos' },
+        { k: String(TOTAL_CALCULADORAS), v: 'calculadoras de campo' },
+        { k: '698', v: 'códigos de erro (climatização)' },
       ].map((s) => (
         <div class="text-center">
           <div class="text-3xl font-extrabold tracking-tight text-ink tnum">{s.k}</div>
@@ -332,7 +340,7 @@ const schemaFaq = {
     <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {OFICIOS.map((o) => (
         <a
-          href={`/para/${SLUG_POR_OFICIO[o.id]}`}
+          href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
           class="group rounded-2xl border border-line bg-white p-6 transition hover:border-brand/40"
         >
           <div class="text-3xl" aria-hidden="true">{o.emoji}</div>
@@ -435,7 +443,7 @@ const schemaFaq = {
             </div>
             <ul class="mt-6 flex-1 space-y-3 text-sm text-slate">
               {p.itens.map((i) => (
-                <li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-mint">✓</span><span>{i}</span></li>
+                <li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-check">✓</span><span>{i}</span></li>
               ))}
             </ul>
             <a
@@ -487,8 +495,8 @@ const schemaFaq = {
       <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
         <a href="#planos" class="transition hover:text-ink">Planos</a>
         <a href="#recursos" class="transition hover:text-ink">Recursos</a>
-        <a href="/legal/privacidade" class="transition hover:text-ink">Privacidade</a>
-        <a href="/legal/termos" class="transition hover:text-ink">Termos</a>
+        <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
+        <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
         <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
       </div>
       <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>

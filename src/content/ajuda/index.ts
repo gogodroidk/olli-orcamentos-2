@@ -457,13 +457,17 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
     id: 'falar-com-suporte',
     categoriaId: 'suporte',
     titulo: 'Falar com o suporte',
-    resumo: 'WhatsApp, e-mail ou formulário — escolha o canal que preferir.',
-    tags: ['contato', 'whatsapp', 'email', 'duvida', 'problema', 'bug'],
+    // P1 (auditoria): este artigo prometia "o card Suporte, logo abaixo da busca" +
+    // e-mail + "formulário dentro do app" — nenhum dos três existe na Central de Ajuda
+    // nem no app. Prometer canal que não há é pior que não citar canal. Agora aponta o
+    // único que funciona hoje: o WhatsApp de vendas/suporte (o mesmo da landing).
+    resumo: 'Fale com a gente no WhatsApp — é o canal mais rápido.',
+    tags: ['contato', 'whatsapp', 'duvida', 'problema', 'bug'],
     corpo: [
       {
         tipo: 'paragrafo',
         conteudo:
-          'Ficou com dúvida que este artigo não resolveu, ou achou algo que parece um erro? Fale com a gente — o card "Suporte", logo abaixo da busca na Central de Ajuda, tem três jeitos de chegar até nós: WhatsApp (o mais rápido), e-mail e um formulário rápido dentro do próprio app.',
+          'Ficou com dúvida que este artigo não resolveu, ou achou algo que parece um erro? Fale com a gente no WhatsApp: (11) 94172-7487. É o canal mais rápido — mande sua mensagem que a gente responde por lá.',
       },
       {
         tipo: 'aviso',

@@ -17,7 +17,11 @@
   --color-brand-strong: #0a55a6;   /* hover/press */
   --color-brand-ink: #0a2547;      /* navy profundo — heros, rodapé */
   --color-cyan: #3fd8ea;           /* ciano do gradiente da logo */
-  --color-mint: #2be39a;           /* menta — sucesso / "negócio fechado" */
+  --color-mint: #2be39a;           /* menta — sucesso / "negócio fechado" (tint decorativo: bg-mint/15) */
+  /* a11y-01: o ✓ em text-mint sobre fundo claro dava contraste 1.67:1 (ilegível).
+     Este verde escuro dá ~5,2:1 no branco — passa AA pra texto. Os checks usam
+     text-check; o mint claro continua só nos tints de fundo. */
+  --color-check: #0a7d4f;          /* verde do ✓ — acessível sobre fundo claro */
 
   /* Neutros */
   --color-ink: #0f1c2e;            /* texto principal (navy quase-preto) */

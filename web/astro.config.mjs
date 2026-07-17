@@ -11,6 +11,12 @@ import sentry from '@sentry/astro';
 // https://astro.build/config
 export default defineConfig({
   site: 'https://olliorcamentos.online',
+  // ST-04: o canonical e o sitemap saem COM barra final (/ajuda/), mas os links
+  // internos eram sem barra (/ajuda) — e o Worker de assets responde 307 → /ajuda/
+  // em cada clique e em cada aresta que o Googlebot atravessa. `trailingSlash: 'always'`
+  // torna a barra a forma canônica; combinado com os hrefs já corrigidos pra ter barra,
+  // o 307 some. `build.format: 'directory'` (padrão) já gera /ajuda/index.html.
+  trailingSlash: 'always',
   // O sentry() só carrega opções de BUILD (org/project/authToken p/ source map).
   // A DSN e o resto do runtime moram em sentry.client.config.js — passar dsn aqui
   // está deprecado no SDK 10 ("vai parar de funcionar numa versão futura").

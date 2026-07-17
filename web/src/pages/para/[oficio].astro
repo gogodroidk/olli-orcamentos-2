@@ -139,7 +139,7 @@ const schemaBreadcrumb = {
 				>
 			</div>
 			<div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
-				<span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem cartão pra testar</span>
+				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
 				{/*
 					ERA "Funciona sem internet" — e era falso DUAS vezes nesta página.
 					O offline mora no app Expo, e (a) o CTA daqui leva ao painel WEB, que
@@ -151,8 +151,8 @@ const schemaBreadcrumb = {
 					que ele recebe ao clicar. Quando o APK estiver na loja, o selo offline
 					volta — junto com o botão de baixar que o LANDING_BRIEF pede.
 				*/}
-				<span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Sem instalar nada</span>
-				<span class="inline-flex items-center gap-1.5"><span class="text-mint">✓</span> Grátis sem prazo</span>
+				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem instalar nada</span>
+				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Grátis sem prazo</span>
 			</div>
 		</section>
 
@@ -194,7 +194,7 @@ const schemaBreadcrumb = {
 				<ul class="mt-8 flex flex-wrap gap-3">
 					{oficio.documentos.map((d) => (
 						<li class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate">
-							<span class="text-mint">✓</span> {d}
+							<span class="text-check">✓</span> {d}
 						</li>
 					))}
 				</ul>
@@ -246,7 +246,7 @@ const schemaBreadcrumb = {
 				{OFICIOS.filter((o) => o.id !== id).map((o) => (
 					<li>
 						<a
-							href={`/para/${SLUG_POR_OFICIO[o.id]}`}
+							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
 							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
 						>
 							<span aria-hidden="true">{o.emoji}</span>{o.label}
