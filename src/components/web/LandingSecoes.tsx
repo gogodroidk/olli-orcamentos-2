@@ -424,7 +424,7 @@ const PLANOS_PREVIEW: PlanoPreview[] = [
     // Os 3 recursos de equipe ainda não existem — mesmo rótulo "(em breve)" da
     // fonte de verdade (PlanosScreen.tsx PLANOS_BASE), pra não vender como
     // pronto o que o checkout já avisa que ainda está chegando.
-    bullets: ['Tudo do Pro', 'Vários técnicos e permissões por papel (em breve)', 'Equipe ao vivo no mapa (em breve)', 'Painel de gestão da equipe (em breve)'],
+    bullets: ['Tudo do Pro', 'Vários técnicos e permissões por papel', 'Equipe ao vivo no mapa (em breve)', 'Painel de gestão da equipe (em breve)'],
   },
 ];
 
@@ -545,7 +545,7 @@ export const FAQ_LANDING: readonly { pergunta: string; resposta: string }[] = [
   },
   {
     pergunta: 'Serve pra quem não é de refrigeração?',
-    resposta: 'Serve. O OLLI nasceu na climatização — por isso tem PMOC, 698 códigos de defeito e diagnóstico por IA —, mas orçamento, ordem de serviço, agenda, rotas, equipe no mapa e cobrança valem pra qualquer serviço de campo: elétrica, energia solar, portões e automação, manutenção predial, dedetização e mais. Se o serviço acontece na casa do cliente, o OLLI serve.',
+    resposta: 'Serve. O OLLI nasceu na climatização — por isso tem PMOC, 698 códigos de defeito e diagnóstico por IA —, mas orçamento, ordem de serviço, agenda, rotas, equipe com papéis e cobrança valem pra qualquer serviço de campo: elétrica, energia solar, portões e automação, manutenção predial, dedetização e mais. Se o serviço acontece na casa do cliente, o OLLI serve.',
   },
   {
     pergunta: 'Como o cliente aprova o orçamento?',

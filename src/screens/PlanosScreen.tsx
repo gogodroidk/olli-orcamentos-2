@@ -121,7 +121,7 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     cta: 'Assinar Empresa — R$ 99/mês',
     beneficios: [
       'Tudo do plano Pro',
-      'Vários técnicos e permissões por papel (em breve)',
+      'Vários técnicos e permissões por papel',
       'Equipe ao vivo no mapa (em breve)',
       'Painel de gestão e metas da equipe (em breve)',
       'Suporte prioritário',
@@ -413,7 +413,7 @@ export default function PlanosScreen() {
           })}
         </View>
 
-        <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o plano por 12 meses. Algumas funções de equipe do Empresa ainda estão chegando (marcadas como "em breve"). 💙</Text>
+        <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o plano por 12 meses. O mapa da equipe ao vivo ainda está chegando (marcado como "em breve"). 💙</Text>
         </>
         )}
       </ScrollView>

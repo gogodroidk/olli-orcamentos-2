@@ -60,7 +60,7 @@ export const PLANOS_BASE: readonly PlanoBase[] = [
 		tagline: "Para equipes que atendem em campo todos os dias.",
 		beneficios: [
 			"Tudo do plano Pro",
-			"Vários técnicos e permissões por papel (em breve)",
+			"Vários técnicos e permissões por papel",
 			"Equipe ao vivo no mapa (em breve)",
 			"Painel de gestão e metas da equipe (em breve)",
 			"Suporte prioritário",

@@ -127,7 +127,7 @@ export default function Planos() {
 			<p className="mt-6 text-xs text-text-secondary">
 				A contratação ainda é feita pelo app do OLLI (ou com a gente, pelo WhatsApp) — o pagamento direto por aqui está
 				chegando. Mensal e anual são assinaturas que renovam automaticamente e podem ser canceladas quando você quiser.
-				Algumas funções de equipe do plano Empresa ainda estão em desenvolvimento (marcadas como “em breve”).
+				O mapa da equipe ao vivo ainda está em desenvolvimento (marcado como “em breve”).
 			</p>
 		</div>
 	);
