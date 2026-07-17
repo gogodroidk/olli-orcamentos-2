@@ -348,8 +348,22 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
       (dois usuários com rede, que é o caso relatado) sem arriscar o offline. Não fecha a borda
       "dois offline", que continua rara e visível.
 
-    Só depois da escolha vale escrever a migration. Recomendação: **Opção 4 agora** (barata, sem
-    risco, resolve o caso que de fato acontece) e a 2 ou 3 quando houver decisão sobre o número
+    **CORREÇÃO da recomendação (2026-07-17), achada ao ir implementar:** a Opção 4 sozinha **não
+    resolve**. Se só o painel passar a numerar por RPC no servidor, o app continua numerando pelo
+    contador LOCAL — e os dois colidem entre si. Para a 4 funcionar, o app também precisa usar a RPC
+    quando tem rede (offline segue no contador local, e a borda "dois offline" continua). Além disso,
+    o seed do contador (a partir do MAIOR número já existente por tenant) **não pôde ser verificado
+    contra o dado real** — o hook de guarda bloqueia MCP em loop, e não se contorna trava de
+    segurança para ganhar um dado. Migration de numeração aplicada sem conferir o seed duplicaria
+    número em documento que vai ao cliente. Fica bloqueado até o dono decidir E o seed poder ser
+    conferido.
+
+    Precedente útil que existe no repo: `espelharVersaoNuvem` (`clienteLink.ts`) JÁ trata `23505`
+    renumerando a versão. Funciona lá porque versão **não vai ao cliente**; número de documento vai —
+    é exatamente essa a diferença que torna a Opção 2 (renumerar) aceitável para versões e delicada
+    para documentos.
+
+    ~~Recomendação anterior: **Opção 4 agora** (barata, sem risco, resolve o caso que de fato acontece)~~ e a 2 ou 3 quando houver decisão sobre o número
     poder mudar. **Não criar a constraint única antes de resolver o (b)** — hoje ela apagaria
     trabalho de campo em silêncio. Nota relacionada: o painel já abandonou `contadores` e deriva do
     MAIOR número visível ao tenant (`webapp/src/olli/mutacoes.ts`), justamente por causa do

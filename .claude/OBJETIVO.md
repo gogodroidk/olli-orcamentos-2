@@ -15,13 +15,19 @@
   Tudo em `claude/piloto-p0` (15 commits, **não pushado** — o merge é ato do dono).
   Ler o **RESUMO FINAL** em `docs/PILOTO/LEDGER.md` antes de agir. Fila nova: só o dono escreve.
 
+- **F0d — DECIDIDO em 17/07 (não é mais bloqueio):** grandfathering por flag. Org que já existia
+  mantém Equipe; org NOVA precisa do Empresa. Motivo: sob incerteza escolhe-se o **reversível**
+  (desfaz com 1 `UPDATE`; usuário cortado churna e não volta). Revogar:
+  `update public.organizacoes set equipe_grandfathered = false;`. Detalhe no EXECUTION_LOG.
+
 - **BLOQUEADO EM HUMANO (não tente, só reporte):**
   `MP_WEBHOOK_SECRET` no worker (o `MP_ACCESS_TOKEN` JÁ está lá — 16/07) ·
-  **F0d (grandfathering)** — trava o MERGE do paywall Empresa: mergear sem decidir corta HOJE quem usa Equipe de graça ·
-  **emulador `olli_phone`** — única prova que falta da Onda 0 (O0-1/O0-2/O0-3 estão codados e provados em teste de lógica) ·
-  rodar `20260724_webhook_events.sql` **ANTES** de publicar o worker (sem a tabela, o webhook responde 500) ·
-  **decisão de produto do O2-19** (numeração: 4 opções em FOLLOWUPS #31) ·
-  Stripe (Installments + 3 Prices) · TOTP admin · rotacionar senha da demo GR Tech.
+  **emulador `olli_phone`** — única prova que falta da Onda 0 (O0-1/O0-2/O0-3 codados e provados em
+  teste de lógica; os testes de login/troca de conta exigem digitar senha, que o piloto não faz) ·
+  **2 migrations a rodar ANTES de publicar o worker** (`20260724_webhook_events.sql` e
+  `20260725_equipe_grandfathering.sql` — fora de ordem o worker responde 500/503) ·
+  **decisão de produto do O2-19** (numeração: 4 opções em FOLLOWUPS #31 — a "opção 4" tem um furo,
+  ver o item) · Stripe (Installments + 3 Prices) · TOTP admin · rotacionar senha da demo GR Tech.
 
 - **APRENDIDO EM 16/07 (não repita):**
   **A própria FILA estava velha.** 5 itens (O3-25..29) já tinham sido corrigidos por `e9a4efe`, e o DoD
