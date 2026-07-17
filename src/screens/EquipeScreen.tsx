@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
+import { GatePro } from '../components/GatePro';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -50,7 +51,11 @@ function corPapel(c: Cores): Record<Papel, string> {
  * Técnico/pessoal nunca chega aqui (a UI que leva à tela já é gateada), mas a
  * própria tela também degrada com uma mensagem se cair aqui sem permissão.
  */
-export default function EquipeScreen() {
+/**
+ * Conteúdo real da tela. O componente EXPORTADO (lá embaixo) é ele envolto no
+ * <GatePro> do plano Empresa — ver o porquê no rodapé deste arquivo.
+ */
+function EquipeConteudo() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const cores = useCores();
@@ -539,3 +544,37 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   linkBox: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: c.strokeGlow, padding: 14, marginTop: Spacing.base },
   linkTexto: { fontSize: 13, color: c.accentLight, fontWeight: '600' },
 });
+
+
+/**
+ * PAYWALL DO PLANO EMPRESA (F0c / item O1-12).
+ *
+ * A gestão de equipe é entitlement do plano Empresa (R$ 99/mês) — `RECURSOS_POR_PLANO`
+ * já listava `equipe` lá desde a Onda 1 —, mas NADA checava: qualquer conta, inclusive
+ * a Grátis, convidava técnicos e usava o Modo Empresa inteiro sem pagar. A tela até
+ * dizia "A gestão de equipe é do plano Empresa", e mesmo assim deixava usar: aviso não
+ * é enforcement.
+ *
+ * O gate é no COMPONENTE EXPORTADO (e não dentro do conteúdo) para o `comCentroDesktop`
+ * do navigator herdar a trava sem precisar repeti-la.
+ *
+ * O `GatePro` erra para o lado certo: enquanto o plano carrega ele mostra o preview
+ * BLOQUEADO (não pisca o conteúdo pago para quem não paga) e, se a leitura de rede
+ * falhar, o `usePlano` mantém o último plano bom do cache — quem paga não perde a tela
+ * por causa de uma oscilação.
+ *
+ * ⚠️ Isto é a camada de UX. O enforcement de verdade é server-side, no worker
+ * (`handleConvite` checa `orgTemEmpresaAtivo`) — paywall no client é vitrine, não
+ * fechadura.
+ */
+export default function EquipeScreen() {
+  return (
+    <GatePro
+      recurso="equipe"
+      plano="empresa"
+      beneficio="Convide técnicos, defina papéis e veja o trabalho de todo mundo num lugar só."
+    >
+      <EquipeConteudo />
+    </GatePro>
+  );
+}

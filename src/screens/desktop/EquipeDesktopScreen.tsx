@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, Pressable, Switch, ActivityIndicator, Modal, ScrollView, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { GatePro } from '../../components/GatePro';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
@@ -53,7 +54,7 @@ function descricaoPapel(papel: Papel): string {
  * listarMembros/definirAtivoMembro/criarConvite já usados na EquipeScreen
  * mobile — mesmo gate de conta (empresa + ver_equipe) — sem tocar nela.
  */
-export default function EquipeDesktopScreen() {
+function EquipeDesktopConteudo() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { org, tipo, carregando: carregandoConta } = useTipoConta();
@@ -780,3 +781,31 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     color: c.primary,
   },
 });
+
+
+/**
+ * PAYWALL DO PLANO EMPRESA (F0c / item O1-12) — versão DESKTOP.
+ *
+ * Gatear só a `EquipeScreen` (mobile) deixaria a porta dos fundos aberta: o
+ * `AppNavigator` registra ESTA tela direto como `EquipeTab` do desktop/web
+ * (`component={EquipeDesktopScreen}`), sem passar pelo `comCentroDesktop(EquipeScreen)`
+ * que envolve a mobile. Ou seja, no navegador a Equipe continuaria de graça — paywall
+ * com porta dos fundos não é paywall, e o dono pediu paridade mobile↔desktop.
+ *
+ * Mesmo recurso (`equipe`) e mesmo plano da mobile, de propósito: entitlement é do
+ * produto, não da superfície.
+ *
+ * ⚠️ Camada de UX. O enforcement de verdade é server-side, no worker
+ * (`handleConvite` checa `orgTemEmpresaAtivo`).
+ */
+export default function EquipeDesktopScreen() {
+  return (
+    <GatePro
+      recurso="equipe"
+      plano="empresa"
+      beneficio="Convide técnicos, defina papéis e veja o trabalho de todo mundo num lugar só."
+    >
+      <EquipeDesktopConteudo />
+    </GatePro>
+  );
+}

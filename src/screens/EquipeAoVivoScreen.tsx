@@ -21,10 +21,11 @@
  * um aviso honesto em vez de um botão que não faria nada — a lista de
  * técnicos + deep-link do mapa abaixo continua funcionando plenamente.
  *
- * Gate de plano: recurso 'mapa_equipe' é do plano Empresa (Onda 1). Esta tela
- * é registrada pela frente 2 (convites + navegação) — aqui só preparamos o
- * componente pronto para ser importado e envolvido em <GatePro> por quem
- * registrar a rota.
+ * Gate de plano: recurso 'mapa_equipe' é do plano Empresa (Onda 1). O <GatePro>
+ * é aplicado AQUI MESMO, no componente exportado (ver o comentário dele) — antes
+ * este cabeçalho dizia que a tela estava "pronta para ser envolvida em <GatePro>
+ * por quem registrar a rota", e ninguém envolveu: o mapa ficou de graça em
+ * qualquer plano até 2026-07-16 (item O1-12).
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Platform, Alert } from 'react-native';
@@ -32,6 +33,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { GatePro } from '../components/GatePro';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliCard } from '../components/OlliCard';
@@ -53,12 +55,36 @@ function estaRecente(iso: string): boolean {
   return !isNaN(ms) && ms >= 0 && ms <= 15 * 60000;
 }
 
+/**
+ * PAYWALL DO PLANO EMPRESA (F0c / item O1-12) + gate de papel.
+ *
+ * O cabeçalho deste arquivo já dizia que o componente estava "pronto para ser
+ * importado e envolvido em <GatePro> por quem" o usasse — e ninguém envolveu: o mapa
+ * da equipe ao vivo ficava de graça em qualquer plano, junto com o resto do Modo
+ * Empresa. `mapa_equipe` já era entitlement do plano Empresa em `RECURSOS_POR_PLANO`;
+ * só faltava alguém checar.
+ *
+ * A ORDEM importa: `GatePro` (plano) POR FORA, `GuardaPapel` (papel) por dentro. Quem
+ * não assina vê a oferta do plano; quem assina mas é técnico vê "isto é de gestão".
+ * Trocar a ordem mostraria "sem permissão" para quem só precisava assinar.
+ *
+ * Recurso `mapa_equipe` e não `equipe`: são entitlements distintos, ainda que hoje
+ * ambos caiam no Empresa.
+ *
+ * ⚠️ Camada de UX. O enforcement de verdade é server-side, no worker.
+ */
 export default function EquipeAoVivoScreen() {
   // Agenda/rota da equipe inteira é de gestão — o técnico só vê a própria.
   return (
-    <GuardaPapel acao="ver_agenda_equipe" area="Equipe ao vivo">
-      <EquipeAoVivoConteudo />
-    </GuardaPapel>
+    <GatePro
+      recurso="mapa_equipe"
+      plano="empresa"
+      beneficio="Veja onde cada técnico está agora e quem chega primeiro no chamado."
+    >
+      <GuardaPapel acao="ver_agenda_equipe" area="Equipe ao vivo">
+        <EquipeAoVivoConteudo />
+      </GuardaPapel>
+    </GatePro>
   );
 }
 
