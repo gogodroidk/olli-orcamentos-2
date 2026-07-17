@@ -36,6 +36,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Campo, CampoMoeda, formatarMoeda } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
+import { qtdParaTexto, textoParaNumero } from "@/olli/numero";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
 import { calcularTotais, comTotais, subtotalDoItem } from "@/olli/components/totais";
 import { novoId } from "@/olli/contrato";
@@ -199,23 +200,8 @@ const normalizar = (s: string) =>
 		.replace(/\p{Diacritic}/gu, "")
 		.toLowerCase();
 
-/** Quantidade em pt-BR: 2,5 (e não 2.5). O valor guardado continua sendo `number`. */
-const qtdParaTexto = (n: number) => String(n).replace(".", ",");
-
-/**
- * Texto → número. Devolve NaN quando não dá para ler — quem chama decide o que fazer.
- *
- * O ponto do teclado numérico é DECIMAL, não separador de milhar: quando não há
- * vírgula e há exatamente UM ponto ("2.5"), ele é a vírgula decimal (2,5) — sem
- * este caso, `replace(/\./g,"")` transformaria "2.5" em 25 e multiplicaria por 10
- * a quantidade/desconto em silêncio, indo pro PDF do cliente. O formato pt-BR
- * completo ("1.234,56", com vírgula) continua caindo no ramo de baixo.
- */
-const textoParaNumero = (t: string) => {
-	const s = (t ?? "").trim();
-	if (!s.includes(",") && (s.match(/\./g) ?? []).length === 1) return Number(s);
-	return Number(s.replace(/\./g, "").replace(",", "."));
-};
+// `qtdParaTexto` / `textoParaNumero` moram em `@/olli/numero`: é código de dinheiro
+// (vai pro PDF do cliente) e lá tem teste de regressão — ver `npm run test:numero-web`.
 
 /** Padrão do app quando o campo `formasPagamento` falta no blob (`defaultFormas`). */
 const FORMAS_PADRAO = { credito: false, debito: false, dinheiro: false, pix: true } as const;
