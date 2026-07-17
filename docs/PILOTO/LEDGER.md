@@ -109,3 +109,38 @@
 | 2026-07-17T04:52:13Z | P15 | FIM DONE | ea96c93 — a marca OLLI NAO estava ausente (plano desatualizado, 3o item nesta sessao): remove_olli_brand e Recurso real e o orcamento ja gateava. O QUEBRADO era pior: o entitlement era honrado em 1 de 3 documentos — recibo e certificado chamavam footerSeloOlliHtml() INCONDICIONALMENTE, entao quem pagava R$39/99 tirava a marca do orcamento e continuava mandando o RECIBO com marca de outra empresa pro mesmo cliente. Ligados os 3 call sites que faltavam (nenhum usava usePlano). RECURSO_REMOVE_MARCA saiu de 2 redeclaracoes com `as Recurso` (cast que engoliria erro de digitacao) e veio p/ a fonte. src/services/entitlements.ts: tabela plano->recursos virou modulo PURO = comeco da P15 e o que torna a regra testavel. PROVA: 8 asserts exit 0; mutacao (gratis ganhando o entitlement) falha exit 1. |
 | 2026-07-17T04:52:13Z | P9 | FIM DONE | 1e9958e — PostHog atras da porta que ja existia (ports/AnalyticsProvider previa "dupla escrita sem trocar call-sites"): nenhum call site mudou. SEM SDK (o posthog-react-native traz autocapture, que captura TELA e TEXTO = o oposto da regra de PII). analyticsScrub.ts e o coracao: ALLOWLIST DE FORMA, nao blocklist de nome (blocklist perde: basta props.dados). So sai numero, booleano e slug curto; nome/endereco/telefone/objeto reprovam pela FORMA. Nao mascara: DESCARTA (meio telefone identifica). O NOME do evento tb e validado (track("erro: "+e.message) vazaria a mensagem). distinct_id = SHA-256(sal+userId) via expo-crypto. esquecerPseudonimo() no SIGNED_OUT. DESLIGADO sem a chave = pode publicar hoje. PROVA: 26 asserts exit 0; mutacao (blocklist ingenua) vaza itens:[{nome}] e falha exit 1. DONO: criar o projeto PostHog; ao ligar, considere FIXAR a chave como a DSN do Sentry (env var faltando desliga em silencio). |
 | 2026-07-17T04:52:13Z | P13 | FIM DONE (Fases 1-2) | 0e0258b — landing multi-oficio SEM redesign (o dono aprovou o estilo). A jogada: web/src/data/oficios.ts IMPORTA verticais.ts + calculosOficio.ts do app (ambos puros) e conta com calculosDoOficio, a MESMA funcao de gate da tela -> a copy nao PODE mais divergir do produto. Hero sem PMOC + chips da fonte; secao "Feito pro seu oficio" com 6 cards reais + VERTICAL_GERAL (o briefing pedia 8, incluindo "Montagem" e "Marido de aluguel", que NAO existem na fonte — nao inventei); so ferramenta disponivel:true entra (Eletrica anuncia 3 calculadoras, nao "checklist NR-10"). FAQ 4->9 answer-first. JSON-LD (gap n1, era ZERO): Organization + SoftwareApplication offers 0/39/99 SEM aggregateRating + FAQPage serializado do MESMO array da tela. ACHADO: "Equipe com papeis (em breve)" era FALSO — Onda 2 CONCLUIDA no EXECUTION_LOG; a landing SUBvendia a feature principal do R$99. O "(em breve)" do mapa FICA (captura em background espera a Onda 8). PROVA: pnpm build exit 0; 3 blocos JSON-LD parseiam; as 9 perguntas do schema aparecem no HTML visivel. NAO FEITO: dominio canonico (decisao humana — 301 custa meses). |
+
+## RESUMO FINAL 2 — 2026-07-17 (força total sobre o Plano-Mestre)
+
+Depois da FILA zerar, ataquei o **Plano-Mestre inteiro** (16 prioridades). Branch
+`claude/piloto-p0`, 28 commits, nada publicado. Suíte: 134 asserts, exit 0.
+
+| # | prioridade | estado |
+|---|---|---|
+| 1 | Provar os 3 P0 no aparelho | 🔴 **DONO** — emulador; os testes de login/troca de conta exigem digitar senha |
+| 2 | Ligar o Mercado Pago | 🔴 **DONO** — falta `MP_WEBHOOK_SECRET` |
+| 3 | Paywall Empresa ponta a ponta | ✅ código (F0c + F0d decidido) · testar vivo = dono |
+| 4 | Blindar infra financeira | ✅ webhook_events · rate limit fail-closed · ledger imutável — ❌ numeração (decisão) · baseline 13 tabelas (dono) |
+| 5 | Reconciliar fontes de verdade | ✅ + auditoria de copy (5 divergências) |
+| 6 | CRUD web + 3 estados | ✅ |
+| 7 | Bugs de dinheiro do painel | ✅ (+1 bug novo achado) |
+| 8 | TOTP + rotacionar senha demo | 🔴 **DONO** (minutos) |
+| 9 | Sentry + PostHog | ✅ |
+| 10 | Trilha das lojas | 🔴 **DONO** — contas Play/Apple; IAP iOS não codado |
+| 11 | Onboarding por CNPJ | ✅ termina no 1º orçamento — falta fallback Casa dos Dados (chave paga) |
+| 12 | Tabela de preços única | 🟡 copy auditada — decisão de CRÉDITOS é do dono |
+| 13 | Landing multi-ofício | ✅ Fases 1-2-3 (domínio intocado por ordem do dono) |
+| 14 | Resend + Storage | ✅ e-mail do convite — ❌ Storage p/ logo (fotos `file://`) |
+| 15 | Motor de monetização | ✅ entitlements · marca no PDF · ledger imutável |
+| 16 | Expansão vertical | ⛔ o plano MANDA congelar até paywall+onboarding fecharem |
+
+**O plano estava velho em 5 pontos** (todos verificados no repo vivo, não na síntese):
+O3-25..29 já corrigidos por `e9a4efe` · binding `CNPJ_RL` já existe e é usado ·
+autofill de CNPJ já ligado · marca no PDF já existia (o quebrado era outra coisa) ·
+`organizacao_id` do DoD do O2-19 nunca existiu.
+
+**Bugs NOVOS achados pelos próprios testes:** `textoParaNumero("")` → 0 (limpar a
+quantidade zerava o item no PDF do cliente) · o claim de webhook viraria lápide e a
+assinatura paga nunca ligaria · copy vendendo "equipe no mapa" e subvendendo papéis.
+| 2026-07-17T05:18:07Z | P14 | FIM DONE | 93e9545 — o convite ja pedia e gravava o e-mail e NUNCA usava ("opcional, so pra lembrar quem foi convidado"): o worker nao mandava e-mail nenhum. worker/src/email.js (Resend sem SDK) + enviarConvite (HTML + texto). Best-effort: sem chave e no-op; falha nao derruba o convite (o link segue na resposta). DONO: chave no cofre + VERIFICAR O DOMINIO no Resend (sem isso falha calado). |
+| 2026-07-17T05:18:07Z | P5 | FIM DONE | 36853d0 — 5 divergencias de copy corrigidas nas DUAS direcoes. EXCESSO: a home vendia "e a equipe no mapa" sem ressalva e admitia "(em breve)" 80 linhas abaixo, no MESMO arquivo. FALTA: 3 telas diziam "papeis (em breve)" com a Onda 2 CONCLUIDA = subvendiam a feature principal do R$99. CREDITOS: worker cobra R$0,25-0,498/cr vs rascunho de R$0,10-0,15 — sem vitima ainda (nao existe tela de compra), decisao do dono antes de qualquer copy. |
