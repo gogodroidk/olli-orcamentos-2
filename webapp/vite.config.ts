@@ -1,9 +1,38 @@
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { vanillaExtractPlugin } from "@vanilla-extract/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, loadEnv } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+
+// Módulos NATIVOS (react-native/expo) que a árvore do gerador de PDF reusado do app
+// importa mas NUNCA executa na web — resolvidos para um stub só pra o bundler não
+// falhar. Ver webapp/src/shims/native-stubs.ts para o porquê completo.
+const nativeStub = fileURLToPath(new URL("./src/shims/native-stubs.ts", import.meta.url));
+const exportarDocStub = fileURLToPath(new URL("./src/shims/exportarDocumento.web.ts", import.meta.url));
+const imagemDataUriStub = fileURLToPath(new URL("./src/shims/imagemDataUri.web.ts", import.meta.url));
+const clienteLinkStub = fileURLToPath(new URL("./src/shims/clienteLink.web.ts", import.meta.url));
+
+/**
+ * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
+ * versões browser SÓ no build do painel. Ambos importam react-native e fazem require de
+ * expo-* no ramo nativo, arrastando expo-modules-core → TurboModuleRegistry → uma
+ * cascata nativa que o Vite não resolve. gerarHtmlOrcamento (o que o painel usa) não
+ * executa nada deles (exportarHtmlComoPdf/imagemParaDataUri só rodam em populateImages
+ * e no export, que o painel não chama). resolveId com enforce:'pre' pega o import
+ * relativo antes do resolver padrão — mais confiável que alias de path relativo.
+ */
+const stubModulosNativos = {
+	name: "olli-stub-modulos-nativos",
+	enforce: "pre" as const,
+	resolveId(source: string) {
+		if (/(^|\/)exportarDocumento(\.ts)?$/.test(source)) return exportarDocStub;
+		if (/(^|\/)imagemDataUri(\.ts)?$/.test(source)) return imagemDataUriStub;
+		if (/(^|\/)clienteLink(\.ts)?$/.test(source)) return clienteLinkStub;
+		return null;
+	},
+};
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
@@ -12,7 +41,22 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		base,
+		resolve: {
+			alias: {
+				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
+				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
+				// para React Native (que não tem URL completo); o navegador tem — então some
+				// do bundle inteiro em vez de virar mais um require nativo pra stubar.
+				"react-native-url-polyfill/auto": nativeStub,
+				"react-native-url-polyfill": nativeStub,
+				"react-native": nativeStub,
+				"expo-print": nativeStub,
+				"expo-sharing": nativeStub,
+				"expo-file-system/legacy": nativeStub,
+			},
+		},
 		plugins: [
+			stubModulosNativos,
 			react(),
 			vanillaExtractPlugin({
 				identifiers: ({ debugId }) => `${debugId}`,

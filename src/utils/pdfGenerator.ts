@@ -319,7 +319,7 @@ type PlanoCapa =
   | { tipo: 'logo' }
   | { tipo: 'foto'; fotoSrc: string };
 
-function planejarCapa(o: Orcamento, empresa: Empresa): PlanoCapa {
+function planejarCapa(o: Orcamento, _empresa: Empresa): PlanoCapa {
   const estilo = capaEstiloDe(o);
   if (estilo === 'nenhuma') return { tipo: 'nenhuma' };
   if (estilo === 'foto') {

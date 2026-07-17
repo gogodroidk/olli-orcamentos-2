@@ -348,7 +348,7 @@ function buildMatrix(text: string): { size: number; modules: boolean[][] } {
  * escuros agrupados por linha em um único <path> (menor payload). viewBox em
  * unidades de módulo → escala perfeita em qualquer tamanho no <img>.
  */
-export function qrSvg(text: string, corModulos = '#0A2540'): string {
+export function qrSvg(text: string): string {
   const { size, modules } = buildMatrix(text);
   const quiet = 4;
   const dim = size + quiet * 2;

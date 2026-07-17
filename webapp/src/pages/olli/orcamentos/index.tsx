@@ -29,11 +29,14 @@ import {
 	MoreHorizontal,
 	Pencil,
 	Plus,
+	Printer,
 	RotateCw,
 	Search,
 	Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
 import { getStatusVariant, NameCell } from "@/olli/components/record-list-helpers";
@@ -205,6 +208,26 @@ export default function OrcamentosPage() {
 							<DropdownMenuItem onSelect={() => duplicar(blob)}>
 								<Copy className="mr-2 size-4" />
 								Duplicar como rascunho
+							</DropdownMenuItem>
+							{/* PDF real: o MESMO gerador do app, impresso pelo navegador (Salvar como PDF).
+							    O cliente já recebe pelo portal /o/<token>; este é o arquivo do PRESTADOR. */}
+							<DropdownMenuItem
+								onSelect={() => {
+									if (!empresa) {
+										toast.error("Complete o cadastro do seu negócio (Meu Negócio) antes de gerar o PDF.", {
+											position: "top-center",
+										});
+										return;
+									}
+									toast.promise(imprimirOrcamento(blob, empresa), {
+										loading: "Preparando o PDF…",
+										success: "Abri a janela de impressão — escolha “Salvar como PDF”.",
+										error: "Não consegui gerar o PDF agora. Tente de novo.",
+									});
+								}}
+							>
+								<Printer className="mr-2 size-4" />
+								Imprimir / Baixar PDF
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem

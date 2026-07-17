@@ -41,7 +41,6 @@ import type {
   Depoimento,
   Agendamento,
   OrdemServico,
-  ItemChecklist,
   Equipamento,
 } from '../types';
 
