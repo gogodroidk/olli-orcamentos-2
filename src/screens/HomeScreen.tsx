@@ -31,6 +31,7 @@ import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
+import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
 import { track, Eventos } from '../services/analytics';
@@ -404,9 +405,14 @@ export default function HomeScreen() {
   // ENVIADA), não só os dois estados antigos. Sem isso as propostas mais
   // quentes (visualizado/em_negociação) sumiam do funil e do radar de parados.
   const conversao = totalOrcamentos ? Math.round((aprovadosResumo.contagem / totalOrcamentos) * 100) : 0;
-  const valorParado = paradosResumo.valorTotal;
-  const valorCobranca = cobranca.reduce((s, item) => s + item.valor, 0);
   const conversaoDetalhe = totalOrcamentos ? `${aprovadosResumo.contagem}/${totalOrcamentos} aprovados` : 'sem histórico';
+  /**
+   * `false` SÓ quando a leitura terminou e disse que não existe nenhum orçamento.
+   * Enquanto carrega — ou quando a leitura falhou — vale `null` (não sabemos), e
+   * o palco NÃO se esconde por causa disso: "não sei" nunca pode ser lido como
+   * "não tem" (o mesmo P0 dos radares, aplicado ao gate de exibição).
+   */
+  const temHistorico = carregando || carregandoErro ? null : totalOrcamentos > 0;
   const emAbertoDetalhe = paradosResumo.contagem > 0 ? `${paradosResumo.contagem} parados` : 'sem atrasos';
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
@@ -445,6 +451,32 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* PALCO DO DINHEIRO PARADO — a PRIMEIRA coisa depois do cumprimento.
+            Os radares de cobrança e de follow-up já existiam e acertavam; o que
+            faltava era hierarquia: "R$ 800 parados há 12 dias" estava desenhado
+            como mais um card no meio da rolagem, com o mesmo peso de um atalho
+            de menu. A lógica continua nos services — aqui só muda o palco e a
+            distância até a ação (cobrar no WhatsApp sem navegar).
+            Os 3 estados de cada radar vão INTEIROS para o componente: é ele que
+            garante que "não deu para verificar" nunca vire "você não tem nada a
+            receber". */}
+        <AnimatedEntrance index={0}>
+          <PainelDinheiroParado
+            cobranca={cobranca}
+            cobrancaCarregando={cobrancaCarregando}
+            cobrancaErro={cobrancaErro}
+            onRecarregarCobranca={loadCobranca}
+            onCobrar={cobrarNoWhatsApp}
+            followUp={followUp}
+            followUpCarregando={followUpCarregando}
+            followUpErro={followUpErro}
+            onRecarregarFollowUp={loadFollowUp}
+            onFollowUp={followUpNoWhatsApp}
+            temHistorico={temHistorico}
+            onVerTodos={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Orcamentos'); }}
+          />
+        </AnimatedEntrance>
 
         {/* HERO — AO VIVO · próxima parada (empty-state até existir agenda) */}
         <AnimatedEntrance index={0}>
@@ -560,11 +592,11 @@ export default function HomeScreen() {
           </View>
         ) : carregandoErro ? (
           <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.sm }}>
-            <View style={styles.cobrancaAviso}>
+            <View style={styles.avisoLinha}>
               <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-              <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar seus números agora.</Text>
+              <Text style={styles.avisoLinhaTexto}>Não deu para carregar seus números agora.</Text>
               <TouchableOpacity onPress={load} activeOpacity={0.8}>
-                <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+                <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -611,11 +643,11 @@ export default function HomeScreen() {
           <>
             <Text style={styles.sectionTitle}>Radar de clientes</Text>
             <View style={{ paddingHorizontal: Spacing.base }}>
-              <View style={styles.cobrancaAviso}>
+              <View style={styles.avisoLinha}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-                <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <Text style={styles.avisoLinhaTexto}>Não deu para carregar o radar de clientes agora.</Text>
                 <TouchableOpacity onPress={loadRadar} activeOpacity={0.8}>
-                  <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+                  <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -673,148 +705,11 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        {/* RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
-            3 estados explícitos: carregando (skeleton) / erro (nunca vira "vazio")
-            / vazio de verdade ("tudo recebido"). */}
-        {cobrancaCarregando ? (
-          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
-            <OlliSkeleton width="50%" height={16} />
-            <View style={styles.radarCard}>
-              <OlliSkeleton width={42} height={42} radius={21} />
-              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                <OlliSkeleton width="60%" height={14} />
-                <OlliSkeleton width="35%" height={12} />
-              </View>
-            </View>
-          </View>
-        ) : (
-          <>
-            <Text style={styles.sectionTitle}>Radar de cobrança</Text>
-            {cobrancaErro ? (
-              <View style={{ paddingHorizontal: Spacing.base }}>
-                <View style={styles.cobrancaAviso}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-                  <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar o radar de cobrança agora.</Text>
-                  <TouchableOpacity onPress={loadCobranca} activeOpacity={0.8}>
-                    <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : cobranca.length === 0 ? (
-              <View style={{ paddingHorizontal: Spacing.base }}>
-                <View style={styles.cobrancaVazio}>
-                  <MaterialCommunityIcons name="check-circle-outline" size={20} color={cores.success} />
-                  <Text style={styles.cobrancaVazioTexto}>Tudo recebido — nenhum orçamento aprovado esperando pagamento.</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
-                <Text style={styles.cobrancaResumo}>
-                  {cobranca.length} orçamento{cobranca.length > 1 ? 's' : ''} aprovado{cobranca.length > 1 ? 's' : ''} sem pagamento · {formatCurrency(valorCobranca)} parado
-                </Text>
-                {cobranca.slice(0, 3).map((item, i) => (
-                  <AnimatedEntrance key={item.orcamento.id} index={2 + i}>
-                    <View style={styles.radarCard}>
-                      <View style={styles.radarTop}>
-                        <View style={styles.radarAvatar}>
-                          <Text style={styles.radarAvatarText}>{item.orcamento.clienteNome.charAt(0).toUpperCase()}</Text>
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.radarName} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
-                          <Text style={styles.radarMeta}>
-                            {formatCurrency(item.valor)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.radarActions}>
-                        <OlliPressable style={styles.radarBtnPrimary} onPress={() => cobrarNoWhatsApp(item)} haptic={false}>
-                          <MaterialCommunityIcons
-                            name="whatsapp"
-                            size={16}
-                            color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
-                          />
-                          <Text style={styles.radarBtnPrimaryText}>Cobrar no WhatsApp</Text>
-                        </OlliPressable>
-                      </View>
-                    </View>
-                  </AnimatedEntrance>
-                ))}
-              </View>
-            )}
-          </>
-        )}
-
-        {/* RADAR DE FOLLOW-UP — propostas enviadas/visualizadas sem resposta,
-            paradas há >= 3 dias (o passo ANTES do radar de cobrança).
-            3 estados explícitos: carregando (skeleton) / erro (nunca vira "vazio")
-            / vazio de verdade ("nenhuma proposta parada"). */}
-        {followUpCarregando ? (
-          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
-            <OlliSkeleton width="50%" height={16} />
-            <View style={styles.radarCard}>
-              <OlliSkeleton width={42} height={42} radius={21} />
-              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                <OlliSkeleton width="60%" height={14} />
-                <OlliSkeleton width="35%" height={12} />
-              </View>
-            </View>
-          </View>
-        ) : (
-          <>
-            <Text style={styles.sectionTitle}>Propostas paradas</Text>
-            {followUpErro ? (
-              <View style={{ paddingHorizontal: Spacing.base }}>
-                <View style={styles.cobrancaAviso}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-                  <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar as propostas paradas agora.</Text>
-                  <TouchableOpacity onPress={loadFollowUp} activeOpacity={0.8}>
-                    <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : followUp.length === 0 ? (
-              <View style={{ paddingHorizontal: Spacing.base }}>
-                <View style={styles.cobrancaVazio}>
-                  <MaterialCommunityIcons name="check-circle-outline" size={20} color={cores.success} />
-                  <Text style={styles.cobrancaVazioTexto}>Nenhuma proposta parada — todo cliente já respondeu ou é recente.</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
-                <Text style={styles.cobrancaResumo}>
-                  {followUp.length} proposta{followUp.length > 1 ? 's' : ''} sem resposta há 3+ dias
-                </Text>
-                {followUp.slice(0, 3).map((item, i) => (
-                  <AnimatedEntrance key={item.orcamento.id} index={2 + i}>
-                    <View style={styles.radarCard}>
-                      <View style={styles.radarTop}>
-                        <View style={styles.radarAvatar}>
-                          <Text style={styles.radarAvatarText}>{item.orcamento.clienteNome.charAt(0).toUpperCase()}</Text>
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.radarName} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
-                          <Text style={styles.radarMeta}>
-                            {formatCurrency(item.orcamento.valorTotal)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.radarActions}>
-                        <OlliPressable style={styles.radarBtnPrimary} onPress={() => followUpNoWhatsApp(item)} haptic={false}>
-                          <MaterialCommunityIcons
-                            name="whatsapp"
-                            size={16}
-                            color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
-                          />
-                          <Text style={styles.radarBtnPrimaryText}>Chamar no WhatsApp</Text>
-                        </OlliPressable>
-                      </View>
-                    </View>
-                  </AnimatedEntrance>
-                ))}
-              </View>
-            )}
-          </>
-        )}
+        {/* RADAR DE COBRANÇA e PROPOSTAS PARADAS subiram para o PALCO no topo
+            (PainelDinheiroParado). Ficavam aqui, no meio da rolagem, com o mesmo
+            peso visual de um atalho — dinheiro parado não pode ser mais um card
+            entre cards. Os 3 estados de cada um continuam intactos: agora vivem
+            dentro do palco, não sumiram. */}
 
         {/* ANZOL — Diagnóstico por código de erro (offline, único no BR) */}
         <AnimatedEntrance index={2}>
@@ -839,21 +734,13 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </AnimatedEntrance>
 
-        {/* LEMBRETE DA OLLI — orçamentos parados */}
-        {paradosResumo.contagem > 0 && (
-          <AnimatedEntrance index={2}>
-            <View style={styles.lembrete}>
-              <OlliMascot size={40} float={false} onDark />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.lembreteTitle}>{paradosResumo.contagem} orçamento{paradosResumo.contagem > 1 ? 's' : ''} parado{paradosResumo.contagem > 1 ? 's' : ''} há +5 dias</Text>
-                <Text style={styles.lembreteSub}>{formatCurrency(valorParado)} em jogo. Priorize o follow-up.</Text>
-              </View>
-              <TouchableOpacity style={styles.cobrarBtn} onPress={() => nav.navigate('Orcamentos')} activeOpacity={0.85}>
-                <Text style={styles.cobrarText}>Cobrar</Text>
-              </TouchableOpacity>
-            </View>
-          </AnimatedEntrance>
-        )}
+        {/* O antigo "LEMBRETE DA OLLI — N orçamentos parados há +5 dias" saiu:
+            era a MESMA população do radar de follow-up (STATUS_PROPOSTA_ENVIADA
+            sem movimentação), dita com menos informação — só a contagem — e com
+            uma ação que apenas NAVEGAVA para a lista. O palco no topo já mostra
+            o valor, o tempo e o botão que abre o WhatsApp com a mensagem pronta.
+            Dois cards para o mesmo dinheiro é exatamente o ruído que apagava o
+            aviso. O contador do robô (badge) continua usando `paradosResumo`. */}
 
         <Text style={styles.sectionTitle}>Mais atalhos</Text>
         <AnimatedEntrance index={3}>
@@ -1163,12 +1050,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   anzolTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
   anzolSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
-  lembrete: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginHorizontal: Spacing.base, marginTop: 12 },
-  lembreteTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  lembreteSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
-  cobrarBtn: { backgroundColor: c.warning, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
-  cobrarText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.warning) },
-
   processCard: { marginHorizontal: Spacing.base, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm },
   processGrid: { flexDirection: 'row', gap: 8 },
   processMetric: { flex: 1, minHeight: 74, backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, padding: 10, justifyContent: 'center', alignItems: 'center', gap: 6 },
@@ -1228,13 +1109,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
   radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
-  // RADAR DE COBRANÇA — resumo + estados erro/vazio (nunca colapsados um no outro).
-  cobrancaResumo: { fontSize: 12.5, color: c.onSurfaceVariant, fontWeight: '600' },
-  cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md },
-  cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
-  cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
-  cobrancaVazio: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceGlass, borderWidth: 1, borderColor: c.outlineDark, borderRadius: BorderRadius.xl, padding: Spacing.md },
-  cobrancaVazioTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  // Linha de "não deu para carregar X" + retry. Genérica de propósito: serve os
+  // KPIs e o radar de clientes (o radar de cobrança levou a sua para o palco).
+  // Um erro NUNCA vira ausência silenciosa em nenhum desses três lugares.
+  avisoLinha: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md },
+  avisoLinhaTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  avisoLinhaAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
   radarTeaserIcon: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },

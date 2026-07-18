@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Animated,
-  LayoutAnimation, Platform, UIManager,
+  LayoutAnimation, Platform, UIManager, Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,8 +23,11 @@ import { getAgendamentosDoDia } from '../services/agenda';
 import { getOrcamentos } from '../database/database';
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
+import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
+import { abrirWhatsApp } from '../utils/pdfGenerator';
+import { formatCurrency } from '../utils/currency';
 import {
-  Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, propostaJaEnviada,
+  Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
@@ -307,6 +310,30 @@ export default function HojeScreen() {
   const [sincronizando, setSincronizando] = useState(false);
   const [pulsoVisivel, setPulsoVisivel] = useState(false);
 
+  // PROPOSTAS PARADAS — vem do radar (`orcamentosParaFollowUp`), não de uma
+  // regra recalculada aqui. Esta tela tinha a SUA versão de "parado" (>= 5 dias
+  // sobre `criadoEm`) enquanto o radar usa >= 3 dias sobre a última movimentação
+  // (`atualizadoEm`): duas verdades para a mesma pergunta, e a daqui não sabia
+  // nem o valor nem o telefone do cliente — por isso o lembrete só conseguia
+  // navegar para a lista em vez de agir. Com o radar vêm o dinheiro, o tempo e a
+  // mensagem pronta. 3 estados explícitos, os do radar.
+  const [followUp, setFollowUp] = useState<OrcamentoParaFollowUp[]>([]);
+  const [followUpCarregando, setFollowUpCarregando] = useState(true);
+  const [followUpErro, setFollowUpErro] = useState(false);
+
+  const loadFollowUp = useCallback(async () => {
+    setFollowUpErro(false);
+    try {
+      setFollowUp(await orcamentosParaFollowUp());
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa,
+      // que nesta tela viraria um "Tudo em dia!" mentiroso.
+      setFollowUpErro(true);
+    } finally {
+      setFollowUpCarregando(false);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setCarregandoErro(false);
     try {
@@ -334,13 +361,25 @@ export default function HojeScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); loadFollowUp(); }, [load, loadFollowUp]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo agendamentos/orçamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), [load]);
+  useEffect(
+    () => onSyncAplicado(() => { setSincronizando(true); load(); loadFollowUp(); }),
+    [load, loadFollowUp],
+  );
 
-  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load(), loadFollowUp()]);
+    } finally {
+      // finally: o pull-to-refresh nunca fica preso, mesmo se algo além das duas
+      // chamadas (que já se protegem com try/catch) rejeitar.
+      setRefreshing(false);
+    }
+  };
 
   const persist = useCallback(async (list: ChecklistItem[]) => {
     setChecklist(list);
@@ -377,16 +416,22 @@ export default function HojeScreen() {
     persist(checklist.filter(i => i.id !== id));
   }, [checklist, persist, reduzirMovimento]);
 
-  // ── lembretes REAIS (sem inventar): orçamentos abertos parados +5 dias ──
-  // "Em aberto" cobre toda proposta já entregue ao cliente sem desfecho
-  // (enviado/visualizado/em_negociação/aguardando_assinatura), não só os dois
-  // estados antigos — senão as propostas mais quentes sumiam dos parados.
-  const emAberto = orcamentos.filter(o => propostaJaEnviada(o.status));
-  const parados = emAberto.filter(o => diasAtras(o.criadoEm) >= 5);
+  // ── lembretes REAIS (sem inventar) ──
+  // `followUp` é a lista do radar; o dinheiro e o tempo abaixo são SOMA e MÁXIMO
+  // do que ele já devolve (valorTotal e diasParado) — nenhuma estimativa nova.
+  const valorFollowUp = followUp.reduce((s, i) => s + i.orcamento.valorTotal, 0);
+  const maisAntigoFollowUp = followUp.reduce((m, i) => Math.max(m, i.diasParado), 0);
   const aguardandoAssinatura = orcamentos.filter(o => o.status === 'aguardando_assinatura');
+  // O mais parado de todos (a lista já vem ordenada por diasParado desc) — é
+  // nele que o botão de um toque age.
+  const maisUrgente = followUp[0] ?? null;
 
   const feitos = checklist.filter(i => i.feito).length;
-  const semNada = itens.length === 0 && parados.length === 0 && aguardandoAssinatura.length === 0;
+  // "Tudo em dia!" é uma AFIRMAÇÃO: só pode aparecer quando as duas leituras
+  // responderam de verdade. Com o radar em erro, `followUp` é [] — e sem este
+  // `!followUpErro` a falha viraria a mensagem mais cara possível: dizer que não
+  // há nada a cobrar quando não fazemos ideia.
+  const semNada = itens.length === 0 && followUp.length === 0 && aguardandoAssinatura.length === 0;
 
   // Sinal SIMPLES de "semana com movimento" (sem consulta nova): agenda de hoje,
   // checklist com item concluído hoje, ou algum orçamento criado nos últimos 7
@@ -419,6 +464,26 @@ export default function HojeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carregando, carregandoErro, houveMovimentoNaSemana]);
 
+  /**
+   * Abre o WhatsApp do cliente com a mensagem de follow-up pronta. O telefone
+   * vem denormalizado no próprio orçamento (funciona mesmo se o cadastro do
+   * cliente tiver sido excluído depois do envio) e cai no cadastro ativo como
+   * segunda opção — mesmo contrato da HomeScreen.
+   */
+  const chamarFollowUp = useCallback(async (item: OrcamentoParaFollowUp) => {
+    const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
+    if (!telefone?.trim()) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await abrirWhatsApp(telefone, mensagemFollowUp(item));
+    } catch {
+      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+    }
+  }, []);
+
   const fecharPulso = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     track(Eventos.pulsoDispensado, {});
@@ -445,8 +510,11 @@ export default function HojeScreen() {
           </View>
         </AnimatedEntrance>
 
-        {/* LEMBRETES DA OLLI (reais) */}
-        {(parados.length > 0 || aguardandoAssinatura.length > 0) && (
+        {/* LEMBRETES DA OLLI (reais) — dinheiro primeiro, ação junto.
+            O bloco também aparece quando o radar FALHOU: antes ele simplesmente
+            sumia, e sumir é a mesma mentira de mostrar zero — o prestador lê a
+            ausência como "não tenho nada parado". */}
+        {(followUpErro || followUp.length > 0 || aguardandoAssinatura.length > 0) && (
           <AnimatedEntrance index={1}>
             <View style={styles.lembretes}>
               <View style={styles.lembretesHead}>
@@ -454,24 +522,70 @@ export default function HojeScreen() {
                 <Text style={styles.lembretesTitle}>Lembretes da OLLI</Text>
               </View>
 
-              {parados.length > 0 && (
-                <OlliPressable
-                  style={styles.lembreteRow}
-                  onPress={() => nav.navigate('Orcamentos')}
-                  haptic="selection"
-                  accessibilityLabel="Ver orçamentos parados"
-                >
-                  <View style={[styles.lembreteIcon, { backgroundColor: cores.warningLight }]}>
-                    <MaterialCommunityIcons name="clock-alert-outline" size={18} color={cores.warning} />
-                  </View>
+              {followUpErro && (
+                <View style={styles.lembreteErro}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={18} color={cores.warning} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.lembreteText}>
-                      {parados.length} orçamento{parados.length > 1 ? 's' : ''} parado{parados.length > 1 ? 's' : ''} há +5 dias
-                    </Text>
-                    <Text style={styles.lembreteSub}>Que tal dar um toque no cliente?</Text>
+                    <Text style={styles.lembreteText}>Não deu para verificar as propostas paradas.</Text>
+                    <Text style={styles.lembreteSub}>Não quer dizer que está tudo em dia — só que não conseguimos conferir agora.</Text>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-                </OlliPressable>
+                  <TouchableOpacity
+                    style={styles.lembreteRetry}
+                    onPress={() => { Haptics.selectionAsync().catch(() => {}); loadFollowUp(); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Tentar verificar as propostas paradas de novo"
+                  >
+                    <Text style={styles.lembreteRetryTexto}>Tentar de novo</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {followUp.length > 0 && (
+                <>
+                  <OlliPressable
+                    style={styles.lembreteRow}
+                    onPress={() => nav.navigate('Orcamentos')}
+                    haptic="selection"
+                    accessibilityLabel="Ver propostas paradas"
+                  >
+                    <View style={[styles.lembreteIcon, { backgroundColor: cores.warningLight }]}>
+                      <MaterialCommunityIcons name="clock-alert-outline" size={18} color={cores.warning} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      {/* O dinheiro na frente: "R$ 2.400 esperando resposta" diz
+                          muito mais que "3 orçamentos parados". */}
+                      <Text style={styles.lembreteText}>{formatCurrency(valorFollowUp)} esperando resposta</Text>
+                      <Text style={styles.lembreteSub}>
+                        {followUp.length === 1
+                          ? `1 proposta parada há ${maisAntigoFollowUp} ${maisAntigoFollowUp === 1 ? 'dia' : 'dias'}`
+                          : `${followUp.length} propostas · a mais antiga há ${maisAntigoFollowUp} dias`}
+                      </Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+                  </OlliPressable>
+
+                  {/* Ação em UM toque, no que está parado há mais tempo: abre o
+                      WhatsApp com a mensagem de follow-up já montada (a mesma de
+                      `mensagemFollowUp`, derivada do próprio orçamento). Sem isto
+                      o lembrete só sabia mandar o prestador procurar na lista. */}
+                  {maisUrgente && (
+                    <OlliPressable
+                      style={styles.lembreteAcao}
+                      onPress={() => chamarFollowUp(maisUrgente)}
+                      haptic={false}
+                      accessibilityLabel={`Chamar ${maisUrgente.orcamento.clienteNome} no WhatsApp sobre a proposta parada`}
+                    >
+                      <MaterialCommunityIcons
+                        name="whatsapp"
+                        size={16}
+                        color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                      />
+                      <Text style={styles.lembreteAcaoTexto} numberOfLines={1}>
+                        Chamar {maisUrgente.orcamento.clienteNome} no WhatsApp
+                      </Text>
+                    </OlliPressable>
+                  )}
+                </>
               )}
 
               {aguardandoAssinatura.length > 0 && (
@@ -672,7 +786,7 @@ export default function HojeScreen() {
         </AnimatedEntrance>
 
         {/* ESTADO 100% VAZIO E ELEGANTE */}
-        {!carregando && !carregandoErro && semNada && checklist.length === 0 && (
+        {!carregando && !carregandoErro && !followUpCarregando && !followUpErro && semNada && checklist.length === 0 && (
           <AnimatedEntrance index={1} from="scale" delay={120}>
             <View style={styles.allClear}>
               <OlliMascot size={48} onDark />
@@ -710,7 +824,21 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   lembreteRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   lembreteIcon: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   lembreteText: { fontSize: 14, fontWeight: '700', color: c.onSurface },
-  lembreteSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
+  lembreteSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1, lineHeight: 16 },
+  lembreteErro: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  // 44px de altura mínima: o dedo do prestador está em obra, não numa mesa.
+  lembreteRetry: {
+    justifyContent: 'center', minHeight: 44, paddingHorizontal: 12,
+    borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surfaceVariant,
+  },
+  lembreteRetryTexto: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  // Ação de um toque: mesmo verde/contraste do botão de WhatsApp do resto do app.
+  lembreteAcao: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    backgroundColor: c.whatsapp, borderRadius: BorderRadius.full,
+    minHeight: 44, paddingHorizontal: 14, marginTop: 4,
+  },
+  lembreteAcaoTexto: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
 
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground },

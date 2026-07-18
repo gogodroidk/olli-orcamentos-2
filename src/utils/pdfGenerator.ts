@@ -1,6 +1,6 @@
 import { Orcamento, Empresa, Depoimento, ItemOrcamento } from '../types';
 import { formatCurrency, formatNumber } from './currency';
-import { formatDate, formatDateBR } from './date';
+import { formatDate, formatDateBR, formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 import { escapeHtml, safeHexColor } from './html';
@@ -907,9 +907,24 @@ ${renderCapa(o, empresa, planoCapa)}
     ${o.exibirAssinatura ? `
       <div class="signatures">
         <div class="sign-col">
-          ${o.solicitarAssinaturaCliente && img(o.assinaturaClienteUri) ? `<img src="${img(o.assinaturaClienteUri)}" class="sign-img" />` : ''}
+          ${/* A imagem entra quando ELA EXISTE. Antes o gate era também
+                `solicitarAssinaturaCliente`, um switch de PRÉ-envio ("peça a
+                assinatura ao cliente") cujo padrão é `false`: com ele no
+                caminho, a assinatura que o cliente acabou de fazer no aparelho
+                (VisualizarOrcamentoScreen → AssinaturaClienteModal) sumia do
+                documento na esmagadora maioria dos orçamentos — o app diria
+                "assinado" e o PDF sairia com a linha em branco. Assinatura
+                existente é FATO consumado do cliente; esconder fato é mentira
+                por omissão. O bloco inteiro continua sob `exibirAssinatura`. */''}
+          ${img(o.assinaturaClienteUri) ? `<img src="${img(o.assinaturaClienteUri)}" class="sign-img" />` : ''}
           <div class="sign-line"></div>
-          <div class="sign-caption">Aprovação do cliente · data</div>
+          ${/* Sem assinatura, a legenda continua sendo o rótulo da linha em
+                branco (assina-se no papel). Com assinatura, ela vira o registro
+                do aceite: colher data/hora e não imprimir em lugar nenhum
+                deixaria o carimbo do aceite só na tela de quem colheu. */''}
+          <div class="sign-caption">${o.dataAssinaturaCliente
+            ? `Assinado em ${escapeHtml(formatDateTime(o.dataAssinaturaCliente))}`
+            : 'Aprovação do cliente · data'}</div>
           <div class="sign-caption sign-name">${escapeHtml(o.clienteNome)}</div>
         </div>
         <div class="sign-col">

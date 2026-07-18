@@ -14,6 +14,7 @@ import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
 import { PixCobrancaModal } from '../components/PixCobrancaModal';
+import { AssinaturaClienteModal } from '../components/assinatura/AssinaturaClienteModal';
 import { gerarPixCopiaECola } from '../utils/pixBrCode';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
@@ -89,6 +90,12 @@ export default function VisualizarOrcamentoScreen() {
       txid: orc.numero,
     });
   }, [orc, empresa]);
+  // O bloco de assinaturas do PDF inteiro é ligado por `exibirAssinatura` (o
+  // switch "Exibir assinatura" do Step 4). Desligado, o documento não tem onde a
+  // assinatura pousar — e assinatura gravada que não sai no PDF é um "assinado"
+  // mentiroso. Então, nesse caso, simplesmente não oferecemos colher.
+  const podeColherAssinatura = orc?.exibirAssinatura !== false;
+  const assinaturaDoCliente = orc?.assinaturaClienteUri;
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
   const [versoes, setVersoes] = useState<OrcamentoVersao[]>([]);
   const [trilha, setTrilha] = useState<EventoTrilhaCliente[]>([]);
@@ -106,6 +113,16 @@ export default function VisualizarOrcamentoScreen() {
   const [carregando, setCarregando] = useState(true);
   const [naoEncontrado, setNaoEncontrado] = useState(false);
   const [celebrando, setCelebrando] = useState(false);
+  // ASSINATURA DO CLIENTE — três estados, nunca dois:
+  //   assinado      = `orc.assinaturaClienteUri` existe (só é setado DEPOIS de
+  //                   `saveOrcamento` resolver, em `gravarAssinaturaCliente`);
+  //   não assinado  = não existe, e nada falhou;
+  //   falhou        = a última tentativa de GRAVAR não foi ao banco. É um estado
+  //                   próprio de propósito: colapsá-lo em "não assinado" apagaria
+  //                   da tela o fato de o cliente já ter assinado uma vez, e
+  //                   colapsá-lo em "assinado" seria a falha virando sucesso.
+  const [assinaturaAberta, setAssinaturaAberta] = useState(false);
+  const [assinaturaFalhou, setAssinaturaFalhou] = useState(false);
   // Overlay de progresso — cobre a espera "silenciosa" de gerar/compartilhar
   // PDF ou link do cliente (mensagem varia conforme a ação em andamento).
   const [overlayInfo, setOverlayInfo] = useState<{ titulo: string; subtitulo: string } | null>(null);
@@ -114,6 +131,9 @@ export default function VisualizarOrcamentoScreen() {
   // termina, oferece criar a OS na hora — poupa os 4-5 toques de ir até a aba
   // Ordens > + > De um orçamento > achar > selecionar.
   const ofertarOSRef = useRef(false);
+  // A oferta da OS ficou esperando o cliente assinar; volta assim que o pad sair
+  // da frente (assinou ou desistiu). Sem isso, quem assina perde a oferta da OS.
+  const osDepoisDaAssinaturaRef = useRef(false);
 
   // Trilha do cliente (link público) — leitura VIVA, não bloqueia a tela: a
   // página já mostra os dados locais e a trilha aparece quando a nuvem responde.
@@ -259,20 +279,79 @@ export default function VisualizarOrcamentoScreen() {
     setShowStatusMenu(false);
   }
 
+  function ofertarOS() {
+    Alert.alert(
+      'Orçamento aprovado!',
+      'Quer criar a ordem de serviço agora?',
+      [
+        { text: 'Depois', style: 'cancel' },
+        { text: 'Criar OS', onPress: () => handleCriarOS() },
+      ],
+    );
+  }
+
   // Fecha a celebração de aprovação e, se foi ELA quem aprovou agora (não um
-  // orçamento que já chegou aprovado), oferece criar a OS na hora.
+  // orçamento que já chegou aprovado), age no momento em que o prestador está
+  // com o cliente na frente e o aparelho na mão:
+  //
+  //   1º a ASSINATURA, quando este documento ainda não tem a do cliente. O aceite
+  //      acabou de acontecer AGORA; mandar o prestador procurar um botão depois é
+  //      pedir para a assinatura nunca ser colhida (era o estado anterior: o PDF
+  //      sabia imprimir a assinatura e nenhuma tela sabia colher). Zero toque a
+  //      mais — o pad ocupa o lugar do alerta, que volta em seguida;
+  //   2º a OS, exatamente como antes.
+  //
+  // Sair do pad por qualquer porta (assinou ou "agora não") devolve a oferta da OS.
   function finalizarCelebracao() {
     setCelebrando(false);
-    if (ofertarOSRef.current) {
-      ofertarOSRef.current = false;
-      Alert.alert(
-        'Orçamento aprovado!',
-        'Quer criar a ordem de serviço agora?',
-        [
-          { text: 'Depois', style: 'cancel' },
-          { text: 'Criar OS', onPress: () => handleCriarOS() },
-        ],
-      );
+    if (!ofertarOSRef.current) return;
+    ofertarOSRef.current = false;
+    if (podeColherAssinatura && !orc?.assinaturaClienteUri) {
+      osDepoisDaAssinaturaRef.current = true;
+      setAssinaturaAberta(true);
+      return;
+    }
+    ofertarOS();
+  }
+
+  /**
+   * GRAVA a assinatura do cliente e só então reflete na tela.
+   *
+   * Contrato com <AssinaturaClienteModal>: esta função LANÇA quando não gravou —
+   * é a rejeição que mantém o pad aberto com o desenho intacto, mostrando o erro.
+   * Trocar o `throw` por um Alert silencioso aqui recria exatamente o bug que a
+   * casa já teve em outro caminho: a falha aparecendo como sucesso.
+   *
+   * `assinaturaClienteUri`/`dataAssinaturaCliente` estão em
+   * CAMPOS_VOLATEIS_ORCAMENTO (database.ts): assinar é AÇÃO DO CLIENTE sobre a
+   * proposta, não edição do dono — passa em qualquer status e não congela versão
+   * falsa. É por isso que dá para assinar um orçamento já aprovado, que é
+   * justamente quando o cliente assina.
+   */
+  async function gravarAssinaturaCliente(dataUri: string, assinadoEmISO: string) {
+    if (!orc) throw new Error('Orçamento não carregado. Abra o orçamento de novo.');
+    const atualizado: Orcamento = {
+      ...orc,
+      assinaturaClienteUri: dataUri,
+      dataAssinaturaCliente: assinadoEmISO,
+      atualizadoEm: nowISO(),
+    };
+    try {
+      await saveOrcamento(atualizado);
+    } catch (e) {
+      setAssinaturaFalhou(true);
+      throw e;
+    }
+    setOrc(atualizado);
+    setAssinaturaFalhou(false);
+    fecharAssinatura();
+  }
+
+  function fecharAssinatura() {
+    setAssinaturaAberta(false);
+    if (osDepoisDaAssinaturaRef.current) {
+      osDepoisDaAssinaturaRef.current = false;
+      ofertarOS();
     }
   }
 
@@ -483,6 +562,87 @@ export default function VisualizarOrcamentoScreen() {
           </View>
         </OlliCard>
 
+        {/* ACEITE DO CLIENTE (assinatura no dedo) — o palco do gesto que fecha o
+            serviço em campo. Fica ALTO na página de propósito: o motor já sabia
+            imprimir a assinatura no PDF, o que faltava era o prestador enxergar
+            onde colher. Três estados, sempre distintos. */}
+        {podeColherAssinatura && (
+          <OlliCard style={styles.assinCard}>
+            <View style={styles.closeTop}>
+              <View style={styles.assinIcon}>
+                <MaterialCommunityIcons
+                  name={assinaturaDoCliente ? 'check-decagram' : 'signature-freehand'}
+                  size={24}
+                  color={assinaturaDoCliente ? cores.success : cores.accentLight}
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.closeEyebrow}>Aceite do cliente</Text>
+                <Text style={styles.closeTitle}>
+                  {assinaturaDoCliente ? 'Assinado pelo cliente' : 'Colha a assinatura no aparelho'}
+                </Text>
+                <Text style={styles.closeSub}>
+                  {assinaturaDoCliente
+                    ? 'A assinatura entra no PDF deste orçamento.'
+                    : 'Acabou o serviço? O cliente assina com o dedo aqui e o PDF já sai assinado.'}
+                </Text>
+              </View>
+            </View>
+
+            {assinaturaDoCliente ? (
+              <>
+                {/* Fundo claro fixo: a tinta é preta (como no papel do PDF) e
+                    sumiria contra a superfície escura do tema. */}
+                <View style={styles.assinPreview}>
+                  <Image
+                    source={{ uri: assinaturaDoCliente }}
+                    style={styles.assinImagem}
+                    resizeMode="contain"
+                    accessibilityLabel={`Assinatura de ${orc.clienteNome}`}
+                  />
+                </View>
+                <Text style={styles.assinMeta}>
+                  {orc.clienteNome}
+                  {orc.dataAssinaturaCliente ? ` · ${formatDateTime(orc.dataAssinaturaCliente)}` : ''}
+                </Text>
+                <TouchableOpacity
+                  style={styles.assinRefazer}
+                  onPress={() => setAssinaturaAberta(true)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                >
+                  <MaterialCommunityIcons name="refresh" size={16} color={cores.onSurfaceVariant} />
+                  <Text style={styles.assinRefazerTexto}>Assinar de novo</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {/* Falha de GRAVAÇÃO tem card próprio: o cliente assinou e o
+                    documento não guardou. Some da tela = ninguém tenta de novo. */}
+                {assinaturaFalhou && (
+                  <View style={styles.cobrancaAviso}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                    <Text style={styles.cobrancaAvisoTexto}>
+                      A última assinatura não foi salva. Nada foi gravado no documento.
+                    </Text>
+                  </View>
+                )}
+                <OlliPressable style={styles.closePrimary} onPress={() => setAssinaturaAberta(true)} haptic="light">
+                  <MaterialCommunityIcons name="draw" size={20} color={textoSobreAccent} />
+                  <Text style={styles.closePrimaryText}>
+                    {assinaturaFalhou ? 'Tentar de novo' : 'Cliente assinar agora'}
+                  </Text>
+                </OlliPressable>
+              </>
+            )}
+
+            <Text style={styles.assinNota}>
+              Comprovação de aceite e execução entre as partes. Não é assinatura
+              digital certificada (ICP-Brasil).
+            </Text>
+          </OlliCard>
+        )}
+
         {/* CLIENTE — toque para ver os orçamentos deste cliente (CRM) */}
         <OlliCard onPress={verCliente} style={{ padding: Spacing.base, marginBottom: 12 }}>
           <View style={styles.clientHeader}>
@@ -626,6 +786,13 @@ export default function VisualizarOrcamentoScreen() {
         valor={pixValor}
         referencia={`Orçamento nº ${orc.numero}`}
       />
+      <AssinaturaClienteModal
+        visivel={assinaturaAberta}
+        clienteNome={orc.clienteNome}
+        referencia={`Orçamento nº ${orc.numero}`}
+        aoConfirmar={gravarAssinaturaCliente}
+        aoCancelar={fecharAssinatura}
+      />
       <Celebracao visible={celebrando} tipo="aprovado" onDone={finalizarCelebracao} />
       <OverlayProgresso
         visible={!!overlayInfo}
@@ -764,6 +931,30 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   closeCheck: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 6 },
   closeCheckText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
   closeCheckTextWarn: { color: c.warning },
+
+  // Aceite do cliente (assinatura) — reusa closeTop/closeEyebrow/closeTitle/
+  // closeSub/closePrimary do card de fechamento: é o mesmo bloco de "ação que
+  // fecha negócio", e duas gramáticas visuais para o mesmo papel seria ruído.
+  assinCard: { padding: Spacing.base, marginBottom: 12, borderColor: c.strokeGlow },
+  assinIcon: {
+    width: 48, height: 48, borderRadius: BorderRadius.chip,
+    backgroundColor: comAlfa(c.accentLight, 0.12),
+    borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28),
+    alignItems: 'center', justifyContent: 'center',
+  },
+  assinPreview: {
+    marginTop: 12, borderRadius: BorderRadius.md,
+    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: c.outline,
+    paddingVertical: 10, alignItems: 'center',
+  },
+  assinImagem: { width: '100%', height: 72 },
+  assinMeta: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginTop: 8 },
+  assinRefazer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: 44, marginTop: 6,
+  },
+  assinRefazerTexto: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
+  assinNota: { fontSize: 11, color: c.onSurfaceVariant, lineHeight: 16, marginTop: 10 },
 
   cardTitle: { fontSize: 14, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   clientHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

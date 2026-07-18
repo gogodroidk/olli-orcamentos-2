@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text, TextStyle } from 'react-native';
-import { Motion } from '../theme/motion';
+import { Motion, useReducedMotion } from '../theme/motion';
 import { formatCurrency, formatNumber } from '../utils/currency';
 
 interface Props {
@@ -23,12 +23,23 @@ export function CountUp({ value, format = 'int', duration = 800, style }: Props)
   const anim = useRef(new Animated.Value(value)).current;
   const anterior = useRef(value);
   const [texto, setTexto] = useState(() => formatar(value, format));
+  const reduzirMovimento = useReducedMotion();
 
   useEffect(() => {
     const de = anterior.current;
     const para = Number.isFinite(value) ? value : 0;
 
     if (de === para) {
+      setTexto(formatar(para, format));
+      return;
+    }
+
+    // Acessibilidade: com "Reduzir movimento" ligado o número aparece direto no
+    // valor final — o conteúdo é idêntico, só sem a contagem. Um KPI que rola
+    // números sozinho é justamente o tipo de movimento que essa preferência pede
+    // para desligar.
+    if (reduzirMovimento) {
+      anterior.current = para;
       setTexto(formatar(para, format));
       return;
     }
@@ -52,7 +63,7 @@ export function CountUp({ value, format = 'int', duration = 800, style }: Props)
       anim.removeListener(listenerId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, format, duration]);
+  }, [value, format, duration, reduzirMovimento]);
 
   return <Text style={style}>{texto}</Text>;
 }
