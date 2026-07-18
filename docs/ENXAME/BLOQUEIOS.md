@@ -3,6 +3,27 @@
 > Regra do loop: item humano → registra aqui e segue. Quando o dono voltar, esta é a lista dele.
 > Fonte: Onda 1 (2026-07-17). Marcar `[x]` quando o dono resolver.
 
+## ⚠️ LEIA ANTES DE `wrangler deploy` (custo medido, 18/07)
+
+O deploy do worker tem **um custo de uma vez, em crédito de cliente**, e é melhor
+você saber antes do que descobrir por reclamação:
+
+- A chave de idempotência da IA de voz **mudou de formato** no caminho degradado
+  (o caminho que 100% das cobranças usam hoje, porque a migration de cota ainda
+  não rodou). A chave antiga não tinha prazo — valia para sempre.
+- Quem estava "pegando carona" nessa chave eterna vai ser cobrado **1 crédito
+  extra, uma única vez**, na primeira ação depois que o worker subir.
+- **Vale a troca:** sem ela, cobrança feita com a RPC fora ficava invisível
+  quando a RPC voltasse — 60/60 cobranças duplas nessa direção, e o pior momento
+  seria exatamente quando você aplicasse a migration. Trocamos um custo pontual
+  e conhecido por um risco recorrente e invisível.
+- **Ordem recomendada:** subir o worker e aplicar as migrations na mesma janela,
+  em horário de pouco movimento. Se alguém reclamar de 1 crédito, é isto.
+
+**Enquanto a migration `20260727_ia_cota_gratis.sql` não rodar, a cobrança de IA
+é ILIMITADA** (fail-open declarado, de propósito, para o deploy ser seguro
+sozinho). Toda a máquina de idempotência só começa a valer com ela aplicada.
+
 ## Destrava RECEITA (sem isso, ninguém paga)
 - [ ] **MP_WEBHOOK_SECRET** ausente no cofre do worker (o `MP_ACCESS_TOKEN` já está lá). Único item que liga Pix/cartão. Registrar o webhook no painel Mercado Pago.
 - [ ] **3 migrations no Supabase de produção** (ordem importa, fora de ordem = 500/503): `20260724_webhook_events.sql` → `20260725_equipe_grandfathering.sql` → `20260726_credit_ledger_imutavel.sql`. O código já assume que existem.
