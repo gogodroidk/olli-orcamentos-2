@@ -14,6 +14,8 @@ import type { Orcamento, Recibo } from "@dominio";
 export interface OrcamentoRow {
 	id?: string | null;
 	numero?: string | null;
+	/** A quem pertence — é por ele que o radar de clientes acha a última interação. */
+	cliente_id?: string | null;
 	cliente_nome?: string | null;
 	status?: string | null;
 	valor_total?: number | null;
@@ -35,6 +37,8 @@ export interface ReciboRow {
 	id?: string | null;
 	numero?: string | null;
 	orcamento_id?: string | null;
+	/** A quem pertence — usado pelo radar de clientes (recibo = interação real). */
+	cliente_id?: string | null;
 	cliente_nome?: string | null;
 	valor_recebido?: number | null;
 	/**
@@ -51,6 +55,8 @@ export interface ReciboRow {
 /** Linha crua da tabela `agendamentos` (`inicio`/`fim` são timestamptz de verdade). */
 export interface AgendamentoRow {
 	id?: string | null;
+	/** A quem pertence — o radar de clientes conta agendamento CONCLUÍDO como interação. */
+	cliente_id?: string | null;
 	cliente_nome?: string | null;
 	titulo?: string | null;
 	tipo?: string | null;

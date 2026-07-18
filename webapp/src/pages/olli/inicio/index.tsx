@@ -1,12 +1,14 @@
+import type { Empresa } from "@dominio";
 import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { ClientesEsfriandoCard } from "./ClientesEsfriandoCard";
 import { FaixaHoje } from "./FaixaHoje";
 import {
-	calcularAReceber,
 	calcularEmJogo,
 	calcularRecebidoNoMes,
 	calcularTaxaAprovacao,
+	listarDinheiroParado,
 	paramStatus,
 	STATUS_A_RECEBER,
 	STATUS_EM_JOGO,
@@ -15,6 +17,7 @@ import { formatBRL, formatPct, mesPorExtenso, type OrcamentoRow, plural, type Re
 import { KpiDinheiroCard } from "./KpiDinheiroCard";
 import { ParadosCard } from "./ParadosCard";
 import { PrimeirosPassosCard } from "./PrimeirosPassosCard";
+import { RadarDinheiroCard } from "./RadarDinheiroCard";
 import { RecentOrcamentosCard } from "./RecentOrcamentosCard";
 import { StatusDonutCard } from "./StatusDonutCard";
 import { WelcomeHeader } from "./WelcomeHeader";
@@ -44,9 +47,16 @@ export default function Inicio() {
 	// Leitura mínima só para saber SE existe cliente (1 linha, 1 coluna) — não entra
 	// em nenhum cálculo, serve só para o gate do onboarding abaixo.
 	const cliQ = useOlliList<{ id?: string | null }>("clientes", { limit: 1, colunas: "id" });
-	const { data: empresa } = useMinhaEmpresa();
+	const { data: empresaLinha } = useMinhaEmpresa();
 
-	const nomeEmpresa = ((empresa?.nome as string | undefined) ?? "").trim() || undefined;
+	// `empresa` é tabela de BLOB: o objeto de domínio inteiro mora em `dados` (ver
+	// `empresaToRow` no cloudSync do app). Daqui saem nome, cidade e CHAVE PIX — é o
+	// que deixa a cobrança do radar sair com o Pix Copia e Cola já montado.
+	const empresa = (empresaLinha?.dados as Empresa | undefined) ?? null;
+	// Blob primeiro, coluna-espelho depois (mesma tolerância do `pickBrandColor`): antes
+	// isto lia só `empresaLinha.nome`, que NÃO é coluna de `empresa` — o nome do dono
+	// nunca chegava ao texto de cobrança.
+	const nomeEmpresa = (empresa?.nome ?? (empresaLinha?.nome as string | undefined) ?? "").trim() || undefined;
 
 	// Conta claramente NOVA: as duas consultas TERMINARAM com sucesso (não é
 	// "carregando" nem "erro" travestido de vazio) e as duas vieram vazias. Só aí
@@ -56,10 +66,14 @@ export default function Inicio() {
 		orcQ.isSuccess && (orcQ.data?.length ?? -1) === 0 && cliQ.isSuccess && (cliQ.data?.length ?? -1) === 0;
 
 	const emJogo = useMemo(() => (orcQ.data ? calcularEmJogo(orcQ.data) : null), [orcQ.data]);
-	const aReceber = useMemo(
-		() => (orcQ.data && recQ.data ? calcularAReceber(orcQ.data, recQ.data) : null),
+	// UMA passagem alimenta o radar de dinheiro parado E o KPI "A receber". Eles são o
+	// MESMO dinheiro: calcular duas vezes seria criar a chance de a faixa do topo e o
+	// cartão logo abaixo discordarem sobre quanto o dono tem a receber.
+	const radarDinheiro = useMemo(
+		() => (orcQ.data && recQ.data ? listarDinheiroParado(orcQ.data, recQ.data) : null),
 		[orcQ.data, recQ.data],
 	);
+	const aReceber = radarDinheiro;
 	const recebido = useMemo(() => (recQ.data ? calcularRecebidoNoMes(recQ.data) : null), [recQ.data]);
 	const taxa = useMemo(() => (orcQ.data ? calcularTaxaAprovacao(orcQ.data, 30) : null), [orcQ.data]);
 
@@ -87,6 +101,20 @@ export default function Inicio() {
 			<WelcomeHeader />
 
 			{contaNova && <PrimeirosPassosCard />}
+
+			{/*
+			 * O PALCO. O radar de dinheiro parado vem ANTES dos KPIs de propósito: é a
+			 * única coisa desta tela que pede uma ação hoje. Os quatro números abaixo
+			 * explicam o mês; este diz o que fazer agora, e traz o botão junto.
+			 * Some da hierarquia (vira faixa curta) quando não há nada parado.
+			 */}
+			<RadarDinheiroCard
+				radar={radarDinheiro}
+				isLoading={orcQ.isLoading || recQ.isLoading}
+				isError={orcQ.isError || recQ.isError}
+				onRetry={recarregarTudo}
+				empresa={empresa}
+			/>
 
 			{/*
 			 * Os 4 números que decidem o mês. Cada um leva à lista já filtrada.
@@ -195,6 +223,20 @@ export default function Inicio() {
 					/>
 				</div>
 			</div>
+
+			{/*
+			 * O terceiro radar do celular que faltava aqui: quem já foi cliente e sumiu.
+			 * Fica abaixo do dinheiro porque é receita de amanhã, não de hoje — mas na
+			 * mesma tela, com a mesma ação de um toque.
+			 */}
+			<ClientesEsfriandoCard
+				orcamentos={orcQ.data}
+				recibos={recQ.data}
+				orcRecCarregando={orcQ.isLoading || recQ.isLoading}
+				orcRecErro={orcQ.isError || recQ.isError}
+				onRetry={recarregarTudo}
+				empresa={empresa}
+			/>
 
 			<RecentOrcamentosCard
 				rows={orcQ.data}

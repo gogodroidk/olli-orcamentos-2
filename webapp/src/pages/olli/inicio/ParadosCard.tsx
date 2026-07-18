@@ -19,11 +19,17 @@ const DIAS_MINIMO = 3;
 const MOSTRAR = 5;
 
 /**
- * PARADOS / COBRAR — o bloco que faz o dono ganhar dinheiro.
+ * PROPOSTAS PARADAS — o degrau ANTES do dinheiro parado (esse é o `RadarDinheiroCard`,
+ * no topo da tela): aqui o cliente ainda nem respondeu.
  *
- * Orçamento enviado/visualizado, sem mexer há mais de 3 dias: proposta viva na mão do
- * cliente que ninguém cobrou. Cada linha tem um botão de WhatsApp com o texto de
- * cobrança já escrito (educado, sem constranger) — o dono revisa e envia.
+ * Proposta já enviada ao cliente (`STATUS_EM_JOGO` = a `STATUS_PROPOSTA_ENVIADA` do
+ * app), sem mexer há mais de 3 dias. Cada linha tem um botão de WhatsApp com o texto
+ * de follow-up já escrito (educado, sem constranger) — o dono revisa e envia.
+ *
+ * O conjunto de status vem do app desde a correção em `financeiro.ts`: antes esta
+ * lista via só "enviado" e "visualizado", enquanto o celular também contava
+ * "em negociação" e "aguardando assinatura" — o painel escondia propostas paradas
+ * que o app mostrava.
  *
  * O botão só existe quando há telefone LEGÍVEL no blob do orçamento. Sem telefone,
  * a linha continua aparecendo (o dono precisa saber que a proposta está parada), mas
@@ -42,10 +48,10 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 						<span className="grid size-8 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
 							<TimerReset className="size-[18px]" />
 						</span>
-						Parados — hora de cobrar
+						Propostas paradas — hora de dar um toque
 					</h2>
 					<p className="mt-1 text-xs text-text-secondary">
-						Enviados sem resposta há mais de {DIAS_MINIMO} dias
+						Enviadas ao cliente e sem resposta há mais de {DIAS_MINIMO} dias
 						{!isLoading && !isError && parados.length > 0 ? ` · ${plural(parados.length, "orçamento")}` : ""}
 					</p>
 				</div>
