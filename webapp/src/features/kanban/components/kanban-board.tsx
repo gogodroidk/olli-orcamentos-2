@@ -24,13 +24,16 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
+import type { Empresa, Orcamento } from "@dominio";
 import { AlertTriangle, Inbox, RotateCw, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { useMinhaEmpresa } from "@/olli/data";
+import FormOrcamento, { duplicarComoRascunho } from "@/pages/olli/orcamentos/FormOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { useQuadro } from "../hooks/useQuadro";
-import { COLUNAS } from "../utils/colunas";
+import { blobDoCartao, type Cartao, COLUNAS } from "../utils/colunas";
 import { createRestrictToContainer } from "../utils/restrict-to-container";
 import BoardColumn from "./board-column";
 import { CartaoFantasma } from "./task-card";
@@ -48,6 +51,26 @@ const INSTRUCOES_LEITOR_DE_TELA: ScreenReaderInstructions = {
 
 export default function KanbanBoard() {
 	const { colunas, total, isLoading, isError, error, refetch, mover, emVoo, erro, limparErro } = useQuadro();
+	const { data: empresaLinha } = useMinhaEmpresa();
+	// A `empresa` também é uma tabela de BLOB: o objeto de domínio vive em `dados`.
+	const empresa = (empresaLinha?.dados as Empresa | undefined) ?? null;
+
+	/** O editor aberto sobre um card do quadro — o MESMO FormOrcamento da lista de
+	 *  Orçamentos, para não haver dois formulários com regras diferentes. */
+	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean } | null>(null);
+
+	/** Clique no corpo do card: só abre se houver blob (ver `blobDoCartao`) — sem
+	 *  documento não há o que editar. */
+	const abrirEditor = (cartao: Cartao) => {
+		const blob = blobDoCartao(cartao);
+		if (!blob) return;
+		setEditor({ orc: blob, ehNovo: false });
+	};
+
+	/** Oferecido pelo FormOrcamento quando a edição está bloqueada (já enviado/aprovado):
+	 *  duplica como rascunho novo, no lugar do editor atual. */
+	const duplicar = (o: Orcamento) =>
+		setEditor({ orc: duplicarComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
 
 	const [arrastando, setArrastando] = useState<string | null>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -197,7 +220,7 @@ export default function KanbanBoard() {
 					className="flex w-full flex-col items-stretch gap-4 overflow-x-auto pb-4 md:flex-row md:items-start"
 				>
 					{colunas.map((m) => (
-						<BoardColumn key={m.coluna.id} montada={m} emVoo={emVoo} onMover={mover} />
+						<BoardColumn key={m.coluna.id} montada={m} emVoo={emVoo} onMover={mover} onAbrir={abrirEditor} />
 					))}
 				</div>
 
@@ -205,6 +228,16 @@ export default function KanbanBoard() {
 					{emArraste ? <CartaoFantasma cartao={emArraste.cartao} coluna={emArraste.coluna} /> : null}
 				</DragOverlay>
 			</DndContext>
+
+			{editor && (
+				<FormOrcamento
+					aberto
+					aoFechar={() => setEditor(null)}
+					inicial={editor.orc}
+					ehNovo={editor.ehNovo}
+					aoDuplicar={duplicar}
+				/>
+			)}
 		</div>
 	);
 }

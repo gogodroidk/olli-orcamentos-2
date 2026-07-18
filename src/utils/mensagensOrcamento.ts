@@ -154,7 +154,7 @@ export function montarMensagemAgradecimento(nomeCliente: string, orc?: Orcamento
  * opcional/editável e nunca disparada sozinha; `orc` é opcional, só para
  * manter o mesmo padrão de assinatura de `montarMensagemAgradecimento`.
  */
-export function montarMensagemPedidoIndicacao(nomeCliente: string, orc?: Orcamento | null, empresa?: Empresa | null): string {
+export function montarMensagemPedidoIndicacao(nomeCliente: string, _orc?: Orcamento | null, empresa?: Empresa | null): string {
   const quem = (empresa?.nomePrestador || empresa?.nome || '').trim();
   const contato = empresa?.telefone || empresa?.whatsapp;
   const linhas = [

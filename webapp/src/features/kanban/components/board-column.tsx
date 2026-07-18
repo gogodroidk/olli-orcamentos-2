@@ -15,9 +15,10 @@ type Props = {
 	montada: ColunaMontada;
 	emVoo: ReadonlySet<string>;
 	onMover: (cartao: Cartao, novoStatus: StatusOrcamento) => void;
+	onAbrir: (cartao: Cartao) => void;
 };
 
-export default function BoardColumn({ montada, emVoo, onMover }: Props) {
+export default function BoardColumn({ montada, emVoo, onMover, onAbrir }: Props) {
 	const { coluna, cartoes, soma, temSemValor } = montada;
 
 	// "Outros" (status desconhecido) não tem status canônico para gravar — então não
@@ -56,7 +57,14 @@ export default function BoardColumn({ montada, emVoo, onMover }: Props) {
 				)}
 			>
 				{cartoes.map((c) => (
-					<TaskCard key={c.id} cartao={c} coluna={coluna} salvando={emVoo.has(c.id)} onMover={onMover} />
+					<TaskCard
+						key={c.id}
+						cartao={c}
+						coluna={coluna}
+						salvando={emVoo.has(c.id)}
+						onMover={onMover}
+						onAbrir={onAbrir}
+					/>
 				))}
 
 				{cartoes.length === 0 && (

@@ -246,6 +246,35 @@ export function montarItem(tipo: TipoCatalogo, r: Rascunho, base?: ItemCatalogo 
 	return item;
 }
 
+/**
+ * Cópia de um item do catálogo, pronta para abrir como um registro NOVO — mesmo
+ * espírito de `duplicarComoRascunho` (orçamentos, `pages/olli/orcamentos/FormOrcamento.tsx`):
+ * o original fica intacto, e o usuário só confere/ajusta nome, preço e unidade antes
+ * de salvar. `id` e `criadoEm` aqui só existem para satisfazer o tipo `ItemCatalogo`
+ * (o formulário os regera de qualquer forma no submit — ver `comoNovo` abaixo);
+ * `fotoUri`/`excluidoEm` do original NÃO viajam para a cópia.
+ */
+export function duplicarItem(tipo: TipoCatalogo, item: ItemCatalogo): ItemCatalogo {
+	const p = item as ProdutoItem;
+	const copia: ServicoItem = {
+		id: novoId(),
+		nome: `${item.nome} (cópia)`.slice(0, 120),
+		preco: item.preco,
+		unidade: item.unidade,
+		criadoEm: agoraIso(),
+	};
+	if (item.descricao) copia.descricao = item.descricao;
+	if (item.custo != null) copia.custo = item.custo;
+
+	if (tipo === "produto") {
+		const pc: ProdutoItem = { ...copia };
+		if (p.marca) pc.marca = p.marca;
+		if (p.modelo) pc.modelo = p.modelo;
+		return pc;
+	}
+	return copia;
+}
+
 /* ───────────────────────────────  Componente  ──────────────────────────────── */
 
 interface Props {
@@ -253,16 +282,23 @@ interface Props {
 	tipo: TipoCatalogo;
 	/** Registro em edição. `null`/ausente = criar novo. */
 	item?: ItemCatalogo | null;
+	/**
+	 * true = mesmo com `item` preenchido, trata como registro NOVO — título,
+	 * texto e gravação em INSERT (nunca por cima do original). Usada pela ação
+	 * "Duplicar": `item` chega pré-preenchido por `duplicarItem`, mas salvar tem
+	 * que criar uma linha nova.
+	 */
+	comoNovo?: boolean;
 	aoFechar: () => void;
 	/** Chamado só quando a gravação SUBIU (para a lista dar o feedback certo). */
 	aoSalvar?: (item: ItemCatalogo) => void;
 }
 
-export default function FormItemCatalogo({ aberto, tipo, item, aoFechar, aoSalvar }: Props) {
+export default function FormItemCatalogo({ aberto, tipo, item, comoNovo, aoFechar, aoSalvar }: Props) {
 	const idBase = useId();
 	const formId = `form-catalogo-${idBase}`;
 	const rotulo = ROTULO_DO_TIPO[tipo];
-	const editando = !!item;
+	const editando = !!item && !comoNovo;
 
 	const [r, setR] = useState<Rascunho>(() => itemParaRascunho(tipo, item));
 	const [erroNome, setErroNome] = useState<string | null>(null);
@@ -310,7 +346,8 @@ export default function FormItemCatalogo({ aberto, tipo, item, aoFechar, aoSalva
 			return;
 		}
 
-		const objeto = montarItem(tipo, r, item);
+		// `comoNovo` (duplicar): grava um registro NOVO — nunca por cima do item copiado.
+		const objeto = montarItem(tipo, r, comoNovo ? null : item);
 		salvar.mutate(objeto, {
 			onSuccess: () => {
 				aoSalvar?.(objeto);

@@ -22,7 +22,8 @@ import {
 } from '@expo-google-fonts/spectral';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { criarAppTheme, Colors, TemaProvider, useTema } from './src/theme';
-import { Fonts, applyFontPatch } from './src/theme/fonts';
+import { Fonts } from './src/theme/fonts';
+import { applyFontPatch } from './src/theme/aplicarFontPatch';
 import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';

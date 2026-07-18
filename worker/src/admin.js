@@ -492,27 +492,31 @@ function applySearch(){const q=$('usearch').value.trim().toLowerCase();renderUse
 
 // ── Feedback & Erros ──
 let ALLFB=[], FBFILTER='abertos';
-const TIPO_FB={feedback:['💬','#0B6FCE'],sugestao:['💡','#F7B23B'],bug:['🐞','#E5484D'],elogio:['⭐','#2BD787'],erro:['⛔','#E5484D']};
+const TIPO_FB={feedback:['💬','#0B6FCE'],sugestao:['💡','#F7B23B'],bug:['🐞','#E5484D'],elogio:['⭐','#2BD787'],erro:['⛔','#E5484D'],pulso:['📊','#8B5CF6']};
+// O tipo REAL do produto vive em contexto.origem (a coluna tipo tem CHECK
+// constraint no banco e colapsa tipos novos). Linha antiga nao tem origem: cai
+// no f.tipo. Ver src/services/feedback.ts.
+function tipoFb(f){const o=f&&f.contexto&&f.contexto.origem;return(o&&TIPO_FB[o])?o:f.tipo;}
 function emailDe(uid){const u=ALLUSERS.find(x=>x.id===uid);return u?(u.email||u.nome||'usuário'):(uid?('id '+String(uid).slice(0,8)):'anônimo');}
 function renderFbFilters(){
  const box=$('ffilters');if(!box)return;box.innerHTML='';
  const abertos=ALLFB.filter(f=>!f.resolvido).length,erros=ALLFB.filter(f=>f.tipo==='erro'&&!f.resolvido).length;
  $('fcount').textContent='('+abertos+' abertos'+(erros?' · '+erros+' erros':'')+')';
- const opts=[['abertos','Não resolvidos'],['todos','Todos'],['erro','⛔ Erros'],['bug','🐞 Bugs'],['sugestao','💡 Sugestões'],['feedback','💬 Feedback']];
+ const opts=[['abertos','Não resolvidos'],['todos','Todos'],['erro','⛔ Erros'],['bug','🐞 Bugs'],['sugestao','💡 Sugestões'],['feedback','💬 Feedback'],['pulso','📊 Pulso']];
  for(const o of opts){const b=el('button',{className:'btn '+(FBFILTER===o[0]?'soft sm':'ghost sm'),onclick:()=>{FBFILTER=o[0];renderFbFilters();renderFeedback();}},o[1]);box.append(b);}
 }
 function renderFeedback(){
  const box=$('frows');if(!box)return;box.innerHTML='';
  let list=ALLFB.slice();
  if(FBFILTER==='abertos')list=list.filter(f=>!f.resolvido);
- else if(FBFILTER!=='todos')list=list.filter(f=>f.tipo===FBFILTER);
+ else if(FBFILTER!=='todos')list=list.filter(f=>tipoFb(f)===FBFILTER);
  if(!list.length){box.append(el('div',{className:'empty'},'Nada por aqui. 🎉'));return;}
  for(const f of list){
-  const meta=TIPO_FB[f.tipo]||['💬','#8aa'],ctx=f.contexto||{};
+  const t=tipoFb(f),meta=TIPO_FB[t]||['💬','#8aa'],ctx=f.contexto||{};
   const item=el('div',{style:'border:1px solid #ffffff14;border-radius:14px;padding:14px;margin-bottom:10px;background:#ffffff08'+(f.resolvido?';opacity:.5':'')});
   const head=el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:7px;flex-wrap:wrap'});
-  head.append(el('span',{style:'font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px;background:'+meta[1]+'22;color:'+meta[1]},meta[0]+' '+f.tipo));
-  const bits=[ctx.tela,ctx.plano,ctx.versao?('v'+ctx.versao):null,ctx.plataforma].filter(Boolean).join(' · ');
+  head.append(el('span',{style:'font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px;background:'+meta[1]+'22;color:'+meta[1]},meta[0]+' '+t));
+  const bits=[ctx.nota?('nota '+ctx.nota+'/5'):null,ctx.tela,ctx.plano,ctx.versao?('v'+ctx.versao):null,ctx.plataforma].filter(Boolean).join(' · ');
   head.append(el('span',{className:'muted',style:'font-size:12px;flex:1'},bits));
   head.append(el('span',{className:'muted',style:'font-size:12px'},fmtDate(f.criado_em)));
   item.append(head);

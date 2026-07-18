@@ -87,6 +87,16 @@ export const RADAR_SNOOZE_STAMP_KEY = 'olli.radar.snooze.stamp';
 export const EMPRESA_STAMP_KEY = 'olli.empresa.stamp';
 
 /**
+ * Carimbo ISO da última vez que o "Pulso da semana" (micro-feedback discreto da
+ * HojeScreen) foi MOSTRADO ao usuário. Garante o "no máximo 1x a cada 14 dias" —
+ * gravado no momento em que o card aparece (não só quando o usuário responde),
+ * senão alguém que sempre dispensa sem tocar veria o card toda vez que abrisse o
+ * app. Dado de CONTA (a cadência é por pessoa) — entra em APP_DATA_STORAGE_KEYS
+ * para o próximo usuário do aparelho não herdar o carimbo de outra conta.
+ */
+export const PULSO_ULTIMO_KEY = 'olli.pulso.ultimo';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -108,4 +118,5 @@ export const APP_DATA_STORAGE_KEYS = [
   RITUAL_BOM_DIA_TOGGLE_KEY,
   RITUAL_FECHAR_DIA_TOGGLE_KEY,
   RITUAL_DOMINGO_TOGGLE_KEY,
+  PULSO_ULTIMO_KEY,
 ];

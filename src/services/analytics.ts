@@ -40,6 +40,10 @@ export const Eventos = {
   ajudaArtigoAberto: 'ajuda_artigo_aberto',
   ajudaBuscou: 'ajuda_buscou',
   ajudaSuporteContato: 'ajuda_suporte_contato',
+  // Pulso da semana (HojeScreen) — micro-feedback proativo, pulável, nunca bloqueia.
+  pulsoMostrado: 'pulso_mostrado',
+  pulsoRespondido: 'pulso_respondido',
+  pulsoDispensado: 'pulso_dispensado',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

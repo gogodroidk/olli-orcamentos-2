@@ -25,7 +25,16 @@ import {
 	DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 import { cn } from "@/utils";
-import { BRL, type Cartao, COLUNAS, type Coluna, DIAS_DE_ALERTA, rotuloDoStatus, rotuloParado } from "../utils/colunas";
+import {
+	blobDoCartao,
+	BRL,
+	type Cartao,
+	COLUNAS,
+	type Coluna,
+	DIAS_DE_ALERTA,
+	rotuloDoStatus,
+	rotuloParado,
+} from "../utils/colunas";
 
 /** Só alerta no MEIO do funil: um orçamento aprovado ou perdido há 40 dias está parado
  *  por bem — pintar de laranja seria alarme falso. */
@@ -90,14 +99,20 @@ type Props = {
 	/** Gravação em voo: o card fica travado, mas continua visível e legível. */
 	salvando?: boolean;
 	onMover: (cartao: Cartao, novoStatus: StatusOrcamento) => void;
+	/** Abre o mesmo editor da lista de Orçamentos sobre este card. Só chamado quando
+	 *  há blob (ver `blobDoCartao`) — sem documento não há o que editar. */
+	onAbrir: (cartao: Cartao) => void;
 };
 
-export default function TaskCard({ cartao, coluna, salvando, onMover }: Props) {
+export default function TaskCard({ cartao, coluna, salvando, onMover, onAbrir }: Props) {
 	const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
 		id: cartao.id,
 		data: { colunaId: coluna.id },
 		disabled: salvando,
 	});
+	// Sem blob (linha corrompida/legada) não há documento para abrir — mesma trava da
+	// lista de Orçamentos (`MenuDaLinha`): o corpo fica visível, mas não clicável.
+	const temBlob = blobDoCartao(cartao) !== null;
 
 	return (
 		<div
@@ -122,7 +137,23 @@ export default function TaskCard({ cartao, coluna, salvando, onMover }: Props) {
 					<GripVertical className="size-4" aria-hidden />
 				</button>
 
-				<Miolo cartao={cartao} coluna={coluna} salvando={salvando} />
+				{temBlob ? (
+					<button
+						type="button"
+						onClick={() => onAbrir(cartao)}
+						disabled={salvando}
+						aria-label={`Abrir orçamento ${cartao.numero} para editar`}
+						className={cn(
+							"min-w-0 flex-1 rounded text-left",
+							"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+							"disabled:cursor-not-allowed",
+						)}
+					>
+						<Miolo cartao={cartao} coluna={coluna} salvando={salvando} />
+					</button>
+				) : (
+					<Miolo cartao={cartao} coluna={coluna} salvando={salvando} />
+				)}
 
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>

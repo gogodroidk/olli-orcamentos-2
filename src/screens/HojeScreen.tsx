@@ -28,9 +28,10 @@ import {
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
-import { CHECKLIST_KEY } from '../services/storageKeys';
+import { CHECKLIST_KEY, PULSO_ULTIMO_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
 import { track, Eventos } from '../services/analytics';
+import { enviarFeedback } from '../services/feedback';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -179,6 +180,112 @@ const CheckRow = React.memo(function CheckRow(
   );
 });
 
+const PULSO_EMOJIS: { valor: number; emoji: string; label: string }[] = [
+  { valor: 1, emoji: '😕', label: 'Ruim' },
+  { valor: 2, emoji: '😐', label: 'Mais ou menos' },
+  { valor: 3, emoji: '🙂', label: 'Bom' },
+  { valor: 4, emoji: '😄', label: 'Muito bom' },
+  { valor: 5, emoji: '🤩', label: 'Adoro' },
+];
+
+/**
+ * Micro-feedback discreto e pulável — "Pulso da semana". HojeScreen é a tela
+ * UNIVERSAL (pega o técnico também, não só o dono), por isso mora aqui e não no
+ * RelatorioDia. Toque único no emoji já grava (enviarFeedback tipo="pulso"); o
+ * comentário depois é OPCIONAL. NUNCA bloqueia — sempre pulável (X) e nunca modal.
+ */
+function PulsoSemana({ onFechar }: { onFechar: () => void }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const [nota, setNota] = useState<number | null>(null);
+  const [texto, setTexto] = useState('');
+  const [enviandoTexto, setEnviandoTexto] = useState(false);
+  const [textoEnviado, setTextoEnviado] = useState(false);
+
+  const escolher = useCallback((valor: number) => {
+    if (nota !== null) return; // já respondeu — um toque só
+    Haptics.selectionAsync().catch(() => {});
+    setNota(valor);
+    track(Eventos.pulsoRespondido, { nota: valor });
+    void enviarFeedback('pulso', '', { tela: 'HojeScreen', nota }).catch(() => {});
+  }, [nota]);
+
+  const enviarComentario = useCallback(async () => {
+    const msg = texto.trim();
+    if (!msg || enviandoTexto || nota === null) return;
+    Haptics.selectionAsync().catch(() => {});
+    setEnviandoTexto(true);
+    const r = await enviarFeedback('pulso', msg, { tela: 'HojeScreen', nota });
+    setEnviandoTexto(false);
+    if (r === 'ok') {
+      setTextoEnviado(true);
+      setTexto('');
+    }
+  }, [texto, enviandoTexto, nota]);
+
+  return (
+    <View style={styles.pulsoCard}>
+      <TouchableOpacity
+        style={styles.pulsoFechar}
+        onPress={onFechar}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Dispensar pergunta"
+      >
+        <MaterialCommunityIcons name="close" size={16} color={cores.onSurfaceMuted} />
+      </TouchableOpacity>
+
+      {nota === null ? (
+        <>
+          <Text style={styles.pulsoTitulo}>Como tá o OLLI pra você?</Text>
+          <View style={styles.pulsoEmojisRow}>
+            {PULSO_EMOJIS.map(e => (
+              <OlliPressable
+                key={e.valor}
+                style={styles.pulsoEmojiBtn}
+                onPress={() => escolher(e.valor)}
+                haptic={false}
+                accessibilityLabel={e.label}
+              >
+                <Text style={styles.pulsoEmoji}>{e.emoji}</Text>
+              </OlliPressable>
+            ))}
+          </View>
+        </>
+      ) : textoEnviado ? (
+        <Text style={styles.pulsoObrigado}>Valeu por avaliar! 🙌</Text>
+      ) : (
+        <>
+          <Text style={styles.pulsoTitulo}>Obrigado! Quer contar mais alguma coisa? (opcional)</Text>
+          <View style={styles.pulsoTextoRow}>
+            <TextInput
+              style={styles.pulsoInput}
+              value={texto}
+              onChangeText={setTexto}
+              onSubmitEditing={enviarComentario}
+              returnKeyType="done"
+              placeholder="O que podia ser melhor..."
+              placeholderTextColor={cores.onSurfaceMuted}
+              multiline
+            />
+            {texto.trim() ? (
+              <OlliPressable
+                onPress={enviarComentario}
+                haptic={false}
+                disabled={enviandoTexto}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Enviar comentário"
+              >
+                <MaterialCommunityIcons name="arrow-up-circle" size={24} color={cores.accentLight} />
+              </OlliPressable>
+            ) : null}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -198,6 +305,7 @@ export default function HojeScreen() {
   // isso, uma falha de rede/leitura virava silenciosamente "Tudo em dia!".
   const [carregandoErro, setCarregandoErro] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  const [pulsoVisivel, setPulsoVisivel] = useState(false);
 
   const load = useCallback(async () => {
     setCarregandoErro(false);
@@ -279,6 +387,43 @@ export default function HojeScreen() {
 
   const feitos = checklist.filter(i => i.feito).length;
   const semNada = itens.length === 0 && parados.length === 0 && aguardandoAssinatura.length === 0;
+
+  // Sinal SIMPLES de "semana com movimento" (sem consulta nova): agenda de hoje,
+  // checklist com item concluído hoje, ou algum orçamento criado nos últimos 7
+  // dias. O Pulso da semana só aparece quando há sinal de uso real — nunca numa
+  // semana parada, onde a pergunta soaria deslocada.
+  const houveMovimentoNaSemana =
+    itens.length > 0 || feitos > 0 || orcamentos.some(o => diasAtras(o.criadoEm) < 7);
+
+  // Gate do Pulso da semana: checa 1x por sessão (quando o carregamento inicial
+  // termina) se já passaram 14 dias desde a última exibição — grava o carimbo NO
+  // MOMENTO em que decide mostrar (não só quando o usuário responde), senão quem
+  // sempre dispensa sem tocar veria o card toda vez que abrisse o app. Erro na
+  // leitura/escrita do AsyncStorage nunca deve travar a tela: fica em silêncio.
+  useEffect(() => {
+    if (carregando || carregandoErro || !houveMovimentoNaSemana) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const ultimo = await AsyncStorage.getItem(PULSO_ULTIMO_KEY);
+        if (ultimo && diasAtras(ultimo) < 14) return;
+        if (cancelado) return;
+        setPulsoVisivel(true);
+        track(Eventos.pulsoMostrado, {});
+        await AsyncStorage.setItem(PULSO_ULTIMO_KEY, new Date().toISOString());
+      } catch {
+        // pulso é 100% opcional — nunca deve travar a tela por causa disso
+      }
+    })();
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carregando, carregandoErro, houveMovimentoNaSemana]);
+
+  const fecharPulso = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.pulsoDispensado, {});
+    setPulsoVisivel(false);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -489,6 +634,13 @@ export default function HojeScreen() {
           </View>
         </View>
 
+        {/* PULSO DA SEMANA — micro-feedback discreto, pulável, no máximo 1x/14 dias */}
+        {pulsoVisivel && (
+          <AnimatedEntrance index={2} from="scale">
+            <PulsoSemana onFechar={fecharPulso} />
+          </AnimatedEntrance>
+        )}
+
         {/* RELATÓRIO DO DIA FALADO — recurso Pro; KPIs continuam grátis dentro da tela */}
         <AnimatedEntrance index={2}>
           <OlliPressable
@@ -589,6 +741,20 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   checkTextDone: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
   checklistNota: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline },
   checklistNotaText: { flex: 1, fontSize: 10.5, color: c.onSurfaceMuted },
+
+  pulsoCard: {
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
+    borderWidth: 1, borderColor: c.outline,
+    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...sombrasDe(c).sm,
+  },
+  pulsoFechar: { position: 'absolute', top: 10, right: 10, zIndex: 1, padding: 4 },
+  pulsoTitulo: { fontSize: 14, fontWeight: '800', color: c.onSurface, marginRight: 22 },
+  pulsoEmojisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  pulsoEmojiBtn: { alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 12, backgroundColor: c.surfaceVariant },
+  pulsoEmoji: { fontSize: 22 },
+  pulsoObrigado: { fontSize: 14, fontWeight: '700', color: c.onSurface, textAlign: 'center', paddingVertical: 4 },
+  pulsoTextoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  pulsoInput: { flex: 1, fontSize: 13.5, color: c.onSurface, paddingVertical: 6, maxHeight: 80 },
 
   relatorioCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,

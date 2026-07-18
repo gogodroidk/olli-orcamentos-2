@@ -661,12 +661,17 @@ function CloseAction({ icon, label, onPress, loading }: { icon: keyof typeof Mat
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   // Dentro do GradientHeader (sempre colorido, nos dois modos) — glass branco
-  // fixo, mesma convenção do próprio GradientHeader.
+  // fixo, mesma convenção do próprio GradientHeader. Até 9 botões: flexWrap
+  // (em vez de flex:1 numa row sem wrap) deixa a barra "quebrar" em várias
+  // linhas com folga em vez de espremer os botões numa tela estreita.
   actionBar: {
-    flexDirection: 'row', paddingTop: 14, gap: 8,
+    flexDirection: 'row', flexWrap: 'wrap', paddingTop: 14, gap: 8,
   },
   actionBarBtn: {
-    flex: 1, alignItems: 'center', gap: 4,
+    // Largura fixa (não `flex:1`) — com wrap, flex:1 faria cada linha dividir o
+    // espaço de forma diferente conforme quantos botões coube nela, deixando
+    // os botões com tamanhos inconsistentes entre as linhas.
+    width: 84, alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.16)',
     paddingVertical: 12, borderRadius: BorderRadius.md,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',

@@ -165,6 +165,18 @@ export function rotuloParado(dias: number | null): string {
 /** A partir de quantos dados parados um card no meio do funil vira alerta visual. */
 export const DIAS_DE_ALERTA = 7;
 
+/**
+ * O blob do cartão, só se for um documento de verdade (`itens` é array). Mesma regra
+ * de `blobDe`, em `pages/olli/orcamentos/index.tsx`: uma linha sem blob (corrompida ou
+ * de versão antiga) não abre para edição — abrir um formulário vazio "salvaria por
+ * cima" e apagaria o que o cliente tem em mãos.
+ */
+export function blobDoCartao(cartao: Cartao): Orcamento | null {
+	const d = cartao.linha.dados;
+	if (!d || typeof d !== "object" || !Array.isArray(d.itens)) return null;
+	return d;
+}
+
 export function linhaParaCartao(linha: LinhaOrcamento): Cartao {
 	// A coluna-espelho `valor_total` pode estar vazia numa linha antiga; o blob é a
 	// verdade e serve de reserva. Se nem o blob tiver, o valor é DESCONHECIDO (null).
