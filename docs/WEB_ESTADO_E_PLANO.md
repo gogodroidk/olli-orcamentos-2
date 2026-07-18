@@ -19,7 +19,7 @@
 ### Como rodar (dev)
 - Landing: `cd web && npm run dev` (ou `npx astro preview`).
 - Painel: `cd webapp && npm run dev` → http://localhost:3001 (login demo **preenchido em DEV**).
-- Conta demo (QA): `demo@grtech.com.br` / `GrTechDemo2026`.
+- Conta demo (QA): `demo@grtech.com.br` (senha no cofre local / variável `VITE_DEMO_PASSWORD`).
 - ⚠️ `pnpm`/`corepack` bloqueados nesta máquina → usar `npm install --legacy-peer-deps`.
 
 ---

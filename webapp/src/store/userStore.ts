@@ -7,6 +7,7 @@ import { StorageEnum } from "#/enum";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
 import { resetBrandColor } from "@/olli/branding";
+import { queryClient } from "./queryClient";
 
 /**
  * Traduz os códigos de erro do Supabase Auth (AuthApiError.code) para pt-BR.
@@ -174,15 +175,13 @@ export function useAuthSync() {
 				// termina por expiração/token revogado (não pelo botão Sair) deixa
 				// o white-label do tenant anterior pintado até o próximo login.
 				resetBrandColor();
-				// NOTA: o cache do React Query (queryClient.clear()) NÃO é limpo
-				// aqui de propósito — o QueryClient vive em App.tsx (fora do escopo
-				// deste arquivo) e useQueryClient() não resolve fora da árvore do
-				// QueryClientProvider quando chamado a partir de useAuthSync (que é
-				// invocado em App() antes do Provider ser renderizado). O logout
-				// manual (account-dropdown.tsx) já chama queryClient.clear(); falta
-				// cobrir os caminhos SIGNED_OUT que não passam por ali (expiração/
-				// revogação de sessão) — exportar o `queryClient` de App.tsx e
-				// importá-lo aqui resolve, mas é edição fora do lote login-auth.
+				// Limpa o cache do React Query também aqui (não só no logout manual
+				// de account-dropdown.tsx): sem isto, uma sessão que termina por
+				// expiração/revogação de token (em vez do botão Sair) deixava dado
+				// em cache de um tenant vazar pro próximo login nesta mesma aba.
+				// `queryClient` é o singleton de store/queryClient.ts — resolve sem
+				// depender do QueryClientProvider (useAuthSync roda antes dele).
+				queryClient.clear();
 			} else hydrate(session);
 		});
 		return () => {

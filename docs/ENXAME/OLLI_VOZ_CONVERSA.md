@@ -73,7 +73,7 @@ Reusa `useGravadorNuvem` + um `modo` novo no worker (quase zero backend):
 
 ## Plano em fases
 - **Fase 0 — endurecer (P0)** ✅ (2026-07-17): preço-nulo→R$0 agora exige `confirmar()` antes de virar R$0 (não bloqueia; força o ok explícito). `OlliVozScreen.tsx`, tsc+test verdes.
-- **Fase 1 — Tier A (app):** ✅ saudação de 1ª vez · ✅ leitura-de-volta ("Entendi: N itens pra {cliente}, total R$X") · ✅ banner "falta o cliente" (não-bloqueante). ⏳ **unificar gesto do mic** — bloqueado: `vozNuvem.ts` só tem `pararEEnviar()` (acoplado); precisa expor `pararGravacao()`+`enviarGravacaoPronta()` (follow-up). ⏳ **casar cliente por voz** (Fase 1b) e **extração rica** (desconto/sinal/prazo com confirmação) ficam pra próxima leva. Não muda custo.
+- **Fase 1 — Tier A (app):** ✅ saudação de 1ª vez · ✅ leitura-de-volta ("Entendi: N itens pra {cliente}, total R$X") · ✅ banner "falta o cliente" (não-bloqueante). ✅ **unificar gesto do mic** (Onda 9, H3) — `vozNuvem` partido em `pararGravacao()`+`enviarGravacaoPronta()` (+`prontoParaEnviar`); mic só para, botão grande envia, `heroHint` avisa "Áudio pronto!". `CampoComVoz` intocado. ⏳ **casar cliente por voz** (Fase 1b) e **extração rica** (desconto/sinal/prazo com confirmação) ficam pra próxima leva. Não muda custo.
 - **Fase 2 — cota real (DONO decide o modelo):** `consumirCreditos` no worker; migrar "grátis" pro ledger; **1 crédito por orçamento gerado**; 1ª conversa grátis; mesada nos planos pagos.
 - **Fase 3 — Tier B (conversa de verdade):** multi-turno orquestrado no cliente + TTS opt-in. **Só depois da Fase 2.**
 - **Fase 4 — painel web:** Web Speech + MediaRecorder + `audio/webm` no worker.

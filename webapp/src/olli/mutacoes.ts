@@ -148,12 +148,23 @@ export async function proximoNumeroDocumento(chave: "orcamento" | "recibo"): Pro
  * Próximo número de ORDEM DE SERVIÇO — `OS-0001`.
  *
  * A OS NÃO usa `contadores`: o app deriva do MAIOR sufixo numérico já existente em
- * `ordens_servico`, **incluindo as excluídas** (por isso o `incluirExcluidos`). Se
- * ignorássemos a lixeira, uma OS apagada liberaria o número e duas OS diferentes
- * acabariam com o mesmo `OS-0007` — em documento que vai pro cliente.
+ * `ordens_servico`, **incluindo as excluídas**. Se ignorássemos a lixeira, uma OS
+ * apagada liberaria o número e duas OS diferentes acabariam com o mesmo `OS-0007`
+ * — em documento que vai pro cliente.
+ *
+ * Mesma técnica de `proximoNumeroDocumento`: sem `.order()`/`.limit()`, o PostgREST
+ * corta a resposta em ~1000 linhas e, passado esse volume de OS, o "maior sufixo"
+ * calculado sobre um recorte arbitrário fica menor que o real — duas OS nascem com
+ * o mesmo número. Ordenamos por `criado_em` desc (o sequencial só cresce, então a
+ * OS mais recente carrega o maior número) e limitamos a 1000: mesmo cortada, a
+ * página devolvida já contém o máximo real.
  */
 export async function proximoNumeroOs(): Promise<string> {
-	const { data, error } = await supabase.from("ordens_servico").select("numero");
+	const { data, error } = await supabase
+		.from("ordens_servico")
+		.select("numero")
+		.order("criado_em", { ascending: false })
+		.limit(1000);
 	if (error) throw error;
 
 	const maior = (data ?? []).reduce((max, linha) => {

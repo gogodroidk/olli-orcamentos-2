@@ -358,26 +358,12 @@ export default function OlliVozScreen() {
 
   // Modo nuvem: 1º toque inicia a gravação (pede a permissão do microfone
   // direto pelo expo-audio, sem depender do serviço de voz do Google); 2º
-  // toque para, envia o áudio pro Worker e já volta com o orçamento pronto
-  // (uma única requisição — não passa por `enviar()`/`interpretarVoz`).
-  //
-  // TIER A / item 4 (NÃO IMPLEMENTADO): o pedido era unificar o gesto do mic
-  // pra que o 2º toque SEMPRE só pare de ouvir, deixando o botão grande
-  // ("Montar orçamento com a OLLI") como único "terminei, monta" — também no
-  // modo nuvem. `useGravadorNuvem` (services/vozNuvem.ts) só expõe
-  // `pararEEnviar()` (para E envia, uma coisa só) e `cancelar()` (para e
-  // MARCA `autoStopRef`/`canceladoPeloUsuarioRef`, o que faz um `pararEEnviar()`
-  // chamado depois virar no-op — não há como "só parar" e mais tarde só
-  // enviar usando a API pública atual). O `recorder` (expo-audio) também não é
-  // devolvido pelo hook, então esta tela não tem como chamar `.stop()` por
-  // conta própria e guardar o resultado pro botão grande enviar depois.
-  // A única forma seria expor no hook algo como `pararGravacao()` (só stop,
-  // mantendo `recorder.uri` disponível) + `enviarGravacaoPronta()` (só envia)
-  // — mudança em services/vozNuvem.ts, fora do escopo desta tarefa (só
-  // OlliVozScreen.tsx). Fazer o toque "parecer" que parou sem de fato chamar
-  // stop() deixaria o microfone gravando escondido do usuário até o clique no
-  // botão — pior que o comportamento atual. Por isso o gesto de nuvem
-  // permanece como já era: 2º toque para E envia.
+  // toque só PARA de ouvir — gesto unificado com o modo dispositivo (Tier A,
+  // item 4). Quem envia e monta o orçamento é o botão grande ("Montar
+  // orçamento com a OLLI", em `enviar()`), que no modo nuvem chama
+  // `nuvem.enviarGravacaoPronta()`. Isso é possível graças às duas primitivas
+  // novas em `services/vozNuvem.ts`: `pararGravacao()` (só stop, mantém o
+  // áudio pronto) e `enviarGravacaoPronta()` (só envia o que já está pronto).
   const onMicPressNuvem = useCallback(async () => {
     // Guarda contra segundo toque durante o upload (inclusive após o auto-stop
     // de 2min, quando a fase ainda pode estar 'ouvindo'): sem isso, um toque
@@ -387,18 +373,11 @@ export default function OlliVozScreen() {
     setErro(null);
     setPermissaoNegadaPermanente(false);
     if (nuvem.gravando) {
-      setFase('enviando');
-      // Mostra o botão Cancelar após alguns segundos de upload (mesmo padrão do
-      // fluxo on-device em enviar()): o envio na nuvem pode levar até 60s.
-      setPodeCancelar(false);
-      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
-      cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
-      try {
-        await nuvem.pararEEnviar();
-      } finally {
-        if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
-        setPodeCancelar(false);
-      }
+      // 2º toque: só para de ouvir. O áudio fica pronto (`nuvem.prontoParaEnviar`)
+      // até o botão grande enviar — a UI reflete o estado real (mic para de
+      // pulsar, "OUVINDO…" some), nada continua gravando escondido.
+      await nuvem.pararGravacao();
+      setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
     } else {
       setTranscript('');
       setFase('ouvindo');
@@ -425,6 +404,33 @@ export default function OlliVozScreen() {
   }, [iaEsgotada, modoVoz, onMicPressNuvem, onMicPressDispositivo, saudacaoVisivel, dispensarSaudacao]);
 
   const enviar = useCallback(async () => {
+    // Modo nuvem: não há texto local pra validar (a transcrição só existe
+    // DEPOIS do envio) — o gate é ter uma gravação parada e pronta
+    // (`nuvem.prontoParaEnviar`, setada por `pararGravacao()` no 2º toque do
+    // mic). `nuvem.enviarGravacaoPronta()` já dispara `onOrcamento`/`onErro`
+    // (ligados lá em cima), que levam pra Revisão ou pro card de erro — igual
+    // ao fluxo antigo de `pararEEnviar()`.
+    if (modoVoz === 'nuvem') {
+      if (!nuvem.prontoParaEnviar) return;
+      if (iaEsgotada) {
+        track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
+        return;
+      }
+      Haptics.selectionAsync().catch(() => {});
+      setFase('enviando');
+      setErro(null);
+      setPodeCancelar(false);
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+      try {
+        await nuvem.enviarGravacaoPronta();
+      } finally {
+        if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+        setPodeCancelar(false);
+      }
+      return;
+    }
+
     const texto = transcript.trim();
     if (!texto) return;
     if (iaEsgotada) {
@@ -466,7 +472,7 @@ export default function OlliVozScreen() {
       setPodeCancelar(false);
       abortRef.current = null;
     }
-  }, [transcript, pararReconhecimento, iaEsgotada, consumirUsoIa]);
+  }, [modoVoz, nuvem, transcript, pararReconhecimento, iaEsgotada, consumirUsoIa]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -534,7 +540,12 @@ export default function OlliVozScreen() {
   }
 
   const enviando = fase === 'enviando';
-  const podeEnviar = transcript.trim().length > 0 && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro');
+  // Modo nuvem: o botão libera quando há uma gravação parada e pronta pra
+  // enviar (não existe "texto" local nesse modo até a transcrição voltar do
+  // Worker). Modo dispositivo: continua exigindo texto transcrito, como antes.
+  const podeEnviar = modoVoz === 'nuvem'
+    ? nuvem.prontoParaEnviar && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro')
+    : transcript.trim().length > 0 && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro');
 
   const gravandoNuvem = modoVoz === 'nuvem' && nuvem.gravando;
   const enviandoNuvem = modoVoz === 'nuvem' && nuvem.enviando;
@@ -700,6 +711,8 @@ export default function OlliVozScreen() {
                   ? 'Pode falar por partes — toque de novo quando terminar.'
                   : fase === 'ouvindo'
                   ? 'Pode falar por partes — toque de novo quando terminar.'
+                  : modoVoz === 'nuvem' && nuvem.prontoParaEnviar
+                  ? 'Áudio pronto! Toque em "Montar orçamento com a OLLI" para continuar, ou grave de novo.'
                   : 'Toque no microfone e descreva o serviço. Ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena".'}
               </Text>
 

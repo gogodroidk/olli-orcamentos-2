@@ -116,8 +116,31 @@ export interface UseGravadorNuvemOpts {
 export interface UseGravadorNuvemResultado {
   gravando: boolean;
   enviando: boolean;
+  /** true quando a gravação já foi parada (stop concluído) e o áudio está
+   *  pronto para ser enviado com `enviarGravacaoPronta()` — é o que a tela
+   *  usa pra saber quando o botão grande ("Montar orçamento com a OLLI")
+   *  pode disparar o envio no modo nuvem. */
+  prontoParaEnviar: boolean;
   segundos: number;
   iniciarGravacao: () => Promise<void>;
+  /**
+   * Só para a gravação (mantém o áudio pronto em `prontoParaEnviar`), SEM
+   * enviar — é a metade "para" do antigo `pararEEnviar()`. Usada pelo 2º
+   * toque no microfone no modo nuvem, pra unificar o gesto com o modo
+   * dispositivo (mic só ouve/para; quem envia é o botão grande).
+   */
+  pararGravacao: () => Promise<void>;
+  /**
+   * Envia a gravação já parada por `pararGravacao()` — é a metade "envia"
+   * do antigo `pararEEnviar()`. Usada pelo botão grande "Montar orçamento
+   * com a OLLI" quando o modo é nuvem.
+   */
+  enviarGravacaoPronta: () => Promise<void>;
+  /**
+   * Para E envia numa coisa só — mantido para não quebrar chamadores
+   * existentes. Internamente é só `pararGravacao()` seguido de
+   * `enviarGravacaoPronta()`.
+   */
   pararEEnviar: () => Promise<void>;
   cancelar: () => void;
   abrirConfiguracoes: () => void;
@@ -136,6 +159,7 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
 
   const [gravando, setGravando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [prontoParaEnviar, setProntoParaEnviar] = useState(false);
   const [segundos, setSegundos] = useState(0);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -144,6 +168,9 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
   const autoStopRef = useRef(false);
   /** true quando o abort veio de `cancelar()` (usuário) — distingue de timeout. */
   const canceladoPeloUsuarioRef = useRef(false);
+  /** Espelho síncrono de `prontoParaEnviar` (mesmo padrão de `autoStopRef`/
+   *  `segundosRef`) — lido dentro de closures sem esperar o re-render. */
+  const prontoParaEnviarRef = useRef(false);
 
   const onTextoRef = useRef(onTexto);
   const onOrcamentoRef = useRef(onOrcamento);
@@ -303,6 +330,11 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
       recorder.record();
 
       autoStopRef.current = false;
+      // Uma gravação nova invalida qualquer "pronta pra enviar" anterior —
+      // sem isso, um stop+restart deixaria o botão grande liberado pra
+      // enviar um áudio velho enquanto a gravação nova ainda está rolando.
+      prontoParaEnviarRef.current = false;
+      setProntoParaEnviar(false);
       segundosRef.current = 0;
       setSegundos(0);
       setGravando(true);
@@ -329,7 +361,14 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
     }
   }, [recorder, pararTimer, enviarParaTranscricao]);
 
-  const pararEEnviar = useCallback(async () => {
+  /**
+   * Só PARA a gravação — mantém o arquivo pronto (`recorder.uri`) sem enviar.
+   * Metade "para" do antigo `pararEEnviar()`. NÃO mexe em `autoStopRef`/
+   * `canceladoPeloUsuarioRef`: esses flags são de cancelamento/timeout, e
+   * setá-los aqui faria um `enviarGravacaoPronta()` chamado depois virar
+   * no-op (ou pior, ser tratado como cancelado pelo usuário).
+   */
+  const pararGravacao = useCallback(async () => {
     if (autoStopRef.current) return; // já parou sozinho (limite de tempo) e já está enviando
     pararTimer();
     setGravando(false);
@@ -338,8 +377,27 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
     } catch {
       // noop — pode já ter parado
     }
+    prontoParaEnviarRef.current = true;
+    setProntoParaEnviar(true);
+  }, [recorder, pararTimer]);
+
+  /**
+   * Envia a gravação já parada por `pararGravacao()`. Metade "envia" do
+   * antigo `pararEEnviar()` — mesmo upload/transcrição de sempre, com todos
+   * os guardas de erro/timeout/limite de `enviarParaTranscricao`.
+   */
+  const enviarGravacaoPronta = useCallback(async () => {
+    prontoParaEnviarRef.current = false;
+    setProntoParaEnviar(false);
     await enviarParaTranscricao();
-  }, [recorder, pararTimer, enviarParaTranscricao]);
+  }, [enviarParaTranscricao]);
+
+  /** Para E envia numa coisa só — mantido para não quebrar chamadores existentes. */
+  const pararEEnviar = useCallback(async () => {
+    if (autoStopRef.current) return; // já parou sozinho (limite de tempo) e já está enviando
+    await pararGravacao();
+    await enviarGravacaoPronta();
+  }, [pararGravacao, enviarGravacaoPronta]);
 
   const cancelar = useCallback(() => {
     autoStopRef.current = true; // evita o auto-stop do timer também disparar envio
@@ -347,6 +405,8 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
     pararTimer();
     setGravando(false);
     setEnviando(false);
+    prontoParaEnviarRef.current = false;
+    setProntoParaEnviar(false);
     abortRef.current?.abort();
     abortRef.current = null;
     try {
@@ -356,5 +416,16 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
     }
   }, [recorder, pararTimer]);
 
-  return { gravando, enviando, segundos, iniciarGravacao, pararEEnviar, cancelar, abrirConfiguracoes };
+  return {
+    gravando,
+    enviando,
+    prontoParaEnviar,
+    segundos,
+    iniciarGravacao,
+    pararGravacao,
+    enviarGravacaoPronta,
+    pararEEnviar,
+    cancelar,
+    abrirConfiguracoes,
+  };
 }

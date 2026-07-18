@@ -167,7 +167,7 @@ Só valores públicos vão para env do front. Secrets (MP, Gemini, service_role�
 
 ### 3.5 Conta de demonstração (para QA)
 
-`demo@grtech.com.br` / `GrTechDemo2026` — conta demo da GR Tech, plano Empresa ativo, dados
+`demo@grtech.com.br` (senha no cofre local / variável `VITE_DEMO_PASSWORD`) — conta demo da GR Tech, plano Empresa ativo, dados
 completos semeados. Use para testar cada tela reconstruída contra dados reais.
 
 ---

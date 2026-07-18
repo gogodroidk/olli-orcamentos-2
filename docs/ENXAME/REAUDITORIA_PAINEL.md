@@ -14,14 +14,14 @@ meu-negócio (branding no blob, contraste white-label, useBlocker), performance 
 landing (em-breve reconciliado, `<main>`+skip-link, alvo do FAQ, CTA WhatsApp, "Entrar" no celular, 3D cortado).
 
 ## ABERTOS — top prioridade (próxima onda)
-### P1 — dados (bugs reais)
-- [ ] **FormEquipamento não relê fresco antes de salvar** — `FormEquipamento.tsx:132-177` monta com o prop capturado na abertura, não com releitura do banco (FormOrcamento/FormOs já fazem). Foto anexada no celular ou QR revogado durante a edição no painel são **apagados em silêncio** (lost update). Fix: `select('*').eq('id').maybeSingle()` como base do spread.
-- [ ] **proximoNumeroOs sem paginação/ordenação** — `mutacoes.ts:155-165` faz `select('numero')` sem `.order()`/limit (proximoNumeroDocumento já foi corrigido). Acima de ~1000 OS pode **duplicar "OS-0007"** em documento do cliente. Fix: `.order('criado_em',{ascending:false}).limit(1000)`.
-- [ ] **FormOs sobrescreve o checklist do técnico** — `FormOs.tsx:170-230` releu fresco e preserva `fotos`, mas `checklist` está em `campos` e sobrescreve o estado do banco; o `feito:true` marcado no celular DEPOIS da abertura é revertido. E a copy (linha 230) **afirma falsamente** que o checklist é preservado. Fix: merge por `id` com `fresca.checklist` + corrigir a copy.
+### P1 — dados (bugs reais) — ✅ TODOS FECHADOS na Onda 9
+- [x] **FormEquipamento não relê fresco antes de salvar** (Onda 9, H1) — agora relê `select('*').eq('id').maybeSingle()` via `linhaParaEquipamento` como base do spread; foto/QR do campo não são mais apagados. webapp tsc exit 0.
+- [x] **proximoNumeroOs sem paginação** (Onda 9, H1) — `.order('criado_em',{ascending:false}).limit(1000)` como o `proximoNumeroDocumento`. Não duplica mais número de OS.
+- [x] **FormOs sobrescreve o checklist do técnico** (Onda 9, H1) — merge por `id` com `fresca.checklist` (item que o painel não mexeu herda o fresco) + copy do diálogo corrigida pra verdade.
 
-### P2 — segurança
-- [ ] **Senha da demo em texto puro nos docs** — `docs/WEB_ESTADO_E_PLANO.md:22`, `docs/WEB_REBUILD_BRIEF.md:170/508` ainda têm `GrTechDemo2026` (código já usa env). Fix: remover dos .md. + confirmar rotação no Supabase (humano → BLOQUEIOS).
-- [ ] **SIGNED_OUT por expiração não limpa cache** — `userStore.ts:170-186`: logout manual limpa React Query, mas expiração/revogação de sessão só chama `resetBrandColor()`, não `queryClient.clear()` — dado de um tenant pode vazar pro próximo login na mesma aba. Fix: exportar `queryClient` e limpar no branch SIGNED_OUT.
+### P2 — segurança — ✅ FECHADOS na Onda 9 (código)
+- [x] **Senha da demo em texto puro nos docs** (Onda 9, H2) — `GrTechDemo2026` removida dos 2 .md (referência ao cofre/env). ⚠️ **rotação no Supabase segue humana** (BLOQUEIOS).
+- [x] **SIGNED_OUT por expiração não limpa cache** (Onda 9, H2) — `queryClient` extraído pra singleton (`store/queryClient.ts`, sem import circular); `userStore` chama `.clear()` no SIGNED_OUT. Não vaza mais entre tenants na mesma aba.
 
 ### P2/P3 — a11y & consistência
 - [ ] Preço de item do orçamento sem `aria-label` (`FormOrcamento.tsx:799`).
