@@ -19,7 +19,7 @@
  * A exclusão é SOFT (lixeira): `useExcluir` carimba `excluidoEm` no blob e na coluna.
  * Apagar de verdade faria o celular ressuscitar a linha no próximo sync.
  */
-import type { Empresa, Orcamento, StatusOrcamento } from "@dominio";
+import type { Cliente, Empresa, Orcamento, StatusOrcamento } from "@dominio";
 import { STATUS_LABELS } from "@dominio";
 import {
 	AlertTriangle,
@@ -34,13 +34,14 @@ import {
 	Search,
 	Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
 import { getStatusVariant, NameCell } from "@/olli/components/record-list-helpers";
+import { clienteParaOrcamento } from "@/olli/components/SeletorCliente";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
 import { useExcluir } from "@/olli/mutacoes";
@@ -220,7 +221,10 @@ export default function OrcamentosPage() {
 	// aprovação" chegam como aprovado,convertido (ver `paramStatus` em
 	// pages/olli/inicio/financeiro.ts). São os MESMOS slugs de `StatusOrcamento`, então
 	// não há nome pra traduzir — só filtrar fora um valor torto que não exista no funil.
-	const [searchParams] = useSearchParams();
+	const [searchParams, setSearchParams] = useSearchParams();
+	// `?novo=1` e `?cliente=<nome>` chegam de outras telas (WelcomeHeader, ações de
+	// contexto do cliente) — ver o efeito logo após `abrirNovo`, mais abaixo.
+	const location = useLocation();
 	const statusDaUrl = useMemo(() => {
 		const bruto = searchParams.get("status");
 		if (!bruto) return null;
@@ -263,6 +267,44 @@ export default function OrcamentosPage() {
 	/* ─────────────────────────────────  Ações  ───────────────────────────────── */
 
 	const abrirNovo = () => setEditor({ orc: novoOrcamentoVazio(empresa), ehNovo: true });
+
+	/**
+	 * Chegada com intenção pronta, vinda de OUTRA tela:
+	 *   • `?novo=1` (CTA do WelcomeHeader, ação "Novo orçamento" da lista de clientes) —
+	 *     abre o editor sozinho, sem o usuário precisar clicar em nada aqui.
+	 *   • `?cliente=<nome>` (ação "Ver orçamentos deste cliente") — pré-preenche a busca,
+	 *     que já filtra por `cliente_nome` (ver `linhas` acima).
+	 *   • cliente pré-selecionado no NOVO orçamento vem pelo ESTADO da rota
+	 *     (`location.state.clientePreSelecionado`, montado em `clientes/index.tsx` com
+	 *     `linhaParaCliente`), nunca pela URL — dado de cliente não é query string.
+	 *     `clienteParaOrcamento` é o MESMO conversor que `SeletorCliente` usa, então o
+	 *     orçamento sai idêntico a se o usuário tivesse escolhido o cliente na mão.
+	 *
+	 * Roda uma vez, no MOUNT: a URL é limpa logo depois para um F5 ou um "voltar" não
+	 * reabrir o editor sozinho de novo.
+	 */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intencionalmente só no mount — ver comentário acima
+	useEffect(() => {
+		const querNovo = searchParams.get("novo");
+		const clienteDaUrl = searchParams.get("cliente");
+		if (!querNovo && !clienteDaUrl) return;
+
+		if (clienteDaUrl) setBusca(clienteDaUrl);
+
+		if (querNovo) {
+			const estado = location.state as { clientePreSelecionado?: Cliente } | null | undefined;
+			let orc = novoOrcamentoVazio(empresa);
+			if (estado?.clientePreSelecionado) {
+				orc = { ...orc, ...clienteParaOrcamento(estado.clientePreSelecionado) };
+			}
+			setEditor({ orc, ehNovo: true });
+		}
+
+		const proximos = new URLSearchParams(searchParams);
+		proximos.delete("novo");
+		proximos.delete("cliente");
+		setSearchParams(proximos, { replace: true });
+	}, []);
 
 	/** Editar: SEMPRE em cima do blob. A trava de "já enviado" mora no FormOrcamento. */
 	const abrirEdicao = (linha: LinhaOrcamento) => {

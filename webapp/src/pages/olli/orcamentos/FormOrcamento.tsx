@@ -74,6 +74,9 @@ export function edicaoBloqueada(status: Orcamento["status"]): boolean {
 /** Validade padrão quando a empresa não configurou a dela (igual ao `novoOrcamentoVazio`). */
 const VALIDADE_DIAS_PADRAO = 15;
 
+/** Atalhos de validade — 1 clique preenche a data, sem digitar. */
+const CHIPS_VALIDADE = [7, 15, 30] as const;
+
 /**
  * Cópia do orçamento como um RASCUNHO NOVO — o caminho honesto para "editar" um
  * documento que o cliente já viu: o original fica intacto (é o que ele tem em mãos)
@@ -949,17 +952,42 @@ function Editor({
 						</Campo>
 
 						<Campo rotulo="Validade do orçamento" dica="DD/MM/AAAA — depois desta data a proposta expira.">
-							<Input
-								inputMode="numeric"
-								placeholder="22/07/2026"
-								className="tabular-nums"
-								value={orc.validadeOrcamento ?? ""}
-								onChange={(e) => {
-									const v = mascaraDataBr(e.target.value);
-									patch({ validadeOrcamento: v || undefined });
-								}}
-								aria-invalid={!!orc.validadeOrcamento && !brParaIso(orc.validadeOrcamento)}
-							/>
+							<div className="space-y-2">
+								{/* Chips: 1 clique preenche "hoje + N dias" (`emDiasBr`, a mesma conta de
+								    `novoOrcamentoVazio`/`duplicarComoRascunho`) — o campo abaixo continua
+								    aberto para quem quiser uma data fora desses atalhos. */}
+								<div className="flex flex-wrap gap-1.5">
+									{CHIPS_VALIDADE.map((dias) => {
+										const data = emDiasBr(dias);
+										const ativo = orc.validadeOrcamento === data;
+										return (
+											<Button
+												key={dias}
+												type="button"
+												size="sm"
+												variant={ativo ? "default" : "outline"}
+												aria-pressed={ativo}
+												onClick={() => patch({ validadeOrcamento: data })}
+												className="h-7 rounded-full px-3 text-xs"
+											>
+												{ativo && <Check aria-hidden="true" className="mr-1 size-3" />}
+												{dias} dias
+											</Button>
+										);
+									})}
+								</div>
+								<Input
+									inputMode="numeric"
+									placeholder="22/07/2026"
+									className="tabular-nums"
+									value={orc.validadeOrcamento ?? ""}
+									onChange={(e) => {
+										const v = mascaraDataBr(e.target.value);
+										patch({ validadeOrcamento: v || undefined });
+									}}
+									aria-invalid={!!orc.validadeOrcamento && !brParaIso(orc.validadeOrcamento)}
+								/>
+							</div>
 						</Campo>
 					</div>
 

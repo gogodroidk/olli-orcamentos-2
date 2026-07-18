@@ -5,7 +5,13 @@
 > `[x]` feito · `[ ]` aberto. Detalhe completo (18 itens) no journal `wf_5a77d18c-537`.
 
 ## Feito
-- [x] **Autocomplete de e-mail no login** (Wave 12, U1/U2) — app (`SugestoesEmail.tsx` + EntrarScreen) e painel (`EmailAutocompleteInput.tsx` + login/register). Digita `@` → sugere gmail/hotmail/… (9 provedores BR), 1 toque completa. Testado ao vivo no painel. O exemplo do dono, feito.
+- [x] **Autocomplete de e-mail no login** (Wave 12) — app+painel, testado ao vivo. O exemplo do dono.
+- [x] **CTA "Novo orçamento" do painel** (Wave 13, F1) — lê `?novo=1` e abre direto; + `?cliente=` pré-preenche a busca.
+- [x] **Ações contextuais do cliente no painel** (Wave 13, F1) — Novo orçamento (cliente pré-selecionado) / Ver orçamentos / WhatsApp. (Agendar omitido — fora do cluster.)
+- [x] **Duplicar orçamento no app** (Wave 13, F2) — botão na `VisualizarOrcamentoScreen` (novo id/número, status rascunho).
+- [x] **"Criar OS" direto do orçamento aprovado no app** (Wave 13, F2) — botão quando `status==='aprovado'` + CTA logo após a aprovação.
+- [x] **Catálogo abre cheio no wizard do app** (Wave 13, F2) · **"Criar orçamento pra este cliente" no Equipamento** (F2) · **chips 7/15/30 na validade do painel** (F1) · **técnico logado pré-selecionado na OS do painel** (F1) · **"Ligar" no menu do cliente** (F2). app tc+test + webapp tsc = 0.
+- [ ] **NOVO (Wave 13, follow-up): barra de ações do orçamento lotada** — `VisualizarOrcamentoScreen` agora tem até 9 botões numa flex-row sem wrap; apertado em tela estreita. Fix: `flexWrap`/scroll horizontal ou agrupar em "⋯".
 
 ## TOP (ALTO impacto — próxima onda de código)
 - [ ] **CTA "Novo orçamento" do painel não abre nada** — `inicio/WelcomeHeader.tsx` linka `/orcamentos?novo=1` mas `orcamentos/index.tsx` só lê `?status`, nunca `?novo`. O botão mais usado faz promessa vazia. Fix: ler `?novo` e chamar `abrirNovo()`.

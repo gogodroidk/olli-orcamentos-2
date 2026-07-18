@@ -30,6 +30,7 @@ import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/Selet
 import { novoId } from "@/olli/contrato";
 import { agoraIso, localParaIso } from "@/olli/datas";
 import { proximoNumeroOs, useSalvar } from "@/olli/mutacoes";
+import { useUserInfo } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
 import { Input } from "@/ui/input";
@@ -64,6 +65,7 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 	const idForm = useId();
 	const salvar = useSalvar("ordens_servico");
 	const equipe = useTecnicos();
+	const meuId = useUserInfo().id;
 
 	const [clienteId, setClienteId] = useState<string>("");
 	const [clienteNome, setClienteNome] = useState("");
@@ -92,6 +94,11 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 	// (que pode ter sido invalidado/refeito por um refetch enquanto o form está aberto).
 	const checklistSemeadoRef = useRef<ItemChecklist[]>([]);
 
+	// Guarda se a sugestão de técnico (ver efeito abaixo) já agiu NESTA abertura do
+	// diálogo — sem isto, ela reapareceria sempre que o usuário limpasse o campo
+	//("Sem técnico atribuído"), impedindo uma OS sem responsável de propósito.
+	const sugestaoTecnicoAplicadaRef = useRef(false);
+
 	// O rascunho é semeado quando o diálogo ABRE (ou troca de OS) — e SÓ então. Depender
 	// dos campos de `ordem` (o que a regra pede) faria cada refetch da lista remontar o
 	// objeto e JOGAR FORA o que o usuário está digitando no formulário aberto.
@@ -115,7 +122,26 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 		setNovoItem("");
 		setTentouSalvar(false);
 		setErro(null);
+		sugestaoTecnicoAplicadaRef.current = false;
 	}, [aberto, idOs]);
+
+	// Técnico pré-selecionado: só em OS NOVA (uma existente já traz `tecnicoId` do
+	// banco — nem que seja "nenhum", de propósito) e só quando o usuário logado
+	// consta na equipe. A equipe carrega em segundo plano, então este efeito roda de
+	// novo até ela chegar; `sugestaoTecnicoAplicadaRef` garante que ele só MEXE no
+	// campo uma vez por abertura — depois disso a escolha (ou a limpeza) do usuário
+	// prevalece, mantendo a opção de trocar.
+	useEffect(() => {
+		if (!aberto || ordem) return;
+		if (sugestaoTecnicoAplicadaRef.current) return;
+		if (!meuId || !equipe.isSuccess) return;
+		const eu = (equipe.data ?? []).find((m) => m.userId === meuId);
+		if (eu) {
+			setTecnicoId(eu.userId);
+			setTecnicoNome(eu.nome);
+		}
+		sugestaoTecnicoAplicadaRef.current = true;
+	}, [aberto, ordem, meuId, equipe.isSuccess, equipe.data]);
 
 	/* ─────────────────────────────  Checklist  ──────────────────────────────── */
 

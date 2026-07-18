@@ -16,13 +16,15 @@ import { Celebracao } from '../components/Celebracao';
 import { PixCobrancaModal } from '../components/PixCobrancaModal';
 import { gerarPixCopiaECola } from '../utils/pixBrCode';
 import { OverlayProgresso } from '../components/OverlayProgresso';
-import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento } from '../database/database';
+import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
-import { formatDateTime, nowISO } from '../utils/date';
+import { formatDateTime, nowISO, todayISO } from '../utils/date';
+import { generateId } from '../utils/id';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
+import { criarOSDeOrcamento } from '../services/ordemServico';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -97,6 +99,8 @@ export default function VisualizarOrcamentoScreen() {
   const [versoesAbertas, setVersoesAbertas] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [linking, setLinking] = useState(false);
+  const [duplicando, setDuplicando] = useState(false);
+  const [criandoOS, setCriandoOS] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [naoEncontrado, setNaoEncontrado] = useState(false);
@@ -105,6 +109,10 @@ export default function VisualizarOrcamentoScreen() {
   // PDF ou link do cliente (mensagem varia conforme a ação em andamento).
   const [overlayInfo, setOverlayInfo] = useState<{ titulo: string; subtitulo: string } | null>(null);
   const statusAnteriorRef = useRef<StatusOrcamento | null>(null);
+  // Aprovou AGORA (não já vinha aprovado): dispara a celebração e, quando ela
+  // termina, oferece criar a OS na hora — poupa os 4-5 toques de ir até a aba
+  // Ordens > + > De um orçamento > achar > selecionar.
+  const ofertarOSRef = useRef(false);
 
   // Trilha do cliente (link público) — leitura VIVA, não bloqueia a tela: a
   // página já mostra os dados locais e a trilha aparece quando a nuvem responde.
@@ -216,12 +224,84 @@ export default function VisualizarOrcamentoScreen() {
     if (!orc) return;
     const updated = { ...orc, status: s, atualizadoEm: nowISO() };
     await saveOrcamento(updated);
-    if (s === 'aprovado' && statusAnteriorRef.current !== 'aprovado') {
+    const acabouDeAprovar = s === 'aprovado' && statusAnteriorRef.current !== 'aprovado';
+    if (acabouDeAprovar) {
       setCelebrando(true);
     }
+    ofertarOSRef.current = acabouDeAprovar;
     statusAnteriorRef.current = s;
     setOrc(updated);
     setShowStatusMenu(false);
+  }
+
+  // Fecha a celebração de aprovação e, se foi ELA quem aprovou agora (não um
+  // orçamento que já chegou aprovado), oferece criar a OS na hora.
+  function finalizarCelebracao() {
+    setCelebrando(false);
+    if (ofertarOSRef.current) {
+      ofertarOSRef.current = false;
+      Alert.alert(
+        'Orçamento aprovado!',
+        'Quer criar a ordem de serviço agora?',
+        [
+          { text: 'Depois', style: 'cancel' },
+          { text: 'Criar OS', onPress: () => handleCriarOS() },
+        ],
+      );
+    }
+  }
+
+  // Duplica este orçamento como um RASCUNHO NOVO — o caminho para "editar" uma
+  // proposta que o cliente já viu sem mexer no documento original: id novo,
+  // itens com ids novos, número novo (o original fica com o dele), status
+  // volta a rascunho e a assinatura do cliente não viaja (ele assinou aquele
+  // papel, não este). Mesmo padrão do `duplicarComoRascunho` do painel
+  // (webapp/src/pages/olli/orcamentos/FormOrcamento.tsx), portado aqui.
+  async function handleDuplicar() {
+    if (!orc) return;
+    setDuplicando(true);
+    try {
+      const numero = await getNextOrcamentoNumber();
+      const agora = nowISO();
+      const duplicado: Orcamento = {
+        ...orc,
+        id: generateId(),
+        numero,
+        status: 'rascunho',
+        dataEmissao: todayISO(),
+        itens: orc.itens.map(i => ({ ...i, id: generateId() })),
+        assinaturaClienteUri: undefined,
+        dataAssinaturaCliente: undefined,
+        excluidoEm: undefined,
+        criadoEm: agora,
+        atualizadoEm: agora,
+      };
+      await saveOrcamento(duplicado);
+      nav.navigate('EditarOrcamento', { orcamentoId: duplicado.id });
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Não foi possível duplicar o orçamento.');
+    } finally {
+      setDuplicando(false);
+    }
+  }
+
+  // Converte este orçamento aprovado numa ordem de serviço — mesma função já
+  // usada pelo fluxo "De um orçamento aprovado" em OrdemServicoScreen, chamada
+  // direto daqui para poupar os 4-5 toques do caminho normal.
+  async function handleCriarOS() {
+    if (!orc) return;
+    setCriandoOS(true);
+    try {
+      const os = await criarOSDeOrcamento(orc.id);
+      Alert.alert('Ordem de serviço criada', `OS nº ${os.numero} criada a partir deste orçamento.`, [
+        { text: 'Depois', style: 'cancel' },
+        { text: 'Ver ordens', onPress: () => nav.navigate('OrdemServico') },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Não deu', e?.message ?? 'Não consegui criar a OS agora.');
+    } finally {
+      setCriandoOS(false);
+    }
   }
 
   // Abre a Agenda já criando um agendamento ligado a este orçamento/cliente.
@@ -288,11 +368,15 @@ export default function VisualizarOrcamentoScreen() {
       <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
         <View style={styles.actionBar}>
           <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
+          <ActionBtn icon="content-copy" label="Duplicar" onPress={handleDuplicar} loading={duplicando} />
           <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
           <ActionBtn icon="qrcode" label="Pix" onPress={() => setPixVisivel(true)} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+          {orc.status === 'aprovado' && (
+            <ActionBtn icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+          )}
           <ActionBtn icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
         </View>
       </GradientHeader>
@@ -509,7 +593,7 @@ export default function VisualizarOrcamentoScreen() {
         valor={pixValor}
         referencia={`Orçamento nº ${orc.numero}`}
       />
-      <Celebracao visible={celebrando} tipo="aprovado" onDone={() => setCelebrando(false)} />
+      <Celebracao visible={celebrando} tipo="aprovado" onDone={finalizarCelebracao} />
       <OverlayProgresso
         visible={!!overlayInfo}
         titulo={overlayInfo?.titulo}

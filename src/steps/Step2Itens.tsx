@@ -43,11 +43,19 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   // cada tecla apaga a vírgula/ponto que o usuário acabou de digitar.
   const [qtyText, setQtyText] = useState<string | null>(null);
 
+  // Busca vazia ('') também é válida: o LIKE '%%' do banco traz o catálogo
+  // inteiro (mais usados/ordem alfabética), igual ao painel — o técnico já vê
+  // tudo ao abrir o modal e só filtra se quiser, em vez de precisar digitar
+  // 1+ caractere para a lista aparecer.
   const handleCatalogSearch = useCallback(async (q: string) => {
     setCatalogQuery(q);
-    if (q.length < 1) { setCatalogResults([]); return; }
     setCatalogResults(activeTab === 'servico' ? await searchServicos(q) : await searchProdutos(q));
   }, [activeTab]);
+
+  function openCatalog() {
+    setShowCatalog(true);
+    handleCatalogSearch('');
+  }
 
   function addFromCatalog(item: ServicoItem | ProdutoItem) {
     Haptics.selectionAsync().catch(() => {});
@@ -218,7 +226,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
 
         {/* AÇÕES */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => setShowCatalog(true)} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.actionBtn} onPress={openCatalog} activeOpacity={0.8}>
             <MaterialCommunityIcons name="magnify" size={20} color={cores.primary} />
             <Text style={styles.actionBtnLabel}>Do catálogo</Text>
           </TouchableOpacity>
@@ -338,7 +346,9 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
             )}
             ListEmptyComponent={
               <Text style={styles.catalogEmpty}>
-                {catalogQuery.length > 0 ? 'Nenhum resultado. Use "Adicionar manual".' : 'Digite para buscar no catálogo...'}
+                {catalogQuery.length > 0
+                  ? 'Nenhum resultado. Use "Adicionar manual".'
+                  : `Nenhum ${activeTab === 'servico' ? 'serviço' : 'produto'} cadastrado no catálogo ainda.`}
               </Text>
             }
           />

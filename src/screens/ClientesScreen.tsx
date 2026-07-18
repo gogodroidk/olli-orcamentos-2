@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -402,6 +402,21 @@ export default function ClientesScreen() {
     }
   }
 
+  // Mesmo tratamento de telefone ausente do WhatsApp acima — só troca o app
+  // que abre (discador em vez do WhatsApp).
+  async function chamarTelefone(c: Cliente) {
+    if (!c.telefone?.trim()) {
+      Alert.alert('Ligar', 'Este cliente não tem telefone cadastrado.');
+      return;
+    }
+    setAcoes(null);
+    try {
+      await Linking.openURL(`tel:${c.telefone.replace(/[^\d+]/g, '')}`);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o telefone.');
+    }
+  }
+
   function editarCliente(c: Cliente) {
     setAcoes(null);
     setEditing({ ...c });
@@ -603,6 +618,7 @@ export default function ClientesScreen() {
                   onPress={() => agendarVisita(acoes)}
                 />
                 <SheetAction icon="whatsapp" color={cores.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
+                <SheetAction icon="phone" color={cores.success} label="Ligar" desc="Chamada direta" onPress={() => chamarTelefone(acoes)} />
                 <SheetAction icon="pencil-outline" color={cores.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
               </>
             )}

@@ -491,6 +491,7 @@ function DetalheEquipamento({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<Nav>();
   const CRITICIDADES = criarCriticidades(cores);
   const [eq, setEq] = useState<Equipamento | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -607,6 +608,23 @@ function DetalheEquipamento({
     ? (eq.codigoInterno || [eq.fabricante, eq.modelo].filter(Boolean).join(' ') || labelCategoria(eq.categoria) || 'Equipamento')
     : 'Equipamento';
   const criticidade = eq?.criticidade ? CRITICIDADES.find((c) => c.id === eq.criticidade) : undefined;
+
+  // Já sai daqui com o cliente (o equipamento já sabe quem é o dono) e 1 item
+  // sugerido descrevendo o serviço neste ativo — mesmo padrão de pré-carga
+  // usado em Clientes (clienteId) e Diagnóstico/Códigos de erro (prefillItem).
+  function criarOrcamentoDoEquipamento() {
+    if (!eq) return;
+    Haptics.selectionAsync().catch(() => {});
+    const nomeEquip = [eq.fabricante, eq.modelo].filter(Boolean).join(' ')
+      || eq.codigoInterno
+      || labelCategoria(eq.categoria)
+      || 'equipamento';
+    const descricao = [labelCategoria(eq.categoria), eq.localizacao].filter(Boolean).join(' · ') || undefined;
+    nav.navigate('NovoOrcamento', {
+      clienteId: eq.clienteId,
+      prefillItem: { tipo: 'servico', nome: `Serviço em ${nomeEquip}`, descricao },
+    });
+  }
 
   return (
     <Modal visible animationType="slide" onRequestClose={onFechar} presentationStyle="fullScreen">
@@ -728,6 +746,16 @@ function DetalheEquipamento({
 
             {/* Ações */}
             <View style={{ gap: 10 }}>
+              {eq.clienteId ? (
+                <OlliButton
+                  label="Criar orçamento para este cliente"
+                  variant="gradient"
+                  size="lg"
+                  fullWidth
+                  onPress={criarOrcamentoDoEquipamento}
+                  icon={<MaterialCommunityIcons name="file-document-plus-outline" size={20} color="#fff" />}
+                />
+              ) : null}
               <OlliButton
                 label="Editar equipamento"
                 variant="secondary"
