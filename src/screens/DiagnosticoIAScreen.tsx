@@ -72,6 +72,14 @@ export default function DiagnosticoIAScreen() {
   const [loading, setLoading] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const [res, setRes] = useState<DiagnosticoResultado | null>(null);
+  // Contador de CONSULTAS (não de conteúdo). É a `key` do <SinalizarIA>: esta
+  // tela reusa o mesmo lugar da árvore a cada "Pedir diagnóstico", e sem key o
+  // "Obrigado, vamos revisar" de um diagnóstico antigo ficaria colado no novo.
+  // `key={textoGerado}` não serve: quando a consulta cai no cache o texto volta
+  // IDÊNTICO, a key não muda e a instância antiga sobrevive — o caso mais
+  // provável de todos, porque quem repete a mesma consulta é quem já viu o
+  // resultado. Um número que só cresce remonta sempre, inclusive aí.
+  const [idDaConsulta, setIdDaConsulta] = useState(0);
   // O pedido CONGELADO no instante da chamada. Ler os campos do form na hora de
   // sinalizar mandaria o que está na tela AGORA — e eles continuam editáveis
   // depois do resultado, então o moderador receberia um par que nunca existiu.
@@ -117,6 +125,11 @@ export default function DiagnosticoIAScreen() {
     try {
       const r = await diagnosticarCaso(alvo, controller.signal, { forcarOffline: iaNuvemEsgotada });
       setRes(r);
+      // Anda junto com o resultado: é o que remonta o <SinalizarIA> (ver o
+      // comentário de `idDaConsulta`). Se um dia alguém puder trocar `res` por
+      // outro caminho, o incremento tem que ir junto — resultado novo com
+      // instância velha é a denúncia fantasma voltando.
+      setIdDaConsulta(n => n + 1);
       setPedidoDoResultado(descreverPedido(alvo));
       setMotivoErro(motivoFalhaDiagnostico());
       // Só consome cota quando a NUVEM realmente respondeu (fonte 'ia').
@@ -136,10 +149,7 @@ export default function DiagnosticoIAScreen() {
   }
 
   const d = res?.diagnostico;
-  // Texto gerado que o usuário está lendo. Também é a `key` do <SinalizarIA>:
-  // esta tela REUSA o mesmo lugar da árvore a cada "Pedir diagnóstico", e sem a
-  // key um "Obrigado, vamos revisar" de um diagnóstico antigo ficaria colado no
-  // novo — confirmando uma denúncia que ninguém fez sobre este conteúdo.
+  /** O texto gerado que o usuário está lendo — é ele que viaja na denúncia. */
   const textoGerado = d ? textoDoDiagnostico(d) : '';
 
   // Taxonomia única de erro (erroIA.ts): decide UM motivo pra mostrar, nunca dois
@@ -342,9 +352,17 @@ export default function DiagnosticoIAScreen() {
 
             {/* Denúncia de conteúdo gerado (política de AI-Generated Content da
                 Google Play) — depois e bem abaixo do CTA, de propósito. O
-                diagnóstico continua na tela inteiro: sinalizar não apaga nada. */}
+                diagnóstico continua na tela inteiro: sinalizar não apaga nada.
+
+                DECISÃO DECLARADA: o botão aparece em TODAS as fontes, inclusive
+                `fonte === 'base'` (a base offline de códigos, que não é gerada
+                por modelo). O usuário não distingue a origem, e um botão que
+                some conforme a fonte ensina que "às vezes não dá pra sinalizar"
+                — o custo de moderar uma denúncia da base é ler um texto a mais;
+                o de esconder o caminho é o buraco de conformidade. O /admin
+                separa pelo `contexto->>'tela'` se algum dia precisar. */}
             <SinalizarIA
-              key={textoGerado}
+              key={idDaConsulta}
               tela="DiagnosticoIAScreen"
               resposta={textoGerado}
               pedido={pedidoDoResultado}

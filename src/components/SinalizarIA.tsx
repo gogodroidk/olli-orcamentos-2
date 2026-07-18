@@ -1,9 +1,20 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Text, TouchableOpacity, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useCores, useEstilos, type Cores } from '../theme';
 import { enviarDenunciaIA } from '../services/feedback';
+// NAO E ENGANO: este componente e MOBILE (chat, diagnostico e voz o montam) e
+// mesmo assim importa de `screens/desktop/dialogo`. O nome da pasta envelheceu,
+// o modulo nao: `confirmar` delega para <DialogoDesktopHost>, que e montado uma
+// vez no topo do App — em TODAS as plataformas, nao so na web — e responde com
+// um Modal do RN, dentro do tema, com foco e acessibilidade tratados. E o unico
+// confirmar assincrono do app; o `Alert.alert` do RN nao existe na web e o
+// `window.confirm` nao existe no aparelho, entao trocar isto por qualquer um
+// dos dois quebra o aviso em uma das pontas — e sem aviso NAO PODE HAVER ENVIO
+// (regra 2 abaixo). Se alguem for "consertar" este import, mova o modulo e
+// atualize os tres docblocks que ainda dizem "web-only" (dialogo.ts,
+// DialogoDesktopHost.tsx, App.tsx); nao troque a implementacao.
 import { confirmar } from '../screens/desktop/dialogo';
 
 /**
@@ -54,12 +65,14 @@ export function SinalizarIA({
    * O texto gerado pela IA que esta sendo denunciado.
    *
    * ATENCAO ao montar isto num lugar da arvore onde o conteudo TROCA (uma tela
-   * de resultado que refaz a consulta, por exemplo): passe tambem
-   * `key={resposta}`. Sem a key, o React reusa esta instancia e o "Obrigado,
-   * vamos revisar" de um conteudo antigo aparece grudado no conteudo novo —
-   * exatamente o "confirmar sem ter enviado" que este componente existe para
-   * impedir. Onde a resposta e imutavel (uma bolha de chat, que nunca muda de
-   * texto depois de criada), a key da propria bolha ja resolve.
+   * de resultado que refaz a consulta, por exemplo): passe uma `key` que mude a
+   * CADA CHAMADA (um contador de consultas serve). Sem a key, o React reusa
+   * esta instancia e o "Obrigado, vamos revisar" de um conteudo antigo aparece
+   * grudado no conteudo novo — exatamente o "confirmar sem ter enviado" que
+   * este componente existe para impedir. `key={resposta}` NAO basta: quando a
+   * nova consulta devolve o mesmo texto (cache), a key nao muda e a instancia
+   * antiga sobrevive. Onde a resposta e imutavel (uma bolha de chat, que nunca
+   * muda de texto depois de criada), a key da propria bolha ja resolve.
    */
   resposta: string;
   /**
@@ -75,18 +88,35 @@ export function SinalizarIA({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [estado, setEstado] = useState<Estado>('idle');
+  /**
+   * Trava de toque duplo. Estado do React NAO serve aqui: entre o toque e o
+   * `setEstado('enviando')` existe um `await` (o dialogo), e durante ele
+   * `estado` continua 'idle'. Dois toques rapidos passavam os dois pela
+   * guarda, o Host enfileirava DOIS dialogos (a fila e FIFO, um depois do
+   * outro) e confirmar ambos gravava DUAS linhas da mesma denuncia — ruido
+   * exatamente na caixa que alguem precisa moderar. O ref muda no mesmo tick,
+   * antes de qualquer await, entao o segundo toque morre na porta.
+   */
+  const emCursoRef = useRef(false);
 
   const sinalizar = useCallback(async () => {
-    if (estado === 'enviando') return;
-    Haptics.selectionAsync().catch(() => {});
-    // Porta unica: sem este "sim", nada sai do aparelho.
-    const querEnviar = await confirmar(AVISO_TITULO, AVISO_MENSAGEM);
-    if (!querEnviar) return;
-    setEstado('enviando');
-    const r = await enviarDenunciaIA({ tela, resposta, pedido }).catch(() => 'erro' as const);
-    // 'sem_sessao' tambem NAO e sucesso: a linha nao entrou.
-    setEstado(r === 'ok' ? 'ok' : 'erro');
-  }, [estado, tela, resposta, pedido]);
+    if (emCursoRef.current) return;
+    emCursoRef.current = true;
+    try {
+      Haptics.selectionAsync().catch(() => {});
+      // Porta unica: sem este "sim", nada sai do aparelho.
+      const querEnviar = await confirmar(AVISO_TITULO, AVISO_MENSAGEM);
+      if (!querEnviar) return;
+      setEstado('enviando');
+      const r = await enviarDenunciaIA({ tela, resposta, pedido }).catch(() => 'erro' as const);
+      // 'sem_sessao' tambem NAO e sucesso: a linha nao entrou.
+      setEstado(r === 'ok' ? 'ok' : 'erro');
+    } finally {
+      // Libera para o "tocar para tentar" do estado de erro (e para quem disse
+      // "nao" e mudou de ideia). No caminho 'ok' o botao nem existe mais.
+      emCursoRef.current = false;
+    }
+  }, [tela, resposta, pedido]);
 
   if (estado === 'ok') {
     return (

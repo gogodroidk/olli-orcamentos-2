@@ -713,6 +713,17 @@ export default function OlliVozScreen() {
     cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
 
     try {
+      // DECISÃO DECLARADA (denúncia de conteúdo de IA): a saída daqui também
+      // sai de um modelo e mesmo assim NÃO tem botão "Sinalizar" — diferente do
+      // modo conversa, logo abaixo, onde tem. O que muda: isto é extração
+      // estruturada (título, cliente, itens, preços) que cai na tela de Revisão
+      // e o prestador edita campo a campo antes de virar orçamento; o que a Olli
+      // "disse" nunca é apresentado a ele como resposta. Se um item vier errado
+      // ele conserta na hora, e o caminho de reclamar já existe (o feedback
+      // comum). O canal de denúncia é para texto livre gerado que o usuário LÊ
+      // como resposta — chat, diagnóstico e as falas do modo conversa.
+      // Se um dia esta saída for mostrada como texto pronto (um resumo falado,
+      // uma "proposta" em prosa), ela entra na regra e ganha o botão.
       const res = await interpretarVoz(texto, controller.signal, usarCredito, creditoRefAtual ?? undefined);
       if (!res.ok) {
         setErro(res.erro);
@@ -1329,19 +1340,24 @@ function ConversaBalao({ papel, texto, pedido }: { papel: 'user' | 'olli'; texto
     );
   }
   return (
-    <View style={styles.convRowOlli}>
-      <View style={styles.convAvatar}>
-        <OlliMascot size={22} onDark float={false} blink={false} />
-      </View>
-      <View style={styles.convColunaOlli}>
-        <View style={[styles.convBubble, styles.convBubbleOlli, { maxWidth: '100%' }]}>
+    <View style={styles.convBlocoOlli}>
+      {/* O avatar precisa encostar no rodapé da BOLHA. Enquanto o "Sinalizar"
+          morava dentro da mesma coluna da bolha, a linha crescia com ele e o
+          `alignItems:'flex-end'` alinhava o avatar pelo rodapé do BOTÃO — o
+          bastante para mudar TODA bolha do modo conversa. Por isso a linha
+          avatar+bolha é só avatar+bolha, e o botão desce para fora dela. */}
+      <View style={[styles.convRowOlli, styles.convRowOlliSemMargem]}>
+        <View style={styles.convAvatar}>
+          <OlliMascot size={22} onDark float={false} blink={false} />
+        </View>
+        <View style={[styles.convBubble, styles.convBubbleOlli]}>
           <Text style={styles.convBubbleOlliText}>{texto}</Text>
         </View>
-        {/* Só o que a Olli gerou pode ser sinalizado — a fala do próprio
-            prestador não é conteúdo de IA. Fica abaixo da bolha, discreto:
-            a ação principal aqui é continuar a conversa. */}
-        <SinalizarIA tela="OlliVozScreen" resposta={texto} pedido={pedido ?? ''} />
       </View>
+      {/* Só o que a Olli gerou pode ser sinalizado — a fala do próprio
+          prestador não é conteúdo de IA. Fica abaixo da bolha, discreto:
+          a ação principal aqui é continuar a conversa. */}
+      <SinalizarIA tela="OlliVozScreen" resposta={texto} pedido={pedido ?? ''} style={styles.convSinalizar} />
     </View>
   );
 }
@@ -1607,9 +1623,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // usados nesta tela (ex.: já existe um `escreverLabel` sem relação).
   convRowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
   convRowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 10 },
-  // Coluna [bolha + "Sinalizar"]: herda o teto de largura que era da bolha, pra
-  // o botão nascer alinhado com ela e a bolha não crescer por causa dele.
-  convColunaOlli: { maxWidth: '80%' },
+  // Bloco [linha avatar+bolha] + ["Sinalizar"]: o espaçamento entre bolhas sai
+  // daqui e a linha de dentro fica sem margem, senão o botão herdaria um vão de
+  // 10px que a bolha nunca teve.
+  convBlocoOlli: { marginBottom: 10 },
+  convRowOlliSemMargem: { marginBottom: 0 },
+  // 37 = avatar (30) + o marginRight dele (7): alinha o botão pela BORDA
+  // ESQUERDA da bolha, não pela do avatar.
+  convSinalizar: { marginLeft: 37 },
   convAvatar: { width: 30, height: 30, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 7 },
   convBubble: { maxWidth: '80%', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 10 },
   convBubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },

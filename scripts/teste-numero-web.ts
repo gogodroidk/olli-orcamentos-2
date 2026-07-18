@@ -23,7 +23,7 @@
  * telas são TSX, nada disso carrega no node. Não é prova de execução — é a rede
  * que pega o "alguém mexeu num lado só e os testes continuaram verdes".
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { qtdParaTexto, textoParaNumero } from '../webapp/src/olli/numero.ts';
 
 const ler = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -94,18 +94,34 @@ const corpoApp = corpoExtrairSequencia(dbSrc, 'database.ts');
 const corpoPainel = corpoExtrairSequencia(mutSrc, 'mutacoes.ts');
 checar('app e painel têm corpo IDÊNTICO (a menos de formatação)', normalizar(corpoApp), normalizar(corpoPainel));
 
-// E o comportamento, executando o corpo REAL extraído do fonte — não uma cópia
-// escrita aqui, que envelheceria sozinha.
-const extrairSequencia = new Function('numero', corpoApp) as (n: unknown) => number;
-checar('"00126" => 1 (sequencial 1 + ano 26)', extrairSequencia('00126'), 1);
-checar('"REC-00126" => 1 (recibo usa a mesma série)', extrairSequencia('REC-00126'), 1);
-checar('"04226" => 42', extrairSequencia('04226'), 42);
+// E o COMPORTAMENTO, executando os corpos REAIS extraídos do fonte — não uma cópia
+// escrita aqui, que envelheceria sozinha. Rodamos OS DOIS, não só o do app: a
+// comparação de texto acima passa pelo `normalizar`, e o que o `normalizar` perdoa
+// ele também ESCONDE. Executando os dois, a divergência aparece com a ENTRADA que a
+// causou, em vez de dois corpos inteiros para o leitor diferenciar no olho.
+const seqApp = new Function('numero', corpoApp) as (n: unknown) => number;
+const seqPainel = new Function('numero', corpoPainel) as (n: unknown) => number;
+
 // Os números TORTOS são o motivo do teste: é aqui que dois parsers discordam.
-checar('"00126 " (espaço no fim) => 1, não 0', extrairSequencia('00126 '), 1);
-checar('"X00126" (prefixo estranho) => 1, não 0', extrairSequencia('X00126'), 1);
-checar('ausente => 0 (nunca NaN, que viraria número inválido)', extrairSequencia(null), 0);
-checar('"" => 0', extrairSequencia(''), 0);
-checar('"abc" => 0', extrairSequencia('abc'), 0);
+const CASOS: ReadonlyArray<readonly [string, unknown, number]> = [
+  ['"00126" => 1 (sequencial 1 + ano 26)', '00126', 1],
+  ['"REC-00126" => 1 (recibo usa a mesma série)', 'REC-00126', 1],
+  ['"04226" => 42', '04226', 42],
+  ['"00126 " (espaço no fim) => 1, não 0', '00126 ', 1],
+  ['"X00126" (prefixo estranho) => 1, não 0', 'X00126', 1],
+  ['"00126.5" (lixo depois do ano) => 0 — a cauda deixa de ser dígito', '00126.5', 0],
+  ['ausente => 0 (nunca NaN, que viraria número inválido)', null, 0],
+  ['"" => 0', '', 0],
+  ['"abc" => 0', 'abc', 0],
+];
+for (const [nome, entrada, esperado] of CASOS) {
+  checar(`app: ${nome}`, seqApp(entrada), esperado);
+  // A PARIDADE é a asserção que importa mais que o valor: se um dia o formato mudar,
+  // o esperado acima muda junto — mas os dois lados continuam OBRIGADOS a responder
+  // a mesma coisa. Divergir aqui = os dois emitem sequenciais diferentes para o
+  // mesmo ponto, que é exatamente a colisão que esta frente existe para fechar.
+  checar(`painel concorda em ${JSON.stringify(entrada)}`, seqPainel(entrada), seqApp(entrada));
+}
 
 console.log('\n8) TRAVA DE EDIÇÃO: documento que o cliente já tem não abre para editar');
 // (a) A regra em si, nos dois lados. O painel lista os status na mão; o app compõe
@@ -173,10 +189,21 @@ checar(
 );
 
 // (f) A migration que arbitra a colisão real (dois aparelhos, um offline) é um
-//     arquivo NÃO APLICADO, defendido só por comentário — some num `rm` distraído
-//     e ninguém nota. Aqui ela vira falha de teste, com o pré-requisito junto.
-const migracao = ler('../supabase/migrations/20260727_numero_unico_por_tenant.sql');
+//     arquivo NÃO APLICADO — some num `rm` distraído e ninguém nota. Aqui ela vira
+//     falha de teste, com o pré-requisito junto. E a proteção é ESTRUTURAL, não só
+//     o comentário no cabeçalho: a extensão `.sql.pendente` tira o arquivo do glob
+//     `migrations/*.sql`, porque um "aplica tudo que é novo" não lê comentário —
+//     aplicaria o índice sem o tratamento do 23505 no push e o documento de quem
+//     perdesse a corrida pararia de subir, calado, para sempre.
+const migracao = ler('../supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente');
 checar('migration do número único continua no repo', migracao.length > 0, true);
+checar(
+  'e NÃO voltou a ser `.sql` solto em migrations/ (reativar é decisão, não descuido)',
+  readdirSync(new URL('../supabase/migrations/', import.meta.url)).some(
+    (f) => f.endsWith('.sql') && f.includes('numero_unico_por_tenant'),
+  ),
+  false,
+);
 checar('com o índice de orcamentos por tenant', migracao.includes('orcamentos_numero_por_tenant_uidx'), true);
 checar('e o de recibos', migracao.includes('recibos_numero_por_tenant_uidx'), true);
 checar('grão (user_id, numero) — numeração é do prestador, não global', migracao.includes('(user_id, numero)'), true);
