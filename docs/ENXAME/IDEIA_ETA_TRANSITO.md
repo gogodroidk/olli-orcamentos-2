@@ -1,7 +1,16 @@
 # "A que horas eu preciso sair" — ETA com trânsito
 
 Documento de projeto da ideia do dono. Escrito depois de ler o código, não de memória.
-Preços de API conferidos na web em 17/07/2026 (URLs no fim).
+Preços de API conferidos na web em 17/07/2026 e **reconferidos em 18/07/2026** (URLs no fim).
+
+> **ATUALIZAÇÃO 18/07/2026 — a Fase 0 FOI CONSTRUÍDA.** A fundação no worker está
+> no repo, testada e verde. O que mudou desde a primeira redação está na
+> **[seção 12](#12-o-que-foi-construído-em-1807)**, no fim — inclusive **duas
+> discordâncias explícitas** com o que este documento recomendava (o corte por
+> haversine e o papel do cache). Leia a 12 antes de agir sobre as seções 4 e 9.
+>
+> **Nada foi ligado no app.** `src/` não foi tocado. O contrato para a próxima
+> leva está na seção 12.
 
 ---
 
@@ -612,13 +621,251 @@ Nenhum é longo. Três são bloqueantes.
 
 ---
 
+## 12. O QUE FOI CONSTRUÍDO EM 18/07
+
+A síntese de longo prazo (`VISAO_FABLE.md`) discordou deste documento quanto ao
+timing e recomendou **só a Fase 0 agora**. Foi o que se fez: a **fundação no
+worker**, que é a metade que não depende de permissão de localização no
+aparelho — logo, sem passo de loja, sem política de privacidade nova, sem
+prebuild, sem revisão.
+
+### 12.1. O que existe agora
+
+| Peça | Arquivo | Estado |
+|---|---|---|
+| `POST /eta/saida` — origem + destino + horário de chegada → **hora de sair** | `worker/src/etaSaida.js` (novo, ~570 linhas) | **pronto, não deployado** |
+| `departureTime` (trânsito **previsto** para a hora da saída) | `etaSaida.js` → `chamarRotas` | **resolvido** — era "o item mais importante do documento" (seção 9, item 1) |
+| Escolha de SKU por chamada (`modo`) | `etaSaida.js` → `MODOS` | **resolvido** (seção 9, item 2) |
+| Cache persistente de trajeto + de geocodificação | `etaSaida.js` → `lerCacheTrajeto` / `lerCacheGeocode` | **código pronto; tabelas NÃO criadas** (ver 12.5) |
+| Rate limit fail-closed antes do fetch pago | `etaSaida.js`, binding `ETA_RL` que já existia | **pronto** |
+| Rota registrada | `worker/src/index.js` (`/eta/saida`) | **pronto** |
+| Teste + mutation check | `scripts/teste-eta-saida.ts`, na cadeia do `npm test` | **137 asserções, verde** |
+| Contador mensal de cota por conta | — | **NÃO feito** (ver 12.5) |
+| Qualquer coisa ligada no app | — | **NÃO feito de propósito** — `src/` é de outro agente nesta onda |
+
+**Gates:** `node --check` verde nos dois `.js`; `npm run typecheck` exit 0;
+`npm test` exit 0 com as 17 suítes (a nova soma 137 asserções).
+
+### 12.2. O contrato (para a próxima leva ligar no app)
+
+```
+POST /eta/saida            Authorization: Bearer <jwt do Supabase>
+{
+  "origem":   "Rua X, 123, São Paulo/SP"  |  { "lat": -23.55, "lng": -46.63 },
+  "destino":  "Rua Y, 456, Santo André"   |  { "lat": -23.66, "lng": -46.54 },
+  "chegarEm": "2026-07-18T15:00:00-03:00",    // ISO 8601 COM fuso. Obrigatório.
+  "modo":     "planejamento" | "confirmacao", // Obrigatório. Decide o SKU.
+  "folgaMin": 8                                // Opcional, 0..120.
+}
+```
+
+**Sucesso**
+
+```jsonc
+{ "ok": true, "estado": "ok",
+  "minutos": 32, "minutosSemTransito": 27, "distanciaKm": 18.4,
+  "sairEm": "2026-07-18T17:22:48.000Z",        // a resposta à pergunta do dono
+  "chegarEm": "2026-07-18T18:00:00.000Z",
+  "sairAgoraChegaEm": "2026-07-18T13:32:00.000Z",
+  "folgaMin": 5, "atrasado": false, "comTransito": true,
+  "modo": "confirmacao", "sku": "pro", "cache": false,
+  "calculadoEm": "2026-07-18T13:00:00.000Z" }   // carimbo — ver 12.4
+```
+
+**Os três estados** (a regra dura do brief; nunca dois):
+
+| `estado` | Quando | O que a UI faz | O que NUNCA vem junto |
+|---|---|---|---|
+| `ok` | deu certo | mostra a hora de sair **com o carimbo** | — |
+| `indisponivel` | rede/API/cota/limite/config (`erro` nomeia qual) | "Não deu pra checar o trânsito" + **lembrete fixo de 1h que já existe** | qualquer número |
+| `endereco_insuficiente` | endereço não geocodifica (`qual`: origem/destino/ambos) | "Não reconheci este endereço" + botão **Corrigir endereço** | qualquer número |
+
+`atrasado: true` **não é um quarto estado** — é sucesso com uma verdade
+desconfortável ("a hora de sair já passou"). Junto vem `sairAgoraChegaEm`, para
+a UI dizer *"saindo agora você chega 15h07 — avisar o João?"* em vez de esconder
+o atraso. Isso alimenta direto o item 7.2 (avisar o cliente).
+
+**Duas exigências do contrato que parecem chatice e não são:**
+
+1. **`chegarEm` precisa de fuso.** `"2026-07-18T15:00:00"` é recusado
+   (`chegar_em_sem_fuso`). Sem designador, "15h" pode ser 15h em qualquer fuso do
+   planeta — e um horário de chegada ambíguo erra a hora de sair por horas.
+   Recusar é melhor que adivinhar.
+2. **`modo` não tem default.** Um default esconderia no worker uma decisão de
+   custo que é do call site (Essentials vs Pro = metade do preço e o dobro da
+   franquia). Sem `modo` a resposta é `modo_invalido` e **nenhuma chamada paga
+   acontece**.
+
+### 12.3. CUSTO — medido, não estimado
+
+Preços reconferidos na página oficial em **18/07/2026** (idênticos aos de 17/07):
+Essentials **10.000 grátis/mês · US$ 5,00/1.000** · Pro **5.000 grátis/mês ·
+US$ 10,00/1.000** · Geocoding **10.000 grátis/mês · US$ 5,00/1.000**. A regra de
+SKU foi reconfirmada na página de billing da Routes API: o Pro é cobrado em
+requisições que usam "advanced features, such as the `TRAFFIC_AWARE` or
+`TRAFFIC_AWARE_OPTIMAL` route modifiers". Câmbio **US$ 1 = R$ 5,11** (18/07/2026).
+
+Cenário do brief: **6 visitas/dia × 22 dias = 132 visitas/mês**, plano de R$ 39.
+
+| Desenho | Chamadas/mês | US$ | R$/prestador/mês | % do plano |
+|---|---|---|---|---|
+| **A** — ingênuo (2× `TRAFFIC_AWARE` por visita) | 264 Pro | 2,64 | **13,49** | 34,6% |
+| **B** — `/eta/saida` sem cache (1 plan + 1 confirm) | 132 Ess + 132 Pro | 1,98 | **10,12** | 25,9% |
+| **C** — B + cache de planejamento a 60% | 53 Ess + 132 Pro | 1,58 | **8,10** | 20,8% |
+| **D** — C + confirmar **só a próxima parada** (2/dia) | 53 Ess + 44 Pro | 0,71 | **3,60** | 9,2% |
+| **E** — D + geocoding de 20 clientes novos/mês | 53 Ess + 44 Pro + 20 Geo | 0,81 | **4,11** | 10,5% |
+
+**Economia medida sobre o desenho ingênuo: 69,5% (R$ 13,49 → R$ 4,11).**
+Decomposta:
+
+- **split de SKU** (planejamento vira Essentials): **25,0%** — R$ 3,37
+- **cache de trajeto sozinho**, a 60% de acerto: **19,9%** — R$ 2,02
+- **chamar menos** (confirmar só a próxima parada): o resto, e é a maior fatia
+
+Franquia grátis (é da **conta**, não por usuário) — gargalo sempre no Pro:
+
+| Desenho | Prestadores de graça |
+|---|---|
+| A (ingênuo) | **18** |
+| B (sem cache) | **37** |
+| E (recomendado) | **113** |
+
+> ⚠️ A taxa de acerto de 60% é **hipótese**, não medida — não há dado real de
+> repetição de trajeto ainda. A tabela do script varre 30/50/60/80% e a
+> conclusão não muda de sinal em nenhuma faixa. Medir de verdade é possível hoje:
+> o campo `cache` vem em toda resposta.
+
+### 12.4. Duas DISCORDÂNCIAS com este documento (leia antes de seguir a seção 4)
+
+**(a) O "corte 1 — filtro de haversine" NÃO foi implementado, e não deve ser.**
+
+A seção 4 propõe: se a distância em linha reta for < 3 km, não chamar a API e
+mostrar *"~10 min, pertinho"*. **Isso é um ETA otimista chutado**, e o brief
+desta onda proíbe explicitamente: *"NUNCA devolva um ETA otimista chutado —
+errar a hora de sair faz o prestador chegar atrasado no cliente, que é pior que
+não ter a função."* Dois quilômetros e meio em Copacabana às 18h não são 10
+minutos. O número seria apresentado com a mesma cara de certeza do número real, e
+o prestador não teria como distinguir.
+
+O que foi feito no lugar: a haversine existe (`haversineKm`), mas **só como
+sanidade offline** — acima de 600 km entre duas visitas do mesmo dia, a resposta
+é `endereco_insuficiente` (quase certamente geocodificação no estado errado), e
+isso **antes** de gastar a chamada paga. Ela nunca vira duração.
+
+Consequência honesta: **o desenho aqui é mais caro em baixa escala do que o que a
+seção 4 projetava** (37 prestadores grátis em vez de ~68 no desenho B). A
+diferença é o preço de não mentir. E a tabela 12.3 mostra que a alavanca perdida
+é recuperada com folga pelo item (b).
+
+**(b) O "corte 3 — cache" foi implementado, mas o documento superestima o que
+ele pode fazer.**
+
+Cache corta o lado **barato**. O lado **caro** (Pro / `TRAFFIC_AWARE`) é
+incomprimível por cache **sem mentir**: o valor de `TRAFFIC_AWARE` é o trânsito
+de *agora*: servi-lo de um cache de horas é apresentar número velho como atual.
+Por isso os TTLs são deliberadamente assimétricos:
+
+- `planejamento` (TRAFFIC_UNAWARE): **30 dias.** É a via em fluxo livre; só muda
+  com obra. Trinta e não sete porque o padrão de ouro do público é o cliente
+  **semanal** — com TTL de 7 dias a visita semanal cai exatamente na borda e o
+  cache erra justo o caso que ele existe para pegar.
+- `confirmacao` (TRAFFIC_AWARE): **10 minutos.**
+
+**A alavanca de verdade do lado caro não é cache, é chamar menos:** confirmar só
+a **próxima** parada (~2/dia), não as 6 do dia. Isso cai direto do desenho do
+produto — o "Toque 2" da seção 2 é sobre a próxima visita — e sozinho leva de
+R$ 8,10 para R$ 3,60. **Este é o parágrafo que a próxima leva precisa ler antes
+de escrever o cliente no app.**
+
+### 12.5. O QUE FALTA (ordenado; nada disso está feito)
+
+1. **Migration das duas tabelas de cache — bloqueia a economia de 12.3.**
+   O código já lê e grava; enquanto as tabelas não existirem, toda leitura
+   devolve `null` e toda escrita é engolida (padrão do `cnpj_cache`: cache que
+   derruba a rota é pior que cache nenhum). **A rota funciona hoje sem elas — só
+   mais cara.** DDL a aplicar (não apliquei: migration não é desta onda):
+
+   ```sql
+   create table if not exists public.eta_cache (
+     chave         text primary key,
+     duracao_seg   integer not null,
+     distancia_m   integer,
+     atualizado_em timestamptz not null default now()
+   );
+   create table if not exists public.geocode_cache (
+     endereco_norm text primary key,
+     lat           double precision not null,
+     lng           double precision not null,
+     formatado     text,
+     atualizado_em timestamptz not null default now()
+   );
+   -- Sem RLS de usuário de propósito: são caches de dado público (tempo de via,
+   -- coordenada de endereço), escritos e lidos SÓ pelo worker com service_role.
+   -- Nenhuma linha identifica prestador ou cliente — a chave é coordenada
+   -- arredondada + faixa de hora. Nada de PII entra aqui.
+   ```
+
+2. **Contador mensal de cota por conta** (Fase 0, item 5 da seção 9). **Não
+   fiz de propósito:** um contador que falha aberto porque a tabela não existe é
+   o bug `olli-gate-erro-vira-vazio` na camada de dinheiro — pior que a ausência
+   dele, porque dá a impressão de que há teto. Entra junto com a migration
+   acima, e o `estado:'indisponivel'` + `erro:'cota_mensal'` já cabe no contrato
+   sem mudar nada no app.
+
+3. **Budget + alerta no Google Cloud com corte no teto — passo humano, 5 min,
+   BLOQUEANTE.** Continua valendo, e agora com o número medido: o `ETA_RL` é
+   teto de **rajada** (20/min/usuário), não orçamento. Uma conta no talo por um
+   mês = 864.000 chamadas Pro = **US$ 8.640 ≈ R$ 44.150**. Rate limit não
+   substitui budget; são coisas diferentes.
+
+4. **Ligar no app** (`src/`) — fora do escopo desta onda. Ordem sugerida, já
+   com o contrato de 12.2: `origemParaVisita()` → linha "saia às HH:MM" no
+   `montarBomDia` → toque 2 substituindo o lembrete fixo (com fallback explícito
+   para os 60 min quando `estado !== 'ok'`) → carimbo `calculadoEm` visível em
+   toda exibição.
+
+5. **Decisão do dono (seção 10, itens 2 e 3):** em que plano entra, e aprovar o
+   Desenho A. Nada do que foi construído depende disso, mas ligar no app depende.
+
+### 12.6. Sobre o teste — e o buraco que o mutation check achou
+
+`scripts/teste-eta-saida.ts`, **137 asserções**, na cadeia do `npm test`. Roda
+offline: a resposta do Google é mockada, nenhuma chamada paga, nenhuma chave.
+
+**Mutation check: 15 mutações, 15 pegas, 0 sobreviventes.** Quantas asserções
+caem por mutação:
+
+| Mutação (bug plantado de propósito) | Asserções que caem |
+|---|---|
+| falha da Routes API vira ETA chutado de 15 min | **20** |
+| folga zerada (chegar exatamente na hora) | 7 |
+| rate limit vira fail-open (o incidente real de produção) | 6 |
+| geocoding fora do ar vira "endereço não existe" | 4 |
+| não manda `departureTime` (o bug do `/eta` atual) | 3 |
+| TTL do cache ignorado / sanidade de distância removida / `modo` ganha default | 3 cada |
+| duração ilegível vira 0 / horário sem fuso aceito / chave vaza na resposta | 2 cada |
+| SKU errado / `departureTime` no passado / cache velho com hora de agora / `minutosSemTransito` copiado | 1 cada |
+
+**A primeira rodada teve 1 sobrevivente, e ele valia a rodada inteira:** a
+Geocoding API responde **HTTP 200** com `OVER_QUERY_LIMIT`, `REQUEST_DENIED` ou
+`UNKNOWN_ERROR` no corpo. O código tratava certo, mas **nenhum teste cobria** —
+então nada impedia alguém de "simplificar" para `status !== 'OK' →
+nao_encontrado`. Isso é exatamente `olli-gate-erro-vira-vazio` na sua forma mais
+provável: no dia em que a cota estourar, o app mandaria **todo mundo ao mesmo
+tempo** reescrever endereços que estavam certos. Hoje há 8 asserções prendendo os
+quatro status.
+
+---
+
 ## Fontes
 
-- [Routes API Usage and Billing — Google for Developers](https://developers.google.com/maps/documentation/routes/usage-and-billing) — regra de SKU: Pro é cobrado em requisições com `TRAFFIC_AWARE`/`TRAFFIC_AWARE_OPTIMAL`; Essentials cobre features básicas até 10 waypoints
-- [Google Maps Platform core services pricing list](https://developers.google.com/maps/billing-and-pricing/pricing) — Compute Routes Essentials (10.000 grátis, US$ 5,00/1.000), Pro (5.000 grátis, US$ 10,00/1.000), Enterprise (1.000 grátis, US$ 15,00/1.000), Geocoding (10.000 grátis, US$ 5,00/1.000). Consultado 17/07/2026
-- [Method: computeRoutes — referência REST](https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRoutes) — `duration` vs `staticDuration`; `departureTime` só pode ser no passado quando o modo é `TRANSIT`
+- [Google Maps Platform core services pricing list](https://developers.google.com/maps/billing-and-pricing/pricing) — **reconferido 18/07/2026**: Compute Routes Essentials 10.000 grátis · US$ 5,00/1.000; Pro 5.000 grátis · US$ 10,00/1.000; Enterprise 1.000 grátis · US$ 15,00/1.000; Geocoding 10.000 grátis · US$ 5,00/1.000
+- [Routes API Usage and Billing — Google for Developers](https://developers.google.com/maps/documentation/routes/usage-and-billing) — **reconferido 18/07/2026**: Pro é cobrado em requisições com `TRAFFIC_AWARE`/`TRAFFIC_AWARE_OPTIMAL`
+- [Method: computeRoutes — referência REST](https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRoutes) — **reconferido 18/07/2026**: `departureTime` no passado **só** é aceito quando `travelMode` é `TRANSIT` (daí o piso em "agora + 30s" no `departureTimeMs`); `duration` (com trânsito) vs `staticDuration` (sem)
 - [Google Maps Platform pricing overview](https://developers.google.com/maps/billing-and-pricing/overview) — fim do crédito recorrente de US$ 200 em 01/03/2025, substituído por franquia mensal grátis por SKU
-- [Dólar Hoje — Investing.com](https://br.investing.com/currencies/usd-brl) — US$ 1 = R$ 5,11 em 17/07/2026
+
+*(As quatro primeiras fontes foram consultadas em 17/07 e **reconferidas em
+18/07/2026**: nenhum preço, franquia ou regra de SKU mudou entre as duas datas.)*
 
 ### Fontes internas (código lido, não presumido)
 
@@ -631,3 +878,7 @@ Nenhum é longo. Três são bloqueantes.
 `src/components/EtaChip.tsx` · `src/screens/HomeScreen.tsx` ·
 `src/screens/desktop/InicioDesktopScreen.tsx` · `app.json:27` ·
 `src/services/entitlements.ts:16` · `docs/KNOWN_BLOCKERS.md` (B4)
+
+**Escrito nesta onda (18/07):** `worker/src/etaSaida.js` (novo) ·
+`worker/src/index.js` (rota `/eta/saida`) · `scripts/teste-eta-saida.ts` (novo) ·
+`package.json` (`test:eta-saida` na cadeia do `npm test`).

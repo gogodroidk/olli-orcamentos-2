@@ -280,11 +280,57 @@ export function comAlfa(hex: string, alfa: number): string {
 
 // ─── superfícies por modo ────────────────────────────────────────────────────
 
+/**
+ * ─── A ESCADA DE ELEVAÇÃO ────────────────────────────────────────────────────
+ *
+ * Uma superfície só "existe" se a vizinha dela for perceptivelmente diferente. A
+ * régua para isso NÃO é a razão de contraste do WCAG (ela responde "dá pra ler o
+ * texto?", que é outra pergunta): é o L* do CIELAB, que é luminosidade
+ * perceptual. Entre duas superfícies grandes e adjacentes, ΔL* < 2 é do tamanho
+ * do ruído de painel — o olho não separa.
+ *
+ * O modo ESCURO sempre teve escada (ΔL* 4,12 / 3,82 / 6,45; amplitude 14,39). O
+ * CLARO não tinha: `background` #F5F7FA e `surface` #FFFFFF ficavam a ΔL* 2,84 e
+ * a sombra que deveria completar a separação valia 0,008 de alfa (ver
+ * `criarSombras`). Cartão e página eram quase a mesma folha — a queixa de que
+ * "a cor está estranha" no claro é isso: nada se destacava de nada.
+ *
+ * A correção move a escada PARA BAIXO, nunca para cima:
+ *
+ *   surfaceVariant  #D6DFEA  L* 88,45   ← recuado (campo, chip)
+ *   background      #E1E8F0  L* 91,69   ΔL* 3,24   página
+ *   surface         #FFFFFF  L* 100,0   ΔL* 8,31   CARTÃO — o texto mora aqui
+ *   surfaceElevated #FFFFFF  L* 100,0             (mesmo nível; ver nota)
+ *
+ * O cartão CONTINUA branco puro de propósito. Este app é usado na rua, com sol
+ * na tela: sob luz refletida o que sobra de contraste depende da luminância
+ * absoluta da superfície onde o texto está. Escurecer o cartão para "abrir"
+ * espaço na escada pagaria a hierarquia com legibilidade no sol — a troca
+ * errada. Quem desce é a página e o campo, que não carregam corpo de texto.
+ * Resultado: cartão↔página vai de ΔL* 2,84 → 8,31 e `onSurface` fica intacto
+ * em 17,28:1.
+ *
+ * Matiz: 212–216°, saturação 32–33% nos quatro níveis — a mesma família do modo
+ * escuro (212–215°). Antes, `background` era azul-acinzentado e `surface` era
+ * branco NEUTRO (s = 0%): um branco neutro cercado de cinza-azulado sofre
+ * contraste simultâneo e o olho o lê como amarelado. Agora o branco puro tem
+ * uma família fria embaixo dele em vez de ao lado dele.
+ *
+ * NOTA sobre `surface` == `surfaceElevated`: os dois são o mesmo branco de
+ * propósito, e isso não é a escada faltando. Conferido sítio a sítio, os 16 usos
+ * de `surfaceElevated` (campo em FOCO, `OlliCard variant="metric"`, linhas da
+ * Conta, balão do chat) têm sempre `background` ou `surfaceVariant` como
+ * vizinho — nunca `surface`. Não existe elevado DENTRO de cartão. Separar os
+ * dois custaria luminância num deles em troca de uma diferença que ninguém vê.
+ * O que os dois precisavam era subir junto em relação à página, e isso é o que
+ * a escada acima faz. A redundância dos nomes é dívida de nomenclatura, não de
+ * cor.
+ */
 const SUPERFICIES = {
   claro: {
-    background: '#F5F7FA',
+    background: '#E1E8F0',
     surface: '#FFFFFF',
-    surfaceVariant: '#EDF1F6',
+    surfaceVariant: '#D6DFEA',
     surfaceElevated: '#FFFFFF',
     card: '#FFFFFF',
     tinta: '#0F1B2D',
@@ -390,12 +436,30 @@ export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO)
   const tinta = sup.tinta;
   const primaryDark = escuro ? '#0A2547' : hslParaHex({ ...marca, l: Math.max(12, marca.l - 28) });
 
+  // Um único véu para o container e para o texto dele: se os dois alfas fossem
+  // escritos separados, um dia divergiriam e o rótulo voltaria a ser calibrado
+  // contra um fundo que ninguém pinta.
+  const veuContainer = comAlfa(primary, escuro ? 0.16 : 0.10);
+
   return {
     primary,
     primaryLight,
     primaryDark,
-    primaryContainer: comAlfa(primary, escuro ? 0.16 : 0.10),
-    primaryContainerText: ajustarParaContraste(primary, escuro ? sup.surface : '#FFFFFF', 4.5),
+    primaryContainer: veuContainer,
+    // Medido contra o CHIP, não contra a superfície nua nem contra um branco
+    // cravado. O rótulo é pintado sobre `primaryContainer`, que é a marca a 10%
+    // (16% no escuro) sobre a superfície — um azul-clarinho no claro, um
+    // azul-marinho no escuro. Nenhum dos dois é `sup.surface`, e no claro o
+    // '#FFFFFF' cravado que estava aqui simplesmente ignorava o véu.
+    //
+    // Isso é o mesmo padrão que `corCategoriaEmChip` já usava logo acima; a
+    // diferença é que este token não estava na lista `PRIMEIRO_PLANO` do
+    // `scripts/checar-contraste.mjs`, então o gate ficava verde enquanto o chip
+    // reprovava. Medido contra o chip real, a versão antiga falhava AA em
+    // 5 das 12 marcas no claro (pior 4,13:1, Vermelho) e em 11 das 12 no
+    // ESCURO (pior 3,87:1, o próprio Azul OLLI). Bug pré-existente nos dois
+    // modos; aqui vai a 0/12 e 0/12.
+    primaryContainerText: ajustarParaContraste(primary, achatarVeu(sup.surface, veuContainer), 4.5),
     accent,
     accentLight,
     accentContainer: comAlfa(accent, escuro ? 0.15 : 0.12),
@@ -431,16 +495,40 @@ export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO)
     onPrimary: textoSobre(primary),
     onBackground: tinta,
     onSurface: tinta,
-    onSurfaceVariant: comAlfa(tinta, escuro ? 0.62 : 0.64),
-    onSurfaceMuted: comAlfa(tinta, escuro ? 0.40 : 0.45),
+    // Alfa NÃO é linear em luminosidade percebida, e os números do claro tinham
+    // sido herdados do escuro com um ajuste pequeno — nunca calibrados contra as
+    // superfícies claras de verdade. Recalibrados aqui contra a PIOR superfície
+    // do claro (`surfaceVariant`, a mais escura, onde o texto escuro tem menos
+    // folga). Só o ramo claro muda; o escuro fica exatamente como estava.
+    //
+    //                        antes → depois   no cartão      no campo
+    //   onSurfaceVariant     0,64  → 0,70     6,44:1 Lc 82   5,53:1 Lc 66
+    //   tabInactive          0,50  → 0,62     4,87:1 Lc 74   4,38:1 Lc 60
+    //   onSurfaceMuted       0,45  → 0,58     4,27:1 Lc 70   3,89:1 Lc 57
+    //
+    // `onSurfaceMuted` tem 227 usos e media 2,90:1 (Lc 55) — sob sombra externa
+    // isso cai para 2,12:1 e sob sol para 1,80:1, ou seja, sumia justamente onde
+    // o app é usado. A rampa continua sendo rampa (Lc 104 / 82 / 74 / 70).
+    onSurfaceVariant: comAlfa(tinta, escuro ? 0.62 : 0.70),
+    onSurfaceMuted: comAlfa(tinta, escuro ? 0.40 : 0.58),
 
-    outline: comAlfa(tinta, escuro ? 0.10 : 0.10),
-    outlineDark: comAlfa(tinta, escuro ? 0.18 : 0.16),
-    // O glow é um efeito de fundo escuro. No claro vira uma borda da marca —
-    // sombra colorida sobre branco lê como borrão, não como elevação.
-    strokeGlow: escuro ? comAlfa(accent, 0.24) : comAlfa(primary, 0.28),
+    // Hairline: 290 bordas no app. Com a escada nova o degrau de luminosidade já
+    // separa cartão de página, então a linha é reforço, não estrutura — sobe o
+    // suficiente para sobreviver ao reflexo (Lc 11 → 17) sem virar grade.
+    outline: comAlfa(tinta, escuro ? 0.10 : 0.14),
+    outlineDark: comAlfa(tinta, escuro ? 0.18 : 0.22),
+    // O glow é um efeito de fundo ESCURO: um véu de acento sobre superfície
+    // escura lê como brilho. No claro o mesmo véu sobre superfície clara lê como
+    // contorno colorido de adesivo — e, como a marca é configurável, cada
+    // prestador ganhava uma cor de contorno diferente em 76 bordas: o Vermelho
+    // deixava o app inteiro com cartão de contorno rosa (#F5C2C2, s = 72%), o
+    // Roxo com lilás (s = 69%), o Azul com azul-claro (s = 66%). Cor de marca
+    // saturada aplicada ao PERÍMETRO de tudo é pior que em bloco, porque o olho
+    // persegue borda. No claro vira traço neutro, igual para as 12 marcas; a
+    // marca continua aparecendo onde deve (botão primário, gradiente, tabActive).
+    strokeGlow: escuro ? comAlfa(accent, 0.24) : comAlfa(tinta, 0.18),
 
-    tabInactive: comAlfa(tinta, escuro ? 0.45 : 0.50),
+    tabInactive: comAlfa(tinta, escuro ? 0.45 : 0.62),
     tabActive,
 
     whatsapp: '#25D366',
@@ -451,7 +539,16 @@ export function criarPaleta(modo: ModoTema, corMarca: string = COR_MARCA_PADRAO)
 
     // Elevação (MOTION_SPEC §7): no escuro a sombra não existe — a elevação vem da
     // superfície mais clara. No claro, sombra neutra.
-    sombraCor: escuro ? 'transparent' : 'rgba(15,27,45,0.10)',
+    //
+    // OPACA de propósito. Era `rgba(15,27,45,0.10)`, e a doc do React Native diz
+    // que `shadowOpacity` é "multiplied by the color's alpha component" — ou
+    // seja, o 0,10 da cor multiplicava o 0,08 de `shadowOpacity` e a sombra `md`
+    // saía com alfa EFETIVO 0,008. Isso não é sombra suave, é sombra ausente
+    // (cavava ΔL* 0,69 no fundo). Com a cor opaca, `shadowOpacity` passa a valer
+    // o que diz — ver `criarSombras`, onde os valores foram recalibrados para
+    // compensar. Navy e não preto: a página do OLLI é fria, e sombra preta sobre
+    // superfície fria acinzenta.
+    sombraCor: escuro ? 'transparent' : '#0F1B2D',
 
     ...PDF,
   };
@@ -528,12 +625,29 @@ export function criarSombras(modo: ModoTema, cores: Cores) {
   const escuro = modo === 'escuro';
   const cor = escuro ? '#000' : cores.sombraCor;
   const op = (d: number, c: number) => (escuro ? d : c);
+  // ─── os números do CLARO mudaram junto com `sombraCor` ────────────────────
+  //
+  // `sombraCor` deixou de carregar alfa 0,10 embutido (ver `criarPaleta`), então
+  // os `shadowOpacity` do claro precisavam subir na mesma proporção, senão a
+  // sombra saltaria de "invisível" para "borrão". Alfa EFETIVO antes → depois:
+  //
+  //        antes (0,10 × op)   depois (1,00 × op)   ΔL* que cava no fundo
+  //   sm       0,0060               0,10             0,35 →  7,2
+  //   md       0,0080               0,13             0,69 →  9,4
+  //   lg       0,0100               0,16             0,69 → 11,4
+  //
+  // ATENÇÃO DE PLATAFORMA: `shadowOffset`/`shadowOpacity`/`shadowRadius` são
+  // iOS-only no RN — no Android quem desenha é `elevation`, que não mudou. Ou
+  // seja, esta correção conserta iOS e RN-web e deixa o APK Android como está.
+  // É exatamente por isso que o app na web parecia mais chapado que o APK.
   return {
-    sm: { shadowColor: cor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: op(0.25, 0.06), shadowRadius: 6, elevation: 3 },
-    md: { shadowColor: cor, shadowOffset: { width: 0, height: 8 }, shadowOpacity: op(0.32, 0.08), shadowRadius: 16, elevation: 6 },
-    lg: { shadowColor: cor, shadowOffset: { width: 0, height: 14 }, shadowOpacity: op(0.38, 0.10), shadowRadius: 28, elevation: 10 },
+    sm: { shadowColor: cor, shadowOffset: { width: 0, height: 2 }, shadowOpacity: op(0.25, 0.10), shadowRadius: 6, elevation: 3 },
+    md: { shadowColor: cor, shadowOffset: { width: 0, height: 8 }, shadowOpacity: op(0.32, 0.13), shadowRadius: 16, elevation: 6 },
+    lg: { shadowColor: cor, shadowOffset: { width: 0, height: 14 }, shadowOpacity: op(0.38, 0.16), shadowRadius: 28, elevation: 10 },
     // Glow é efeito de fundo escuro. No claro ele vira sombra neutra: manter o
-    // brilho ciano sobre branco sujaria o card em vez de destacá-lo.
+    // brilho ciano sobre branco sujaria o card em vez de destacá-lo. O 0,10 aqui
+    // é o alfa efetivo pretendido (antes era 0,010 pelo mesmo bug acima) — a
+    // sombra de um botão primário, não um halo.
     glowCyan: escuro
       ? { shadowColor: cores.accent, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 20, elevation: 8 }
       : { shadowColor: cores.sombraCor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 14, elevation: 6 },

@@ -50,6 +50,7 @@ import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
+import { handleEtaSaida } from './etaSaida.js';
 import { cobrarCreditoVoz } from './creditos.js';
 import { gemini } from './gemini.js';
 import { parseJsonBody, parseJsonLoose, cortar } from './util.js';
@@ -812,6 +813,17 @@ const handler = {
 
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEta(request, env);
+    }
+
+    // "A que horas eu preciso SAIR pra chegar às 15h" (docs/ENXAME/IDEIA_ETA_TRANSITO.md).
+    // Irmã do /eta acima, com duas diferenças que importam: manda `departureTime`
+    // (trânsito PREVISTO para a hora da saída — sem isso o cálculo da manhã usa o
+    // trânsito da manhã pra uma visita da tarde, e erra calado) e aceita endereço
+    // em TEXTO, com a origem vindo do cadastro em vez do GPS. Mesma chave secret,
+    // mesmo binding ETA_RL — mas fail-closed, porque cada chamada gasta dinheiro
+    // na Google. Ver o docblock de etaSaida.js.
+    if (url.pathname === '/eta/saida' && request.method === 'POST') {
+      return handleEtaSaida(request, env);
     }
 
     // Geocodificação (endereço → coordenada) — alimenta o /eta. Mesma proteção:
