@@ -1,0 +1,51 @@
+---
+/**
+ * Footer.astro — rodapé único do site (LANDING_BRIEF/auditoria G2: 4 rodapés
+ * escritos à mão e divergentes entre si — link "Início" vs "Entrar", com/sem
+ * "Ajuda", com/sem copyright, com/sem link de volta).
+ *
+ * `variante`:
+ *   'completo' — logo + navegação (Planos/Recursos/Privacidade/Termos/Ajuda/Entrar).
+ *                Usado nas páginas "hub": home, ajuda, legal/*.
+ *   'minimal'  — só copyright + link de volta pra home. Usado nas páginas de
+ *                conversão (/para/[oficio]) e na 404, onde a navegação completa
+ *                seria só distração antes do CTA.
+ *
+ * `class` (mesmo padrão de OlliLogo.astro) deixa cada página manter a largura do
+ * próprio conteúdo — a home é max-w-7xl, ajuda é max-w-4xl, legal é max-w-3xl.
+ */
+import OlliLogo from "./OlliLogo.astro";
+
+interface Props {
+	variante?: "completo" | "minimal";
+	class?: string;
+}
+const { variante = "completo", class: containerClass = "max-w-7xl" } = Astro.props;
+
+const APP_URL = "https://app.olliorcamentos.online";
+const ano = new Date().getFullYear();
+---
+
+{variante === "completo" ? (
+  <footer class="border-t border-line bg-paper">
+    <div class={`mx-auto flex ${containerClass} flex-col items-center justify-between gap-6 px-6 py-10 sm:flex-row`}>
+      <a href="/" aria-label="OLLI — início"><OlliLogo size={32} /></a>
+      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+        <a href="/#planos" class="transition hover:text-ink">Planos</a>
+        <a href="/#recursos" class="transition hover:text-ink">Recursos</a>
+        <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
+        <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
+        <a href="/ajuda/" class="transition hover:text-ink">Ajuda</a>
+        <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
+      </div>
+      <p class="text-sm text-muted">© {ano} OLLI Orçamentos</p>
+    </div>
+  </footer>
+) : (
+  <footer class="border-t border-line bg-paper">
+    <div class={`mx-auto flex ${containerClass} flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-muted sm:flex-row`}>
+      <a href="/" class="hover:text-brand">← Voltar para o início</a>
+      <p>© {ano} OLLI Orçamentos</p>
+    </div>
+  </footer>
+)}

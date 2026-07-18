@@ -11,6 +11,7 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliPressable } from '../components/OlliPressable';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { SeletorTema } from '../components/SeletorTema';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
@@ -195,42 +196,57 @@ export default function ContaScreen() {
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `backupsErro` só vira
+  // `true` se a leitura de fato falhar — sem isso o modal mostrava "Nenhuma
+  // cópia de segurança ainda" mesmo quando havia cópias e a busca só falhou.
+  const [backupsErro, setBackupsErro] = useState(false);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira `true` se a leitura de fato falhar — sem isso o load() sem try/catch
+  // deixava o skeleton preso pra sempre (setCarregando(false) nunca rodava).
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
-    const emp = await getEmpresa();
-    setEmpresa(emp);
+    setCarregandoErro(false);
     try {
-      const toggle = await AsyncStorage.getItem(AUTO_BACKUP_TOGGLE_KEY);
-      setAutoBackupAtivo(toggle !== '0');
-    } catch { /* best-effort: mantém o default (ativo) */ }
-    // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
-    setAjudaAtiva(await estaAtiva());
-    if (configured) {
-      const u = await getCurrentUser();
-      if (u) {
-        const meta = (u.user_metadata ?? {}) as Record<string, any>;
-        setUser({
-          email: u.email,
-          nome: typeof meta.full_name === 'string' ? meta.full_name : undefined,
-          telefone: typeof meta.telefone === 'string' ? meta.telefone : undefined,
-          avatarUrl: typeof meta.avatar_url === 'string' && meta.avatar_url ? meta.avatar_url : undefined,
-        });
-        setAvatarErro(false);
-        setSessaoPerdida(false);
-        setLastBackup(await getUltimoBackupVersionadoData());
-      } else {
-        // Dentro das Tabs SEMPRE há sessão. Se caiu aqui sem usuário, a sessão
-        // expirou/corrompeu — mostra o guarda defensivo em vez de um form de login.
-        setUser(null);
-        setSessaoPerdida(true);
-        setLastBackup(null);
+      const emp = await getEmpresa();
+      setEmpresa(emp);
+      try {
+        const toggle = await AsyncStorage.getItem(AUTO_BACKUP_TOGGLE_KEY);
+        setAutoBackupAtivo(toggle !== '0');
+      } catch { /* best-effort: mantém o default (ativo) */ }
+      // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
+      setAjudaAtiva(await estaAtiva());
+      if (configured) {
+        const u = await getCurrentUser();
+        if (u) {
+          const meta = (u.user_metadata ?? {}) as Record<string, any>;
+          setUser({
+            email: u.email,
+            nome: typeof meta.full_name === 'string' ? meta.full_name : undefined,
+            telefone: typeof meta.telefone === 'string' ? meta.telefone : undefined,
+            avatarUrl: typeof meta.avatar_url === 'string' && meta.avatar_url ? meta.avatar_url : undefined,
+          });
+          setAvatarErro(false);
+          setSessaoPerdida(false);
+          setLastBackup(await getUltimoBackupVersionadoData());
+        } else {
+          // Dentro das Tabs SEMPRE há sessão. Se caiu aqui sem usuário, a sessão
+          // expirou/corrompeu — mostra o guarda defensivo em vez de um form de login.
+          setUser(null);
+          setSessaoPerdida(true);
+          setLastBackup(null);
+        }
       }
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira tela de conta "vazia" enganosa.
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
     }
-    setCarregando(false);
   }, [configured]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -288,17 +304,25 @@ export default function ContaScreen() {
     );
   }
 
-  /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
-  async function handleAbrirBackups() {
-    Haptics.selectionAsync().catch(() => {});
-    setShowBackups(true);
+  /** Carrega (ou recarrega) a lista de cópias de segurança da nuvem. */
+  const carregarBackups = useCallback(async () => {
     setCarregandoBackups(true);
+    setBackupsErro(false);
     try {
       setBackups(await listBackupsVersionados());
-    } catch (e: any) {
-      Alert.alert('Erro', e?.message ?? 'Não foi possível carregar as cópias de segurança.');
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira "nenhuma cópia" silencioso.
+      setBackupsErro(true);
+    } finally {
+      setCarregandoBackups(false);
     }
-    setCarregandoBackups(false);
+  }, []);
+
+  /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
+  function handleAbrirBackups() {
+    Haptics.selectionAsync().catch(() => {});
+    setShowBackups(true);
+    carregarBackups();
   }
 
   /** Restaura uma cópia específica da lista, com confirmação dupla (é destrutivo). */
@@ -616,6 +640,16 @@ export default function ContaScreen() {
               ))}
             </View>
           </>
+        ) : carregandoErro ? (
+          <View style={{ paddingHorizontal: Spacing.base, minHeight: 320 }}>
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar os dados da sua conta agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={load}
+            />
+          </View>
         ) : (
         <>
         {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
@@ -989,6 +1023,14 @@ export default function ContaScreen() {
           <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
             {carregandoBackups ? (
               <ActivityIndicator color={cores.primary} style={{ marginTop: 24 }} />
+            ) : backupsErro ? (
+              <View style={styles.backupsEmpty}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={32} color={cores.warning} />
+                <Text style={styles.backupsEmptyText}>Não foi possível carregar suas cópias de segurança agora. Verifique a conexão e tente de novo.</Text>
+                <TouchableOpacity onPress={carregarBackups} activeOpacity={0.8}>
+                  <Text style={styles.backupsEmptyLink}>Tentar de novo</Text>
+                </TouchableOpacity>
+              </View>
             ) : backups.length === 0 ? (
               <View style={styles.backupsEmpty}>
                 <MaterialCommunityIcons name="cloud-off-outline" size={32} color={cores.onSurfaceMuted} />
@@ -1421,6 +1463,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   backupsEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: Spacing.lg, gap: 12 },
   backupsEmptyText: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  backupsEmptyLink: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
   backupItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10 },
   backupItemIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   backupItemDate: { fontSize: 14, fontWeight: '700', color: c.onSurface },

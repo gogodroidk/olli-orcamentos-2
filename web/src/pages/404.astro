@@ -1,5 +1,6 @@
 ---
-import OlliLogo from "../components/OlliLogo.astro";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
 import Layout from "../layouts/Layout.astro";
 
 const APP_URL = "https://app.olliorcamentos.online";
@@ -13,16 +14,13 @@ const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
   descricao="A página que você procura não existe ou foi movida."
   noindex={true}
 >
-  <header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
-    <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-      <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
-      <a
-        href={APP_URL}
-        class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong"
-        >Entrar</a
-      >
-    </nav>
-  </header>
+  <Header>
+    <a
+      href={APP_URL}
+      class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong"
+      >Entrar</a
+    >
+  </Header>
 
   <main class="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-6 py-24 text-center">
     <p class="bg-gradient-to-br from-cyan to-brand bg-clip-text text-8xl font-extrabold tracking-tight text-transparent">
@@ -51,9 +49,5 @@ const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
     </div>
   </main>
 
-  <footer class="border-t border-line/70">
-    <div class="mx-auto max-w-7xl px-6 py-8 text-center text-sm text-muted">
-      © {new Date().getFullYear()} OLLI Orçamentos
-    </div>
-  </footer>
+  <Footer variante="minimal" />
 </Layout>

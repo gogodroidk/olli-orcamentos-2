@@ -3,7 +3,8 @@ import {
 	CATEGORIAS_AJUDA,
 	getArtigosDaCategoria,
 } from "../../../../src/content/ajuda/index";
-import OlliLogo from "../../components/OlliLogo.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
 import Layout from "../../layouts/Layout.astro";
 
 const categorias = CATEGORIAS_AJUDA.map((cat) => ({
@@ -17,12 +18,9 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
   descricao="Guias diretos pra usar a OLLI no dia a dia: orçamentos, link do cliente, ordens de serviço, equipe, planos, backup, offline e privacidade."
 >
   <!-- ══════════ CABEÇALHO ══════════ -->
-  <header class="border-b border-line bg-white/85 backdrop-blur">
-    <nav class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-      <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
-      <a href="/" class="text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
-    </nav>
-  </header>
+  <Header>
+    <a href="/" class="text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
+  </Header>
 
   <!-- ══════════ HERO ══════════ -->
   <section class="mx-auto max-w-4xl px-6 pt-14 sm:pt-20">
@@ -98,16 +96,5 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
   </main>
 
   <!-- ══════════ RODAPÉ ══════════ -->
-  <footer class="border-t border-line bg-paper">
-    <div class="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
-      <OlliLogo size={28} />
-      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-        <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
-        <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
-        <a href="/ajuda/" class="transition hover:text-ink">Ajuda</a>
-        <a href="/" class="transition hover:text-ink">Início</a>
-      </div>
-      <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>
-    </div>
-  </footer>
+  <Footer class="max-w-4xl" />
 </Layout>

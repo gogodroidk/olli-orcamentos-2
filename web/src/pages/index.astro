@@ -1,6 +1,7 @@
 ---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
-import OlliLogo from "../components/OlliLogo.astro";
 import Layout from "../layouts/Layout.astro";
 import { OFICIOS, OFICIO_GERAL, SLUG_POR_OFICIO, TOTAL_CALCULADORAS } from "../data/oficios";
 
@@ -219,21 +220,16 @@ const schemaFaq = {
   <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
 
   <!-- ══════════ NAV ══════════ -->
-  <header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
-    <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-      <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
-      <div class="hidden items-center gap-8 md:flex">
-        <a href="#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
-        <a href="#como" class="text-sm font-medium text-slate transition hover:text-ink">Como funciona</a>
-        <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
-        <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
-      </div>
-      <div class="flex items-center gap-2">
-        <a href={APP_URL} class="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-        <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
-      </div>
-    </nav>
-  </header>
+  <Header>
+    <div slot="nav" class="hidden items-center gap-8 md:flex">
+      <a href="#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
+      <a href="#como" class="text-sm font-medium text-slate transition hover:text-ink">Como funciona</a>
+      <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
+      <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
+    </div>
+    <a href={APP_URL} class="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+    <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+  </Header>
 
   <main id="conteudo">
   <!-- ══════════ HERO ══════════ -->
@@ -517,17 +513,5 @@ const schemaFaq = {
   </main>
 
   <!-- ══════════ RODAPÉ ══════════ -->
-  <footer class="border-t border-line bg-paper">
-    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 py-10 sm:flex-row">
-      <OlliLogo size={32} />
-      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-        <a href="#planos" class="transition hover:text-ink">Planos</a>
-        <a href="#recursos" class="transition hover:text-ink">Recursos</a>
-        <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
-        <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
-        <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
-      </div>
-      <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>
-    </div>
-  </footer>
+  <Footer />
 </Layout>
