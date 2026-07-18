@@ -3,6 +3,7 @@ import { getServicos } from '../database/database';
 import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
 import { verticalParaIA } from '../hooks/useVerticais';
+import { respostaSemCreditos } from './creditos';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -43,6 +44,9 @@ export interface VozResultadoOk {
 export interface VozResultadoErro {
   ok: false;
   erro: string;
+  /** `true` só quando a falha foi especificamente por falta de créditos (gate
+   *  gracioso: a UI deve oferecer "Ver planos", não um "Tentar de novo" inútil). */
+  semCreditos?: boolean;
 }
 
 export type VozResultado = VozResultadoOk | VozResultadoErro;
@@ -66,6 +70,8 @@ const MUITAS_REQUISICOES =
   'Você usou a OLLI demais agora, aguarde um minutinho.';
 const CANCELADO_VOZ =
   'Envio cancelado. Você pode tentar de novo quando quiser.';
+const SEM_CREDITOS_VOZ =
+  'Você não tem créditos suficientes agora. Dá uma olhada nos planos ou monte o orçamento na mão.';
 
 /** Timeouts das chamadas de IA: voz demora mais (transcrição + montagem de itens). */
 const TIMEOUT_VOZ_MS = 60_000;
@@ -109,8 +115,23 @@ function catalogoLeve(servicos: { nome: string; preco: number }[]): { nome: stri
  *
  * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
  * (botão "Cancelar" durante o loading).
+ *
+ * `confirmarCredito` (opcional, default false) — propagado ao Worker como
+ * `confirmarCredito:true` quando o usuário TOCOU explicitamente em "Usar 1
+ * crédito" no gate gracioso da cota grátis esgotada (ver OlliVozScreen). NUNCA
+ * chame com `true` sem esse toque explícito — é a regra ética do crédito.
+ *
+ * `creditoRef` (opcional) é a chave de idempotência dessa cobrança (mesmo
+ * `creditoRef` num retry do MESMO toque não cobra 2x — ver
+ * `cobrarCreditoVoz` em worker/src/creditos.js). A tela gera um id novo a
+ * cada toque em "Usar 1 crédito" e reusa nos retries daquele mesmo toque.
  */
-export async function interpretarVoz(transcript: string, sinalCancelamento?: AbortSignal): Promise<VozResultado> {
+export async function interpretarVoz(
+  transcript: string,
+  sinalCancelamento?: AbortSignal,
+  confirmarCredito?: boolean,
+  creditoRef?: string,
+): Promise<VozResultado> {
   const texto = (transcript ?? '').trim();
   if (!texto) return { ok: false, erro: 'Não entendi o que você falou. Tente de novo, com calma.' };
   if (!DIAGNOSTICO_URL) return { ok: false, erro: SEM_IA };
@@ -139,13 +160,21 @@ export async function interpretarVoz(transcript: string, sinalCancelamento?: Abo
     const corpo: Record<string, unknown> = { transcript: texto };
     if (catalogo) corpo.catalogo = catalogo;
     if (vertical) corpo.vertical = vertical;
+    if (confirmarCredito) {
+      corpo.confirmarCredito = true;
+      if (creditoRef) corpo.creditoRef = creditoRef;
+    }
     const r = await fetch(`${DIAGNOSTICO_URL}/voz`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(corpo),
       signal: controller.signal,
     });
-    if (!r.ok) return { ok: false, erro: mensagemPorStatus(r.status, FALHOU) };
+    if (!r.ok) {
+      const errData = await r.json().catch(() => null);
+      if (respostaSemCreditos(r.status, errData)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
+      return { ok: false, erro: mensagemPorStatus(r.status, FALHOU) };
+    }
     const data: any = await r.json();
     if (data?.ok && Array.isArray(data.itens)) {
       track(Eventos.aiUsed, { fonte: 'voz' });
@@ -157,6 +186,7 @@ export async function interpretarVoz(transcript: string, sinalCancelamento?: Abo
         observacao: typeof data.observacao === 'string' ? data.observacao : undefined,
       };
     }
+    if (respostaSemCreditos(r.status, data)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
     return { ok: false, erro: mensagemErroIA(data?.erro, SEM_IA) };
   } catch (e: any) {
     if (e?.name === 'AbortError') {

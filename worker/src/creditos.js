@@ -91,3 +91,69 @@ export async function consumirCreditos(env, { userId, custo, acao, ref, descrica
   if (!res.ok) return { ok: false, motivo: 'falha', saldo };
   return { ok: true, saldo: saldo - custo };
 }
+
+/** SHA-256 em hex — usado só para derivar um `ref` idempotente do CONTEÚDO do
+ * pedido (ver `cobrarCreditoVoz`). `crypto.subtle` é nativo do runtime do
+ * Worker (mesmo objeto global já usado em mercadopago.js pro HMAC do webhook). */
+async function hashHex(texto) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Cobrança OPT-IN da IA de voz (rotas /voz e /transcrever modo=orcamento,
+ * cluster V2a). O chamador manda `confirmarCredito:true` no corpo SÓ quando
+ * o usuário já confirmou explicitamente que quer gastar 1 crédito (regra de
+ * rocha: nunca auto-debitar) — sem o campo (ausente ou false), não cobra
+ * nada: é o cliente quem decide, pela cota grátis local, se precisa pedir
+ * essa confirmação.
+ *
+ * // FOLLOWUP: a cota grátis (3/mês, IA_USOS_GRATIS_MES em src/services/planos.ts,
+ * // consumida em src/hooks/usePlano.ts) ainda é 100% CLIENT-SIDE — fechar esse
+ * // vazamento (qualquer JWT válido bate no worker direto) exige uma tabela/
+ * // migration nova de contagem por período no servidor. Passo humano.
+ *
+ * Quem chama deve invocar isto SÓ depois que a IA já produziu o resultado
+ * (nunca cobra por uma chamada que falhou) — e só bloquear a resposta
+ * quando `bloqueado` vier `true` (SALDO ZERO). Falha de INFRA (saldo
+ * indisponível / escrita no ledger falhou) é FAIL-OPEN por design: loga pro
+ * dono reconciliar, mas não impede a resposta — o risco de um bug de
+ * billing é dinheiro do dono, nunca dano ao usuário.
+ *
+ * Idempotência do `ref` (índice único (origem,ref) do ledger — um retry NÃO
+ * pode cobrar 2x), em duas camadas:
+ *  1. `creditoRef` explícito no corpo, se o chamador mandar um (namespaced por
+ *     usuário+ação) — mesmo padrão de `mp:${paymentId}` em mercadopago.js.
+ *  2. Sem isso — que é o caso de hoje: o app ainda NÃO manda `creditoRef` (só
+ *     `confirmarCredito`, ver src/services/vozNuvem.ts/olliAssistente.ts) —
+ *     cai num hash do `conteudo` (transcript ou áudio) que o chamador passar:
+ *     um retry de rede reenvia o MESMO corpo, produz o MESMO hash, e o índice
+ *     único absorve o duplicado sem cobrar 2x, SEM exigir nenhuma mudança no
+ *     cliente.
+ * Sem `creditoRef` nem `conteudo`, cai no default do próprio `consumirCreditos`
+ * (um UUID por tentativa — sem idempotência; borda defensiva, não esperada).
+ */
+export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef, conteudo }) {
+  if (confirmarCredito !== true || !user || !user.id) return { bloqueado: false };
+  const acao = 'voz_ia';
+  const refExplicito = typeof creditoRef === 'string' ? creditoRef.trim().slice(0, 200) : '';
+  let ref;
+  if (refExplicito) {
+    ref = `${acao}:${user.id}:cli:${refExplicito}`;
+  } else if (typeof conteudo === 'string' && conteudo) {
+    ref = `${acao}:${user.id}:${await hashHex(conteudo)}`;
+  }
+  const cobranca = await consumirCreditos(env, {
+    userId: user.id,
+    custo: CUSTO.voz_ia || 1,
+    acao,
+    ref,
+    descricao: 'OLLI voz — orçamento por IA',
+  });
+  if (cobranca.ok) return { bloqueado: false };
+  if (cobranca.motivo === 'sem_saldo') return { bloqueado: true };
+  // 'indisponivel' (saldo ilegível) ou 'falha' (ledger não gravou): infra, não
+  // saldo — fail-open, não pune quem já recebeu o resultado da IA.
+  console.error('[olli-creditos] falha ao debitar voz_ia (fail-open, não bloqueia):', cobranca.motivo, user.id);
+  return { bloqueado: false };
+}

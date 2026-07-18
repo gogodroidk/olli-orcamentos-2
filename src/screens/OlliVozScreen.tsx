@@ -33,6 +33,7 @@ import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePlano } from '../hooks/usePlano';
 import { IA_USOS_GRATIS_MES } from '../services/planos';
+import { getMeuSaldo } from '../services/creditos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -164,10 +165,37 @@ export default function OlliVozScreen() {
   const { usosIaRestantes, consumirUsoIa } = usePlano();
   const iaEsgotada = usosIaRestantes <= 0;
 
+  // ── Gate gracioso "usar 1 crédito?" (cota grátis de IA esgotada) ──
+  // `usarCredito` armado = usuário tocou explicitamente em "Usar 1 crédito" no
+  // teaser: a partir daí a tela se comporta como se não estivesse esgotada
+  // (mic/hero normais), só que o próximo envio leva `confirmarCredito:true`.
+  // NUNCA liga sozinho — só pelo toque em `usarUmCredito()` abaixo.
+  const [usarCredito, setUsarCredito] = useState(false);
+  // Chave de idempotência do toque em "Usar 1 crédito" — gerada uma vez por
+  // toque, reusada nos retries daquele MESMO toque (rede caiu, tentou de
+  // novo…) pra nunca cobrar 2 créditos por 1 confirmação só (ver
+  // `cobrarCreditoVoz` em worker/src/creditos.js).
+  const [creditoRefAtual, setCreditoRefAtual] = useState<string | null>(null);
+  // Saldo de Créditos OLLI para mostrar "você tem N" no botão. `undefined` =
+  // ainda não checou; `null` = indisponível (offline/erro — 3 estados, nunca
+  // vira 0 sozinho). Só busca quando a cota grátis já estourou (custo zero
+  // no caminho feliz de quem nunca esgota).
+  const [saldoCreditos, setSaldoCreditos] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!iaEsgotada) return;
+    let vivo = true;
+    getMeuSaldo().then(s => { if (vivo) setSaldoCreditos(s); });
+    return () => { vivo = false; };
+  }, [iaEsgotada]);
+
   const [fase, setFase] = useState<Fase>('inicial');
   const [transcript, setTranscript] = useState('');
   const [parcial, setParcial] = useState(''); // resultado interim do reconhecimento
   const [erro, setErro] = useState<string | null>(null);
+  // `true` só quando o ÚLTIMO erro foi especificamente falta de créditos (o
+  // worker recusou o `confirmarCredito:true`) — troca o botão de erro por
+  // "Ver planos" em vez de um "Tentar de novo" que ia falhar de novo igual.
+  const [semCreditosNoErro, setSemCreditosNoErro] = useState(false);
   const [permissaoNegadaPermanente, setPermissaoNegadaPermanente] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
@@ -309,10 +337,15 @@ export default function OlliVozScreen() {
     onOrcamento: (ok) => {
       if (!ok.itens || ok.itens.length === 0) {
         setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setSemCreditosNoErro(false);
         setFase('erro');
         return;
       }
-      void consumirUsoIa();
+      // Pago com 1 crédito → não consome a cota grátis (ela já estava zerada;
+      // o contador local não precisa saber de créditos, isso é do worker).
+      if (!usarCredito) void consumirUsoIa();
+      setUsarCredito(false);
+      setCreditoRefAtual(null);
       setTitulo(ok.titulo ?? '');
       setClienteNome(ok.clienteNome ?? '');
       setItens(ok.itens.map(vozItemParaEditavel));
@@ -323,9 +356,22 @@ export default function OlliVozScreen() {
     onErro: (m, opts) => {
       setErro(m);
       setPermissaoNegadaPermanente(!!opts?.permissaoNegadaPermanente);
+      setSemCreditosNoErro(!!opts?.semCreditos);
+      if (opts?.semCreditos) {
+        setUsarCredito(false);
+        setCreditoRefAtual(null);
+        void getMeuSaldo().then(setSaldoCreditos);
+      }
       setFase('erro');
     },
   });
+
+  // Espelha `usarCredito` no gravador em nuvem: cobre inclusive o auto-stop de
+  // 2min, que envia direto sem passar pelo botão "Montar orçamento" (ver
+  // `enviarGravacaoPronta`/`definirConfirmarCredito` em services/vozNuvem.ts).
+  useEffect(() => {
+    nuvem.definirConfirmarCredito(usarCredito, creditoRefAtual ?? undefined);
+  }, [usarCredito, creditoRefAtual, nuvem.definirConfirmarCredito]);
 
   // limpa chamadas de IA pendentes ao sair da tela (a limpeza do
   // reconhecimento de voz e do gravador em nuvem já é feita internamente
@@ -394,14 +440,31 @@ export default function OlliVozScreen() {
   }, [nav]);
 
   const onMicPress = useCallback(() => {
-    if (iaEsgotada) {
+    if (iaEsgotada && !usarCredito) {
       track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
     if (saudacaoVisivel) dispensarSaudacao();
     return modoVoz === 'nuvem' ? onMicPressNuvem() : onMicPressDispositivo();
-  }, [iaEsgotada, modoVoz, onMicPressNuvem, onMicPressDispositivo, saudacaoVisivel, dispensarSaudacao]);
+  }, [iaEsgotada, usarCredito, modoVoz, onMicPressNuvem, onMicPressDispositivo, saudacaoVisivel, dispensarSaudacao]);
+
+  // ── Gate gracioso: as 3 opções quando a cota grátis acabou ──
+  const usarUmCredito = useCallback(() => {
+    if (saldoCreditos === 0) return; // defesa em profundidade — o botão já fica desabilitado nesse caso
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateCreditoUsado, { recurso: 'ia_ilimitada', origem: 'olli_voz' });
+    setErro(null);
+    setSemCreditosNoErro(false);
+    setCreditoRefAtual(generateId());
+    setUsarCredito(true);
+  }, [saldoCreditos]);
+
+  const montarNaMao = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateMontarNaMao, { recurso: 'ia_ilimitada', origem: 'olli_voz' });
+    nav.navigate('NovoOrcamento', {});
+  }, [nav]);
 
   const enviar = useCallback(async () => {
     // Modo nuvem: não há texto local pra validar (a transcrição só existe
@@ -412,18 +475,19 @@ export default function OlliVozScreen() {
     // ao fluxo antigo de `pararEEnviar()`.
     if (modoVoz === 'nuvem') {
       if (!nuvem.prontoParaEnviar) return;
-      if (iaEsgotada) {
+      if (iaEsgotada && !usarCredito) {
         track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
         return;
       }
       Haptics.selectionAsync().catch(() => {});
       setFase('enviando');
       setErro(null);
+      setSemCreditosNoErro(false);
       setPodeCancelar(false);
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
       cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
       try {
-        await nuvem.enviarGravacaoPronta();
+        await nuvem.enviarGravacaoPronta(usarCredito, creditoRefAtual ?? undefined);
       } finally {
         if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
         setPodeCancelar(false);
@@ -433,7 +497,7 @@ export default function OlliVozScreen() {
 
     const texto = transcript.trim();
     if (!texto) return;
-    if (iaEsgotada) {
+    if (iaEsgotada && !usarCredito) {
       track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
       return;
     }
@@ -441,6 +505,7 @@ export default function OlliVozScreen() {
     Haptics.selectionAsync().catch(() => {});
     setFase('enviando');
     setErro(null);
+    setSemCreditosNoErro(false);
     setPodeCancelar(false);
 
     const controller = new AbortController();
@@ -448,19 +513,28 @@ export default function OlliVozScreen() {
     cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
 
     try {
-      const res = await interpretarVoz(texto, controller.signal);
+      const res = await interpretarVoz(texto, controller.signal, usarCredito, creditoRefAtual ?? undefined);
       if (!res.ok) {
         setErro(res.erro);
+        setSemCreditosNoErro(!!res.semCreditos);
+        if (res.semCreditos) {
+          setUsarCredito(false);
+          setCreditoRefAtual(null);
+          void getMeuSaldo().then(setSaldoCreditos);
+        }
         setFase('erro');
         return;
       }
       const ok = res as VozResultadoOk;
       if (!ok.itens || ok.itens.length === 0) {
         setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setSemCreditosNoErro(false);
         setFase('erro');
         return;
       }
-      void consumirUsoIa();
+      if (!usarCredito) void consumirUsoIa();
+      setUsarCredito(false);
+      setCreditoRefAtual(null);
       setTitulo(ok.titulo ?? '');
       setClienteNome(ok.clienteNome ?? '');
       setItens(ok.itens.map(vozItemParaEditavel));
@@ -472,7 +546,7 @@ export default function OlliVozScreen() {
       setPodeCancelar(false);
       abortRef.current = null;
     }
-  }, [modoVoz, nuvem, transcript, pararReconhecimento, iaEsgotada, consumirUsoIa]);
+  }, [modoVoz, nuvem, transcript, pararReconhecimento, iaEsgotada, usarCredito, creditoRefAtual, consumirUsoIa]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -486,11 +560,15 @@ export default function OlliVozScreen() {
     setTranscript('');
     setParcial('');
     setErro(null);
+    setSemCreditosNoErro(false);
     setPermissaoNegadaPermanente(false);
     setItens([]);
     setTitulo('');
     setClienteNome('');
     setObservacao('');
+    // Cada uso volta a exigir confirmação explícita — nunca fica "ligado" sozinho.
+    setUsarCredito(false);
+    setCreditoRefAtual(null);
   }, []);
 
   const criarOrcamento = useCallback(async () => {
@@ -592,24 +670,48 @@ export default function OlliVozScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* IA GRÁTIS ESGOTADA — mensagem calorosa, nunca erro seco */}
-          {iaEsgotada && fase === 'inicial' ? (
+          {/* IA GRÁTIS ESGOTADA — gate gracioso: 3 opções claras, nunca bloqueio seco */}
+          {iaEsgotada && !usarCredito && fase === 'inicial' ? (
             <AnimatedEntrance index={0}>
               <View style={styles.limiteCard}>
                 <OlliMascot size={48} onDark />
-                <Text style={styles.limiteTitle}>Você usou seus {IA_USOS_GRATIS_MES} orçamentos por voz este mês</Text>
+                <Text style={styles.limiteTitle}>Seus {IA_USOS_GRATIS_MES} orçamentos por voz do mês acabaram</Text>
                 <Text style={styles.limiteSub}>
-                  Sem problema — você pode continuar montando orçamentos na mão a qualquer hora.
-                  Para falar sem limite com a OLLI, dá uma olhada no plano Pro.
+                  Sem problema — você pode usar 1 crédito pra continuar agora, dar uma olhada nos
+                  planos, ou montar o orçamento na mão.
                 </Text>
                 <OlliButton
-                  label="Ver planos"
+                  label={
+                    saldoCreditos != null && saldoCreditos > 0
+                      ? `Usar 1 crédito (você tem ${saldoCreditos})`
+                      : 'Usar 1 crédito'
+                  }
                   variant="gradient"
                   size="md"
-                  onPress={() => irParaPlanos('voz_limite')}
-                  icon={<MaterialCommunityIcons name="crown-outline" size={18} color="#fff" />}
-                  style={{ marginTop: 14 }}
+                  onPress={usarUmCredito}
+                  disabled={saldoCreditos === 0}
+                  icon={<MaterialCommunityIcons name="lightning-bolt-outline" size={18} color="#fff" />}
+                  style={{ marginTop: 14, alignSelf: 'stretch' }}
                 />
+                <OlliButton
+                  label="Ver planos"
+                  variant="outline"
+                  size="md"
+                  onPress={() => irParaPlanos('voz_limite')}
+                  icon={<MaterialCommunityIcons name="crown-outline" size={18} color={cores.accentLight} />}
+                  style={{ marginTop: 10, alignSelf: 'stretch' }}
+                />
+                <OlliButton
+                  label="Montar na mão"
+                  variant="ghost"
+                  size="md"
+                  onPress={montarNaMao}
+                  icon={<MaterialCommunityIcons name="pencil-outline" size={18} color={cores.onSurfaceVariant} />}
+                  style={{ marginTop: 4, alignSelf: 'stretch' }}
+                />
+                {saldoCreditos === 0 && (
+                  <Text style={styles.limiteSemCreditos}>Você ainda não tem créditos — dá uma olhada nos planos.</Text>
+                )}
               </View>
             </AnimatedEntrance>
           ) : (
@@ -644,6 +746,13 @@ export default function OlliVozScreen() {
                 <View style={styles.usoPill}>
                   <MaterialCommunityIcons name="creation" size={12} color={cores.plan} />
                   <Text style={styles.usoPillText}>{usosIaRestantes} de {IA_USOS_GRATIS_MES} usos grátis este mês</Text>
+                </View>
+              )}
+
+              {usarCredito && fase === 'inicial' && (
+                <View style={styles.usoPill}>
+                  <MaterialCommunityIcons name="lightning-bolt-outline" size={12} color={cores.plan} />
+                  <Text style={styles.usoPillText}>Usando 1 crédito desta vez</Text>
                 </View>
               )}
 
@@ -765,7 +874,19 @@ export default function OlliVozScreen() {
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.erroText}>{erro}</Text>
-                  {permissaoNegadaPermanente ? (
+                  {semCreditosNoErro ? (
+                    // Sem créditos: "Tentar de novo" ia falhar de novo igual — a
+                    // saída honesta aqui é "Ver planos" (cai na opção b do gate).
+                    <OlliButton
+                      label="Ver planos"
+                      variant="gradient"
+                      size="sm"
+                      onPress={() => irParaPlanos('voz_sem_creditos')}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="crown-outline" size={15} color="#fff" />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  ) : permissaoNegadaPermanente ? (
                     <OlliButton
                       label="Abrir configurações"
                       variant="outline"
@@ -822,18 +943,18 @@ export default function OlliVozScreen() {
 
           <OlliButton
             label={
-              iaEsgotada
+              iaEsgotada && !usarCredito
                 ? 'Limite grátis atingido — ver planos'
                 : fase === 'enviando' ? 'Montando seu orçamento…' : 'Montar orçamento com a OLLI'
             }
             variant="gradient"
             size="lg"
             fullWidth
-            onPress={iaEsgotada ? () => irParaPlanos('voz_botao_enviar') : enviar}
-            disabled={iaEsgotada ? false : (!podeEnviar || enviando)}
+            onPress={iaEsgotada && !usarCredito ? () => irParaPlanos('voz_botao_enviar') : enviar}
+            disabled={iaEsgotada && !usarCredito ? false : (!podeEnviar || enviando)}
             loading={enviando}
             icon={
-              iaEsgotada
+              iaEsgotada && !usarCredito
                 ? <MaterialCommunityIcons name="crown-outline" size={20} color="#fff" />
                 : enviando ? undefined : <MaterialCommunityIcons name="robot-happy-outline" size={20} color="#fff" />
             }
@@ -1057,6 +1178,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // sobre o tint claro do card; vira onSurface (continua branco no escuro).
   limiteTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface, textAlign: 'center', marginTop: 14 },
   limiteSub: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: 8 },
+  limiteSemCreditos: { fontSize: 12, color: c.onSurfaceMuted, textAlign: 'center', marginTop: 10 },
   micWrap: { width: 168, height: 168, justifyContent: 'center', alignItems: 'center' },
   micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: c.accent },
   micPulseOuter: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: c.accent },

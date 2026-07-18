@@ -11,6 +11,7 @@ import { DIAGNOSTICO_URL } from '../config';
 import { supabase } from './supabase';
 import { mensagemPermissaoNegada } from './reconhecimentoVoz';
 import { verticalParaIA } from '../hooks/useVerticais';
+import { respostaSemCreditos } from './creditos';
 import type { VozResultadoOk, VozItem } from './olliAssistente';
 
 /**
@@ -55,6 +56,8 @@ const SEM_AUDIO =
   'Não consegui capturar o áudio. Tente gravar de novo.';
 const ERRO_MICROFONE =
   'Não consegui usar o microfone agora. Tente de novo ou escreva abaixo.';
+const SEM_CREDITOS =
+  'Você não tem créditos suficientes agora. Dá uma olhada nos planos ou monte o orçamento na mão.';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -110,7 +113,7 @@ export interface UseGravadorNuvemOpts {
   catalogo?: CatalogoItem[];
   onTexto: (texto: string) => void;
   onOrcamento?: (r: VozResultadoOk) => void;
-  onErro: (msg: string, o?: { permissaoNegadaPermanente?: boolean }) => void;
+  onErro: (msg: string, o?: { permissaoNegadaPermanente?: boolean; semCreditos?: boolean }) => void;
 }
 
 export interface UseGravadorNuvemResultado {
@@ -133,9 +136,10 @@ export interface UseGravadorNuvemResultado {
   /**
    * Envia a gravação já parada por `pararGravacao()` — é a metade "envia"
    * do antigo `pararEEnviar()`. Usada pelo botão grande "Montar orçamento
-   * com a OLLI" quando o modo é nuvem.
+   * com a OLLI" quando o modo é nuvem. `confirmarCredito`/`creditoRef`
+   * (opcionais) sobrescrevem o que já foi armado por `definirConfirmarCredito()`.
    */
-  enviarGravacaoPronta: () => Promise<void>;
+  enviarGravacaoPronta: (confirmarCredito?: boolean, creditoRef?: string) => Promise<void>;
   /**
    * Para E envia numa coisa só — mantido para não quebrar chamadores
    * existentes. Internamente é só `pararGravacao()` seguido de
@@ -144,6 +148,16 @@ export interface UseGravadorNuvemResultado {
   pararEEnviar: () => Promise<void>;
   cancelar: () => void;
   abrirConfiguracoes: () => void;
+  /**
+   * Arma (ou desarma) o uso de 1 Crédito OLLI na PRÓXIMA transcrição enviada —
+   * usado pelo gate gracioso quando a cota grátis de IA do mês já acabou e o
+   * usuário tocou explicitamente em "Usar 1 crédito". Fica valendo até o
+   * próximo envio (inclusive o auto-stop de 2min) OU até ser desarmado — nunca
+   * cobra sozinho: quem liga é sempre a tela, a partir do toque do usuário.
+   * `creditoRef` (opcional) é a chave de idempotência daquele toque — reenviar
+   * com o mesmo ref (ex.: retry após falha de rede) não cobra 2x no worker.
+   */
+  definirConfirmarCredito: (v: boolean, creditoRef?: string) => void;
 }
 
 /**
@@ -171,6 +185,13 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
   /** Espelho síncrono de `prontoParaEnviar` (mesmo padrão de `autoStopRef`/
    *  `segundosRef`) — lido dentro de closures sem esperar o re-render. */
   const prontoParaEnviarRef = useRef(false);
+  /** Ligado só por `definirConfirmarCredito(true)` (toque explícito do usuário
+   *  no gate gracioso) — lido no envio, inclusive pelo auto-stop de 2min, que
+   *  não passa por `enviarGravacaoPronta()`. */
+  const confirmarCreditoRef = useRef(false);
+  /** Chave de idempotência da cobrança armada (ver `definirConfirmarCredito`) —
+   *  reenviar com o MESMO ref não cobra 2x no worker (cobrarCreditoVoz). */
+  const creditoRefRef = useRef<string | undefined>(undefined);
 
   const onTextoRef = useRef(onTexto);
   const onOrcamentoRef = useRef(onOrcamento);
@@ -249,6 +270,10 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
         };
         if (catalogo && catalogo.length > 0) body.catalogo = catalogo;
         if (vertical) body.vertical = vertical;
+        if (confirmarCreditoRef.current) {
+          body.confirmarCredito = true;
+          if (creditoRefRef.current) body.creditoRef = creditoRefRef.current;
+        }
 
         const r = await fetch(`${DIAGNOSTICO_URL}/transcrever`, {
           method: 'POST',
@@ -258,12 +283,21 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
         });
 
         if (!r.ok) {
+          const errData = await r.json().catch(() => null);
+          if (respostaSemCreditos(r.status, errData)) {
+            onErroRef.current(SEM_CREDITOS, { semCreditos: true });
+            return;
+          }
           onErroRef.current(mensagemPorStatus(r.status, FALHOU));
           return;
         }
 
         const data: any = await r.json();
         if (!data?.ok) {
+          if (respostaSemCreditos(r.status, data)) {
+            onErroRef.current(SEM_CREDITOS, { semCreditos: true });
+            return;
+          }
           onErroRef.current(mensagemErroIA(data?.erro, FALHOU));
           return;
         }
@@ -385,10 +419,17 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
    * Envia a gravação já parada por `pararGravacao()`. Metade "envia" do
    * antigo `pararEEnviar()` — mesmo upload/transcrição de sempre, com todos
    * os guardas de erro/timeout/limite de `enviarParaTranscricao`.
+   *
+   * `confirmarCredito`/`creditoRef` (opcionais) sobrescrevem o que foi armado
+   * antes por `definirConfirmarCredito()` — a tela pode passar o valor mais
+   * atual no exato momento do envio explícito, sem depender só de o efeito de
+   * sincronização já ter rodado.
    */
-  const enviarGravacaoPronta = useCallback(async () => {
+  const enviarGravacaoPronta = useCallback(async (confirmarCredito?: boolean, creditoRef?: string) => {
     prontoParaEnviarRef.current = false;
     setProntoParaEnviar(false);
+    if (confirmarCredito !== undefined) confirmarCreditoRef.current = confirmarCredito;
+    if (creditoRef !== undefined) creditoRefRef.current = creditoRef;
     await enviarParaTranscricao();
   }, [enviarParaTranscricao]);
 
@@ -416,6 +457,11 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
     }
   }, [recorder, pararTimer]);
 
+  const definirConfirmarCredito = useCallback((v: boolean, creditoRef?: string) => {
+    confirmarCreditoRef.current = v;
+    creditoRefRef.current = v ? creditoRef : undefined;
+  }, []);
+
   return {
     gravando,
     enviando,
@@ -427,5 +473,6 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
     pararEEnviar,
     cancelar,
     abrirConfiguracoes,
+    definirConfirmarCredito,
   };
 }

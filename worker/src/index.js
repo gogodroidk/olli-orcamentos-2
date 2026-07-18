@@ -41,6 +41,7 @@ import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
+import { cobrarCreditoVoz } from './creditos.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -672,8 +673,12 @@ Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use nul
 // de prompt injection direto no prompt.
 const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
 
-async function handleVoz(bodyText, env) {
-  const { transcript: rawTranscript, catalogo: rawCatalogo, vertical } = parseJsonBody(bodyText);
+// Cobrança de crédito (confirmarCredito/creditoRef) é responsabilidade de
+// creditos.js — `cobrarCreditoVoz` (regra de rocha, fail-open de infra,
+// idempotência por ref — ver o doc lá). Handlers abaixo só chamam.
+
+export async function handleVoz(bodyText, env, user) {
+  const { transcript: rawTranscript, catalogo: rawCatalogo, vertical, confirmarCredito, creditoRef } = parseJsonBody(bodyText);
   const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
   if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
   const catalogo = Array.isArray(rawCatalogo)
@@ -688,6 +693,12 @@ async function handleVoz(bodyText, env) {
     console.error('[olli-voz] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
     return json({ ok: false, erro: 'resposta_invalida' });
   }
+
+  // `conteudo: transcript` é o fallback de idempotência quando o corpo não traz
+  // `creditoRef` (o app hoje não manda) — ver o doc de cobrarCreditoVoz em creditos.js.
+  const cobranca = await cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef, conteudo: transcript });
+  if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
+
   return json({
     ok: true,
     titulo: typeof parsed.titulo === 'string' ? parsed.titulo : undefined,
@@ -719,8 +730,10 @@ function transcreverPromptSimples() {
   return 'Transcreva fielmente o áudio em português do Brasil. Responda SOMENTE com JSON {"texto":"..."}';
 }
 
-async function handleTranscrever(bodyText, env) {
+export async function handleTranscrever(bodyText, env, user) {
   const raw = parseJsonBody(bodyText);
+  const confirmarCredito = raw && raw.confirmarCredito === true;
+  const creditoRef = raw && raw.creditoRef;
 
   const audioBase64 = typeof (raw && raw.audioBase64) === 'string' ? raw.audioBase64.trim() : '';
   if (!audioBase64 || !BASE64_RE.test(audioBase64)) return json({ ok: false, erro: 'sem_audio' });
@@ -775,6 +788,19 @@ async function handleTranscrever(bodyText, env) {
     console.error('[olli-transcrever] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
     return json({ ok: false, erro: 'resposta_invalida' });
   }
+
+  // Cobrança só no modo 'orcamento' (produz o resultado de fato faturável); o
+  // modo 'transcrever' acima é só transcrição e nunca passa por aqui.
+  // `conteudo` combina mimeType+áudio: o fallback de idempotência (sem
+  // `creditoRef`, que o app hoje não manda) quando um retry reenvia o MESMO
+  // áudio — ver o doc de cobrarCreditoVoz em creditos.js.
+  const cobranca = await cobrarCreditoVoz(env, user, {
+    confirmarCredito,
+    creditoRef,
+    conteudo: `${mimeType}|${audioBase64}`,
+  });
+  if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
+
   return json({
     ok: true,
     texto: parsed.texto,
@@ -1003,8 +1029,8 @@ const handler = {
 
     try {
       if (url.pathname === '/') return await handleDiag(corpoIa.raw, env);
-      if (url.pathname === '/voz') return await handleVoz(corpoIa.raw, env);
-      if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env);
+      if (url.pathname === '/voz') return await handleVoz(corpoIa.raw, env, user);
+      if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env, user);
       if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env);
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {
