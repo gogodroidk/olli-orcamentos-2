@@ -248,11 +248,36 @@ export async function handleVozConversa(bodyText, env, user) {
   // de revisão de qualquer jeito (regra de rocha: nada salva sozinho).
   const itens = Array.isArray(parsed && parsed.itens) ? parsed.itens : [];
 
-  // 1 crédito por CONVERSA (não por turno): o `conversationId` — gerado uma
-  // vez pelo app no início da conversa e reenviado em TODO turno — é a chave
-  // de idempotência. Duas chamadas "pronto:true" com o MESMO conversationId
-  // (ex.: um retry de rede do turno final) caem no mesmo `ref` do ledger e o
-  // índice único absorve o duplicado (ver cobrarCreditoVoz/creditos.js).
+  // COBRANÇA: no máximo 1 crédito por `conversationId` A CADA JANELA DE
+  // IDEMPOTÊNCIA (JANELA_IDEM_MS = 10 min, creditos.js). NÃO é "1 crédito por
+  // conversa" — este comentário já disse isso e estava errado nas DUAS pontas:
+  //
+  //   • conversa que fecha mais de uma vez DENTRO da janela → 1 crédito só. O
+  //     retry de rede do turno final é o caso que a idempotência existe para
+  //     cobrir, mas quem repetir o fechamento de propósito também não paga: o
+  //     teto real ali é o rate limit (IA_RL, 20 req/min por usuário em
+  //     wrangler.jsonc), ou seja ~200 chamadas ao Gemini por crédito.
+  //   • conversa que ainda está aberta DEPOIS da janela e fecha de novo → 2º
+  //     crédito. Mais de 1 por conversa, portanto.
+  //
+  // Os dois números acima não são estimativa: estão MEDIDOS e travados por teste
+  // (seção F3 de scripts/teste-creditos-voz.ts — 100 fechamentos do mesmo convId
+  // dentro da janela = 1 lançamento no ledger; 1 crédito cobre 10 chamadas
+  // espalhadas por 1h e então bloqueia). Mudar o desenho quebra aquele teste.
+  //
+  // POR QUE O CÓDIGO NÃO PASSA A GARANTIR O QUE O COMENTÁRIO PROMETIA. Garantir
+  // "1 por conversa" seria dar idempotência SEM PRAZO a uma string escolhida
+  // pelo cliente — e é exatamente o furo que a janela fecha: `conversationId`
+  // fixo viraria passe livre para IA infinita na conta do dono (o raciocínio
+  // inteiro está em JANELA_IDEM_MS, creditos.js). Um teto de verdade por
+  // conversa exigiria estado por `conversationId` no servidor (tabela nova,
+  // migration), e não uma chave mais frouxa. Entre um comentário que promete
+  // garantia inexistente e um que descreve o mecanismo real, o segundo — o
+  // primeiro é pior que comentário nenhum, porque o próximo leitor confia nele.
+  //
+  // A chave aqui é só o `conversationId` (sem hash de conteúdo, ao contrário de
+  // /voz e /transcrever): a conversa não manda `conteudo`, e o histórico cresce
+  // a cada turno, então hash faria cada fechamento parecer trabalho novo.
   // Pergunta nunca chega aqui (retorna antes, acima) — só o fechamento cobra.
   const convId = typeof conversationId === 'string' ? conversationId.trim().slice(0, 200) : '';
   const cobranca = await cobrarCreditoVoz(env, user, {

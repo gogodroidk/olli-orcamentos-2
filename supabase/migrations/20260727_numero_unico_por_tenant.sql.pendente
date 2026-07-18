@@ -5,6 +5,18 @@
 --    ainda não existe (item 3 abaixo). Aplicado antes disso, ele TROCA um bug
 --    visível por um invisível — que é pior. Leia inteiro antes de rodar.
 --
+-- POR QUE A EXTENSÃO É `.sql.pendente` E NÃO `.sql`
+--    O aviso acima é só um comentário: quem varre `supabase/migrations/*.sql`
+--    ("aplica tudo que é novo") não lê comentário nenhum e levaria este arquivo
+--    junto — quebrando o push da nuvem em silêncio e para sempre (item 3). A
+--    extensão tira o arquivo do glob e do padrão que o Supabase CLI reconhece
+--    (`<timestamp>_<nome>.sql`), mas ele CONTINUA aqui, na ordem por data, entre
+--    o 20260726 e o 20260728 — para ser VISTO por quem for aplicar os vizinhos.
+--    PARA REATIVAR: cumpra o item 3 e renomeie de volta para
+--    `20260727_numero_unico_por_tenant.sql`. `scripts/teste-numero-web.ts`
+--    (seção 7) trava as duas pontas: o arquivo não pode sumir nem voltar a ser
+--    `.sql` sem alguém decidir.
+--
 -- O QUE ELE FECHA
 --   `numero` é o que o cliente cita quando paga ("depositei do orçamento 00426").
 --   Hoje nada no banco impede que dois documentos DIFERENTES nasçam com o mesmo
