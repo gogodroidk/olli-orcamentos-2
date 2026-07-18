@@ -4,6 +4,19 @@
 > Atualizado a cada onda pelo coordenador (thread principal). Fonte de verdade da OPERAÇÃO
 > (não do produto — produto é `docs/EXECUTION_LOG.md` + `docs/PILOTO/LEDGER.md`).
 
+## ⭐ SE VOCÊ ESTÁ RETOMANDO (pós-reset de contexto — dono pediu pra blindar em 18/07)
+**NÃO recomece, NÃO mude a direção.** Continue o programa deste doc. Estado: branch
+`claude/app-complete-analysis-optimization-9a1912`, ~20+ commits **não pushados** (merge = ato do dono).
+- **Como retomar:** leia o "Log de ondas" abaixo (o que já foi feito) + as visões em `docs/ENXAME/`
+  (ENGAJAMENTO_VISAO, COMUNICACAO_VISAO, OLLI_VOZ_CONVERSA, CATALOGO_VISUAL, FACILITACOES, REAUDITORIA_PAINEL).
+  Se há mudança não-commitada na worktree = uma onda (Workflow) em andamento: rode o gate
+  (`npm run typecheck` + `npm test`; `cd webapp && npx tsc --noEmit`; `cd web && npx astro check`) e commite antes de seguir.
+  (`npm test` no Windows flaka com abort de libuv — passa no retry.)
+- **Próximas frentes:** engajamento Ondas 2-4 (ritual diário, push "cliente aprovou", feedback loop),
+  facilitações restantes (`FACILITACOES.md`), P2/P3 do painel (`REAUDITORIA_PAINEL.md`), e o **build final**.
+- **ENTREGÁVEIS FINAIS (dono): web + APK + iPhone prontos, tudo em sinergia.** iOS ENTROU no escopo
+  (build prep + IAP; antes era "esperar dia 20"). Ver `LOJA.md`. Humanos em `BLOQUEIOS.md` (não tente, só reporte).
+
 ## Missão (pedido do dono, 2026-07-17)
 Deixar o OLLI **perfeito** — app (APK) + painel web + landing — com cara de empresa bilionária
 (Stripe/Apple): tudo funciona, tudo faz sentido, UX fenomenal, ícones que casam, zero fora de
