@@ -100,13 +100,16 @@
 	--sidebar-ring: var(--colors-palette-primary-default);
 }
 
-/* Shadcn UI Dark Theme */
+/* Shadcn UI Dark Theme — navy da família do app (não preto/zinza), ver
+   theme/tokens/color.ts (darkColorTokens.background). Elevação por degrau de
+   luminosidade: background (mais escuro) → card/popover → secondary/muted/
+   accent/sidebar (--colors-background-neutral, mais claro ainda). */
 [data-theme-mode="dark"] {
-	--background: var(--colors-common-black);
+	--background: var(--colors-background-default);
 	--foreground: var(--colors-common-white);
-	--card: var(--colors-common-black);
+	--card: var(--colors-background-paper);
 	--card-foreground: var(--colors-common-white);
-	--popover: var(--colors-common-black);
+	--popover: var(--colors-background-paper);
 	--popover-foreground: var(--colors-common-white);
 	--primary: var(--colors-palette-primary-default);
 	--primary-foreground: var(--colors-common-white);
