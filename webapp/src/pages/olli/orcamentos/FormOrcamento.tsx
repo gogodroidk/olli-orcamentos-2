@@ -796,7 +796,11 @@ function Editor({
 													value={item.unidade}
 													onChange={(e) => alterarItem(item.id, { unidade: e.target.value })}
 												/>
-												<CampoMoeda valor={item.preco} aoMudar={(v) => alterarItem(item.id, { preco: v })} />
+												<CampoMoeda
+													aria-label={`Preço de ${item.nome || "item"}`}
+													valor={item.preco}
+													aoMudar={(v) => alterarItem(item.id, { preco: v })}
+												/>
 												<div className="col-span-2 flex items-center justify-between gap-2 sm:col-span-1 sm:justify-end">
 													<span className="text-sm font-semibold tabular-nums text-text-primary">
 														R$ {formatarMoeda(item.subtotal)}

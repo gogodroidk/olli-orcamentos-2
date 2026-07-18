@@ -120,6 +120,93 @@ function StatusDoOrcamento({ valor }: { valor: string | null }) {
 	);
 }
 
+/**
+ * O menu de ações de uma linha — o mesmo no desktop e no mobile.
+ *
+ * Mora no ESCOPO DO MÓDULO de propósito (mesmo padrão de `MenuAcoes`, em
+ * `catalogo/ListaCatalogo.tsx`, e `AcoesRecibo`, em `recibos/index.tsx`). Declarada
+ * DENTRO do componente da página, ela seria um TIPO NOVO a cada render — e como o
+ * `useOlliList` revalida em segundo plano e a busca também dispara render a cada
+ * tecla, o React desmontaria e remontaria a subárvore inteira do menu a cada
+ * digitação, fechando qualquer dropdown que o dono tivesse acabado de abrir.
+ */
+function MenuDaLinha({
+	linha,
+	empresa,
+	onEditar,
+	onDuplicar,
+	onExcluir,
+}: {
+	linha: LinhaOrcamento;
+	empresa: Empresa | null;
+	onEditar: (linha: LinhaOrcamento) => void;
+	onDuplicar: (blob: Orcamento) => void;
+	onExcluir: (blob: Orcamento) => void;
+}) {
+	const blob = blobDe(linha);
+	const bloqueado = blob ? edicaoBloqueada(blob.status) : false;
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label={`Ações do orçamento ${linha.numero ?? ""}`.trim()}
+					className="text-text-secondary"
+				>
+					<MoreHorizontal className="size-4" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-56">
+				{!blob ? (
+					// Sem blob não há documento — e um formulário vazio que "salva por cima"
+					// seria destruição de dado com cara de funcionalidade.
+					<DropdownMenuItem disabled className="text-xs">
+						Este orçamento está sem os dados completos. Abra-o no celular.
+					</DropdownMenuItem>
+				) : (
+					<>
+						<DropdownMenuItem onSelect={() => onEditar(linha)}>
+							<Pencil className="mr-2 size-4" />
+							{bloqueado ? "Editar (já enviado)" : "Editar"}
+						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={() => onDuplicar(blob)}>
+							<Copy className="mr-2 size-4" />
+							Duplicar como rascunho
+						</DropdownMenuItem>
+						{/* PDF real: o MESMO gerador do app, impresso pelo navegador (Salvar como PDF).
+						    O cliente já recebe pelo portal /o/<token>; este é o arquivo do PRESTADOR. */}
+						<DropdownMenuItem
+							onSelect={() => {
+								if (!empresa) {
+									toast.error("Complete o cadastro do seu negócio (Meu Negócio) antes de gerar o PDF.", {
+										position: "top-center",
+									});
+									return;
+								}
+								toast.promise(imprimirOrcamento(blob, empresa), {
+									loading: "Preparando o PDF…",
+									success: "Abri a janela de impressão — escolha “Salvar como PDF”.",
+									error: "Não consegui gerar o PDF agora. Tente de novo.",
+								});
+							}}
+						>
+							<Printer className="mr-2 size-4" />
+							Imprimir / Baixar PDF
+						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem onSelect={() => onExcluir(blob)} className="text-error focus:text-error">
+							<Trash2 className="mr-2 size-4" />
+							Excluir
+						</DropdownMenuItem>
+					</>
+				)}
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
 export default function OrcamentosPage() {
 	const { data, isLoading, isError, error, refetch, isFetching } = useOlliList<LinhaOrcamento>("orcamentos", {
 		orderBy: "criado_em",
@@ -187,6 +274,14 @@ export default function OrcamentosPage() {
 	const duplicar = (o: Orcamento) =>
 		setEditor({ orc: duplicarComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
 
+	/** Abre a confirmação de exclusão (soft delete) sobre o blob — limpa o erro da
+	 *  exclusão ANTERIOR primeiro, senão o diálogo abriria vermelho por cima de um
+	 *  orçamento inocente. */
+	const pedirExclusao = (blob: Orcamento) => {
+		setErroExclusao(null);
+		setExcluindo(blob);
+	};
+
 	async function confirmarExclusao() {
 		if (!excluindo) return;
 		setErroExclusao(null);
@@ -201,78 +296,6 @@ export default function OrcamentosPage() {
 	}
 
 	/* ────────────────────────────────  Render  ───────────────────────────────── */
-
-	/** O menu de ações de uma linha — o mesmo no desktop e no mobile. */
-	function MenuDaLinha({ linha }: { linha: LinhaOrcamento }) {
-		const blob = blobDe(linha);
-		const bloqueado = blob ? edicaoBloqueada(blob.status) : false;
-
-		return (
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button
-						variant="ghost"
-						size="icon"
-						aria-label={`Ações do orçamento ${linha.numero ?? ""}`.trim()}
-						className="text-text-secondary"
-					>
-						<MoreHorizontal className="size-4" />
-					</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="w-56">
-					{!blob ? (
-						// Sem blob não há documento — e um formulário vazio que "salva por cima"
-						// seria destruição de dado com cara de funcionalidade.
-						<DropdownMenuItem disabled className="text-xs">
-							Este orçamento está sem os dados completos. Abra-o no celular.
-						</DropdownMenuItem>
-					) : (
-						<>
-							<DropdownMenuItem onSelect={() => abrirEdicao(linha)}>
-								<Pencil className="mr-2 size-4" />
-								{bloqueado ? "Editar (já enviado)" : "Editar"}
-							</DropdownMenuItem>
-							<DropdownMenuItem onSelect={() => duplicar(blob)}>
-								<Copy className="mr-2 size-4" />
-								Duplicar como rascunho
-							</DropdownMenuItem>
-							{/* PDF real: o MESMO gerador do app, impresso pelo navegador (Salvar como PDF).
-							    O cliente já recebe pelo portal /o/<token>; este é o arquivo do PRESTADOR. */}
-							<DropdownMenuItem
-								onSelect={() => {
-									if (!empresa) {
-										toast.error("Complete o cadastro do seu negócio (Meu Negócio) antes de gerar o PDF.", {
-											position: "top-center",
-										});
-										return;
-									}
-									toast.promise(imprimirOrcamento(blob, empresa), {
-										loading: "Preparando o PDF…",
-										success: "Abri a janela de impressão — escolha “Salvar como PDF”.",
-										error: "Não consegui gerar o PDF agora. Tente de novo.",
-									});
-								}}
-							>
-								<Printer className="mr-2 size-4" />
-								Imprimir / Baixar PDF
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								onSelect={() => {
-									setErroExclusao(null);
-									setExcluindo(blob);
-								}}
-								className="text-error focus:text-error"
-							>
-								<Trash2 className="mr-2 size-4" />
-								Excluir
-							</DropdownMenuItem>
-						</>
-					)}
-				</DropdownMenuContent>
-			</DropdownMenu>
-		);
-	}
 
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
@@ -438,7 +461,7 @@ export default function OrcamentosPage() {
 												{BRL.format(l.valor_total ?? 0)}
 											</td>
 											<td className="px-2 py-3.5 text-right">
-												<MenuDaLinha linha={l} />
+												<MenuDaLinha linha={l} empresa={empresa} onEditar={abrirEdicao} onDuplicar={duplicar} onExcluir={pedirExclusao} />
 											</td>
 										</tr>
 									);
@@ -474,7 +497,7 @@ export default function OrcamentosPage() {
 										</p>
 									)}
 								</div>
-								<MenuDaLinha linha={l} />
+								<MenuDaLinha linha={l} empresa={empresa} onEditar={abrirEdicao} onDuplicar={duplicar} onExcluir={pedirExclusao} />
 							</div>
 						))}
 					</div>

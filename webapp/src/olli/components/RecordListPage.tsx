@@ -260,6 +260,8 @@ export default function RecordListPage({
 							value={q}
 							onChange={(e) => setQ(e.target.value)}
 							placeholder="Buscar…"
+							aria-label={`Buscar em ${title}`}
+							type="search"
 							className="h-10 rounded-full pl-10"
 						/>
 					</div>

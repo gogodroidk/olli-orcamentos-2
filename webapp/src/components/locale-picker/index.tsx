@@ -1,10 +1,7 @@
 import { Icon } from "@/components/icon";
-import useLocale, { LANGUAGE_MAP } from "@/locales/use-locale";
+import useLocale, { LANGUAGE_MAP, type Locale } from "@/locales/use-locale";
 import { Button } from "@/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/ui/dropdown-menu";
-import type { LocalEnum } from "#/enum";
-
-type Locale = keyof typeof LocalEnum;
 
 /**
  * Locale Picker
@@ -23,7 +20,7 @@ export default function LocalePicker() {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="rounded-full">
+				<Button variant="ghost" size="icon" className="rounded-full" aria-label="Trocar idioma">
 					<Icon icon={`local:${LANGUAGE_MAP[locale].icon}`} size="20" />
 				</Button>
 			</DropdownMenuTrigger>

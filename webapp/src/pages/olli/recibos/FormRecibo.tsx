@@ -29,7 +29,7 @@
  */
 import type { ItemOrcamento, Orcamento, Recibo } from "@dominio";
 import { AlertTriangle, Check, ChevronsUpDown, FileText, Loader2, RotateCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Campo, CampoMoeda } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
 import { StatusBadge } from "@/olli/components/record-list-helpers";
@@ -100,6 +100,14 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 	/** O usuário mexeu no valor? Então o seletor de orçamento não o sobrescreve mais. */
 	const [valorTocado, setValorTocado] = useState(false);
 
+	// Número já COMPRADO num submit anterior que falhou depois de gerá-lo. Guardado
+	// aqui para o retry reaproveitar (mesmo padrão de FormOrcamento.tsx) — sem isto,
+	// cada tentativa chamaria `proximoNumeroDocumento` de novo e abriria um buraco na
+	// sequência (o REC-00126 nunca existiria). Este diálogo não desmonta ao fechar
+	// (fica montado para a animação), então o reset abaixo, no efeito "a cada
+	// abertura", é o que evita vazar o número comprado desta sessão para a próxima.
+	const numeroCompradoRef = useRef<string>("");
+
 	/* ───────────────────────────────  dados  ─────────────────────────────────── */
 	// enabled: aberto — só baixa TODOS os orçamentos quando o formulário está de fato
 	// na tela. O diálogo fica montado o tempo todo (para a animação de fechar), então
@@ -141,6 +149,10 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 		setErro(null);
 		setTentouSalvar(false);
 		setSalvando(false);
+		// Nova sessão do diálogo: qualquer número comprado numa tentativa anterior (de
+		// um recibo já salvo, ou desistido) não pode vazar para esta. Só dentro de uma
+		// mesma sessão (retry sem fechar o diálogo) é que o número deve ser reaproveitado.
+		numeroCompradoRef.current = "";
 		if (recibo) {
 			setOrcamentoId(recibo.orcamentoId ?? null);
 			setCliente({
@@ -222,7 +234,17 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 		setSalvando(true);
 		try {
 			// NÚMERO SÓ AGORA (ver cabeçalho, item 3). Na edição, o número não muda.
-			const numero = recibo?.numero ?? (await proximoNumeroDocumento("recibo"));
+			// Novo: se um submit anterior já comprou um número mas falhou depois (ex.:
+			// rede caiu no upsert), o retry reusa AQUELE número (via ref) em vez de
+			// queimar outro — senão a sequência ganharia um buraco (mesmo padrão de
+			// FormOrcamento.tsx).
+			let numero = recibo?.numero;
+			if (!numero) {
+				if (!numeroCompradoRef.current) {
+					numeroCompradoRef.current = await proximoNumeroDocumento("recibo");
+				}
+				numero = numeroCompradoRef.current;
+			}
 
 			// ITENS. Só recopio do orçamento quando o VÍNCULO MUDOU: um recibo já emitido é
 			// um RETRATO — se o orçamento foi editado depois, o documento que o cliente
