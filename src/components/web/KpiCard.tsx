@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliPressable } from '../OlliPressable';
@@ -15,6 +15,14 @@ interface Props {
    * Quando ausente, o cartão é puramente apresentacional (comportamento antigo).
    */
   onPress?: () => void;
+  /**
+   * Sobrepõe o dimensionamento padrão (`flex:1, minWidth:220`) do cartão —
+   * usado por telas que precisam de breakpoints explícitos de coluna (ex.:
+   * 2 colunas entre 1024-1279px). Aplicado por último, depois dos estilos
+   * internos, então vence em caso de conflito. Opcional — sem uso, o cartão
+   * mantém o comportamento de sempre.
+   */
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -23,7 +31,7 @@ interface Props {
  * clicável com feedback de hover/press e uma seta de "abrir" no rodapé — cada
  * número do dashboard leva à lista que o explica.
  */
-export function KpiCard({ titulo, valor, icone, corIcone, rodape, onPress }: Props) {
+export function KpiCard({ titulo, valor, icone, corIcone, rodape, onPress, style }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // Default do prop precisa do hook — não dá pra usar `cores.accent` direto na
@@ -52,13 +60,13 @@ export function KpiCard({ titulo, valor, icone, corIcone, rodape, onPress }: Pro
 
   if (onPress) {
     return (
-      <OlliPressable style={[styles.card, styles.cardClicavel]} onPress={onPress} haptic={false}>
+      <OlliPressable style={[styles.card, styles.cardClicavel, style]} onPress={onPress} haptic={false}>
         {conteudo}
       </OlliPressable>
     );
   }
 
-  return <View style={styles.card}>{conteudo}</View>;
+  return <View style={[styles.card, style]}>{conteudo}</View>;
 }
 
 const criarEstilos = (c: Cores) => StyleSheet.create({

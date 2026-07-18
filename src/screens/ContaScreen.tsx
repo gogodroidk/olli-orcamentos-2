@@ -1384,7 +1384,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow,
     padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm,
   },
-  assinaturaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  assinaturaIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   assinaturaTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   assinaturaSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 
@@ -1433,7 +1433,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   blocoAparencia: { marginHorizontal: Spacing.base },
   toolRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   toolDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
-  toolIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  toolIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   toolLabel: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   toolDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 1 },
   card: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, padding: Spacing.base, marginHorizontal: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.outlineDark, ...sombrasDe(c).sm },
@@ -1465,7 +1465,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   backupsEmptyText: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
   backupsEmptyLink: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
   backupItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10 },
-  backupItemIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  backupItemIcon: { width: 38, height: 38, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   backupItemDate: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   backupItemMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
@@ -1474,7 +1474,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Empresa / Equipe (Onda 2)
   empresaCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   empresaHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  empresaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  empresaIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   empresaNome: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   empresaPapel: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   empresaBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 14, paddingVertical: 12 },

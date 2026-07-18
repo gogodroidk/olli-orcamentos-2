@@ -294,9 +294,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   orcRowHover: { backgroundColor: c.surfacePressed },
   orcRowSel: { borderColor: c.accent, backgroundColor: c.accentContainer },
-  orcCliente: { fontSize: 14.5, fontWeight: '700' as const, color: c.onSurface },
+  orcCliente: { ...Typography.body, fontWeight: '700' as const, color: c.onSurface },
   orcMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
-  orcValor: { fontSize: 14.5, fontWeight: '800' as const, color: c.primaryLight },
+  orcValor: { ...Typography.body, fontWeight: '800' as const, color: c.primaryLight },
 
   manualLabel: { fontSize: 13, fontWeight: '800' as const, color: c.onSurfaceVariant, marginTop: 6, marginBottom: 2 },
 

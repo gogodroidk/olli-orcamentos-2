@@ -996,7 +996,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   name: { fontSize: 21, fontWeight: '800', color: c.onBackground, marginTop: 1 },
   company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },
   // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
-  olliBtn: { width: 48, height: 48, borderRadius: 15, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  olliBtn: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: c.danger, borderWidth: 2, borderColor: c.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
   // Branco fixo: convenção universal de badge de notificação sobre uma cor de
   // status saturada — sem chave "onDanger" na paleta (ver rule 7).
@@ -1088,7 +1088,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     ...sombrasDe(c).md,
   },
   starterTop: { flexDirection: 'row', alignItems: 'center' },
-  starterIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.32)', justifyContent: 'center', alignItems: 'center' },
+  starterIcon: { width: 46, height: 46, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.32)', justifyContent: 'center', alignItems: 'center' },
   starterTitle: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
   starterSub: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 2 },
   starterSteps: { flexDirection: 'row', gap: 8, marginTop: 14 },
@@ -1143,7 +1143,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sheet: { backgroundColor: c.surface, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
   sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: Spacing.base },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
-  sheetMascot: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  sheetMascot: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },

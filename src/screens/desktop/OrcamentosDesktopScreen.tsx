@@ -279,7 +279,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   chipLabel: {
     ...Typography.caption,
-    fontSize: 12.5,
     fontWeight: '600',
     color: c.onSurfaceVariant,
   },

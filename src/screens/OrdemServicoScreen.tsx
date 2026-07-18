@@ -1402,7 +1402,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass,
     borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm,
   },
-  opcaoIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  opcaoIcon: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
   // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
   opcaoTitulo: { fontSize: 16, fontWeight: '800', color: c.onSurface },
   opcaoDesc: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 3, lineHeight: 18 },

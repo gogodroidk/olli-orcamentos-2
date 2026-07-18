@@ -422,7 +422,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   planHead: { flexDirection: 'row', alignItems: 'center' },
   planIcon: {
-    width: 44, height: 44, borderRadius: 14, backgroundColor: c.accentContainer,
+    width: 44, height: 44, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer,
     justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: c.strokeGlow,
   },
   planLabel: { fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },

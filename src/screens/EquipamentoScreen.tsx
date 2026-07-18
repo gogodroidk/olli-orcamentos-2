@@ -1378,7 +1378,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardIcon: {
-    width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    width: 40, height: 40, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center',
     backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,
   },
   cardTitulo: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },

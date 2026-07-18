@@ -710,7 +710,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema
   // (o branco translúcido do glass em si continua fixo, é o próprio efeito).
   wcFeat: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.25), borderRadius: BorderRadius.md, padding: 12 },
-  wcFeatIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: comAlfa(c.accentLight, 0.14), justifyContent: 'center', alignItems: 'center' },
+  wcFeatIcon: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.14), justifyContent: 'center', alignItems: 'center' },
   // Idem: cor aplicada inline (gradientes.sobrePrimary) em WcFeature.
   wcFeatText: { flex: 1, fontSize: 14, fontWeight: '600' },
   wcFooter: { paddingHorizontal: Spacing.base, paddingTop: 12 },

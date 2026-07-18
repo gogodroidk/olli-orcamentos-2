@@ -604,7 +604,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     color: c.onSurface,
   },
   membroEmail: {
-    fontSize: 11.5,
+    ...Typography.caption,
     color: c.onSurfaceMuted,
     marginTop: 1,
   },
@@ -639,7 +639,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: 3,
   },
   statusTexto: {
-    fontSize: 11.5,
+    ...Typography.label,
     fontWeight: '700',
   },
 
@@ -700,7 +700,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   dica: {
-    fontSize: 12.5,
+    ...Typography.bodySmall,
     color: c.onSurfaceMuted,
     lineHeight: 18,
     marginTop: Spacing.sm,
@@ -746,7 +746,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     minWidth: 0,
   },
   opcaoTitulo: {
-    fontSize: 14.5,
+    ...Typography.body,
     fontWeight: '800',
     color: c.onSurface,
   },
@@ -775,7 +775,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     marginTop: Spacing.base,
   },
   sucessoSub: {
-    fontSize: 13.5,
+    ...Typography.bodySmall,
     color: c.onSurfaceVariant,
     textAlign: 'center',
     lineHeight: 20,
@@ -791,7 +791,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     marginTop: Spacing.lg,
   },
   linkTexto: {
-    fontSize: 12.5,
+    ...Typography.bodySmall,
     color: c.accentLight,
     fontWeight: '600',
   },

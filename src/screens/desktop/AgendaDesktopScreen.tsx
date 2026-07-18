@@ -704,7 +704,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   cardHover: { backgroundColor: c.surfacePressed },
   cardHora: { fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted },
-  cardTitulo: { ...Typography.bodySmall, color: c.onSurface, fontSize: 12.5, marginTop: 2 },
+  cardTitulo: { ...Typography.bodySmall, color: c.onSurface, marginTop: 2 },
   cardCliente: { ...Typography.caption, color: c.onSurfaceVariant, fontSize: 11, marginTop: 1 },
   cardStatus: { fontSize: 10.5, fontWeight: '700', marginTop: 3 },
   strike: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
@@ -730,7 +730,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // accent escolhido no tema via comAlfa.
   modalAcaoLink: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: comAlfa(c.accent, 0.10), borderWidth: 1, borderColor: comAlfa(c.accent, 0.30), borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 8 },
   modalAcaoLinkHover: { backgroundColor: comAlfa(c.accent, 0.18) },
-  modalAcaoLinkTexto: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
+  modalAcaoLinkTexto: { ...Typography.bodySmall, fontWeight: '700', color: c.accentLight },
   modalBotoes: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.lg },
   modalIconBtn: { width: 40, height: 40, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
   modalIconBtnHover: { backgroundColor: c.surfacePressed },
@@ -739,7 +739,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tipoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.md },
   tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: BorderRadius.sm, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
   tipoOptionHover: { backgroundColor: c.surfacePressed },
-  tipoOptionText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  tipoOptionText: { ...Typography.caption, fontWeight: '700', color: c.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
   modalFooterBtns: { marginTop: Spacing.md },
 
@@ -756,5 +756,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // SOBREPOSIÇÃO (1.5) — aviso não-bloqueante, mesmo par warning/warningLight
   // usado nos avisos mobile (EmitirReciboScreen) — "atenção, mas segue".
   avisoConflito: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: c.warning, borderRadius: BorderRadius.md, padding: 10, marginBottom: Spacing.md },
-  avisoConflitoText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 17 },
+  avisoConflitoText: { flex: 1, ...Typography.bodySmall, color: c.onSurface, lineHeight: 17 },
 });

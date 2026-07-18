@@ -345,7 +345,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderWidth: 1, borderColor: c.outline, padding: Spacing.base, ...sombrasDe(c).sm,
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start' },
-  iconBubble: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  iconBubble: { width: 42, height: 42, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   cardSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },

@@ -697,7 +697,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sheetName: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
-  sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  sheetIcon: { width: 44, height: 44, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });

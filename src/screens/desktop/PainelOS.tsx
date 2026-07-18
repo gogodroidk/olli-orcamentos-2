@@ -625,18 +625,18 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base,
   },
   blocoHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  blocoTitulo: { fontSize: 14.5, fontWeight: '800' as const, color: c.onSurface },
+  blocoTitulo: { ...Typography.body, fontWeight: '800' as const, color: c.onSurface },
   blocoContador: { fontSize: 13, fontWeight: '800' as const, color: c.accentLight },
-  valorGrande: { fontSize: 14.5, fontWeight: '700' as const, color: c.onSurface, marginTop: 6 },
+  valorGrande: { ...Typography.body, fontWeight: '700' as const, color: c.onSurface, marginTop: 6 },
 
   linkAcao: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: BorderRadius.sm },
   linkAcaoHover: { backgroundColor: c.surfacePressed },
-  linkAcaoTexto: { fontSize: 12.5, fontWeight: '700' as const, color: c.accentLight },
+  linkAcaoTexto: { ...Typography.bodySmall, fontWeight: '700' as const, color: c.accentLight },
 
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
   infoLabel: { fontSize: 13, color: c.onSurfaceVariant, width: 64 },
   infoValor: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '700' as const, textAlign: 'right' },
-  descricao: { fontSize: 13.5, color: c.onSurfaceVariant, lineHeight: 20, marginTop: 8 },
+  descricao: { ...Typography.bodySmall, color: c.onSurfaceVariant, lineHeight: 20, marginTop: 8 },
 
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   statusOpt: {
@@ -650,7 +650,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   checkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.outline },
   checkTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkTexto: { flex: 1, fontSize: 13.5, color: c.onSurface },
+  checkTexto: { flex: 1, ...Typography.bodySmall, color: c.onSurface },
   checkTextoFeito: { color: c.onSurfaceMuted, textDecorationLine: 'line-through' },
 
   addItemRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
@@ -666,6 +666,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   membroRowAtual: { borderColor: c.success, backgroundColor: c.successLight },
   membroAvatar: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   membroAvatarText: { fontSize: 16, fontWeight: '800' as const, color: c.accentLight },
-  membroNome: { fontSize: 14.5, fontWeight: '700' as const, color: c.onSurface },
+  membroNome: { ...Typography.body, fontWeight: '700' as const, color: c.onSurface },
   membroPapel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 });

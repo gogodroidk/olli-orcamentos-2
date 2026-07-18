@@ -1091,7 +1091,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderColor: c.accent,
   },
   catChipText: {
-    fontSize: 12.5,
+    ...Typography.caption,
     fontWeight: '600',
     color: c.onSurfaceVariant,
   },
@@ -1106,7 +1106,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderColor: c.outline,
   },
   selChipText: {
-    fontSize: 12.5,
+    ...Typography.caption,
     fontWeight: '600',
     color: c.onSurfaceVariant,
   },
@@ -1143,7 +1143,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   clienteSelNome: {
     flex: 1,
-    fontSize: 13.5,
+    ...Typography.bodySmall,
     fontWeight: '700',
     color: c.onSurface,
   },
@@ -1185,12 +1185,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surfacePressed,
   },
   itemClienteNome: {
-    fontSize: 13.5,
+    ...Typography.bodySmall,
     fontWeight: '700',
     color: c.onSurface,
   },
   itemClienteSub: {
-    fontSize: 11.5,
+    ...Typography.caption,
     color: c.onSurfaceVariant,
     marginTop: 1,
   },
@@ -1277,7 +1277,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 12,
   },
   etiquetaBotaoTexto: {
-    fontSize: 13.5,
+    ...Typography.bodySmall,
     fontWeight: '700',
     color: c.accentLight,
   },
@@ -1295,7 +1295,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.dangerLight,
   },
   botaoRevogarTexto: {
-    fontSize: 13.5,
+    ...Typography.bodySmall,
     fontWeight: '700',
     color: c.danger,
   },

@@ -151,6 +151,8 @@ export const BorderRadius = {
   xl: 30,
   xxl: 36,
   full: 999,
+  // Chip de ícone: caixa ~36-48px com ícone dentro (avatares/badges pequenos)
+  chip: 14,
 };
 
 export const Typography = {

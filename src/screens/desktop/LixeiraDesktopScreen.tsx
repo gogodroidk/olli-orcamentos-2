@@ -505,7 +505,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   toastDesfazerLabel: {
     ...Typography.button,
-    fontSize: 12.5,
+    fontSize: Typography.caption.fontSize,
     color: c.accentLight,
   },
 });
