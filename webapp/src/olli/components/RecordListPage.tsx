@@ -8,7 +8,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
-import { isMoneyKey, isNameKey, isStatusKey, NameCell, StatusBadge } from "./record-list-helpers";
+import {
+	BotaoAbrirLinha,
+	isMoneyKey,
+	isNameKey,
+	isStatusKey,
+	linhaClicavel,
+	NameCell,
+	StatusBadge,
+} from "./record-list-helpers";
 import { TableOverflowHint } from "./TableOverflowHint";
 
 /** Colunas internas que não interessam ao usuário. */
@@ -186,19 +194,20 @@ export default function RecordListPage({
 	/**
 	 * A coluna principal vira um BOTÃO de verdade quando dá para abrir o registro.
 	 * É ele — não o `onClick` da `<tr>` — que dá o caminho de teclado (Tab + Enter).
+	 * `group-hover:underline`: a linha inteira agora abre no clique, então o sublinhado
+	 * tem que responder ao hover da LINHA, não só ao do texto.
 	 */
 	const celulaPrincipal = (col: string, row: Linha) => {
 		const conteudo = renderCell(col, row);
 		if (!aoAbrirLinha) return conteudo;
 		return (
-			<button
-				type="button"
-				onClick={() => aoAbrirLinha(row)}
-				aria-label={`Abrir ${nomeDaLinha(row)}`}
-				className="-mx-1 rounded-md px-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+			<BotaoAbrirLinha
+				rotulo={`Abrir ${nomeDaLinha(row)}`}
+				aoAbrir={() => aoAbrirLinha(row)}
+				className="group-hover:underline"
 			>
 				{conteudo}
-			</button>
+			</BotaoAbrirLinha>
 		);
 	};
 
@@ -352,17 +361,16 @@ export default function RecordListPage({
 									{rows.map((r, i) => {
 										const row = r as Record<string, unknown>;
 										return (
-											// O `onClick` da <tr> é conveniência de MOUSE, e só. Quem usa teclado
-											// tem 2 caminhos equivalentes e focáveis: o botão da coluna principal
-											// (Tab + Enter) e o item "Editar" do menu "…". Pôr tabIndex/role na
-											// própria <tr> quebraria a semântica da tabela e criaria uma parada de
-											// foco duplicada por linha.
+											// `linhaClicavel` (record-list-helpers) resolve os 3 detalhes de uma vez:
+											// clicar em qualquer lugar abre; clicar num controle da linha (o "…", o
+											// botão do nome, os itens do menu — que portalam mas borbulham) NÃO abre;
+											// e arrastar para selecionar texto também não. Teclado continua sendo o
+											// botão da célula principal, sem role/tabIndex postiço na <tr>.
 											<tr
 												key={(r as { id?: string }).id ?? i}
-												onClick={aoAbrirLinha ? () => aoAbrirLinha(row) : undefined}
-												className={cn(
+												{...linhaClicavel(
+													aoAbrirLinha ? () => aoAbrirLinha(row) : null,
 													"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
-													aoAbrirLinha && "cursor-pointer",
 												)}
 											>
 												{cols.map((c) => (
@@ -397,7 +405,12 @@ export default function RecordListPage({
 							const statusCol = cols.find((c) => isStatusKey(c) && row[c] != null && row[c] !== "");
 							const restCols = cols.filter((c) => c !== primaryCol && c !== statusCol);
 							return (
-								<div key={(r as { id?: string }).id ?? i} className="p-4">
+								// Mesma regra do desktop: o card inteiro abre no toque (área bem maior
+								// que os 44px mínimos), menos onde já existe controle.
+								<div
+									key={(r as { id?: string }).id ?? i}
+									{...linhaClicavel(aoAbrirLinha ? () => aoAbrirLinha(row) : null, "p-4 transition-colors")}
+								>
 									<div className="flex items-start justify-between gap-3">
 										<div className="min-w-0 text-sm">
 											{primaryCol && aoAbrirLinha ? (

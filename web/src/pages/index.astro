@@ -254,7 +254,11 @@ const schemaFaq = {
       <div class="min-w-0">
         <span class="eyebrow"><span aria-hidden="true">●</span> Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
         <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
-          Do <span class="brand-text">áudio no WhatsApp</span><br class="hidden sm:inline" />
+          {/* O {" "} é obrigatório: no mobile o <br> é `hidden` (display:none) e a
+              quebra de linha do código não vira espaço — a manchete saía grudada,
+              "WhatsAppao orçamento fechado". Espaço explícito resolve nos dois
+              casos (no desktop ele cai antes da quebra e não aparece). */}
+          Do <span class="brand-text">áudio no WhatsApp</span>{" "}<br class="hidden sm:inline" />
           ao orçamento fechado.
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">

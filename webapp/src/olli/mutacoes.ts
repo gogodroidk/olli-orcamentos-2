@@ -124,7 +124,8 @@ function extrairSequencia(numero: unknown): number {
  * espelho desta base: mesma fonte (os documentos), com o contador só como piso
  * monotônico para o número já reservado num formulário aberto. A colisão que sobra é
  * a de dois criadores simultâneos com um deles offline — arbitrável só no banco (ver
- * `supabase/migrations/20260727_numero_unico_por_tenant.sql`, passo humano).
+ * `supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente`, passo humano
+ * — a extensão trava a aplicação automática, o próprio arquivo diz o porquê).
  *
  * Ordenamos por `criado_em` desc: como o sequencial só cresce, o documento mais recente
  * carrega o maior número — então, mesmo se o PostgREST capar a resposta em ~1000 linhas,

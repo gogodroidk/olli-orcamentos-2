@@ -1,15 +1,32 @@
 import "dayjs/locale/pt-br";
 
 import type { Locale as AntdLocal } from "antd/es/locale";
-import en_US from "antd/locale/en_US";
 import pt_BR from "antd/locale/pt_BR";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { LocalEnum } from "#/enum";
 
-export type Locale = Exclude<keyof typeof LocalEnum, "zh_CN">;
+/**
+ * O painel é pt-BR fixo — o porquê está no comentário longo de `i18n.ts`
+ * (resumo: o seletor de idioma do template não traduzia o produto, só o chrome).
+ *
+ * Este hook continua existindo porque 8 componentes do chrome (nav, migalha de
+ * pão, busca) importam `useLocale()` só pra pegar o `t`.
+ */
+
+// Locale do dayjs, aplicado no import do módulo.
+//
+// ATENÇÃO: o nome do locale no dayjs é "pt-br", com hífen e minúsculo — NÃO é
+// o "pt_BR" do LocalEnum. O código antigo chamava `dayjs.locale(locale)` com
+// "pt_BR"; o dayjs não reconhece esse nome, ignora em silêncio e continua em
+// inglês. Ou seja: as datas relativas do painel ("a day ago") nunca estiveram
+// em português, mesmo com o painel em pt-BR. Fixar aqui resolve.
+dayjs.locale("pt-br");
+
+export type Locale = typeof LocalEnum.pt_BR;
+
 type Language = {
-	locale: keyof typeof LocalEnum;
+	locale: Locale;
 	icon: string;
 	label: string;
 	antdLocal: AntdLocal;
@@ -22,34 +39,17 @@ export const LANGUAGE_MAP: Record<Locale, Language> = {
 		icon: "flag-br",
 		antdLocal: pt_BR,
 	},
-	[LocalEnum.en_US]: {
-		locale: LocalEnum.en_US,
-		label: "English",
-		icon: "flag-us",
-		antdLocal: en_US,
-	},
 };
 
 export default function useLocale() {
-	const { t, i18n } = useTranslation();
+	const { t } = useTranslation();
 
-	const locale = (i18n.resolvedLanguage || LocalEnum.pt_BR) as Locale;
-	const language = LANGUAGE_MAP[locale] ?? LANGUAGE_MAP[LocalEnum.pt_BR];
-
-	/**
-	 * localstorage -> i18nextLng change
-	 */
-	const setLocale = (locale: Locale) => {
-		i18n.changeLanguage(locale);
-		// set lang ant dayjs
-		document.documentElement.lang = locale;
-		dayjs.locale(locale);
-	};
+	const locale = LocalEnum.pt_BR;
+	const language = LANGUAGE_MAP[locale];
 
 	return {
 		t,
 		locale,
 		language,
-		setLocale,
 	};
 }

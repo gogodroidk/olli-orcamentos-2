@@ -34,6 +34,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
+import { BotaoAbrirLinha, linhaClicavel } from "@/olli/components/record-list-helpers";
 import { useOlliList } from "@/olli/data";
 import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -413,25 +414,31 @@ export default function ListaCatalogo({ tipo }: Props) {
 							</thead>
 							<tbody>
 								{filtrados.map((item) => (
+									// A LINHA INTEIRA abre o item (queixa do dono: ter que acertar o nome).
+									// `linhaClicavel` protege o menu "…" — inclusive os itens dele, que portalam
+									// no DOM mas continuam borbulhando na árvore do React até esta <tr>.
 									<tr
 										key={item.id}
-										className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+										{...linhaClicavel(
+											() => abrirEdicao(item),
+											"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
+										)}
 									>
 										<td className="px-4 py-3.5 align-middle">
 											{/* O nome é o alvo de edição — e é um <button>: alcançável por Tab, não só por mouse. */}
-											<button
-												type="button"
-												onClick={() => abrirEdicao(item)}
-												className="flex max-w-md flex-col items-start rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+											<BotaoAbrirLinha
+												rotulo={`Abrir ${rotulo} ${item.nome || "(sem nome)"}`}
+												aoAbrir={() => abrirEdicao(item)}
+												className="flex max-w-md flex-col items-start"
 											>
-												<span className="flex items-center gap-2 font-medium text-text-primary hover:underline">
+												<span className="flex items-center gap-2 font-medium text-text-primary group-hover:underline">
 													<Icone aria-hidden="true" className="size-4 shrink-0 text-text-disabled" />
 													{item.nome || "(sem nome)"}
 												</span>
 												{item.descricao && (
 													<span className="mt-0.5 line-clamp-1 pl-6 text-xs text-text-secondary">{item.descricao}</span>
 												)}
-											</button>
+											</BotaoAbrirLinha>
 										</td>
 
 										{tipo === "produto" && (
@@ -468,12 +475,12 @@ export default function ListaCatalogo({ tipo }: Props) {
 					{/* ────────────────────────────  MOBILE: cards  ─────────────────────── */}
 					<div className="divide-y divide-border/60 md:hidden">
 						{filtrados.map((item) => (
-							<div key={item.id} className="p-4">
+							<div key={item.id} {...linhaClicavel(() => abrirEdicao(item), "p-4 transition-colors")}>
 								<div className="flex items-start justify-between gap-2">
-									<button
-										type="button"
-										onClick={() => abrirEdicao(item)}
-										className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+									<BotaoAbrirLinha
+										rotulo={`Abrir ${rotulo} ${item.nome || "(sem nome)"}`}
+										aoAbrir={() => abrirEdicao(item)}
+										className="min-w-0 flex-1"
 									>
 										<span className="flex items-center gap-2 font-medium text-text-primary">
 											<Icone aria-hidden="true" className="size-4 shrink-0 text-text-disabled" />
@@ -484,7 +491,7 @@ export default function ListaCatalogo({ tipo }: Props) {
 												{marcaModelo(tipo, item)}
 											</span>
 										)}
-									</button>
+									</BotaoAbrirLinha>
 									{podeEditar && (
 										<MenuAcoes item={item} aoEditar={abrirEdicao} aoDuplicar={abrirDuplicar} aoExcluir={pedirExclusao} />
 									)}

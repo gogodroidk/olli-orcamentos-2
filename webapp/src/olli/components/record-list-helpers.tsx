@@ -1,3 +1,4 @@
+import type { MouseEvent as EventoDeMouse, ReactNode } from "react";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
 import { Badge } from "@/ui/badge";
 import { cn } from "@/utils";
@@ -82,6 +83,134 @@ export function StatusBadge({ value, className }: { value: unknown; className?: 
 		<Badge variant={getStatusVariant(value)} className={cn("font-medium", className)}>
 			{formatStatusLabel(value)}
 		</Badge>
+	);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * LINHA CLICÁVEL — uma implementação só, para TODAS as listas do painel.
+ *
+ * O dono pediu: "clicar em QUALQUER LUGAR" da linha abre o registro, em vez de ter
+ * que acertar o nome. Isso é fácil de fazer errado de duas maneiras:
+ *
+ * 1. ROUBAR O CLIQUE DE QUEM JÁ CLICA. A linha tem botões dentro (o "…", o próprio
+ *    botão do nome, e — quando o menu do Radix está aberto — os itens dele, que
+ *    PORTALAM no DOM mas continuam filhos na árvore do React e portanto BORBULHAM
+ *    até a <tr>). Sem guarda, escolher "Excluir" no menu abriria o editor por baixo
+ *    do diálogo de exclusão. Por isso o teste é feito no ALVO do evento (`closest`
+ *    de qualquer controle), e NÃO com `currentTarget.contains` — que daria falso
+ *    para o item portalado, justamente o caso perigoso.
+ *
+ * 2. ATROPELAR SELEÇÃO DE TEXTO. Arrastar para copiar um telefone termina em um
+ *    clique; abrir o formulário aí é hostil. Seleção viva = não é clique.
+ *
+ * TECLADO: a <tr> continua sendo uma <tr> — sem `role`/`tabIndex` postiços, que
+ * quebrariam a semântica da tabela e criariam uma parada de foco duplicada por
+ * linha. O caminho sem mouse é o `BotaoAbrirLinha` da célula principal (Tab +
+ * Enter/Espaço, foco visível), e a linha inteira acende junto via `focus-within`.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+/** O que, dentro de uma linha, JÁ tem clique próprio — e portanto não abre a linha. */
+const CONTROLES_DA_LINHA = [
+	"a[href]",
+	"button",
+	"input",
+	"select",
+	"textarea",
+	"label",
+	"summary",
+	'[role="button"]',
+	'[role="link"]',
+	'[role="menu"]',
+	'[role="menuitem"]',
+	'[role="menuitemcheckbox"]',
+	'[role="menuitemradio"]',
+	'[role="checkbox"]',
+	'[role="switch"]',
+	'[role="dialog"]',
+	'[contenteditable="true"]',
+	/** Escotilha para um elemento sem semântica interativa que mesmo assim não deve abrir a linha. */
+	"[data-sem-abrir-linha]",
+].join(",");
+
+/** `true` quando o clique nasceu num controle que já faz outra coisa. */
+export function cliqueEmControle(evento: EventoDeMouse<HTMLElement>): boolean {
+	const alvo = evento.target instanceof Element ? evento.target : null;
+	return alvo !== null && alvo.closest(CONTROLES_DA_LINHA) !== null;
+}
+
+/** `true` se há texto selecionado agora — arrastar para copiar não é clique. */
+function houveSelecaoDeTexto(): boolean {
+	if (typeof window === "undefined" || typeof window.getSelection !== "function") return false;
+	const selecao = window.getSelection();
+	return selecao !== null && !selecao.isCollapsed && selecao.toString().trim().length > 0;
+}
+
+/**
+ * Afordância: o cursor diz que clica, o hover pinta a linha (já vinha das telas) e o
+ * `focus-within` acende a linha quando o botão da célula principal recebe o foco.
+ * `group` habilita o `group-hover:underline` do nome — o sublinhado que anuncia
+ * "isto abre algo" sem poluir a tabela com ícone novo.
+ */
+const CLASSE_LINHA_CLICAVEL = "group cursor-pointer focus-within:bg-bg-neutral/60";
+
+/** Props prontas para a `<tr>` (desktop) ou o card (mobile) de uma linha clicável. */
+export interface PropsDaLinhaClicavel {
+	className: string;
+	onClick?: (evento: EventoDeMouse<HTMLElement>) => void;
+}
+
+/**
+ * Espalhe o retorno na `<tr>`/card: `<tr {...linhaClicavel(abrir, "classes de sempre")}>`.
+ * Com `aoAbrir` nulo (sem permissão, linha sem documento) devolve só as classes —
+ * a linha fica inerte, sem cursor de mão prometendo o que não acontece.
+ */
+export function linhaClicavel(aoAbrir: (() => void) | null | undefined, classeBase?: string): PropsDaLinhaClicavel {
+	if (!aoAbrir) return { className: cn(classeBase) };
+	return {
+		className: cn(classeBase, CLASSE_LINHA_CLICAVEL),
+		onClick: (evento) => {
+			if (cliqueEmControle(evento)) return;
+			if (houveSelecaoDeTexto()) return;
+			aoAbrir();
+		},
+	};
+}
+
+/**
+ * O botão da célula principal — o caminho de TECLADO da linha clicável (e o alvo de
+ * mouse mais óbvio). Existe um por linha, de propósito: duas paradas de foco por
+ * linha transformariam navegar a tabela num calvário de Tab.
+ */
+export function BotaoAbrirLinha({
+	rotulo,
+	aoAbrir,
+	ocupado,
+	className,
+	children,
+}: {
+	/** `aria-label` completo — "Abrir cliente João", "Ver PDF do orçamento 0007". */
+	rotulo: string;
+	aoAbrir: () => void;
+	/** Ação em andamento (ex.: gerando o PDF): anuncia e trava o clique repetido. */
+	ocupado?: boolean;
+	className?: string;
+	children: ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={aoAbrir}
+			aria-label={rotulo}
+			aria-busy={ocupado || undefined}
+			disabled={ocupado}
+			className={cn(
+				"-mx-1 max-w-full rounded-md px-1 text-left disabled:cursor-progress",
+				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+				className,
+			)}
+		>
+			{children}
+		</button>
 	);
 }
 

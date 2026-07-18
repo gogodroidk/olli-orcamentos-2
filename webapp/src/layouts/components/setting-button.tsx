@@ -15,7 +15,6 @@ import RedBlur from "@/assets/images/background/red-blur.png";
 import { Icon } from "@/components/icon";
 import { type SettingsType, useSettingActions, useSettings } from "@/store/settingStore";
 import { themeVars } from "@/theme/theme.css";
-import { FontFamilyPreset } from "@/theme/tokens/typography";
 import { Button } from "@/ui/button";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/ui/sheet";
@@ -122,7 +121,7 @@ function SettingRadioGroup<T extends string>({
 export default function SettingButton() {
 	const { t } = useTranslation();
 	const settings = useSettings();
-	const { themeMode, themeLayout, themeStretch, breadCrumb, fontSize, fontFamily } = settings;
+	const { themeMode, themeLayout, themeStretch, breadCrumb, fontSize } = settings;
 	const { setSettings } = useSettingActions();
 
 	const updateSettings = (partialSettings: Partial<SettingsType>) => {
@@ -181,10 +180,15 @@ export default function SettingButton() {
 				{/* Girava infinito antes (animate-slow-spin sempre ligado) — motion decorativo
 				    sem respeitar prefers-reduced-motion. Agora só gira no hover/foco, e só
 				    quando o SO não pediu movimento reduzido (variant motion-safe). */}
+				{/* "no escuro eu NÃO CONSIGO VER A ENGRENAGEM": o ic-setting.svg é
+				    `fill="currentColor"`, e o variant ghost do Button não define cor de
+				    texto nenhuma — a engrenagem herdava o preto padrão do navegador e
+				    ficava em 1,11:1 sobre o navy. `text-text-primary` leva a 18,94:1 no
+				    escuro e 15,51:1 no claro. min-h/w 44px = alvo de toque mínimo. */}
 				<Button
 					variant="ghost"
 					size="icon"
-					className="rounded-full motion-safe:hover:animate-slow-spin motion-safe:focus-visible:animate-slow-spin"
+					className="rounded-full min-h-[44px] min-w-[44px] text-text-primary motion-safe:hover:animate-slow-spin motion-safe:focus-visible:animate-slow-spin"
 					aria-label="Configurações de aparência"
 				>
 					<Icon icon="local:ic-setting" size={24} />
@@ -394,32 +398,10 @@ export default function SettingButton() {
 						<div className="flex flex-col gap-2">
 							<Text variant="subTitle1">{t("sys.settings.font")}</Text>
 
-							<Text variant="subTitle2">{t("sys.settings.family")}</Text>
-							<SettingRadioGroup
-								ariaLabel={t("sys.settings.family")}
-								value={fontFamily}
-								onChange={(next) => updateSettings({ fontFamily: next })}
-								containerClassName="flex flex-row gap-3"
-								itemClassName="flex h-20 w-full items-center justify-center text-text-disabled"
-								options={Object.entries(FontFamilyPreset).map(([, family]) => ({
-									value: family,
-									label: `Fonte ${family.replace("Variable", "")}`,
-									className: cn(
-										fontFamily === family && "text-primary font-medium",
-										family === FontFamilyPreset.inter && "font-inter",
-										family === FontFamilyPreset.openSans && "font-openSans",
-									),
-									content: (
-										<>
-											<div className="text-center text-lg">
-												<span>A</span>
-												<span className="opacity-50 ml-0.5">a</span>
-											</div>
-											<span className="text-sm text-text-primary">{family.replace("Variable", "")}</span>
-										</>
-									),
-								}))}
-							/>
+							{/* Sem seletor de família: a fonte é ÚNICA (Rubik) — mesma identidade
+							    do painel e da landing. Antes havia troca Open Sans↔Inter; hoje as
+							    duas chaves resolvem pra Rubik, então dois botões idênticos só
+							    confundiam (ver tokens/typography.ts). Só o tamanho é ajustável. */}
 
 							<Text variant="subTitle2">{t("sys.settings.size")}</Text>
 							<Slider

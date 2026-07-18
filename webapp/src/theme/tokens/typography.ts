@@ -1,10 +1,24 @@
-// Identidade única de fonte (painel, app e landing): Plus Jakarta Sans no corpo.
-// As duas chaves do preset de troca (Settings → Fonte) apontavam antes para Open
-// Sans e Inter; ambas agora resolvem pra Plus Jakarta pra manter a paridade de
-// marca — nada no painel carrega mais Open Sans/Inter (ver global.css).
+// Identidade única de fonte (painel e landing): Rubik no corpo.
+//
+// As duas chaves do preset de troca (Settings → Fonte) são herança do template
+// slash-admin: apontavam pra Open Sans e Inter e hoje resolvem as DUAS pra
+// Rubik, pra manter a paridade de marca — nada no painel carrega mais Open
+// Sans/Inter/Plus Jakarta (ver global.css). Os nomes das chaves ficaram porque
+// o tipo do tema (theme/type.ts) e o settingStore ainda referenciam; trocar o
+// nome da chave é refactor de outro arquivo, não da fonte.
+//
+// Rubik substituiu Plus Jakarta Sans porque o dono achou a anterior "estranha"
+// e pediu letra mais arredondada. O sufixo " Variable" é obrigatório: é o
+// font-family que o @fontsource-variable declara no @font-face.
+//
+// A pilha de fallback existe porque o @font-face usa `font-display: swap`: até o
+// woff2 chegar (rede ruim de campo, que é o caso do público), o texto renderiza
+// na fonte do sistema em vez de ficar invisível.
+const ROUNDED_SANS = '"Rubik Variable", ui-sans-serif, system-ui, sans-serif';
+
 export const FontFamilyPreset = {
-	openSans: "Plus Jakarta Sans Variable",
-	inter: "Plus Jakarta Sans Variable",
+	openSans: ROUNDED_SANS,
+	inter: ROUNDED_SANS,
 };
 
 export const typographyTokens = {

@@ -44,7 +44,10 @@ export const navItemStyles: NavItemStyles = {
 		textOverflow: "ellipsis",
 		fontSize: "0.75rem",
 		fontWeight: 400,
-		color: themeVars.colors.text.disabled,
+		// Era `text.disabled` — mas isto é legenda LEGÍVEL, não item desabilitado.
+		// O token disabled reprova nos dois temas (2,73:1 no claro, 3,88:1 no escuro);
+		// `secondary` dá 4,89:1 no claro e 6,93:1 no escuro.
+		color: themeVars.colors.text.secondary,
 		textAlign: "left",
 		lineHeight: 18 / 12,
 	},

@@ -1,7 +1,23 @@
-/* import font — mesma identidade do app e da landing: Plus Jakarta no corpo,
-   Spectral (serifada) só em destaque de valor monetário (ver typography.ts). */
-@import "@fontsource-variable/plus-jakarta-sans";
-@import "@fontsource/spectral/400.css";
+/* import font — mesma identidade do painel e da landing: Rubik no corpo,
+   Spectral (serifada) só em destaque de valor monetário (ver typography.ts).
+
+   Por que Rubik e não Plus Jakarta: o dono achou a letra anterior "estranha" e
+   pediu mais arredondada. Rubik tem os cantos das hastes arredondados (é a
+   assinatura dela) sobre um esqueleto de grotesca robusta — arredondada de
+   verdade, mas SEM afinar o traço, então segura tabela densa e número de
+   dinheiro. Checado no arquivo real (fontTools) antes de trocar:
+     · tnum (algarismo tabular) = SIM — os 3 pontos de R$ usam `tabular-nums`,
+       e uma fonte sem tnum quebraria o alinhamento em silêncio (foi por isso
+       que Nunito Sans foi descartada: não tem tnum);
+     · acentos/cedilha do português = cobertura completa;
+     · eixo wght 300–900 (cobre 400/500/600/700);
+     · self-hosted (o projeto tem CSP — nada de CDN do Google).
+   Só o subset latin baixa de fato (~34,5 kB, unicode-range corta o resto). */
+@import "@fontsource-variable/rubik";
+
+/* Spectral SÓ nos 600 e 700. A classe `font-serif` aparece em 3 lugares, todos
+   valor em R$, e todos com font-semibold (600) ou font-bold (700) — o peso 400
+   não era usado por ninguém e baixava 21 kB à toa. */
 @import "@fontsource/spectral/600.css";
 @import "@fontsource/spectral/700.css";
 

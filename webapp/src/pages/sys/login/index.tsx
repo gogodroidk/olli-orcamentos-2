@@ -1,5 +1,4 @@
 import { Navigate } from "react-router";
-import LocalePicker from "@/components/locale-picker";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
 import SettingButton from "@/layouts/components/setting-button";
@@ -44,7 +43,6 @@ function LoginPage() {
 			<BrandHero />
 
 			<div className="absolute right-2 top-0 flex flex-row">
-				<LocalePicker />
 				<SettingButton />
 			</div>
 		</div>

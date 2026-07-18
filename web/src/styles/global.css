@@ -1,9 +1,11 @@
 @import "tailwindcss";
 
-/* Fontes de marca, self-hosted (sem request externo no boot — melhor perf/privacidade). */
-@import "@fontsource-variable/plus-jakarta-sans";
-@import "@fontsource/spectral/400.css";
-@import "@fontsource/spectral/600.css";
+/* Fonte de marca, self-hosted (sem request externo no boot — melhor perf/privacidade).
+   Rubik: arredondada (cantos das hastes) sem afinar o traço, então segura número
+   e texto pequeno. Mesma família do painel — a identidade é uma só.
+   Spectral saiu: `--font-display` estava declarada mas NÃO era usada em nenhuma
+   página, então eram ~45 kB de fonte baixados à toa. */
+@import "@fontsource-variable/rubik";
 
 /*
   OLLI — sistema visual da marca.
@@ -32,8 +34,7 @@
   --color-tint: #eef4fb;           /* tint azul suave */
 
   /* Tipografia */
-  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Spectral", Georgia, "Times New Roman", serif;
+  --font-sans: "Rubik Variable", ui-sans-serif, system-ui, sans-serif;
 
   /* Movimento */
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);

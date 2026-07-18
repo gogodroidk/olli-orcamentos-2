@@ -4,7 +4,6 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Icon } from "@/components/icon";
-import LocalePicker from "@/components/locale-picker";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
 import SettingButton from "@/layouts/components/setting-button";
@@ -191,7 +190,6 @@ function NovaSenhaPage() {
 			<BrandHero />
 
 			<div className="absolute right-2 top-0 flex flex-row">
-				<LocalePicker />
 				<SettingButton />
 			</div>
 		</div>

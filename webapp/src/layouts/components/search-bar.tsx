@@ -103,9 +103,12 @@ const SearchBar = () => {
 
 	return (
 		<>
+			{/* O ic-search.svg é currentColor e o variant ghost não define cor de texto:
+			    a lupa herdava o preto padrão do navegador e ficava em 1,27:1 sobre o
+			    fundo `bg-action-selected` do escuro. Com o token vai a 16,57:1. */}
 			<Button
 				variant="ghost"
-				className="bg-action-selected px-2 rounded-lg"
+				className="bg-action-selected px-2 rounded-lg min-h-[44px] text-text-primary"
 				size="sm"
 				onClick={() => setOpen(true)}
 				aria-label={`Buscar (${isMac ? "Cmd" : "Ctrl"}+K)`}
