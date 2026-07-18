@@ -17,6 +17,7 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { SinalizarIA } from '../components/SinalizarIA';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { interpretarVoz, VozResultadoOk, VozItem, conversarVoz, ConversaTurno, ConversaResultado } from '../services/olliAssistente';
 import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/reconhecimentoVoz';
@@ -1093,7 +1094,7 @@ export default function OlliVozScreen() {
             <View style={{ marginTop: Spacing.sm }}>
               {conversaBolhas.map((b, idx) => (
                 <AnimatedEntrance key={b.id} index={idx} from="bottom">
-                  <ConversaBalao papel={b.papel} texto={b.texto} />
+                  <ConversaBalao papel={b.papel} texto={b.texto} pedido={pedidoAntesDe(conversaBolhas, idx)} />
                 </AnimatedEntrance>
               ))}
               {/* "pensando" da Olli — cobre tanto a próxima pergunta quanto o
@@ -1301,10 +1302,22 @@ export default function OlliVozScreen() {
 }
 
 /* ─── MODO CONVERSA — bolhas (Tier B) ────────────────────── */
+/**
+ * O pedido que gerou a bolha `idx`: a última fala do prestador ANTES dela. Vai
+ * junto da denúncia — sem ela, quem modera recebe uma pergunta da Olli solta,
+ * sem o que a provocou, e a conversa não é persistida em lugar nenhum.
+ */
+function pedidoAntesDe(bolhas: ConversaBolha[], idx: number): string {
+  for (let i = idx - 1; i >= 0; i--) {
+    if (bolhas[i].papel === 'user') return bolhas[i].texto;
+  }
+  return '';
+}
+
 /** Mesmo padrão visual de bolhas do OlliChatScreen (avatar + balão), só que
  *  local a esta tela — evita acoplar OlliVozScreen a OlliChatScreen por um
  *  componente que nenhuma das duas reexporta hoje. */
-function ConversaBalao({ papel, texto }: { papel: 'user' | 'olli'; texto: string }) {
+function ConversaBalao({ papel, texto, pedido }: { papel: 'user' | 'olli'; texto: string; pedido?: string }) {
   const styles = useEstilos(criarEstilos);
   if (papel === 'user') {
     return (
@@ -1320,8 +1333,14 @@ function ConversaBalao({ papel, texto }: { papel: 'user' | 'olli'; texto: string
       <View style={styles.convAvatar}>
         <OlliMascot size={22} onDark float={false} blink={false} />
       </View>
-      <View style={[styles.convBubble, styles.convBubbleOlli]}>
-        <Text style={styles.convBubbleOlliText}>{texto}</Text>
+      <View style={styles.convColunaOlli}>
+        <View style={[styles.convBubble, styles.convBubbleOlli, { maxWidth: '100%' }]}>
+          <Text style={styles.convBubbleOlliText}>{texto}</Text>
+        </View>
+        {/* Só o que a Olli gerou pode ser sinalizado — a fala do próprio
+            prestador não é conteúdo de IA. Fica abaixo da bolha, discreto:
+            a ação principal aqui é continuar a conversa. */}
+        <SinalizarIA tela="OlliVozScreen" resposta={texto} pedido={pedido ?? ''} />
       </View>
     </View>
   );
@@ -1588,6 +1607,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // usados nesta tela (ex.: já existe um `escreverLabel` sem relação).
   convRowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
   convRowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 10 },
+  // Coluna [bolha + "Sinalizar"]: herda o teto de largura que era da bolha, pra
+  // o botão nascer alinhado com ela e a bolha não crescer por causa dele.
+  convColunaOlli: { maxWidth: '80%' },
   convAvatar: { width: 30, height: 30, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 7 },
   convBubble: { maxWidth: '80%', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 10 },
   convBubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },

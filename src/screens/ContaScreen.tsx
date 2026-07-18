@@ -201,6 +201,17 @@ export default function ContaScreen() {
   const [showExcluir, setShowExcluir] = useState(false);
 
   const [user, setUser] = useState<PerfilUsuario | null>(null);
+  /**
+   * O usuário entrou com a Apple? TRÊS estados — `true` | `false` | `null` (=
+   * ainda não sei). Alimenta o aviso de revogação no modal de excluir conta.
+   *
+   * `null` NÃO é "não usa Apple": quando o `app_metadata` da sessão não traz
+   * provedor nenhum, o modal mostra a versão condicional do aviso ("se você
+   * entrou com a Apple..."). Colapsar a dúvida em `false` esconderia a
+   * instrução justamente de quem precisa dela, e a pessoa sairia achando que
+   * apagou tudo enquanto o OLLI continua listado no Apple ID dela.
+   */
+  const [loginApple, setLoginApple] = useState<boolean | null>(null);
   // Sessão perdida DENTRO das Tabs (só deveria acontecer com sessão corrompida/
   // expirada). Dispara o guarda defensivo "Sessão expirada".
   const [sessaoPerdida, setSessaoPerdida] = useState(false);
@@ -267,6 +278,20 @@ export default function ContaScreen() {
           });
           setAvatarErro(false);
           setSessaoPerdida(false);
+          // Provedores do login (Supabase Auth). `providers` é a lista completa
+          // (uma conta pode ter e-mail E Apple); `provider` é só o primeiro.
+          // Sem nenhum dos dois, fica `null` = não sei — ver o estado lá em cima.
+          const appMeta = (u.app_metadata ?? {}) as Record<string, any>;
+          const provs = Array.isArray(appMeta.providers)
+            ? appMeta.providers.filter((p: unknown): p is string => typeof p === 'string')
+            : [];
+          setLoginApple(
+            provs.length
+              ? provs.includes('apple')
+              : typeof appMeta.provider === 'string' && appMeta.provider
+                ? appMeta.provider === 'apple'
+                : null,
+          );
           setLastBackup(await getUltimoBackupVersionadoData());
           // `estadoBackupNuvem` nunca lança e devolve 'indeterminado' quando não
           // consegue decidir — nunca 'permitido' por omissão.
@@ -278,6 +303,7 @@ export default function ContaScreen() {
           setSessaoPerdida(true);
           setLastBackup(null);
           setMotivoBackup(null);
+          setLoginApple(null); // volta a "não sei", nunca a "não é Apple"
         }
       }
     } catch {
@@ -1289,6 +1315,7 @@ export default function ContaScreen() {
       {showExcluir && (
         <ModalExcluirConta
           busy={busy}
+          loginApple={loginApple}
           onFechar={() => setShowExcluir(false)}
           onConfirmar={confirmarExclusaoFinal}
         />
@@ -1301,14 +1328,47 @@ export default function ContaScreen() {
  * Modal "Excluir minha conta": lista o que será apagado, deixa claro que é
  * irreversível e exige que o usuário digite EXCLUIR (1ª confirmação). O botão
  * dispara o Alert final do pai (2ª confirmação) que efetiva a exclusão.
+ *
+ * `loginApple` (true | false | null=não sei) controla o aviso de revogação do
+ * "Entrar com a Apple" — ver `avisoApple` abaixo.
  */
 function ModalExcluirConta({
-  busy, onFechar, onConfirmar,
-}: { busy: boolean; onFechar: () => void; onConfirmar: () => void }) {
+  busy, loginApple, onFechar, onConfirmar,
+}: { busy: boolean; loginApple: boolean | null; onFechar: () => void; onConfirmar: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [texto, setTexto] = useState('');
   const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
+
+  /**
+   * SIGN IN WITH APPLE — a metade da exclusão que não é nossa.
+   *
+   * Apagar a conta aqui apaga tudo do NOSSO lado, mas a autorização "Entrar com
+   * a Apple" mora no Apple ID da pessoa. Enquanto o worker não revoga o token de
+   * verdade (faltam os secrets APPLE_* e o app mandar o `authorizationCode` na
+   * exclusão — ver a seção SIGN IN WITH APPLE em worker/src/conta.js), o OLLI
+   * continua aparecendo na lista dela depois da exclusão. Prometer "apagamos
+   * tudo" e deixar isso para trás seria a mentira que este texto existe para não
+   * contar; a saída honesta é dizer onde fica e como tirar.
+   *
+   * Três estados, um texto para cada — e a dúvida (`null`) mostra a versão
+   * condicional em vez de esconder: quem entrou com a Apple e não vir o aviso
+   * sai achando que não sobrou nada.
+   */
+  const avisoApple = loginApple === false ? null : (
+    <View style={styles.excluirAppleNota}>
+      <MaterialCommunityIcons name="apple" size={16} color={cores.onSurfaceVariant} />
+      <Text style={styles.excluirAppleTexto}>
+        {loginApple === true
+          ? 'Você entrou com a Apple. A autorização “Entrar com a Apple” fica guardada no seu Apple ID e só sai por lá: '
+          : 'Se você entrou com a Apple, a autorização “Entrar com a Apple” fica guardada no seu Apple ID e só sai por lá: '}
+        <Text style={styles.excluirAppleForte}>
+          Ajustes → seu nome → Início de Sessão e Segurança → Entrar com a Apple → OLLI → Parar de usar
+        </Text>
+        . Pelo navegador dá no mesmo em appleid.apple.com. Isso não afeta a exclusão dos seus dados aqui, que é definitiva.
+      </Text>
+    </View>
+  );
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
@@ -1342,6 +1402,8 @@ function ModalExcluirConta({
             <Text style={styles.excluirNota}>
               Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
             </Text>
+
+            {avisoApple}
 
             <Text style={styles.sheetLabel}>Para confirmar, digite EXCLUIR</Text>
             <TextInput
@@ -1565,6 +1627,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   excluirItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
   excluirItemText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
   excluirNota: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, marginTop: Spacing.base },
+  // Aviso da revogação do Sign in with Apple: informativo, não perigo — por isso
+  // superfície neutra, e não o vermelho do `perigoBanner` logo acima (que marca a
+  // ação irreversível). Ver `avisoApple` em ModalExcluirConta.
+  excluirAppleNota: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, padding: 12, marginTop: 10 },
+  excluirAppleTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
+  excluirAppleForte: { fontWeight: '700', color: c.onSurface },
   excluirCancelar: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
   excluirCancelarText: { fontSize: 14, fontWeight: '700', color: c.onSurfaceVariant },
   profileName: { fontSize: 18, fontWeight: '800', color: c.onSurface },

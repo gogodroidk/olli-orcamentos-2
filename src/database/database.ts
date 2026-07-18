@@ -1606,8 +1606,10 @@ async function maiorSequenciaDocumento(tabela: TabelaNumerada): Promise<number> 
  *
  * O QUE ISTO **NÃO** RESOLVE: dois aparelhos criando ao mesmo tempo, um deles sem
  * rede. Aí os dois leem o mesmo piso e emitem o mesmo número, e só o banco pode
- * arbitrar — ver `supabase/migrations/20260727_numero_unico_por_tenant.sql`
- * (UNIQUE + renumeração no push), que é passo humano.
+ * arbitrar — ver `supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente`
+ * (UNIQUE + renumeração no push), que é passo humano. A extensão `.pendente` é de
+ * propósito: o índice NÃO pode entrar antes de `mirrorPush` tratar o 23505 (o
+ * arquivo explica), e `.sql` puro seria aplicado por qualquer varredura.
  */
 async function proximoNaSequencia(chave: string, tabela: TabelaNumerada): Promise<number> {
   const db = await getDb();
