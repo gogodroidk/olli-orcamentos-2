@@ -40,6 +40,14 @@ sozinho). Toda a máquina de idempotência só começa a valer com ela aplicada.
 - [ ] Confirmar senha da keystore de upload no cofre (chave já existe: `CONFIG CLAUDE/olli-keystore/olli-upload.jks`).
 
 ## Infra / chaves
+- [ ] **SENTRY_AUTH_TOKEN** — sem ele o build de RELEASE do APK **falha** na task
+      `createBundleReleaseJsAndAssets_SentryUpload` (`@sentry/react-native/sentry.gradle:132`).
+      Contorno usado no build de 18/07: `SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew assembleRelease`
+      — funciona, mas aí o Sentry mostra stack trace **minificado** (linha `index.hbc:1:9553539`),
+      que é quase inútil pra depurar crash de usuário. Com o token, o source map sobe e o stack
+      vira legível. Vale os 2 minutos de configurar.
+      ⚠️ Quando esse build falha, o gradle **deixa o APK antigo na pasta** — conferir a data antes
+      de publicar, senão sobe binário velho na loja.
 - [ ] **Chave PostHog** (projeto não criado) — feature codada e desligada até a chave existir.
 - [ ] **Chave Resend + verificar domínio** `mail.olliorcamentos.online` — sem isso o e-mail de convite falha calado (best-effort).
 - [ ] **TOTP/MFA na conta ADMIN_EMAIL** (Supabase Auth) — enforcement aal2 é poucas linhas quando o fator existir.
