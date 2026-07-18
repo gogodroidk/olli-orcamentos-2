@@ -27,6 +27,7 @@ import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLi
 import { criarOSDeOrcamento } from '../services/ordemServico';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
+import { track, Eventos } from '../services/analytics';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 
@@ -227,6 +228,7 @@ export default function VisualizarOrcamentoScreen() {
     const acabouDeAprovar = s === 'aprovado' && statusAnteriorRef.current !== 'aprovado';
     if (acabouDeAprovar) {
       setCelebrando(true);
+      track(Eventos.quoteApproved, { valorTotal: updated.valorTotal });
     }
     ofertarOSRef.current = acabouDeAprovar;
     statusAnteriorRef.current = s;

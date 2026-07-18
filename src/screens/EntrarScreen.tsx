@@ -29,6 +29,7 @@ import {
 import { getEmpresa, saveEmpresa } from '../database/database';
 import { ONBOARDED_KEY } from './OnboardingScreen';
 import { marcarVisto } from '../services/onboarding';
+import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
@@ -197,6 +198,10 @@ export default function EntrarScreen() {
     try {
       if (modo === 'signup') {
         const data = await signUp(emailLimpo, senha, nome.trim(), telefone);
+        // Cadastro concluído no Supabase (não lançou) — conta com sessão
+        // imediata OU pendente de confirmação de e-mail, tanto faz: o
+        // funil signup→orçamento começa aqui.
+        track(Eventos.signup);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         if (data.session) {
           await semearTelefoneEmpresa(telNormalizado);

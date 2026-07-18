@@ -187,11 +187,16 @@ function AppConteudo() {
     });
   }, []);
 
-  // Toque na notificação (lembrete de PMOC ou de agenda) leva o usuário à ÁREA certa.
-  // Sem isto o payload (ordemId/agendamentoId) era CÓDIGO MORTO — tocar abria o app
-  // em qualquer tela (achado da re-auditoria). As rotas OrdemServico/Agenda não recebem
-  // id (ver RootStackParamList), então navegamos para a TELA/ABA relevante; abrir o item
-  // específico exigiria um param novo nessas rotas (follow-up). Nunca derruba o app.
+  // Toque na notificação (lembrete de PMOC, de agenda ou do Ritual diário) leva o
+  // usuário à ÁREA certa. Sem isto o payload (ordemId/agendamentoId) era CÓDIGO
+  // MORTO — tocar abria o app em qualquer tela (achado da re-auditoria). As rotas
+  // OrdemServico/Agenda não recebem id (ver RootStackParamList), então navegamos
+  // para a TELA/ABA relevante; abrir o item específico exigiria um param novo
+  // nessas rotas (follow-up). Nunca derruba o app.
+  //
+  // Ritual diário (services/ritualDiario.ts): "Bom dia da OLLI" leva pro hero da
+  // Home (o "nunca-vazio" que já traz a ação de 1 toque pronta); "Fechar o dia"
+  // leva direto pro RelatorioDia (onde mora o TTS/prévia que a notificação prometeu).
   //
   // APP FRIO: quando o toque abre o app do zero (estava morto), este efeito monta e
   // `getLastNotificationResponseAsync` resolve ANTES do NavigationContainer existir
@@ -200,20 +205,24 @@ function AppConteudo() {
   // deep link morria justo no caso mais comum (app fechado, lembrete tocado). O ref
   // abaixo guarda o payload pendente; o `onReady` do NavigationContainer (mais abaixo)
   // o consome assim que a navegação realmente existir.
-  const notificacaoPendenteRef = useRef<{ ordemId?: string; agendamentoId?: string } | null>(null);
+  type NotificacaoPendente = { ordemId?: string; agendamentoId?: string; ritual?: 'bomDia' | 'fecharDia' };
+  const notificacaoPendenteRef = useRef<NotificacaoPendente | null>(null);
   useEffect(() => {
     function tratar(resposta: Notifications.NotificationResponse | null) {
       if (!resposta) return;
       try {
-        const data = resposta.notification.request.content.data as { ordemId?: string; agendamentoId?: string };
-        if (!data?.ordemId && !data?.agendamentoId) return;
+        const data = resposta.notification.request.content.data as NotificacaoPendente;
+        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual) return;
         if (!navigationRef.isReady()) {
           notificacaoPendenteRef.current = data;
           return;
         }
-        // `as never`: navigate com nome de rota dinâmico não casa os overloads do ref.
+        // `as never`/`as any`: navigate com nome de rota dinâmico (e, no caso de
+        // 'Tabs', com params de rota aninhada) não casa os overloads do ref.
         if (data.ordemId) navigationRef.navigate('OrdemServico' as never);
-        else navigationRef.navigate('Agenda' as never);
+        else if (data.agendamentoId) navigationRef.navigate('Agenda' as never);
+        else if (data.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
+        else (navigationRef.navigate as any)('Tabs', { screen: 'Home' });
       } catch { /* best-effort: nunca derruba o app */ }
     }
     const sub = Notifications.addNotificationResponseReceivedListener(tratar);
@@ -381,6 +390,8 @@ function AppConteudo() {
                     notificacaoPendenteRef.current = null;
                     if (pendente.ordemId) navigationRef.navigate('OrdemServico' as never);
                     else if (pendente.agendamentoId) navigationRef.navigate('Agenda' as never);
+                    else if (pendente.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
+                    else if (pendente.ritual === 'bomDia') (navigationRef.navigate as any)('Tabs', { screen: 'Home' });
                   }
                 }}
               >

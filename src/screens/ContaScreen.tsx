@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -28,8 +28,11 @@ import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
-import { cancelarTodosLembretes } from '../services/agenda';
+import { cancelarTodosLembretes, temPermissaoNotificacao, pedirPermissaoNotificacao } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
+import {
+  cancelarRitualDiario, reagendarRitualDiario, getPreferenciasRitual, setPreferenciaRitual,
+} from '../services/ritualDiario';
 
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../services/supabase';
 import {
@@ -193,6 +196,12 @@ export default function ContaScreen() {
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   // Toggle "Mostrar dicas contextuais" (onboarding.ts) — carregado no foco.
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
+  // Preferências do Ritual diário ("Bom dia da OLLI" / "Fechar o dia") — 3
+  // canais independentes (services/ritualDiario.ts). Defaults do produto: os
+  // 2 avisos ligados, domingo mudo — refletidos aqui só até o load() real chegar.
+  const [ritualBomDia, setRitualBomDia] = useState(true);
+  const [ritualFecharDia, setRitualFecharDia] = useState(true);
+  const [ritualDomingo, setRitualDomingo] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
@@ -220,6 +229,12 @@ export default function ContaScreen() {
       } catch { /* best-effort: mantém o default (ativo) */ }
       // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
       setAjudaAtiva(await estaAtiva());
+      // Preferências do Ritual diário (getPreferenciasRitual nunca lança — cai
+      // nos defaults do produto se a leitura falhar).
+      const ritual = await getPreferenciasRitual();
+      setRitualBomDia(ritual.bomDia);
+      setRitualFecharDia(ritual.fecharDia);
+      setRitualDomingo(ritual.domingo);
       if (configured) {
         const u = await getCurrentUser();
         if (u) {
@@ -290,6 +305,33 @@ export default function ContaScreen() {
     // ligar/desligarAjuda são best-effort e nunca lançam (persistem em AsyncStorage).
     if (v) await ligarAjuda();
     else await desligarAjuda();
+  }
+
+  /**
+   * Liga/desliga um canal do Ritual diário (Bom dia / Fechar o dia / domingo).
+   * Otimista, com reversão em falha (mesmo padrão de `handleToggleAutoBackup`).
+   * Ligar um canal de NOTIFICAÇÃO (bomDia/fecharDia) sem permissão concedida
+   * ainda pede o prompt do sistema aqui — é o MESMO par `temPermissaoNotificacao`
+   * /`pedirPermissaoNotificacao` que a Agenda usa (services/agenda.ts), só sem a
+   * caixa de explicação amigável dela: o próprio rótulo do switch já explica o
+   * que está sendo ligado, e o toque no switch já É o pedido explícito do
+   * usuário. Depois de salvar, reagenda o ritual pra respeitar o toggle na hora
+   * — sem esperar o próximo boot/sync.
+   */
+  async function handleToggleRitual(canal: 'bomDia' | 'fecharDia' | 'domingo', v: boolean) {
+    Haptics.selectionAsync().catch(() => {});
+    const setters = { bomDia: setRitualBomDia, fecharDia: setRitualFecharDia, domingo: setRitualDomingo };
+    setters[canal](v);
+    try {
+      await setPreferenciaRitual(canal, v);
+      if (v && canal !== 'domingo' && Platform.OS !== 'web' && !(await temPermissaoNotificacao())) {
+        await pedirPermissaoNotificacao();
+      }
+      void reagendarRitualDiario().catch(() => {});
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
+      setters[canal](!v);
+    }
   }
 
   /** "Rever apresentação e dicas": religa a ajuda, esquece dicas vistas e refaz o onboarding. */
@@ -397,6 +439,7 @@ export default function ContaScreen() {
               // ou outra) reagenda os seus via resincronizarLembretes* no sync.
               await cancelarTodosLembretes().catch(() => {});
               await cancelarTodosLembretesPmoc().catch(() => {});
+              await cancelarRitualDiario().catch(() => {});
               // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
               // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
               // competir com ele (corrida de navegação).
@@ -924,6 +967,64 @@ export default function ContaScreen() {
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             </OlliPressable>
+          </View>
+        </AnimatedEntrance>
+
+        {/* NOTIFICAÇÕES — Ritual diário (services/ritualDiario.ts): "Bom dia da
+            OLLI" (~7h, só com sinal real) e "Fechar o dia" (~18h, só com
+            movimento no dia), com domingo mudo por padrão. Cada canal é
+            independente e o ritual respeita os 3 na hora (handleToggleRitual
+            reagenda depois de salvar — sem esperar o próximo boot/sync). */}
+        <AnimatedEntrance index={5}>
+          <Text style={styles.sectionTitle}>Notificações</Text>
+          <View style={styles.toolsCard}>
+            <View style={[styles.toolRow, styles.toolDivider]}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.accent + '1E', borderColor: cores.accent + '3A' }]}>
+                <MaterialCommunityIcons name="weather-sunset-up" size={20} color={cores.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Bom dia da OLLI</Text>
+                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente sumido)</Text>
+              </View>
+              <Switch
+                value={ritualBomDia}
+                onValueChange={(v) => handleToggleRitual('bomDia', v)}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ritualBomDia ? cores.primary : '#fff'}
+              />
+            </View>
+
+            <View style={[styles.toolRow, styles.toolDivider]}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
+                <MaterialCommunityIcons name="weather-night" size={20} color={cores.primaryLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Fechar o dia</Text>
+                <Text style={styles.toolDesc}>~18h, só nos dias com movimento — prévia do relatório falado</Text>
+              </View>
+              <Switch
+                value={ritualFecharDia}
+                onValueChange={(v) => handleToggleRitual('fecharDia', v)}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ritualFecharDia ? cores.primary : '#fff'}
+              />
+            </View>
+
+            <View style={styles.toolRow}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
+                <MaterialCommunityIcons name="calendar-remove-outline" size={20} color={cores.onSurfaceVariant} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Notificar aos domingos</Text>
+                <Text style={styles.toolDesc}>Desligado por padrão — domingo é dia mudo</Text>
+              </View>
+              <Switch
+                value={ritualDomingo}
+                onValueChange={(v) => handleToggleRitual('domingo', v)}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ritualDomingo ? cores.primary : '#fff'}
+              />
+            </View>
           </View>
         </AnimatedEntrance>
 

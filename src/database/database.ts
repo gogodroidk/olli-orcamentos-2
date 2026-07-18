@@ -8,6 +8,7 @@ import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem,
 import { restaurePodeTocarNaNuvem } from '../services/contextoEquipe';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
+import { cancelarRitualDiario } from '../services/ritualDiario';
 import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
 import {
   DB_LEGADO,
@@ -2518,10 +2519,10 @@ export async function clearAllLocalData(): Promise<void> {
       await database.runAsync(`DELETE FROM ${tabela}`);
     }
   });
-  // 2) Notificações agendadas — cancela os lembretes de agenda E de vencimento
-  // PMOC da conta anterior ANTES de apagar os mapas que permitem cancelá-los,
-  // senão continuariam disparando no aparelho (com nome/endereço do cliente)
-  // após a troca de conta. Best-effort.
+  // 2) Notificações agendadas — cancela os lembretes de agenda, de vencimento
+  // PMOC e do ritual diário ("Bom dia"/"Fechar o dia") da conta anterior ANTES
+  // de apagar os mapas que permitem cancelá-los, senão continuariam disparando
+  // no aparelho (com nome/endereço/dado do cliente) após a troca de conta. Best-effort.
   try {
     await cancelarTodosLembretes();
   } catch {
@@ -2529,6 +2530,11 @@ export async function clearAllLocalData(): Promise<void> {
   }
   try {
     await cancelarTodosLembretesPmoc();
+  } catch {
+    // não bloqueia o logout
+  }
+  try {
+    await cancelarRitualDiario();
   } catch {
     // não bloqueia o logout
   }

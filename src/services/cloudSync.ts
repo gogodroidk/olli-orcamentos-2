@@ -2163,6 +2163,16 @@ export async function syncOnLogin(): Promise<void> {
     void import('./pmoc')
       .then(m => m.resincronizarLembretesPmoc())
       .catch(() => {});
+    // Ritual diário ("Bom dia da OLLI" / "Fechar o dia") — reagendado aqui pelo
+    // MESMO motivo dos dois acima: é o ponto onde o app já "abriu com sessão
+    // válida e recalculou" (boot com sessão dispara INITIAL_SESSION → aqui; todo
+    // sync seguinte também). Sem TaskManager/BackgroundFetch neste app, este é o
+    // único lugar seguro (partição já resolvida) para o reagendamento automático
+    // — ver services/ritualDiario.ts. Import tardio pelo mesmo motivo de ciclo de
+    // carga; fire-and-forget, nunca lança.
+    void import('./ritualDiario')
+      .then(m => m.reagendarRitualDiario())
+      .catch(() => {});
     // Sinaliza que a nuvem já foi baixada para o SQLite: as telas que se
     // inscreveram refazem o fetch e o estado "vazio" inicial some sozinho.
     notificarSyncAplicado();

@@ -52,6 +52,17 @@ export const AUTO_BACKUP_ULTIMO_KEY = 'olli.autoBackup.ultimo';
  * herdaria os adiamentos de outra pessoa.
  */
 export const RADAR_SNOOZE_KEY = 'olli.radar.snooze';
+/** Mapa canal('bomDia'/'fecharDia')→notificação agendada do Ritual diário (services/ritualDiario). */
+export const RITUAL_NOTIF_MAP_KEY = 'olli.ritual.notif';
+/** Toggle do canal "Bom dia da OLLI" (~7h, services/ritualDiario). Default ligado quando ausente. */
+export const RITUAL_BOM_DIA_TOGGLE_KEY = 'olli.ritual.bomDia.ativo';
+/** Toggle do canal "Fechar o dia" (~18h, services/ritualDiario). Default ligado quando ausente. */
+export const RITUAL_FECHAR_DIA_TOGGLE_KEY = 'olli.ritual.fecharDia.ativo';
+/**
+ * Toggle "notificar também aos domingos" do Ritual diário. Default DESLIGADO
+ * quando ausente (domingo mudo por padrão — docs/ENXAME/COMUNICACAO_VISAO.md).
+ */
+export const RITUAL_DOMINGO_TOGGLE_KEY = 'olli.ritual.domingo.ativo';
 
 /**
  * Carimbos ISO da ÚLTIMA escrita LOCAL de cada "extra" sincronizado
@@ -93,4 +104,8 @@ export const APP_DATA_STORAGE_KEYS = [
   CHECKLIST_STAMP_KEY,
   RADAR_SNOOZE_STAMP_KEY,
   EMPRESA_STAMP_KEY,
+  RITUAL_NOTIF_MAP_KEY,
+  RITUAL_BOM_DIA_TOGGLE_KEY,
+  RITUAL_FECHAR_DIA_TOGGLE_KEY,
+  RITUAL_DOMINGO_TOGGLE_KEY,
 ];

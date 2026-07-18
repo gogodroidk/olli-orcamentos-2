@@ -21,6 +21,7 @@ import { nowISO, todayISO } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { track, Eventos } from '../services/analytics';
 
 // Steps
 import Step1Cliente from '../steps/Step1Cliente';
@@ -309,6 +310,7 @@ export default function NovoOrcamentoScreen() {
       // festa) — o overlay dispara e a navegação real acontece no onDone dele,
       // pra dar tempo do usuário ver a animação antes de trocar de tela.
       if (!isEdit) {
+        track(Eventos.quoteCreated, { origem: 'manual', itens: toSave.itens.length });
         pendingNavRef.current = toSave.id;
         setCelebrando(true);
       } else {
@@ -326,6 +328,7 @@ export default function NovoOrcamentoScreen() {
     setSaving(true);
     try {
       await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
+      if (!isEdit) track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
         goBackOrHome(nav);
