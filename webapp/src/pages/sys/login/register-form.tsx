@@ -8,6 +8,7 @@ import { mapAuthErrorMessage } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
+import { EmailAutocompleteInput } from "./components/EmailAutocompleteInput";
 import { OAuthButtons } from "./components/OAuthButtons";
 import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
@@ -91,7 +92,7 @@ function RegisterForm() {
 					render={({ field }) => (
 						<FormItem>
 							<FormControl>
-								<Input type="email" autoComplete="email" placeholder={t("sys.login.email")} {...field} />
+								<EmailAutocompleteInput placeholder={t("sys.login.email")} {...field} />
 							</FormControl>
 							<FormMessage />
 						</FormItem>

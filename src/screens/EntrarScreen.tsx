@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sobreSecundario, type Cores } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
+import { SugestoesEmail } from '../components/SugestoesEmail';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { AuroraBackground } from '../components/AuroraBackground';
@@ -62,6 +63,11 @@ export default function EntrarScreen() {
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
   const [verSenha, setVerSenha] = useState(false);
+  // Controla a fileira de sugestões de provedor de e-mail (SugestoesEmail):
+  // some no blur com um pequeno atraso — sem o atraso, o toque na sugestão
+  // nunca chega a disparar porque o campo já perdeu o foco e o componente
+  // some antes do onPress.
+  const [emailFocado, setEmailFocado] = useState(false);
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [appleBusy, setAppleBusy] = useState(false);
@@ -297,7 +303,18 @@ export default function EntrarScreen() {
       {modo === 'signup' && (
         <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
       )}
-      <OlliInput label="E-mail" value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
+      <OlliInput
+        label="E-mail"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="voce@email.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        leftIcon="email"
+        onFocus={() => setEmailFocado(true)}
+        onBlur={() => setTimeout(() => setEmailFocado(false), 150)}
+      />
+      <SugestoesEmail email={email} focado={emailFocado} onSelecionar={setEmail} />
       {modo === 'signup' && (
         <OlliInput
           label="WhatsApp/Telefone"
