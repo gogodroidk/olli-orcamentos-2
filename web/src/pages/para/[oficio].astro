@@ -161,7 +161,7 @@ const schemaFaq = {
 	<Header>
 		<a
 			href={APP_CADASTRO_URL}
-			class="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+			class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
 			>Começar grátis</a
 		>
 	</Header>
@@ -184,12 +184,12 @@ const schemaFaq = {
 			<div class="mt-8 flex flex-col gap-3 sm:flex-row">
 				<a
 					href={APP_CADASTRO_URL}
-					class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+					class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
 					>Criar meu primeiro orçamento — grátis</a
 				>
 				<a
 					href="/#planos"
-					class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
 					>Ver os planos</a
 				>
 			</div>
@@ -228,8 +228,8 @@ const schemaFaq = {
 
 					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
 						{calculos.map((c) => (
-							<li class="rounded-2xl border border-line bg-white p-6">
-								<div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-brand">
+							<li class="rounded-cartao border border-line bg-white p-6">
+								<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand">
 									<Icone nome={ICONE_POR_MDI[c.icon] ?? ""} class="h-5 w-5" />
 								</div>
 								<h3 class="mt-2.5 font-bold text-ink">{c.nome}</h3>
@@ -265,31 +265,31 @@ const schemaFaq = {
 					Do áudio do cliente ao dinheiro na conta.
 				</h2>
 				<ol class="mt-8 grid gap-4 sm:grid-cols-3">
-					<li class="rounded-2xl border border-line bg-white p-6">
+					<li class="rounded-cartao border border-line bg-white p-6">
 						<div class="text-sm font-extrabold text-brand tnum">01</div>
 						<h3 class="mt-2 font-bold text-ink">Orçamento</h3>
 						<p class="mt-1.5 text-sm text-slate">Fala o serviço, a OLLI monta o PDF e manda o link pro cliente aprovar.</p>
 					</li>
-					<li class="rounded-2xl border border-line bg-white p-6">
+					<li class="rounded-cartao border border-line bg-white p-6">
 						<div class="text-sm font-extrabold text-brand tnum">02</div>
 						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
 						<p class="mt-1.5 text-sm text-slate">Aprovou, virou OS: checklist, fotos e assinatura do cliente na tela.</p>
 					</li>
-					<li class="rounded-2xl border border-line bg-white p-6">
+					<li class="rounded-cartao border border-line bg-white p-6">
 						<div class="text-sm font-extrabold text-brand tnum">03</div>
 						<h3 class="mt-2 font-bold text-ink">Recibo</h3>
 						<p class="mt-1.5 text-sm text-slate">Recebeu, emite o recibo. O histórico do cliente fica guardado pra próxima.</p>
 					</li>
 				</ol>
 
-				<div class="mt-12 rounded-2xl border border-line bg-white p-8 text-center">
+				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
 					<p class="text-lg font-semibold text-ink">Comece de graça, sem cartão.</p>
 					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
 						O plano Grátis faz orçamento, OS, cliente e agenda sem limite — e não tem prazo pra acabar.
 					</p>
 					<a
 						href={APP_CADASTRO_URL}
-						class="mt-6 inline-block rounded-xl bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+						class="mt-6 inline-block rounded-acao bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
 						>Criar meu primeiro orçamento</a
 					>
 				</div>
@@ -301,7 +301,9 @@ const schemaFaq = {
 			<h2 class="text-[clamp(1.7rem,3.5vw,2.4rem)] font-extrabold tracking-tight text-ink">
 				Perguntas de quem é {profissao}
 			</h2>
-			<div class="mt-8 divide-y divide-line rounded-2xl border border-line bg-white">
+			{/* Mesma caixa-que-agrupa do FAQ da home, mesmo `overflow-hidden` pelo
+			    mesmo motivo (raio aninhado com <details> sem padding lateral). */}
+			<div class="mt-8 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-white">
 				{faqs.map((f) => (
 					<details class="group">
 						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">

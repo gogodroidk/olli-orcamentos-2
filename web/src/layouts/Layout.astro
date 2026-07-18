@@ -1,4 +1,9 @@
 ---
+import {
+	EMPRESA,
+	emailContatoPublicavel,
+	identidadePublicavel,
+} from "../data/empresa";
 import "../styles/global.css";
 
 interface Props {
@@ -41,6 +46,16 @@ const canonical = new URL(
  */
 const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
 
+/**
+ * IDENTIDADE JURÍDICA no schema — só entra quando EXISTE (ver data/empresa.ts).
+ *
+ * `identidadePublicavel()` devolve null enquanto o dono não preencher razão
+ * social, CNPJ e endereço. Espalhar `taxID: "PREENCHER"` pelo JSON-LD seria pior
+ * que não ter: o Google leria dado inválido e o cético leria mentira.
+ */
+const empresa = identidadePublicavel();
+const emailContato = emailContatoPublicavel();
+
 const schemaOrganizacao = {
 	"@context": "https://schema.org",
 	"@type": "Organization",
@@ -50,9 +65,40 @@ const schemaOrganizacao = {
 	"@id": `${ORIGEM}#organizacao`,
 	name: "OLLI",
 	url: ORIGEM,
-	logo: new URL("/og-image.png", ORIGEM).href,
+	// LOGO ≠ BANNER. Isto apontava para /og-image.png, que é o banner 1200×630 do
+	// Open Graph (239 KB, proporção 1,9:1). O Google exige logo rastreável e
+	// QUADRADO, ≥112×112 — um banner é recortado ou simplesmente descartado, e o
+	// resultado é a marca não aparecer no Knowledge Panel. O ícone de 512×512 já
+	// existe em /public e é quadrado.
+	logo: new URL("/icon-512.png", ORIGEM).href,
 	description: "Sistema de campo para prestadores de serviço no Brasil: orçamento, ordem de serviço e recibo.",
 	areaServed: { "@type": "Country", name: "Brasil" },
+	// DELIBERADAMENTE `Organization` E NÃO `LocalBusiness`: LocalBusiness descreve
+	// negócio com ponto físico onde o cliente comparece, e puxa expectativa de
+	// horário de funcionamento e avaliação local. A OLLI é SaaS nacional — o
+	// cliente nunca vai ao endereço. Seria schema mentindo sobre o conteúdo.
+	...(empresa
+		? {
+				legalName: empresa.razaoSocial,
+				taxID: empresa.cnpj,
+				address: {
+					"@type": "PostalAddress",
+					streetAddress: empresa.endereco.logradouro,
+					addressLocality: empresa.endereco.cidade,
+					addressRegion: empresa.endereco.uf,
+					postalCode: empresa.endereco.cep,
+					addressCountry: empresa.endereco.pais,
+				},
+			}
+		: {}),
+	...(emailContato ? { email: emailContato } : {}),
+	contactPoint: {
+		"@type": "ContactPoint",
+		contactType: "customer support",
+		telephone: `+${EMPRESA.whatsapp}`,
+		availableLanguage: "Portuguese",
+		areaServed: "BR",
+	},
 };
 
 const schemaApp = {

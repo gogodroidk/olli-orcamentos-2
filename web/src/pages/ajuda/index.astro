@@ -54,7 +54,7 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
 
           <div class="mt-6 space-y-5">
             {cat.artigos.map((artigo) => (
-              <article class="rounded-2xl border border-line bg-white p-6 sm:p-7">
+              <article class="rounded-cartao border border-line bg-white p-6 sm:p-7">
                 <h3 class="text-lg font-bold text-ink">{artigo.titulo}</h3>
                 <p class="mt-1.5 text-sm leading-relaxed text-muted">{artigo.resumo}</p>
 
@@ -79,7 +79,7 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
                       )}
 
                       {bloco.tipo === 'aviso' && (
-                        <div class="flex gap-3 rounded-xl border border-line bg-tint px-4 py-3">
+                        <div class="flex gap-3 rounded-acao border border-line bg-tint px-4 py-3">
                           <span class="shrink-0 text-check" aria-hidden="true">✓</span>
                           <p class="text-sm leading-relaxed text-slate">{bloco.conteudo}</p>
                         </div>

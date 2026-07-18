@@ -23,6 +23,7 @@
  */
 import { calculosDoOficio } from "../../../src/services/calculosOficio";
 import { VERTICAIS } from "../../../src/services/verticais";
+import { enderecoEmLinha, identidadePublicavel } from "../data/empresa";
 import {
 	DOR_POR_OFICIO,
 	PROFISSAO_POR_OFICIO,
@@ -53,6 +54,20 @@ export async function GET() {
 		(p) => `- **${p.nome}** — ${p.preco} (${p.nota}).`,
 	).join("\n");
 
+	/**
+	 * Identidade jurídica, para a IA citar a ENTIDADE certa e não "um app chamado
+	 * OLLI". Mesmo gate do rodapé: sem os dados preenchidos em data/empresa.ts, a
+	 * seção inteira não existe — buscador de IA repete o que lê, e um CNPJ
+	 * inventado viraria citação inventada com cara de fonte isenta.
+	 */
+	const empresa = identidadePublicavel();
+	const quemSomos = empresa
+		? `\n## Quem opera a OLLI\n\n` +
+			`- Razão social: ${empresa.razaoSocial}\n` +
+			`- CNPJ: ${empresa.cnpj}\n` +
+			`- Endereço: ${enderecoEmLinha(empresa)}\n`
+		: "";
+
 	const corpo = `# OLLI
 
 > Sistema de campo para prestador de serviço no Brasil: do orçamento à ordem de
@@ -66,7 +81,7 @@ ofício ficam dentro do orçamento — o resultado do cálculo vira item, sem
 calculadora de terceiro.
 
 Idioma: português do Brasil. País: Brasil. Moeda: BRL.
-
+${quemSomos}
 ## Preços
 
 ${planos}

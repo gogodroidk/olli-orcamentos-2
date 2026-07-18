@@ -223,8 +223,20 @@ const schemaFaq = {
 };
 ---
 
-<Layout schemas={[schemaFaq]}>
-  <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
+{/*
+  TÍTULO DA HOME — a home era a ÚNICA rota do site que não passava `titulo`, e por
+  isso caía no default do Layout ("OLLI — do orçamento ao recibo, sem planilha"):
+  46 caracteres, bonito, e com ZERO palavra que alguém digita no Google. As outras
+  5 rotas já passavam o próprio. Quem busca este produto busca "app de orçamento",
+  "ordem de serviço" e "para prestador" — as três estão aqui, na ordem em que são
+  buscadas, e a marca fica no fim porque ninguém procura por ela ainda.
+*/}
+<Layout
+  titulo="App de Orçamento e Ordem de Serviço para Prestador | OLLI"
+  descricao="Monte o orçamento no celular, o cliente aprova por link e a ordem de serviço e o recibo saem do mesmo lugar. Com as calculadoras do seu ofício dentro do orçamento. Grátis para começar, sem cartão."
+  schemas={[schemaFaq]}
+>
+  <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-campo focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
 
   <!-- ══════════ NAV ══════════ -->
   <Header>
@@ -234,8 +246,8 @@ const schemaFaq = {
       <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
       <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
     </div>
-    <a href={APP_URL} class="rounded-lg px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-    <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+    <a href={APP_URL} class="rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+    <a href={APP_CADASTRO_URL} class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
   </Header>
 
   <main id="conteudo">
@@ -265,10 +277,10 @@ const schemaFaq = {
           Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-          <a href={APP_CADASTRO_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
+          <a href={APP_CADASTRO_URL} class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
             Criar meu primeiro orçamento — grátis
           </a>
-          <a href="#como" class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
+          <a href="#como" class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
             Ver como funciona
           </a>
         </div>
@@ -292,7 +304,20 @@ const schemaFaq = {
       </div>
 
       <div class="min-w-0 lg:pl-6">
-        <HeroDevices client:load />
+        {/*
+          client:media, NÃO client:load. O componente é `aria-hidden="true"` (é
+          decoração) e a ÚNICA coisa nele que precisa de JS é o parallax de MOUSE.
+          Com `client:load` o celular do prestador baixava, parseava e executava
+          react-dom + motion + o componente — 104,5 KB gzip — para alimentar um
+          efeito de mouse num aparelho que não tem mouse.
+
+          O HTML da ilha é gerado no build (SSG) e vai igual para todo mundo: o
+          hero APARECE em qualquer aparelho. O que muda é só quem paga o JS.
+          Pré-requisito disto: HeroDevices não pode ter estado inicial invisível —
+          ver o comentário em HeroDevices.tsx, é o que impede o hero de sumir no
+          celular.
+        */}
+        <HeroDevices client:media="(hover: hover) and (pointer: fine)" />
       </div>
     </div>
   </section>
@@ -349,7 +374,7 @@ const schemaFaq = {
       {OFICIOS.map((o) => (
         <a
           href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-          class="group rounded-2xl border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
+          class="group rounded-cartao border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
         >
           <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-8 w-8" />
           <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand">{o.label}</h3>
@@ -357,7 +382,7 @@ const schemaFaq = {
           <span class="mt-3 inline-block text-sm font-semibold text-brand">Ver o app pra {o.label.toLowerCase()} →</span>
         </a>
       ))}
-      <div class="rounded-2xl border border-dashed border-line bg-paper p-6">
+      <div class="rounded-cartao border border-dashed border-line bg-paper p-6">
         <Icone nome={ICONE_POR_OFICIO[OFICIO_GERAL.id]} class="h-8 w-8" />
         <h3 class="mt-3 text-lg font-bold text-ink">{OFICIO_GERAL.label}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-slate">{OFICIO_GERAL.tagline}</p>
@@ -378,7 +403,7 @@ const schemaFaq = {
     </div>
     <div class="mt-14 grid gap-6 md:grid-cols-3">
       {passos.map((p) => (
-        <div class="relative rounded-2xl border border-line bg-white p-7">
+        <div class="relative rounded-cartao border border-line bg-white p-7">
           <div class="text-sm font-extrabold text-brand tnum">{p.n}</div>
           <h3 class="mt-3 text-xl font-bold text-ink">{p.titulo}</h3>
           <p class="mt-2 text-slate">{p.texto}</p>
@@ -396,8 +421,8 @@ const schemaFaq = {
       </div>
       <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {recursos.map((r) => (
-          <div class="rounded-2xl border border-line bg-white p-6 transition">
-            <div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-brand">
+          <div class="rounded-cartao border border-line bg-white p-6 transition">
+            <div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand">
               <Icone nome={r.icon} class="h-5 w-5" />
             </div>
             <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
@@ -410,7 +435,7 @@ const schemaFaq = {
 
   <!-- ══════════ DESTAQUE IA ══════════ -->
   <section class="mx-auto max-w-7xl px-6 py-24">
-    <div class="overflow-hidden rounded-3xl bg-brand-ink text-white">
+    <div class="overflow-hidden rounded-bloco bg-brand-ink text-white">
       <div class="grid items-center gap-10 p-10 md:grid-cols-2 md:p-14">
         <div>
           <span class="eyebrow !text-cyan">IA de diagnóstico</span>
@@ -419,7 +444,7 @@ const schemaFaq = {
             Descreva o sintoma ou informe o código de erro: a OLLI aponta o provável componente, a faixa da peça e um grau de confiança. São <strong class="text-white">698 códigos de erro</strong> de climatização e diagnóstico por sintoma — pra você chegar com a peça certa.
           </p>
         </div>
-        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+        <div class="rounded-cartao bg-white/5 p-6 ring-1 ring-white/10">
           <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Diagnóstico</div>
           <p class="mt-3 text-sm text-white/80">Provável: <strong class="text-cyan">capacitor do compressor</strong> <span class="tnum">— 45/5 µF</span></p>
           <div class="mt-3 flex items-center gap-3">
@@ -440,7 +465,7 @@ const schemaFaq = {
        OLLI nasceu dentro de uma empresa de campo de verdade. Sem foto ainda — o texto
        se sustenta sozinho; o slot está pronto pra foto real do Igor/equipe entrar. -->
   <section class="mx-auto max-w-5xl px-6 py-20">
-    <div class="rounded-3xl border border-line bg-white p-8 sm:p-12">
+    <div class="rounded-bloco border border-line bg-white p-8 sm:p-12">
       <span class="eyebrow">Quem faz a OLLI</span>
       <h2 class="mt-4 max-w-2xl text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">
         Feita por quem vive de campo.
@@ -470,7 +495,7 @@ const schemaFaq = {
       </div>
       <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
         {planos.map((p) => (
-          <div class={`flex h-full flex-col rounded-2xl border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
+          <div class={`flex h-full flex-col rounded-cartao border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
             {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-tint px-3 py-1 text-xs font-bold text-brand">Recomendado</span>}
             <h3 class="text-lg font-bold text-ink">{p.nome}</h3>
             <p class="mt-1 text-sm text-muted">{p.desc}</p>
@@ -487,7 +512,7 @@ const schemaFaq = {
               href={p.href}
               target={p.href === WHATSAPP_URL ? '_blank' : undefined}
               rel={p.href === WHATSAPP_URL ? 'noopener' : undefined}
-              class={`mt-7 block rounded-xl px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}
+              class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}
             >{p.cta}</a>
           </div>
         ))}
@@ -502,7 +527,15 @@ const schemaFaq = {
       <span class="eyebrow">Perguntas</span>
       <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Ainda na dúvida?</h2>
     </div>
-    <div class="mt-12 divide-y divide-line rounded-2xl border border-line bg-white">
+    {/* `caixa` (28) e não `cartao` (20): esta superfície AGRUPA linhas, e precisa
+        ser visivelmente maior que o cartão que ela contém — senão a hierarquia
+        some (era o defeito antigo: cartão e caixa eram os dois 16px).
+
+        `overflow-hidden` NÃO é decoração: os <details> não têm padding lateral,
+        então o primeiro e o último item ENCOSTAM na borda arredondada e o fundo
+        do <summary> no :hover vazava pelo canto. Já era bug latente com 16px;
+        a 28px ficaria visível. É a regra do raio aninhado. */}
+    <div class="mt-12 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-white">
       {faq.map((f) => (
         <details class="group">
           <summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
@@ -517,10 +550,10 @@ const schemaFaq = {
 
   <!-- ══════════ CTA FINAL ══════════ -->
   <section class="mx-auto max-w-7xl px-6 pb-24">
-    <div class="relative overflow-hidden rounded-3xl px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
+    <div class="relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
       <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
       <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
-      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
+      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-acao bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
     </div>
   </section>
   </main>

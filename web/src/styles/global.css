@@ -36,6 +36,38 @@
   /* Tipografia */
   --font-sans: "Rubik Variable", ui-sans-serif, system-ui, sans-serif;
 
+  /* ─────────────────────────────────────────────────────────────────────────
+     RAIO — escala semântica de 6 degraus ("tudo redondinho", com hierarquia).
+
+     ESCALA, não valor único: arredondar tudo no mesmo raio ACHATA a hierarquia
+     — era o estado anterior, onde cartão e caixa-que-agrupa-cartões eram os dois
+     16px e ficavam indistinguíveis. Aqui cada degrau se separa do anterior.
+
+     O nome é semântico (cartao/caixa/bloco) e não sm/md/lg de propósito: quem lê
+     `rounded-bloco` num cartãozinho sabe na hora que errou. No Tailwind 4 o
+     namespace --radius-* gera a utilitária sozinho (--radius-cartao → rounded-cartao).
+
+     TETO: 36px, e SÓ em superfície com ≥320px no lado menor.
+     O que faz parecer brinquedo não é o raio absoluto, é a RAZÃO raio/lado-menor:
+     acima de ~20% a forma lê como adesivo. Conferindo os elementos reais desta
+     página: bloco de 400px com 36 = 9%; bloco de ~260px com 36 = 14% (limite);
+     cartão de ~180px com 20 = 11%. Nunca use `bloco` num cartão — é exatamente
+     ali que vira desenho animado.
+
+     E há um somatório a respeitar: a fonte é Rubik, que JÁ tem cantos de haste
+     arredondados. Fonte redonda + raio alto somam. Por isso a escala é contida:
+     subir os dois no talo ao mesmo tempo é o caminho mais curto para o
+     "infantil" que o produto não pode ter — ele fala com um profissional que
+     precisa parecer sério para o cliente DELE.
+     ───────────────────────────────────────────────────────────────────────── */
+  --radius-fio: 4px;      /* barras/trilhos de 4–8px de altura */
+  --radius-campo: 12px;   /* input, select, botão pequeno (~40px), badge retangular */
+  --radius-acao: 16px;    /* botão de ação (~44–52px), chip de ícone 44×44 */
+  --radius-cartao: 20px;  /* cartão de conteúdo */
+  --radius-caixa: 28px;   /* superfície que AGRUPA cartões/linhas (FAQ, tabela) */
+  --radius-bloco: 36px;   /* bloco-seção de largura total. TETO. */
+  /* pílula = rounded-full, já existe no Tailwind */
+
   /* Movimento */
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
 }

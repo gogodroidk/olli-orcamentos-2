@@ -83,12 +83,19 @@ export default function HeroDevices() {
 				    Discord" e números falsos em dólar. Estávamos anunciando o produto com
 				    a tela de outro produto. Em código a tela é sempre a nossa, fica nítida
 				    em qualquer resolução e não custa 200KB de imagem. */}
+				{/* ⚠️ SEM `initial`/`animate` DE ENTRADA — E ISTO É P0, NÃO ESTÉTICA.
+				    A ilha agora hidrata com `client:media` (só onde há mouse), mas o HTML
+				    dela é gerado UMA vez no build e servido igual para todo mundo. Com
+				    `initial={{opacity:0}}`, o Astro assava `opacity:0` no HTML estático —
+				    e no CELULAR, onde a ilha nunca hidrata, NADA voltaria a opacidade
+				    para 1. O hero inteiro ficaria invisível, para sempre, em todo
+				    aparelho sem mouse. Medido no dist/, não deduzido.
+				    A pose final virou a pose ESTÁTICA: o hero nasce visível e correto
+				    mesmo sem uma linha de JS. O que continua exigindo JS é só o parallax
+				    de mouse — que é exatamente o que o `client:media` está comprando. */}
 				<motion.div
 					className="relative z-10 ml-auto hidden w-[93%] sm:block"
-					style={{ transformStyle: "preserve-3d" }}
-					initial={reduce ? false : { opacity: 0, y: 48, rotateY: 20 }}
-					animate={{ opacity: 1, y: 0, rotateY: -12 }}
-					transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
+					style={{ transformStyle: "preserve-3d", rotateY: -12 }}
 				>
 					<div className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_40px_80px_-20px_rgba(10,37,71,.35)] ring-1 ring-black/5">
 						<div className="flex items-center gap-1.5 border-b border-line bg-paper px-3 py-2.5">
@@ -105,11 +112,11 @@ export default function HeroDevices() {
 
 				{/* PHONE — protagonista: smartphone premium com o app OLLI. */}
 				<div className="relative z-30 mx-auto w-56 sm:absolute sm:-bottom-6 sm:left-[-2.25rem] sm:mx-0 sm:w-60 lg:-bottom-12 lg:w-[16.5rem]">
+					{/* Mesma razão do bloco acima: pose final estática, senão o telefone
+					    — que no celular é o ÚNICO aparelho visível (o browser é
+					    `hidden sm:block`) — sumiria da tela de quem não tem mouse. */}
 					<motion.div
-						style={{ transformStyle: "preserve-3d" }}
-						initial={reduce ? false : { opacity: 0, y: 72, rotateY: -22 }}
-						animate={{ opacity: 1, y: 0, rotateY: 9 }}
-						transition={{ duration: 1, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
+						style={{ transformStyle: "preserve-3d", rotateY: 9 }}
 					>
 						<PhoneFrame />
 					</motion.div>
