@@ -8,7 +8,7 @@ Hoje as 3 pontas parecem **produtos de empresas diferentes**, amarradas só pela
 
 | Eixo | Landing | Painel | App | Decisão |
 |---|---|---|---|---|
-| **Ícones** | emoji Unicode 🧾🛠️ | Solar duotone (menu) + lucide (conteúdo) | MDI outline | `[DONO]` escolher 1 família |
+| **Ícones** | ✅ **lucide SVG** (Wave 17, era emoji) | ✅ **lucide** (Onda 7 unificou o menu) | MDI outline | landing+painel JÁ casam (lucide); falta o app (MDI→lucide, follow-up) |
 | **Fontes** | Plus Jakarta + Spectral | Open Sans + Inter (nenhuma sobreposição) | Plus Jakarta + Spectral | `[DONO]` painel adota Jakarta+Spectral? |
 | **Raio botão** | 8/12px | 6px (rounded-md) | 24px (pílula) | `[DONO]` convergir escala |
 | **Dark mode** | — | preto/zinza + sombra preta | navy sem sombra (elevação por superfície) | `[DONO]` painel vira navy? |

@@ -2,8 +2,15 @@
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
+import Icone from "../components/Icone.astro";
 import Layout from "../layouts/Layout.astro";
-import { OFICIOS, OFICIO_GERAL, SLUG_POR_OFICIO, TOTAL_CALCULADORAS } from "../data/oficios";
+import {
+	ICONE_POR_OFICIO,
+	OFICIOS,
+	OFICIO_GERAL,
+	SLUG_POR_OFICIO,
+	TOTAL_CALCULADORAS,
+} from "../data/oficios";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -16,42 +23,42 @@ const WHATSAPP_URL = "https://wa.me/5511941727487";
 
 const recursos = [
 	{
-		icon: "🧾",
+		icon: "file-text",
 		titulo: "Orçamento em minutos",
 		texto:
 			"Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.",
 	},
 	{
-		icon: "🛠️",
+		icon: "clipboard-list",
 		titulo: "Ordem de serviço",
 		texto:
 			"Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.",
 	},
 	{
-		icon: "🧠",
+		icon: "brain",
 		titulo: "IA que entende o defeito",
 		texto:
 			"Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.",
 	},
 	{
-		icon: "❄️",
+		icon: "calendar-check",
 		titulo: "PMOC (Lei 13.589)",
 		texto:
 			"Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.",
 	},
 	{
-		icon: "📇",
+		icon: "users",
 		titulo: "Clientes e cobrança",
 		texto: "Cadastro, histórico e radar de quem sumiu ou está para cobrar.",
 	},
 	{
-		icon: "🧮",
+		icon: "calculator",
 		titulo: "Calculadoras de ofício",
 		texto:
 			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.",
 	},
 	{
-		icon: "📅",
+		icon: "calendar",
 		titulo: "Agenda e equipe",
 		// "e a equipe no mapa" saiu daqui: a captura de localização em background só
 		// liga na Onda 8 (ver o cabeçalho de src/screens/EquipeAoVivoScreen.tsx) e hoje
@@ -62,7 +69,7 @@ const recursos = [
 			"Agendamentos, técnicos com papéis e permissões, e o trabalho de todo mundo num lugar só.",
 	},
 	{
-		icon: "📄",
+		icon: "receipt",
 		titulo: "Recibo e PDF bonito",
 		texto:
 			"Recibo e documentos com a sua marca — do orçamento ao comprovante, sem planilha.",
@@ -269,7 +276,7 @@ const schemaFaq = {
               href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
               class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
             >
-              <span aria-hidden="true">{o.emoji}</span>{o.label}
+              <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
             </a>
           ))}
         </div>
@@ -340,14 +347,14 @@ const schemaFaq = {
           href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
           class="group rounded-2xl border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
         >
-          <div class="text-3xl" aria-hidden="true">{o.emoji}</div>
+          <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-8 w-8" />
           <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand">{o.label}</h3>
           <p class="mt-1.5 text-sm leading-relaxed text-slate">{o.tagline}</p>
           <span class="mt-3 inline-block text-sm font-semibold text-brand">Ver o app pra {o.label.toLowerCase()} →</span>
         </a>
       ))}
       <div class="rounded-2xl border border-dashed border-line bg-paper p-6">
-        <div class="text-3xl" aria-hidden="true">{OFICIO_GERAL.emoji}</div>
+        <Icone nome={ICONE_POR_OFICIO[OFICIO_GERAL.id]} class="h-8 w-8" />
         <h3 class="mt-3 text-lg font-bold text-ink">{OFICIO_GERAL.label}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-slate">{OFICIO_GERAL.tagline}</p>
       </div>
@@ -386,7 +393,9 @@ const schemaFaq = {
       <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {recursos.map((r) => (
           <div class="rounded-2xl border border-line bg-white p-6 transition">
-            <div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-xl">{r.icon}</div>
+            <div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-brand">
+              <Icone nome={r.icon} class="h-5 w-5" />
+            </div>
             <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-slate">{r.texto}</p>
           </div>

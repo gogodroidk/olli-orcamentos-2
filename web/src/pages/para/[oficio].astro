@@ -21,10 +21,12 @@
 import Layout from "../../layouts/Layout.astro";
 import Footer from "../../components/Footer.astro";
 import Header from "../../components/Header.astro";
+import Icone from "../../components/Icone.astro";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
 import { VERTICAIS } from "../../../../src/services/verticais";
 import {
 	DOR_POR_OFICIO,
+	ICONE_POR_OFICIO,
 	OFICIOS,
 	PROFISSAO_POR_OFICIO,
 	SLUG_POR_OFICIO,
@@ -36,38 +38,41 @@ const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
 
 /**
- * MDI → emoji. `calculosDoOficio()` devolve `icon` no vocabulário do APP
- * (MaterialCommunityIcons do React Native: "flash", "water-outline"…). A web não
- * tem essa fonte, então renderizar `{c.icon}` cru imprimia a palavra `flash` em
- * inglês, em corpo 24px, nos 21 cards das 6 páginas — justo as que recebem anúncio.
+ * MDI → ícone lucide (componente `<Icone nome={...} />`). `calculosDoOficio()`
+ * devolve `icon` no vocabulário do APP (MaterialCommunityIcons do React
+ * Native: "flash", "water-outline"…). A web não tem essa fonte, então
+ * renderizar `{c.icon}` cru imprimia a palavra `flash` em inglês, em corpo
+ * 24px, nos 21 cards das 6 páginas — justo as que recebem anúncio.
  *
- * Mapa e não fonte de ícone: emoji não pesa byte nenhum, e a página já usa
- * `{o.emoji}` (linha ~203) — este é o vocabulário da casa aqui.
+ * Era emoji (mapa `EMOJI_POR_ICONE`); virou lucide pra casar com o resto da
+ * identidade — landing e painel (lucide-react) com o MESMO traço, não um
+ * mosaico de glifos de fonte de cada sistema operacional.
  *
- * O fallback é "" DE PROPÓSITO: calculadora nova no app não pode voltar a vazar
- * identificador cru pra produção. Some o enfeite, fica o título — degradação
- * silenciosa é melhor que texto errado, e o `aria-hidden` já diz que é decorativo.
+ * O fallback é "" DE PROPÓSITO (ver `Icone.astro`: nome desconhecido = svg
+ * vazio): calculadora nova no app não pode voltar a vazar identificador cru
+ * pra produção. Some o enfeite, fica o título — degradação silenciosa é
+ * melhor que texto errado.
  */
-const EMOJI_POR_ICONE: Record<string, string> = {
-	"air-conditioner": "❄️",
-	fence: "🚧",
-	flash: "⚡",
-	"flask-outline": "🧪",
-	"format-paint": "🎨",
-	fuse: "🔌",
-	"gas-cylinder": "🛢️",
-	gauge: "📊",
-	grass: "🌿",
-	pipe: "🔧",
-	shovel: "⛏️",
-	"sine-wave": "〰️",
-	sprout: "🌱",
-	thermometer: "🌡️",
-	"timer-sand": "⏳",
-	wall: "🧱",
-	"water-outline": "💧",
-	"water-percent": "💦",
-	"water-well": "🪣",
+const ICONE_POR_MDI: Record<string, string> = {
+	"air-conditioner": "wind",
+	fence: "fence",
+	flash: "zap",
+	"flask-outline": "flask-conical",
+	"format-paint": "paint-roller",
+	fuse: "power", // sem ícone lucide de disjuntor — "power" é o mais próximo
+	"gas-cylinder": "cylinder", // sem "botijão" em lucide — cilindro é o mais próximo
+	gauge: "gauge",
+	grass: "leaf",
+	pipe: "cable", // sem "tubo/eletroduto" em lucide — conduíte é o mais próximo
+	shovel: "shovel",
+	"sine-wave": "activity",
+	sprout: "sprout",
+	thermometer: "thermometer",
+	"timer-sand": "hourglass",
+	wall: "brick-wall",
+	"water-outline": "droplet",
+	"water-percent": "droplets",
+	"water-well": "database", // sem "poço/fossa" em lucide — reservatório é o mais próximo
 };
 
 export function getStaticPaths() {
@@ -170,7 +175,7 @@ const schemaFaq = {
 				<span class="text-slate">{oficio.label}</span>
 			</nav>
 
-			<span class="eyebrow mt-6 block">{oficio.emoji} {oficio.label}</span>
+			<span class="eyebrow mt-6 block"><Icone nome={ICONE_POR_OFICIO[oficio.id]} class="h-3.5 w-3.5" />{oficio.label}</span>
 			<h1 class="mt-4 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
 				App de orçamento e OS<br class="hidden sm:inline" />para <span class="brand-text">{profissao}</span>.
 			</h1>
@@ -224,7 +229,9 @@ const schemaFaq = {
 					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
 						{calculos.map((c) => (
 							<li class="rounded-2xl border border-line bg-white p-6">
-								<div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-2xl" aria-hidden="true">{EMOJI_POR_ICONE[c.icon] ?? ""}</div>
+								<div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-brand">
+									<Icone nome={ICONE_POR_MDI[c.icon] ?? ""} class="h-5 w-5" />
+								</div>
 								<h3 class="mt-2.5 font-bold text-ink">{c.nome}</h3>
 								<p class="mt-1.5 text-sm leading-relaxed text-slate">{c.descricao}</p>
 								<p class="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{c.base}</p>
@@ -330,7 +337,7 @@ const schemaFaq = {
 							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
 							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
 						>
-							<span aria-hidden="true">{o.emoji}</span>{o.label}
+							<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
 						</a>
 					</li>
 				))}
