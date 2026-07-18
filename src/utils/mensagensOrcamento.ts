@@ -127,3 +127,41 @@ export function montarMensagemPedidoAvaliacao(nomeCliente: string, linkGoogle: s
   ];
   return linhas.filter(Boolean).join('\n');
 }
+
+/**
+ * Mensagem de WhatsApp para agradecer o cliente logo após emitir o recibo
+ * (EmitirReciboScreen) — o pagamento acabou de cair, é o melhor momento para
+ * um agradecimento caloroso. Sempre opcional/editável (abre pré-preenchida
+ * no WhatsApp, quem envia é o prestador) e nunca disparada sozinha. `orc` é
+ * o orçamento de origem do recibo, quando houver — usado só para citar o
+ * serviço prestado; sem ele a mensagem sai igualmente calorosa, só sem essa linha.
+ */
+export function montarMensagemAgradecimento(nomeCliente: string, orc?: Orcamento | null, empresa?: Empresa | null): string {
+  const quem = (empresa?.nomePrestador || empresa?.nome || '').trim();
+  const itens = orc ? resumoItens(orc) : '';
+  const linhas = [
+    `Oi, ${primeiroNome(nomeCliente)}! ${quem ? `Aqui é ${quem}.` : ''}`.trim(),
+    `Muito obrigado pela confiança${itens ? ` no serviço de ${itens}` : ''}!`,
+    'Foi um prazer te atender. Qualquer coisa, é só me chamar por aqui.',
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
+
+/**
+ * Mensagem de WhatsApp pedindo indicação, disparada logo após o recibo ser
+ * emitido (motor de boca-a-boca) — o cliente acabou de pagar satisfeito, é o
+ * melhor momento para pedir que ele indique o prestador a conhecidos. Sempre
+ * opcional/editável e nunca disparada sozinha; `orc` é opcional, só para
+ * manter o mesmo padrão de assinatura de `montarMensagemAgradecimento`.
+ */
+export function montarMensagemPedidoIndicacao(nomeCliente: string, orc?: Orcamento | null, empresa?: Empresa | null): string {
+  const quem = (empresa?.nomePrestador || empresa?.nome || '').trim();
+  const contato = empresa?.telefone || empresa?.whatsapp;
+  const linhas = [
+    `Oi, ${primeiroNome(nomeCliente)}! ${quem ? `Aqui é ${quem}.` : ''}`.trim(),
+    'Fico muito feliz em saber que posso contar com você.',
+    'Se conhecer alguém que também precise desse tipo de serviço, pode passar meu contato — toda indicação ajuda demais o meu trabalho!',
+    contato ? `Contato: ${contato}` : '',
+  ];
+  return linhas.filter(Boolean).join('\n');
+}

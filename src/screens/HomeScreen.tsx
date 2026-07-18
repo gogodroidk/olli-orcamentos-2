@@ -16,6 +16,7 @@ import { onSyncAplicado } from '../services/cloudSync';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
 import { clientesParaReconquistar, mensagemReconquista, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
 import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../services/radarCobranca';
+import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
@@ -168,6 +169,15 @@ export default function HomeScreen() {
   const [cobrancaCarregando, setCobrancaCarregando] = useState(true);
   const [cobrancaErro, setCobrancaErro] = useState(false);
 
+  // RADAR DE FOLLOW-UP — propostas enviadas/visualizadas que o cliente não
+  // respondeu, paradas há >= 3 dias (o passo ANTES do radar de cobrança).
+  // 3 estados explícitos (nunca colapsar erro em vazio): `followUpErro` só
+  // vira `true` se a leitura de fato falhar; lista vazia com sucesso é
+  // "nenhuma proposta parada".
+  const [followUp, setFollowUp] = useState<OrcamentoParaFollowUp[]>([]);
+  const [followUpCarregando, setFollowUpCarregando] = useState(true);
+  const [followUpErro, setFollowUpErro] = useState(false);
+
   // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra
   // shimmer). O destino vem de coordenada salva OU do endereço (o serviço
   // geocodifica sob demanda, cacheado); `temEta` é o gate síncrono de exibição.
@@ -264,19 +274,32 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); }, [load, loadRadar, loadCobranca]));
+  const loadFollowUp = useCallback(async () => {
+    setFollowUpErro(false);
+    try {
+      const lista = await orcamentosParaFollowUp();
+      setFollowUp(lista);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setFollowUpErro(true);
+    } finally {
+      setFollowUpCarregando(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); loadFollowUp(); }, [load, loadRadar, loadCobranca, loadFollowUp]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); }), [load, loadRadar, loadCobranca]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); loadFollowUp(); }), [load, loadRadar, loadCobranca, loadFollowUp]);
 
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([load(), loadRadar(), loadCobranca()]);
+      await Promise.all([load(), loadRadar(), loadCobranca(), loadFollowUp()]);
     } finally {
       // finally garante que o pull-to-refresh nunca fica preso, mesmo se algo
-      // além das 3 chamadas (que já se protegem com try/catch) rejeitar.
+      // além das 4 chamadas (que já se protegem com try/catch) rejeitar.
       setRefreshing(false);
     }
   };
@@ -317,6 +340,22 @@ export default function HomeScreen() {
     Haptics.selectionAsync().catch(() => {});
     try {
       await abrirWhatsApp(telefone, mensagemCobranca(item));
+    } catch {
+      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+    }
+  }
+
+  async function followUpNoWhatsApp(item: OrcamentoParaFollowUp) {
+    // O orçamento já guarda o telefone denormalizado — funciona mesmo se o
+    // cadastro do cliente tiver sido excluído depois do envio.
+    const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
+    if (!telefone?.trim()) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await abrirWhatsApp(telefone, mensagemFollowUp(item));
     } catch {
       // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
     }
@@ -695,6 +734,78 @@ export default function HomeScreen() {
                             color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
                           />
                           <Text style={styles.radarBtnPrimaryText}>Cobrar no WhatsApp</Text>
+                        </OlliPressable>
+                      </View>
+                    </View>
+                  </AnimatedEntrance>
+                ))}
+              </View>
+            )}
+          </>
+        )}
+
+        {/* RADAR DE FOLLOW-UP — propostas enviadas/visualizadas sem resposta,
+            paradas há >= 3 dias (o passo ANTES do radar de cobrança).
+            3 estados explícitos: carregando (skeleton) / erro (nunca vira "vazio")
+            / vazio de verdade ("nenhuma proposta parada"). */}
+        {followUpCarregando ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
+            <OlliSkeleton width="50%" height={16} />
+            <View style={styles.radarCard}>
+              <OlliSkeleton width={42} height={42} radius={21} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="60%" height={14} />
+                <OlliSkeleton width="35%" height={12} />
+              </View>
+            </View>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.sectionTitle}>Propostas paradas</Text>
+            {followUpErro ? (
+              <View style={{ paddingHorizontal: Spacing.base }}>
+                <View style={styles.cobrancaAviso}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                  <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar as propostas paradas agora.</Text>
+                  <TouchableOpacity onPress={loadFollowUp} activeOpacity={0.8}>
+                    <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : followUp.length === 0 ? (
+              <View style={{ paddingHorizontal: Spacing.base }}>
+                <View style={styles.cobrancaVazio}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={20} color={cores.success} />
+                  <Text style={styles.cobrancaVazioTexto}>Nenhuma proposta parada — todo cliente já respondeu ou é recente.</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
+                <Text style={styles.cobrancaResumo}>
+                  {followUp.length} proposta{followUp.length > 1 ? 's' : ''} sem resposta há 3+ dias
+                </Text>
+                {followUp.slice(0, 3).map((item, i) => (
+                  <AnimatedEntrance key={item.orcamento.id} index={2 + i}>
+                    <View style={styles.radarCard}>
+                      <View style={styles.radarTop}>
+                        <View style={styles.radarAvatar}>
+                          <Text style={styles.radarAvatarText}>{item.orcamento.clienteNome.charAt(0).toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={styles.radarName} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
+                          <Text style={styles.radarMeta}>
+                            {formatCurrency(item.orcamento.valorTotal)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.radarActions}>
+                        <OlliPressable style={styles.radarBtnPrimary} onPress={() => followUpNoWhatsApp(item)} haptic={false}>
+                          <MaterialCommunityIcons
+                            name="whatsapp"
+                            size={16}
+                            color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                          />
+                          <Text style={styles.radarBtnPrimaryText}>Chamar no WhatsApp</Text>
                         </OlliPressable>
                       </View>
                     </View>
