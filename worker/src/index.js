@@ -3,7 +3,8 @@
  *
  * Endpoints (o app chama exatamente estes):
  *   POST /            → diagnóstico técnico (OLLI Técnica)
- *   POST /voz         → transcrição (texto) → itens de orçamento
+ *   POST /voz         → transcrição (texto) → itens de orçamento; ou conversa[]/historico[] → Tier B (pergunta/pronto)
+ *   POST /voz/conversa → mesmo Tier B acima, rota dedicada (alias de /voz com conversa[])
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
  *   GET  /            → health check
@@ -29,6 +30,14 @@
  * Também serve o LINK PÚBLICO do cliente (sem login):
  *   GET  /o/<token> → página do orçamento (aprovar/recusar/WhatsApp)
  *   POST /o/<token> → grava a resposta do cliente
+ *
+ * POST /voz também aceita um modo CONVERSA (Tier B, docs/ENXAME/OLLI_VOZ_CONVERSA.md):
+ * corpo com `conversa: [{papel:'user'|'olli', texto}]` em vez de `transcript` →
+ * a Olli pergunta de volta até ter cliente+item, então fecha com `pronto:true`
+ * (ver handleVozConversa em ./voz.js). POST /voz/conversa é a mesma coisa numa
+ * rota própria — o cliente pode usar qualquer uma das duas; ambas aceitam o
+ * histórico como `conversa` OU `historico` (alias) e um `fechar:true` opcional
+ * pra fechar sob pedido (não só no teto de turnos).
  */
 
 import * as Sentry from '@sentry/cloudflare';
@@ -42,6 +51,9 @@ import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { cobrarCreditoVoz } from './creditos.js';
+import { gemini } from './gemini.js';
+import { parseJsonBody, parseJsonLoose, cortar } from './util.js';
+import { rotuloVertical, vozSystem, vozPrompt, VOZ_MAX, handleVoz, handleVozConversa } from './voz.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -95,16 +107,9 @@ async function bodyMuitoGrande(request, max) {
   return { grande: raw.length > max, raw };
 }
 
-/** Parseia o texto já lido por bodyMuitoGrande. Nunca lança — {} em JSON inválido. */
-function parseJsonBody(raw) {
-  if (!raw) return {};
-  try {
-    const v = JSON.parse(raw);
-    return v && typeof v === 'object' ? v : {};
-  } catch {
-    return {};
-  }
-}
+// parseJsonBody/parseJsonLoose/cortar agora vivem em ./util.js (import no
+// topo) — extraídos pra serem importáveis sem @sentry/cloudflare (ver o
+// comentário desse arquivo).
 
 // Cache em memória do worker (por isolate) da validação de token → user. Evita
 // 1 round-trip a /auth/v1/user por CADA request de IA (chat manda 1 por
@@ -140,83 +145,15 @@ async function getUser(request, env) {
   }
 }
 
-/**
- * Chama o Gemini. `user` pode ser string (1 turno) ou array de `contents` (chat).
- * `userParts`, se vier, tem prioridade sobre `user`: array de parts cru (ex.:
- * texto + inline_data de áudio) montado como um único turno `{role:'user'}` —
- * usado por /transcrever para anexar o áudio junto do prompt de texto.
- * `timeoutMs` permite alongar o prazo para chamadas mais pesadas (ex.: áudio).
- */
-async function gemini(env, { system, user, userParts, wantJson = false, temperature = 0.4, timeoutMs = 25_000 }) {
-  const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
-  // A key vai em header (x-goog-api-key), NUNCA na query string: URLs de
-  // request costumam ser logadas por proxies/CDNs no caminho — na query a
-  // chave vazaria nesses logs. O endpoint aceita a key por header (suportado
-  // pela API do Gemini) exatamente para evitar isso.
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const body = {
-    contents: Array.isArray(userParts)
-      ? [{ role: 'user', parts: userParts }]
-      : Array.isArray(user)
-        ? user
-        : [{ role: 'user', parts: [{ text: user }] }],
-    generationConfig: {
-      temperature,
-      ...(wantJson ? { responseMimeType: 'application/json' } : {}),
-    },
-  };
-  if (system) body.systemInstruction = { parts: [{ text: system }] };
-
-  // AbortController: sem timeout, uma chamada presa ao Gemini segura o worker
-  // até o limite da própria plataforma (CPU/wall time), degradando todo mundo
-  // atrás na fila. 25s é generoso para geração de JSON curto (mais para áudio,
-  // via timeoutMs) e ainda cabe dentro do limite de request do Workers.
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  let r;
-  try {
-    r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    const timedOut = e && e.name === 'AbortError';
-    const err = new Error(timedOut ? 'timeout' : 'falha_rede');
-    err.overloaded = timedOut; // trata timeout como sobrecarga (503, não 502): retry faz sentido
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-  if (!r.ok) {
-    const txt = await r.text().catch(() => '');
-    const overloaded = r.status === 429 || r.status === 503 || /overload|quota|exhausted|rate|unavailable/i.test(txt);
-    const err = new Error(overloaded ? 'sobrecarregado' : `gemini_${r.status}`);
-    err.overloaded = overloaded;
-    throw err;
-  }
-  const data = await r.json();
-  return (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
-}
+// gemini() agora vive em ./gemini.js (import no topo) — mesmo motivo do
+// parseJsonBody/parseJsonLoose/cortar em ./util.js.
 
 // Contrato de rotas de IA (POST autenticado + rate limit). É a ÚNICA fonte da
 // verdade sobre quais paths POST caem na IA — o roteador (fetch) valida contra
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/chat', '/transcrever']);
-
-/** Parser de JSON tolerante (remove cercas ```json e lixo em volta). */
-function parseJsonLoose(s) {
-  if (!s) return null;
-  const cleaned = s.replace(/```json\s*|\s*```/g, '').trim();
-  try { return JSON.parse(cleaned); } catch {}
-  const a = cleaned.indexOf('{');
-  const b = cleaned.lastIndexOf('}');
-  if (a >= 0 && b > a) { try { return JSON.parse(cleaned.slice(a, b + 1)); } catch {} }
-  return null;
-}
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever']);
 
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
@@ -231,10 +168,6 @@ Responda SOMENTE com JSON válido no formato pedido.`;
 // Limites de sanitização de entrada do diagnóstico (defesa contra payload
 // gigante/prompt injection — ver MAX_BODY_BYTES para o limite geral do body).
 const DIAG_MAX = { marca: 80, codigo: 32, sintoma: 500, modelo: 80 };
-
-function cortar(v, max) {
-  return typeof v === 'string' ? v.trim().slice(0, max) : '';
-}
 
 // Remove os caracteres reservados do PostgREST (`,()*`) de um valor antes de
 // usá-lo num filtro de query string, e então codifica para URL. Sem isto um
@@ -625,88 +558,9 @@ async function handleGeocode(request, env) {
 }
 
 // ─── VOZ → ITENS ─────────────────────────────────────────────
-// Contexto do OFÍCIO por vertical (personalização — a IA fala a língua do segmento).
-// DEFAULT = ar-condicionado/refrigeração: cliente antigo que NÃO manda `vertical` mantém
-// EXATAMENTE o comportamento atual (backward-compat). Ver src/services/verticais.ts.
-function rotuloVertical(vertical) {
-  switch (vertical) {
-    case 'eletrica': return 'instalações elétricas (NR-10, NBR 5410, quadros, disjuntores, aterramento)';
-    case 'hidraulica': return 'hidráulica e encanamento (vazamentos, pressão, NBR 5626)';
-    case 'pintura': return 'pintura e acabamento (cálculo de tinta, superfícies, demãos)';
-    case 'dedetizacao': return 'controle de pragas / dedetização (RDC 622, produtos, responsável técnico)';
-    case 'jardinagem': return 'jardinagem e paisagismo (poda, irrigação, manutenção)';
-    case 'geral': return 'serviços de campo em geral';
-    case 'refrigeracao':
-    default: return 'ar-condicionado e refrigeração (split, multi-split, VRF)';
-  }
-}
-function vozSystem(vertical) {
-  return `Você é a OLLI, assistente de um prestador de serviços de ${rotuloVertical(vertical)} no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
-}
-
-// `linhaFala` permite trocar a 1ª linha do prompt: por padrão cita o
-// transcript em texto (rota /voz); /transcrever (modo orcamento) passa o
-// áudio como anexo em vez de transcript, então usa uma linha própria e exige
-// o campo extra "texto" (a transcrição) no JSON de saída.
-function vozPrompt(transcript, catalogo, { linhaFala, exigirTexto = false } = {}) {
-  const cat = Array.isArray(catalogo) && catalogo.length
-    ? `\nCatálogo do prestador (use o preço quando o item casar):\n${catalogo.map((c) => `- ${c.nome}${c.preco ? ` = R$ ${c.preco}` : ''}`).join('\n')}`
-    : '';
-  const fala = linhaFala || `Fala do técnico: "${transcript}"`;
-  const campoTexto = exigirTexto ? '\n  "texto": "transcrição fiel da fala do técnico em português do Brasil",' : '';
-  return `${fala}${cat}
-
-Monte os itens no JSON EXATO:
-{${campoTexto}
-  "titulo": "título curto do serviço (opcional)",
-  "clienteNome": "nome do cliente, se ele falou (opcional)",
-  "itens": [
-    { "descricao": "descrição do item", "quantidade": 1, "valorUnitario": 0, "tipo": "servico" }
-  ],
-  "observacao": "observação opcional"
-}
-Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use null em "valorUnitario". Quantidade é número.`;
-}
-
-// Limites de sanitização da rota /voz: sem isto, um transcript ou catálogo
-// gigante (dentro dos 20 req/min da IA_RL) queima cota do Gemini e vira vetor
-// de prompt injection direto no prompt.
-const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
-
-// Cobrança de crédito (confirmarCredito/creditoRef) é responsabilidade de
-// creditos.js — `cobrarCreditoVoz` (regra de rocha, fail-open de infra,
-// idempotência por ref — ver o doc lá). Handlers abaixo só chamam.
-
-export async function handleVoz(bodyText, env, user) {
-  const { transcript: rawTranscript, catalogo: rawCatalogo, vertical, confirmarCredito, creditoRef } = parseJsonBody(bodyText);
-  const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
-  if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
-  const catalogo = Array.isArray(rawCatalogo)
-    ? rawCatalogo.slice(0, VOZ_MAX.catalogoItens).map((c) => ({
-        nome: cortar(c && c.nome, VOZ_MAX.nome),
-        preco: c && typeof c.preco === 'number' ? c.preco : undefined,
-      }))
-    : undefined;
-  const text = await gemini(env, { system: vozSystem(vertical), user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
-  const parsed = parseJsonLoose(text);
-  if (!parsed || !Array.isArray(parsed.itens)) {
-    console.error('[olli-voz] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
-    return json({ ok: false, erro: 'resposta_invalida' });
-  }
-
-  // `conteudo: transcript` é o fallback de idempotência quando o corpo não traz
-  // `creditoRef` (o app hoje não manda) — ver o doc de cobrarCreditoVoz em creditos.js.
-  const cobranca = await cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef, conteudo: transcript });
-  if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
-
-  return json({
-    ok: true,
-    titulo: typeof parsed.titulo === 'string' ? parsed.titulo : undefined,
-    clienteNome: typeof parsed.clienteNome === 'string' ? parsed.clienteNome : undefined,
-    itens: parsed.itens,
-    observacao: typeof parsed.observacao === 'string' ? parsed.observacao : undefined,
-  });
-}
+// rotuloVertical/vozSystem/vozPrompt/VOZ_MAX/handleVoz agora vivem em ./voz.js
+// (import no topo) — junto do modo CONVERSA novo (handleVozConversa), mesmo
+// motivo de extração do gemini()/util.js: testável sem @sentry/cloudflare.
 
 // ─── TRANSCREVER (voz na nuvem) ─────────────────────────────
 // Recebe o áudio gravado no app (base64) e ou (a) só transcreve, ou (b) já
@@ -1029,7 +883,19 @@ const handler = {
 
     try {
       if (url.pathname === '/') return await handleDiag(corpoIa.raw, env);
-      if (url.pathname === '/voz') return await handleVoz(corpoIa.raw, env, user);
+      if (url.pathname === '/voz') {
+        // Modo CONVERSA (Tier B): corpo com `conversa`/`historico` (array de
+        // {papel,texto}) em vez de `transcript` — mesmo path/rate-limit/teto
+        // de payload de sempre, só troca o handler. Ver o comentário no topo
+        // do arquivo.
+        const peek = parseJsonBody(corpoIa.raw);
+        return Array.isArray(peek.conversa) || Array.isArray(peek.historico)
+          ? await handleVozConversa(corpoIa.raw, env, user)
+          : await handleVoz(corpoIa.raw, env, user);
+      }
+      // Rota dedicada do modo CONVERSA (alias de `/voz` + conversa[]/historico[]
+      // acima) — mesmo handler, só pra quem prefere um path próprio.
+      if (url.pathname === '/voz/conversa') return await handleVozConversa(corpoIa.raw, env, user);
       if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env, user);
       if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env);
       return json({ ok: false, erro: 'nao_encontrado' }, 404);

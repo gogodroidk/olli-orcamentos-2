@@ -213,6 +213,147 @@ function normalizarItem(raw: any): VozItem | null {
   };
 }
 
+// ─── /voz/conversa (Tier B — a Olli pergunta de volta) ────
+// Cluster T3b (app) consumindo o contrato descrito em docs/ENXAME/OLLI_VOZ_CONVERSA.md
+// (Fase 3). O endpoint em si é do cluster T3a (worker/src/voz.js::handleVozConversa) —
+// CONFERIDO contra o handler real (não é mais suposição):
+//   1. Rota: `POST ${DIAGNOSTICO_URL}/voz/conversa` (mesmo host/JWT dos demais;
+//      o worker também aceita esse corpo em `POST /voz`, mas o path dedicado é
+//      mais explícito e não depende de heurística de "que campo veio").
+//   2. Corpo: { historico:[{papel,texto}], conversationId, catalogo?, vertical?,
+//      confirmarCredito?, fechar? } — `historico` é o nome aceito pelo worker
+//      como alias de `conversa` (o campo "nativo" de lá); `creditoRef` também é
+//      mandado por robustez, mas o worker hoje deriva a idempotência sempre do
+//      próprio `conversationId`.
+//   3. Resposta "preciso perguntar mais": { ok:true, pronto:false, pergunta:string }.
+//      Resposta "terminei": { ok:true, pronto:true, titulo?, clienteNome?, itens:[...], observacao? }.
+//      Erro: mesmo formato de `/voz` ({ ok:false, erro, semCreditos? }).
+//   4. 1 crédito por CONVERSA (não por turno): o worker cobra com `cobrarCreditoVoz`
+//      usando `conversationId` como `ref` de idempotência SÓ no turno que fecha
+//      (`pronto:true`) — perguntas nunca cobram. O app manda `confirmarCredito`
+//      (do gate gracioso) e o mesmo `conversationId` em TODO turno da mesma conversa.
+
+export interface ConversaTurno {
+  /** `'user'` = o prestador falou/digitou; `'olli'` = pergunta da assistente. */
+  papel: 'user' | 'olli';
+  texto: string;
+}
+
+export interface ConversaPerguntaResultado {
+  ok: true;
+  pronto: false;
+  pergunta: string;
+}
+
+export interface ConversaProntoResultado {
+  ok: true;
+  pronto: true;
+  titulo?: string;
+  clienteNome?: string;
+  itens: VozItem[];
+  observacao?: string;
+}
+
+export type ConversaResultado = ConversaPerguntaResultado | ConversaProntoResultado | VozResultadoErro;
+
+export interface ConversarVozOpts {
+  sinalCancelamento?: AbortSignal;
+  /** Mesmo campo do gate gracioso de `/voz` — só `true` depois do toque explícito
+   *  do usuário em "Usar 1 crédito" (ver OlliVozScreen). Nunca ligar sozinho. */
+  confirmarCredito?: boolean;
+  /** Chave de idempotência da cobrança — deve ser o `conversationId` (1 crédito
+   *  por CONVERSA, não por turno; ver cabeçalho do arquivo). */
+  creditoRef?: string;
+  /** `true` quando o usuário pediu pra encerrar ("montar com o que tem") — pede
+   *  ao worker pra fechar com o que já foi entendido em vez de perguntar mais. */
+  fechar?: boolean;
+}
+
+const CONVERSA_SEM_ITENS =
+  'Não consegui identificar itens na conversa. Continue respondendo ou monte o orçamento na mão.';
+
+/** Timeout de cada turno da conversa — mais curto que `/voz` (1 pergunta/resposta, não a montagem inteira). */
+const TIMEOUT_CONVERSA_MS = 45_000;
+
+/**
+ * Envia um turno da conversa (histórico completo, com o turno mais recente já
+ * incluso) para a Olli decidir se pergunta mais ou já fecha o orçamento. Nunca
+ * lança: erro de rede/servidor volta como `{ ok:false }`.
+ */
+export async function conversarVoz(
+  historico: ConversaTurno[],
+  conversationId: string,
+  opts?: ConversarVozOpts,
+): Promise<ConversaResultado> {
+  if (!DIAGNOSTICO_URL) return { ok: false, erro: SEM_IA };
+  if (!historico.length) return { ok: false, erro: 'Não entendi o que você falou. Tente de novo, com calma.' };
+
+  const token = await accessTokenAtual();
+  if (!token) return { ok: false, erro: PRECISA_LOGIN };
+
+  let catalogo: { nome: string; preco?: number }[] | undefined;
+  try {
+    const servicos = await getServicos();
+    if (servicos.length > 0) catalogo = catalogoLeve(servicos);
+  } catch {
+    // sem catálogo não tem problema — a IA segue só com a conversa
+  }
+  const vertical = await verticalParaIA();
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_CONVERSA_MS);
+  const onCancelar = () => controller.abort();
+  opts?.sinalCancelamento?.addEventListener('abort', onCancelar);
+  try {
+    const corpo: Record<string, unknown> = { historico, conversationId };
+    if (catalogo) corpo.catalogo = catalogo;
+    if (vertical) corpo.vertical = vertical;
+    if (opts?.confirmarCredito) {
+      corpo.confirmarCredito = true;
+      if (opts.creditoRef) corpo.creditoRef = opts.creditoRef;
+    }
+    if (opts?.fechar) corpo.fechar = true;
+
+    const r = await fetch(`${DIAGNOSTICO_URL}/voz/conversa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(corpo),
+      signal: controller.signal,
+    });
+    if (!r.ok) {
+      const errData = await r.json().catch(() => null);
+      if (respostaSemCreditos(r.status, errData)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
+      return { ok: false, erro: mensagemPorStatus(r.status, FALHOU) };
+    }
+    const data: any = await r.json();
+    if (respostaSemCreditos(r.status, data)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
+    if (data?.ok && data.pronto === true) {
+      if (!Array.isArray(data.itens)) return { ok: false, erro: CONVERSA_SEM_ITENS };
+      track(Eventos.aiUsed, { fonte: 'voz_conversa' });
+      return {
+        ok: true,
+        pronto: true,
+        titulo: typeof data.titulo === 'string' ? data.titulo : undefined,
+        clienteNome: typeof data.clienteNome === 'string' ? data.clienteNome : undefined,
+        itens: data.itens.map(normalizarItem).filter((i: VozItem | null): i is VozItem => i !== null),
+        observacao: typeof data.observacao === 'string' ? data.observacao : undefined,
+      };
+    }
+    if (data?.ok && typeof data.pergunta === 'string' && data.pergunta.trim()) {
+      return { ok: true, pronto: false, pergunta: data.pergunta.trim() };
+    }
+    return { ok: false, erro: mensagemErroIA(data?.erro, SEM_IA) };
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      return { ok: false, erro: opts?.sinalCancelamento?.aborted ? CANCELADO_VOZ : TIMEOUT_VOZ };
+    }
+    return { ok: false, erro: OFFLINE };
+  } finally {
+    clearTimeout(timer);
+    opts?.sinalCancelamento?.removeEventListener('abort', onCancelar);
+  }
+}
+
 // ─── /chat ───────────────────────────────────────────────
 export interface ChatMensagem {
   role: 'user' | 'assistant';
