@@ -20,11 +20,15 @@ import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../../services/supabase';
 import {
   backupManualVersionado,
+  estadoBackupNuvem,
+  resumoBackupNuvem,
+  COPY_BACKUP_NUVEM,
   getUltimoBackupVersionadoData,
   listBackupsVersionados,
   restoreBackupById,
   type BackupVersionadoResumo,
 } from '../../services/backup';
+import type { MotivoBackupNuvem } from '../../services/contextoEquipe';
 import { abortarSyncEmAndamento, onSyncAplicado } from '../../services/cloudSync';
 import { formatDateTime } from '../../utils/date';
 import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../../services/storageKeys';
@@ -103,6 +107,10 @@ export default function ContaDesktopScreen() {
   const [avatarErro, setAvatarErro] = useState(false);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  // 3 estados: `null` = carregando; depois o MOTIVO real. Paridade com a
+  // ContaScreen mobile — para um membro de equipe a guarda de backup.ts recusa o
+  // snapshot, e "Backup automático ativo" seria mentira aqui também.
+  const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
   const [carregando, setCarregando] = useState(true);
@@ -146,10 +154,13 @@ export default function ContaDesktopScreen() {
         setAvatarErro(false);
         setSessaoPerdida(false);
         setLastBackup(await getUltimoBackupVersionadoData());
+        // Nunca lança; devolve 'indeterminado' quando não consegue decidir.
+        setMotivoBackup(await estadoBackupNuvem());
       } else {
         setUser(null);
         setSessaoPerdida(true);
         setLastBackup(null);
+        setMotivoBackup(null);
       }
     }
     setCarregando(false);
@@ -725,37 +736,59 @@ export default function ContaDesktopScreen() {
                     </View>
                   </View>
 
-                  <View style={styles.backupStatus}>
-                    <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={18} color={lastBackup ? cores.success : cores.warning} />
-                    <Text style={styles.textoMuted}>
-                      {autoBackupAtivo
-                        ? (lastBackup ? `Backup automático ativo — última cópia ${formatDateTime(lastBackup)}` : 'Backup automático ativo — ainda sem cópias')
-                        : 'Backup automático desativado'}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const r = resumoBackupNuvem(motivoBackup, autoBackupAtivo, lastBackup);
+                    const corTom = r.tom === 'success' ? cores.success : r.tom === 'warning' ? cores.warning : cores.onSurfaceMuted;
+                    return (
+                      <View style={styles.backupStatus}>
+                        <MaterialCommunityIcons name={r.icone} size={18} color={corTom} />
+                        <Text style={styles.textoMuted}>{r.texto}</Text>
+                      </View>
+                    );
+                  })()}
 
-                  <View style={styles.autoBackupRow}>
-                    <View style={{ flex: 1, marginRight: Spacing.md }}>
-                      <Text style={styles.perfilNome}>Backup automático diário</Text>
-                      <Text style={styles.perfilSub}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
-                    </View>
-                    <Switch
-                      value={autoBackupAtivo}
-                      onValueChange={handleToggleAutoBackup}
-                      trackColor={{ false: cores.outlineDark, true: comAlfa(cores.primary, 0.55) }}
-                      thumbColor={autoBackupAtivo ? cores.primary : cores.surface}
-                    />
-                  </View>
+                  {/* MEMBRO DE EQUIPE: paridade com a ContaScreen mobile — a guarda
+                      de backup.ts recusa o snapshot dele (o banco local contém a
+                      base da empresa), então o toggle e o botão de enviar sairiam
+                      de cena em vez de mentir. "Ver cópias de segurança" fica: as
+                      cópias que ele tem são dele. */}
+                  {motivoBackup === 'somente_dono' ? (
+                    <Text style={[styles.perfilSub, { marginBottom: Spacing.md }]}>
+                      {COPY_BACKUP_NUVEM.somente_dono.detalhe}
+                    </Text>
+                  ) : (
+                    <>
+                      {motivoBackup === 'indeterminado' && (
+                        <Text style={[styles.perfilSub, { marginBottom: Spacing.md }]}>
+                          {COPY_BACKUP_NUVEM.indeterminado.detalhe}
+                        </Text>
+                      )}
+                      <View style={styles.autoBackupRow}>
+                        <View style={{ flex: 1, marginRight: Spacing.md }}>
+                          <Text style={styles.perfilNome}>Backup automático diário</Text>
+                          <Text style={styles.perfilSub}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
+                        </View>
+                        <Switch
+                          value={autoBackupAtivo}
+                          onValueChange={handleToggleAutoBackup}
+                          trackColor={{ false: cores.outlineDark, true: comAlfa(cores.primary, 0.55) }}
+                          thumbColor={autoBackupAtivo ? cores.primary : cores.surface}
+                        />
+                      </View>
+                    </>
+                  )}
 
                   <View style={styles.botoesLinha}>
-                    <OlliButton
-                      label="Fazer backup agora"
-                      variant="gradient"
-                      size="md"
-                      loading={busyBackup}
-                      onPress={handleBackup}
-                      icon={<MaterialCommunityIcons name="cloud-upload" size={17} color="#fff" />}
-                    />
+                    {motivoBackup !== 'somente_dono' && (
+                      <OlliButton
+                        label="Fazer backup agora"
+                        variant="gradient"
+                        size="md"
+                        loading={busyBackup}
+                        onPress={handleBackup}
+                        icon={<MaterialCommunityIcons name="cloud-upload" size={17} color="#fff" />}
+                      />
+                    )}
                     <OlliButton
                       label="Ver cópias de segurança"
                       variant="outline"

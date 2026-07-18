@@ -37,14 +37,28 @@ import {
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../services/supabase';
 import {
   backupManualVersionado,
+  estadoBackupNuvem,
+  resumoBackupNuvem,
+  COPY_BACKUP_NUVEM,
   getUltimoBackupVersionadoData,
   listBackupsVersionados,
   restoreBackupById,
   BackupVersionadoResumo,
 } from '../services/backup';
+import type { MotivoBackupNuvem } from '../services/contextoEquipe';
 import { abortarSyncEmAndamento, onSyncAplicado } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
 import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
+
+/**
+ * iOS (Guideline 3.1.1): sem StoreKit, a assinatura não pode ser vendida dentro
+ * do app nem apontada para fora (link-out também é proibido). A tela de Planos já
+ * respeita isso (PlanosScreen.tsx, mesma constante); aqui o card do PRO ainda
+ * prometia "Assine direto no app" num aparelho onde nada disso acontece. Ver os
+ * planos continua permitido — o proibido é vender —, então o botão fica, sem a
+ * promessa de compra e sem mandar ninguém para o site.
+ */
+const COMPRA_NO_APP = Platform.OS !== 'ios';
 
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
@@ -191,6 +205,12 @@ export default function ContaScreen() {
   // expirada). Dispara o guarda defensivo "Sessão expirada".
   const [sessaoPerdida, setSessaoPerdida] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  // 3 estados explícitos: `null` = ainda carregando; depois, o MOTIVO real
+  // ('permitido' | 'somente_dono' | 'indeterminado'). Sem isto a tela dizia
+  // "Backup automático: ativo" para um membro de equipe, cujo backup a guarda de
+  // backup.ts recusa — o técnico se achava protegido e o único sinal contrário
+  // era um console.warn que ninguém lê.
+  const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
   const [busy, setBusy] = useState(false);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
@@ -248,12 +268,16 @@ export default function ContaScreen() {
           setAvatarErro(false);
           setSessaoPerdida(false);
           setLastBackup(await getUltimoBackupVersionadoData());
+          // `estadoBackupNuvem` nunca lança e devolve 'indeterminado' quando não
+          // consegue decidir — nunca 'permitido' por omissão.
+          setMotivoBackup(await estadoBackupNuvem());
         } else {
           // Dentro das Tabs SEMPRE há sessão. Se caiu aqui sem usuário, a sessão
           // expirou/corrompeu — mostra o guarda defensivo em vez de um form de login.
           setUser(null);
           setSessaoPerdida(true);
           setLastBackup(null);
+          setMotivoBackup(null);
         }
       }
     } catch {
@@ -789,15 +813,19 @@ export default function ContaScreen() {
                 <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
               </View>
               <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
-              <Text style={styles.proSub}>Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.</Text>
+              <Text style={styles.proSub}>
+                {COMPRA_NO_APP
+                  ? 'Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.'
+                  : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
+              </Text>
               <OlliPressable
                 style={styles.proBtn}
                 haptic={false}
                 scaleTo={0.97}
-                accessibilityLabel="Ver planos e assinar"
+                accessibilityLabel={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
               >
-                <Text style={styles.proBtnText}>Ver planos e assinar</Text>
+                <Text style={styles.proBtnText}>{COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
               </OlliPressable>
             </View>
@@ -1078,29 +1106,49 @@ export default function ContaScreen() {
                   </View>
                 </View>
               </View>
-              <View style={styles.backupStatus}>
-                <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={20} color={lastBackup ? cores.success : cores.warning} />
-                <Text style={styles.backupText}>
-                  {autoBackupAtivo
-                    ? (lastBackup ? `Backup automático: ativo — última cópia ${formatDateTime(lastBackup)}` : 'Backup automático: ativo — ainda sem cópias')
-                    : 'Backup automático: desativado'}
+              {(() => {
+                const r = resumoBackupNuvem(motivoBackup, autoBackupAtivo, lastBackup);
+                const corTom = r.tom === 'success' ? cores.success : r.tom === 'warning' ? cores.warning : cores.onSurfaceMuted;
+                return (
+                  <View style={styles.backupStatus}>
+                    <MaterialCommunityIcons name={r.icone} size={20} color={corTom} />
+                    <Text style={styles.backupText}>{r.texto}</Text>
+                  </View>
+                );
+              })()}
+
+              {/* MEMBRO DE EQUIPE: o toggle e o botão não fazem nada para ele — a
+                  guarda de backup.ts recusa o snapshot porque o banco local
+                  contém a base da empresa. Em vez de deixar dois controles
+                  mentindo, a tela explica de quem é a responsabilidade. "Ver
+                  cópias de segurança" continua: as cópias dele são dele. */}
+              {motivoBackup === 'somente_dono' ? (
+                <Text style={[styles.autoBackupHint, { marginBottom: Spacing.base }]}>
+                  {COPY_BACKUP_NUVEM.somente_dono.detalhe}
                 </Text>
-              </View>
+              ) : (
+                <>
+                  {motivoBackup === 'indeterminado' && (
+                    <Text style={[styles.autoBackupHint, { marginBottom: Spacing.base }]}>
+                      {COPY_BACKUP_NUVEM.indeterminado.detalhe}
+                    </Text>
+                  )}
+                  <View style={styles.autoBackupRow}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={styles.autoBackupLabel}>Backup automático diário</Text>
+                      <Text style={styles.autoBackupHint}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
+                    </View>
+                    <Switch
+                      value={autoBackupAtivo}
+                      onValueChange={handleToggleAutoBackup}
+                      trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                      thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
+                    />
+                  </View>
 
-              <View style={styles.autoBackupRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.autoBackupLabel}>Backup automático diário</Text>
-                  <Text style={styles.autoBackupHint}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
-                </View>
-                <Switch
-                  value={autoBackupAtivo}
-                  onValueChange={handleToggleAutoBackup}
-                  trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                  thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
-                />
-              </View>
-
-              <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
+                  <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
+                </>
+              )}
               <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={cores.primary} />} />
             </View>
 

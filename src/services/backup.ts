@@ -1,8 +1,117 @@
 import { supabase, getCurrentUser } from './supabase';
 import { exportAllData, importAllData, BackupSnapshot } from '../database/database';
+import { garantirContextoEquipe } from './cloudSync';
+import { motivoBackupNuvem, type MotivoBackupNuvem } from './contextoEquipe';
+import { formatDateTime } from '../utils/date';
 
 const TABLE = 'backups';
 const TABLE_VERSIONADO = 'backups_versionados';
+
+// ─── Guarda de tenant: quem pode SUBIR um snapshot ──────────────────────────
+// Esta guarda mora AQUI, e não em quem chama, porque aqui é onde o `user_id` é
+// carimbado na linha — é o carimbo que causa o dano, então é o carimbo que
+// precisa ser defendido. O snapshot de `exportAllData()` é INTEIRO e o SQLite
+// local não tem coluna de tenant: no aparelho de um MEMBRO de equipe ele contém
+// a base do DONO (veio pelo sync). Gravá-lo sob o `user_id` do membro põe a
+// carteira de clientes do dono dentro do tenant de outra pessoa — que a leva
+// embora ao ser desligada da equipe (a linha é dela e sobrevive à saída).
+//
+// Guardar os DOIS pontos de carimbo (`backupNow` e `inserirBackupVersionado`)
+// cobre de uma vez os três caminhos que existem hoje: o backup automático
+// (autoBackup.ts), o botão "Fazer backup agora" (backupManualVersionado, que
+// delega para inserirBackupVersionado) e qualquer chamada futura de backupNow.
+// O botão manual é o mais perigoso dos três: o usuário o dispara de propósito,
+// na hora que quiser, sem esperar as 24h do automático.
+//
+// Ver `motivoBackupNuvem`/`backupNuvemPermitido` em contextoEquipe.ts para o
+// porquê de `desconhecido` também não passar (não saber de quem é o banco nunca
+// autoriza copiá-lo para um tenant).
+
+/** Motivo pelo qual esta conta pode — ou não — subir snapshot. Nunca lança. */
+export async function estadoBackupNuvem(): Promise<MotivoBackupNuvem> {
+  try {
+    return motivoBackupNuvem(await garantirContextoEquipe());
+  } catch {
+    return 'indeterminado'; // fail-closed: não consegui decidir = não pode
+  }
+}
+
+/**
+ * Mensagens de recusa. São o texto que o usuário lê no Alert do botão manual,
+ * então dizem o que aconteceu e o que fazer — sem culpar quem apertou e sem
+ * jargão de tenant/RLS.
+ */
+const RECUSA: Record<Exclude<MotivoBackupNuvem, 'permitido'>, string> = {
+  somente_dono:
+    'O backup desta conta é feito pelo dono da empresa. Os seus registros já entram na cópia dele.',
+  indeterminado:
+    'Não deu para confirmar esta conta agora. Tente de novo daqui a pouco.',
+};
+
+/** Lança se quem está logado não pode subir snapshot. Chamada antes de qualquer `exportAllData()`. */
+async function exigirPermissaoBackupNuvem(): Promise<void> {
+  const motivo = await estadoBackupNuvem();
+  if (motivo === 'permitido') return;
+  throw new Error(RECUSA[motivo]);
+}
+
+/**
+ * O que a tela Conta ESCREVE para cada motivo de recusa. Mora aqui, junto da
+ * guarda, por dois motivos: mobile e desktop leem a mesma frase (não dá para
+ * corrigir uma e esquecer a outra), e a frase não pode divergir do que a guarda
+ * de fato faz. `permitido` fica de fora de propósito — nesse caso a tela tem
+ * algo melhor a dizer: a data da última cópia.
+ */
+export const COPY_BACKUP_NUVEM: Record<
+  Exclude<MotivoBackupNuvem, 'permitido'>,
+  { status: string; detalhe: string }
+> = {
+  somente_dono: {
+    status: 'Backup da conta: com o dono da empresa',
+    detalhe: 'Os dados desta conta são da empresa e entram na cópia do dono. Não há nada para fazer aqui.',
+  },
+  indeterminado: {
+    status: 'Backup automático: em espera',
+    detalhe: 'Ainda não deu para confirmar esta conta. Tente de novo daqui a pouco.',
+  },
+};
+
+/** Como a tela Conta pinta a linha de estado do backup. `icone` é um nome de MaterialCommunityIcons. */
+export interface ResumoBackupNuvem {
+  icone: 'cloud-check' | 'cloud-alert' | 'cloud-sync-outline' | 'office-building-outline';
+  tom: 'success' | 'warning' | 'muted';
+  texto: string;
+}
+
+/**
+ * A linha de estado do backup, em 3 estados + o motivo — decidida uma vez só,
+ * para mobile e desktop.
+ *
+ * O bug que ela fecha: a frase era montada apenas do toggle e da data. Para um
+ * MEMBRO de equipe o toggle segue ligado e a data congela, então a tela dizia
+ * "Backup automático: ativo" enquanto a guarda acima recusava todo snapshot — o
+ * técnico se achava protegido e o único sinal contrário era um console.warn.
+ *
+ * `motivo === null` é o CARREGANDO e nunca vira "ativo" por otimismo: enquanto
+ * não sabemos, a tela diz que está verificando.
+ */
+export function resumoBackupNuvem(
+  motivo: MotivoBackupNuvem | null,
+  autoAtivo: boolean,
+  ultimo: string | null,
+): ResumoBackupNuvem {
+  if (motivo === null) return { icone: 'cloud-sync-outline', tom: 'muted', texto: 'Verificando o backup…' };
+  if (motivo === 'somente_dono') {
+    return { icone: 'office-building-outline', tom: 'muted', texto: COPY_BACKUP_NUVEM.somente_dono.status };
+  }
+  if (motivo === 'indeterminado') {
+    return { icone: 'cloud-alert', tom: 'warning', texto: COPY_BACKUP_NUVEM.indeterminado.status };
+  }
+  if (!autoAtivo) return { icone: 'cloud-alert', tom: 'warning', texto: 'Backup automático: desativado' };
+  return ultimo
+    ? { icone: 'cloud-check', tom: 'success', texto: `Backup automático: ativo — última cópia ${formatDateTime(ultimo)}` }
+    : { icone: 'cloud-alert', tom: 'warning', texto: 'Backup automático: ativo — ainda sem cópias' };
+}
 
 /** Tipo de snapshot na tabela versionada (retenção diferente por tipo — ver poda em autoBackup.ts). */
 export type TipoBackupVersionado = 'diario' | 'semanal' | 'manual';
@@ -20,6 +129,7 @@ export async function backupNow(): Promise<string> {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
   const user = await getCurrentUser();
   if (!user) throw new Error('Faça login para ativar o backup.');
+  await exigirPermissaoBackupNuvem();
 
   const snapshot = await exportAllData();
   const { error } = await supabase
@@ -71,11 +181,15 @@ export async function getCloudBackupDate(): Promise<string | null> {
  * Insere um snapshot versionado na nuvem. Uso interno de autoBackup.ts (tipo
  * 'diario'/'semanal') e do botão manual "Fazer backup agora" (tipo 'manual').
  * Lança em caso de erro — quem chama decide se engole (auto) ou avisa (manual).
+ *
+ * A guarda de tenant roda ANTES do `exportAllData()`: nada de fotografar a base
+ * inteira para descobrir depois que ela não podia ser enviada.
  */
 export async function inserirBackupVersionado(tipo: TipoBackupVersionado, snapshot?: BackupSnapshot): Promise<string> {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
   const user = await getCurrentUser();
   if (!user) throw new Error('Faça login para ativar o backup.');
+  await exigirPermissaoBackupNuvem();
 
   const data = snapshot ?? await exportAllData();
   const { error } = await supabase

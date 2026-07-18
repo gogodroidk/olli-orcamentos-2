@@ -2,7 +2,8 @@
  * Teste da AUTORIZAÇÃO da IA de voz paga (cluster V2a):
  * "quem decide se a IA roda é o SERVIDOR — plano pago passa livre, grátis gasta a
  * cota do mês contada no banco, cota esgotada gasta 1 crédito, e sem crédito
- * bloqueia; nunca cobra 2x no mesmo ref; e NENHUM erro de infra vira 'sem saldo'."
+ * bloqueia; um retry não cobra 2x, mas a idempotência NÃO É ETERNA; e NENHUM erro
+ * de infra vira 'sem saldo'."
  *
  *     node scripts/teste-creditos-voz.ts
  * Exit 0 = passou; 1 = falhou.
@@ -14,13 +15,17 @@
  * (dependência só do worker/, fora do `npm ci` da raiz — mesma razão pela qual
  * teste-rate-limit.ts/teste-webhook-events.ts também testam o módulo isolado).
  *
- * O que está em jogo, nos dois sentidos: antes, QUALQUER conta com JWT válido que
- * não mandasse `confirmarCredito` usava o Gemini (conta do dono) de graça e sem
- * limite. E, se o conserto errar a mão, um erro de banco vira "você não tem
- * créditos" para quem pagou. Os dois lados estão testados aqui.
+ * O que está em jogo, nos TRÊS sentidos:
+ *  1. antes, QUALQUER conta com JWT válido que não mandasse `confirmarCredito`
+ *     usava o Gemini (conta do dono) de graça e sem limite (seção A);
+ *  2. depois disso, o passe livre mudou de campo: com idempotência eterna, um
+ *     `creditoRef` FIXO no corpo fazia toda chamada seguinte cair em "já contada"
+ *     / "já lançada" — mesma IA infinita, outro campo (seções D e E);
+ *  3. e, se o conserto errar a mão, um erro de banco vira "você não tem créditos"
+ *     para quem pagou (seção B).
  */
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
-import { cobrarCreditoVoz, lancarCreditos, CUSTO, IA_GRATIS_MES } from '../worker/src/creditos.js';
+import { cobrarCreditoVoz, lancarCreditos, CUSTO, IA_GRATIS_MES, JANELA_IDEM_MS } from '../worker/src/creditos.js';
 
 let falhas = 0;
 let passes = 0;
@@ -40,36 +45,65 @@ function checar(nome: string, real: unknown, esperado: unknown): void {
 const env: any = { SUPABASE_URL: 'https://falso.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso' };
 const USER = { id: 'user-teste-1' };
 
-const DAQUI_UM_MES = new Date(Date.now() + 30 * 864e5).toISOString();
+// ── relógio controlado ───────────────────────────────────────────────────
+// A janela de idempotência é uma regra sobre TEMPO, então o teste precisa poder
+// andar com o relógio (esperar 10 minutos de verdade não é teste). Congelar
+// `Date.now` também tira a única fonte de flakiness que sobraria: sem isso, uma
+// rodada que cruzasse a virada do bucket veria a mesma ação com chaves
+// diferentes e falharia sozinha uma vez a cada tantas execuções.
+const DateNowReal = Date.now;
+const AGORA_REAL = DateNowReal();
+let relogio = AGORA_REAL;
+Date.now = () => relogio;
+/** Anda com o relógio do worker E do "banco" (os dois leem daqui). */
+function avancar(ms: number) {
+  relogio += ms;
+}
+
+const DAQUI_UM_MES = new Date(AGORA_REAL + 30 * 864e5).toISOString();
 
 // ── "banco" falso ────────────────────────────────────────────────────────
 // Emula as três coisas que a decisão consulta: a linha de `assinaturas`, a RPC
-// `consumir_cota_ia` (com o índice único de idempotência) e o `credit_ledger`.
+// `consumir_cota_ia` (com a JANELA DESLIZANTE da migration 20260727) e o
+// `credit_ledger` (com o índice único (origem,ref)).
 let saldo = 0;
 let saldoIndisponivel = false;
-let ledgerRefs = new Set<string>();
+/** Linhas de `credit_ledger` do tipo consumo: o ref (chave única) e quando entrou. */
+let ledgerLinhas: { ref: string; criadoEm: number }[] = [];
 let ledgerChamadas = 0;
+/** false emula `ref_cobranca_ia_recente` inexistente (migration não aplicada). */
+let lookupExiste = true;
+let lookupChamadas = 0;
 
 /** null = grátis (consultado); 'erro' = PostgREST fora; objeto = linha real. */
 let assinatura: any = null;
 /** false emula a MIGRATION 20260727 AINDA NÃO APLICADA (RPC inexistente → 404). */
 let cotaExiste = true;
-let cotaUsos: string[] = []; // um item por uso do mês
-let cotaRefs = new Set<string>();
+/** Uma linha de `ia_uso_gratis` por uso do mês — com o `criado_em` que a janela lê. */
+let cotaLinhas: { ref: string | null; criadoEm: number }[] = [];
 let cotaChamadas = 0;
 
 function resetBanco(
   saldoInicial: number,
-  opts: { indisponivel?: boolean; assinatura?: any; cotaExiste?: boolean; usosJaFeitos?: number } = {},
+  opts: {
+    indisponivel?: boolean;
+    assinatura?: any;
+    cotaExiste?: boolean;
+    usosJaFeitos?: number;
+    lookupExiste?: boolean;
+  } = {},
 ) {
   saldo = saldoInicial;
   saldoIndisponivel = !!opts.indisponivel;
-  ledgerRefs = new Set();
+  ledgerLinhas = [];
   ledgerChamadas = 0;
+  // As duas RPCs moram na MESMA migration: "não aplicada" apaga as duas juntas.
+  // `lookupExiste` só é setado à mão para emular a RPC caindo sozinha (E5).
+  lookupExiste = opts.lookupExiste ?? opts.cotaExiste !== false;
+  lookupChamadas = 0;
   assinatura = opts.assinatura ?? null;
   cotaExiste = opts.cotaExiste !== false;
-  cotaUsos = Array.from({ length: opts.usosJaFeitos ?? 0 }, (_, i) => `pre-${i}`);
-  cotaRefs = new Set(cotaUsos);
+  cotaLinhas = Array.from({ length: opts.usosJaFeitos ?? 0 }, (_, i) => ({ ref: `pre-${i}`, criadoEm: relogio }));
   cotaChamadas = 0;
 }
 
@@ -83,22 +117,41 @@ function fingirFetch() {
       return { ok: true, status: 200, json: async () => (assinatura ? [assinatura] : []) } as unknown as Response;
     }
 
-    // consumirCotaGratis: a RPC do servidor (emula a função da migration 20260727).
+    // consumirCotaGratis: a RPC do servidor (emula a função da migration 20260727,
+    // inclusive a janela). A ORDEM é a mesma do SQL e importa: retry-na-janela
+    // primeiro, contagem do mês depois.
     if (u.includes('/rest/v1/rpc/consumir_cota_ia')) {
       cotaChamadas++;
       // Migration não aplicada: PostgREST devolve 404 (PGRST202).
       if (!cotaExiste) return { ok: false, status: 404 } as Response;
       const body = init?.body ? JSON.parse(init.body) : {};
       const ref = body.p_ref == null ? null : String(body.p_ref);
-      if (ref !== null && cotaRefs.has(ref)) {
-        return { ok: true, status: 200, json: async () => 'ja_contada' } as unknown as Response;
-      }
-      if (cotaUsos.length >= Number(body.p_limite)) {
+      // `and u.criado_em > now() - v_janela` — a correção do furo: fora da
+      // janela o `exists` não acha nada e o pedido segue como uso NOVO.
+      const repetida =
+        ref !== null && cotaLinhas.some((l) => l.ref === ref && l.criadoEm > relogio - JANELA_IDEM_MS);
+      if (repetida) return { ok: true, status: 200, json: async () => 'ja_contada' } as unknown as Response;
+      if (cotaLinhas.length >= Number(body.p_limite)) {
         return { ok: true, status: 200, json: async () => 'esgotada' } as unknown as Response;
       }
-      cotaUsos.push(ref ?? `sem-ref-${cotaUsos.length}`);
-      if (ref !== null) cotaRefs.add(ref);
+      // O insert SEMPRE entra aqui: a chave única inclui a janela, então a linha
+      // velha do mesmo ref (de um bucket anterior) não bloqueia a nova.
+      cotaLinhas.push({ ref, criadoEm: relogio });
       return { ok: true, status: 200, json: async () => 'consumida' } as unknown as Response;
+    }
+
+    // refCobrancaRecente: a RPC que faz a janela do LEDGER ser deslizante —
+    // "já lancei uma cobrança desta ação nos últimos 10 min? qual foi o ref?".
+    // Sem ela (404), o worker gera a chave do bucket e segue (degradado).
+    if (u.includes('/rest/v1/rpc/ref_cobranca_ia_recente')) {
+      lookupChamadas++;
+      if (!lookupExiste) return { ok: false, status: 404 } as Response;
+      const body = init?.body ? JSON.parse(init.body) : {};
+      const prefixo = String(body.p_prefixo ?? '');
+      const achada = ledgerLinhas
+        .filter((l) => l.ref.startsWith(prefixo) && l.criadoEm > relogio - JANELA_IDEM_MS)
+        .sort((a, b) => b.criadoEm - a.criadoEm)[0];
+      return { ok: true, status: 200, json: async () => achada?.ref ?? null } as unknown as Response;
     }
 
     // saldoCreditos (RPC): banco fora derruba a LEITURA do saldo.
@@ -113,14 +166,14 @@ function fingirFetch() {
       ledgerChamadas++;
       const body = init?.body ? JSON.parse(init.body) : {};
       const ref = String(body.ref);
-      if (ledgerRefs.has(ref)) {
+      if (ledgerLinhas.some((l) => l.ref === ref)) {
         return {
           ok: false,
           status: 409,
           json: async () => ({ code: '23505', message: 'duplicate key value violates unique constraint' }),
         } as unknown as Response;
       }
-      ledgerRefs.add(ref);
+      ledgerLinhas.push({ ref, criadoEm: relogio });
       saldo -= Math.abs(Number(body.delta) || 0);
       return { ok: true, status: 201 } as unknown as Response;
     }
@@ -131,23 +184,24 @@ function fingirFetch() {
 
 fingirFetch();
 
-console.log('\n0) sanidade: custo e cota são os mesmos das tabelas de preço');
+console.log('\n0) sanidade: custo, cota e janela são os mesmos das tabelas de referência');
 checar('CUSTO.voz_ia === 1', CUSTO.voz_ia, 1);
 checar('IA_GRATIS_MES === 3 (espelha IA_USOS_GRATIS_MES do app)', IA_GRATIS_MES, 3);
+checar('JANELA_IDEM_MS === 10 min (espelha v_janela da migration 20260727)', JANELA_IDEM_MS, 10 * 60 * 1000);
 
-// ═══ A) O BURACO QUE ISTO FECHA — servidor decide, cliente só pede ═════════
+// ═══ A) O BURACO ORIGINAL — servidor decide, cliente só pede ═══════════════
 console.log('\nA1) SEM confirmarCredito (o buraco): agora consome COTA do servidor, não é grátis infinito');
 resetBanco(10);
 {
   const r1 = await cobrarCreditoVoz(env, USER, { conteudo: 'fala 1' });
   checar('1º uso do mês: libera', r1.bloqueado, false);
   checar('e a cota do SERVIDOR foi consultada', cotaChamadas, 1);
-  checar('gastou 1 uso grátis', cotaUsos.length, 1);
+  checar('gastou 1 uso grátis', cotaLinhas.length, 1);
   checar('não tocou no ledger (uso grátis não custa crédito)', ledgerChamadas, 0);
 
   await cobrarCreditoVoz(env, USER, { conteudo: 'fala 2' });
   await cobrarCreditoVoz(env, USER, { conteudo: 'fala 3' });
-  checar('3 usos grátis no mês', cotaUsos.length, 3);
+  checar('3 usos grátis no mês', cotaLinhas.length, 3);
   checar('ainda sem cobrar crédito', ledgerChamadas, 0);
 
   // 4ª chamada: cota esgotada. ANTES isto era liberado de graça só por não mandar
@@ -172,7 +226,7 @@ resetBanco(10);
   const r = await cobrarCreditoVoz(env, USER, { conteudo: 'mesma fala' });
   checar('retry não bloqueia', r.bloqueado, false);
   checar('consultou a cota 2x', cotaChamadas, 2);
-  checar('mas gastou 1 uso só (ref igual = ação igual)', cotaUsos.length, 1);
+  checar('mas gastou 1 uso só (ref igual = ação igual)', cotaLinhas.length, 1);
 }
 
 console.log('\nA4) plano PAGO e vigente: IA livre — não gasta cota nem crédito');
@@ -189,11 +243,11 @@ resetBanco(10, {
 
 console.log('\nA5) plano pago VENCIDO não vale como pago (cai na cota)');
 resetBanco(10, {
-  assinatura: { plano: 'pro', status: 'active', current_period_end: new Date(Date.now() - 864e5).toISOString() },
+  assinatura: { plano: 'pro', status: 'active', current_period_end: new Date(AGORA_REAL - 864e5).toISOString() },
 });
 {
   await cobrarCreditoVoz(env, USER, { conteudo: 'fala de plano vencido' });
-  checar('consumiu cota grátis, não passou livre', cotaUsos.length, 1);
+  checar('consumiu cota grátis, não passou livre', cotaLinhas.length, 1);
 }
 
 // ═══ B) FAIL-OPEN — erro de infra NUNCA vira "sem saldo" ═══════════════════
@@ -294,6 +348,132 @@ console.log('\nC3) 409 sem corpo legível: na dúvida, NÃO é idempotência');
   checar('falha (crédito comprado não some em silêncio)', r, { ok: false, duplicado: false });
 }
 
+fingirFetch(); // C1..C3 trocaram o fetch por versões cegas; volta o banco falso.
+
+// ═══ D) A JANELA NA COTA — idempotência com prazo ══════════════════════════
+// `creditoRef` é string ESCOLHIDA PELO CLIENTE. Se "já contada" valesse para
+// sempre, fixar a string daria IA grátis infinita. Estes casos provam os dois
+// lados: o retry honesto continua de graça, o replay não.
+console.log('\nD1) mesma creditoRef DENTRO da janela: é retry — não queima 2º uso grátis');
+resetBanco(10);
+{
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'ref-fixa' });
+  avancar(JANELA_IDEM_MS - 60_000); // 9 min depois: ainda é o mesmo pedido
+  const r = await cobrarCreditoVoz(env, USER, { creditoRef: 'ref-fixa' });
+  checar('não bloqueia', r.bloqueado, false);
+  checar('consultou a cota 2x', cotaChamadas, 2);
+  checar('mas gastou 1 uso só', cotaLinhas.length, 1);
+  checar('e não cobrou crédito nenhum', saldo, 10);
+}
+
+console.log('\nD2) mesma creditoRef FORA da janela: NÃO é retry — é uso novo e conta');
+resetBanco(10);
+{
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'ref-fixa' });
+  checar('1º uso', cotaLinhas.length, 1);
+  avancar(JANELA_IDEM_MS + 60_000); // 11 min depois: trabalho novo
+  const r = await cobrarCreditoVoz(env, USER, { creditoRef: 'ref-fixa' });
+  checar('libera (ainda tem cota)', r.bloqueado, false);
+  checar('gastou o 2º uso grátis — a chave repetida NÃO valeu de passe livre', cotaLinhas.length, 2);
+}
+
+console.log('\nD3) P0: creditoRef fixa repetida para sempre NÃO dá IA infinita — a cota do mês acaba');
+resetBanco(0); // sem crédito nenhum: quando a cota acabar, tem que BLOQUEAR
+{
+  const resultados: boolean[] = [];
+  // 5 janelas seguidas com a MESMA chave, e 2 chamadas em cada (a 2ª é o retry
+  // legítimo dentro da janela, que continua sendo de graça).
+  for (let janela = 0; janela < 5; janela++) {
+    resultados.push((await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre' })).bloqueado);
+    resultados.push((await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre' })).bloqueado);
+    avancar(JANELA_IDEM_MS + 1000);
+  }
+  checar(
+    'janelas 1-3 liberam (é a cota de verdade), 4 e 5 BLOQUEIAM',
+    resultados,
+    [false, false, false, false, false, false, true, true, true, true],
+  );
+  checar(`gastou exatamente a cota do mês (${IA_GRATIS_MES}), nem um uso a mais`, cotaLinhas.length, IA_GRATIS_MES);
+  checar('e nunca conseguiu crédito de graça', saldo, 0);
+}
+
+// ═══ E) A JANELA NO LEDGER — 1 crédito não compra IA sem fim ═══════════════
+console.log('\nE1) cota esgotada + mesma creditoRef DENTRO da janela: cobra 1 crédito só');
+resetBanco(10, { usosJaFeitos: 3 });
+{
+  const r1 = await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  checar('não bloqueia', r1.bloqueado, false);
+  checar('debitou 1', saldo, 9);
+  avancar(JANELA_IDEM_MS - 60_000); // 9 min depois: retry do MESMO toque
+  const r2 = await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  checar('retry não bloqueia', r2.bloqueado, false);
+  checar('NÃO cobrou 2x', saldo, 9);
+  // Reconheceu a cobrança pela consulta e nem tentou lançar de novo. (Se a RPC
+  // não existir, ainda tenta e o 23505 absorve — é o caso E5.)
+  checar('e nem foi ao ledger de novo (a consulta já sabia)', ledgerChamadas, 1);
+}
+
+console.log('\nE2) cota esgotada + mesma creditoRef FORA da janela: é ação nova e COBRA');
+resetBanco(10, { usosJaFeitos: 3 });
+{
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  checar('debitou 1', saldo, 9);
+  avancar(JANELA_IDEM_MS + 60_000); // 11 min depois
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  checar('debitou de novo — chave velha não compra IA de graça', saldo, 8);
+  checar('e são 2 lançamentos distintos no ledger', ledgerChamadas, 2);
+}
+
+console.log('\nE3) P0: 1 crédito NÃO compra IA infinita (cota esgotada + chave fixa para sempre)');
+resetBanco(1, { usosJaFeitos: 3 }); // exatamente 1 crédito no bolso
+{
+  const r1 = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  checar('a 1ª passa, pagando o crédito', r1.bloqueado, false);
+  checar('saldo zerou', saldo, 0);
+
+  // Com saldo 0, `consumirCreditos` responderia 'sem_saldo' antes mesmo de tentar
+  // o ledger — "você não tem créditos" para um trabalho JÁ PAGO há um minuto. É a
+  // consulta da janela que separa "repetição" de "acabou o saldo".
+  const rRetry = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  checar('retry dentro da janela ainda passa (é o mesmo trabalho, já pago)', rRetry.bloqueado, false);
+  checar('sem debitar de novo', saldo, 0);
+
+  avancar(JANELA_IDEM_MS + 1000);
+  const rDepois = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  checar('mas na janela seguinte a MESMA chave BLOQUEIA (acabou o crédito)', rDepois.bloqueado, true);
+
+  avancar(JANELA_IDEM_MS + 1000);
+  const rMuitoDepois = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  checar('e continua bloqueando (o passe livre não volta com o tempo)', rMuitoDepois.bloqueado, true);
+}
+
+console.log('\nE4) o hash do conteúdo segue a MESMA regra (quem não manda creditoRef não fica de fora)');
+resetBanco(10, { usosJaFeitos: 3 });
+{
+  await cobrarCreditoVoz(env, USER, { conteudo: 'o mesmo áudio de sempre' });
+  checar('debitou 1', saldo, 9);
+  avancar(JANELA_IDEM_MS - 60_000);
+  await cobrarCreditoVoz(env, USER, { conteudo: 'o mesmo áudio de sempre' });
+  checar('reenvio dentro da janela = retry, não cobra 2x', saldo, 9);
+  avancar(JANELA_IDEM_MS + 60_000);
+  await cobrarCreditoVoz(env, USER, { conteudo: 'o mesmo áudio de sempre' });
+  checar('reenvio fora da janela = trabalho novo, cobra', saldo, 8);
+}
+
+console.log('\nE5) RPC da janela fora do ar (cota respondendo): degrada para o bucket, NÃO para "de graça"');
+resetBanco(10, { usosJaFeitos: 3, lookupExiste: false });
+{
+  const r = await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-sem-rpc' });
+  checar('não bloqueia', r.bloqueado, false);
+  checar('perguntou (e levou 404)', lookupChamadas, 1);
+  checar('cobrou assim mesmo — "não sei se já cobrei" nunca vira "já cobrei"', saldo, 9);
+
+  // Mesmo degradado, o retry imediato ainda cai na mesma chave de bucket.
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-sem-rpc' });
+  checar('retry imediato segue absorvido pelo índice único', saldo, 9);
+}
+
+Date.now = DateNowReal; // devolve o relógio de verdade ao processo
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 // `process.exitCode` (não `process.exit()`): deixa o event loop drenar sozinho
 // em vez de forçar o encerramento — em Windows, matar o processo com fetch

@@ -18,6 +18,32 @@ export const CUSTO = {
 // ("2 de 3 usos grátis"); quem ENFORÇA é este número, no servidor.
 export const IA_GRATIS_MES = 3;
 
+/**
+ * JANELA DE IDEMPOTÊNCIA — por quanto tempo a MESMA chave de ação é lida como
+ * "é o mesmo pedido de novo" (retry) em vez de "é um pedido novo".
+ * ESPELHA os DOIS `interval '10 minutes'` de
+ * supabase/migrations/20260727_ia_cota_gratis.sql (`v_janela` em
+ * consumir_cota_ia e o filtro de ref_cobranca_ia_recente). Mudou aqui, mude lá:
+ * cota e crédito discordando de janela é uma cobrança que ninguém explica.
+ *
+ * POR QUE EXISTE UM PRAZO. A chave de idempotência da IA de voz é, na prática,
+ * `creditoRef` — string que vem CRUA do corpo da request (/voz, /transcrever e
+ * /voz/conversa). Idempotência sem prazo transforma essa string num passe livre:
+ * a 1ª chamada com `ref='X'` gasta 1 uso, e toda chamada seguinte com o mesmo
+ * 'X' cai em "já contada" / "já lançada" e volta liberada — 1 uso grátis (ou 1
+ * crédito) comprando Gemini sem fim na conta do dono. O conserto não é tirar a
+ * chave do cliente (o retry legítimo precisa dela): é limitar o TEMPO em que ela
+ * conta como repetição.
+ *
+ * POR QUE 10 MINUTOS. Retry honesto acontece em segundos a minutos: a chamada
+ * tem timeout de 60s no app (TIMEOUT_VOZ_MS / TIMEOUT_TRANSCREVER_MS em
+ * src/services/olliAssistente.ts e src/services/vozNuvem.ts; 45s na conversa), e
+ * o pior caso realista é timeout + app suspenso no bolso + usuário voltando e
+ * tocando de novo. 10 min cobrem isso com folga. Acima disso não é mais retry: é
+ * trabalho novo, e trabalho novo cobra.
+ */
+export const JANELA_IDEM_MS = 10 * 60 * 1000;
+
 // Planos com 'ia_ilimitada' (espelha RECURSOS_POR_PLANO em src/services/entitlements.ts):
 // quem paga não consome cota nem crédito na IA de voz.
 const PLANOS_IA_ILIMITADA = new Set(['pro', 'empresa']);
@@ -130,6 +156,106 @@ async function hashHex(texto) {
 }
 
 /**
+ * Número da janela corrente (bucket alinhado de JANELA_IDEM_MS) — o sufixo que
+ * ABRE uma cobrança nova no ledger. Não é o mecanismo de idempotência sozinho:
+ * ver `chaveCobrancaVoz`, que procura a cobrança recente antes de gerar uma.
+ *
+ * Sozinho, um bucket alinhado seria fraco justamente onde precisa ser forte: um
+ * retry legítimo 9 minutos depois cai do outro lado do corte em 9 de cada 10
+ * execuções, viraria chave nova e cobraria de novo. Bucket resolve "duas
+ * chamadas SIMULTÂNEAS chegam à mesma chave sem combinar nada"; quem resolve
+ * "este retry é do trabalho de 9 minutos atrás" é a consulta.
+ */
+function janelaIdem(agora = Date.now()) {
+  return Math.floor(agora / JANELA_IDEM_MS);
+}
+
+/**
+ * `ref` de uma cobrança de voz que JÁ entrou no ledger há menos de uma janela
+ * para esta mesma ação — ou null se não há (ou se não deu para saber).
+ * Lê pela RPC `ref_cobranca_ia_recente` (migration 20260727).
+ *
+ * `null` aqui significa "siga e cobre", então ele nunca pode ser o resultado de
+ * uma dúvida convertida em certeza ao contrário: se a RPC não existe (migration
+ * não aplicada), erra ou responde algo inesperado, devolvemos null e o chamador
+ * cai na chave por bucket — que ainda absorve o retry rápido pelo índice único.
+ * O caminho degradado cobra a mais num caso raro; o inverso ("não sei" → "já
+ * cobrei") daria IA de graça a quem forçasse o erro.
+ */
+/**
+ * TRÊS estados, não dois — "não consegui consultar" NÃO é "não achei":
+ *   string          → achei cobrança recente com esse prefixo (reusa a ref)
+ *   null            → consultei e não há (pode gerar chave nova)
+ *   'indisponivel'  → não deu para consultar (migration ausente / banco fora)
+ * Colapsar o terceiro no segundo faz o retry legítimo gerar chave nova e cobrar
+ * DE NOVO — dinheiro do cliente. É a regra "erro nunca vira vazio" aplicada ao
+ * bolso. Ver `chaveCobrancaVoz`.
+ */
+async function refCobrancaRecente(env, userId, prefixo) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/ref_cobranca_ia_recente`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_user: userId, p_prefixo: prefixo }),
+    });
+    if (!r.ok) return 'indisponivel';
+    const v = await r.json().catch(() => null);
+    return typeof v === 'string' && v ? v : null;
+  } catch {
+    return 'indisponivel';
+  }
+}
+
+/**
+ * Decide a COBRANÇA de uma ação: `{ jaCobrada, ref }`.
+ *
+ * POR QUE PRECISA DE CONSULTA E A COTA NÃO. As duas camadas aplicam a MESMA
+ * janela, com mecanismos diferentes porque decidem em momentos diferentes:
+ *   • a cota decide LENDO — a RPC `consumir_cota_ia` compara `criado_em` com
+ *     `now() - janela` dentro da própria transação que grava;
+ *   • o ledger decide ESCREVENDO — a idempotência dele É o índice único
+ *     (origem, ref), e índice não olha relógio. Então o tempo tem que entrar na
+ *     chave, e para a chave ser a MESMA num retry é preciso perguntar ao banco
+ *     qual foi a chave da vez passada.
+ *
+ * `jaCobrada:true` (achou lançamento desta ação na janela) LIBERA sem passar pelo
+ * ledger de novo, e isso conserta um jeito silencioso de cobrar duas vezes pelo
+ * mesmo trabalho: `consumirCreditos` lê o saldo ANTES de tentar lançar, então
+ * quem pagou o último crédito e deu retry ficava com saldo 0 e levava
+ * 'sem_saldo' — "você não tem créditos" para um trabalho que ele JÁ PAGOU há um
+ * minuto. Não é falta de saldo, é repetição; e confundir os dois é a mesma
+ * família de erro que "não sei" virar "não tem".
+ *
+ * `jaCobrada:false` cobre os dois casos honestos: não achou nada porque é ação
+ * nova (cobra, certo) ou porque não deu para perguntar (a RPC não existe / erro
+ * — cobra, e o índice único ainda absorve o retry rápido; ver refCobrancaRecente
+ * para por que a dúvida cai desse lado e não do outro). Duas chamadas
+ * SIMULTÂNEAS não acham nada nenhuma das duas, geram a MESMA chave (mesmo
+ * bucket) e o índice único deixa passar só uma.
+ *
+ * Custa uma ida ao banco, e só no caminho que vai cobrar: quem está dentro da
+ * cota grátis (a maioria) sai antes, sem pagar esse round-trip.
+ */
+async function chaveCobrancaVoz(env, userId, refAcao) {
+  // Sem chave estável não há o que reusar: consumirCreditos gera um UUID por
+  // tentativa (borda defensiva — nenhuma rota chega aqui sem ref nem conteúdo).
+  if (!refAcao) return { jaCobrada: false, ref: undefined };
+  const prefixo = `${refAcao}:j`;
+  const recente = await refCobrancaRecente(env, userId, prefixo);
+  if (recente === 'indisponivel') {
+    // Sem consulta confiável não dá para saber se este retry já foi cobrado.
+    // Volta à chave ESTÁVEL (o comportamento anterior à janela): o índice único
+    // do ledger absorve o duplicado, e o retry de rede não paga duas vezes.
+    // Cobrar de novo porque a CONSULTA falhou seria punir o cliente por um
+    // problema nosso. O replay eterno que a janela existe para barrar já é
+    // barrado pelo hash do conteúdo, que compõe a chave logo abaixo.
+    return { jaCobrada: false, ref: refAcao };
+  }
+  if (recente) return { jaCobrada: true, ref: recente };
+  return { jaCobrada: false, ref: `${prefixo}${janelaIdem()}` };
+}
+
+/**
  * Regime de IA da conta, em TRÊS estados (regra "erro nunca vira vazio"):
  *   'ilimitada'     → plano pago e vigente: IA sem cota e sem crédito
  *   'cota'          → grátis (consultado e confirmado): vale a cota mensal
@@ -167,7 +293,7 @@ async function regimeIa(env, userId) {
 
 /**
  * Consome 1 uso da cota grátis do mês NO SERVIDOR. Três estados:
- *   'consumida'    → tinha cota (ou este `ref` já tinha sido contado): liberado
+ *   'consumida'    → tinha cota (ou este `ref` já foi contado HÁ POUCO): liberado
  *   'esgotada'     → a cota do mês acabou: quem quiser seguir paga crédito
  *   'indisponivel' → a RPC/tabela não existe (migration não aplicada) ou o banco
  *                    falhou — o chamador FAIL-OPEN (ver cobrarCreditoVoz)
@@ -176,8 +302,11 @@ async function regimeIa(env, userId) {
  * AsyncStorage (src/services/planos.ts) e voltam ao zero a cada reinstalação —
  * cota client-side não é cota, é sugestão.
  *
- * `p_ref` dá idempotência: um retry de rede da MESMA ação não queima um segundo
- * uso grátis (índice único (user_id,acao,ref) — ver a migration 20260727).
+ * `p_ref` dá idempotência COM PRAZO: um retry de rede da MESMA ação não queima um
+ * segundo uso grátis, mas a mesma chave repetida DEPOIS da janela volta a contar
+ * como uso novo — senão `creditoRef` fixo seria cota infinita (ver
+ * JANELA_IDEM_MS aqui e `v_janela` na migration 20260727). O `ref` vai CRU (sem
+ * carimbo de tempo) de propósito: a janela quem aplica é a RPC, deslizante.
  */
 async function consumirCotaGratis(env, { userId, ref, acao }) {
   try {
@@ -250,15 +379,27 @@ async function debitarCreditoVoz(env, userId, ref) {
  *
  * Idempotência do `ref` (vale para a cota E para o ledger — um retry não pode
  * queimar dois usos nem cobrar 2x), em duas camadas:
- *  1. `creditoRef` explícito no corpo, se o chamador mandar um (namespaced por
- *     usuário+ação) — é o caso de /voz/conversa, que passa o conversationId.
- *  2. Sem isso — o caso de /voz e /transcrever, cujo app não manda `creditoRef`
- *     (ver src/services/vozNuvem.ts/olliAssistente.ts) — cai num hash do
+ *  1. `creditoRef` explícito no corpo, quando o chamador manda um (namespaced
+ *     por usuário+ação). Manda em TODAS as três rotas: /voz/conversa passa o
+ *     conversationId (worker/src/voz.js), e /voz e /transcrever passam a chave
+ *     do toque em "Usar 1 crédito" — o app envia o campo junto com
+ *     `confirmarCredito` (src/services/olliAssistente.ts:165 e
+ *     src/services/vozNuvem.ts:274, alimentados por OlliVozScreen.tsx:715,689).
+ *     É string do CLIENTE: serve de CHAVE, nunca de autorização — daí a janela.
+ *  2. Sem `creditoRef` — o caminho GRÁTIS de /voz e /transcrever, em que o app
+ *     não manda o campo porque não está pedindo cobrança — cai num hash do
  *     `conteudo` (transcript ou áudio): um retry de rede reenvia o MESMO corpo,
- *     produz o MESMO hash, e o índice único absorve o duplicado sem cobrar 2x,
- *     SEM exigir nenhuma mudança no cliente.
+ *     produz o MESMO hash, e o duplicado é absorvido sem cobrar 2x, SEM exigir
+ *     nenhuma mudança no cliente.
  * Sem `creditoRef` nem `conteudo`, cai no default do próprio `consumirCreditos`
  * (um UUID por tentativa — sem idempotência; borda defensiva, não esperada).
+ *
+ * NENHUMA das duas chaves vale para sempre — e é isso que impede a chave do
+ * cliente de virar autorização. Um `creditoRef` fixo (ou o mesmo áudio
+ * reenviado) rende no máximo UMA janela de repetição; depois é ação nova, e ação
+ * nova consome cota ou crédito até acabar. Quem aplica o prazo: a RPC
+ * `consumir_cota_ia` na cota (janela deslizante, dentro da transação que grava)
+ * e `chaveCobrancaVoz` no crédito. Ver JANELA_IDEM_MS.
  */
 export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef, conteudo } = {}) {
   if (!user || !user.id) return { bloqueado: false };
@@ -273,15 +414,30 @@ export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef
     return { bloqueado: false };
   }
 
+  // `refAcao` identifica A AÇÃO, sem tempo nenhum na string. Quem põe prazo é
+  // cada camada, do seu jeito: a cota pela janela deslizante da própria RPC, a
+  // cobrança pela `chaveCobrancaVoz` (que consulta antes de gerar chave nova).
+  // Carimbar o tempo aqui, de uma vez, seria pior: entregaria à cota a borda do
+  // bucket em troca de nada.
+  // COMPÕE as duas partes, nunca ESCOLHE entre elas. O `creditoRef` é string
+  // escolhida pelo cliente: sozinho como chave, um valor fixo faz toda chamada
+  // seguinte parecer repetição da primeira — IA de graça com áudio novo a cada
+  // vez. Junto do hash do conteúdo, a chave só se repete quando o corpo se
+  // repete, que é exatamente o retry de rede que a idempotência existe para
+  // absorver. Quem não manda conteúdo (/voz/conversa) fica na chave do cliente
+  // por desenho: lá o teto já é 1 crédito por conversa.
   const refExplicito = typeof creditoRef === 'string' ? creditoRef.trim().slice(0, 200) : '';
-  let ref;
-  if (refExplicito) {
-    ref = `${acao}:${user.id}:cli:${refExplicito}`;
-  } else if (typeof conteudo === 'string' && conteudo) {
-    ref = `${acao}:${user.id}:${await hashHex(conteudo)}`;
+  const hashConteudo = typeof conteudo === 'string' && conteudo ? await hashHex(conteudo) : '';
+  let refAcao;
+  if (refExplicito && hashConteudo) {
+    refAcao = `${acao}:${user.id}:cli:${refExplicito}:h${hashConteudo}`;
+  } else if (refExplicito) {
+    refAcao = `${acao}:${user.id}:cli:${refExplicito}`;
+  } else if (hashConteudo) {
+    refAcao = `${acao}:${user.id}:${hashConteudo}`;
   }
 
-  const cota = await consumirCotaGratis(env, { userId: user.id, ref, acao });
+  const cota = await consumirCotaGratis(env, { userId: user.id, ref: refAcao, acao });
   if (cota === 'consumida') return { bloqueado: false };
   if (cota === 'indisponivel') {
     // Migration não aplicada (ou banco fora): sem contagem confiável, não dá para
@@ -289,9 +445,16 @@ export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef
     // cliente pediu explicitamente — para que este deploy seja seguro sozinho.
     console.error('[olli-creditos] cota de IA indisponível (migration 20260727 aplicada?) — fail-open:', user.id);
     if (confirmarCredito !== true) return { bloqueado: false };
-    return debitarCreditoVoz(env, user.id, ref);
+    return cobrar(env, user.id, refAcao);
   }
 
   // cota === 'esgotada': daqui em diante é crédito, tenha o cliente pedido ou não.
-  return debitarCreditoVoz(env, user.id, ref);
+  return cobrar(env, user.id, refAcao);
+}
+
+/** Cobra 1 crédito por esta ação — ou reconhece que ela já foi cobrada na janela. */
+async function cobrar(env, userId, refAcao) {
+  const { jaCobrada, ref } = await chaveCobrancaVoz(env, userId, refAcao);
+  if (jaCobrada) return { bloqueado: false }; // retry de trabalho já pago: não cobra, não bloqueia
+  return debitarCreditoVoz(env, userId, ref);
 }

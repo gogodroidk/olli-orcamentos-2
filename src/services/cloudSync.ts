@@ -630,7 +630,14 @@ async function alvoEmpresa(): Promise<{ userId: string; souDono: boolean } | nul
   try {
     const d = decidirEmpresaEquipe(await garantirContextoEquipe());
     if (!d.ler) return null;
-    if (d.ownerUserId) return { userId: d.ownerUserId, souDono: false };
+    // Roteia pelo DISCRIMINANTE (`escrever`), não pela truthiness de
+    // `ownerUserId`. São a mesma coisa só enquanto o banco garantir que todo
+    // membro tem um dono com id não-vazio (`organizacoes.owner_user_id not null`);
+    // no dia em que um `ownerUserId` chegar vazio, ramificar pela truthiness dele
+    // mandaria o MEMBRO para o ramo do dono — `getCurrentUser()` devolveria o id
+    // dele e `souDono: true` reabriria o vazamento inteiro. `escrever` é o campo
+    // que `decidirEmpresaEquipe` calcula justamente para responder a esta pergunta.
+    if (!d.escrever) return { userId: d.ownerUserId, souDono: false };
     const user = await getCurrentUser();
     return user?.id ? { userId: user.id, souDono: true } : null;
   } catch {

@@ -1255,6 +1255,14 @@ export function edicaoBloqueada(status: StatusOrcamento): boolean {
  * Recusa de gravação por regra comercial — NÃO é falha técnica. Tipada para que a
  * UI possa distinguir "tente de novo em instantes" (transitório) de "isto não vai
  * funcionar nunca, use Duplicar" (permanente).
+ *
+ * ⚠️ AINDA SEM CONSUMIDOR (achado aberto, fora do escopo deste arquivo): nenhuma
+ * tela hoje faz `instanceof OrcamentoAceitoError` — o catch genérico de
+ * `NovoOrcamentoScreen.tsx` (handleSave/handleRascunho) trata esta recusa
+ * PERMANENTE como se fosse falha transitória e mostra "Tente novamente em
+ * instantes", sem apontar "Duplicar". Quem for fechar esse catch pode checar
+ * `e instanceof OrcamentoAceitoError` (ou `e?.codigo === 'ORCAMENTO_ACEITO'`,
+ * sem precisar importar a classe) — o campo já existe abaixo para isso.
  */
 export class OrcamentoAceitoError extends Error {
   readonly codigo = 'ORCAMENTO_ACEITO' as const;
@@ -1277,6 +1285,21 @@ export class OrcamentoAceitoError extends Error {
  * 2. PROPOSTA ENVIADA GERA VERSÃO (mestre 13.5). Enviado/visualizado/
  *    em_negociacao/aguardando_assinatura: a edição passa, mas congelamos o estado
  *    anterior como VERSÃO antes de sobrescrever — o que o cliente viu nunca some.
+ *
+ *    ALCANCE ATUAL da regra 2: os dois pontos de entrada do editor que ESTE
+ *    pacote gateia (`OrcamentosScreen.tsx` e `VisualizarOrcamentoScreen.tsx`)
+ *    escondem "Editar" para todo status em `edicaoBloqueada` — que já COBRE
+ *    `propostaJaEnviada` inteiro. Ou seja, pela UI mobile que este pacote
+ *    controla, quem chega ao editor já está em rascunho/recusado/expirado/
+ *    cancelado, sem conteúdo protegido a versionar: a regra 2 fica em modo
+ *    cinto-e-suspensório, não em uso rotineiro. ISTO NÃO É a decisão de matar o
+ *    versionamento local — é ficar como rede de segurança contra qualquer
+ *    caminho que ainda alcance o editor sem passar por esse gate (achados
+ *    abertos, fora destes 4 arquivos: a ação da tabela desktop em
+ *    `OrcamentosDesktopScreen.tsx` e o deep link `orcamentos/:id/editar` em
+ *    `linking.ts`, nenhum dos dois gateado hoje). A tela de Versões continua
+ *    viva de qualquer forma — ela também lista o que a nuvem/painel gerou
+ *    (`clienteLink.ts`), não só o que este `saveOrcamento` congela.
  *
  * As duas comparam `impressaoComercial`, que ignora os campos voláteis: trocar SÓ
  * o status (o link marcou "visualizado", o cliente aprovou, o dono converteu),

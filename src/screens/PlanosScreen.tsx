@@ -22,12 +22,17 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para assinatura consumida
- * dentro do app e proíbe abrir o checkout num navegador externo (link-out). Não há
- * StoreKit implementado ainda, então no iOS a ASSINATURA fica escondida — o plano
- * atual continua visível (isso é permitido; o proibido é vender). `COMPRA_NO_APP`
- * centraliza esse desvio para não espalhar `if (Platform.OS === 'ios')` pela tela.
- * "Gerenciar assinatura" (portal Stripe) fica de fora desta guarda: é gestão de uma
- * assinatura JÁ existente (feita fora do iOS), não uma compra nova.
+ * dentro do app e proíbe abrir o checkout num navegador externo (link-out) — e
+ * proíbe também qualquer caminho que SUBSTITUA a compra, como um "fale conosco"
+ * que leva a fechar por fora. Não há StoreKit implementado ainda, então no iOS
+ * a venda fica escondida por completo: botão de assinatura, toggle de período,
+ * rodapé de venda e o CTA "Falar com a gente" da Empresa. O plano atual (se já
+ * for pagante) continua visível — isso é permitido; o proibido é vender ou
+ * apontar caminho para vender. `COMPRA_NO_APP` centraliza esse desvio para não
+ * espalhar `if (Platform.OS === 'ios')` pela tela.
+ * Gerenciar uma assinatura JÁ existente (feita fora do iOS) acontece noutra
+ * tela (AssinaturaScreen, via o botão "Sua assinatura" abaixo) — não há portal
+ * Stripe nem código dele nesta tela.
  */
 const COMPRA_NO_APP = Platform.OS !== 'ios';
 
@@ -179,7 +184,7 @@ export default function PlanosScreen() {
   // 3 estados explícitos (nunca colapsar erro em vazio): `planoErro` só vira
   // true numa falha de rede real; o plano exibido some do cache/última leitura.
   const [planoErro, setPlanoErro] = useState(false);
-  const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | 'portal' | null>(null);
+  const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | null>(null);
 
   // Semeia com o plano do cache local ANTES da leitura de rede, para NÃO piscar
   // a página de venda para quem já é pagante (a "conta limpa" da Frente 2).
@@ -218,7 +223,7 @@ export default function PlanosScreen() {
   const ehPagante = planoAtualId !== 'gratis';
   const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
 
-  async function abrirUrlPagamento(caminho: '/stripe/checkout' | '/stripe/portal', body?: object) {
+  async function abrirUrlPagamento(body?: object) {
     if (!PAGAMENTOS_URL) {
       Alert.alert('Ainda não disponível', 'O pagamento online ainda não foi configurado. Tente novamente em breve.');
       return;
@@ -240,7 +245,7 @@ export default function PlanosScreen() {
         return;
       }
 
-      const r = await fetch(`${PAGAMENTOS_URL}${caminho}`, {
+      const r = await fetch(`${PAGAMENTOS_URL}/stripe/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body ?? {}),
@@ -298,16 +303,7 @@ export default function PlanosScreen() {
     }
     setAcaoEmAndamento(p.id);
     try {
-      await abrirUrlPagamento('/stripe/checkout', { plano: planoCheckout(p.id, periodo) });
-    } finally {
-      setAcaoEmAndamento(null);
-    }
-  }
-
-  async function gerenciarAssinatura() {
-    setAcaoEmAndamento('portal');
-    try {
-      await abrirUrlPagamento('/stripe/portal');
+      await abrirUrlPagamento({ plano: planoCheckout(p.id, periodo) });
     } finally {
       setAcaoEmAndamento(null);
     }
@@ -390,7 +386,10 @@ export default function PlanosScreen() {
           </View>
         </AnimatedEntrance>
 
-        {/* TOGGLE MENSAL / ANUAL / 12X — anual mostra total com -20%; 12x mostra a parcela */}
+        {/* TOGGLE MENSAL / ANUAL / 12X — anual mostra total com -20%; 12x mostra a parcela.
+            iOS (Guideline 3.1.1): escondido — não faz sentido oferecer a escolha de
+            período de uma compra que este aparelho não pode fazer. */}
+        {COMPRA_NO_APP && (
         <AnimatedEntrance index={1}>
           <View style={styles.toggle}>
             <TouchableOpacity
@@ -418,6 +417,7 @@ export default function PlanosScreen() {
             </TouchableOpacity>
           </View>
         </AnimatedEntrance>
+        )}
 
         {/* CARTÕES — lado a lado no desktop, empilhados no mobile */}
         <View style={ehDesktop ? styles.cardsRow : undefined}>
@@ -429,9 +429,7 @@ export default function PlanosScreen() {
                 ehDesktop={ehDesktop}
                 carregandoPlano={carregandoPlano}
                 carregandoAcao={acaoEmAndamento === p.id}
-                carregandoPortal={acaoEmAndamento === 'portal'}
                 onPress={() => escolher(p)}
-                onGerenciar={gerenciarAssinatura}
                 onFalarSuporte={() => falarComSuporte(p)}
               />
             );
@@ -446,7 +444,12 @@ export default function PlanosScreen() {
           })}
         </View>
 
+        {/* iOS (Guideline 3.1.1): rodapé escondido — descreve uma compra
+            (assinatura que renova, 12x no cartão) que este aparelho não faz;
+            mantido sem alteração no Android/web, onde a compra é real. */}
+        {COMPRA_NO_APP && (
         <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o plano por 12 meses. 💙</Text>
+        )}
         </>
         )}
       </ScrollView>
@@ -460,9 +463,7 @@ function PlanoCard({
   ehDesktop,
   carregandoPlano,
   carregandoAcao,
-  carregandoPortal,
   onPress,
-  onGerenciar,
   onFalarSuporte,
 }: {
   plano: Plano;
@@ -470,9 +471,7 @@ function PlanoCard({
   ehDesktop?: boolean;
   carregandoPlano: boolean;
   carregandoAcao: boolean;
-  carregandoPortal: boolean;
   onPress: () => void;
-  onGerenciar: () => void;
   onFalarSuporte: () => void;
 }) {
   const cores = useCores();
@@ -482,7 +481,10 @@ function PlanoCard({
   const textoSobreAccent = textoSobre(cores.accentLight);
   const exibido = precoExibido(plano, periodo);
   const parcela = parcelaExibida(plano, periodo);
-  const ehPlanoPagoAtivo = plano.atual && plano.id !== 'gratis';
+  // NB: este card só renderiza quando `!ehPagante` (ver PlanosScreen acima), ou
+  // seja, `plano.atual` só é true para o card Grátis — nunca há aqui um card
+  // "atual" de plano pago. Gerenciar uma assinatura paga já existente é a
+  // AssinaturaScreen, não este card.
 
   // Rótulo do CTA coerente com o período — nunca dizer "/mês" cobrando o ano
   // inteiro (evita cobrança-surpresa/estorno). Grátis mantém o texto fixo.
@@ -507,7 +509,7 @@ function PlanoCard({
             )}
             {plano.atual && (
               <View style={styles.atualPill}>
-                <Text style={styles.atualPillText}>{ehPlanoPagoAtivo ? 'Seu plano atual' : 'Atual'}</Text>
+                <Text style={styles.atualPillText}>Atual</Text>
               </View>
             )}
           </View>
@@ -545,18 +547,7 @@ function PlanoCard({
       {ehDesktop ? <View style={styles.ctaSpacer} /> : null}
 
       {/* CTA */}
-      {ehPlanoPagoAtivo ? (
-        <TouchableOpacity style={styles.ctaOutline} onPress={onGerenciar} activeOpacity={0.85} disabled={carregandoPortal}>
-          {carregandoPortal ? (
-            <ActivityIndicator size="small" color={cores.primaryLight} />
-          ) : (
-            <>
-              <MaterialCommunityIcons name="cog-outline" size={17} color={cores.primaryLight} />
-              <Text style={styles.ctaOutlineText}>Gerenciar assinatura</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      ) : plano.atual ? (
+      {plano.atual ? (
         <View style={styles.ctaAtual}>
           <MaterialCommunityIcons name="check" size={18} color={cores.success} />
           <Text style={styles.ctaAtualText}>{plano.cta}</Text>
@@ -564,7 +555,10 @@ function PlanoCard({
       ) : !COMPRA_NO_APP ? (
         // iOS (Guideline 3.1.1): sem botão de assinatura, sem link-out para o
         // checkout — só um texto honesto e curto, sem instrução de "vá ao site"
-        // (a Apple também proíbe direcionar para compra externa).
+        // (a Apple também proíbe direcionar para compra externa). O CTA
+        // secundário "Falar com a gente" (WhatsApp) do plano Empresa, mais
+        // abaixo, também fica escondido no iOS: sem o botão de compra acima,
+        // ele viraria o próprio caminho de venda por fora do app.
         <View style={styles.ctaIndisponivel}>
           <Text style={styles.ctaIndisponivelText}>Assinatura ainda não disponível no iPhone</Text>
         </View>
@@ -594,8 +588,11 @@ function PlanoCard({
         </TouchableOpacity>
       )}
 
-      {/* Empresa: CTA secundário para tirar dúvidas antes de assinar. */}
-      {!plano.atual && plano.id === 'empresa' && (
+      {/* Empresa: CTA secundário para tirar dúvidas antes de assinar. iOS
+          (Guideline 3.1.1): escondido — sem o botão de compra, este WhatsApp
+          viraria o caminho de venda por fora do app, o link-out que a
+          guideline proíbe. */}
+      {COMPRA_NO_APP && !plano.atual && plano.id === 'empresa' && (
         <TouchableOpacity style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
           <MaterialCommunityIcons name="whatsapp" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Falar com a gente</Text>

@@ -53,13 +53,15 @@ async function autoBackupHabilitado(): Promise<boolean> {
 
 /**
  * Roda o backup automático diário, se for a hora certa. Passos:
- *  0) No-op se quem está logado NÃO é o dono do tenant (membro de equipe) ou se
- *     não dá para saber — o snapshot é integral e levaria a base do dono para o
- *     tenant de outra pessoa (ver `backupNuvemPermitido` em contextoEquipe).
+ *  0) Sai cedo se quem está logado NÃO é o dono do tenant (membro de equipe) ou
+ *     se não dá para saber. Isto é um ATALHO, não a trava: a trava de verdade
+ *     está em `inserirBackupVersionado` (backup.ts), onde o `user_id` é
+ *     carimbado, e ela cobre também o botão manual. O comentário no corpo diz
+ *     por que o atalho existe mesmo assim.
  *  1) No-op se deslogado, toggle desligado, ou já houve 'diario' nas últimas 24h
- *     (carimbo local em AsyncStorage evita até uma consulta de rede na maioria
- *     das aberturas do app — a fonte de verdade do throttle é a própria tabela,
- *     consultada no passo 2, para cobrir o caso de troca de aparelho).
+ *     (o carimbo local em AsyncStorage poupa a consulta de rede do passo 2 — a
+ *     fonte de verdade do throttle é a própria tabela, consultada no passo 2,
+ *     para cobrir o caso de troca de aparelho).
  *  2) Confirma na nuvem que não há 'diario' recente (2ª camada do throttle —
  *     cobre reinstalação/troca de aparelho, onde o carimbo local não existe).
  *  3) Gera o snapshot (exportAllData, reaproveitado de database.ts) e insere
@@ -78,20 +80,26 @@ export async function maybeAutoBackup(): Promise<void> {
     const user = await getCurrentUser();
     if (!user) return; // deslogado: sem tabela versionada para escrever (RLS exige dono)
 
-    // QUEM é o dono do banco que estamos prestes a fotografar? O snapshot é
-    // INTEIRO e o SQLite local não separa tenant: no aparelho de um MEMBRO de
-    // equipe ele contém a base do DONO (veio pelo sync), e gravá-lo sob o
-    // `user_id` do membro põe os clientes do dono dentro do tenant dele — que os
-    // leva embora ao ser desligado. Só a conta pessoal/dono passa; `desconhecido`
-    // não passa, porque "não sei de quem é este banco" não autoriza copiá-lo
-    // (mesma regra do restore, ver contextoEquipe). NÃO carimbamos
-    // AUTO_BACKUP_ULTIMO_KEY aqui de propósito: nenhum backup foi feito, e um
-    // carimbo faria a próxima abertura pular a checagem por 24h — se o contexto
-    // resolver para dono nesse meio-tempo, o backup dele sai na hora certa.
+    // POR QUE ESTA CHECAGEM CONTINUA AQUI, se `inserirBackupVersionado` já
+    // recusa (backup.ts, onde o `user_id` é carimbado — é lá que mora a trava
+    // que cobre os três caminhos, inclusive o botão manual)?
+    //
+    // Porque sem ela o membro de equipe pagaria a recusa CARO, em toda abertura
+    // do app, para sempre: o fluxo abaixo faria a consulta de rede do throttle e
+    // então a exportação — serializar o banco INTEIRO — só para o insert ser
+    // recusado no fim. E, como nenhum backup sai, `AUTO_BACKUP_ULTIMO_KEY`
+    // nunca é carimbado, então o atalho local das 24h nunca engata e o ciclo se
+    // repete no próximo start. Sair antes do throttle troca isso por uma leitura
+    // de contexto que, no caminho comum, já vem do cache (`garantirContextoEquipe`).
+    //
+    // NÃO carimbamos AUTO_BACKUP_ULTIMO_KEY aqui de propósito: nenhum backup foi
+    // feito, e um carimbo faria a próxima abertura pular a checagem por 24h — se
+    // o contexto resolver para dono nesse meio-tempo, o backup dele sai na hora.
     const ctx = await garantirContextoEquipe();
     if (!backupNuvemPermitido(ctx)) {
-      // Silêncio total aqui viraria "meu backup automático nunca roda e ninguém
-      // sabe por quê" — a linha diz qual dos dois motivos foi.
+      // Diagnóstico de desenvolvedor. O que o USUÁRIO vê está na tela Conta
+      // (ContaScreen/ContaDesktopScreen leem `estadoBackupNuvem`) — um
+      // console.warn nunca foi aviso para ninguém.
       console.warn(
         `[autoBackup] backup na nuvem NÃO gerado: contexto de equipe "${ctx.status}"` +
           ' (só o dono do tenant faz backup — o banco local contém dados da empresa).',

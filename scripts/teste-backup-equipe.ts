@@ -19,18 +19,27 @@
  *     no PUSH: o upsert vai sem `user_id`, o default `auth.uid()` carimbava o
  *     MEMBRO, e nascia no tenant dele uma cópia do CNPJ/logo/chave Pix do dono.
  *
- * Estrutura, igual aos testes vizinhos: as seções 1–3 exercitam as funções REAIS
- * que decidem (src/services/contextoEquipe.ts, puro de propósito). A seção 4 é
+ *  3. BOTÃO "FAZER BACKUP AGORA". Mesmo dano do item 1 por um caminho pior: a
+ *     primeira guarda ficou em `maybeAutoBackup`, mas o `user_id` é carimbado em
+ *     `inserirBackupVersionado`/`backupNow`. O botão da tela Conta chamava
+ *     `backupManualVersionado` e passava direto — e o usuário o dispara de
+ *     propósito, sem esperar as 24h do automático. A guarda mudou para onde o
+ *     carimbo acontece; a seção 4 exercita a decisão e a 5 confere o lugar dela.
+ *
+ * Estrutura, igual aos testes vizinhos: as seções 1–4 exercitam as funções REAIS
+ * que decidem (src/services/contextoEquipe.ts, puro de propósito). A seção 5 é
  * diferente e proposital: as funções puras só valem se estiverem LIGADAS no
- * caminho de escrita, então ela lê o código de autoBackup.ts/cloudSync.ts e
- * confere a ligação. Não é prova de execução — é a rede que pega o "alguém tirou
- * a guarda e os testes continuaram verdes".
+ * caminho de escrita, então ela lê o código de backup.ts/autoBackup.ts/
+ * cloudSync.ts e as duas telas de Conta, e confere a ligação. Não é prova de
+ * execução — é a rede que pega o "alguém tirou a guarda e os testes continuaram
+ * verdes", que é literalmente o que aconteceu entre uma onda e outra.
  */
 import { readFileSync } from 'node:fs';
 import {
   backupNuvemPermitido,
   classificarContextoEquipe,
   decidirEmpresaEquipe,
+  motivoBackupNuvem,
 } from '../src/services/contextoEquipe.ts';
 import type { LeituraOrganizacao } from '../src/services/equipe.ts';
 
@@ -121,7 +130,71 @@ for (const [nome, leitura] of [['técnico', TECNICO], ['admin', ADMIN], ['indete
   checar(`${nome} => escrever === false`, decidirEmpresaEquipe(ctx(leitura)).escrever, false);
 }
 
-console.log('\n4) as guardas estão LIGADAS no caminho de escrita (não só definidas)');
+console.log('\n4) botão "Fazer backup agora" — o caminho MANUAL, que o usuário dispara de propósito');
+// Por que esta seção existe: a primeira versão da guarda ficou em
+// `maybeAutoBackup`, mas o `user_id` é carimbado em `inserirBackupVersionado` /
+// `backupNow`. O botão da tela Conta chama `backupManualVersionado` e passava
+// direto — mesmo dano do achado 1, sem esperar 24h. A guarda mudou para onde o
+// carimbo acontece; aqui exercitamos a decisão que ela consulta.
+//
+// `exigirPermissaoBackupNuvem` (backup.ts) é exatamente isto: chama
+// `motivoBackupNuvem` e só deixa passar 'permitido'. A seção 5 confere que
+// backup.ts continua assim — esta seção confere QUEM passa.
+const backupManualPassa = (r: LeituraOrganizacao) => motivoBackupNuvem(ctx(r)) === 'permitido';
+
+checar('membro (técnico) NÃO consegue backup manual', backupManualPassa(TECNICO), false);
+checar('membro (admin) NÃO consegue backup manual', backupManualPassa(ADMIN), false);
+checar('DONO da org CONSEGUE (é dono dos dados)', backupManualPassa(O_DONO), true);
+checar('conta pessoal CONSEGUE', backupManualPassa(PESSOAL), true);
+checar('contexto indeterminado NÃO consegue (fail-closed)', backupManualPassa(ERRO), false);
+// O motivo, não só o veredito: a tela mostra frases diferentes para "é do dono
+// da empresa" (definitivo) e "não deu para confirmar" (temporário). Colapsar os
+// dois num false era o que deixava o membro achando que estava protegido.
+checar('membro recebe o motivo "somente_dono"', motivoBackupNuvem(ctx(TECNICO)), 'somente_dono');
+checar('indeterminado recebe o motivo "indeterminado"', motivoBackupNuvem(ctx(ERRO)), 'indeterminado');
+checar('dono recebe o motivo "permitido"', motivoBackupNuvem(ctx(O_DONO)), 'permitido');
+// Automático e manual não podem divergir: é o mesmo dano nos dois caminhos.
+for (const [nome, leitura] of [
+  ['técnico', TECNICO], ['admin', ADMIN], ['dono', O_DONO], ['pessoal', PESSOAL], ['indeterminado', ERRO],
+] as const) {
+  checar(
+    `${nome}: manual e automático decidem igual`,
+    backupManualPassa(leitura) === backupNuvemPermitido(ctx(leitura)),
+    true,
+  );
+}
+
+console.log('\n5) as guardas estão LIGADAS no caminho de escrita (não só definidas)');
+const backupSrc = ler('../src/services/backup.ts');
+// A guarda tem que estar onde o `user_id` é carimbado. Fora daqui ela cobre um
+// chamador e deixa os outros abertos — foi exatamente o que aconteceu.
+for (const fn of ['backupNow', 'inserirBackupVersionado']) {
+  const inicio = backupSrc.indexOf(`export async function ${fn}(`);
+  checar(`${fn} existe em backup.ts`, inicio >= 0, true);
+  const corpoFn = backupSrc.slice(inicio, backupSrc.indexOf('\n}', inicio));
+  checar(`${fn} passa pela guarda de tenant`, corpoFn.includes('exigirPermissaoBackupNuvem'), true);
+  checar(
+    `${fn}: a guarda vem ANTES de gerar o snapshot`,
+    corpoFn.indexOf('exigirPermissaoBackupNuvem') < corpoFn.indexOf('exportAllData('),
+    true,
+  );
+}
+// O botão da tela Conta chama `backupManualVersionado`; ele só está coberto
+// enquanto delegar para a função guardada em vez de inserir por conta própria.
+const manualInicio = backupSrc.indexOf('export async function backupManualVersionado(');
+const manualCorpo = backupSrc.slice(manualInicio, backupSrc.indexOf('\n}', manualInicio));
+checar('backupManualVersionado delega para inserirBackupVersionado', manualCorpo.includes('inserirBackupVersionado('), true);
+checar('e não faz insert próprio (que escaparia da guarda)', manualCorpo.includes('.insert('), false);
+// A tela precisa LER o motivo — sem isso ela volta a dizer "ativo" para o membro.
+for (const [nome, caminho] of [
+  ['ContaScreen', '../src/screens/ContaScreen.tsx'],
+  ['ContaDesktopScreen', '../src/screens/desktop/ContaDesktopScreen.tsx'],
+] as const) {
+  const telaSrc = ler(caminho);
+  checar(`${nome} lê o estado real do backup`, telaSrc.includes('estadoBackupNuvem'), true);
+  checar(`${nome} mostra a copy honesta ao membro`, telaSrc.includes('COPY_BACKUP_NUVEM.somente_dono'), true);
+}
+
 const autoBackupSrc = ler('../src/services/autoBackup.ts');
 // Só o corpo de maybeAutoBackup: os imports no topo citariam os mesmos nomes e
 // tornariam a ordem abaixo sempre verdadeira por acidente.
@@ -136,6 +209,19 @@ checar(
 
 const syncSrc = ler('../src/services/cloudSync.ts');
 checar('cloudSync resolve o tenant da empresa antes de tocá-la', syncSrc.includes('alvoEmpresa'), true);
+// A seção 3 acima afirma `escrever === false` como PROVA de que o membro não
+// escreve `empresa`. Essa prova só vale se o código de produção ler `escrever`:
+// enquanto `alvoEmpresa` roteava por `if (d.ownerUserId)`, o campo era morto e o
+// teste atestava algo que ninguém consultava. Aqui exigimos o discriminante.
+const alvoInicio = syncSrc.indexOf('async function alvoEmpresa(');
+const alvoCorpo = syncSrc.slice(alvoInicio, syncSrc.indexOf('\n}', alvoInicio));
+checar('alvoEmpresa existe', alvoInicio >= 0, true);
+checar('alvoEmpresa roteia pelo discriminante `escrever`', alvoCorpo.includes('d.escrever'), true);
+checar(
+  'e NÃO pela truthiness de `ownerUserId` (que mandaria membro sem dono para o ramo do dono)',
+  alvoCorpo.includes('if (d.ownerUserId)'),
+  false,
+);
 // Toda consulta a `empresa` precisa dizer DE QUEM é a linha. Um select sem filtro
 // aqui é o achado voltando: a RLS escolhe sozinha e pode devolver a do dono.
 const consultas = syncSrc.split(".from('empresa')").slice(1);

@@ -105,7 +105,35 @@ export function restaurePodeTocarNaNuvem(ctx: ContextoEquipe): boolean {
  * onde eles vieram.
  */
 export function backupNuvemPermitido(ctx: ContextoEquipe): boolean {
-  return ctx.status === 'pessoal';
+  return motivoBackupNuvem(ctx) === 'permitido';
+}
+
+/**
+ * O MESMO julgamento de `backupNuvemPermitido`, mas dizendo POR QUÊ — porque um
+ * booleano só sabe responder "não" e a tela precisa contar duas histórias bem
+ * diferentes ao usuário:
+ *
+ *  - `somente_dono` (membro de equipe): não é falha nem espera. O backup da conta
+ *    é do dono da empresa e sempre será; não há nada que o membro possa fazer, e
+ *    dizer a ele "backup automático: ativo" é mentira (a guarda vai recusar).
+ *  - `indeterminado`: é o fail-closed temporário — offline, RLS, servidor fora.
+ *    Pode virar `permitido` no próximo minuto, então a tela diz "ainda não deu
+ *    para confirmar", não "você não pode".
+ *
+ * Colapsar os dois num `false` é o bug recorrente da casa pelo avesso: aqui o
+ * dado EXISTE (sabemos exatamente qual dos dois é) e era a UI que o jogava fora.
+ */
+export type MotivoBackupNuvem = 'permitido' | 'somente_dono' | 'indeterminado';
+
+export function motivoBackupNuvem(ctx: ContextoEquipe): MotivoBackupNuvem {
+  switch (ctx.status) {
+    case 'pessoal':
+      return 'permitido';
+    case 'membro':
+      return 'somente_dono';
+    case 'desconhecido':
+      return 'indeterminado';
+  }
 }
 
 /**

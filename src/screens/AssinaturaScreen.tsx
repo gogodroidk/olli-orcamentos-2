@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl, TouchableOpacity, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,6 +25,17 @@ import {
 } from '../services/assinatura';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * iOS (Guideline 3.1.1): gerenciar uma assinatura JÁ existente (cancelar, ver
+ * método de pagamento, baixar recibo) é tolerado mesmo sem StoreKit — não é
+ * uma compra nova, então o botão que abre o Portal da Stripe continua ativo
+ * aqui. O que não pode é ANUNCIAR troca/upgrade de plano por esse caminho —
+ * isso lê como oferta de compra por fora do app. Por isso a dica abaixo do
+ * botão não menciona "trocar de plano" no iOS (o Portal em si é da Stripe e
+ * foge do nosso controle, mas nosso próprio texto não precisa convidar).
+ */
+const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';
 
 const PLANO_LABEL: Record<PlanoId, string> = { gratis: 'Grátis', pro: 'Pro', empresa: 'Empresa' };
 
@@ -306,7 +317,9 @@ export default function AssinaturaScreen() {
                     style={{ marginTop: Spacing.base }}
                   />
                   <Text style={styles.gerenciarHint}>
-                    Você é levado ao ambiente seguro da Stripe para trocar de plano, atualizar o cartão, baixar recibos ou cancelar quando quiser.
+                    {ANUNCIA_TROCA_PLANO
+                      ? 'Você é levado ao ambiente seguro da Stripe para trocar de plano, atualizar o cartão, baixar recibos ou cancelar quando quiser.'
+                      : 'Você é levado ao ambiente seguro da Stripe para atualizar o cartão, baixar recibos ou cancelar quando quiser.'}
                   </Text>
                 </AnimatedEntrance>
               </>
