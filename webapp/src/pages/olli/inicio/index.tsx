@@ -88,8 +88,16 @@ export default function Inicio() {
 
 			{contaNova && <PrimeirosPassosCard />}
 
-			{/* Os 4 números que decidem o mês. Cada um leva à lista já filtrada. */}
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			{/*
+			 * Os 4 números que decidem o mês. Cada um leva à lista já filtrada.
+			 *
+			 * Breakpoint em `lg` (1024px), não só em `xl` (1280px): sem o `lg:grid-cols-4`,
+			 * a grade ficava PRESA em 2 colunas por toda a faixa 640–1279px — no mínimo do
+			 * layout desktop (~1024px) sobrava tela de sobra e os 4 cartões viravam 2
+			 * blocos esticados e desproporcionais, em vez de ocupar a largura em 4. Mesmo
+			 * ajuste já feito no app-desktop (`KpiGrid`, Onda 11 — 2/4 colunas em 1024/1280px).
+			 */}
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 				<KpiDinheiroCard
 					label="Em jogo"
 					valor={emJogo ? formatBRL(emJogo.total) : "—"}

@@ -348,7 +348,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   introForte: { fontWeight: '800', color: c.onSurface },
 
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
-  iconChip: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  iconChip: { width: 48, height: 48, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center' },
   nomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   nome: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
   badgePadrao: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: c.primary, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },

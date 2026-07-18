@@ -664,7 +664,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   membroRowHover: { backgroundColor: c.surfacePressed },
   membroRowAtual: { borderColor: c.success, backgroundColor: c.successLight },
-  membroAvatar: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  membroAvatar: { width: 38, height: 38, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   membroAvatarText: { fontSize: 16, fontWeight: '800' as const, color: c.accentLight },
   membroNome: { ...Typography.body, fontWeight: '700' as const, color: c.onSurface },
   membroPapel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },

@@ -396,7 +396,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   rowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   rowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 12 },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
-  olliAvatar: { width: 36, height: 36, borderRadius: 12, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  olliAvatar: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 8 },
 
   bubble: { maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 11 },
   bubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },

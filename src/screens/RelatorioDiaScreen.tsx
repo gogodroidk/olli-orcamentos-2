@@ -488,7 +488,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   histCard: { padding: Spacing.md },
   histHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   histIcon: {
-    width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    width: 34, height: 34, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center',
     backgroundColor: c.accentContainer,
   },
   // Era '#fff' fixo sobre o card (superfície da tela) — ilegível no claro.

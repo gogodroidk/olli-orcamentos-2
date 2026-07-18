@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
   TouchableOpacity, Modal, ActivityIndicator, Alert,
@@ -7,14 +7,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Orcamento, Cliente } from '../types';
-import { searchClientes, saveCliente } from '../database/database';
+import { searchClientes, saveCliente, getClientes } from '../database/database';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { useCepLookup } from '../services/cep';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
+import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 
 interface Props {
   orc: Orcamento;
@@ -31,6 +33,23 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   const [nc, setNc] = useState<Partial<Cliente>>({});
   const [salvandoNovo, setSalvandoNovo] = useState(false);
   const [ncErrors, setNcErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
+  // Cadastro completo, só para o AVISO DE DUPLICADO (não bloqueia). 3 estados
+  // explícitos (nunca colapsar erro em "sem duplicata"): se a leitura falhar,
+  // `erroClientesDuplicados` avisa que a checagem não rodou — ver
+  // AvisoClienteDuplicado — mas o cadastro de cliente novo continua liberado.
+  const [todosClientes, setTodosClientes] = useState<Cliente[]>([]);
+  const [erroClientesDuplicados, setErroClientesDuplicados] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    getClientes()
+      .then(lista => { if (vivo) { setTodosClientes(lista); setErroClientesDuplicados(false); } })
+      .catch(() => { if (vivo) setErroClientesDuplicados(true); });
+    return () => { vivo = false; };
+  }, []);
+  const duplicados = useMemo(
+    () => encontrarClientesDuplicados(todosClientes, { telefone: nc.telefone, cpf: nc.cpf, cnpj: nc.cnpj }),
+    [todosClientes, nc.telefone, nc.cpf, nc.cnpj],
+  );
   const { cepLoading, onCepChange } = useCepLookup(r => {
     setNc(p => ({
       ...p,
@@ -62,6 +81,15 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     setQuery(c.nome);
     setShowResults(false);
   }, [onChange]);
+
+  // Aviso de duplicado ofereceu um cadastro já existente: usa ele em vez do
+  // que está sendo digitado — mesmo comportamento do painel (aoAbrirExistente).
+  const usarClienteExistente = useCallback((c: Cliente) => {
+    setShowNew(false);
+    setNc({});
+    setNcErrors({});
+    selectCliente(c);
+  }, [selectCliente]);
 
   async function saveNewCliente() {
     if (!nc.nome?.trim()) return;
@@ -212,6 +240,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
             <OlliInput label="Nome completo" required autoFocus value={nc.nome ?? ''} onChangeText={v => setNc(p => ({ ...p, nome: v }))} placeholder="Ex: João da Silva" leftIcon="account" />
             <OlliInput label="Telefone / WhatsApp" mask="phone" value={nc.telefone ?? ''} onChangeText={v => { setNc(p => ({ ...p, telefone: v })); setNcErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={ncErrors.telefone} />
+            <AvisoClienteDuplicado duplicados={duplicados} erro={erroClientesDuplicados} onAbrirExistente={usarClienteExistente} />
             <OlliInput label="CPF" mask="cpf" value={nc.cpf ?? ''} onChangeText={v => { setNc(p => ({ ...p, cpf: v })); setNcErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={ncErrors.cpf} />
             <OlliInput label="CNPJ" mask="cnpj" value={nc.cnpj ?? ''} onChangeText={v => { setNc(p => ({ ...p, cnpj: v })); setNcErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={ncErrors.cnpj} />
             <OlliInput label="Endereço" value={nc.endereco ?? ''} onChangeText={v => setNc(p => ({ ...p, endereco: v }))} placeholder="Rua, número" leftIcon="map-marker" />

@@ -23,8 +23,9 @@ import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/re
 import { useReducedMotion } from '../theme/motion';
 import { useGravadorNuvem } from '../services/vozNuvem';
 import {
-  getNextOrcamentoNumber, saveOrcamento, getServicos,
+  getNextOrcamentoNumber, saveOrcamento, getServicos, getEmpresa,
 } from '../database/database';
+import { getUltimasFormasPagamento, salvarUltimasFormasPagamento } from '../services/formasPagamentoPadrao';
 import { Orcamento, ItemOrcamento, FormaPagamento } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO, todayISO } from '../utils/date';
@@ -112,6 +113,7 @@ function montarOrcamento(
   clienteNome: string | undefined,
   itensEdit: ItemEditavel[],
   observacao: string | undefined,
+  formasPagamentoPadrao?: FormaPagamento,
 ): Orcamento {
   const itens: ItemOrcamento[] = itensEdit.map(e => {
     const preco = e.valorUnitario ?? 0;
@@ -153,7 +155,9 @@ function montarOrcamento(
     status: 'rascunho',
     dataEmissao: todayISO(),
     informacoesAdicionais: infoAdicional || undefined,
-    formasPagamento: defaultFormas,
+    // Smart default: mesma última combinação da empresa que o wizard manual usa
+    // (services/formasPagamentoPadrao) — cai no PIX-só estático sem padrão salvo.
+    formasPagamento: formasPagamentoPadrao ?? defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
     exibirAprovacao: true,
@@ -788,8 +792,11 @@ export default function OlliVozScreen() {
     setSalvando(true);
     try {
       const numero = await getNextOrcamentoNumber();
-      const orc = montarOrcamento(numero, titulo, clienteNome, itens, observacao);
+      const emp = await getEmpresa();
+      const formasPagamentoPadrao = await getUltimasFormasPagamento(emp?.id);
+      const orc = montarOrcamento(numero, titulo, clienteNome, itens, observacao, formasPagamentoPadrao ?? undefined);
       await saveOrcamento(orc);
+      void salvarUltimasFormasPagamento(emp?.id, orc.formasPagamento);
       track(Eventos.quoteCreated, { origem: 'voz', itens: itens.length });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       // abre a MESMA tela de edição do app para o usuário finalizar (cliente, preços, enviar)
@@ -1581,7 +1588,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // usados nesta tela (ex.: já existe um `escreverLabel` sem relação).
   convRowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
   convRowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 10 },
-  convAvatar: { width: 30, height: 30, borderRadius: 10, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 7 },
+  convAvatar: { width: 30, height: 30, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 7 },
   convBubble: { maxWidth: '80%', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 10 },
   convBubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },
   convBubbleUserText: { fontSize: 14, color: '#fff', lineHeight: 19 },

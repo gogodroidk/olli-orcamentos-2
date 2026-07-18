@@ -22,6 +22,7 @@ import { formatCurrency } from '../utils/currency';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { track, Eventos } from '../services/analytics';
+import { getUltimasFormasPagamento, salvarUltimasFormasPagamento } from '../services/formasPagamentoPadrao';
 
 // Steps
 import Step1Cliente from '../steps/Step1Cliente';
@@ -59,7 +60,7 @@ function validadeEmDias(days: number): string {
  * redigitar validade/garantia/condições/observações/PIX em todo orçamento
  * novo — ele ainda pode sobrescrever qualquer campo nos passos seguintes.
  */
-function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
+function emptyOrcamento(numero: string, empresa: Empresa | null, formasPagamentoPadrao?: FormaPagamento): Orcamento {
   const validadeDias = empresa?.validadeDiasPadrao ?? 15;
   return {
     id: generateId(),
@@ -87,7 +88,10 @@ function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
     // Modelo de PDF padrão escolhido em Conta → Modelos de documento (o técnico
     // ainda troca por orçamento em Step4). Sem padrão, Step4 assume 'editorial'.
     modeloPdf: empresa?.modeloPdfPadrao || undefined,
-    formasPagamento: defaultFormas,
+    // Smart default: última combinação que a empresa realmente usou (ver
+    // services/formasPagamentoPadrao) — cai no PIX-só estático quando ainda
+    // não há nenhuma salva (empresa nova).
+    formasPagamento: formasPagamentoPadrao ?? defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
     exibirAprovacao: true,
@@ -229,7 +233,8 @@ export default function NovoOrcamentoScreen() {
         }
       }
       const numero = await getNextOrcamentoNumber();
-      let base = emptyOrcamento(numero, emp);
+      const formasPagamentoPadrao = await getUltimasFormasPagamento(emp?.id);
+      let base = emptyOrcamento(numero, emp, formasPagamentoPadrao ?? undefined);
 
       // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
       if (prefillClienteId) {
@@ -306,6 +311,10 @@ export default function NovoOrcamentoScreen() {
         atualizadoEm: nowISO(),
       };
       await saveOrcamento(calcTotais(toSave));
+      // Smart default (fire-and-forget): o que o técnico realmente marcou
+      // aqui vira o próximo padrão desta empresa — não precisa esperar nem
+      // pode travar a navegação abaixo se falhar.
+      void salvarUltimasFormasPagamento(empresa?.id, toSave.formasPagamento);
       // Celebração só na criação (editar um orçamento existente não repete a
       // festa) — o overlay dispara e a navegação real acontece no onDone dele,
       // pra dar tempo do usuário ver a animação antes de trocar de tela.
@@ -328,6 +337,7 @@ export default function NovoOrcamentoScreen() {
     setSaving(true);
     try {
       await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
+      void salvarUltimasFormasPagamento(empresa?.id, orc.formasPagamento);
       if (!isEdit) track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');

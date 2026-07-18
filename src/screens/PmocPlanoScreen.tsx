@@ -1106,7 +1106,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // Versões
   versaoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-  versaoNum: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline, alignItems: 'center', justifyContent: 'center' },
+  versaoNum: { width: 38, height: 38, borderRadius: BorderRadius.chip, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline, alignItems: 'center', justifyContent: 'center' },
   versaoNumText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   versaoTitulo: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
   versaoSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },

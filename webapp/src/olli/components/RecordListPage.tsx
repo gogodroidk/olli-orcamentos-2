@@ -9,6 +9,7 @@ import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import { isMoneyKey, isNameKey, isStatusKey, NameCell, StatusBadge } from "./record-list-helpers";
+import { TableOverflowHint } from "./TableOverflowHint";
 
 /** Colunas internas que não interessam ao usuário. */
 const HIDDEN = new Set([
@@ -331,59 +332,62 @@ export default function RecordListPage({
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP: tabela premium */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									{cols.map((c) => (
-										<th
-											key={c}
-											className={cn("whitespace-nowrap px-4 py-3 font-semibold", isMoneyKey(c) && "text-right")}
-										>
-											{prettify(c)}
-										</th>
-									))}
-									{temMenu && <th className="w-12 px-4 py-3 font-semibold sr-only">Ações</th>}
-								</tr>
-							</thead>
-							<tbody>
-								{rows.map((r, i) => {
-									const row = r as Record<string, unknown>;
-									return (
-										// O `onClick` da <tr> é conveniência de MOUSE, e só. Quem usa teclado
-										// tem 2 caminhos equivalentes e focáveis: o botão da coluna principal
-										// (Tab + Enter) e o item "Editar" do menu "…". Pôr tabIndex/role na
-										// própria <tr> quebraria a semântica da tabela e criaria uma parada de
-										// foco duplicada por linha.
-										<tr
-											key={(r as { id?: string }).id ?? i}
-											onClick={aoAbrirLinha ? () => aoAbrirLinha(row) : undefined}
-											className={cn(
-												"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
-												aoAbrirLinha && "cursor-pointer",
-											)}
-										>
-											{cols.map((c) => (
-												<td
-													key={c}
-													className={cn(
-														"px-4 py-3.5 align-middle",
-														isMoneyKey(c)
-															? "whitespace-nowrap text-right font-medium tabular-nums text-text-primary"
-															: c === primaryCol
-																? "font-medium text-text-primary"
-																: "whitespace-nowrap text-text-secondary",
-													)}
-												>
-													{c === primaryCol ? celulaPrincipal(c, row) : renderCell(c, row)}
-												</td>
-											))}
-											{temMenu && <td className="px-2 py-3.5 text-right align-middle">{menuDaLinha(row)}</td>}
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										{cols.map((c) => (
+											<th
+												key={c}
+												className={cn("whitespace-nowrap px-4 py-3 font-semibold", isMoneyKey(c) && "text-right")}
+											>
+												{prettify(c)}
+											</th>
+										))}
+										{temMenu && <th className="w-12 px-4 py-3 font-semibold sr-only">Ações</th>}
+									</tr>
+								</thead>
+								<tbody>
+									{rows.map((r, i) => {
+										const row = r as Record<string, unknown>;
+										return (
+											// O `onClick` da <tr> é conveniência de MOUSE, e só. Quem usa teclado
+											// tem 2 caminhos equivalentes e focáveis: o botão da coluna principal
+											// (Tab + Enter) e o item "Editar" do menu "…". Pôr tabIndex/role na
+											// própria <tr> quebraria a semântica da tabela e criaria uma parada de
+											// foco duplicada por linha.
+											<tr
+												key={(r as { id?: string }).id ?? i}
+												onClick={aoAbrirLinha ? () => aoAbrirLinha(row) : undefined}
+												className={cn(
+													"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
+													aoAbrirLinha && "cursor-pointer",
+												)}
+											>
+												{cols.map((c) => (
+													<td
+														key={c}
+														className={cn(
+															"px-4 py-3.5 align-middle",
+															isMoneyKey(c)
+																? "whitespace-nowrap text-right font-medium tabular-nums text-text-primary"
+																: c === primaryCol
+																	? "font-medium text-text-primary"
+																	: "whitespace-nowrap text-text-secondary",
+														)}
+													>
+														{c === primaryCol ? celulaPrincipal(c, row) : renderCell(c, row)}
+													</td>
+												))}
+												{temMenu && <td className="px-2 py-3.5 text-right align-middle">{menuDaLinha(row)}</td>}
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE: cada linha vira um card com campos rotulados */}

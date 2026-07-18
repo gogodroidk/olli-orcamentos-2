@@ -20,6 +20,7 @@ import { AlertTriangle, Camera, ClipboardList, Inbox, MoreHorizontal, Plus, Rota
 import { useMemo, useState } from "react";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { NameCell } from "@/olli/components/record-list-helpers";
+import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useOlliList } from "@/olli/data";
 import { useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -281,66 +282,69 @@ export default function OrdensServicoPage() {
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Cliente</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Serviço</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Técnico</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Agendada</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Checklist</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Fotos</th>
-									<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Valor</th>
-									<th className="px-4 py-3">
-										<span className="sr-only">Ações</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{lista.map((os) => (
-									<tr
-										key={os.id}
-										className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
-									>
-										<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
-											{os.numero || "—"}
-										</td>
-										<td className="px-4 py-3.5">
-											<NameCell name={os.clienteNome || "—"} />
-										</td>
-										<td className="px-4 py-3.5 text-text-primary">
-											<span className="line-clamp-1">{os.titulo || "—"}</span>
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<Badge variant={COR_STATUS[os.status]} className="font-medium">
-												{STATUS_OS_LABELS[os.status]}
-											</Badge>
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
-											{os.tecnicoNome || <span className="text-text-disabled">Não atribuída</span>}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
-											{formatarQuando(os.dataAgendada)}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<ProgressoChecklist os={os} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<Fotos qtd={os.fotos.length} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
-											{os.valor != null ? BRL.format(os.valor) : "—"}
-										</td>
-										<td className="px-2 py-3.5 text-right">
-											<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
-										</td>
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Cliente</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Serviço</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Técnico</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Agendada</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Checklist</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Fotos</th>
+										<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Valor</th>
+										<th className="px-4 py-3">
+											<span className="sr-only">Ações</span>
+										</th>
 									</tr>
-								))}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{lista.map((os) => (
+										<tr
+											key={os.id}
+											className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+										>
+											<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
+												{os.numero || "—"}
+											</td>
+											<td className="px-4 py-3.5">
+												<NameCell name={os.clienteNome || "—"} />
+											</td>
+											<td className="px-4 py-3.5 text-text-primary">
+												<span className="line-clamp-1">{os.titulo || "—"}</span>
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<Badge variant={COR_STATUS[os.status]} className="font-medium">
+													{STATUS_OS_LABELS[os.status]}
+												</Badge>
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
+												{os.tecnicoNome || <span className="text-text-disabled">Não atribuída</span>}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
+												{formatarQuando(os.dataAgendada)}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<ProgressoChecklist os={os} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<Fotos qtd={os.fotos.length} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
+												{os.valor != null ? BRL.format(os.valor) : "—"}
+											</td>
+											<td className="px-2 py-3.5 text-right">
+												<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE */}

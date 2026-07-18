@@ -484,7 +484,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   faturaStatus: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
   faturaStatusText: { fontSize: 11.5, fontWeight: '800' },
   reciboBtn: {
-    width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
+    width: 38, height: 38, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center',
     backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,
   },
   reciboBtnOff: { backgroundColor: 'transparent', borderColor: c.outline },

@@ -1,6 +1,8 @@
-import { ExternalLink, Search, Sparkles, Wrench, X } from "lucide-react";
+import { ExternalLink, FilePlus2, Search, Sparkles, Wrench, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router";
+import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -27,10 +29,31 @@ const TODAS = "__todas__";
 /** Teto de cartões renderizados de uma vez (a base tem centenas; protege o DOM). */
 const MAX_RENDER = 80;
 
+/** Monta o item de serviço (nome + descrição) a partir de um código da base — mesmo
+ *  texto que o app monta em `CodigosErroScreen.criarOrcamentoDoCodigo`. */
+function itemDoCodigo(c: HvacCodigo): PrefillItemOrcamento {
+	const ctx = [c.marca, c.familia].filter(Boolean).join(" ");
+	const nome =
+		["Diagnóstico e reparo", ctx ? `— ${ctx}` : "", c.codigo ? `(código ${c.codigo})` : ""]
+			.filter(Boolean)
+			.join(" ")
+			.trim() || "Serviço de diagnóstico e reparo";
+	const descricao = [c.falha, c.acao].filter(Boolean).join(". ") || undefined;
+	return { tipo: "servico", nome, descricao };
+}
+
 export function PorCodigo({ aoAprofundar }: { aoAprofundar: (c: HvacCodigo) => void }) {
 	const base = useBaseHvac();
+	const navigate = useNavigate();
 	const [marca, setMarca] = useState<string>(TODAS);
 	const [termo, setTermo] = useState("");
+
+	// CTA "Criar orçamento com este diagnóstico" (facilitação — o app já faz isto em
+	// `CodigosErroScreen`): pré-carrega 1 item de serviço no editor de Orçamentos, o
+	// mesmo mecanismo de `?cliente=`/`clientePreSelecionado` (ver `orcamentos/index.tsx`).
+	function criarOrcamentoDoCodigo(c: HvacCodigo) {
+		navigate("/orcamentos?novo=1", { state: { prefillItem: itemDoCodigo(c) } });
+	}
 
 	const marcas = useMemo(() => (base.data ? marcasDaBase(base.data) : []), [base.data]);
 
@@ -149,7 +172,13 @@ export function PorCodigo({ aoAprofundar }: { aoAprofundar: (c: HvacCodigo) => v
 			) : (
 				<div className="space-y-3">
 					{resultados.slice(0, MAX_RENDER).map((c, i) => (
-						<CartaoCodigo key={c.id} codigo={c} indice={i} aoAprofundar={aoAprofundar} />
+						<CartaoCodigo
+							key={c.id}
+							codigo={c}
+							indice={i}
+							aoAprofundar={aoAprofundar}
+							aoCriarOrcamento={criarOrcamentoDoCodigo}
+						/>
 					))}
 					{resultados.length > MAX_RENDER && (
 						<p className="px-1 pt-1 text-center text-xs text-text-secondary">
@@ -167,10 +196,12 @@ function CartaoCodigo({
 	codigo: c,
 	indice,
 	aoAprofundar,
+	aoCriarOrcamento,
 }: {
 	codigo: HvacCodigo;
 	indice: number;
 	aoAprofundar: (c: HvacCodigo) => void;
+	aoCriarOrcamento: (c: HvacCodigo) => void;
 }) {
 	return (
 		<motion.div
@@ -229,6 +260,10 @@ function CartaoCodigo({
 							<Button size="sm" variant="outline" className="gap-1.5" onClick={() => aoAprofundar(c)}>
 								<Sparkles className="size-3.5" />
 								Aprofundar com a OLLI
+							</Button>
+							<Button size="sm" className="gap-1.5" onClick={() => aoCriarOrcamento(c)}>
+								<FilePlus2 className="size-3.5" />
+								Criar orçamento
 							</Button>
 						</div>
 					</div>

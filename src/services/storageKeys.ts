@@ -97,6 +97,16 @@ export const EMPRESA_STAMP_KEY = 'olli.empresa.stamp';
 export const PULSO_ULTIMO_KEY = 'olli.pulso.ultimo';
 
 /**
+ * Mapa empresaId→FormaPagamento com a ÚLTIMA combinação de formas de
+ * pagamento marcada pelo prestador (services/formasPagamentoPadrao). Smart
+ * default: em vez de todo orçamento novo reabrir só com PIX marcado, herda o
+ * que a empresa realmente usou da última vez. Dado de CONTA — entra em
+ * APP_DATA_STORAGE_KEYS para o próximo usuário do aparelho não herdar a
+ * combinação de outra empresa.
+ */
+export const FORMAS_PAGAMENTO_PADRAO_KEY = 'olli.orcamento.formasPagamentoPadrao';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -119,4 +129,5 @@ export const APP_DATA_STORAGE_KEYS = [
   RITUAL_FECHAR_DIA_TOGGLE_KEY,
   RITUAL_DOMINGO_TOGGLE_KEY,
   PULSO_ULTIMO_KEY,
+  FORMAS_PAGAMENTO_PADRAO_KEY,
 ];

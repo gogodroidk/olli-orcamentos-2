@@ -696,7 +696,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   closeTop: { flexDirection: 'row', alignItems: 'center' },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
   closeIcon: {
-    width: 48, height: 48, borderRadius: 16,
+    width: 48, height: 48, borderRadius: BorderRadius.chip,
     backgroundColor: comAlfa(c.accentLight, 0.12),
     borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28),
     alignItems: 'center', justifyContent: 'center',

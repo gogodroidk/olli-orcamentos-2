@@ -40,8 +40,10 @@ import { toast } from "sonner";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
+import { orcamentoComItemPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { getStatusVariant, NameCell } from "@/olli/components/record-list-helpers";
 import { clienteParaOrcamento } from "@/olli/components/SeletorCliente";
+import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
 import { useExcluir } from "@/olli/mutacoes";
@@ -279,6 +281,10 @@ export default function OrcamentosPage() {
 	 *     `linhaParaCliente`), nunca pela URL — dado de cliente não é query string.
 	 *     `clienteParaOrcamento` é o MESMO conversor que `SeletorCliente` usa, então o
 	 *     orçamento sai idêntico a se o usuário tivesse escolhido o cliente na mão.
+	 *   • 1 item pré-carregado também vem pelo ESTADO da rota
+	 *     (`location.state.prefillItem`, montado em `diagnostico/PorCodigo.tsx` e
+	 *     `diagnostico/PorSintoma.tsx` — "Criar orçamento com este diagnóstico"), mesma
+	 *     ideia do app: o técnico só ajusta preço/quantidade, não digita tudo de novo.
 	 *
 	 * Roda uma vez, no MOUNT: a URL é limpa logo depois para um F5 ou um "voltar" não
 	 * reabrir o editor sozinho de novo.
@@ -292,10 +298,16 @@ export default function OrcamentosPage() {
 		if (clienteDaUrl) setBusca(clienteDaUrl);
 
 		if (querNovo) {
-			const estado = location.state as { clientePreSelecionado?: Cliente } | null | undefined;
+			const estado = location.state as
+				| { clientePreSelecionado?: Cliente; prefillItem?: PrefillItemOrcamento }
+				| null
+				| undefined;
 			let orc = novoOrcamentoVazio(empresa);
 			if (estado?.clientePreSelecionado) {
 				orc = { ...orc, ...clienteParaOrcamento(estado.clientePreSelecionado) };
+			}
+			if (estado?.prefillItem) {
+				orc = orcamentoComItemPrefill(orc, estado.prefillItem);
 			}
 			setEditor({ orc, ehNovo: true });
 		}
@@ -455,61 +467,64 @@ export default function OrcamentosPage() {
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
-									<th className="px-4 py-3 font-semibold">Cliente</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Emissão</th>
-									<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Total</th>
-									<th className="w-12 px-2 py-3">
-										<span className="sr-only">Ações</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{linhas.map((l) => {
-									const semBlob = blobDe(l) === null;
-									return (
-										<tr
-											key={l.id}
-											className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
-										>
-											<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
-												<span className="flex items-center gap-1.5">
-													<FileText className="size-3.5 text-text-disabled" />
-													{l.numero || "—"}
-												</span>
-											</td>
-											<td className="px-4 py-3.5">
-												<NameCell name={l.cliente_nome || "—"} />
-												{semBlob && (
-													// Aviso honesto: a linha existe, o documento não veio inteiro.
-													<span className="mt-1 flex items-center gap-1 text-xs text-warning-darker dark:text-warning">
-														<AlertTriangle className="size-3" />
-														Sem os dados completos — não dá para editar por aqui.
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
+										<th className="px-4 py-3 font-semibold">Cliente</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Emissão</th>
+										<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Total</th>
+										<th className="w-12 px-2 py-3">
+											<span className="sr-only">Ações</span>
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{linhas.map((l) => {
+										const semBlob = blobDe(l) === null;
+										return (
+											<tr
+												key={l.id}
+												className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+											>
+												<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
+													<span className="flex items-center gap-1.5">
+														<FileText className="size-3.5 text-text-disabled" />
+														{l.numero || "—"}
 													</span>
-												)}
-											</td>
-											<td className="whitespace-nowrap px-4 py-3.5">
-												<StatusDoOrcamento valor={l.status} />
-											</td>
-											<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
-												{l.data_emissao ? ymdParaBr(l.data_emissao) : "—"}
-											</td>
-											<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
-												{BRL.format(l.valor_total ?? 0)}
-											</td>
-											<td className="px-2 py-3.5 text-right">
-												<MenuDaLinha linha={l} empresa={empresa} onEditar={abrirEdicao} onDuplicar={duplicar} onExcluir={pedirExclusao} />
-											</td>
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
+												</td>
+												<td className="px-4 py-3.5">
+													<NameCell name={l.cliente_nome || "—"} />
+													{semBlob && (
+														// Aviso honesto: a linha existe, o documento não veio inteiro.
+														<span className="mt-1 flex items-center gap-1 text-xs text-warning-darker dark:text-warning">
+															<AlertTriangle className="size-3" />
+															Sem os dados completos — não dá para editar por aqui.
+														</span>
+													)}
+												</td>
+												<td className="whitespace-nowrap px-4 py-3.5">
+													<StatusDoOrcamento valor={l.status} />
+												</td>
+												<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
+													{l.data_emissao ? ymdParaBr(l.data_emissao) : "—"}
+												</td>
+												<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
+													{BRL.format(l.valor_total ?? 0)}
+												</td>
+												<td className="px-2 py-3.5 text-right">
+													<MenuDaLinha linha={l} empresa={empresa} onEditar={abrirEdicao} onDuplicar={duplicar} onExcluir={pedirExclusao} />
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE */}

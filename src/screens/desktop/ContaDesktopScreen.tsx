@@ -1099,7 +1099,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // ── Perfil / Minha empresa ───────────────────────────────────────────────
   perfilLinha: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: c.primaryContainer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatar: { width: 52, height: 52, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg: { width: 52, height: 52, borderRadius: 16 },
   avatarTexto: { fontSize: 20, fontWeight: '800', color: c.accentLight },
   avatarQuadrado: { width: 52, height: 52, borderRadius: BorderRadius.md, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

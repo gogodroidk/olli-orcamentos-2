@@ -655,7 +655,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   cardHead: { flexDirection: 'row', alignItems: 'flex-start' },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
-  cardIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center' },
+  cardIcon: { width: 44, height: 44, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center' },
   cardIconDestaque: { backgroundColor: c.accentLight, borderColor: c.accentLight },
   cardNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   // Era '#fff' fixo sobre c.surface (cardBody) — ilegível no claro.

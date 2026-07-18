@@ -1391,7 +1391,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10,
   },
   membroRowAtual: { borderColor: c.success, backgroundColor: c.successLight },
-  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  membroAvatar: { width: 42, height: 42, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   membroAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
   // Era '#fff' fixo sobre c.surfaceGlass — mesmo motivo do cardTitulo acima.
   membroNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },

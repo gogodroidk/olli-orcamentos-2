@@ -1159,7 +1159,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   kpiDivider: { width: 1, backgroundColor: c.outline, marginVertical: 4 },
 
   anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
-  anzolIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  anzolIcon: { width: 46, height: 46, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   anzolTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
   anzolSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
@@ -1237,7 +1237,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cobrancaVazioTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
 
   radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
-  radarTeaserIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
+  radarTeaserIcon: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
   radarTeaserTitle: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
   radarTeaserSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
 
@@ -1258,7 +1258,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sheetTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
-  sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  sheetIcon: { width: 44, height: 44, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });

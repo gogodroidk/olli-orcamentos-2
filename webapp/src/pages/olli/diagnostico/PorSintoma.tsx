@@ -1,6 +1,8 @@
-import { RefreshCw, Send, Sparkles } from "lucide-react";
+import { FilePlus2, RefreshCw, Send, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
@@ -40,6 +42,7 @@ export function PorSintoma({
 	semente?: SementeSintoma;
 	aoIrParaCodigo: () => void;
 }) {
+	const navigate = useNavigate();
 	const [marca, setMarca] = useState("");
 	const [modelo, setModelo] = useState("");
 	const [codigo, setCodigo] = useState("");
@@ -107,6 +110,24 @@ export function PorSintoma({
 		if (mensagens.length > 0) void enviar(mensagens);
 	}
 
+	// CTA "Criar orçamento com este diagnóstico" (facilitação — o app já faz isto em
+	// `DiagnosticoIAScreen`): pré-carrega 1 item de serviço no editor de Orçamentos,
+	// com a ÚLTIMA resposta da OLLI como descrição — o técnico só ajusta preço/quantidade.
+	function criarOrcamento() {
+		const ultimaResposta = [...mensagens].reverse().find((m) => m.role === "assistant");
+		if (!ultimaResposta) return;
+		const partes = [marca.trim(), modelo.trim()].filter(Boolean).join(" ");
+		const ref = codigo.trim() ? `código ${codigo.trim()}` : "";
+		const nome =
+			["Diagnóstico e reparo", partes ? `— ${partes}` : "", ref ? `(${ref})` : ""]
+				.filter(Boolean)
+				.join(" ")
+				.trim() || "Serviço de diagnóstico e reparo";
+		const prefillItem: PrefillItemOrcamento = { tipo: "servico", nome, descricao: ultimaResposta.texto };
+		navigate("/orcamentos?novo=1", { state: { prefillItem } });
+	}
+
+	const temResposta = mensagens.some((m) => m.role === "assistant");
 	const vazio = mensagens.length === 0;
 
 	return (
@@ -219,6 +240,18 @@ export function PorSintoma({
 
 				{/* Redação da pergunta. */}
 				<div className="mt-3 border-t border-border/60 pt-3">
+					{temResposta && (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="mb-3 gap-1.5"
+							onClick={criarOrcamento}
+						>
+							<FilePlus2 className="size-3.5" />
+							Criar orçamento com este diagnóstico
+						</Button>
+					)}
 					<div className="flex items-end gap-2">
 						<Textarea
 							id={ID_INPUT}

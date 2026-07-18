@@ -512,7 +512,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   emptyText: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
 
   orgCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...sombrasDe(c).sm },
-  orgAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  orgAvatar: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   orgNome: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   orgMeta: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
 
@@ -533,7 +533,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   membroRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   membroDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
   membroInativo: { opacity: 0.55 },
-  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  membroAvatar: { width: 42, height: 42, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   membroAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
   membroNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   membroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },

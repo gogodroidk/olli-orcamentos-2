@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
@@ -17,6 +17,7 @@ import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliSkeleton } from '../components/OlliSkeleton';
+import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
 import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
@@ -27,6 +28,7 @@ import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
+import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -173,6 +175,11 @@ export default function ClientesScreen() {
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio, mesmo padrão de
+  // AgendaScreen): `carregandoErro` só vira `true` se load() de fato falhar —
+  // sem isso a tela mostraria "Nenhum cliente" mesmo quando a leitura caiu
+  // (e o aviso de duplicado, que depende desta mesma lista, ficaria mudo).
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   // Modo de seleção múltipla (exclusão em lote para a Lixeira).
@@ -198,10 +205,17 @@ export default function ClientesScreen() {
   // por sua vez deixa a linha memoizada (React.memo) da FlatList realmente
   // pular re-render em updates que não afetam a lista (ex.: digitar no modal).
   const load = useCallback(async () => {
-    const all = await getClientes();
-    setClientes(all);
-    applyFilter(all, query);
-    setCarregando(false);
+    setCarregandoErro(false);
+    try {
+      const all = await getClientes();
+      setClientes(all);
+      applyFilter(all, query);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira "Nenhum cliente" silencioso.
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
+    }
   }, [query]);
 
   const loadRadar = useCallback(async () => {
@@ -234,6 +248,23 @@ export default function ClientesScreen() {
   function handleSearch(q: string) {
     setQuery(q);
     applyFilter(clientes, q);
+  }
+
+  // Aviso NÃO BLOQUEANTE de cliente duplicado (mesmo comportamento do painel
+  // web) — recalcula a cada tecla em telefone/CPF/CNPJ do formulário aberto.
+  const duplicados = useMemo(
+    () => editing
+      ? encontrarClientesDuplicados(clientes, { telefone: editing.telefone, cpf: editing.cpf, cnpj: editing.cnpj }, editing.id)
+      : [],
+    [clientes, editing?.telefone, editing?.cpf, editing?.cnpj, editing?.id],
+  );
+
+  // "Abrir" no aviso troca o alvo do formulário para o cadastro já existente,
+  // em vez do que está sendo digitado — mesma ideia do `aoAbrirExistente` do painel.
+  function abrirClienteExistente(c: Cliente) {
+    setEditing({ ...c });
+    setIsNew(false);
+    setErrors({});
   }
 
   async function handleSave() {
@@ -500,6 +531,16 @@ export default function ClientesScreen() {
             </View>
           ))}
         </View>
+      ) : carregandoErro ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Não deu para carregar"
+            subtitle="Não conseguimos buscar seus clientes agora. Verifique a conexão e tente de novo."
+            actionLabel="Tentar de novo"
+            onAction={load}
+          />
+        </View>
       ) : (
       <FlatList
         data={filtered}
@@ -565,6 +606,7 @@ export default function ClientesScreen() {
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <OlliInput label="Nome completo" required autoFocus={isNew} value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
               <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, telefone: v } : p); setErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={errors.telefone} />
+              <AvisoClienteDuplicado duplicados={duplicados} erro={carregandoErro} onAbrirExistente={abrirClienteExistente} />
               <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
               <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
               <OlliInput label="Endereço" value={editing.endereco ?? ''} onChangeText={v => setEditing(p => p ? { ...p, endereco: v } : p)} placeholder="Rua, número" leftIcon="map-marker" />

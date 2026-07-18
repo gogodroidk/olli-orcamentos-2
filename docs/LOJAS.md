@@ -330,12 +330,13 @@ ads nem compartilha dado com rede de anúncio. Isso evita o rótulo de "App Trac
 (não precisa pedir permissão de rastreamento — ATT não se aplica).
 
 **Justificativa das permissões nativas (Info.plist / usage strings)** — já estão escritas em
-`app.json` (plugins `expo-image-picker`, `expo-audio`, `expo-speech-recognition`), confira que o
-texto exibido ao usuário bate com o motivo real:
-- `NSCameraUsageDescription`: "O app precisa de acesso à câmera para fotografar os serviços."
+`app.json` (plugins `expo-image-picker`, `expo-camera`, `expo-audio`, `expo-speech-recognition`),
+confira que o texto exibido ao usuário bate com o motivo real:
+- `NSCameraUsageDescription`: "O OLLI usa a câmera para fotografar os serviços do orçamento e para ler o QR do equipamento." — texto unificado em **dois** plugins (`expo-image-picker` e `expo-camera`, ambos escrevem essa mesma chave do Info.plist); antes eram dois textos diferentes e o do `expo-camera` (que roda depois na lista de `plugins`) sobrescrevia o do `expo-image-picker`, deixando o Info.plist final falar só de "ler QR" e omitir o uso mais comum (fotografar serviço) — corrigido em 2026-07-18.
 - `NSPhotoLibraryUsageDescription`: "O app precisa de acesso às fotos para adicionar imagens aos orçamentos."
-- `NSMicrophoneUsageDescription`: "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente."
+- `NSMicrophoneUsageDescription`: "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente." — mesmo texto agora nos três plugins que tocam essa chave (`expo-image-picker`, `expo-speech-recognition`, `expo-audio`), pelo mesmo motivo acima (não depender da ordem dos plugins).
 - `NSSpeechRecognitionUsageDescription`: "O OLLI usa o reconhecimento de fala para montar orçamentos ditados."
+- `ITSAppUsesNonExemptEncryption`: `false` (via `ios.config.usesNonExemptEncryption` em `app.json`, adicionado em 2026-07-18) — o app só usa TLS/HTTPS padrão (Supabase, Apple, Google), sem criptografia proprietária; isso evita a pergunta de export compliance a cada envio no App Store Connect.
 
 ### 3.8 Checklist final iOS
 - [ ] Sign in with Apple implementado e testado (item 1, seção 1)

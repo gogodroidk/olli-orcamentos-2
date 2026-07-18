@@ -1546,7 +1546,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass,
     borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10,
   },
-  clienteAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  clienteAvatar: { width: 42, height: 42, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   clienteAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
   clienteRowNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   clienteRowSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
