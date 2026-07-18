@@ -17,7 +17,7 @@ import { APP_VERSION } from '../config';
  * proximo. Assim um tipo novo nunca fica esperando migration pra parar de falhar
  * calado — o dado entra hoje, e o /admin separa por `contexto->>'origem'`.
  */
-export type TipoFeedback = 'feedback' | 'sugestao' | 'bug' | 'elogio' | 'erro' | 'pulso';
+export type TipoFeedback = 'feedback' | 'sugestao' | 'bug' | 'elogio' | 'erro' | 'pulso' | 'denuncia';
 
 /** Traducao produto -> banco. Unico lugar que conhece o CHECK constraint. */
 const TIPO_NO_BANCO: Record<TipoFeedback, string> = {
@@ -28,6 +28,11 @@ const TIPO_NO_BANCO: Record<TipoFeedback, string> = {
   erro: 'erro',
   // Pulso da semana e feedback espontaneo de satisfacao — cabe em 'feedback'.
   pulso: 'feedback',
+  // Denuncia de conteudo gerado por IA (Google Play AI-Generated Content policy:
+  // exige caminho in-app para sinalizar). Nao existe no CHECK constraint — mapeia
+  // pro mais proximo ('bug': algo errado com o conteudo). O tipo real do produto
+  // fica em contexto.origem = 'denuncia' e o /admin destaca por ali.
+  denuncia: 'bug',
 };
 
 export interface ContextoFeedback {

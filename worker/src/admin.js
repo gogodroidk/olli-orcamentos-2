@@ -492,7 +492,7 @@ function applySearch(){const q=$('usearch').value.trim().toLowerCase();renderUse
 
 // ── Feedback & Erros ──
 let ALLFB=[], FBFILTER='abertos';
-const TIPO_FB={feedback:['💬','#0B6FCE'],sugestao:['💡','#F7B23B'],bug:['🐞','#E5484D'],elogio:['⭐','#2BD787'],erro:['⛔','#E5484D'],pulso:['📊','#8B5CF6']};
+const TIPO_FB={feedback:['💬','#0B6FCE'],sugestao:['💡','#F7B23B'],bug:['🐞','#E5484D'],elogio:['⭐','#2BD787'],erro:['⛔','#E5484D'],pulso:['📊','#8B5CF6'],denuncia:['🚩','#FF3B30']};
 // O tipo REAL do produto vive em contexto.origem (a coluna tipo tem CHECK
 // constraint no banco e colapsa tipos novos). Linha antiga nao tem origem: cai
 // no f.tipo. Ver src/services/feedback.ts.
@@ -501,8 +501,9 @@ function emailDe(uid){const u=ALLUSERS.find(x=>x.id===uid);return u?(u.email||u.
 function renderFbFilters(){
  const box=$('ffilters');if(!box)return;box.innerHTML='';
  const abertos=ALLFB.filter(f=>!f.resolvido).length,erros=ALLFB.filter(f=>f.tipo==='erro'&&!f.resolvido).length;
- $('fcount').textContent='('+abertos+' abertos'+(erros?' · '+erros+' erros':'')+')';
- const opts=[['abertos','Não resolvidos'],['todos','Todos'],['erro','⛔ Erros'],['bug','🐞 Bugs'],['sugestao','💡 Sugestões'],['feedback','💬 Feedback'],['pulso','📊 Pulso']];
+ const denuncias=ALLFB.filter(f=>tipoFb(f)==='denuncia'&&!f.resolvido).length;
+ $('fcount').textContent='('+abertos+' abertos'+(erros?' · '+erros+' erros':'')+(denuncias?' · 🚩 '+denuncias+' denúncias':'')+')';
+ const opts=[['abertos','Não resolvidos'],['todos','Todos'],['denuncia','🚩 Denúncias'],['erro','⛔ Erros'],['bug','🐞 Bugs'],['sugestao','💡 Sugestões'],['feedback','💬 Feedback'],['pulso','📊 Pulso']];
  for(const o of opts){const b=el('button',{className:'btn '+(FBFILTER===o[0]?'soft sm':'ghost sm'),onclick:()=>{FBFILTER=o[0];renderFbFilters();renderFeedback();}},o[1]);box.append(b);}
 }
 function renderFeedback(){
@@ -513,7 +514,10 @@ function renderFeedback(){
  if(!list.length){box.append(el('div',{className:'empty'},'Nada por aqui. 🎉'));return;}
  for(const f of list){
   const t=tipoFb(f),meta=TIPO_FB[t]||['💬','#8aa'],ctx=f.contexto||{};
-  const item=el('div',{style:'border:1px solid #ffffff14;border-radius:14px;padding:14px;margin-bottom:10px;background:#ffffff08'+(f.resolvido?';opacity:.5':'')});
+  // denúncia (conteúdo de IA sinalizado) tem destaque próprio — não pode passar
+  // batida no meio do resto da caixa de feedback.
+  const destaque=t==='denuncia'&&!f.resolvido;
+  const item=el('div',{style:'border:1px solid '+(destaque?meta[1]+'66':'#ffffff14')+';border-radius:14px;padding:14px;margin-bottom:10px;background:'+(destaque?meta[1]+'14':'#ffffff08')+(f.resolvido?';opacity:.5':'')});
   const head=el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:7px;flex-wrap:wrap'});
   head.append(el('span',{style:'font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px;background:'+meta[1]+'22;color:'+meta[1]},meta[0]+' '+t));
   const bits=[ctx.nota?('nota '+ctx.nota+'/5'):null,ctx.tela,ctx.plano,ctx.versao?('v'+ctx.versao):null,ctx.plataforma].filter(Boolean).join(' · ');

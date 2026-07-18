@@ -438,10 +438,12 @@ export default function OnboardingScreen() {
                   backgroundColor: comAlfa(cores.accent, 0.12), marginBottom: Spacing.md,
                 }}
               >
+                {/* accentLight, não accent: `accent` como cor de TEXTO não passa
+                    contraste no claro (é idêntico no escuro, então não muda lá). */}
                 {cnpjLoading
-                  ? <ActivityIndicator size="small" color={cores.accent} />
-                  : <MaterialCommunityIcons name="magnify" size={16} color={cores.accent} />}
-                <Text style={{ color: cores.accent, fontWeight: '600', fontSize: 13 }}>
+                  ? <ActivityIndicator size="small" color={cores.accentLight} />
+                  : <MaterialCommunityIcons name="magnify" size={16} color={cores.accentLight} />}
+                <Text style={{ color: cores.accentLight, fontWeight: '600', fontSize: 13 }}>
                   {cnpjLoading ? 'Buscando…' : 'Preencher pelo CNPJ'}
                 </Text>
               </TouchableOpacity>

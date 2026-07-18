@@ -16,6 +16,7 @@ import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EstadoIA } from '../components/EstadoIA';
 import { enviarChat, ChatMensagem } from '../services/olliAssistente';
+import { enviarFeedback } from '../services/feedback';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -199,6 +200,21 @@ export default function OlliChatScreen() {
     });
   }, [nav]);
 
+  // Caminho in-app pra sinalizar uma resposta ofensiva/errada da IA (exigencia da
+  // politica de AI-Generated Content da Google Play). Nunca apaga a bolha — so
+  // registra na caixa de feedback (contexto.origem = 'denuncia') pro /admin revisar;
+  // quem decide o que fazer com a resposta continua sendo o usuario.
+  // Devolve se a denúncia REALMENTE entrou. Confirmar antes de saber (o app é de
+  // campo, o prestador vive sem sinal) mostraria "vamos revisar" para uma denúncia
+  // que se perdeu — e este canal existe por exigência de política de loja, então
+  // no-op silencioso aqui é buraco de conformidade, não detalhe de UX.
+  const sinalizarResposta = useCallback(async (bolhaId: string, respostaTexto: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    const r = await enviarFeedback('denuncia', respostaTexto.slice(0, 4000), { tela: 'OlliChatScreen', bolhaId })
+      .catch(() => 'erro' as const);
+    return r === 'ok';
+  }, []);
+
   const mostrarSugestoes = bolhas.length <= 1 && !digitando;
 
   useEffect(() => {
@@ -239,6 +255,7 @@ export default function OlliChatScreen() {
               falhou={b.falhou}
               onTentarDeNovo={() => tentarDeNovo(b.id)}
               onTransformarEmOrcamento={b.id !== 'olli-hello' ? () => criarOrcamentoDaResposta(b.texto) : undefined}
+              onSinalizar={b.id !== 'olli-hello' ? () => sinalizarResposta(b.id, b.texto) : undefined}
             />
           </AnimatedEntrance>
         ))}
@@ -298,10 +315,12 @@ export default function OlliChatScreen() {
   );
 }
 
-function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }: { role: 'user' | 'assistant'; texto: string; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void }) {
+function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento, onSinalizar }: { role: 'user' | 'assistant'; texto: string; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void; onSinalizar?: () => Promise<boolean> }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const isUser = role === 'user';
+  // 3 estados + o de partida: nunca diga "recebemos" sem ter recebido.
+  const [sinal, setSinal] = useState<'idle' | 'enviando' | 'ok' | 'erro'>('idle');
   if (isUser) {
     return (
       <View style={styles.rowUser}>
@@ -326,11 +345,44 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }
             <Text style={styles.tentarDeNovoText}>Tentar de novo</Text>
           </TouchableOpacity>
         )}
-        {!falhou && onTransformarEmOrcamento && (
-          <TouchableOpacity style={styles.transformarBtn} onPress={onTransformarEmOrcamento} activeOpacity={0.75}>
-            <MaterialCommunityIcons name="file-plus-outline" size={14} color={cores.accentLight} />
-            <Text style={styles.transformarText}>Transformar em orçamento</Text>
-          </TouchableOpacity>
+        {!falhou && (onTransformarEmOrcamento || onSinalizar) && (
+          <View style={styles.acoesRow}>
+            {onTransformarEmOrcamento && (
+              <TouchableOpacity style={styles.transformarBtn} onPress={onTransformarEmOrcamento} activeOpacity={0.75}>
+                <MaterialCommunityIcons name="file-plus-outline" size={14} color={cores.accentLight} />
+                <Text style={styles.transformarText}>Transformar em orçamento</Text>
+              </TouchableOpacity>
+            )}
+            {onSinalizar && (
+              sinal === 'ok' ? (
+                <Text style={styles.sinalizadoText}>Obrigado, vamos revisar</Text>
+              ) : (
+                <TouchableOpacity
+                  style={styles.sinalizarBtn}
+                  onPress={async () => {
+                    if (sinal === 'enviando') return;
+                    setSinal('enviando');
+                    setSinal((await onSinalizar()) ? 'ok' : 'erro');
+                  }}
+                  disabled={sinal === 'enviando'}
+                  activeOpacity={0.75}
+                  accessibilityLabel={sinal === 'erro' ? 'Tentar sinalizar de novo' : 'Sinalizar esta resposta'}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <MaterialCommunityIcons
+                    name={sinal === 'erro' ? 'refresh' : 'flag-outline'}
+                    size={12}
+                    color={cores.onSurfaceVariant}
+                  />
+                  {/* O texto de erro não culpa o usuário nem esconde o que houve:
+                      a denúncia NÃO entrou, e o botão continua ali para tentar. */}
+                  <Text style={styles.sinalizarText}>
+                    {sinal === 'enviando' ? 'Enviando…' : sinal === 'erro' ? 'Não enviou — tocar para tentar' : 'Sinalizar'}
+                  </Text>
+                </TouchableOpacity>
+              )
+            )}
+          </View>
         )}
       </View>
     </View>
@@ -411,8 +463,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tentarDeNovoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
   tentarDeNovoText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
   cancelarText: { fontSize: 12.5, fontWeight: '600', color: c.onSurfaceVariant },
-  transformarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
+  acoesRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginTop: 6 },
+  transformarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 },
   transformarText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
+  // discreto de propósito: não pode competir visualmente com "Transformar em orçamento".
+  sinalizarBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+  sinalizarText: { fontSize: 11.5, fontWeight: '600', color: c.onSurfaceVariant },
+  sinalizadoText: { fontSize: 11.5, fontWeight: '600', color: c.onSurfaceVariant, fontStyle: 'italic', paddingVertical: 4 },
 
   sugestoesWrap: { marginTop: 8 },
   sugestoesLabel: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.8, color: c.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 },
