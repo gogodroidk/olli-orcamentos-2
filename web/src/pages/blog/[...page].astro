@@ -1,0 +1,229 @@
+---
+/**
+ * /blog/ e /blog/2/, /blog/3/… — o índice paginado.
+ *
+ * UM arquivo cobre a primeira página e todas as seguintes: `paginate()` devolve
+ * `page: undefined` para a primeira (que vira `/blog/`) e `page: "2"` em diante.
+ *
+ * SEM CANONICAL APONTANDO PARA /blog/. É o erro clássico de quem tenta "resolver
+ * duplicata": canonical da página 2 apontando para a 1 faz o Google descartar a
+ * página 2 — e junto com ela os posts que só são linkados de lá. Cada página
+ * paginada é canônica de si mesma, e o `Layout.astro` já emite o canonical a
+ * partir do pathname real.
+ */
+import type { GetStaticPaths } from 'astro';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { CATEGORIAS, POSTS_POR_PAGINA } from '../../content/taxonomia';
+import CardPost from './_CardPost.astro';
+import { categoriasComRota, contarPorCategoria, postsPublicados } from './_dados';
+
+export const getStaticPaths = (async ({ paginate }) => {
+	const posts = await postsPublicados();
+	// `destaque` sobe no índice sem inventar métrica ("mais lido" não existe: não
+	// há analytics por post). Dentro de cada grupo, a ordem continua cronológica.
+	const ordenados = [
+		...posts.filter((p) => p.data.destaque),
+		...posts.filter((p) => !p.data.destaque),
+	];
+	return paginate(ordenados, { pageSize: POSTS_POR_PAGINA });
+}) satisfies GetStaticPaths;
+
+const { page } = Astro.props;
+
+const todos = await postsPublicados();
+const comRota = categoriasComRota(todos);
+const contagem = contarPorCategoria(todos);
+
+const primeira = page.currentPage === 1;
+const titulo = primeira
+	? 'Blog da OLLI — preço, documento e norma para quem atende em campo'
+	: `Blog da OLLI — página ${page.currentPage}`;
+const descricao = primeira
+	? 'Conteúdo para prestador de serviço no Brasil: quanto cobrar, que documento emitir, o que a norma exige e quando trocar a planilha. Escrito por quem faz o software de campo.'
+	: `Página ${page.currentPage} do blog da OLLI: preço, documentos, normas e ferramentas para prestador de serviço em campo no Brasil.`;
+
+const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cadastro';
+---
+
+<Layout titulo={titulo} descricao={descricao}>
+	<Header>
+		<a
+			href={APP_CADASTRO_URL}
+			class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+			>Começar grátis</a
+		>
+	</Header>
+
+	<main id="conteudo">
+		<section class="mx-auto max-w-5xl px-6 pb-12 pt-14">
+			{/*
+				BreadcrumbList em MICRODATA, não em JSON-LD, e há um motivo medido: o
+				`scripts/gerar-headers.mjs` autoriza cada <script> inline do site por
+				hash sha256 no CSP, e a linha do `Content-Security-Policy` do
+				`_headers` tem limite de 2.000 caracteres no Cloudflare. Cada JSON-LD
+				novo e distinto custa ~55 caracteres dessa linha; um blog que cresce
+				estouraria o limite — e o efeito não seria erro de build, seria o CSP
+				inteiro parando de ser aplicado, em silêncio. Microdata é formato de
+				primeira classe para o Google, custa zero script, e tem uma vantagem
+				sobre o JSON-LD: o dado estruturado É o que está na tela, então não há
+				como um divergir do outro.
+			*/}
+			<nav aria-label="Você está aqui" class="text-sm text-muted">
+				<ol itemscope itemtype="https://schema.org/BreadcrumbList" class="flex flex-wrap items-center gap-1.5">
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+						<a itemprop="item" href="/" class="hover:text-brand"><span itemprop="name">Início</span></a>
+						<meta itemprop="position" content="1" />
+					</li>
+					<li aria-hidden="true">/</li>
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="text-slate">
+						<a itemprop="item" href="/blog/" class="hover:text-brand"><span itemprop="name">Blog</span></a>
+						<meta itemprop="position" content="2" />
+					</li>
+					{!primeira && <li aria-hidden="true">/</li>}
+					{!primeira && <li class="text-slate">Página {page.currentPage}</li>}
+				</ol>
+			</nav>
+
+			<span class="eyebrow mt-6 block">Blog</span>
+			<h1 class="mt-3 text-[clamp(2rem,4.5vw,3.2rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
+				{
+					primeira ? (
+						<>O ofício por dentro:<br class="hidden sm:inline" /> preço, documento e norma.</>
+					) : (
+						<>Blog da OLLI — página {page.currentPage}</>
+					)
+				}
+			</h1>
+			{
+				primeira && (
+					<p class="mt-5 max-w-2xl text-lg leading-relaxed text-slate">
+						Para quem atende em campo no Brasil. Nada de "dicas de produtividade": a
+						conta que você precisa fazer, o documento que a lei exige e o número da
+						norma. Quando citamos preço, norma ou lei, a fonte está no fim do texto.
+					</p>
+				)
+			}
+		</section>
+
+		{/* ══════════ MAPA DA TAXONOMIA ══════════ */}
+		{
+			primeira && (
+				<section class="mx-auto max-w-5xl px-6 pb-4">
+					<h2 class="sr-only">Categorias do blog</h2>
+					<ul class="flex flex-wrap gap-2">
+						{CATEGORIAS.map((categoria) => {
+							const n = contagem[categoria.id];
+							const temRota = comRota.includes(categoria.id);
+							/*
+								Categoria abaixo do gate aparece, mas SEM link: o leitor precisa
+								ver o mapa inteiro (é isso que explica do que o blog trata), e o
+								buscador não deve receber uma página de 1 post. Mostrar "em breve"
+								é honesto; esconder faria a taxonomia parecer menor do que é.
+							*/
+							return temRota ? (
+								<li>
+									<a
+										href={`/blog/categoria/${categoria.id}/`}
+										class="inline-flex min-h-11 items-center gap-2 rounded-campo border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
+									>
+										{categoria.nome}
+										<span class="tnum rounded-full bg-tint px-2 py-0.5 text-xs text-brand">{n}</span>
+									</a>
+								</li>
+							) : (
+								<li>
+									<span class="inline-flex min-h-11 items-center gap-2 rounded-campo border border-dashed border-line bg-paper px-4 text-sm font-medium text-muted">
+										{categoria.nome}
+										<span class="tnum text-xs">{n === 0 ? 'em breve' : `${n} — em breve`}</span>
+									</span>
+								</li>
+							);
+						})}
+					</ul>
+					<p class="mt-3 text-xs text-muted">
+						Uma categoria só ganha página própria a partir de 4 textos. Página de
+						categoria com um post é página magra — atrapalha quem procura e atrapalha
+						quem indexa.
+					</p>
+				</section>
+			)
+		}
+
+		{/* ══════════ OS POSTS ══════════ */}
+		<section class="mx-auto max-w-5xl px-6 pb-16 pt-8">
+			<h2 class="sr-only">{primeira ? 'Textos publicados' : `Textos — página ${page.currentPage}`}</h2>
+			<div class="grid gap-5 sm:grid-cols-2">
+				{
+					page.data.map((post, i) => (
+						<div class={`olli-revela-curta ${primeira && i === 0 ? 'sm:col-span-2' : ''}`}>
+							<CardPost post={post} comRota={comRota} grande={primeira && i === 0} />
+						</div>
+					))
+				}
+			</div>
+
+			{/* ══════════ PAGINAÇÃO ══════════ */}
+			{
+				(page.url.prev || page.url.next) && (
+					<nav aria-label="Paginação" class="mt-12 flex items-center justify-between gap-4">
+						{page.url.prev ? (
+							<a
+								href={page.url.prev}
+								rel="prev"
+								class="inline-flex min-h-11 items-center rounded-acao border border-line bg-white px-5 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
+							>
+								← Mais recentes
+							</a>
+						) : (
+							<span />
+						)}
+						<span class="tnum text-sm text-muted">
+							Página {page.currentPage} de {page.lastPage}
+						</span>
+						{page.url.next ? (
+							<a
+								href={page.url.next}
+								rel="next"
+								class="inline-flex min-h-11 items-center rounded-acao border border-line bg-white px-5 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
+							>
+								Mais antigos →
+							</a>
+						) : (
+							<span />
+						)}
+					</nav>
+				)
+			}
+		</section>
+
+		{/* ══════════ CTA + RSS ══════════ */}
+		<section class="mx-auto max-w-5xl px-6 pb-20">
+			<div class="rounded-caixa border border-line bg-paper p-8 sm:p-10">
+				<h2 class="text-2xl font-bold tracking-tight text-ink">
+					Do orçamento ao recibo, no mesmo lugar
+				</h2>
+				<p class="mt-3 max-w-xl text-slate">
+					A OLLI monta o orçamento com os itens e o cálculo do seu ofício, o cliente
+					aprova por um link, e a ordem de serviço e o recibo saem do mesmo lugar.
+					Grátis para começar — sem prazo e sem cartão.
+				</p>
+				<div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+					<a
+						href={APP_CADASTRO_URL}
+						class="inline-flex min-h-11 items-center justify-center rounded-acao bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+						>Criar minha conta grátis</a
+					>
+					<a
+						href="/blog/rss.xml"
+						class="inline-flex min-h-11 items-center justify-center rounded-acao border border-line bg-white px-7 py-3.5 text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+						>Assinar por RSS</a
+					>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<Footer class="max-w-5xl" />
+</Layout>

@@ -10,12 +10,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import {
   useFonts,
-  PlusJakartaSans_400Regular,
-  PlusJakartaSans_500Medium,
-  PlusJakartaSans_600SemiBold,
-  PlusJakartaSans_700Bold,
-  PlusJakartaSans_800ExtraBold,
-} from '@expo-google-fonts/plus-jakarta-sans';
+  Rubik_400Regular,
+  Rubik_500Medium,
+  Rubik_600SemiBold,
+  Rubik_700Bold,
+  Rubik_800ExtraBold,
+} from '@expo-google-fonts/rubik';
 import {
   Spectral_600SemiBold,
   Spectral_700Bold,
@@ -168,12 +168,24 @@ function AppConteudo() {
   // (Landing na web, Entrar no nativo), nunca dentro do app. Só o caso "sem nuvem
   // configurada" abre direto nas Tabs.
   const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>(ROTA_DESLOGADO);
+  // Corpo em Rubik (mesma família da landing e do painel), serifada em Spectral
+  // (mesma do painel) só para valor R$. Os NOMES carregados aqui têm de bater
+  // exatamente com os valores de `src/theme/fonts.ts` — é esse par de strings que
+  // o `applyFontPatch` abaixo injeta em todo <Text>. Carregar um peso que o tema
+  // não nomeia (ou vice-versa) não quebra o build: o texto simplesmente cai na
+  // fonte do sistema, em silêncio, e ninguém vê até olhar o aparelho.
+  //
+  // Os 5 pesos são os 5 que `aplicarFontPatch.ts` mapeia (400/500/600/700/800).
+  // Não somar peso sem necessidade: cada TTF de Rubik pesa ~208 kB brutos
+  // (~85 kB gzip) — medido em node_modules, ~2× a Plus Jakarta que saiu, porque
+  // a Rubik empacota cirílico (182 glifos), hebraico (47) e árabe (89) que este
+  // app nunca vai desenhar. Fazer subset no build é follow-up conhecido.
   const [fontsLoaded] = useFonts({
-    PlusJakartaSans_400Regular,
-    PlusJakartaSans_500Medium,
-    PlusJakartaSans_600SemiBold,
-    PlusJakartaSans_700Bold,
-    PlusJakartaSans_800ExtraBold,
+    Rubik_400Regular,
+    Rubik_500Medium,
+    Rubik_600SemiBold,
+    Rubik_700Bold,
+    Rubik_800ExtraBold,
     Spectral_600SemiBold,
     Spectral_700Bold,
   });

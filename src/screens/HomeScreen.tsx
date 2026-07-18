@@ -24,6 +24,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, Orcamento, Agendamento, Cliente, TIPO_AGENDAMENTO_LABELS, STATUS_PROPOSTA_ENVIADA } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { EtaChip } from '../components/EtaChip';
+import { AvisoSaidaCard } from '../components/AvisoSaidaCard';
+import { lerAvisoSaida, type AvisoSaida } from '../services/avisoSaida';
+import { reagendarAvisoSaidaDoDia } from '../services/ritualDiario';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
@@ -218,6 +221,43 @@ export default function HomeScreen() {
   const tentarEtaNovamente = useCallback(() => {
     if (temEta) buscarEta();
   }, [temEta, buscarEta]);
+
+  // ─── "SAIA ÀS 14:23 PARA CHEGAR ÀS 15:00" ────────────────────────────────
+  // Diferente do EtaChip acima, isto NÃO busca nada ao focar a tela: só LÊ o
+  // que `services/avisoSaida.ts` já calculou e guardou (o cálculo roda no
+  // reagendamento do ritual diário, 1× por parada). O motivo é custo — cada
+  // cálculo é uma chamada da Routes API no SKU Pro, e recalcular a cada foco
+  // de Home viraria centenas de chamadas por mês por prestador.
+  //
+  // `null` tem dois significados diferentes e o card sabe distingui-los: aqui,
+  // "não há registro para esta parada" (nada foi tentado → o card não aparece).
+  // Um registro de FALHA existe e aparece, com o motivo — porque aí a tentativa
+  // aconteceu, e sumir com o card seria "não sei" virando "não tem".
+  const [avisoSaida, setAvisoSaida] = useState<AvisoSaida | null>(null);
+  const [recalculandoSaida, setRecalculandoSaida] = useState(false);
+
+  const lerSaida = useCallback(async () => {
+    if (!proxima) { setAvisoSaida(null); return; }
+    setAvisoSaida(await lerAvisoSaida(proxima.id, proxima.inicio));
+  }, [proxima]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void lerSaida();
+    }, [lerSaida]),
+  );
+
+  /** O ÚNICO caminho da Home que gasta uma chamada paga — e só porque ele tocou. */
+  const recalcularSaida = useCallback(async () => {
+    if (recalculandoSaida) return;
+    setRecalculandoSaida(true);
+    try {
+      await reagendarAvisoSaidaDoDia(true);
+      await lerSaida();
+    } finally {
+      setRecalculandoSaida(false);
+    }
+  }, [recalculandoSaida, lerSaida]);
 
   const load = useCallback(async () => {
     setCarregandoErro(false);
@@ -525,6 +565,20 @@ export default function HomeScreen() {
                       resultado={etaResultado}
                       horario={!isNaN(new Date(proxima.inicio).getTime()) ? new Date(proxima.inicio) : undefined}
                       onTentarNovamente={tentarEtaNovamente}
+                    />
+                  </View>
+                ) : null}
+                {/* "A que horas eu preciso sair" — a única estimativa do hero que
+                    aparece TAMBÉM no APK: não depende de localização (a origem
+                    vem do cadastro), ao contrário do EtaChip acima, que o
+                    `temEta` esconde no nativo. Renderiza sozinho quando não há
+                    registro para esta parada. */}
+                {avisoSaida ? (
+                  <View style={styles.heroSaida}>
+                    <AvisoSaidaCard
+                      aviso={avisoSaida}
+                      onAtualizar={recalcularSaida}
+                      atualizando={recalculandoSaida}
                     />
                   </View>
                 ) : null}
@@ -1028,6 +1082,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   heroAddrText: { flex: 1, fontSize: 12.5 },
   heroEta: { marginTop: 8, alignItems: 'flex-start' },
+  heroSaida: { marginTop: 8, alignSelf: 'stretch' },
   // "Estou a caminho" (item 1.3): mesmo verde/contraste do botão de WhatsApp
   // do Radar de clientes (radarBtnPrimary) — convenção única pra "ação de
   // WhatsApp" no app inteiro.

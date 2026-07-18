@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDb, moverAgendamentoParaLixeira } from '../database/database';
 import { Agendamento } from '../types';
 import { pushRow } from './cloudSync';
+import { cancelarAvisoSaida } from './avisoSaida';
 import { LEMBRETE_MAP_KEY } from './storageKeys';
 
 /**
@@ -18,7 +19,16 @@ import { LEMBRETE_MAP_KEY } from './storageKeys';
 // (padrão: 1h antes). Guardamos o id da notificação junto ao id do
 // agendamento em AsyncStorage para poder cancelar ao editar/excluir.
 
-/** Minutos de antecedência do lembrete (fixo por enquanto — "configurável simples"). */
+/**
+ * Minutos de antecedência do lembrete (fixo — cego a trânsito, de propósito:
+ * ele funciona offline, sem API e sem custo, e por isso é o CHÃO desta feature).
+ *
+ * O "a que horas eu preciso sair" (`services/avisoSaida.ts`) SUBSTITUI este
+ * lembrete quando — e só quando — consegue calcular a hora de saída com o
+ * trânsito. Falhou o cálculo (offline, API fora, endereço ruim)? Este lembrete
+ * continua de pé, intacto. É o fallback explícito: o prestador nunca fica sem
+ * aviso, e nunca recebe um aviso com hora inventada.
+ */
 export const MINUTOS_ANTECEDENCIA_LEMBRETE = 60;
 const CANAL_ANDROID_ID = 'agenda-lembretes';
 
@@ -160,6 +170,11 @@ export async function cancelarTodosLembretes(): Promise<void> {
   } catch {
     // best-effort
   }
+  // `cancelAllScheduledNotificationsAsync` acima derrubou TAMBÉM o aviso "saia
+  // às HH:MM" (ele é uma notificação como as outras). Sem esta linha o registro
+  // sobreviveria apontando para um id morto, e a Home mostraria como agendado um
+  // aviso que não vai tocar mais.
+  await cancelarAvisoSaida();
 }
 
 /**
@@ -307,6 +322,13 @@ export async function saveAgendamento(a: Agendamento): Promise<void> {
   // Reagenda o lembrete local (cancela o anterior e cria um novo, se aplicável).
   // Fire-and-forget: nunca deve travar o salvamento por causa de notificação.
   void agendarLembrete(a).catch(() => {});
+  // E derruba o aviso "saia às HH:MM" desta visita, que foi calculado para o
+  // horário/endereço ANTIGOS. Mudar a visita das 15h para as 17h sem isto
+  // deixaria um "Saia às 14:23" agendado para a hora velha — pior do que não
+  // ter aviso. O `agendarLembrete` acima já recolocou o lembrete fixo de 1h no
+  // lugar, então o prestador nunca fica sem nada; o aviso calculado volta no
+  // próximo reagendamento do ritual.
+  void cancelarAvisoSaida(a.id).catch(() => {});
 }
 
 /**
@@ -319,4 +341,6 @@ export async function saveAgendamento(a: Agendamento): Promise<void> {
 export async function deleteAgendamento(id: string): Promise<void> {
   await moverAgendamentoParaLixeira(id);
   void cancelarLembrete(id).catch(() => {});
+  // Item na lixeira não notifica — nem o lembrete fixo, nem o "saia às HH:MM".
+  void cancelarAvisoSaida(id).catch(() => {});
 }

@@ -38,6 +38,7 @@ import { Platform } from 'react-native';
 import { DIAGNOSTICO_URL } from '../config';
 import { supabase } from './supabase';
 import { LOCALIZACAO_DISPONIVEL } from './localizacaoEquipe';
+import { hhmm, janelaChegada } from './saidaCalculo';
 
 export interface Coordenada {
   lat: number;
@@ -56,10 +57,23 @@ export type ResultadoEta =
  * horário que não temos — nunca inventa um número. O chip do ETA (EtaChip),
  * visível junto do botão, já explica ao prestador POR QUE a estimativa não
  * veio; esta função só garante que a mensagem enviada nunca minta sobre isso.
+ *
+ * JANELA em vez de ponto (item 7.2a de docs/ENXAME/IDEIA_ETA_TRANSITO.md):
+ * "chego em ~32 min" vira, na cabeça do cliente, uma promessa exata que o
+ * primeiro semáforo quebra. "Chego entre 14:50 e 15:10" é a MESMA estimativa
+ * dita com a incerteza que ela realmente tem — mais honesta e muito mais fácil
+ * de cumprir. "O técnico não avisou que ia atrasar" é a reclamação nº 1 de
+ * serviço de campo no Brasil, e ela morre com uma frase de oito palavras.
+ * Sem janela calculável (minutos ilegíveis), cai no texto de minutos que já
+ * existia — degradação, nunca invenção.
  */
 export function mensagemEstouACaminho(nomeCliente: string, resultado: ResultadoEta | null): string {
   const primeiro = (nomeCliente ?? '').trim().split(/\s+/)[0] || 'tudo bem';
   if (resultado?.estado === 'ok') {
+    const janela = janelaChegada(resultado.chegada, resultado.minutos);
+    if (janela) {
+      return `Olá ${primeiro}, estou a caminho, chego entre ${hhmm(janela.de)} e ${hhmm(janela.ate)}.`;
+    }
     return `Olá ${primeiro}, estou a caminho, chego em ~${resultado.minutos} min.`;
   }
   return `Olá ${primeiro}, estou a caminho!`;
@@ -91,8 +105,12 @@ function chaveCache(destino: Coordenada): string {
   return `${destino.lat.toFixed(4)},${destino.lng.toFixed(4)}`;
 }
 
-/** Token de acesso da sessão atual (ou null). Nunca lança. Mesmo padrão de `olliIA.ts`. */
-async function accessTokenAtual(): Promise<string | null> {
+/**
+ * Token de acesso da sessão atual (ou null). Nunca lança. Mesmo padrão de
+ * `olliIA.ts`. Exportado para `services/etaSaida.ts` reusar em vez de manter
+ * uma segunda cópia da mesma leitura de sessão.
+ */
+export async function accessTokenAtual(): Promise<string | null> {
   if (!supabase) return null;
   try {
     const { data } = await supabase.auth.getSession();

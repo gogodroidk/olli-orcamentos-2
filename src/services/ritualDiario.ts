@@ -1,11 +1,16 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getProximoAgendamento, temPermissaoNotificacao } from './agenda';
+import { getAgendamentosDoDia, getProximoAgendamento, temPermissaoNotificacao } from './agenda';
+import { getClientes, getEmpresa } from '../database/database';
+import { reagendarAvisoSaida } from './avisoSaida';
+import { calcularSaida } from './etaSaida';
+import { enderecoDoAgendamento, linhaBomDiaSaida, origemParaVisita } from './saidaCalculo';
 import { orcamentosParaCobrar } from './radarCobranca';
 import { clientesParaReconquistar } from './radarClientes';
 import { gerarRelatorioDia, relatorioParaTexto } from './relatorioDia';
 import { formatCurrency } from '../utils/currency';
+import type { Agendamento, Cliente } from '../types';
 import {
   RITUAL_NOTIF_MAP_KEY,
   RITUAL_BOM_DIA_TOGGLE_KEY,
@@ -143,6 +148,78 @@ function avancarSeDomingoMudo(d: Date, domingoAtivo: boolean): Date {
 }
 
 /**
+ * "saia às 08h25 (32 min, sem trânsito)" para a primeira visita do dia — o
+ * Toque 1 da seção 2 de docs/ENXAME/IDEIA_ETA_TRANSITO.md. `null` sempre que
+ * não houver número REAL: sem endereço, sem rede, worker fora, cota estourada.
+ *
+ * Usa `modo:'planejamento'` (TRAFFIC_UNAWARE → SKU Essentials: metade do preço
+ * e o dobro da franquia grátis) e o rótulo "sem trânsito" vai junto na frase,
+ * escrito por `linhaBomDiaSaida`. É uma troca deliberada: às 7h da manhã isto é
+ * panorama do dia, não a ordem de sair — a ordem de sair é o Toque 2, que paga
+ * o SKU Pro para olhar o trânsito de verdade perto da hora. Dizer "sem
+ * trânsito" na cara do usuário é o que torna a troca honesta em vez de barata.
+ *
+ * NUNCA lança: qualquer falha vira `null` e o "Bom dia" sai como antes.
+ */
+async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | null> {
+  try {
+    const inicio = new Date(proxima.inicio);
+    if (isNaN(inicio.getTime())) return null;
+    const [empresa, clientes, doDia] = await Promise.all([
+      getEmpresa().catch(() => null),
+      getClientes().catch(() => [] as Cliente[]),
+      getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[]),
+    ]);
+    const origem = origemParaVisita(proxima, doDia, empresa, clientes);
+    // Sem origem ou sem destino não há chamada nenhuma: reprovar de graça é
+    // metade do controle de custo desta feature.
+    if (!origem) return null;
+    const destino = enderecoDoAgendamento(proxima, clientes);
+    if (!destino) return null;
+    const r = await calcularSaida({
+      origem: origem.endereco,
+      destino,
+      chegarEm: inicio,
+      modo: 'planejamento',
+    });
+    return linhaBomDiaSaida(r, new Date());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recalcula e reagenda o aviso "saia às HH:MM" da PRÓXIMA parada, lendo o banco
+ * e entregando tudo pronto para `avisoSaida.ts` (que é folha de propósito — ver
+ * o docblock de lá).
+ *
+ * Roda dentro do reagendamento do ritual, que já é o gatilho certo: acorda com
+ * o app aberto e sessão válida, é cancela-e-recria, e não inventa mecanismo
+ * novo. Também é exportada para a Home poder pedir um recálculo sob TOQUE do
+ * prestador (`forcar`) — o único caminho que ignora o throttle de 4h, porque aí
+ * quem pediu a chamada paga foi ele.
+ *
+ * NUNCA lança.
+ */
+export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
+  try {
+    const proxima = await getProximoAgendamento().catch(() => null);
+    const inicio = proxima ? new Date(proxima.inicio) : null;
+    const [empresa, clientes, doDia, temPermissao] = await Promise.all([
+      getEmpresa().catch(() => null),
+      getClientes().catch(() => [] as Cliente[]),
+      inicio && !isNaN(inicio.getTime())
+        ? getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[])
+        : Promise.resolve([] as Agendamento[]),
+      temPermissaoNotificacao().catch(() => false),
+    ]);
+    await reagendarAvisoSaida({ proxima, doDia, empresa, clientes, temPermissao, forcar });
+  } catch {
+    // best-effort: o lembrete fixo de 1h da agenda continua valendo.
+  }
+}
+
+/**
  * Manchete do "Bom dia da OLLI": o sinal mais quente entre os 3 loaders da
  * Home, na ordem próxima parada (só conta se for NO DIA-ALVO da notificação)
  * > R$ parado > cliente sumido. `null` = nenhum sinal real → quem chama NÃO
@@ -165,9 +242,17 @@ async function montarBomDia(alvo: Date): Promise<{ titulo: string; corpo: string
     const inicio = new Date(proxima.inicio);
     if (!isNaN(inicio.getTime())) {
       const hora = `${String(inicio.getHours()).padStart(2, '0')}:${String(inicio.getMinutes()).padStart(2, '0')}`;
+      const quem = proxima.clienteNome || proxima.titulo;
+      // A ÚNICA frase que faltava no "Bom dia": quando sair. Quando não dá para
+      // calcular, `linhaSaida` é null e o corpo sai EXATAMENTE como já saía
+      // (cliente, horário, endereço) — falha de trânsito não pode piorar uma
+      // notificação que já funciona nem inventar um horário dentro dela.
+      const linhaSaida = await linhaDeSaidaParaBomDia(proxima);
       return {
         titulo: 'Bom dia da OLLI',
-        corpo: `Hoje às ${hora}: ${proxima.clienteNome || proxima.titulo}${proxima.endereco ? ' · ' + proxima.endereco : ''}`,
+        corpo: linhaSaida
+          ? `Hoje às ${hora}: ${quem} · ${linhaSaida}`
+          : `Hoje às ${hora}: ${quem}${proxima.endereco ? ' · ' + proxima.endereco : ''}`,
       };
     }
   }
@@ -259,6 +344,14 @@ export async function cancelarRitualDiario(): Promise<void> {
 export async function reagendarRitualDiario(): Promise<void> {
   try {
     await cancelarRitualDiario();
+
+    // ANTES dos toggles e ANTES do gate de permissão, de propósito. O aviso
+    // "saia às HH:MM" não é um terceiro canal de engajamento: ele SUBSTITUI o
+    // lembrete de agenda que já existe (ver avisoSaida.ts), então não obedece
+    // aos toggles de "Bom dia"/"Fechar o dia". E ele grava o resultado — inclusive
+    // a falha — para a Home mostrar; quem negou notificações continua vendo o
+    // horário de saída na tela, que é onde ele vale mais.
+    await reagendarAvisoSaidaDoDia();
 
     const { bomDia: bomDiaAtivo, fecharDia: fecharDiaAtivo, domingo: domingoAtivo } = await getPreferenciasRitual();
     if (!bomDiaAtivo && !fecharDiaAtivo) return; // os 2 canais desligados: nada a fazer

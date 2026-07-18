@@ -27,9 +27,16 @@ const WEIGHT_TO_FAMILY: Record<string, string> = {
 };
 
 /**
- * Faz TODO <Text>/<TextInput> usar a Plus Jakarta Sans no peso correto,
- * mapeando o fontWeight existente para o arquivo de fonte certo.
+ * Faz TODO <Text>/<TextInput> usar a família de corpo do tema (`Fonts`, hoje
+ * Rubik — a mesma da landing e do painel) no peso correto, mapeando o
+ * fontWeight existente para o arquivo de fonte certo.
  * Aplicado uma vez no boot, depois das fontes carregarem. Zero edição por tela.
+ *
+ * É por causa deste patch que trocar a família do app é uma mudança de dois
+ * arquivos (`fonts.ts` + os nomes carregados no `useFonts` do App.tsx) e não de
+ * 92. Quem mexer aqui: os dois lados têm de continuar casando: um nome em
+ * `Fonts` que o `useFonts` não carregou não quebra nada — o texto só cai na
+ * fonte do sistema, calado.
  */
 export function applyFontPatch() {
   patch(Text as any);

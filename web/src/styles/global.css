@@ -74,6 +74,60 @@
 
 :root {
 	color-scheme: light;
+
+	/* ─────────────────────────────────────────────────────────────────────────
+	   MOVIMENTO — tokens.
+
+	   Ficam em :root e NÃO em @theme de propósito. O @theme do Tailwind 4 só
+	   emite a variável quando ela alimenta uma utilitária; estes valores são
+	   consumidos por var() dentro deste mesmo arquivo, então no @theme corriam
+	   o risco de ser podados na saída e o motion sair com valor vazio.
+	   Nenhum deles gera utilitária (`alcance-2` não é classe), então não há
+	   perda em declará-los aqui.
+
+	   DURAÇÃO — só para o que continua sendo por TEMPO (hover, foco, details).
+	   Animação dirigida por scroll não tem duração: quem controla é o polegar.
+	   ───────────────────────────────────────────────────────────────────────── */
+	--olli-dur-1: 160ms; /* hover/foco de link e chip */
+	--olli-dur-2: 260ms; /* hover de cartão, botão */
+	--olli-dur-3: 420ms; /* mudança de estado maior. TETO — acima disto a
+	                        interface deixa de responder e passa a fazer esperar. */
+
+	/* ALCANCE — é ESTE token que significa "mais lento".
+	   Em scroll-driven "lento" não é mais milissegundo: é DISTÂNCIA DE ROLAGEM
+	   que a animação consome. Percentual da fase `cover` (= altura da viewport
+	   + altura do elemento). Num celular 390×844 com cartão de ~200px, cover
+	   ≈ 1044px, então 35% ≈ 365px de rolagem.
+
+	   TETO, e é o motivo de não subir mais: a revelação tem que TERMINAR antes
+	   de o elemento chegar a ~55% da altura da tela, que é onde ele fica
+	   confortável de ler. Passar disso entrega texto meio transparente para
+	   quem já está tentando lê-lo — e isso irrita mais que rápido demais. */
+	--olli-alcance-1: 25%; /* ~260px — item de grade, chip, cabeçalho */
+	--olli-alcance-2: 35%; /* ~365px — PADRÃO: cartão, bloco de texto */
+	--olli-alcance-3: 50%; /* ~520px — só peça grande. Perto do teto. */
+
+	/* DISTÂNCIA — teto de 28px, firme.
+	   O hero usava 48px e 72px: são números de animação de ENTRADA, onde o
+	   elemento vem de fora da tela. Em scroll-driven o elemento já está entrando
+	   por conta da rolagem; somar 72px próprios faz ele parecer ATRASADO em
+	   relação ao dedo, como se a página estivesse travando. */
+	--olli-sobe-sm: 8px;
+	--olli-sobe-md: 16px; /* padrão */
+	--olli-sobe-lg: 28px; /* TETO */
+
+	/* STAGGER — deslocamento do range por item, máx. 3 passos. */
+	--olli-stagger: 6%;
+
+	/* EASING — `linear` em TODO scroll-driven, e isto é contraintuitivo.
+	   A curva da casa (--ease-out-soft) entrega ~97% do progresso nos primeiros
+	   50%: ótima para entrada, PÉSSIMA para scroll — o visitante rola 30% do
+	   alcance, a animação já acabou, e os outros 70% de rolagem não produzem
+	   nada visível. Ele lê isso como "quebrado", não como "suave".
+	   A sensação de ease vem da opacidade fechar em 60% do range (ver
+	   @keyframes olli-revela): o texto fica legível cedo e o movimento assenta
+	   depois, sem mentir sobre o progresso. */
+	--olli-ease-scroll: linear;
 }
 
 html {
@@ -87,7 +141,27 @@ body {
 	font-family: var(--font-sans);
 	color: var(--color-ink);
 	background: #ffffff;
-	overflow-x: hidden;
+
+	/* `clip` e NÃO `hidden` — e isto é pré-requisito do movimento no scroll,
+	   não preferência de estilo.
+
+	   Em CSS, quando um eixo do overflow é `visible` e o outro não, o `visible`
+	   computa para `auto`. Com `overflow-x: hidden` aqui, o body passava a
+	   computar `overflow-y: auto` e virava CONTAINER DE SCROLL — um container
+	   que nunca rola, porque quem rola é a viewport. Aí toda `animation-timeline:
+	   view()` resolvia contra esse scroller parado e nascia INATIVA: nenhuma
+	   animação da página acontecia.
+
+	   O que torna isso perigoso é o sintoma: página estática, exatamente igual a
+	   "browser sem suporte". Não quebra, não avisa, não aparece em erro nenhum —
+	   só não anima, e a gente acharia que o Chrome é que não suportava.
+
+	   Medido neste worktree, não deduzido: com `hidden`, computado do body era
+	   overflow-y `auto` e `timeline.currentTime` === null. Com `clip`, o
+	   overflow-y volta a `visible` e a mesma timeline passa a resolver. `clip`
+	   segura o transbordo horizontal igual ao `hidden` e NÃO cria container de
+	   scroll (Chrome 90+, Safari 16+, Firefox 81+). */
+	overflow-x: clip;
 }
 
 /* Números com aparência de dado (tabular). */
@@ -117,6 +191,150 @@ body {
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOVIMENTO DIRIGIDO PELO SCROLL
+
+   Mecanismo: CSS scroll-driven nativo (`animation-timeline: view()`).
+   0 KB de JS, roda FORA da main thread. Escolhido sobre GSAP+ScrollTrigger
+   (~40 KB gzip na main thread para fazer o que o browser faz de graça) e sobre
+   Motion (só existe onde há ilha React hidratada — e no celular, depois do
+   `client:media`, não há nenhuma).
+
+   Suporte conferido hoje (caniuse + MDN, não de memória): 83,66% global —
+   Chrome/Edge 115+, Safari 26+, Samsung 23+. Firefox AINDA NÃO: a 152 (estável)
+   mantém atrás da flag `layout.css.scroll-driven-animations.enabled`; o caniuse
+   marca chegada só na 155. No mix mobile brasileiro isso é ~0,4% do tráfego.
+
+   ┌──────────────────────────────────────────────────────────────────────────┐
+   │ A REGRA ESTRUTURAL — é ela que impede o bug clássico de scroll animation │
+   │                                                                          │
+   │ O ESTADO BASE DO CSS É O ESTADO FINAL, VISÍVEL. A opacidade/deslocamento │
+   │ inicial existe SÓ dentro do @keyframes, e o @keyframes só é aplicado     │
+   │ dentro dos DOIS guardas abaixo. Browser que não entende animation-timeline│
+   │ ignora o bloco inteiro e vê a página pronta.                             │
+   │                                                                          │
+   │ Nenhum elemento fica esperando uma animação para aparecer. Sem JS, sem   │
+   │ hidratação, sem suporte, com reduced-motion: o conteúdo está lá, inteiro.│
+   │ É a mesma classe de erro que já derrubou o hero neste arquivo uma vez    │
+   │ (`initial` do motion serializado como style inline no SSG) — "erro nunca │
+   │ vira vazio" aplicado a movimento.                                        │
+   └──────────────────────────────────────────────────────────────────────────┘
+
+   Isto também neutraliza, de graça, a regra cega de reduced-motion mais abaixo
+   (`animation-duration: 0.01ms !important` em *). Sob timeline de scroll a
+   duração precisa ser `auto` para ocupar o range inteiro; um valor de tempo com
+   !important deixaria o elemento no estado `from` (invisível) por quase todo o
+   range e faria ele estalar no fim — o bug de conteúdo invisível entrando pela
+   porta da regra que existe para protegê-lo. Declarando tudo dentro de
+   `no-preference`, não existe animação para ela atropelar. A regra cega fica,
+   porque continua certa para hover e transição.
+
+   ⚠️ ORDEM OBRIGATÓRIA: `animation-timeline` é reset-only dentro do atalho
+   `animation`. Declarar o atalho DEPOIS zera a timeline de volta para `auto` e
+   a animação vira uma animação por tempo comum. Atalho primeiro, timeline
+   depois — sempre.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Estados BASE (fora dos guardas) — é isto que 100% dos visitantes veem se
+   nada animar. `.olli-revela` não declara nada de propósito: seu estado base é
+   simplesmente o elemento normal, opaco e no lugar. */
+.olli-barra {
+	transform: scaleX(0.82); /* os 82% corretos sem depender de animação */
+	transform-origin: left;
+}
+.olli-passo-linha {
+	transform-origin: left; /* base = escala 1 = linha inteira */
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	@supports (animation-timeline: view()) {
+		/* Revelação padrão: sobe 16px e resolve a opacidade. */
+		.olli-revela {
+			animation: olli-revela var(--olli-ease-scroll) both;
+			animation-timeline: view();
+			animation-range: entry 0% cover var(--olli-alcance-2);
+		}
+		.olli-revela-curta {
+			animation: olli-revela var(--olli-ease-scroll) both;
+			animation-timeline: view();
+			animation-range: entry 0% cover var(--olli-alcance-1);
+		}
+
+		/* HERO — não revela, DERIVA. Ver o comentário no index.astro. */
+		.olli-hero-deriva {
+			animation: olli-hero-deriva var(--olli-ease-scroll) both;
+			animation-timeline: view();
+			animation-range: cover;
+		}
+
+		/* Barra de confiança da IA: o preenchimento CONTA a história do produto
+		   (a IA calculando o grau de confiança) em vez de decorar. */
+		.olli-barra {
+			animation: olli-barra var(--olli-ease-scroll) both;
+			animation-timeline: view();
+			animation-range: entry 10% cover var(--olli-alcance-3);
+		}
+
+		/* Os 3 passos: a linha cresce = o progresso do fluxo que o texto
+		   descreve. Único lugar da página com stagger, e ele desloca INÍCIO e
+		   fim juntos — deslocar só o fim deixaria os itens seguintes mais
+		   lentos em vez de atrasados. */
+		.olli-passo-linha {
+			animation: olli-passo-linha var(--olli-ease-scroll) both;
+			animation-timeline: view();
+			animation-range: cover calc(12% + var(--olli-passo, 0) * var(--olli-stagger))
+				cover calc(46% + var(--olli-passo, 0) * var(--olli-stagger));
+		}
+	}
+}
+
+@keyframes olli-revela {
+	from {
+		opacity: 0;
+		transform: translateY(var(--olli-sobe-md));
+	}
+	/* a opacidade fecha ANTES do movimento: legível cedo, assenta depois */
+	60% {
+		opacity: 1;
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* Sem opacity: os aparelhos estão SEMPRE visíveis, em qualquer progresso.
+   O que muda é a pose. Nada acima da dobra pode nascer transparente — o H1 é
+   o LCP e os CTAs são o que converte. */
+@keyframes olli-hero-deriva {
+	from {
+		transform: translateY(var(--olli-sobe-lg));
+	}
+	to {
+		transform: translateY(calc(-1 * var(--olli-sobe-lg)));
+	}
+}
+
+/* scaleX e não width: animar width é reflow por frame e perde o compositor.
+   O trilho já tem overflow-hidden + rounded-full, então o filho pode ser
+   retangular e ainda aparecer com as pontas arredondadas. */
+@keyframes olli-barra {
+	from {
+		transform: scaleX(0);
+	}
+	to {
+		transform: scaleX(0.82);
+	}
+}
+@keyframes olli-passo-linha {
+	from {
+		transform: scaleX(0);
+	}
+	to {
+		transform: scaleX(1);
+	}
 }
 
 /* Reduced-motion: mata toda animação/transição contínua. */

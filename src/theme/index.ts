@@ -144,15 +144,63 @@ export const Spacing = {
   xxxl: 48,
 };
 
+/**
+ * RAIO — alinhado à escala de 6 degraus da landing
+ * (`web/src/styles/global.css:63-68`: fio 4 · campo 12 · acao 16 · cartao 20 ·
+ * caixa 28 · bloco 36 · pílula). Os NOMES daqui não mudam — 610 chamadas em 92
+ * arquivos dependem deles, e renomear token é trabalho de outro cluster. O que
+ * mudou foram os VALORES, cada um caindo num degrau que a landing já usa de
+ * verdade (contado em `web/src/`: cartao 13× · acao 12× · campo 8× · caixa 4×
+ * · bloco 4× · full 28×).
+ *
+ * A direção é DESCENDO, e isso é de propósito. A landing avisa no próprio
+ * comentário que fonte redonda e raio alto SOMAM, e nesta mesma onda o app
+ * acabou de trocar Plus Jakarta por Rubik — que já tem canto de haste
+ * arredondado. Manter o raio antigo com a letra nova empilharia as duas coisas
+ * e levaria o app pro "infantil" que um profissional não pode mostrar ao
+ * cliente dele. Descer o raio é o que paga a letra mais redonda.
+ *
+ *   token   antes → agora   degrau da landing   usos
+ *   sm       12  →  12      campo               45
+ *   chip     14  →  16      acao                31
+ *   md       18  →  16      acao               182
+ *   lg       24  →  20      cartao             145
+ *   xl       30  →  28      caixa               48
+ *   xxl      36  →  36      bloco                0
+ *   full    999  → 999      pílula             159
+ *
+ * DUAS COISAS QUE NÃO CONVERGIRAM, e o porquê:
+ *
+ * 1. `lg` para em 20, não em 16. A landing dá 16 (`acao`) ao botão e 20
+ *    (`cartao`) ao cartão — dois valores. No app os dois LEEM O MESMO TOKEN
+ *    (`OlliButton.tsx` e `OlliCard.tsx`, ambos `BorderRadius.lg`), então um
+ *    número tem de servir aos dois. Escolhi o do cartão: são 145 usos, a maioria
+ *    superfície, e um botão de 50px de altura com raio 16 (32%) começa a ler
+ *    como caixa de formulário de desktop — o que num alvo tocado com luva e sol
+ *    na tela custa afordância. Em 20 (40%) a silhueta continua obviamente
+ *    tocável. Separar os dois exige editar OlliButton/OlliCard, que são de outro
+ *    cluster; quando isso acontecer, o botão pode descer para `chip`/16 sozinho.
+ *
+ * 2. `chip` e `md` empatam em 16 — e isso não é descuido. A própria landing põe
+ *    os dois no mesmo degrau: `--radius-acao` é literalmente "botão de ação
+ *    (~44–52px), chip de ícone 44×44". Os nomes seguem separados para que uma
+ *    onda futura possa afastá-los sem caçar 213 chamadas.
+ *
+ * NENHUM raio aqui encolhe área de toque: raio é forma, não caixa. Os alvos
+ * continuam com a mesma altura e largura que tinham.
+ */
 export const BorderRadius = {
+  /** Trilho/barra de 4–8px de altura (landing: `--radius-fio`). Sem consumidor
+   *  ainda — existe para os 15 `borderRadius: 4` literais migrarem para cá. */
+  fio: 4,
   sm: 12,
-  md: 18,
-  lg: 24,
-  xl: 30,
+  md: 16,
+  lg: 20,
+  xl: 28,
   xxl: 36,
   full: 999,
   // Chip de ícone: caixa ~36-48px com ícone dentro (avatares/badges pequenos)
-  chip: 14,
+  chip: 16,
 };
 
 export const Typography = {

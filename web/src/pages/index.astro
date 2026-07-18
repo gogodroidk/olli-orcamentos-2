@@ -252,7 +252,16 @@ const schemaFaq = {
 
   <main id="conteudo">
   <!-- ══════════ HERO ══════════ -->
-  <section class="relative overflow-hidden">
+  {/* `overflow-clip` e NÃO `overflow-hidden`: `hidden` faz esta section virar
+      container de scroll, e a `animation-timeline: view()` do wrapper dos
+      aparelhos passa a resolver contra ELA — um scroller que nunca rola. O
+      resultado medido era progresso CONGELADO em 0,5000 com a página em
+      scrollY 0, 300 e 700: o hero simplesmente não derivava. `clip` recorta
+      igual (os blobs continuam contidos) sem criar container de scroll.
+
+      Comentário entre chaves, e não comentário de HTML: o de HTML é servido ao
+      visitante em toda visita; este o Astro remove do HTML final. */}
+  <section class="relative overflow-clip">
     <div class="pointer-events-none absolute inset-0 -z-10">
       <div class="absolute -right-40 -top-40 h-[38rem] w-[38rem] rounded-full opacity-60 blur-3xl" style="background: radial-gradient(closest-side, rgba(63,216,234,.28), transparent)"></div>
       <div class="absolute -left-40 top-40 h-[34rem] w-[34rem] rounded-full opacity-50 blur-3xl" style="background: radial-gradient(closest-side, rgba(11,111,206,.20), transparent)"></div>
@@ -303,7 +312,28 @@ const schemaFaq = {
         </div>
       </div>
 
-      <div class="min-w-0 lg:pl-6">
+      {/*
+        O MOVIMENTO DO HERO MORA AQUI, NO WRAPPER ESTÁTICO — nunca dentro do
+        HeroDevices.tsx. Três razões, todas concretas:
+
+        1. No celular a ilha não hidrata (`client:media` logo abaixo). Movimento
+           declarado dentro do React simplesmente não aconteceria no aparelho do
+           público. Como classe CSS no HTML estático, ele roda sem uma linha de JS.
+        2. Quando as telas reais substituírem o conteúdo da moldura, a troca é do
+           conteúdo — o movimento sobrevive intacto. Dentro do componente, aquela
+           leva reabriria esta inteira.
+        3. `animation-range: cover` e não `entry`: no desktop os aparelhos já
+           estão INTEIRAMENTE visíveis no scroll 0, então a fase `entry` já
+           terminou e a animação nasceria congelada em 100%. `cover` cobre todo o
+           período em que o elemento intersecta a viewport, então no load o hero
+           está no MEIO do range e continua progredindo conforme se desce.
+
+        Deriva, não revelação: só translateY, zero opacity. Os aparelhos estão
+        sempre visíveis em qualquer progresso — o que muda é a pose. A pose do
+        meio do range (o que se vê ao carregar) é exatamente a composição que já
+        está no ar hoje, então quem não anima não perde nada.
+      */}
+      <div class="olli-hero-deriva min-w-0 lg:pl-6">
         {/*
           client:media, NÃO client:load. O componente é `aria-hidden="true"` (é
           decoração) e a ÚNICA coisa nele que precisa de JS é o parallax de MOUSE.
@@ -359,7 +389,7 @@ const schemaFaq = {
        está marcado como indisponível, e vender "(em breve)" como pronto é o erro que
        esta landing já cometeu antes. -->
   <section id="oficios" class="mx-auto max-w-7xl px-6 py-24">
-    <div class="mx-auto max-w-2xl text-center">
+    <div class="olli-revela mx-auto max-w-2xl text-center">
       <span class="eyebrow">Feito pro seu ofício</span>
       <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">
         A OLLI se veste do seu serviço.
@@ -374,7 +404,7 @@ const schemaFaq = {
       {OFICIOS.map((o) => (
         <a
           href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-          class="group rounded-cartao border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
+          class="olli-revela group rounded-cartao border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
         >
           <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-8 w-8" />
           <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand">{o.label}</h3>
@@ -382,7 +412,7 @@ const schemaFaq = {
           <span class="mt-3 inline-block text-sm font-semibold text-brand">Ver o app pra {o.label.toLowerCase()} →</span>
         </a>
       ))}
-      <div class="rounded-cartao border border-dashed border-line bg-paper p-6">
+      <div class="olli-revela rounded-cartao border border-dashed border-line bg-paper p-6">
         <Icone nome={ICONE_POR_OFICIO[OFICIO_GERAL.id]} class="h-8 w-8" />
         <h3 class="mt-3 text-lg font-bold text-ink">{OFICIO_GERAL.label}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-slate">{OFICIO_GERAL.tagline}</p>
@@ -397,14 +427,33 @@ const schemaFaq = {
 
   <!-- ══════════ COMO FUNCIONA ══════════ -->
   <section id="como" class="mx-auto max-w-7xl px-6 py-24">
-    <div class="mx-auto max-w-2xl text-center">
+    <div class="olli-revela mx-auto max-w-2xl text-center">
       <span class="eyebrow">Como funciona</span>
       <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Três passos. Zero planilha.</h2>
     </div>
+    {/*
+      O único movimento NARRATIVO da página: a régua sob cada número cresce
+      conforme se desce, e a linha crescendo É o progresso do fluxo de trabalho
+      que o texto está descrevendo. Movimento que comunica estado, não que
+      enfeita — por isso ele existe aqui e não nos 8 cartões de Recursos.
+
+      Fica DENTRO do cartão de propósito: uma linha ligando os três por cima das
+      calhas da grade exigiria posicionamento absoluto atravessando `gap`, que
+      quebra quando a grade vira 1 coluna no celular. Contida no cartão, ela
+      funciona igual nas duas larguras.
+
+      `--olli-passo` escalona início E fim do range (deslocar só o fim deixaria
+      os últimos mais LENTOS em vez de atrasados). No celular a grade é de 1
+      coluna e o escalonamento já viria de graça pela posição; no desktop, onde
+      os três dividem a mesma linha, é ele que produz o 01 → 02 → 03.
+    */}
     <div class="mt-14 grid gap-6 md:grid-cols-3">
-      {passos.map((p) => (
-        <div class="relative rounded-cartao border border-line bg-white p-7">
+      {passos.map((p, i) => (
+        <div class="olli-revela relative rounded-cartao border border-line bg-white p-7">
           <div class="text-sm font-extrabold text-brand tnum">{p.n}</div>
+          <div class="mt-2 h-0.5 w-12 overflow-clip rounded-fio bg-line" aria-hidden="true">
+            <div class="olli-passo-linha h-full w-full brand-gradient" style={`--olli-passo:${i}`}></div>
+          </div>
           <h3 class="mt-3 text-xl font-bold text-ink">{p.titulo}</h3>
           <p class="mt-2 text-slate">{p.texto}</p>
         </div>
@@ -415,7 +464,11 @@ const schemaFaq = {
   <!-- ══════════ RECURSOS ══════════ -->
   <section id="recursos" class="border-y border-line bg-paper">
     <div class="mx-auto max-w-7xl px-6 py-24">
-      <div class="mx-auto max-w-2xl text-center">
+      {/* Só o cabeçalho anima. Os 8 cartões NÃO — e isso é conter, não
+          esquecer: no celular eles viram 8 revelações seguidas na mesma
+          rolagem, que é exatamente onde reveal deixa de ser respiro e vira
+          ruído. Se um dia entrarem, que seja opacity sem deslocamento. */}
+      <div class="olli-revela-curta mx-auto max-w-2xl text-center">
         <span class="eyebrow">Tudo num lugar só</span>
         <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Do orçamento ao recibo, sem sair da OLLI.</h2>
       </div>
@@ -435,7 +488,11 @@ const schemaFaq = {
 
   <!-- ══════════ DESTAQUE IA ══════════ -->
   <section class="mx-auto max-w-7xl px-6 py-24">
-    <div class="overflow-hidden rounded-bloco bg-brand-ink text-white">
+    {/* `overflow-clip`: este bloco e a trilha da barra abaixo sao ancestrais da
+        `.olli-barra`. Com `overflow-hidden` os dois viravam container de scroll
+        e a barra nascia com progresso travado em 1 — cheia, sem nunca encher.
+        Mesma troca, mesmo motivo do hero. */}
+    <div class="overflow-clip rounded-bloco bg-brand-ink text-white">
       <div class="grid items-center gap-10 p-10 md:grid-cols-2 md:p-14">
         <div>
           <span class="eyebrow !text-cyan">IA de diagnóstico</span>
@@ -448,8 +505,14 @@ const schemaFaq = {
           <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Diagnóstico</div>
           <p class="mt-3 text-sm text-white/80">Provável: <strong class="text-cyan">capacitor do compressor</strong> <span class="tnum">— 45/5 µF</span></p>
           <div class="mt-3 flex items-center gap-3">
-            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-              <div class="h-full rounded-full brand-gradient" style="width:82%"></div>
+            {/* width:82% virou scaleX(0.82) no CSS: animar `width` é reflow por
+                frame e perde o compositor. O filho é `w-full` e a escala faz os
+                82%; o trilho já tem overflow-hidden + rounded-full, então ele
+                clipa as pontas e o filho retangular ainda aparece arredondado —
+                sem a distorção de raio que scaleX normalmente causa.
+                O valor de base vive fora dos guardas: quem não anima vê 82%. */}
+            <div class="h-1.5 flex-1 overflow-clip rounded-full bg-white/10">
+              <div class="olli-barra h-full w-full brand-gradient"></div>
             </div>
             <span class="tnum text-xs text-white/70">confiança 82%</span>
           </div>
@@ -488,14 +551,22 @@ const schemaFaq = {
   <!-- ══════════ PLANOS ══════════ -->
   <section id="planos" class="border-y border-line bg-paper">
     <div class="mx-auto max-w-7xl px-6 py-24">
-      <div class="mx-auto max-w-2xl text-center">
+      <div class="olli-revela mx-auto max-w-2xl text-center">
         <span class="eyebrow">Planos</span>
         <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Comece de graça. Pague quando crescer.</h2>
         <p class="mt-4 text-slate">O grátis é sério e sem prazo. O Pro ainda sai em até 12×.</p>
       </div>
+      {/* A classe de revelação vai NO CARTÃO, sem wrapper, e isso foi verificado
+          no CSS compilado — não deduzido. O Tailwind 4 compila `-translate-y-3`
+          para a propriedade `translate:` (independente), não para `transform:`.
+          Como a revelação anima `transform`, as duas COMPÕEM em vez de brigar:
+          o destaque do Pro continua elevado depois que a animação termina.
+          Num Tailwind 3 (onde `-translate-y-3` vira `transform`) esta mesma
+          linha derrubaria o cartão para a fileira dos outros e apagaria o
+          destaque — se a versão mudar, é aqui que se confere de novo. */}
       <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
         {planos.map((p) => (
-          <div class={`flex h-full flex-col rounded-cartao border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
+          <div class={`olli-revela flex h-full flex-col rounded-cartao border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
             {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-tint px-3 py-1 text-xs font-bold text-brand">Recomendado</span>}
             <h3 class="text-lg font-bold text-ink">{p.nome}</h3>
             <p class="mt-1 text-sm text-muted">{p.desc}</p>
@@ -550,7 +621,9 @@ const schemaFaq = {
 
   <!-- ══════════ CTA FINAL ══════════ -->
   <section class="mx-auto max-w-7xl px-6 pb-24">
-    <div class="relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
+    {/* Revelação sóbria: é o último pedido de conversão da página, tem que
+        estar cheio e legível rápido. */}
+    <div class="olli-revela relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
       <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
       <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
       <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-acao bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>

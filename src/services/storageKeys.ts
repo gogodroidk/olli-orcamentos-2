@@ -107,6 +107,25 @@ export const PULSO_ULTIMO_KEY = 'olli.pulso.ultimo';
 export const FORMAS_PAGAMENTO_PADRAO_KEY = 'olli.orcamento.formasPagamentoPadrao';
 
 /**
+ * Cache local de DURAÇÃO de trajeto do "a que horas eu preciso sair"
+ * (services/etaSaida). Chave interna = origem+destino normalizados + faixa de
+ * hora + tipo de dia; valor = o que a Routes API devolveu, com carimbo. Existe
+ * por CUSTO: a Routes API é o único terceiro caro por uso do app (SKU Pro:
+ * US$ 10 por 1.000 chamadas), e o mesmo trajeto se repete muito no dia a dia
+ * de um prestador. Guarda ENDEREÇO DE CLIENTE normalizado → é dado de conta e
+ * entra em APP_DATA_STORAGE_KEYS.
+ */
+export const SAIDA_CACHE_KEY = 'olli.saida.cache';
+/**
+ * Notificação "hora de sair" atualmente agendada + o último resultado de
+ * cálculo (services/avisoSaida), incluindo os estados de FALHA. Guardar a
+ * falha é de propósito: é o que permite a Home dizer "não deu pra checar o
+ * trânsito" em vez de simplesmente não mostrar nada — sumir com o card
+ * transformaria "não sei" em "não tem".
+ */
+export const SAIDA_AVISO_KEY = 'olli.saida.aviso';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -130,4 +149,6 @@ export const APP_DATA_STORAGE_KEYS = [
   RITUAL_DOMINGO_TOGGLE_KEY,
   PULSO_ULTIMO_KEY,
   FORMAS_PAGAMENTO_PADRAO_KEY,
+  SAIDA_CACHE_KEY,
+  SAIDA_AVISO_KEY,
 ];
