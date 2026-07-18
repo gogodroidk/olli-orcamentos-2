@@ -1243,9 +1243,11 @@ export function acordoAceito(status: StatusOrcamento): boolean {
  * duas regras conforme o usuário abrisse no celular ou no painel. O caminho
  * honesto nos dois é DUPLICAR como novo rascunho — o original continua valendo.
  *
- * Mora aqui (e não em `src/types`, ao lado de `propostaJaEnviada`, que seria o
- * lugar natural) porque esta frente não tem escopo de escrita naquele arquivo;
- * mover para lá é uma unificação pendente, sem mudança de comportamento.
+ * Mora aqui, e não em `src/types` ao lado de `propostaJaEnviada`, que seria o
+ * lugar natural — mover é uma unificação pendente, sem mudança de comportamento.
+ *
+ * A paridade com o painel é verificada por `scripts/teste-numero-web.ts`: as duas
+ * definições têm que aceitar e recusar exatamente os mesmos status.
  */
 export function edicaoBloqueada(status: StatusOrcamento): boolean {
   return propostaJaEnviada(status) || acordoAceito(status);
@@ -1256,13 +1258,13 @@ export function edicaoBloqueada(status: StatusOrcamento): boolean {
  * UI possa distinguir "tente de novo em instantes" (transitório) de "isto não vai
  * funcionar nunca, use Duplicar" (permanente).
  *
- * ⚠️ AINDA SEM CONSUMIDOR (achado aberto, fora do escopo deste arquivo): nenhuma
- * tela hoje faz `instanceof OrcamentoAceitoError` — o catch genérico de
- * `NovoOrcamentoScreen.tsx` (handleSave/handleRascunho) trata esta recusa
- * PERMANENTE como se fosse falha transitória e mostra "Tente novamente em
- * instantes", sem apontar "Duplicar". Quem for fechar esse catch pode checar
- * `e instanceof OrcamentoAceitoError` (ou `e?.codigo === 'ORCAMENTO_ACEITO'`,
- * sem precisar importar a classe) — o campo já existe abaixo para isso.
+ * COMO CONSUMIR: prefira `e?.codigo === 'ORCAMENTO_ACEITO'` a `instanceof` — o
+ * campo `codigo` sobrevive ao serializar/reconstruir o erro através de camadas
+ * (bridge, sync, re-throw), e não obriga a tela a importar esta classe. É o que
+ * `NovoOrcamentoScreen.tsx` (handleSave/handleRascunho) faz: nesta recusa mostra
+ * "duplique como novo rascunho" em vez de "tente novamente em instantes", porque
+ * tentar de novo nunca vai funcionar. Tratar isto como falha transitória é
+ * mandar o usuário repetir para sempre um caminho fechado, perdendo o que digitou.
  */
 export class OrcamentoAceitoError extends Error {
   readonly codigo = 'ORCAMENTO_ACEITO' as const;
@@ -1286,19 +1288,27 @@ export class OrcamentoAceitoError extends Error {
  *    em_negociacao/aguardando_assinatura: a edição passa, mas congelamos o estado
  *    anterior como VERSÃO antes de sobrescrever — o que o cliente viu nunca some.
  *
- *    ALCANCE ATUAL da regra 2: os dois pontos de entrada do editor que ESTE
- *    pacote gateia (`OrcamentosScreen.tsx` e `VisualizarOrcamentoScreen.tsx`)
- *    escondem "Editar" para todo status em `edicaoBloqueada` — que já COBRE
- *    `propostaJaEnviada` inteiro. Ou seja, pela UI mobile que este pacote
- *    controla, quem chega ao editor já está em rascunho/recusado/expirado/
- *    cancelado, sem conteúdo protegido a versionar: a regra 2 fica em modo
- *    cinto-e-suspensório, não em uso rotineiro. ISTO NÃO É a decisão de matar o
- *    versionamento local — é ficar como rede de segurança contra qualquer
- *    caminho que ainda alcance o editor sem passar por esse gate (achados
- *    abertos, fora destes 4 arquivos: a ação da tabela desktop em
- *    `OrcamentosDesktopScreen.tsx` e o deep link `orcamentos/:id/editar` em
- *    `linking.ts`, nenhum dos dois gateado hoje). A tela de Versões continua
- *    viva de qualquer forma — ela também lista o que a nuvem/painel gerou
+ *    POR QUE A REGRA 2 QUASE NUNCA DISPARA, e ainda assim fica. As telas que
+ *    levam ao editor (`OrcamentosScreen`, `VisualizarOrcamentoScreen` e a tabela
+ *    de `desktop/OrcamentosDesktopScreen`) escondem "Editar" para todo status em
+ *    `edicaoBloqueada` — que COBRE `propostaJaEnviada` inteiro —, e o próprio
+ *    editor (`NovoOrcamentoScreen`) recusa abrir em modo edição nesses status,
+ *    o que fecha também o deep link `orcamentos/:id/editar` (`linking.ts`), que
+ *    não passa por tela nenhuma. Quem chega ao editor está em rascunho/recusado/
+ *    expirado/cancelado: sem conteúdo protegido a versionar.
+ *
+ *    Manter a regra 2 NÃO é indecisão — é a rede para o caminho que ninguém
+ *    previu. Um gate de UI é uma linha que some num refactor; esta é a única
+ *    trava que fica entre um `saveOrcamento` qualquer e a sobrescrita do que o
+ *    cliente já viu. `scripts/teste-numero-web.ts` guarda os gates acima para que
+ *    sumir deles seja falha de teste, não descoberta em produção.
+ *
+ *    Fora do alcance destas duas regras, de propósito: o PULL da nuvem grava por
+ *    `localUpsertOrcamento` (INSERT OR REPLACE cru), não por aqui. Mudança que
+ *    vem do painel/link num orçamento aprovado pousa local sem recusa — a nuvem
+ *    é a autoridade do que já foi sincronizado, e recusá-la aqui deixaria o
+ *    aparelho permanentemente dessincronizado. A tela de Versões continua viva de
+ *    qualquer forma: ela lista também o que a nuvem/painel gerou
  *    (`clienteLink.ts`), não só o que este `saveOrcamento` congela.
  *
  * As duas comparam `impressaoComercial`, que ignora os campos voláteis: trocar SÓ

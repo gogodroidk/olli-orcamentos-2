@@ -249,7 +249,22 @@ async function chaveCobrancaVoz(env, userId, refAcao) {
     // Cobrar de novo porque a CONSULTA falhou seria punir o cliente por um
     // problema nosso. O replay eterno que a janela existe para barrar já é
     // barrado pelo hash do conteúdo, que compõe a chave logo abaixo.
-    return { jaCobrada: false, ref: refAcao };
+    //
+    // O sufixo SAI DE DENTRO DO PREFIXO (`${prefixo}estavel`, não `refAcao` cru)
+    // porque a consulta procura por PREFIXO: uma cobrança gravada aqui, no
+    // estado degradado, precisa ser ENCONTRÁVEL quando a consulta voltar. Com
+    // `refAcao` cru ela não era — `refAcao` não começa com `refAcao:j` — então a
+    // dupla "1ª chamada com a RPC fora + retry com a RPC de volta" gerava duas
+    // chaves que não se parecem, o índice único não tinha o que absorver e o
+    // MESMO trabalho era cobrado DUAS VEZES: 60 de 60 offsets de janela, medido
+    // (seção G4 de scripts/teste-creditos-voz.ts). Não é caso raro — é um 500
+    // isolado do PostgREST entre a chamada e o retry, e é o instante exato em
+    // que o dono aplicar a migration 20260727 (a RPC nasce viva no meio de um
+    // retry em voo). `estavel` não é número, então nunca colide com uma chave de
+    // bucket (`${prefixo}${janelaIdem()}`), e continua sendo a MESMA string em
+    // toda chamada degradada — que é o que faz o índice único absorver o retry
+    // enquanto a RPC estiver fora.
+    return { jaCobrada: false, ref: `${prefixo}estavel` };
   }
   if (recente) return { jaCobrada: true, ref: recente };
   return { jaCobrada: false, ref: `${prefixo}${janelaIdem()}` };

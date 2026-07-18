@@ -15,6 +15,9 @@ import { usePermissao } from '../../hooks/usePermissao';
 import { usePlano } from '../../hooks/usePlano';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../../services/onboarding';
+import { cancelarTodosLembretes } from '../../services/agenda';
+import { cancelarTodosLembretesPmoc } from '../../services/pmocLembretes';
+import { cancelarRitualDiario } from '../../services/ritualDiario';
 import { adicionarFotoGaleria } from '../../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../../services/equipe';
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../../services/supabase';
@@ -357,6 +360,18 @@ export default function ContaDesktopScreen() {
       // voo grava depois da saída e o contexto de equipe de quem sai pode carimbar
       // linha de quem entra (o "apagar dados" logo abaixo já fazia certo).
       abortarSyncEmAndamento();
+      // Cancela os lembretes locais (agenda + vencimento PMOC + ritual diário)
+      // ANTES do multiRemove — mesma ordem e mesmo motivo da ContaScreen mobile
+      // (ver o comentário longo lá): sem isto, os lembretes da conta que está
+      // saindo continuariam disparando neste navegador para o próximo usuário.
+      // As 3 funções já são Platform-guarded para a chamada nativa (Notifications
+      // não existe/roda no navegador) e NUNCA lançam — `cancelarRitualDiario` já
+      // roda hoje neste mesmo caminho web via `clearAllLocalData` (database.ts),
+      // então chamá-la aqui não introduz risco novo, só fecha a mesma janela que
+      // "Limpar dados locais" já fecha.
+      await cancelarTodosLembretes().catch(() => {});
+      await cancelarTodosLembretesPmoc().catch(() => {});
+      await cancelarRitualDiario().catch(() => {});
       // Rastro de sessão fora do SQLite (conversa com a OLLI, checklist do dia,
       // carimbos de sync): o AsyncStorage NÃO é particionado por conta, então isto
       // ficava visível para o próximo usuário deste navegador. Os DADOS, que é o

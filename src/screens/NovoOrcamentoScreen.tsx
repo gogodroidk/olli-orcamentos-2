@@ -14,7 +14,7 @@ import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { Celebracao } from '../components/Celebracao';
-import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa } from '../database/database';
+import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada } from '../database/database';
 import { Orcamento, ItemOrcamento, FormaPagamento, Cliente, Empresa } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO, todayISO } from '../utils/date';
@@ -221,6 +221,21 @@ export default function NovoOrcamentoScreen() {
       if (isEdit && orcamentoId) {
         const existing = await getOrcamento(orcamentoId);
         if (existing) {
+          // TRAVA DO PRÓPRIO EDITOR (gêmea da de `FormOrcamento.tsx` no painel).
+          // As telas que trazem o usuário até aqui já escondem "Editar" nesses
+          // status, mas esta é a única guarda que cobre quem NÃO passa por tela:
+          // o deep link `orcamentos/:id/editar` (`linking.ts`) abre o editor
+          // direto pela URL. Sem ela, o usuário preenche a tela inteira e só
+          // descobre no "Salvar" que `saveOrcamento` recusa — perdendo o que
+          // digitou. Recusar na porta custa zero e aponta o caminho que funciona.
+          if (edicaoBloqueada(existing.status)) {
+            avisar(
+              'Este orçamento não pode mais ser editado',
+              'O cliente já recebeu este documento. Para mudar valores ou itens, use "Duplicar" — nasce um rascunho novo e o orçamento original continua valendo.',
+            );
+            goBackOrHome(nav);
+            return;
+          }
           setOrc(existing);
           // Itens de um orçamento já salvo (fora deste fluxo) com preço 0 são
           // tratados como já confirmados, para não travar a edição de um
@@ -301,6 +316,24 @@ export default function NovoOrcamentoScreen() {
     return true;
   }
 
+  /**
+   * Uma falha de save não é uma só. `saveOrcamento` recusa por REGRA COMERCIAL
+   * (orçamento já aceito pelo cliente) com `codigo: 'ORCAMENTO_ACEITO'`, e isso é
+   * PERMANENTE: "tente novamente em instantes" manda o usuário repetir para
+   * sempre um caminho que nunca vai abrir, e o trabalho digitado some junto.
+   * Lemos o `codigo` em vez de `instanceof` — sobrevive ao erro cruzar camadas.
+   */
+  function avisarFalhaSalvar(e: unknown) {
+    if ((e as { codigo?: string } | null)?.codigo === 'ORCAMENTO_ACEITO') {
+      avisar(
+        'Este orçamento já foi aceito',
+        'O cliente aceitou este orçamento, então ele não muda mais. Volte e use "Duplicar" para criar um rascunho novo com estas alterações — o original continua valendo.',
+      );
+      return;
+    }
+    avisar('Não foi possível salvar', 'Tente novamente em instantes.');
+  }
+
   async function handleSave(finalOrc?: Partial<Orcamento>) {
     if (!orc) return;
     setSaving(true);
@@ -325,8 +358,8 @@ export default function NovoOrcamentoScreen() {
       } else {
         nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
       }
-    } catch {
-      avisar('Não foi possível salvar', 'Tente novamente em instantes.');
+    } catch (e) {
+      avisarFalhaSalvar(e);
     } finally {
       setSaving(false);
     }
@@ -348,8 +381,8 @@ export default function NovoOrcamentoScreen() {
       // toque em "OK" para sair (o aviso só entra no caminho de erro abaixo).
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       goBackOrHome(nav);
-    } catch {
-      avisar('Não foi possível salvar', 'Tente novamente em instantes.');
+    } catch (e) {
+      avisarFalhaSalvar(e);
     } finally {
       setSaving(false);
     }

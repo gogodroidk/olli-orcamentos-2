@@ -453,21 +453,63 @@ async function concederPlanoPeriodo(env, { userId, planoKey, dataAprovacao }) {
 }
 
 /**
+ * Mesmo upsert de `upsertAssinatura` (stripe.js), mas devolvendo o STATUS http em
+ * vez de só um booleano. `upsertAssinatura` é compartilhada com o fluxo da Stripe
+ * (stripe.js) e não dá pra mudar o contrato dela por causa de UM chamador — então
+ * duplicamos a chamada crua aqui, só onde o status importa (ver
+ * upsertAssinaturaComPreapproval logo abaixo).
+ */
+async function upsertAssinaturaComStatus(env, userId, patch) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?on_conflict=user_id`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+        body: JSON.stringify({ user_id: userId, ...patch, atualizado_em: new Date().toISOString() }),
+      },
+    );
+    return { ok: r.ok, status: r.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/**
  * Guarda o id da preapproval (assinatura recorrente) na linha de `assinaturas`.
  * É o dado que permite CANCELAR a cobrança do cartão depois — sem ele, excluir a
  * conta deixava o cartão sendo cobrado para sempre (ver worker/src/conta.js).
  *
  * Tolerante à coluna ainda não existir: se a migration 20260728 não tiver sido
- * aplicada, o PostgREST rejeita a coluna desconhecida e o upsert inteiro falharia —
- * o que faria o webhook devolver 500 e o MP reenviar em loop, deixando de liberar um
- * plano JÁ PAGO. Nesse caso repetimos o upsert SEM o campo: o plano é liberado
- * (o que o usuário pagou) e só o cancelamento futuro fica pendente, com log.
+ * aplicada, o PostgREST rejeita a coluna desconhecida (400/404 — mesmo critério de
+ * `lerPreapprovalGravado`) e o upsert com o campo falharia. Nesse caso, e SÓ nesse
+ * caso, repetimos o upsert SEM o campo: o plano é liberado (o que o usuário pagou)
+ * e só o cancelamento futuro fica pendente, com log.
+ *
+ * QUALQUER OUTRO status (5xx, rede fora) NÃO cai nesse fallback: antes caía, porque
+ * `upsertAssinatura` só devolvia um booleano e a falha transitória ficava
+ * indistinguível de "coluna ausente" — a regravação sem o campo então TINHA SUCESSO
+ * (a coluna existe de verdade) e o mp_preapproval_id se perdia PARA SEMPRE, mesmo a
+ * coluna existindo. É o mesmo padrão de "erro vira vazio": `handleContaExcluir`
+ * (worker/src/conta.js) lê `{ id: null }` depois — indistinguível de "nunca teve
+ * assinatura no cartão" — e apaga a conta sem cancelar uma cobrança que segue viva.
+ * Agora falha de verdade devolve false: o webhook responde 500 e o MP reenvia, sem
+ * mascarar a perda do vínculo.
  */
 async function upsertAssinaturaComPreapproval(env, userId, patch, preapprovalId) {
   if (preapprovalId) {
-    const ok = await upsertAssinatura(env, userId, { ...patch, mp_preapproval_id: preapprovalId });
-    if (ok) return true;
-    console.error('[olli-mp] upsert com mp_preapproval_id falhou (coluna ausente? migration 20260728) — regravando sem o campo:', userId);
+    const r = await upsertAssinaturaComStatus(env, userId, { ...patch, mp_preapproval_id: preapprovalId });
+    if (r.ok) return true;
+    if (r.status !== 400 && r.status !== 404) {
+      console.error('[olli-mp] upsert com mp_preapproval_id falhou (não é coluna ausente — não mascarando, webhook pede reenvio):', r.status, userId);
+      return false;
+    }
+    console.error('[olli-mp] upsert com mp_preapproval_id falhou (coluna ausente, migration 20260728) — regravando sem o campo:', userId);
   }
   return upsertAssinatura(env, userId, patch);
 }

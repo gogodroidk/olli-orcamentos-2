@@ -24,7 +24,7 @@ import { LandingHero } from '../components/web/LandingHero';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import {
   isSupabaseConfigured, signIn, signUp, signInWithGoogle, supabase,
-  normalizarTelefoneBR, temDadosLocais,
+  normalizarTelefoneBR, temDadosLocais, getCurrentUser,
 } from '../services/supabase';
 import { getEmpresa, saveEmpresa } from '../database/database';
 import { ONBOARDED_KEY } from './OnboardingScreen';
@@ -149,16 +149,28 @@ export default function EntrarScreen() {
         //               faltar empresa, esta checagem roda de novo e se auto-cura.
         let estado: 'tem' | 'nao_tem' | 'nao_sei' = 'nao_sei';
         if (supabase) {
-          // 2 tentativas com backoff curto reduzem o 'nao_sei' por instabilidade momentânea.
-          for (let tentativa = 0; tentativa < 2 && estado === 'nao_sei'; tentativa++) {
-            try {
-              const { data, error } = await supabase.from('empresa').select('user_id').maybeSingle();
-              if (!error) estado = data ? 'tem' : 'nao_tem';
-            } catch { /* rede instável: tenta de novo */ }
-            if (estado === 'nao_sei' && tentativa === 0) {
-              await new Promise<void>((resolve) => setTimeout(resolve, 600));
+          // `.eq('user_id', ...)`: sem o filtro, um membro de equipe enxerga (RLS
+          // empresa_select → donos_visiveis) a linha do DONO além da própria — o
+          // maybeSingle erra com 2 linhas, ou pior, a resposta seria sobre a
+          // empresa de outra pessoa (mesmo padrão do vazamento corrigido no
+          // cloudSync — ver empresaNuvemMudouDesdeUltimoPull). getCurrentUser() lê
+          // a sessão local (sem rede) — acabamos de logar, ela já existe.
+          const usuario = await getCurrentUser();
+          const userId = usuario?.id;
+          if (userId) {
+            // 2 tentativas com backoff curto reduzem o 'nao_sei' por instabilidade momentânea.
+            for (let tentativa = 0; tentativa < 2 && estado === 'nao_sei'; tentativa++) {
+              try {
+                const { data, error } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
+                if (!error) estado = data ? 'tem' : 'nao_tem';
+              } catch { /* rede instável: tenta de novo */ }
+              if (estado === 'nao_sei' && tentativa === 0) {
+                await new Promise<void>((resolve) => setTimeout(resolve, 600));
+              }
             }
           }
+          // sem userId (sessão ainda não persistiu): estado permanece 'nao_sei' —
+          // piso não-destrutivo, igual à instabilidade de rede.
         }
         if (estado === 'tem') await marcarVisto();
         else if (estado === 'nao_tem') destino = 'Onboarding';

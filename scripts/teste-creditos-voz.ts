@@ -473,6 +473,212 @@ resetBanco(10, { usosJaFeitos: 3, lookupExiste: false });
   checar('retry imediato segue absorvido pelo índice único', saldo, 9);
 }
 
+// ═══ F) O TETO REAL, EM NÚMERO — quantas chamadas de IA por 1 crédito ═════
+// As seções acima provam "não cobra 2x" e "não é de graça para sempre" em pontos
+// escolhidos a dedo. Estas medem o TETO: com a chave sob controle do atacante e
+// o relógio andando, quantas vezes o Gemini roda por unidade de dinheiro. Teto é
+// número; "é seguro" não é resposta.
+
+/** Põe o relógio num offset conhecido DENTRO de um bucket de janela. */
+function posicionarRelogio(bucket: number, offsetSegundos: number) {
+  relogio = bucket * JANELA_IDEM_MS + offsetSegundos * 1000;
+}
+
+console.log('\nF1) TETO: cota esgotada + creditoRef FIXO + conteúdo NOVO a cada chamada = 1 chamada por crédito');
+{
+  // É o ataque que o `else if` permitia: fixa a string do cliente e manda áudio
+  // novo toda vez. Com a chave COMPOSTA (ref + hash do conteúdo), cada conteúdo
+  // distinto é uma ação distinta e paga a sua.
+  posicionarRelogio(5_000_000, 0);
+  resetBanco(1, { usosJaFeitos: 3 }); // exatamente 1 crédito no bolso
+  let liberadas = 0;
+  for (let i = 0; i < 200; i++) {
+    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'X', conteudo: `audio-${i}` })).bloqueado) liberadas++;
+    avancar(1000);
+  }
+  checar('200 tentativas com conteúdo sempre novo: só 1 passa', liberadas, 1);
+  checar('e o ledger tem 1 lançamento só', ledgerLinhas.length, 1);
+  checar('saldo zerado — o crédito comprou 1 chamada, não 200', saldo, 0);
+}
+
+console.log('\nF2) TETO no caminho GRÁTIS: a cota do mês é o teto, e conteúdo novo não a burla');
+{
+  posicionarRelogio(5_100_000, 0);
+  resetBanco(0); // sem crédito nenhum: depois da cota, tem que BLOQUEAR
+  let liberadas = 0;
+  for (let i = 0; i < 200; i++) {
+    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'X', conteudo: `audio-${i}` })).bloqueado) liberadas++;
+    avancar(1000);
+  }
+  checar(`200 tentativas: exatamente ${IA_GRATIS_MES} passam (a cota do mês)`, liberadas, IA_GRATIS_MES);
+  checar('nenhum crédito foi arrancado de graça', saldo, 0);
+}
+
+console.log('\nF3) TETO de /voz/conversa (creditoRef=convId, SEM conteúdo): 1 crédito por JANELA, não por conversa');
+{
+  // /voz/conversa não manda `conteudo` (worker/src/voz.js:258) — a chave é 100%
+  // do cliente por desenho. O doc diz "1 crédito por conversa"; o teto REAL é 1
+  // crédito por convId POR JANELA, e DENTRO da janela o número de chamadas ao
+  // Gemini é ilimitado pela cobrança — quem limita é o IA_RL (20/min/usuário,
+  // worker/src/index.js:875), o que dá 20 × 10 min = 200 chamadas por crédito.
+  // Está registrado aqui como NÚMERO para que mudar o desenho quebre o teste.
+  posicionarRelogio(8_000_000, 0);
+  resetBanco(1, { usosJaFeitos: 3 });
+  let liberadas = 0;
+  for (let i = 0; i < 100; i++) {
+    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'conv-1' })).bloqueado) liberadas++;
+    avancar(1000); // 100 fechamentos em 100s — tudo dentro da mesma janela
+  }
+  checar('100 fechamentos "pronto:true" no mesmo convId dentro da janela: todos liberados', liberadas, 100);
+  checar('cobrando 1 crédito só', ledgerLinhas.length, 1);
+
+  // E na janela seguinte volta a cobrar: o convId não é passe vitalício.
+  posicionarRelogio(9_000_000, 0);
+  resetBanco(1, { usosJaFeitos: 3 });
+  let lib = 0;
+  for (let i = 0; i < 60; i++) {
+    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'conv-1' })).bloqueado) lib++;
+    avancar(60_000); // 1 por minuto durante 1h = 6 janelas, com 1 crédito só
+  }
+  checar('1 crédito cobre 10 chamadas (a 1ª janela) e depois BLOQUEIA', lib, 10);
+  checar('e cobrou 1 vez só (o saldo acabou na 1ª)', ledgerLinhas.length, 1);
+}
+
+// ═══ G) VARREDURA DE OFFSET — um ponto não prova uma janela ════════════════
+// Um teste que fixa o relógio num instante só passa por sorte: a chave de bucket
+// muda de valor no corte, e um retry que atravesse o corte é outro caso. Estas
+// varrem os 60 offsets de 10s dentro de uma janela e exigem 0 falhas em TODOS.
+
+/** Roda um retry legítimo (mesmo corpo, mesma chave) em cada offset da janela e
+ *  devolve quantos offsets cobraram DUAS vezes. */
+async function varrerRetry(opts: {
+  bucket: number;
+  esperaMs: number;
+  migration: boolean;
+  lookupNa1a?: boolean;
+  lookupNoRetry?: boolean;
+}): Promise<number> {
+  let dobraram = 0;
+  for (let offset = 0; offset < 600; offset += 10) {
+    posicionarRelogio(opts.bucket, offset);
+    resetBanco(10, {
+      usosJaFeitos: opts.migration ? 3 : 0,
+      cotaExiste: opts.migration,
+      lookupExiste: opts.lookupNa1a ?? opts.migration,
+    });
+    await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-A', conteudo: 'audio-1' });
+    const saldoApos1 = saldo;
+    if (opts.lookupNoRetry !== undefined) lookupExiste = opts.lookupNoRetry;
+    avancar(opts.esperaMs);
+    await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-A', conteudo: 'audio-1' });
+    if (saldo < saldoApos1) dobraram++;
+  }
+  return dobraram;
+}
+
+console.log('\nG1) retry de 60s (o timeout do app), migration APLICADA: 0 de 60 offsets cobram 2x');
+checar('nenhum offset cobra o retry duas vezes', await varrerRetry({ bucket: 1_000_000, esperaMs: 60_000, migration: true }), 0);
+
+console.log('\nG2) o MESMO retry com a migration NÃO aplicada (o estado de HOJE): também 0 de 60');
+checar('nenhum offset cobra o retry duas vezes', await varrerRetry({ bucket: 1_100_000, esperaMs: 60_000, migration: false }), 0);
+
+console.log('\nG3) retry de 9 min (o pior retry honesto: timeout + app no bolso), nos dois estados');
+checar('migration aplicada: 0 de 60', await varrerRetry({ bucket: 1_200_000, esperaMs: 9 * 60_000, migration: true }), 0);
+checar('migration não aplicada: 0 de 60', await varrerRetry({ bucket: 1_300_000, esperaMs: 9 * 60_000, migration: false }), 0);
+
+console.log('\nG4) P0: a consulta PISCA entre a chamada e o retry — a dupla que cobrava 2x em 60 de 60');
+{
+  // Este é o caso que a chave estável de `chaveCobrancaVoz` quebrava: gravada
+  // como `refAcao` cru, a cobrança do estado degradado NÃO começava com o
+  // prefixo `refAcao:j` que a consulta procura. Quando a RPC voltava (um 500
+  // isolado do PostgREST, ou o instante em que o dono APLICA a migration
+  // 20260727), o retry não achava nada, gerava a chave de bucket e cobrava o
+  // MESMO trabalho de novo — em 60 dos 60 offsets, não numa borda rara.
+  // Hoje a chave degradada mora DENTRO do prefixo (`${prefixo}estavel`).
+  const piscaEVolta = await varrerRetry({
+    bucket: 1_400_000, esperaMs: 60_000, migration: true, lookupNa1a: false, lookupNoRetry: true,
+  });
+  checar('1ª chamada sem consulta + retry com consulta: 0 de 60 cobram 2x', piscaEVolta, 0);
+
+  // A direção inversa (consulta OK na 1ª, fora no retry) NÃO tem conserto por
+  // este caminho: a chamada degradada não tem como descobrir qual chave a
+  // saudável usou. Fica REGISTRADA com o número real em vez de escondida — se
+  // um dia alguém a consertar, este assert falha e obriga a atualizar o teto.
+  const okDepoisPisca = await varrerRetry({
+    bucket: 1_500_000, esperaMs: 60_000, migration: true, lookupNa1a: true, lookupNoRetry: false,
+  });
+  checar('LIMITE CONHECIDO — consulta OK na 1ª e fora no retry ainda cobra 2x em 60 de 60', okDepoisPisca, 60);
+}
+
+console.log('\nG5) o dono APLICA a migration no meio de um retry em voo: não cobra 2x');
+{
+  posicionarRelogio(2_000_000, 0);
+  resetBanco(10, { cotaExiste: false }); // estado de hoje: nenhuma das duas RPCs
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-T', conteudo: 'audio-T' });
+  checar('cobrou 1', saldo, 9);
+  // ── o dono roda a migration aqui ──
+  cotaExiste = true;
+  lookupExiste = true;
+  cotaLinhas = Array.from({ length: 3 }, (_, i) => ({ ref: `pre-${i}`, criadoEm: relogio })); // cota do mês já gasta
+  avancar(60_000);
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-T', conteudo: 'audio-T' });
+  checar('o retry depois da migration NÃO cobra de novo', saldo, 9);
+  checar('e não abriu um 2º lançamento', ledgerLinhas.length, 1);
+}
+
+// ═══ H) LIMITES CONHECIDOS, com número ═════════════════════════════════════
+// O que a chave AINDA permite. Registrado como assert (não como comentário) para
+// que uma mudança futura no formato da chave apareça como teste quebrado, e não
+// como um teto que ninguém percebeu que mudou.
+
+console.log('\nH1) LIMITE CONHECIDO: a consulta casa por PREFIXO, e o prefixo carrega string do cliente');
+{
+  // `ref_cobranca_ia_recente` usa `starts_with(l.ref, p_prefixo)` e o prefixo é
+  // `voz_ia:<uid>:cli:<creditoRef>:h<hash>:j`. Quem souber o hash do próprio
+  // conteúdo (sabe: é o áudio dele) pode montar um `creditoRef` que reproduz o
+  // MIOLO de uma cobrança que ele já pagou e, numa rota que não manda `conteudo`
+  // (/voz/conversa), pegar carona nela.
+  // NÃO muda o teto: dentro da janela o mesmo convId já era livre (F3), e a
+  // consulta é limitada pelos mesmos 10 min. É colisão de chave entre ações, não
+  // dinheiro novo — por isso está medido, não "consertado" às pressas: mexer no
+  // formato da chave hoje faria todo retry em voo no deploy virar cobrança nova.
+  posicionarRelogio(3_000_000, 0);
+  resetBanco(1, { usosJaFeitos: 3 });
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'x', conteudo: 'audio-A' });
+  checar('a chamada honesta pagou 1 crédito', saldo, 0);
+  const refPago = ledgerLinhas[0].ref;
+  const miolo = refPago.slice(refPago.indexOf(':cli:') + 5, refPago.lastIndexOf(':j'));
+  let carona = 0;
+  for (let i = 0; i < 50; i++) {
+    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: miolo })).bloqueado) carona++;
+    avancar(1000);
+  }
+  checar('50 chamadas com o ref forjado pegam carona DENTRO da janela', carona, 50);
+  checar('sem abrir lançamento novo (é a mesma cobrança sendo reusada)', ledgerLinhas.length, 1);
+  // E fora da janela o passe acaba — é o mesmo teto de sempre, não um bypass.
+  avancar(JANELA_IDEM_MS + 1000);
+  checar('fora da janela o ref forjado BLOQUEIA (saldo 0)', (await cobrarCreditoVoz(env, USER, { creditoRef: miolo })).bloqueado, true);
+}
+
+console.log('\nH2) a MESMA ação pode consumir cota grátis E crédito — em janelas diferentes, e é por desenho');
+{
+  // Duas camadas cobram a mesma string de ação em momentos distintos. Não é
+  // cobrança dupla do mesmo trabalho: fora da janela, reenviar é trabalho novo
+  // (a IA roda de novo, e roda por conta do dono). O assert existe para que
+  // ninguém "conserte" isso achando que é bug — e para que fique explícito que
+  // DENTRO da janela isso não acontece.
+  posicionarRelogio(4_000_000, 0);
+  resetBanco(5);
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'r1', conteudo: 'c1' });
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'r2', conteudo: 'c2' });
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'r3', conteudo: 'c3' });
+  checar('3 usos grátis gastos, nenhum crédito', [cotaLinhas.length, saldo], [3, 5]);
+  avancar(JANELA_IDEM_MS + 1000); // fora da janela: 'r1/c1' volta a ser ação nova
+  await cobrarCreditoVoz(env, USER, { creditoRef: 'r1', conteudo: 'c1' });
+  checar('a MESMA ação, fora da janela, agora custa 1 crédito (a cota do mês acabou)', saldo, 4);
+  checar('e o ledger tem 1 lançamento (não dois pela mesma chamada)', ledgerLinhas.length, 1);
+}
+
 Date.now = DateNowReal; // devolve o relógio de verdade ao processo
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 // `process.exitCode` (não `process.exit()`): deixa o event loop drenar sozinho

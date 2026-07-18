@@ -221,10 +221,33 @@ export default function VisualizarOrcamentoScreen() {
     }
   }
 
+  /**
+   * Muda o status e SÓ ENTÃO reflete na tela. Nunca lança: os três chamadores do
+   * fluxo de envio (`await updateStatus('enviado')`) estão dentro de try/catch que
+   * dizem "não consegui gerar o link" — um throw daqui seria contado como falha do
+   * link, que funcionou; e o do menu de status (`onPress`) é promessa solta, que
+   * viraria unhandled rejection.
+   *
+   * Se a gravação falhar, a tela FICA NO STATUS ANTIGO de propósito. Pintar
+   * "aprovado" sobre um banco que ainda diz "enviado" é a falha virando valor: o
+   * usuário para de cobrar, o painel nunca recebe, e ninguém fica sabendo.
+   * `saveOrcamento` deixa passar a troca de status em qualquer situação (compara
+   * `impressaoComercial`, que ignora campos voláteis) — então uma falha aqui é
+   * técnica de verdade, e "tente de novo" é a orientação honesta.
+   */
   async function updateStatus(s: StatusOrcamento) {
     if (!orc) return;
     const updated = { ...orc, status: s, atualizadoEm: nowISO() };
-    await saveOrcamento(updated);
+    try {
+      await saveOrcamento(updated);
+    } catch (e: any) {
+      setShowStatusMenu(false);
+      Alert.alert(
+        'Não consegui mudar o status',
+        e?.message ?? 'O orçamento continua como estava. Tente novamente em instantes.',
+      );
+      return;
+    }
     const acabouDeAprovar = s === 'aprovado' && statusAnteriorRef.current !== 'aprovado';
     if (acabouDeAprovar) {
       setCelebrando(true);

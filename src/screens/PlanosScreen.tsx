@@ -24,12 +24,14 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para assinatura consumida
  * dentro do app e proíbe abrir o checkout num navegador externo (link-out) — e
  * proíbe também qualquer caminho que SUBSTITUA a compra, como um "fale conosco"
- * que leva a fechar por fora. Não há StoreKit implementado ainda, então no iOS
- * a venda fica escondida por completo: botão de assinatura, toggle de período,
- * rodapé de venda e o CTA "Falar com a gente" da Empresa. O plano atual (se já
- * for pagante) continua visível — isso é permitido; o proibido é vender ou
- * apontar caminho para vender. `COMPRA_NO_APP` centraliza esse desvio para não
- * espalhar `if (Platform.OS === 'ios')` pela tela.
+ * que leva a fechar por fora, ou qualquer convite a TROCAR de plano por fora do
+ * app. Não há StoreKit implementado ainda, então no iOS ficam escondidos: botão
+ * de assinatura, toggle de período, rodapé de venda, o CTA "Falar com a gente"
+ * da Empresa e qualquer menção a "trocar de plano" (inclusive no card de quem já
+ * é assinante, mais abaixo). O plano atual (se já for pagante) continua visível
+ * — isso é permitido; o proibido é vender, anunciar upgrade/troca, ou apontar
+ * caminho para vender. `COMPRA_NO_APP` centraliza esse desvio para não espalhar
+ * `if (Platform.OS === 'ios')` pela tela.
  * Gerenciar uma assinatura JÁ existente (feita fora do iOS) acontece noutra
  * tela (AssinaturaScreen, via o botão "Sua assinatura" abaixo) — não há portal
  * Stripe nem código dele nesta tela.
@@ -311,6 +313,11 @@ export default function PlanosScreen() {
 
   // CTA secundário da Empresa: "Falar com a gente" pelo WhatsApp de suporte.
   function falarComSuporte(p: Plano) {
+    // Defesa em profundidade: no iOS nenhum botão chama isto (o CTA fica
+    // escondido dentro de PlanoCard), mas a guarda fica aqui também — mesmo
+    // raciocínio do early-return em `assinarPlano` acima: este é justamente o
+    // caminho que a Guideline 3.1.1 chama de "fale conosco" para fechar por fora.
+    if (!COMPRA_NO_APP) return;
     Haptics.selectionAsync().catch(() => {});
     if (!WHATSAPP_SUPORTE) {
       // Honesto: sem número configurado, não finge que vai abrir uma conversa.
@@ -356,7 +363,9 @@ export default function PlanosScreen() {
               <OlliMascot size={44} onDark />
               <Text style={styles.assinanteTitle}>Você já é assinante</Text>
               <Text style={styles.assinanteSub}>
-                Obrigado por apoiar o OLLI! Seu plano <Text style={styles.assinanteForte}>{nomePlanoAtual}</Text> está ativo. Faturas, cobrança, troca de plano/cartão e cancelamento ficam na sua página de assinatura.
+                Obrigado por apoiar o OLLI! Seu plano <Text style={styles.assinanteForte}>{nomePlanoAtual}</Text> está ativo. {COMPRA_NO_APP
+                  ? 'Faturas, cobrança, troca de plano/cartão e cancelamento ficam na sua página de assinatura.'
+                  : 'Faturas, cobrança, atualização de cartão e cancelamento ficam na sua página de assinatura.'}
               </Text>
             </View>
             <TouchableOpacity
