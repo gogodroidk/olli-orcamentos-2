@@ -450,7 +450,7 @@ export function textoNotificacaoSaida(
  * horário, endereço). Falha de trânsito não pode piorar uma notificação que já
  * funciona, e muito menos inventar um horário dentro dela.
  */
-export function linhaBomDiaSaida(r: ResultadoSaida | null, agora: Date): string | null {
+export function linhaBomDiaSaida(r: ResultadoSaida | null, _agora: Date): string | null {
   if (!r || r.estado !== 'ok' || r.atrasado) return null;
   return `saia às ${hhmm(r.sairEm)} (${r.minutos} min, ${rotuloTransito(r)})`;
 }

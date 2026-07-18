@@ -516,12 +516,15 @@ function AcoesLinha({
 }) {
 	const nome = nomeEquipamento(e);
 	return (
-		<div className="inline-flex items-center gap-1">
+		// `gap-3` (12px) e não `gap-1`: com `alvo-toque` cada botão passa a valer 44px
+		// para o dedo, e 32px de botão + 4px de espaço faria as áreas se sobreporem —
+		// o toque de EXCLUIR invadindo o de editar. Com 12px elas encostam sem invadir.
+		<div className="inline-flex items-center gap-3">
 			<Button
 				type="button"
 				variant="ghost"
 				size="icon"
-				className="size-8"
+				className="size-8 alvo-toque"
 				onClick={() => aoVerEtiqueta(e)}
 				aria-label={`Etiqueta QR de ${nome}`}
 				title="Etiqueta QR"
@@ -532,7 +535,7 @@ function AcoesLinha({
 				type="button"
 				variant="ghost"
 				size="icon"
-				className="size-8"
+				className="size-8 alvo-toque"
 				onClick={() => aoEditar(e)}
 				aria-label={`Editar ${nome}`}
 				title="Editar"
@@ -543,7 +546,7 @@ function AcoesLinha({
 				type="button"
 				variant="ghost"
 				size="icon"
-				className="size-8 text-text-secondary hover:text-error"
+				className="size-8 alvo-toque text-text-secondary hover:text-error"
 				onClick={() => aoExcluir(e)}
 				aria-label={`Excluir ${nome}`}
 				title="Excluir"

@@ -492,7 +492,7 @@ function AcoesRecibo({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button type="button" variant="ghost" size="icon" className="size-8">
+				<Button type="button" variant="ghost" size="icon" className="size-8 alvo-toque">
 					<MoreHorizontal aria-hidden="true" className="size-4" />
 					<span className="sr-only">Ações do recibo {recibo.numero}</span>
 				</Button>

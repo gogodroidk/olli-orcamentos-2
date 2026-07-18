@@ -457,7 +457,12 @@ function AcoesDaOrdem({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="size-8" aria-label={`Ações da ordem ${os.numero || os.titulo}`}>
+				<Button
+					variant="ghost"
+					size="icon"
+					className="size-8 alvo-toque"
+					aria-label={`Ações da ordem ${os.numero || os.titulo}`}
+				>
 					<MoreHorizontal className="size-4" />
 				</Button>
 			</DropdownMenuTrigger>

@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazyComRetry } from "@/components/lazy/carregar-chunk";
 
 const Pages = import.meta.glob("/src/pages/**/*.tsx");
 const lazyComponentCache = new Map<string, React.LazyExoticComponent<any>>();
@@ -25,7 +25,10 @@ export const Component = (path = "", props?: any): React.ReactNode => {
 
 	let Element = lazyComponentCache.get(path);
 	if (!Element) {
-		Element = lazy(importFn as any);
+		// `lazyComRetry` e não `lazy`: cada tela do painel é um arquivo separado que
+		// baixa na hora do clique. No 4G da rua isso falha de vez em quando, e sem a
+		// reentrega a tela simplesmente não abre. Ver components/lazy/carregar-chunk.
+		Element = lazyComRetry(importFn as any);
 		lazyComponentCache.set(path, Element);
 	}
 	return <Element {...props} />;

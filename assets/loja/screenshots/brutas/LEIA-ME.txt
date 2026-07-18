@@ -1,0 +1,5 @@
+Solte aqui as capturas CRUAS do app, nomeadas 01-*.png ... 08-*.png
+(a ordem e o conteudo de cada uma estao em ../../SCREENSHOTS.md).
+Depois rode: node assets/loja/montar-screenshots.js
+
+Nao versione captura com dado real de cliente.

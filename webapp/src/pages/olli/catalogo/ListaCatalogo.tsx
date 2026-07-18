@@ -127,7 +127,7 @@ function MenuAcoes({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="size-8" aria-label={`Ações de ${item.nome}`}>
+				<Button variant="ghost" size="icon" className="size-8 alvo-toque" aria-label={`Ações de ${item.nome}`}>
 					<MoreHorizontal className="size-4" />
 				</Button>
 			</DropdownMenuTrigger>

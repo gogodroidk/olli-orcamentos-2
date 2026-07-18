@@ -27,7 +27,7 @@
  * via (origem,ref) único no ledger; upsert por user_id nas assinaturas).
  */
 import { lancarCreditos } from './creditos.js';
-import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
+import { cabeNoTeto, checarLimite, deixaPassar, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 import { upsertAssinatura, getAssinatura } from './stripe.js';
 
 const MP_API = 'https://api.mercadopago.com';
@@ -622,13 +622,43 @@ async function webhook(request, env, url) {
   //      só concede se a própria API do MP confirmar 'approved'/'authorized'. Não dá para
   //      forjar um pagamento aprovado no MP nem injetar um external_reference alheio, então
   //      o crédito é seguro mesmo sem a camada 1. Configure o secret para ter as duas.
+  let assinado = false;
   if (env.MP_WEBHOOK_SECRET) {
     const valido = await validarAssinatura(env, { sigHeader: sig, requestId, dataId });
     if (!valido) return json({ erro: 'assinatura_invalida' }, 401);
+    assinado = true;
   } else {
     console.error('[olli-mp] MP_WEBHOOK_SECRET ausente — validando so por GET-confirm (configure o secret p/ a camada de assinatura).');
   }
   if (!dataId) return json({ ok: true });
+
+  // TETO DE AMPLIFICAÇÃO — só no caminho NÃO ASSINADO (hoje: MP_WEBHOOK_SECRET
+  // ausente, o estado real de produção).
+  //
+  // A FALHA CONCRETA que isto fecha: sem secret configurado, esta rota é pública e
+  // sem teto, e cada POST `?data.id=<qualquer>&type=payment` faz o worker chamar
+  // `GET https://api.mercadopago.com/v1/payments/<qualquer>` com o MP_ACCESS_TOKEN
+  // de PRODUÇÃO. Um estranho, sem nenhuma credencial, dispara chamadas ilimitadas
+  // à API do MP em nome do dono — e quem leva o rate limit / bloqueio do MP é o
+  // token do dono. Quando o MP começa a recusar, o GET-confirm passa a falhar e o
+  // Pix pago do cliente PARA de virar crédito. Não é gasto de terceiro: é o
+  // caminho de confirmação de pagamento sendo derrubado de fora.
+  //
+  // POR QUE 429 AQUI É SEGURO (e por que não é fail-closed): o MP reenvia em
+  // qualquer resposta fora do 2xx, então um falso positivo se resolve sozinho no
+  // reenvio — nenhum pagamento se perde. Já um limiter FORA não pode derrubar
+  // webhook de dinheiro (perder o evento é pior que a amplificação), por isso
+  // `sensivel:false`: 'indisponivel' PASSA, exatamente como IA_RL/LINK_RL.
+  //
+  // Some sozinho quando o dono configurar o MP_WEBHOOK_SECRET: tráfego assinado
+  // não passa por aqui.
+  if (!assinado) {
+    const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+    const estado = await checarLimite(env.MPHOOK_RL, `mphook:${ip}`);
+    if (!deixaPassar(estado, { sensivel: false })) {
+      return json({ erro: 'muitas_requisicoes' }, 429);
+    }
+  }
 
   // PAGAMENTO (Pix de crédito ou de período de plano).
   if (tipo === 'payment') {
