@@ -1,6 +1,9 @@
-/* import font */
-@import "@fontsource-variable/open-sans";
-@import "@fontsource-variable/inter";
+/* import font — mesma identidade do app e da landing: Plus Jakarta no corpo,
+   Spectral (serifada) só em destaque de valor monetário (ver typography.ts). */
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource/spectral/400.css";
+@import "@fontsource/spectral/600.css";
+@import "@fontsource/spectral/700.css";
 
 /* editor */
 @import "react-quill/dist/quill.snow.css";

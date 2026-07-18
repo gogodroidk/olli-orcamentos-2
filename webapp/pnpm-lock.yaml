@@ -26,6 +26,12 @@ importers:
       '@fontsource-variable/open-sans':
         specifier: ^5.1.0
         version: 5.2.5
+      '@fontsource-variable/plus-jakarta-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource/spectral':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@fullcalendar/core':
         specifier: ^6.1.15
         version: 6.1.17
@@ -737,6 +743,12 @@ packages:
 
   '@fontsource-variable/open-sans@5.2.5':
     resolution: {integrity: sha512-++xRfkZAxNP4e1Spm5W11iVcoYfXcNVTV5MDit60t7grRk10hy9C7XQd/jv+0TDFIfHbK9EzyBp3M3CHPesroA==}
+
+  '@fontsource-variable/plus-jakarta-sans@5.2.8':
+    resolution: {integrity: sha512-iQecBizIdZxezODNHzOn4SvvRMrZL/S8k4MEXGDynCmUrImVW0VmX+tIAMqnADwH4haXlHSXqMgU6+kcfBQJdw==}
+
+  '@fontsource/spectral@5.2.8':
+    resolution: {integrity: sha512-0CqZ8/z8A38BdeSz5t2NSd5tCO1R9P1k7SF2VpRLMbZTMSSR6+2Dk0ZBMfEQK/IrBLQS1HgHLMqpdTwRpnKpGQ==}
 
   '@fullcalendar/core@6.1.17':
     resolution: {integrity: sha512-0W7lnIrv18ruJ5zeWBeNZXO8qCWlzxDdp9COFEsZnyNjiEhUVnrW/dPbjRKYpL0edGG0/Lhs0ghp1z/5ekt8ZA==}
@@ -4948,6 +4960,10 @@ snapshots:
   '@fontsource-variable/inter@5.2.5': {}
 
   '@fontsource-variable/open-sans@5.2.5': {}
+
+  '@fontsource-variable/plus-jakarta-sans@5.2.8': {}
+
+  '@fontsource/spectral@5.2.8': {}
 
   '@fullcalendar/core@6.1.17':
     dependencies:

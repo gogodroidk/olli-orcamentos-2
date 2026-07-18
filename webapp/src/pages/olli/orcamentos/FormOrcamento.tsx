@@ -928,7 +928,9 @@ function Editor({
 							)}
 							<div className="flex items-baseline justify-between border-t border-border pt-2.5">
 								<dt className="font-semibold text-text-primary">Total</dt>
-								<dd className="text-xl font-bold tabular-nums text-text-primary">R$ {formatarMoeda(t.valorTotal)}</dd>
+								<dd className="text-xl font-bold tabular-nums text-text-primary font-serif">
+									R$ {formatarMoeda(t.valorTotal)}
+								</dd>
 							</div>
 						</dl>
 					</div>

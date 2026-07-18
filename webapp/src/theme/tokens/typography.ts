@@ -1,12 +1,19 @@
+// Identidade única de fonte (painel, app e landing): Plus Jakarta Sans no corpo.
+// As duas chaves do preset de troca (Settings → Fonte) apontavam antes para Open
+// Sans e Inter; ambas agora resolvem pra Plus Jakarta pra manter a paridade de
+// marca — nada no painel carrega mais Open Sans/Inter (ver global.css).
 export const FontFamilyPreset = {
-	openSans: "Open Sans Variable",
-	inter: "Inter Variable",
+	openSans: "Plus Jakarta Sans Variable",
+	inter: "Plus Jakarta Sans Variable",
 };
 
 export const typographyTokens = {
 	fontFamily: {
 		openSans: FontFamilyPreset.openSans,
 		inter: FontFamilyPreset.inter,
+		// Serifada — SÓ para destaque de valor monetário (classe utilitária
+		// `font-serif`). Nunca usar em corpo/labels: fica ilegível em texto denso.
+		serif: "Spectral, Georgia, 'Times New Roman', serif",
 	},
 	fontSize: {
 		xs: "12",

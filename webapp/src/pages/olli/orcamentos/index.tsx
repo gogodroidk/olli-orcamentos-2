@@ -549,7 +549,8 @@ export default function OrcamentosPage() {
 							{linhas.length} orçamento{linhas.length === 1 ? "" : "s"}
 						</span>
 						<span className="tabular-nums">
-							Soma dos exibidos: <strong className="font-semibold text-text-primary">{BRL.format(somaVisivel)}</strong>
+							Soma dos exibidos:{" "}
+							<strong className="font-semibold text-text-primary font-serif">{BRL.format(somaVisivel)}</strong>
 						</span>
 					</div>
 				</Card>

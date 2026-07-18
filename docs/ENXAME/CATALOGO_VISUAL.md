@@ -9,7 +9,7 @@ Hoje as 3 pontas parecem **produtos de empresas diferentes**, amarradas só pela
 | Eixo | Landing | Painel | App | Decisão |
 |---|---|---|---|---|
 | **Ícones** | ✅ **lucide SVG** (Wave 17, era emoji) | ✅ **lucide** (Onda 7 unificou o menu) | MDI outline | landing+painel JÁ casam (lucide); falta o app (MDI→lucide, follow-up) |
-| **Fontes** | Plus Jakarta + Spectral | Open Sans + Inter (nenhuma sobreposição) | Plus Jakarta + Spectral | `[DONO]` painel adota Jakarta+Spectral? |
+| **Fontes** | Plus Jakarta + Spectral | ✅ **Plus Jakarta + Spectral** (Wave 18, era Open Sans/Inter) | Plus Jakarta + Spectral | ✅ **as 3 CASAM** (Spectral só em valor R$) |
 | **Raio botão** | 8/12px | 6px (rounded-md) | 24px (pílula) | `[DONO]` convergir escala |
 | **Dark mode** | — | preto/zinza + sombra preta | navy sem sombra (elevação por superfície) | `[DONO]` painel vira navy? |
 | **Status** | — | warning #FFAB00 / error #FF5630 | warning #D98008 / danger #E5484D | baixa prio |

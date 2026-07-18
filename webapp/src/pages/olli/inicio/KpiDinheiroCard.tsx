@@ -83,7 +83,7 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 					{isLoading ? (
 						<Skeleton className="mt-1.5 h-8 w-32" />
 					) : (
-						<div className="mt-1 truncate text-[26px] font-bold leading-tight tracking-tight text-text-primary tabular-nums">
+						<div className="mt-1 truncate text-[26px] font-bold leading-tight tracking-tight text-text-primary tabular-nums font-serif">
 							{valor}
 						</div>
 					)}
