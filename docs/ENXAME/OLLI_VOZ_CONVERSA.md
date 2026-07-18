@@ -72,8 +72,8 @@ Reusa `useGravadorNuvem` + um `modo` novo no worker (quase zero backend):
 - **Não fazer:** onboarding inteiro por voz (o cadastro por CNPJ já resolve).
 
 ## Plano em fases
-- **Fase 0 — endurecer (P0, faço já):** matar o preço-nulo→R$0.
-- **Fase 1 — Tier A (app):** saudação + leitura-de-volta + banner de falta + unificar gesto do mic + extração rica com confirmação + casar cliente. Não muda custo.
+- **Fase 0 — endurecer (P0)** ✅ (2026-07-17): preço-nulo→R$0 agora exige `confirmar()` antes de virar R$0 (não bloqueia; força o ok explícito). `OlliVozScreen.tsx`, tsc+test verdes.
+- **Fase 1 — Tier A (app):** ✅ saudação de 1ª vez · ✅ leitura-de-volta ("Entendi: N itens pra {cliente}, total R$X") · ✅ banner "falta o cliente" (não-bloqueante). ⏳ **unificar gesto do mic** — bloqueado: `vozNuvem.ts` só tem `pararEEnviar()` (acoplado); precisa expor `pararGravacao()`+`enviarGravacaoPronta()` (follow-up). ⏳ **casar cliente por voz** (Fase 1b) e **extração rica** (desconto/sinal/prazo com confirmação) ficam pra próxima leva. Não muda custo.
 - **Fase 2 — cota real (DONO decide o modelo):** `consumirCreditos` no worker; migrar "grátis" pro ledger; **1 crédito por orçamento gerado**; 1ª conversa grátis; mesada nos planos pagos.
 - **Fase 3 — Tier B (conversa de verdade):** multi-turno orquestrado no cliente + TTS opt-in. **Só depois da Fase 2.**
 - **Fase 4 — painel web:** Web Speech + MediaRecorder + `audio/webm` no worker.

@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { confirmar } from './desktop/dialogo';
 import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -42,6 +44,16 @@ const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 5;
 
 /** Gradiente do microfone durante a gravação em nuvem (pulso vermelho, gravando). */
 const GRADIENT_GRAVANDO = ['#FF6B6B', '#C0392B'] as const;
+
+/**
+ * Chave de AsyncStorage: já viu a saudação inicial da tela de voz (Tier A,
+ * item 5)? Mostrada uma única vez, dispensada no primeiro toque no microfone.
+ * Fica LOCAL a este arquivo (não em services/storageKeys.ts) por instrução de
+ * escopo desta mudança — é só uma "já vi essa dica" sem dado sensível, então
+ * sobreviver a um logout não é um risco (mesmo raciocínio de ONBOARDED_KEY em
+ * services/onboarding.ts, que também fica fora de APP_DATA_STORAGE_KEYS).
+ */
+const SAUDACAO_VOZ_VISTA_KEY = 'olli.voz.saudacaoVista';
 
 /** Reexportado para telas que já importavam este helper (ex.: HomeScreen). */
 export function isVozDisponivel(): boolean {
@@ -161,6 +173,24 @@ export default function OlliVozScreen() {
   const [podeCancelar, setPodeCancelar] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Saudação de 1ª vez (Tier A, item 5): começa escondida — só aparece se o
+  // AsyncStorage confirmar que este aparelho nunca dispensou. Evita "flash"
+  // da dica em quem já viu (padrão igual ao `carregado` do OlliChatScreen).
+  const [saudacaoVisivel, setSaudacaoVisivel] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    AsyncStorage.getItem(SAUDACAO_VOZ_VISTA_KEY)
+      .then(v => { if (vivo && !v) setSaudacaoVisivel(true); })
+      .catch(() => {
+        // sem storage não tem problema — só não mostra a dica desta vez
+      });
+    return () => { vivo = false; };
+  }, []);
+  const dispensarSaudacao = useCallback(() => {
+    setSaudacaoVisivel(false);
+    AsyncStorage.setItem(SAUDACAO_VOZ_VISTA_KEY, '1').catch(() => {});
+  }, []);
 
   // 'dispositivo' = reconhecimento de fala nativo (grátis, sem internet depois
   // de ouvir); 'nuvem' = grava o áudio com expo-audio e manda pro Worker
@@ -330,6 +360,24 @@ export default function OlliVozScreen() {
   // direto pelo expo-audio, sem depender do serviço de voz do Google); 2º
   // toque para, envia o áudio pro Worker e já volta com o orçamento pronto
   // (uma única requisição — não passa por `enviar()`/`interpretarVoz`).
+  //
+  // TIER A / item 4 (NÃO IMPLEMENTADO): o pedido era unificar o gesto do mic
+  // pra que o 2º toque SEMPRE só pare de ouvir, deixando o botão grande
+  // ("Montar orçamento com a OLLI") como único "terminei, monta" — também no
+  // modo nuvem. `useGravadorNuvem` (services/vozNuvem.ts) só expõe
+  // `pararEEnviar()` (para E envia, uma coisa só) e `cancelar()` (para e
+  // MARCA `autoStopRef`/`canceladoPeloUsuarioRef`, o que faz um `pararEEnviar()`
+  // chamado depois virar no-op — não há como "só parar" e mais tarde só
+  // enviar usando a API pública atual). O `recorder` (expo-audio) também não é
+  // devolvido pelo hook, então esta tela não tem como chamar `.stop()` por
+  // conta própria e guardar o resultado pro botão grande enviar depois.
+  // A única forma seria expor no hook algo como `pararGravacao()` (só stop,
+  // mantendo `recorder.uri` disponível) + `enviarGravacaoPronta()` (só envia)
+  // — mudança em services/vozNuvem.ts, fora do escopo desta tarefa (só
+  // OlliVozScreen.tsx). Fazer o toque "parecer" que parou sem de fato chamar
+  // stop() deixaria o microfone gravando escondido do usuário até o clique no
+  // botão — pior que o comportamento atual. Por isso o gesto de nuvem
+  // permanece como já era: 2º toque para E envia.
   const onMicPressNuvem = useCallback(async () => {
     // Guarda contra segundo toque durante o upload (inclusive após o auto-stop
     // de 2min, quando a fase ainda pode estar 'ouvindo'): sem isso, um toque
@@ -372,8 +420,9 @@ export default function OlliVozScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
+    if (saudacaoVisivel) dispensarSaudacao();
     return modoVoz === 'nuvem' ? onMicPressNuvem() : onMicPressDispositivo();
-  }, [iaEsgotada, modoVoz, onMicPressNuvem, onMicPressDispositivo]);
+  }, [iaEsgotada, modoVoz, onMicPressNuvem, onMicPressDispositivo, saudacaoVisivel, dispensarSaudacao]);
 
   const enviar = useCallback(async () => {
     const texto = transcript.trim();
@@ -440,6 +489,20 @@ export default function OlliVozScreen() {
 
   const criarOrcamento = useCallback(async () => {
     if (itens.length === 0) return;
+    // BUG P0: preço "não sei" (valorUnitario null) virava R$ 0,00 calado no
+    // orçamento do cliente — `montarOrcamento` faz `valorUnitario ?? 0` e o
+    // único bloqueio aqui era `itens.length === 0`. Não bloqueamos de vez (o
+    // usuário pode legitimamente preencher o preço depois, no wizard) — só
+    // forçamos essa confirmação explícita antes de qualquer número entrar sem
+    // o humano ver.
+    const semPreco = itens.filter(i => i.valorUnitario == null).length;
+    if (semPreco > 0) {
+      const seguirComZero = await confirmar(
+        semPreco === 1 ? '1 item ainda sem preço' : `${semPreco} itens ainda sem preço`,
+        `${semPreco === 1 ? 'Ele vai' : 'Eles vão'} como R$ 0,00 no orçamento. Toque em Confirmar pra seguir assim, ou Cancelar pra voltar e preencher agora.`
+      );
+      if (!seguirComZero) return; // "Preencher agora": fica na Revisão, não cria nada
+    }
     setSalvando(true);
     try {
       const numero = await getNextOrcamentoNumber();
@@ -548,6 +611,14 @@ export default function OlliVozScreen() {
           ) : (
           <AnimatedEntrance index={0}>
             <View style={styles.hero}>
+              {fase === 'inicial' && saudacaoVisivel && (
+                <View style={styles.saudacaoCard}>
+                  <OlliMascot size={30} onDark float={false} />
+                  <Text style={styles.saudacaoText}>
+                    Oi! Pode me contar pra quem é, o que você vai fazer, os itens e o preço de cada um. Fala numa tacada só ou por partes — eu vou juntando.
+                  </Text>
+                </View>
+              )}
               <Text style={styles.heroKicker}>
                 {enviandoNuvem
                   ? 'A OLLI ESTÁ OUVINDO…'
@@ -797,8 +868,19 @@ function Revisao(props: {
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.revTitle}>Confira o que eu montei</Text>
             <Text style={styles.revSub}>Ajuste o que precisar. Depois você finaliza cliente, preços e envio.</Text>
+            <Text style={styles.revConfirm}>
+              Entendi: {props.itens.length} {props.itens.length === 1 ? 'item' : 'itens'} pra {props.clienteNome?.trim() || 'cliente a definir'} — total {formatCurrency(total)}.
+            </Text>
           </View>
         </View>
+
+        {/* AVISO — falta o nome do cliente (não bloqueia, só empurra) */}
+        {props.clienteNome.trim().length === 0 && (
+          <View style={styles.avisoClienteCard}>
+            <MaterialCommunityIcons name="account-alert-outline" size={16} color={cores.warning} />
+            <Text style={styles.avisoClienteText}>Só falta o nome do cliente — fala de novo ou digita aqui.</Text>
+          </View>
+        )}
 
         {/* TÍTULO + CLIENTE sugeridos */}
         <View style={styles.fieldCard}>
@@ -948,6 +1030,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
 
   hero: { alignItems: 'center', paddingVertical: Spacing.lg },
+  // Saudação de 1ª vez (Tier A, item 5) — mesmo tom caloroso do heroHint/
+  // EstadoIA, num card discreto que some para sempre no 1º toque no mic.
+  saudacaoCard: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'stretch', backgroundColor: comAlfa(c.accent, 0.08), borderWidth: 1, borderColor: comAlfa(c.accent, 0.24), borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.lg },
+  saudacaoText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
   heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: c.accentLight, marginBottom: Spacing.lg },
   // rgba(124,58,237,x) era o roxo fixo do "plan" — vira c.plan (ajustado por contraste).
   usoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: Spacing.md, backgroundColor: comAlfa(c.plan, 0.12), borderWidth: 1, borderColor: comAlfa(c.plan, 0.32), borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
@@ -997,6 +1083,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Era '#fff' fixo sobre o fundo da tela (c.background) — ilegível no claro.
   revTitle: { fontSize: 18, fontWeight: '800', color: c.onSurface },
   revSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
+  // Leitura-de-volta (Tier A, item 2) — confirma em uma linha calorosa o que
+  // a OLLI entendeu, com os números que o usuário vai ver de qualquer forma.
+  revConfirm: { fontSize: 12.5, fontWeight: '700', color: c.accentLight, marginTop: 6, lineHeight: 18 },
+
+  // Banner "falta o cliente" (Tier A, item 3) — mesmo par de cores warning/
+  // warningLight já usado no erroCard desta tela, só que não-bloqueante.
+  avisoClienteCard: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: comAlfa(c.warning, 0.35), borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: Spacing.base },
+  avisoClienteText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 18 },
 
   fieldCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginBottom: Spacing.base, ...sombrasDe(c).sm },
   fieldLabel: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
