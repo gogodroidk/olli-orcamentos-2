@@ -34,7 +34,15 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * cobrança (QR + copia-e-cola), o app faz polling de UX do status, e o CRÉDITO
  * cai pelo WEBHOOK (nunca otimista). O QR usa o PNG do gateway (brCodeBase64) —
  * sempre válido — com fallback pro gerador local do brCode.
+ *
+ * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para bem digital consumido
+ * dentro do app, e proíbe nominalmente o QR code como mecanismo de venda alternativo.
+ * Não há StoreKit implementado ainda, então no iOS a compra fica ESCONDIDA (sem QR,
+ * sem código copia-e-cola, sem chamar criarCobrancaPix) — o saldo continua visível
+ * (isso é permitido; o proibido é vender). `COMPRA_NO_APP` centraliza esse desvio
+ * para não espalhar `if (Platform.OS === 'ios')` pela tela inteira.
  */
+const COMPRA_NO_APP = Platform.OS !== 'ios';
 
 /** "há 3 dias" / data curta a partir do ISO do lançamento. */
 function dataCurta(iso: string): string {
@@ -50,7 +58,9 @@ export default function CreditosScreen() {
 
   const [saldo, setSaldo] = useState<number | null | undefined>(undefined); // undefined=carregando
   const [pacotes, setPacotes] = useState<PacotePix[]>([]);
-  const [carregandoPacotes, setCarregandoPacotes] = useState(true);
+  // No iOS não buscamos pacotes (não há onde exibi-los), então já nasce "não
+  // carregando" — do contrário o spinner giraria pra sempre sem propósito.
+  const [carregandoPacotes, setCarregandoPacotes] = useState(COMPRA_NO_APP);
   // 3 estados explícitos (nunca colapsar erro em vazio): `pacotesErro` só vira
   // true numa falha de rede real; lista vazia por resposta válida é "indisponível".
   const [pacotesErro, setPacotesErro] = useState(false);
@@ -91,7 +101,9 @@ export default function CreditosScreen() {
 
   useEffect(() => {
     recarregarSaldo();
-    carregarPacotes();
+    // No iOS a compra fica escondida (ver COMPRA_NO_APP acima) — não há motivo
+    // para buscar o catálogo de pacotes que nunca vai aparecer na tela.
+    if (COMPRA_NO_APP) carregarPacotes();
   }, [recarregarSaldo, carregarPacotes]);
 
   // Polling de UX enquanto a cobrança está aberta, não paga e não expirada. A
@@ -121,6 +133,9 @@ export default function CreditosScreen() {
   }, [cobranca, pago, expirado, aplicarSaldo, aplicarExtrato]);
 
   async function comprar(p: PacotePix) {
+    // Defesa em profundidade: no iOS nenhum botão chama isto (ver render abaixo),
+    // mas a guarda fica aqui também — Guideline 3.1.1 proíbe a venda no app.
+    if (!COMPRA_NO_APP) return;
     if (criando) return;
     setCriando(p.id);
     try {
@@ -244,50 +259,64 @@ export default function CreditosScreen() {
           )
         ) : (
           <>
-            {/* Pacotes */}
-            <Text style={styles.secaoTitulo}>Recarregar por Pix</Text>
-            {carregandoPacotes ? (
-              <ActivityIndicator style={{ marginVertical: Spacing.lg }} color={cores.accentLight} />
-            ) : pacotesErro ? (
-              <OlliCard style={styles.card} padding={Spacing.lg}>
-                <EmptyState
-                  icon="alert-circle-outline"
-                  title="Não deu para carregar"
-                  subtitle="Não conseguimos buscar os pacotes de recarga agora. Verifique a conexão e tente de novo."
-                  actionLabel="Tentar de novo"
-                  onAction={carregarPacotes}
-                />
-              </OlliCard>
-            ) : semPix ? (
+            {COMPRA_NO_APP ? (
+              <>
+                {/* Pacotes */}
+                <Text style={styles.secaoTitulo}>Recarregar por Pix</Text>
+                {carregandoPacotes ? (
+                  <ActivityIndicator style={{ marginVertical: Spacing.lg }} color={cores.accentLight} />
+                ) : pacotesErro ? (
+                  <OlliCard style={styles.card} padding={Spacing.lg}>
+                    <EmptyState
+                      icon="alert-circle-outline"
+                      title="Não deu para carregar"
+                      subtitle="Não conseguimos buscar os pacotes de recarga agora. Verifique a conexão e tente de novo."
+                      actionLabel="Tentar de novo"
+                      onAction={carregarPacotes}
+                    />
+                  </OlliCard>
+                ) : semPix ? (
+                  <OlliCard style={styles.card} padding={Spacing.lg}>
+                    <Text style={styles.indisponivel}>
+                      A recarga por Pix está indisponível no momento. Tente novamente mais tarde.
+                    </Text>
+                  </OlliCard>
+                ) : (
+                  pacotes.map((p) => (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => comprar(p)}
+                      disabled={!!criando}
+                      style={({ pressed }) => [styles.pacoteCard, pressed && styles.pacotePress]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Comprar ${p.nome} por ${formatarPrecoCentavos(p.amount)}`}
+                    >
+                      <View style={styles.pacoteIcone}>
+                        <MaterialCommunityIcons name="lightning-bolt" size={22} color={cores.accentLight} />
+                      </View>
+                      <View style={styles.pacoteTexto}>
+                        <Text style={styles.pacoteNome}>{p.nome}</Text>
+                        <Text style={styles.pacotePreco}>{formatarPrecoCentavos(p.amount)}</Text>
+                      </View>
+                      {criando === p.id ? (
+                        <ActivityIndicator size="small" color={cores.accentLight} />
+                      ) : (
+                        <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceVariant} />
+                      )}
+                    </Pressable>
+                  ))
+                )}
+              </>
+            ) : (
+              // iOS (Guideline 3.1.1): sem botão de compra, sem QR, sem código
+              // copia-e-cola — só o estado real (saldo já visível acima) e um texto
+              // honesto, sem link nem CTA para fora do app (a Apple também proíbe
+              // direcionar para compra externa).
               <OlliCard style={styles.card} padding={Spacing.lg}>
                 <Text style={styles.indisponivel}>
-                  A recarga por Pix está indisponível no momento. Tente novamente mais tarde.
+                  A recarga de créditos ainda não está disponível no iPhone.
                 </Text>
               </OlliCard>
-            ) : (
-              pacotes.map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => comprar(p)}
-                  disabled={!!criando}
-                  style={({ pressed }) => [styles.pacoteCard, pressed && styles.pacotePress]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Comprar ${p.nome} por ${formatarPrecoCentavos(p.amount)}`}
-                >
-                  <View style={styles.pacoteIcone}>
-                    <MaterialCommunityIcons name="lightning-bolt" size={22} color={cores.accentLight} />
-                  </View>
-                  <View style={styles.pacoteTexto}>
-                    <Text style={styles.pacoteNome}>{p.nome}</Text>
-                    <Text style={styles.pacotePreco}>{formatarPrecoCentavos(p.amount)}</Text>
-                  </View>
-                  {criando === p.id ? (
-                    <ActivityIndicator size="small" color={cores.accentLight} />
-                  ) : (
-                    <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceVariant} />
-                  )}
-                </Pressable>
-              ))
             )}
 
             {/* Extrato — 3 estados: null=indisponível (não confundir com []=vazio). */}

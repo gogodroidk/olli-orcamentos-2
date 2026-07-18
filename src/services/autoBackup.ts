@@ -26,6 +26,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCurrentUser } from './supabase';
 import { exportAllData } from '../database/database';
 import { AUTO_BACKUP_TOGGLE_KEY, AUTO_BACKUP_ULTIMO_KEY } from './storageKeys';
+import { garantirContextoEquipe } from './cloudSync';
+import { backupNuvemPermitido } from './contextoEquipe';
 import {
   inserirBackupVersionado,
   podarBackupsVersionados,
@@ -51,6 +53,9 @@ async function autoBackupHabilitado(): Promise<boolean> {
 
 /**
  * Roda o backup automático diário, se for a hora certa. Passos:
+ *  0) No-op se quem está logado NÃO é o dono do tenant (membro de equipe) ou se
+ *     não dá para saber — o snapshot é integral e levaria a base do dono para o
+ *     tenant de outra pessoa (ver `backupNuvemPermitido` em contextoEquipe).
  *  1) No-op se deslogado, toggle desligado, ou já houve 'diario' nas últimas 24h
  *     (carimbo local em AsyncStorage evita até uma consulta de rede na maioria
  *     das aberturas do app — a fonte de verdade do throttle é a própria tabela,
@@ -72,6 +77,27 @@ export async function maybeAutoBackup(): Promise<void> {
 
     const user = await getCurrentUser();
     if (!user) return; // deslogado: sem tabela versionada para escrever (RLS exige dono)
+
+    // QUEM é o dono do banco que estamos prestes a fotografar? O snapshot é
+    // INTEIRO e o SQLite local não separa tenant: no aparelho de um MEMBRO de
+    // equipe ele contém a base do DONO (veio pelo sync), e gravá-lo sob o
+    // `user_id` do membro põe os clientes do dono dentro do tenant dele — que os
+    // leva embora ao ser desligado. Só a conta pessoal/dono passa; `desconhecido`
+    // não passa, porque "não sei de quem é este banco" não autoriza copiá-lo
+    // (mesma regra do restore, ver contextoEquipe). NÃO carimbamos
+    // AUTO_BACKUP_ULTIMO_KEY aqui de propósito: nenhum backup foi feito, e um
+    // carimbo faria a próxima abertura pular a checagem por 24h — se o contexto
+    // resolver para dono nesse meio-tempo, o backup dele sai na hora certa.
+    const ctx = await garantirContextoEquipe();
+    if (!backupNuvemPermitido(ctx)) {
+      // Silêncio total aqui viraria "meu backup automático nunca roda e ninguém
+      // sabe por quê" — a linha diz qual dos dois motivos foi.
+      console.warn(
+        `[autoBackup] backup na nuvem NÃO gerado: contexto de equipe "${ctx.status}"` +
+          ' (só o dono do tenant faz backup — o banco local contém dados da empresa).',
+      );
+      return;
+    }
 
     const ultimoLocal = await AsyncStorage.getItem(AUTO_BACKUP_ULTIMO_KEY).catch(() => null);
     if (ultimoLocal) {

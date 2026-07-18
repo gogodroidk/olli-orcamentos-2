@@ -49,12 +49,19 @@ let ledgerRefs = new Set<string>();
 let ledgerChamadas = 0;
 let chamadasGemini = 0;
 let respostaGeminiFake = '';
+// Cota grátis de IA do mês, contada NO SERVIDOR (migration 20260727). O default é
+// 0 (esgotada) porque quase todo caso aqui exercita a COBRANÇA do fechamento; os
+// casos que testam o uso grátis passam o valor explicitamente.
+let cotaRestante = 0;
+let cotaRefs = new Set<string>();
 
-function resetBanco(saldoInicial: number) {
+function resetBanco(saldoInicial: number, cotaGratisRestante = 0) {
   saldo = saldoInicial;
   ledgerRefs = new Set();
   ledgerChamadas = 0;
   chamadasGemini = 0;
+  cotaRestante = cotaGratisRestante;
+  cotaRefs = new Set();
 }
 
 function fingirFetch() {
@@ -71,17 +78,43 @@ function fingirFetch() {
       } as unknown as Response;
     }
 
+    // regimeIa (creditos.js): sem linha em `assinaturas` = plano Grátis
+    // CONFIRMADO — é quem tem cota mensal e, esgotada ela, paga crédito.
+    if (u.includes('/rest/v1/assinaturas')) {
+      return { ok: true, status: 200, json: async () => [] } as unknown as Response;
+    }
+
+    // consumir_cota_ia (RPC da migration 20260727): a cota grátis do mês, contada
+    // no servidor. `ref` (aqui, o conversationId) dá a idempotência do retry.
+    if (u.includes('/rest/v1/rpc/consumir_cota_ia')) {
+      const body = init?.body ? JSON.parse(init.body) : {};
+      const ref = body.p_ref == null ? null : String(body.p_ref);
+      if (ref !== null && cotaRefs.has(ref)) {
+        return { ok: true, status: 200, json: async () => 'ja_contada' } as unknown as Response;
+      }
+      if (cotaRestante <= 0) {
+        return { ok: true, status: 200, json: async () => 'esgotada' } as unknown as Response;
+      }
+      cotaRestante--;
+      if (ref !== null) cotaRefs.add(ref);
+      return { ok: true, status: 200, json: async () => 'consumida' } as unknown as Response;
+    }
+
     // saldoCreditos (RPC).
     if (u.includes('/rest/v1/rpc/saldo_creditos')) {
       return { ok: true, status: 200, json: async () => saldo } as unknown as Response;
     }
 
-    // lancarCreditos (INSERT no ledger): índice único (origem,ref) emulado.
+    // lancarCreditos (INSERT no ledger): índice único (origem,ref) emulado, com o
+    // corpo que o PostgREST manda de verdade (o `code` é o que distingue
+    // idempotência de "o lançamento não entrou" — ver lancarCreditos).
     if (u.includes('/rest/v1/credit_ledger')) {
       ledgerChamadas++;
       const body = init?.body ? JSON.parse(init.body) : {};
       const ref = String(body.ref);
-      if (ledgerRefs.has(ref)) return { ok: false, status: 409 } as Response;
+      if (ledgerRefs.has(ref)) {
+        return { ok: false, status: 409, json: async () => ({ code: '23505' }) } as unknown as Response;
+      }
       ledgerRefs.add(ref);
       saldo -= Math.abs(Number(body.delta) || 0);
       return { ok: true, status: 201 } as unknown as Response;
@@ -211,7 +244,12 @@ for (let i = 1; i <= VOZ_CONVERSA_MAX.turnos - 1; i++) {
   checar('não cobrou', ledgerChamadas, 0);
 }
 
-console.log('\n7) sem confirmarCredito: fecha (pronto:true) mas NÃO cobra — nem toca o ledger');
+// ATENÇÃO — este caso mudou de expectativa de propósito. Ele afirmava que sem
+// `confirmarCredito` a conversa fechava DE GRAÇA. Isso não era uma regra: era o
+// buraco. Qualquer conta com JWT válido que só omitisse o campo usava o Gemini
+// (conta do dono) ilimitado. Autorização é decisão do SERVIDOR — o cliente pede,
+// não concede. Ver cobrarCreditoVoz em worker/src/creditos.js.
+console.log('\n7) sem confirmarCredito NÃO é passe livre: cota esgotada = cobra do mesmo jeito');
 resetBanco(10);
 respostaGeminiFake = JSON.stringify({
   pronto: true,
@@ -224,9 +262,33 @@ respostaGeminiFake = JSON.stringify({
     conversationId: 'conv-sem-confirmar',
     confirmarCredito: false,
   });
-  checar('pronto: true mesmo sem cobrar (a IA já entregou o resultado)', body.pronto, true);
+  checar('pronto: true (a IA já entregou o resultado)', body.pronto, true);
+  checar('cobrou mesmo sem o cliente pedir', ledgerChamadas, 1);
+  checar('saldo debitado', saldo, 9);
+}
+
+console.log('\n7b) com cota grátis do mês disponível: fecha SEM gastar crédito');
+resetBanco(10, 3);
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'reparo hidráulico pro Seu Zé, R$200' }],
+    conversationId: 'conv-com-cota',
+  });
+  checar('pronto: true', body.pronto, true);
+  checar('gastou 1 uso grátis (sobraram 2)', cotaRestante, 2);
   checar('ledger intocado', ledgerChamadas, 0);
   checar('saldo intacto', saldo, 10);
+}
+
+console.log('\n7c) cota esgotada E sem crédito: bloqueia com sem_creditos (o app leva pra "Ver planos")');
+resetBanco(0);
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'reparo hidráulico pro Seu Zé, R$200' }],
+    conversationId: 'conv-sem-saldo',
+  });
+  checar('erro sem_creditos', body, { ok: false, erro: 'sem_creditos' });
+  checar('nem tentou lançar (saldo insuficiente barra antes)', ledgerChamadas, 0);
 }
 
 console.log('\n8) conversa vazia: erro, não chama o Gemini');

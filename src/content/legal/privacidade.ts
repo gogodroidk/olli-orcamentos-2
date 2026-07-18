@@ -48,7 +48,7 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '9 de julho de 2026',
+  atualizadoEm: '18 de julho de 2026',
   aviso:
     'Este é um MODELO de política de privacidade, gerado para o OLLI e alinhado ao ' +
     'que o aplicativo realmente faz. Ele NÃO constitui aconselhamento jurídico e ' +
@@ -79,7 +79,7 @@ export const PRIVACIDADE: LegalDoc = {
     {
       titulo: '2. A quem esta Política se aplica',
       paragrafos: [
-        'Esta Política cobre o aplicativo OLLI (Android e versão web), a sincronização ' +
+        'Esta Política cobre o aplicativo OLLI (Android, iOS e versão web), a sincronização ' +
           'na nuvem, os serviços de inteligência artificial do OLLI e a página pública da ' +
           'etiqueta QR de equipamentos.',
         'Um ponto importante: quando você cadastra os seus próprios clientes, orçamentos e ' +
@@ -94,6 +94,9 @@ export const PRIVACIDADE: LegalDoc = {
       paragrafos: [
         'Coletamos apenas o necessário para o app funcionar. A tabela abaixo resume cada ' +
           'categoria de dado, a finalidade e a base legal correspondente na LGPD.',
+        'No iPhone (iOS), a recarga de créditos e a assinatura de planos pagos ainda não ' +
+          'podem ser feitas dentro do app — por isso, nesse sistema, os itens de pagamento ' +
+          'abaixo (Stripe e Mercado Pago) não se aplicam.',
       ],
       tabela: [
         {
@@ -141,6 +144,11 @@ export const PRIVACIDADE: LegalDoc = {
           finalidade: 'Entender quais telas ajudam e melhorar o produto.',
           base: 'Legítimo interesse (art. 7º, IX).',
         },
+        {
+          dado: 'Dados técnicos de falha (crash e erro do app)',
+          finalidade: 'Diagnosticar travamentos e erros para corrigi-los rapidamente. Não inclui o seu IP nem outros dados pessoais identificáveis.',
+          base: 'Legítimo interesse em manter o app estável e seguro (art. 7º, IX).',
+        },
       ],
     },
     {
@@ -166,9 +174,16 @@ export const PRIVACIDADE: LegalDoc = {
         'Supabase — banco de dados e autenticação na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
         'Cloudflare — hospedagem do nosso servidor de IA e da página pública da etiqueta QR.',
-        'Stripe — processamento de pagamentos e gestão de assinaturas. O Stripe recebe os ' +
-          'dados de cobrança; o OLLI não tem acesso ao número completo do cartão.',
+        'Stripe — processamento de pagamentos e gestão de assinaturas dos planos pagos ' +
+          '(Android e web). O Stripe recebe os dados de cobrança; o OLLI não tem acesso ao ' +
+          'número completo do cartão.',
+        'Mercado Pago — processamento das cobranças Pix usadas para recarregar créditos ' +
+          '(Android e web). Recebe os dados necessários para gerar e confirmar o pagamento; ' +
+          'o OLLI não tem acesso aos seus dados bancários.',
         'Google (Gemini) — modelo de inteligência artificial que processa os pedidos de IA.',
+        'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
+          'corrigir falhas técnicas. Recebe apenas dados técnicos do erro, sem o seu IP ou ' +
+          'outros dados pessoais.',
       ],
     },
     {

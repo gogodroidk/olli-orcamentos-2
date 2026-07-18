@@ -16,7 +16,7 @@ import { Celebracao } from '../components/Celebracao';
 import { PixCobrancaModal } from '../components/PixCobrancaModal';
 import { gerarPixCopiaECola } from '../utils/pixBrCode';
 import { OverlayProgresso } from '../components/OverlayProgresso';
-import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber } from '../database/database';
+import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
@@ -369,7 +369,15 @@ export default function VisualizarOrcamentoScreen() {
     <View style={{ flex: 1, backgroundColor: cores.background }}>
       <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
         <View style={styles.actionBar}>
-          <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
+          {/* Editar só enquanto o documento é só nosso (rascunho/recusado/expirado/
+              cancelado). Depois que o cliente recebeu — e mais ainda depois que ele
+              aprovou — a alteração vira "Duplicar", logo ao lado: proposta nova, o
+              papel que ele tem em mãos continua valendo. Mesma regra do painel
+              (`edicaoBloqueada`), e o `saveOrcamento` recusa o caso aceito de todo
+              jeito, então o botão não pode existir prometendo o que não entrega. */}
+          {!edicaoBloqueada(orc.status) && (
+            <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
+          )}
           <ActionBtn icon="content-copy" label="Duplicar" onPress={handleDuplicar} loading={duplicando} />
           <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />

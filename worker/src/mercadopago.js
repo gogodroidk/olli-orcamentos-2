@@ -273,7 +273,83 @@ async function criarAssinatura(request, env) {
   });
   const url = data && (data.init_point || data.sandbox_init_point);
   if (!ok || !url) return json({ ok: false, erro: 'falha_assinatura' }, 502);
+
+  // Persistir o id JÁ na criação (best-effort) encurta a janela em que existe uma
+  // preapproval que ninguém consegue cancelar: se o usuário autorizar o cartão e o
+  // webhook não chegar, o id ainda estará aqui na hora de excluir a conta.
+  // Só grava quando NÃO há id gravado — sobrescrever apagaria a referência da
+  // assinatura que está cobrando hoje, que é justamente o que precisamos cancelar.
+  if (data.id) await guardarPreapprovalSeVazio(env, user.id, String(data.id));
+
   return json({ ok: true, url, preapprovalId: data.id || null });
+}
+
+/**
+ * Grava o mp_preapproval_id na linha existente do usuário SE ainda não houver um.
+ * PATCH (não upsert) de propósito: se o usuário ainda não tem linha em
+ * `assinaturas`, não é hora de criar uma — a linha nasce quando o pagamento é
+ * confirmado, no webhook. Best-effort: qualquer falha (inclusive a coluna ainda
+ * não existir) só vira log; criar a assinatura não pode falhar por causa disto.
+ */
+async function guardarPreapprovalSeVazio(env, userId, preapprovalId) {
+  const gravado = await lerPreapprovalGravado(env, userId);
+  if (gravado.error || gravado.ausente || gravado.id) return; // não sabemos, não dá, ou já tem
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({ mp_preapproval_id: preapprovalId }),
+      },
+    );
+    if (!r.ok) console.error('[olli-mp] não consegui guardar mp_preapproval_id na criação:', r.status, userId);
+  } catch (e) {
+    console.error('[olli-mp] erro ao guardar mp_preapproval_id:', e && (e.message || e));
+  }
+}
+
+/**
+ * Cancela a assinatura recorrente no Mercado Pago (PUT /preapproval/{id} com
+ * status 'cancelled'). Devolve 'ok' | 'erro'.
+ *
+ * Mesmo contrato de `cancelarAssinaturaStripe` (worker/src/conta.js), de propósito:
+ * quem chama BLOQUEIA a exclusão da conta em 'erro' — apagar o usuário com a
+ * preapproval viva deixa o cartão sendo cobrado sem ninguém para cancelar. E, como
+ * lá, "já estava cancelada" é 'ok': senão quem cancelou pelo app do MP nunca mais
+ * conseguiria excluir a conta.
+ *
+ * Exportada (não copiada dentro de conta.js) porque a regra de cancelamento do MP
+ * é UMA só; duas cópias foi como o guard do getAssinatura já virou código morto.
+ */
+export async function cancelarPreapprovalMp(env, preapprovalId) {
+  if (!preapprovalId) return 'ok'; // nada a cancelar
+  if (!env.MP_ACCESS_TOKEN) return 'erro'; // há o que cancelar e não podemos: falha
+  try {
+    const r = await fetch(`${MP_API}/preapproval/${encodeURIComponent(preapprovalId)}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+    if (r.ok || r.status === 404) return 'ok'; // 404 = não existe mais no MP
+
+    // O que importa não é se a chamada teve efeito, e sim se a assinatura está
+    // cancelada ao final: pergunta o estado real antes de bloquear a exclusão.
+    const g = await mpGet(env, `/preapproval/${encodeURIComponent(preapprovalId)}`);
+    if (g.status === 404) return 'ok';
+    if (g.ok && g.data && g.data.status === 'cancelled') return 'ok';
+
+    console.error('[olli-mp] cancelar preapproval falhou:', r.status, preapprovalId);
+    return 'erro';
+  } catch (e) {
+    console.error('[olli-mp] cancelar preapproval erro:', e && (e.message || e));
+    return 'erro';
+  }
 }
 
 // ── GET /mp/status?id= — polling de UX ───────────────────────
@@ -376,6 +452,106 @@ async function concederPlanoPeriodo(env, { userId, planoKey, dataAprovacao }) {
   return json({ ok: true });
 }
 
+/**
+ * Guarda o id da preapproval (assinatura recorrente) na linha de `assinaturas`.
+ * É o dado que permite CANCELAR a cobrança do cartão depois — sem ele, excluir a
+ * conta deixava o cartão sendo cobrado para sempre (ver worker/src/conta.js).
+ *
+ * Tolerante à coluna ainda não existir: se a migration 20260728 não tiver sido
+ * aplicada, o PostgREST rejeita a coluna desconhecida e o upsert inteiro falharia —
+ * o que faria o webhook devolver 500 e o MP reenviar em loop, deixando de liberar um
+ * plano JÁ PAGO. Nesse caso repetimos o upsert SEM o campo: o plano é liberado
+ * (o que o usuário pagou) e só o cancelamento futuro fica pendente, com log.
+ */
+async function upsertAssinaturaComPreapproval(env, userId, patch, preapprovalId) {
+  if (preapprovalId) {
+    const ok = await upsertAssinatura(env, userId, { ...patch, mp_preapproval_id: preapprovalId });
+    if (ok) return true;
+    console.error('[olli-mp] upsert com mp_preapproval_id falhou (coluna ausente? migration 20260728) — regravando sem o campo:', userId);
+  }
+  return upsertAssinatura(env, userId, patch);
+}
+
+/**
+ * Lê o mp_preapproval_id gravado. TRÊS estados, porque quem chama decide se pode
+ * TIRAR o plano de alguém:
+ *   { id }        → sabemos qual assinatura sustenta o plano (id pode ser null)
+ *   { ausente:true} → a coluna ainda não existe (migration não aplicada)
+ *   { error:true } → não deu para ler (rede/PostgREST fora)
+ * Só o primeiro estado permite AFIRMAR que um evento se refere ao plano vigente.
+ */
+export async function lerPreapprovalGravado(env, userId) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}` +
+        `&select=mp_preapproval_id&limit=1`,
+      { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } },
+    );
+    // 400/404 aqui é o PostgREST dizendo que a coluna não existe (schema antigo).
+    if (r.status === 400 || r.status === 404) return { ausente: true };
+    if (!r.ok) return { error: true };
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr)) return { error: true };
+    return { id: arr.length ? arr[0].mp_preapproval_id || null : null };
+  } catch {
+    return { error: true };
+  }
+}
+
+/**
+ * Evento de preapproval que NÃO é 'authorized' (pending, paused, cancelled, ou
+ * qualquer status novo do MP). REGRA: evento que não prova o suficiente NÃO reduz
+ * direito — responde 200 e não escreve.
+ *
+ * O que havia aqui antes escrevia `status:'canceled'`, `plano: cfg.plano` e
+ * `current_period_end: null` para QUALQUER status diferente de authorized. O caso
+ * ruim não era teórico: `criarAssinatura` cria a preapproval com `status:'pending'`
+ * (é assim que o MP devolve o init_point), e o MP notifica essa criação. Ou seja,
+ * bastava um usuário que já tinha Pro pago por Pix TOCAR em "assinar" para perder
+ * na hora o plano que pagou, sem ter pago nada de novo. 'paused' e 'cancelled' de
+ * uma preapproval antiga/alheia faziam o mesmo estrago.
+ *
+ * Agora só encerramos quando as duas coisas são verdade:
+ *   (a) o status é 'cancelled' — término definitivo, não 'pending'/'paused', que
+ *       são estados de trânsito e podem voltar a 'authorized';
+ *   (b) a preapproval do evento é COMPROVADAMENTE a que sustenta o plano gravado
+ *       (mp_preapproval_id bate). Sem essa prova — id diferente, coluna ainda
+ *       inexistente, leitura falhou — o evento pode ser de uma assinatura velha
+ *       enquanto o plano vigente veio de um Pix; não reduz.
+ * E mesmo aí: se o período PAGO ainda está correndo, não escrevemos nada. A
+ * vigência expira sozinha (o app já trata `current_period_end` vencido como
+ * grátis), então o usuário usa até o fim do que pagou e cai sozinho depois —
+ * ninguém precisa "cortar" nada. Deixar de reduzir custa, no pior caso, algumas
+ * semanas de acesso; reduzir errado tira o plano de quem pagou.
+ */
+async function encerrarPreapproval(env, { userId, preapprovalId, status }) {
+  if (status !== 'cancelled') return json({ ok: true, sem_efeito: true }); // (a)
+
+  const atual = await getAssinatura(env, userId);
+  if (atual && atual.error) return json({ erro: 'indisponivel' }, 503); // 5xx → MP reenvia
+  if (!atual) return json({ ok: true, sem_efeito: true }); // nada gravado: nada a reduzir
+
+  const gravado = await lerPreapprovalGravado(env, userId);
+  if (gravado.error) return json({ erro: 'indisponivel' }, 503);
+  if (gravado.ausente || !gravado.id || gravado.id !== preapprovalId) { // (b)
+    console.error('[olli-mp] cancelamento de preapproval sem vínculo provado com o plano vigente — não reduz:', preapprovalId, userId);
+    return json({ ok: true, sem_efeito: true });
+  }
+
+  const pagoAteFuturo = atual.current_period_end
+    && new Date(atual.current_period_end).getTime() > Date.now();
+  if (pagoAteFuturo) {
+    console.error('[olli-mp] assinatura cancelada no MP, mas o período pago ainda corre — mantém até', atual.current_period_end);
+    return json({ ok: true, mantido_ate_fim: true });
+  }
+
+  // Período já vencido: registrar o encerramento não tira nada de ninguém.
+  // `current_period_end` é PRESERVADO (histórico do que foi pago), nunca zerado.
+  const okDb = await upsertAssinatura(env, userId, { status: 'canceled' });
+  if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+  return json({ ok: true });
+}
+
 // ── POST /mp/webhook ─────────────────────────────────────────
 async function webhook(request, env, url) {
   // TETO DE PAYLOAD (B1/O2-18) — mesmo padrão do handleWebhook da Stripe (ver
@@ -440,26 +616,34 @@ async function webhook(request, env, url) {
     const cfg = PLANO_ASSINATURA[partes[3]];
     if (!userId || !cfg) return json({ ok: true, sem_vinculo: true });
     const st = data.status; // pending | authorized | paused | cancelled
-    const ativo = st === 'authorized';
+    const preapprovalId = String(data.id || dataId);
+
+    // Só 'authorized' CONCEDE. Qualquer outro status vai para o caminho que não
+    // reduz direito sem prova (ver encerrarPreapproval) — antes, tudo que não
+    // fosse authorized apagava o plano vigente, inclusive o 'pending' da própria
+    // criação da assinatura.
+    if (st !== 'authorized') return encerrarPreapproval(env, { userId, preapprovalId, status: st });
+
     let plano = cfg.plano;
-    let vigencia = ativo ? (data.next_payment_date || isoMaisMeses(1)) : (data.next_payment_date || null);
+    let vigencia = data.next_payment_date || isoMaisMeses(1);
     // Guard nível/vigência (igual concederPlanoPeriodo e o sincronizarSubscription da Stripe):
     // uma assinatura de nível MENOR não rebaixa um plano MAIOR já pago e vigente.
-    if (ativo) {
-      const atual = await getAssinatura(env, userId);
-      if (atual && atual.error) return json({ erro: 'indisponivel' }, 503); // 5xx → MP reenvia
-      if (atual) {
-        const ativaAtual = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status)
-          && atual.current_period_end && new Date(atual.current_period_end).getTime() > Date.now();
-        if (ativaAtual) {
-          if ((NIVEL_PLANO[atual.plano] || 0) > (NIVEL_PLANO[plano] || 0)) plano = atual.plano;
-          if (vigencia && new Date(atual.current_period_end).getTime() > new Date(vigencia).getTime()) vigencia = atual.current_period_end;
-        }
+    const atual = await getAssinatura(env, userId);
+    if (atual && atual.error) return json({ erro: 'indisponivel' }, 503); // 5xx → MP reenvia
+    if (atual) {
+      const ativaAtual = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status)
+        && atual.current_period_end && new Date(atual.current_period_end).getTime() > Date.now();
+      if (ativaAtual) {
+        if ((NIVEL_PLANO[atual.plano] || 0) > (NIVEL_PLANO[plano] || 0)) plano = atual.plano;
+        if (new Date(atual.current_period_end).getTime() > new Date(vigencia).getTime()) vigencia = atual.current_period_end;
       }
     }
-    const okDb = await upsertAssinatura(env, userId, {
-      plano, status: ativo ? 'active' : 'canceled', current_period_end: vigencia, stripe_subscription_id: null,
-    });
+    // Grava o id da preapproval junto: é ele que permite cancelar a cobrança do
+    // cartão na exclusão de conta, e é a prova de vínculo que um cancelamento
+    // futuro precisa exibir para poder encerrar este plano.
+    const okDb = await upsertAssinaturaComPreapproval(env, userId, {
+      plano, status: 'active', current_period_end: vigencia, stripe_subscription_id: null,
+    }, preapprovalId);
     if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
     return json({ ok: true });
   }

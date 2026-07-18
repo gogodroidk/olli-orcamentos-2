@@ -116,6 +116,16 @@ function extrairSequencia(numero: unknown): number {
  * INCLUI a lixeira (sem filtro de `excluido_em`): um documento apagado NÃO pode liberar
  * o número, senão dois documentos diferentes acabariam com o mesmo `00126`.
  *
+ * O APP FAZ O MESMO (desde `proximoNaSequencia` em `src/database/database.ts`). Isso
+ * não era verdade: o celular numerava só pelo contador local, que não enxerga o
+ * documento criado AQUI — o painel emitia o 004 por MAX+1 sem tocar em `contadores`,
+ * e o celular, ainda no contador 3, emitia outro 004. Hoje o app tira o número de
+ * `MAX(contador local, maior sequencial nos documentos) + 1`, sobre o SQLite que é
+ * espelho desta base: mesma fonte (os documentos), com o contador só como piso
+ * monotônico para o número já reservado num formulário aberto. A colisão que sobra é
+ * a de dois criadores simultâneos com um deles offline — arbitrável só no banco (ver
+ * `supabase/migrations/20260727_numero_unico_por_tenant.sql`, passo humano).
+ *
  * Ordenamos por `criado_em` desc: como o sequencial só cresce, o documento mais recente
  * carrega o maior número — então, mesmo se o PostgREST capar a resposta em ~1000 linhas,
  * a página devolvida (as mais recentes) já contém o máximo real, sem duplicar.

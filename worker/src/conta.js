@@ -1,12 +1,13 @@
 /**
  * Conta do usuário — OLLI (worker Cloudflare, SEM SDK).
  *
- *   POST /conta/excluir → exclui a conta do usuário logado (JWT). Cancela a
- *                         assinatura Stripe ativa e SÓ ENTÃO apaga o usuário em
- *                         auth.users com SERVICE_ROLE (o cascade das FKs limpa os
- *                         dados). Se o cancelamento falhar, NADA é apagado (502
- *                         retryável): conta apagada com assinatura viva = cartão
- *                         cobrado sem ninguém para cancelar. Apple + LGPD.
+ *   POST /conta/excluir → exclui a conta do usuário logado (JWT). Cancela as
+ *                         assinaturas ativas (Stripe E Mercado Pago) e SÓ ENTÃO
+ *                         apaga o usuário em auth.users com SERVICE_ROLE (o cascade
+ *                         das FKs limpa os dados). Se algum cancelamento falhar,
+ *                         NADA é apagado (502 retryável): conta apagada com
+ *                         assinatura viva = cartão cobrado sem ninguém para
+ *                         cancelar. Apple + LGPD.
  *
  * Segurança (mesmo modelo de stripe.js / equipe.js):
  *  - Exige JWT do Supabase (Authorization: Bearer <token>), validado em
@@ -17,6 +18,7 @@
  *  - O secret da Stripe (para cancelar a assinatura) vive só no worker.
  */
 import { rateOkSensivel } from './rateLimit.js';
+import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -203,6 +205,25 @@ export async function handleContaExcluir(request, env) {
   }
   if (assinatura && assinatura.stripe_subscription_id) {
     const r = await cancelarAssinaturaStripe(env, assinatura.stripe_subscription_id);
+    if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+  }
+
+  // MERCADO PAGO — mesma regra, mesmo motivo. O gateway de Pix/assinatura do OLLI
+  // hoje é o MP (docs/MERCADOPAGO.md), e a assinatura recorrente dele (preapproval)
+  // é cartão: continuava cobrando depois da conta apagada, porque este bloco só
+  // conhecia a Stripe. Cobrança indevida contra alguém que nem tem mais conta para
+  // reclamar — por isso é fail-closed igual à Stripe.
+  const preapproval = await lerPreapprovalGravado(env, user.id);
+  if (preapproval.error) return json({ ok: false, erro: 'falha_cancelamento' }, 502); // não sei ≠ não tem
+  if (preapproval.ausente) {
+    // A coluna mp_preapproval_id ainda não existe (migration 20260728 não aplicada).
+    // Aqui NÃO dá para saber se há assinatura no MP — e travar a exclusão de todo
+    // mundo seria pior (a Apple exige o caminho de exclusão, e nenhuma assinatura
+    // recorrente do MP foi vendida antes desta migration: a rota /mp/plano/assinatura
+    // não está exposta na UI). Segue, deixando rastro para o dono reconciliar.
+    console.error('[olli-conta] mp_preapproval_id indisponível (migration 20260728?) — excluindo sem checar o MP:', user.id);
+  } else if (preapproval.id) {
+    const r = await cancelarPreapprovalMp(env, preapproval.id);
     if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
   }
 

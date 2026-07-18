@@ -19,7 +19,7 @@ import { CountUp } from '../components/CountUp';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import {
-  deleteOrcamento, saveOrcamento, getNextOrcamentoNumber,
+  deleteOrcamento, saveOrcamento, getNextOrcamentoNumber, edicaoBloqueada,
   getOrcamentosPagina, getOrcamentosResumoFiltro, getOrcamentosIdsFiltro, getRecibosPorOrcamentoIds,
   type FiltroOrcamentos,
 } from '../database/database';
@@ -157,10 +157,16 @@ function LinhaOrcamentoBase({
       {/* Em modo de seleção as ações somem — o card inteiro vira alvo do toque. */}
       {!selecionando && (
         <View style={styles.itemActions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onEditar(o)}>
-            <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.primary} />
-            <Text style={[styles.actionLabel, { color: cores.primary }]}>Editar</Text>
-          </TouchableOpacity>
+          {/* Editar SOME quando o cliente já tem o documento (mesma regra do painel):
+              o save recusaria a alteração de um orçamento aceito, e botão que abre a
+              tela pra recusar no fim é pior que botão ausente. "Clonar" ao lado já é
+              o caminho certo — nasce como rascunho novo e deixa o original intacto. */}
+          {!edicaoBloqueada(o.status) && (
+            <TouchableOpacity style={styles.actionBtn} onPress={() => onEditar(o)}>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.primary} />
+              <Text style={[styles.actionLabel, { color: cores.primary }]}>Editar</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.actionBtn} onPress={() => onClonar(o)}>
             <MaterialCommunityIcons name="content-copy" size={16} color={cores.secondary} />
             <Text style={[styles.actionLabel, { color: cores.secondary }]}>Clonar</Text>

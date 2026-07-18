@@ -27,7 +27,7 @@ import {
 } from '../../services/backup';
 import { abortarSyncEmAndamento, onSyncAplicado } from '../../services/cloudSync';
 import { formatDateTime } from '../../utils/date';
-import { AUTO_BACKUP_TOGGLE_KEY } from '../../services/storageKeys';
+import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../../services/storageKeys';
 import { navigationRef } from '../../navigation/navigationRef';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { getEmpresa, clearAllLocalData } from '../../database/database';
@@ -346,6 +346,12 @@ export default function ContaDesktopScreen() {
       // voo grava depois da saída e o contexto de equipe de quem sai pode carimbar
       // linha de quem entra (o "apagar dados" logo abaixo já fazia certo).
       abortarSyncEmAndamento();
+      // Rastro de sessão fora do SQLite (conversa com a OLLI, checklist do dia,
+      // carimbos de sync): o AsyncStorage NÃO é particionado por conta, então isto
+      // ficava visível para o próximo usuário deste navegador. Os DADOS, que é o
+      // que o botão promete manter, seguem intactos na partição desta conta.
+      // Paridade com a ContaScreen mobile — ver o comentário longo lá.
+      await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS).catch(() => {});
       await signOut();
     } catch (e: any) {
       avisar('Erro', e?.message ?? 'Não foi possível sair agora.');

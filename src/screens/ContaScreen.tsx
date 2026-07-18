@@ -44,7 +44,7 @@ import {
 } from '../services/backup';
 import { abortarSyncEmAndamento, onSyncAplicado } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
-import { AUTO_BACKUP_TOGGLE_KEY } from '../services/storageKeys';
+import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
 
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
@@ -440,6 +440,19 @@ export default function ContaScreen() {
               await cancelarTodosLembretes().catch(() => {});
               await cancelarTodosLembretesPmoc().catch(() => {});
               await cancelarRitualDiario().catch(() => {});
+              // O que este botão promete manter são os DADOS — e eles vivem na
+              // partição SQLite desta conta, que ninguém mais abre. O AsyncStorage
+              // NÃO é particionado: a conversa com a OLLI, o checklist do dia, o
+              // e-mail pendente de confirmação e os carimbos de sync ficavam
+              // inteiros para o PRÓXIMO usuário do aparelho, que abria o chat e
+              // lia a conversa de outra pessoa. Aqui esse rastro sai, igual ao que
+              // o clearAllLocalData já fazia no caminho "apagar dados" — mesma
+              // allow-list, para os dois caminhos nunca divergirem.
+              // Custo aceito: checklist e snooze do radar voltam da nuvem no
+              // próximo login (extras_sync); o histórico do chat NÃO volta, e é
+              // exatamente por não ter como amarrá-lo à conta que ele não pode
+              // ficar. Best-effort: falhar aqui não pode impedir a saída.
+              await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS).catch(() => {});
               // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
               // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
               // competir com ele (corrida de navegação).

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator, Platform } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +19,17 @@ import { getPlanoAtual, getPlanoCacheado, PlanoId } from '../services/planos';
 import { aplicarSeo } from '../utils/seoWeb';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para assinatura consumida
+ * dentro do app e proíbe abrir o checkout num navegador externo (link-out). Não há
+ * StoreKit implementado ainda, então no iOS a ASSINATURA fica escondida — o plano
+ * atual continua visível (isso é permitido; o proibido é vender). `COMPRA_NO_APP`
+ * centraliza esse desvio para não espalhar `if (Platform.OS === 'ios')` pela tela.
+ * "Gerenciar assinatura" (portal Stripe) fica de fora desta guarda: é gestão de uma
+ * assinatura JÁ existente (feita fora do iOS), não uma compra nova.
+ */
+const COMPRA_NO_APP = Platform.OS !== 'ios';
 
 /** Período de cobrança escolhido no toggle de 3 opções. */
 type Periodo = 'mensal' | 'anual' | 'parcelado';
@@ -265,6 +276,10 @@ export default function PlanosScreen() {
   }
 
   async function assinarPlano(p: Plano) {
+    // Defesa em profundidade: no iOS nenhum botão chama isto (o CTA de assinatura
+    // fica escondido em PlanoCard), mas a guarda fica aqui também — Guideline
+    // 3.1.1 proíbe o link-out de checkout dentro do app.
+    if (!COMPRA_NO_APP) return;
     if (!supabase) {
       Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
       return;
@@ -367,7 +382,11 @@ export default function PlanosScreen() {
           <View style={styles.intro}>
             <OlliMascot size={44} onDark />
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
-            <Text style={styles.introSub}>O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Pro e Empresa podem ser assinados direto no app: mensal, anual com desconto ou em 12x sem juros no cartão.</Text>
+            <Text style={styles.introSub}>
+              {COMPRA_NO_APP
+                ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Pro e Empresa podem ser assinados direto no app: mensal, anual com desconto ou em 12x sem juros no cartão.'
+                : 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.'}
+            </Text>
           </View>
         </AnimatedEntrance>
 
@@ -542,6 +561,13 @@ function PlanoCard({
           <MaterialCommunityIcons name="check" size={18} color={cores.success} />
           <Text style={styles.ctaAtualText}>{plano.cta}</Text>
         </View>
+      ) : !COMPRA_NO_APP ? (
+        // iOS (Guideline 3.1.1): sem botão de assinatura, sem link-out para o
+        // checkout — só um texto honesto e curto, sem instrução de "vá ao site"
+        // (a Apple também proíbe direcionar para compra externa).
+        <View style={styles.ctaIndisponivel}>
+          <Text style={styles.ctaIndisponivelText}>Assinatura ainda não disponível no iPhone</Text>
+        </View>
       ) : plano.destaque ? (
         <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano}>
           <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan]}>
@@ -689,6 +715,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ctaOutlineText: { fontSize: 14.5, fontWeight: '800', color: c.primaryLight },
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: c.successLight, borderWidth: 1, borderColor: comAlfa(c.success, 0.3) },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: c.success },
+  // iOS (Guideline 3.1.1): estado neutro no lugar do CTA de compra — nem venda,
+  // nem "plano atual" (não é), só o aviso honesto de indisponibilidade.
+  ctaIndisponivel: { alignItems: 'center', justifyContent: 'center', borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
+  ctaIndisponivelText: { fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant, textAlign: 'center' },
 
   ctaSecundario: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 10, paddingVertical: 9 },
   ctaSecundarioText: { fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant },
