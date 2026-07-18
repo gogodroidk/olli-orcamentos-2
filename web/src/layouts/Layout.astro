@@ -97,8 +97,23 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/*
+      Ícones: o SVG serve a aba (nítido em qualquer tamanho); os PNG grandes
+      existem porque ao FIXAR o site na barra de tarefas o Chrome procura um
+      ícone de 192/512 e, não achando, estica o menor que houver. Era esse o
+      caminho que caía no favicon.ico antigo — que era o logo padrão do template
+      Astro, não a OLLI. Sem os tamanhos grandes declarados aqui, os arquivos em
+      /public não são encontrados.
+    */}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    {/* display:"browser" no manifest — dá os ícones grandes sem tornar o site
+        instalável como app. A web antiga "virava PWA" e isso foi motivo de
+        reconstrução; não reintroduzir por causa de um ícone. */}
+    <link rel="manifest" href="/site.webmanifest" />
     <title>{titulo}</title>
     <meta name="description" content={descricao} />
     <link rel="canonical" href={canonical} />
