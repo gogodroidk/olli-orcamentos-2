@@ -19,6 +19,17 @@ depois de 20/07.
 3. **Loop autônomo que NÃO para:** se não posso fazer algo → marca BLOQUEADO-HUMANO e pula. Se não há
    o que fazer numa frente → próxima. Roda onda após onda até o dono voltar e mandar parar.
 
+## MANDATO 2ª leva (dono, 17/07) — APROVADO, executar tudo, dúvida→pesquisa+decide sozinho
+- **VOZ COMPLETA + COBRANÇA LIGADA** (Fase 2 cobrança server-side + Fase 3 Tier B: o assistente que
+  pergunta e executa — "um clique, ele fala, a IA faz; se não sair, pergunta e refaz"). É a joia da coroa.
+- **IDENTIDADE VISUAL UNIFICADA COMPLETA** — convergir as 3 pontas pra linguagem do app.
+- **FILOSOFIA-MÃE: menos cliques / facilitar a vida do usuário, EM TODAS AS TELAS.** Exemplo dado:
+  autocomplete de e-mail no login (digita o começo + @ → sugere gmail/hotmail/…). "Quanto menos cliques
+  pro resultado, melhor." Aplicar essa criatividade em tudo: smart defaults, autocomplete, one-tap,
+  prefill, menos passos. **Experiência perfeita do usuário é O FOCO.**
+- **Alvo de hoje:** sistema TOTALMENTE completo e funcional, toda tela aprofundada, nada quebrado, nada
+  fora da sinergia, cada botão faz sentido e leva a outro. Rodar no máximo (workflows/multi-agente).
+
 ## Regras P0 (do OBJETIVO.md / ARMADILHAS — não são sugestão)
 1. **Erro nunca vira vazio** — todo gate de plano/permissão/vertical exige 3 estados (carregando|erro|valor).
 2. **Copy/preço/feature só derivada da fonte** (`PLANOS_BASE`, types, Stripe live) — nunca de memória.
