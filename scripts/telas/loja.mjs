@@ -36,6 +36,7 @@ import { semearTudo } from './semear.mjs';
 import { capturarTela } from './capturar-uma.mjs';
 import { conferirBundleSemCredenciais } from './guarda-bundle.mjs';
 import { abrirMoldura, conferirConformidade, laudoEmLinha, REGRAS } from './moldura-loja.mjs';
+import { MAX_RODAPE_VAZIO, medirBuffer, ocupacaoEmLinha } from './medir-ocupacao.mjs';
 import { TELAS_CELULAR } from './roteiro.mjs';
 
 const DIST = resolve(process.env.TELAS_DIST ?? '.expo/telas-build');
@@ -94,7 +95,20 @@ const ROTEIRO_LOJA = [
     },
     legenda: ['698 códigos de erro', 'que abrem sem internet'],
   },
-  { de: 'diagnostico-ia', legenda: ['Diagnóstico assistido', 'antes de abrir a máquina'] },
+  {
+    de: 'diagnostico-ia',
+    legenda: ['Diagnóstico assistido', 'antes de abrir a máquina'],
+    // EXCEÇÃO DECLARADA ao portão de vazio (ver `medir-ocupacao.mjs`). Esta
+    // tela é um formulário: abaixo do botão "Pedir diagnóstico" fica o espaço
+    // da RESPOSTA, e a resposta vem do worker de IA — que este build, offline
+    // de propósito, não alcança. Medido: 44,5% de rodapé vazio.
+    //
+    // A tolerância é escrita aqui, com o motivo, em vez de o limite geral ser
+    // afrouxado até caber: um limite que cabe em tudo não reprova nada. Se um
+    // dia a captura passar a rodar com o worker de pé, esta linha sai e a tela
+    // volta a ser cobrada como as outras.
+    vazioTolerado: 50,
+  },
   { de: 'clientes', legenda: ['Seus clientes', 'sempre à mão'] },
 ];
 
@@ -115,6 +129,7 @@ function resolverRoteiro() {
       ...base,
       id,
       legenda: entrada.legenda,
+      vazioTolerado: entrada.vazioTolerado ?? MAX_RODAPE_VAZIO,
       arquivo: `${String(i + 1).padStart(2, '0')}-${id}.png`,
     };
   });
@@ -159,9 +174,14 @@ async function main() {
     process.exit(1);
   }
 
-  rmSync(SAIDA, { recursive: true, force: true });
-  mkdirSync(SAIDA, { recursive: true });
-
+  // NADA é apagado aqui. A versão anterior fazia `rmSync(SAIDA)` NESTE ponto —
+  // antes de semear, antes de capturar — e a leva boa que estava commitada
+  // sumia no instante em que a semeadura falhasse. Isso deixou de ser hipótese
+  // quando a semeadura ganhou conferência estrita: ela agora falha de propósito
+  // quando uma gravação se perde, e o preço não pode ser ficar sem screenshot
+  // nenhuma para a loja. As imagens ficam em memória (8 × ~500 KB) e a pasta só
+  // é trocada no fim, quando as oito existirem. Mesmo defeito que
+  // `REVISAO_TELAS.md` §C2 aponta no pipeline da landing.
   const { url, fechar } = await servir(DIST);
   const browser = await abrirNavegador();
   const feitas = [];
@@ -180,10 +200,13 @@ async function main() {
     for (const tela of roteiro) {
       try {
         const png = await capturarTela(page, url, tela, ctx);
+        // Mede o VAZIO na captura crua, antes da moldura: aqui a imagem inteira
+        // é a tela do app e não há borda, legenda nem sombra para confundir a
+        // conta. O laudo de formato (1080x1920, sem alpha) continua sendo feito
+        // depois, sobre o arquivo gravado.
+        const ocupacao = await medirBuffer(png);
         const final = await moldura.montar(png, tela.legenda);
-        const destino = join(SAIDA, tela.arquivo);
-        writeFileSync(destino, final);
-        feitas.push({ ...tela, destino });
+        feitas.push({ ...tela, destino: join(SAIDA, tela.arquivo), png: final, ocupacao });
         console.log(`  ✓ ${tela.arquivo}`);
       } catch (e) {
         // Uma tela que não capturou é uma tela QUE FALTA, não uma tela que "não
@@ -201,6 +224,22 @@ async function main() {
     await fechar();
   }
 
+  // ── Só agora a pasta é trocada ───────────────────────────────────────────
+  // Leva incompleta NÃO substitui leva boa. Se faltou tela, o que está em disco
+  // (e commitado) continua sendo a última leva conforme, e o processo sai em
+  // erro dizendo o que faltou.
+  if (falhas.length) {
+    console.error(`\n${falhas.length} tela(s) NÃO foram capturadas:`);
+    for (const f of falhas) console.error(`  - ${f.arquivo}: ${f.motivo}`);
+    console.error(`\nNADA foi apagado: a leva anterior continua em ${SAIDA}.`);
+    console.error('Não suba a leva incompleta sem ler docs/ENXAME/LOJA.md.');
+    process.exit(1);
+  }
+
+  rmSync(SAIDA, { recursive: true, force: true });
+  mkdirSync(SAIDA, { recursive: true });
+  for (const f of feitas) writeFileSync(f.destino, f.png);
+
   // ── Laudo de conformidade: tudo MEDIDO do arquivo em disco ───────────────
   console.log('\nConferindo cada arquivo contra as regras da Play:');
   let algumReprovado = false;
@@ -211,6 +250,24 @@ async function main() {
     laudos.push({ arquivo: f.arquivo, ...c });
     if (!c.ok) algumReprovado = true;
     console.log(laudoEmLinha(f.arquivo, c));
+  }
+
+  // ── Laudo de OCUPAÇÃO: quanto de cada tela é fundo chapado ───────────────
+  //
+  // Regra de formato e regra de conteúdo são coisas diferentes, e só a primeira
+  // existia. `04-ordem-servico` passou em TODAS as regras da Play com 69,7% da
+  // altura vazia — porque nenhuma regra da Play fala de vazio. Uma tela oca não
+  // é recusada pela loja; é recusada pelo prestador que desliza a vitrine.
+  console.log('\nConferindo quanto de cada tela é fundo vazio:');
+  const ocas = [];
+  for (const f of feitas) {
+    const limite = f.vazioTolerado;
+    const oca = f.ocupacao.rodapeVazioPct > limite;
+    if (oca) ocas.push({ arquivo: f.arquivo, ...f.ocupacao, limite });
+    console.log(
+      ocupacaoEmLinha(f.arquivo, { ...f.ocupacao, oca }) +
+        (limite !== MAX_RODAPE_VAZIO ? `  (tolerância declarada: ${limite}%)` : ''),
+    );
   }
 
   const comDestaque = laudos.filter((l) => l.regras.resolucaoDeDestaque).length;
@@ -236,6 +293,15 @@ async function main() {
         dadosFicticios:
           'Todos os nomes, telefones, endereços e valores são inventados e vivem em scripts/telas/elenco.mjs. O build de captura roda sem nuvem e o banco é um SQLite local vazio: nenhum dado de cliente real passou por aqui.',
         capturas: laudos,
+        // `oca` é recalculado contra a tolerância DESTA tela. O `oca` que
+        // `medirBuffer` devolve usa o limite geral e sozinho seria uma
+        // contradição no arquivo ("oca: true, tolerado: 50, vazio: 44").
+        ocupacao: feitas.map((f) => ({
+          arquivo: f.arquivo,
+          ...f.ocupacao,
+          rodapeVazioTolerado: f.vazioTolerado,
+          oca: f.ocupacao.rodapeVazioPct > f.vazioTolerado,
+        })),
         faltando: falhas,
       },
       null,
@@ -244,14 +310,21 @@ async function main() {
     'utf8',
   );
 
-  if (falhas.length) {
-    console.error(`\n${falhas.length} tela(s) NÃO foram capturadas:`);
-    for (const f of falhas) console.error(`  - ${f.arquivo}: ${f.motivo}`);
-    console.error('\nNão suba a leva incompleta sem ler docs/ENXAME/LOJA.md.');
-    process.exit(1);
-  }
+  // `falhas` já saiu em erro lá em cima, ANTES de trocar a pasta — chegar aqui
+  // significa que as oito existem. `faltando` fica no laudo por completude.
   if (algumReprovado) {
     console.error('\nPelo menos um arquivo REPROVOU nas regras da Play (ver linhas com "X" acima). Não suba.');
+    process.exit(1);
+  }
+  if (ocas.length) {
+    console.error(`\n${ocas.length} tela(s) com rodapé vazio acima do tolerado:`);
+    for (const o of ocas) {
+      console.error(`  - ${o.arquivo}: ${o.rodapeVazioPct}% vazio (limite ${o.limite}%)`);
+    }
+    console.error(
+      '\nIsto é falta de DADO, não de código: semeie mais conteúdo em scripts/telas/elenco.mjs',
+    );
+    console.error('e capture de novo. Tela oca vende "app sem nada dentro". Não suba.');
     process.exit(1);
   }
   if (feitas.length < REGRAS.minCapturas) {

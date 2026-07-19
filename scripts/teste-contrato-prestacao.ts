@@ -65,7 +65,15 @@ const {
   dadosConclusaoDeOrcamento,
   somarDiasBR,
 } = await import('../src/utils/termosPdf.ts');
-const { AVISO_JURIDICO, AVISO_APP } = await import('../src/utils/documentoBase.ts');
+const {
+  AVISO_JURIDICO,
+  AVISO_APP,
+  qualificacaoPendente,
+  textoQualificacaoPendente,
+} = await import('../src/utils/documentoBase.ts');
+/** `contraste()` do TEMA — a mesma matemática do gate `checar-contraste.mjs`.
+ *  Reimplementar WCAG aqui seria criar uma segunda régua para divergir da primeira. */
+const { contraste } = await import('../src/theme/cores.ts');
 
 let falhas = 0;
 let passes = 0;
@@ -497,6 +505,200 @@ checar('a chave da prévia inclui o carimbo da assinatura', modal.includes('esco
 const editor = semComentarios(ler('../src/components/documentos/EditorClausulasContrato.tsx'));
 checar('o editor só fecha depois de gravar', editor.indexOf('await saveEmpresa(atualizada)') < editor.indexOf('aoSalvar(atualizada)'), true);
 checar('e a falha de gravação mantém o editor aberto', /catch \{[\s\S]{0,200}setErro\(true\);\s*setSalvando\(false\);\s*return;/.test(editor), true);
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 11) A QUALIFICAÇÃO DAS PARTES NÃO PODE SUMIR EM SILÊNCIO
+ *
+ * `linhaInfo` omite a linha de valor vazio. Certo para "Contato"; desastroso
+ * para CNPJ/CPF da CONTRATADA e CPF/endereço do CONTRATANTE — a linha some sem
+ * placeholder e sem aviso, e o documento afirma logo abaixo "As partes acima
+ * qualificadas...". Sem nome de cliente o bloco inteiro sai como retângulo vazio.
+ *
+ * O conserto não é recusar (offline-first: ele precisa do papel agora) nem
+ * encher de "_____" (entrega um rascunho ao cliente). É AVISAR antes, na tela
+ * onde ele gera, e deixar gerar. Estas asserções prendem as duas metades: a
+ * função que DETECTA e a tela que MOSTRA.
+ * ══════════════════════════════════════════════════════════════════════ */
+console.log('\n11) a qualificação das partes some em silêncio — e agora o app avisa');
+
+// O caminho concreto do achado: autônomo sem CNPJ/CPF gerando para um cliente
+// cadastrado só com nome e telefone.
+const EMPRESA_CRUA: any = { ...EMPRESA, cnpj: '', cpf: '', endereco: '', cidade: '', estado: '' };
+const ORC_CRU: any = { ...ORCAMENTO, clienteCpfCnpj: '', clienteEndereco: '' };
+
+// Primeiro a PROVA DE QUE O DEFEITO É REAL: o papel realmente sai sem os campos.
+const htmlCru = gerarHtmlContrato(ORC_CRU, EMPRESA_CRUA, termosPadraoContrato(ORC_CRU, EMPRESA_CRUA), SEM_IMAGENS);
+const partesCru = htmlCru.slice(htmlCru.indexOf('<h2>Das partes</h2>'), htmlCru.indexOf('As partes acima qualificadas'));
+checar('o papel de fato sai sem CNPJ/CPF de ninguém', /info-label">(CNPJ|CPF)/.test(partesCru), false);
+checar('e continua afirmando que as partes estão qualificadas', htmlCru.includes('As partes acima qualificadas'), true);
+
+const pend = qualificacaoPendente('contrato', { nome: ORC_CRU.clienteNome, cpfCnpj: '', endereco: '' }, EMPRESA_CRUA);
+const campos = pend.map((p: any) => p.campo);
+checar('avisa que falta o CNPJ/CPF do prestador', campos.includes('CNPJ ou CPF do seu negócio'), true);
+checar('avisa que falta o endereço do prestador', campos.includes('endereço do seu negócio'), true);
+checar('avisa que falta o CPF/CNPJ do cliente', campos.includes('CPF ou CNPJ do cliente'), true);
+checar('avisa que falta o endereço do cliente', campos.includes('endereço do cliente'), true);
+// Cada campo diz ONDE se conserta: aviso sem saída é só reclamação.
+checar('todo campo aponta onde corrigir', pend.every((p: any) => p.onde === 'Meu Negócio' || p.onde === 'cadastro do cliente'), true);
+/** `?.onde` de propósito: implementação quebrada tem que REPROVAR, não estourar. */
+const ondeDe = (trecho: string) => pend.find((p: any) => p.campo.includes(trecho))?.onde;
+checar('o campo da empresa manda para Meu Negócio', ondeDe('seu negócio'), 'Meu Negócio');
+checar('o campo do cliente manda para o cadastro do cliente', ondeDe('do cliente'), 'cadastro do cliente');
+
+// O pior caso do achado: orçamento sem nome de cliente → bloco vazio no papel.
+const semNome = qualificacaoPendente('contrato', { nome: '   ', cpfCnpj: '', endereco: '' }, EMPRESA);
+checar('nome do cliente em branco é acusado', semNome.map((p: any) => p.campo).includes('nome do cliente'), true);
+// Cliente só rascunhado (o painel já prevê isso — imprime "sem cliente" como
+// rótulo): o segundo bloco sai como um retângulo com borda e NADA dentro.
+const oSemCliente: any = { ...ORCAMENTO, clienteNome: '', clienteTelefone: '', clienteCpfCnpj: '', clienteEndereco: '' };
+const htmlSemNome = gerarHtmlContrato(oSemCliente, EMPRESA, termosPadraoContrato(oSemCliente, EMPRESA), SEM_IMAGENS);
+checar('sem cliente o bloco do CONTRATANTE sai mesmo vazio (o defeito existe)', /margin-top:8px;">\s*<\/div>/.test(htmlSemNome), true);
+checar('e é justamente esse caso que o aviso cobre por inteiro', qualificacaoPendente('contrato', { nome: '', cpfCnpj: '', endereco: '' }, EMPRESA).length, 3);
+
+// O outro lado: cadastro completo NÃO pode inventar pendência. Um aviso que
+// aparece sempre é um aviso que ninguém lê — e aí o que importa some junto.
+checar('cadastro completo não gera aviso nenhum', qualificacaoPendente('contrato', { nome: ORCAMENTO.clienteNome, cpfCnpj: ORCAMENTO.clienteCpfCnpj, endereco: ORCAMENTO.clienteEndereco }, EMPRESA), []);
+checar('e a frase de aviso fica vazia', textoQualificacaoPendente([]), '');
+// Autônomo com CPF (sem CNPJ) está qualificado — CPF é documento, não ausência.
+checar('CPF sem CNPJ qualifica o prestador', qualificacaoPendente('contrato', { nome: 'X', cpfCnpj: '1', endereco: 'Rua Y' }, { ...EMPRESA, cnpj: '', cpf: '111.222.333-44' } as any), []);
+
+// PRECISÃO por documento: só se avisa do que aquele papel imprime em branco.
+// Nos termos o local do serviço cai num texto de fallback e nunca fica vazio;
+// a conclusão sequer imprime o endereço da empresa.
+const pendGarantia = qualificacaoPendente('garantia', { nome: 'X', cpfCnpj: 'Y', endereco: '' }, EMPRESA).map((p: any) => p.campo);
+checar('o termo de garantia não reclama do endereço do cliente', pendGarantia.includes('endereço do cliente'), false);
+const pendConclusao = qualificacaoPendente('conclusao', { nome: 'X', cpfCnpj: 'Y', endereco: '' }, EMPRESA_CRUA).map((p: any) => p.campo);
+checar('a conclusão não reclama do endereço da empresa (não o imprime)', pendConclusao.includes('endereço do seu negócio'), false);
+checar('mas ainda cobra o CNPJ/CPF do prestador, que ela imprime', pendConclusao.includes('CNPJ ou CPF do seu negócio'), true);
+checar('e a garantia cobra o endereço da empresa, que ela imprime', qualificacaoPendente('garantia', { nome: 'X', cpfCnpj: 'Y' }, EMPRESA_CRUA).map((p: any) => p.campo).includes('endereço do seu negócio'), true);
+
+// A FRASE: diz o que falta, onde conserta, e que dá para gerar assim mesmo.
+const frase = textoQualificacaoPendente(pend);
+checar('a frase nomeia os campos que faltam', frase.includes('CPF ou CNPJ do cliente'), true);
+checar('a frase diz por que isso importa', frase.includes('identificam quem assina'), true);
+checar('a frase diz onde preencher', frase.includes('Meu Negócio'), true);
+checar('a frase deixa claro que dá para gerar assim mesmo', frase.includes('gerar assim mesmo'), true);
+// O aviso INFORMA; ele não pode virar uma recusa disfarçada.
+checar('a frase não recusa a gerar', /não (é possível|dá para|posso) gerar/i.test(frase), false);
+// Um campo só não pode sair com a conjunção quebrada ("A e ").
+checar('com um campo só a frase fica limpa', textoQualificacaoPendente([{ campo: 'nome do cliente', onde: 'cadastro do cliente' }]).includes('sem nome do cliente —'), true);
+// Lista literal: a conjunção é conferida contra um par conhecido, não contra o
+// resultado da função — senão uma função quebrada estouraria em vez de reprovar.
+const DOIS: any = [{ campo: 'nome do cliente', onde: 'cadastro do cliente' }, { campo: 'CPF ou CNPJ do cliente', onde: 'cadastro do cliente' }];
+checar('com dois campos a frase usa "e"', textoQualificacaoPendente(DOIS).includes('nome do cliente e CPF ou CNPJ do cliente'), true);
+// Três campos: vírgulas até o penúltimo, "e" só antes do último.
+const TRES: any = [...DOIS, { campo: 'endereço do cliente', onde: 'cadastro do cliente' }];
+checar('com três campos, vírgula e um "e" só', textoQualificacaoPendente(TRES).includes('nome do cliente, CPF ou CNPJ do cliente e endereço do cliente'), true);
+// Campos de lugares diferentes não podem repetir o mesmo lugar duas vezes.
+checar('lugares repetidos aparecem uma vez só', (textoQualificacaoPendente(TRES).match(/cadastro do cliente/g) ?? []).length, 1);
+
+// A TELA. Detectar e não mostrar é o mesmo que não detectar.
+checar('o modal calcula as pendências', modal.includes('qualificacaoPendente('), true);
+checar('e imprime a frase da fonte, não uma cópia', modal.includes('textoQualificacaoPendente(pendencias)'), true);
+checar('o aviso é anunciado como alerta', /pendenciaBox[\s\S]{0,80}accessibilityRole="alert"/.test(modal), true);
+/**
+ * POSIÇÃO: o aviso tem que estar no RODAPÉ, junto do botão que gera — é onde a
+ * decisão é tomada. Escondido no topo de uma lista rolável ele não seria visto
+ * por quem já escolheu o orçamento e está com o dedo no botão.
+ */
+const iRodape = modal.indexOf('styles.rodape');
+const iAviso = modal.indexOf('pendencias.length > 0');
+const iBotao = modal.indexOf('label="Ver e enviar documento"');
+checar('o aviso está entre o rodapé e o botão de gerar', iRodape > 0 && iRodape < iAviso && iAviso < iBotao, true);
+/**
+ * E ELE NÃO BLOQUEIA. O prestador pode estar na casa do cliente precisando do
+ * papel agora; a informação é dele, a decisão também. Se alguém "melhorar" isto
+ * desabilitando o botão, esta asserção reprova.
+ */
+checar('o botão de gerar não é desabilitado pelas pendências', /disabled[^\n]*pendencias/.test(modal), false);
+checar('nem o gesto que abre a prévia', /pendencias[^\n]*(return|throw)/.test(modal), false);
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 12) O AVISO JURÍDICO PRECISA SER LEGÍVEL — MEDIDO, NÃO PROMETIDO
+ *
+ * O texto sempre esteve certo; a diagramação o escondia. 9.5px em #8A93A2 sobre
+ * branco = 3.10:1 — a menor fonte e o pior contraste do documento, contra um
+ * corpo de 12.5px a 12.39:1. Honestidade que só existe no fonte não é
+ * honestidade. A régua é o `contraste()` do tema, o mesmo do gate de contraste.
+ * ══════════════════════════════════════════════════════════════════════ */
+console.log('\n12) o aviso jurídico é LEGÍVEL (tamanho e contraste medidos no CSS que sai)');
+
+/** Lê `font-size` e `color` de uma regra do CSS realmente embutido no documento. */
+function regraCss(doc: string, seletor: string): { px: number; cor: string } {
+  const m = doc.match(new RegExp(`\\${seletor}\\s*\\{([^}]*)\\}`));
+  if (!m) return { px: NaN, cor: '' };
+  const px = m[1].match(/font-size:\s*([\d.]+)px/);
+  const cor = m[1].match(/color:\s*(#[0-9a-fA-F]{3,8})/);
+  return { px: px ? Number(px[1]) : NaN, cor: cor ? cor[1] : '' };
+}
+// O leitor precisa ler de verdade: um parser quebrado aprovaria qualquer coisa.
+checar('o leitor de CSS enxerga uma regra', regraCss('.x { font-size: 7px; color: #ABCDEF; }', '.x'), { px: 7, cor: '#ABCDEF' });
+checar('e devolve NaN quando a regra não existe', Number.isNaN(regraCss('.y{}', '.zzz').px), true);
+
+const PAPEL = '#FFFFFF'; // documento é sempre claro (nunca segue o tema do app)
+const avisoTxt = regraCss(html, '.aviso-txt');
+const avisoTit = regraCss(html, '.aviso-tit');
+const corpoTxt = regraCss(html, '.clausula-txt');
+const razaoTxt = contraste(avisoTxt.cor, PAPEL);
+const razaoTit = contraste(avisoTit.cor, PAPEL);
+console.log(`     .aviso-txt ${avisoTxt.px}px ${avisoTxt.cor} = ${razaoTxt.toFixed(2)}:1  |  ` +
+            `.aviso-tit ${avisoTit.px}px ${avisoTit.cor} = ${razaoTit.toFixed(2)}:1  |  ` +
+            `.clausula-txt ${corpoTxt.px}px ${corpoTxt.cor} = ${contraste(corpoTxt.cor, PAPEL).toFixed(2)}:1`);
+
+checar('o texto do aviso passa o mínimo de 4.5:1', razaoTxt >= 4.5, true);
+checar('o título do aviso passa o mínimo de 4.5:1', razaoTit >= 4.5, true);
+checar('o texto do aviso tem tamanho legível (>= 10.5px)', avisoTxt.px >= 10.5, true);
+checar('o título do aviso também (>= 10.5px)', avisoTit.px >= 10.5, true);
+// Legível SEM virar panfleto: continua subordinado ao corpo das cláusulas.
+checar('mas não fica maior que o corpo do contrato', avisoTxt.px <= corpoTxt.px, true);
+// E não pode ser o pior contraste do documento: era exatamente esse o defeito.
+checar('o aviso não é mais o pior contraste da página', razaoTxt > contraste('#8A93A2', PAPEL), true);
+// O CSS é do chassi: os três documentos herdam a mesma correção.
+for (const [nome, doc] of [['garantia', garantiaHtml], ['conclusão', gerarHtmlTermoConclusao(dadosConclusaoDeOrcamento(ORCAMENTO, EMPRESA), EMPRESA, SEM_IMAGENS)]] as const) {
+  const r = regraCss(doc, '.aviso-txt');
+  checar(`o termo de ${nome} herda o aviso legível`, r.px >= 10.5 && contraste(r.cor, PAPEL) >= 4.5, true);
+}
+// Nada disso pode ter mexido no TEXTO: legibilidade é diagramação, não redação.
+checar('o texto do aviso permanece palavra por palavra', texto(html).includes(texto(AVISO_JURIDICO)), true);
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 13) OS TRÊS DOCUMENTOS DO MESMO SERVIÇO SAEM NA MESMA COR
+ *
+ * O contrato honrava a cor daquele orçamento; os termos caíam sempre na cor da
+ * empresa. Contrato verde e termo de garantia azul, do mesmo serviço, para o
+ * mesmo cliente, no mesmo dia.
+ * ══════════════════════════════════════════════════════════════════════ */
+console.log('\n13) contrato, garantia e conclusão do MESMO orçamento usam a MESMA cor');
+
+/** A cor de marca como ela sai no papel (a faixa do cabeçalho). */
+function corDoHtml(doc: string): string {
+  const m = doc.match(/border-bottom:\s*3px solid\s*(#[0-9a-fA-F]{3,8})/);
+  return m ? m[1].toUpperCase() : '';
+}
+checar('o leitor de cor enxerga a faixa do cabeçalho', /^#[0-9A-F]{6}$/.test(corDoHtml(html)), true);
+
+const VERDE = '#15803D'; // cor do seletor, trocada NAQUELE orçamento pelo wizard
+const oVerde: any = { ...ORCAMENTO, corMarca: VERDE };
+const corContrato = corDoHtml(gerarHtmlContrato(oVerde, EMPRESA, termosPadraoContrato(oVerde, EMPRESA), SEM_IMAGENS));
+const corGarantia = corDoHtml(gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(oVerde, EMPRESA), EMPRESA, SEM_IMAGENS));
+const corConclusao = corDoHtml(gerarHtmlTermoConclusao(dadosConclusaoDeOrcamento(oVerde, EMPRESA), EMPRESA, SEM_IMAGENS));
+console.log(`     contrato ${corContrato} · garantia ${corGarantia} · conclusão ${corConclusao}`);
+checar('garantia sai na mesma cor do contrato', corGarantia, corContrato);
+checar('conclusão sai na mesma cor do contrato', corConclusao, corContrato);
+/**
+ * A asserção acima sozinha PASSARIA se os três ignorassem o orçamento e caíssem
+ * juntos na cor da empresa — o defeito de metade. Esta prende o outro lado: a
+ * cor do orçamento tem que de fato vencer a da empresa.
+ */
+const corPadraoEmpresa = corDoHtml(gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(ORCAMENTO, { ...EMPRESA, corMarca: '#0B6FCE' } as any), { ...EMPRESA, corMarca: '#0B6FCE' } as any, SEM_IMAGENS));
+checar('a cor do orçamento vence a da empresa nos termos', corGarantia !== corPadraoEmpresa, true);
+// E a opção explícita continua vencendo as duas (mesma precedência do contrato).
+checar('a opção explícita vence a do orçamento', corDoHtml(gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(oVerde, EMPRESA), EMPRESA, SEM_IMAGENS, { corMarca: '#6D28D9' })) !== corGarantia, true);
+// Sem cor no orçamento, os termos continuam caindo na empresa — nada regrediu.
+checar('sem cor no orçamento, cai na cor da empresa', corDoHtml(gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(ORCAMENTO, EMPRESA), EMPRESA, SEM_IMAGENS)), corDoHtml(html));
+// A cor segue validada antes de entrar no <style> — A-4 não pode afrouxar XSS.
+const corVenenosa: any = { ...ORCAMENTO, corMarca: 'red;}body{display:none' };
+checar('cor de orçamento inválida não entra no <style> do termo', gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(corVenenosa, EMPRESA), EMPRESA, SEM_IMAGENS).includes('display:none'), false);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

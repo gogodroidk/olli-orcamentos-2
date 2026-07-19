@@ -29,6 +29,7 @@ import type { Empresa, Orcamento } from "@dominio";
 import { Info, Loader2, Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Campo } from "@/olli/components/campos";
+import { avisoDaMarca, useMarcaDoDocumento } from "@/olli/marcaDocumento";
 import {
 	AVISO_APP,
 	edicaoDeTermos,
@@ -87,6 +88,18 @@ export default function DialogoContrato({ orcamento, empresa, aoFechar }: Props)
 	const [erro, setErro] = useState<string | null>(null);
 
 	/**
+	 * O SELO DO OLLI sai ou não sai — decidido pela assinatura REAL, não pela tela.
+	 *
+	 * Enquanto a leitura não termina, o botão ESPERA e diz que está esperando: quem
+	 * paga para não ter a marca não pode receber a marca porque clicou rápido demais.
+	 * E quando não dá para confirmar o plano, o selo fica E a linha embaixo do botão
+	 * conta que ficou — o incômodo silencioso é o que fez este bug durar.
+	 */
+	const marca = useMarcaDoDocumento();
+	const conferindoPlano = marca.estado === "carregando";
+	const avisoMarca = marca.estado === "pronto" ? avisoDaMarca(marca.marca) : null;
+
+	/**
 	 * O que vai sair no papel, recalculado a cada tecla. É a mesma função que
 	 * alimenta o gerador na hora de imprimir — a prévia não pode ser um segundo
 	 * cálculo "parecido".
@@ -119,11 +132,13 @@ export default function DialogoContrato({ orcamento, empresa, aoFechar }: Props)
 	}
 
 	async function gerar() {
-		if (imprimindo || !orcamento || !finais) return;
+		// `marca.estado !== "pronto"` é uma guarda REAL, não defensiva: o botão fica
+		// desabilitado enquanto o plano carrega justamente para não imprimir no escuro.
+		if (imprimindo || !orcamento || !finais || marca.estado !== "pronto") return;
 		setImprimindo(true);
 		setErro(null);
 		try {
-			await imprimirContrato(orcamento, empresa, finais);
+			await imprimirContrato(orcamento, empresa, finais, { removerMarca: marca.marca.removerMarca });
 			aoFechar();
 		} catch {
 			// "Não consegui" NUNCA vira janela em branco nem diálogo que fecha sozinho:
@@ -288,6 +303,10 @@ export default function DialogoContrato({ orcamento, empresa, aoFechar }: Props)
 						<p role="alert" className="text-sm font-medium text-error-dark dark:text-error">
 							{erro}
 						</p>
+					) : avisoMarca ? (
+						/* Não é erro (o contrato sai igual) — é o prestador saber, ANTES de
+						   imprimir, que a marca do OLLI entrou e por quê. */
+						<p className="max-w-md text-xs leading-relaxed text-text-secondary">{avisoMarca}</p>
 					) : (
 						<span className="hidden text-xs text-text-secondary sm:block">
 							Abre a janela de impressão — escolha “Salvar como PDF”.
@@ -297,13 +316,13 @@ export default function DialogoContrato({ orcamento, empresa, aoFechar }: Props)
 						<Button variant="outline" className="h-11" onClick={aoFechar} disabled={imprimindo}>
 							Cancelar
 						</Button>
-						<Button className="h-11" onClick={gerar} disabled={imprimindo}>
-							{imprimindo ? (
+						<Button className="h-11" onClick={gerar} disabled={imprimindo || conferindoPlano}>
+							{imprimindo || conferindoPlano ? (
 								<Loader2 aria-hidden="true" className="mr-2 size-4 animate-spin" />
 							) : (
 								<Printer aria-hidden="true" className="mr-2 size-4" />
 							)}
-							{imprimindo ? "Preparando…" : "Gerar e imprimir"}
+							{conferindoPlano ? "Conferindo seu plano…" : imprimindo ? "Preparando…" : "Gerar e imprimir"}
 						</Button>
 					</div>
 				</DialogFooter>

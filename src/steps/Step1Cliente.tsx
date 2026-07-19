@@ -61,6 +61,11 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
     campos => setNc(p => ({ ...p, ...campos })),
     () => ({ endereco: ncRef.current.endereco, cidade: ncRef.current.cidade, estado: ncRef.current.estado }),
+    // De QUEM é o veredito. `setNc({})` limpava o formulário e deixava a caixa
+    // amarela do cliente anterior de pé; um toque em "Usar o do CEP" gravava a
+    // cidade dele no cliente seguinte. Aqui o modal é sempre um cadastro NOVO,
+    // então o que muda de assunto é abrir/fechar.
+    showNew ? 'novo' : 'fechado',
   );
 
   const handleSearch = useCallback(async (q: string) => {

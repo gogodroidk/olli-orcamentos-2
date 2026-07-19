@@ -296,6 +296,20 @@ export async function criarConvite(papel: Exclude<Papel, 'owner'>, email?: strin
   return { token: dados.token, link: typeof dados.link === 'string' ? dados.link : linkDoConvite(dados.token) };
 }
 
+/**
+ * O erro do worker vira frase em PT-BR. Cada caso conhecido diz O QUE ACONTECEU e
+ * O QUE FAZER — porque o `default` ("Tente de novo") só está certo quando tentar de
+ * novo pode de fato funcionar.
+ *
+ * `plano_requer_empresa` (402) é o caso que provou isso na prática. Ele NÃO caía em
+ * nenhum `case`, então o dono lia "Não consegui criar o convite agora. Tente de
+ * novo." — para sempre, porque nenhuma tentativa ia funcionar. E é alcançável hoje:
+ * o `usePlano` cacheia o último plano bom de propósito (quem paga não perde acesso
+ * numa oscilação de rede), então o dono de Empresa com o cartão vencido passa pelo
+ * `GateEquipe`, abre a tela, clica em convidar — e só aí o worker lê o status REAL
+ * da assinatura e recusa. A recusa é correta; a mensagem é que escondia o motivo:
+ * ele nunca ficava sabendo que o problema era o pagamento.
+ */
 function traduzirErroConvite(erro: unknown, status: number): string {
   switch (erro) {
     case 'sem_permissao':
@@ -308,6 +322,11 @@ function traduzirErroConvite(erro: unknown, status: number): string {
       return 'Muitos convites em pouco tempo. Aguarde um instante.';
     case 'nao_autorizado':
       return 'Sua sessão expirou. Entre de novo para convidar.';
+    case 'plano_requer_empresa':
+      // Não dizemos "seu plano venceu": o worker recusa tanto quem nunca assinou
+      // quanto quem deixou vencer, e afirmar o motivo errado é pior que não afirmar.
+      // Dizemos o que é verdade nos dois casos, e para onde ir.
+      return 'Convidar técnicos faz parte do plano Empresa, e a assinatura não está ativa agora. Veja o seu plano em Conta › "Ver os planos". Quem já está na sua equipe continua com acesso normal.';
     default:
       return status >= 500
         ? 'O serviço de convites está indisponível agora. Tente de novo em instantes.'

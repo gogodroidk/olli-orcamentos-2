@@ -35,10 +35,57 @@
 -- clientes/orcamentos/agendamentos já usam. Membro desligado sai de
 -- `donos_visiveis()` no mesmo instante, como no resto do modelo.
 --
--- Isto NÃO concede poder novo a um membro mal-intencionado: ele já pode APAGAR as
--- linhas de negócio do dono (as policies de DELETE de clientes/orcamentos/… são
--- `donos_visiveis()` desde 20260707). Plantar um tombstone é estritamente menos
--- do que já dá para fazer.
+-- ── DEPUTADO CONFUSO: por que o INSERT é restrito POR TABELA ────────────────
+--
+-- A primeira versão desta migration dizia, aqui, que o INSERT "NÃO concede poder
+-- novo a um membro mal-intencionado, porque ele já pode APAGAR as linhas de
+-- negócio do dono". A frase está ERRADA, e era ela que segurava a policy aberta.
+-- Conferido tabela por tabela no repositório, um membro ATIVO pode apagar 4 das
+-- 10 de `DELETABLE_TABLES` (`cloudSync.ts:1149`) — não as 10:
+--
+--   PODE apagar (policy de DELETE = donos_visiveis):
+--     orcamentos       20260707_multitenant.sql:491   orcamentos_membro_delete
+--     agendamentos     20260707_multitenant.sql:525   agendamentos_membro_delete
+--     ordens_servico   20260710_ordens_servico.sql    ordens_servico_delete
+--     equipamentos     20260709_pmoc_fundacao.sql     assets_delete (fábrica de
+--                      policies; `equipamentos` é `assets` na nuvem —
+--                      `REMOTE_TABLE`, cloudSync.ts:86)
+--
+--   NÃO pode apagar (escrita reservada ao dono, de propósito):
+--     clientes         20260719_clientes_insert_equipe.sql:48  clientes_owner_delete
+--                      (o técnico ganhou INSERT naquela migration; UPDATE e
+--                      DELETE ficaram com o dono "conservador", texto dela)
+--     servicos         20260707_multitenant.sql:419   servicos_owner_write
+--     produtos         20260707_multitenant.sql:435   produtos_owner_write
+--     recibos          20260707_multitenant.sql:451   recibos_owner_write
+--     modelos          20260615160744:54              modelos_owner
+--     depoimentos      20260615160744:36              depoimentos_owner
+--
+-- Sem a lista de tabelas no `with check`, o caminho de destruição era este:
+--   1. o técnico insere em `exclusoes` uma linha com `user_id = <dono>` e
+--      `tabela = 'recibos'`. A policy aprovava: ela limitava o TENANT e não a
+--      TABELA, e `donos_visiveis()` do técnico contém o dono.
+--   2. no sync seguinte do DONO, `applyCloudTombstones` (`cloudSync.ts:1185`)
+--      lê `exclusoes` sem filtro — e a policy self-only devolve a linha, porque
+--      o `user_id` dela É o do dono. Não há coluna de autoria: ele não tem como
+--      distinguir o tombstone que criou do que plantaram no tenant dele.
+--   3. `localDeleteById` apaga do SQLite do dono e `removeRow` apaga da nuvem
+--      COM A SESSÃO DO DONO — que obviamente passa em `recibos_owner_write`.
+--
+-- Quem executa o DELETE é o dono, autorizado, a mando de uma linha que o técnico
+-- plantou. É uma classe NOVA de dano, não "estritamente menos". `recibos` é o
+-- pior caso: é o comprovante de pagamento que o cliente final tem na mão.
+--
+-- A lista abaixo usa os nomes LOCAIS das tabelas, que é o que a coluna guarda:
+-- `registrarExclusao` (`database.ts:51-70`) grava o nome local e o repassa a
+-- `pushTombstone` sem traduzir — por isso 'equipamentos' e não 'assets'.
+--
+-- Nada legítimo é bloqueado por esta restrição. Tombstone que o membro grava
+-- para SI MESMO continua passando por `exclusoes_owner` (20260624, FOR ALL,
+-- self-only), que é permissiva e entra em OR com esta: `pushTombstone` usa o
+-- default `user_id = auth.uid()`, então hoje TODO tombstone do app cai lá. A
+-- policy desta migration só existe para a mudança futura de `cloudSync.ts`
+-- descrita no rodapé — e é exatamente essa mudança que precisa nascer limitada.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── A3 · exclusoes ──────────────────────────────────────────────────────────
@@ -57,11 +104,25 @@ create policy exclusoes_equipe_select
 -- `upsert(..., ignoreDuplicates: true)` = INSERT ... ON CONFLICT DO NOTHING,
 -- então INSERT basta — UPDATE/DELETE seguem self-only de propósito: ninguém
 -- deve poder REMOVER o tombstone do dono e ressuscitar o registro por essa via.
+--
+-- DUAS condições, não uma. O tenant diz EM NOME DE QUEM se apaga; a tabela diz
+-- O QUE se apaga. Só a primeira era verificada, e a segunda é a que impede o
+-- deputado confuso descrito no cabeçalho. A lista é fechada e literal de
+-- propósito: `tabela` não tem CHECK nem FK (não há DDL de `public.exclusoes` em
+-- supabase/migrations/ — a tabela nasceu fora do versionamento), então esta
+-- policy é a ÚNICA validação daquela coluna. Tabela nova que a equipe passe a
+-- poder apagar entra aqui de propósito, junto com a policy de DELETE dela.
+--
+-- A cláusula fica em UMA LINHA de propósito, mesmo comprida:
+-- `scripts/teste-isolamento-tenant.ts:192-201` confere POR LINHA que toda
+-- `using`/`with check` deste arquivo carrega o grão de tenant, e o próprio teste
+-- avisa que uma cláusula quebrada em várias linhas o faz FALHAR (erra para o
+-- lado seguro). Quebrar aqui derrubaria o teste sem que nada estivesse errado.
 drop policy if exists exclusoes_equipe_insert on public.exclusoes;
 create policy exclusoes_equipe_insert
   on public.exclusoes
   as permissive for insert to authenticated
-  with check (user_id in (select public.donos_visiveis()));
+  with check (user_id in (select public.donos_visiveis()) and tabela in ('orcamentos', 'agendamentos', 'ordens_servico', 'equipamentos'));
 
 -- ── A4 · contadores ─────────────────────────────────────────────────────────
 -- SELECT: o membro passa a ver o contador do dono e `syncContadores` (que já
@@ -84,6 +145,13 @@ create policy contadores_equipe_insert
   as permissive for insert to authenticated
   with check (user_id in (select public.donos_visiveis()));
 
+-- O UPDATE fica sem restrição de VALOR, e isso é escolha consciente: o membro
+-- pode escrever qualquer `valor` no contador do dono. Como a fusão é `Math.max`
+-- e monotônica, o dano máximo é queimar a numeração para a frente (o dono
+-- passaria a emitir 999999) — recuperável, e estritamente menor do que apagar
+-- os orçamentos dele, que ele já pode. Não dá para limitar aqui sem quebrar o
+-- caso legítimo (o técnico PRECISA subir a sequência do dono ao emitir).
+-- Registrado, não priorizado.
 drop policy if exists contadores_equipe_update on public.contadores;
 create policy contadores_equipe_update
   on public.contadores
@@ -104,4 +172,20 @@ create policy contadores_equipe_update
 --     INCOMPLETO: faltava compartilhar `contadores`, que é o item 1 acima.
 --     Aplicá-la antes disso troca número duplicado (visível) por documento que
 --     nunca aparece no painel (silencioso). NÃO aplicar.
+--  3. Quando o item 1 for feito, `pushTombstone` passará a mandar tombstone para
+--     o tenant do dono — e a policy acima vai RECUSAR (42501) tudo que não
+--     estiver na lista de 4 tabelas. `pushTombstone` engole erro por desenho
+--     ("nunca afeta o app local", `database.ts:64-68`), então a recusa será
+--     silenciosa. Isso é o comportamento CERTO em segurança e o ERRADO em
+--     diagnóstico: quem escrever aquela mudança precisa mandar o tombstone das
+--     6 tabelas reservadas para o tenant de QUEM APAGOU (o default `auth.uid()`
+--     de hoje), e não para o do dono. Mesma regra da RLS de dados: o técnico não
+--     apaga recibo do dono nem direto nem por procuração.
+--
+-- CONFERÊNCIA (o teste que cobre esta migration precisa incluir o vetor novo):
+-- `scripts/teste-isolamento-tenant.ts` já checa que a equipe NÃO ganhou DELETE
+-- nem UPDATE em `exclusoes`. O vetor deste arquivo não é DELETE nem UPDATE — é
+-- INSERT com `tabela` livre. O teste passa (44 ok) e o buraco existia. Vale
+-- acrescentar lá: "membro insere em exclusoes com tabela='recibos' e user_id do
+-- dono" deve REPROVAR.
 -- ─────────────────────────────────────────────────────────────────────────────

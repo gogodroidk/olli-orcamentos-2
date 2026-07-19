@@ -24,6 +24,130 @@ você saber antes do que descobrir por reclamação:
 é ILIMITADA** (fail-open declarado, de propósito, para o deploy ser seguro
 sozinho). Toda a máquina de idempotência só começa a valer com ela aplicada.
 
+## 🗄️ ORDEM SEGURA DAS MIGRATIONS 20260729 → 20260732 (apurado 19/07)
+
+> Fonte: `docs/ENXAME/REVISAO_MIGRATIONS.md` (revisão adversarial) + conferência
+> tabela por tabela no repositório nesta leva. **Nenhuma das quatro apaga uma
+> linha de dado e nenhuma é irreversível** — todas são DDL de policy, trigger ou
+> índice. O risco não está em adiar; está em aplicar fora de ordem.
+
+### Passo 0 — CONFERIR O BANCO ANTES DE QUALQUER COISA
+
+```sql
+-- (a) a 20260725 rodou? Bloqueante para a 20260730 E para convidar técnico.
+select 1 from information_schema.columns
+ where table_schema='public' and table_name='organizacoes'
+   and column_name='equipe_grandfathered';
+```
+
+**Zero linhas = pare e rode `20260725_equipe_grandfathering.sql` primeiro.** Sem
+essa coluna, `worker/src/equipe.js:176` pede `select=owner_user_id,equipe_grandfathered`,
+o PostgREST devolve 400, `orgTemEmpresaAtivo` devolve `'erro'` e o convite responde
+**503 fail-closed** — ou seja, **convidar técnico já está quebrado hoje**,
+independentemente desta leva. (O fail-closed está certo: ninguém ganha Equipe de
+graça por erro de leitura.)
+
+Vale conferir junto quais policies e índices já existem:
+
+```sql
+select tablename, policyname, cmd from pg_policies
+ where schemaname='public'
+   and tablename in ('organizacao_membros','convites','organizacoes','exclusoes','contadores')
+ order by tablename, policyname;
+
+select indexname from pg_indexes where schemaname='public'
+   and indexname in ('orcamento_versoes_orc_num_uidx','service_contract_versions_num_uidx',
+                     'pmoc_plan_versions_num_uidx','pmoc_ordens_geradas_unica');
+```
+
+### A ordem
+
+1. **`20260729_membro_consentimento.sql`** — aplicar. É o P0 de verdade (fecha o
+   sequestro de tenant). Não quebra nada: nenhum client faz INSERT em
+   `organizacao_membros` (entrar numa org é 100% `aceitar_convite`, SECURITY DEFINER).
+2. **`20260732_unicidade_por_tenant.sql`** — aplicar. Inerte para o produto
+   (nenhum `ON CONFLICT` do app aponta para os 4 índices trocados). `create unique
+   index` **sem** `CONCURRENTLY` toma lock de escrita — rodar em horário de pouco
+   movimento. As tabelas são pequenas hoje.
+3. **`20260730_paywall_empresa_selado.sql`** — aplicar **só depois do passo 0(a)**.
+   A dependência não falha na aplicação: `congelar_equipe_grandfathered` referencia
+   `new.equipe_grandfathered`, e plpgsql resolve campo de `NEW` em tempo de
+   EXECUÇÃO. Sem a 20260725 a migration **aplica sem erro** e a partir daí **todo
+   UPDATE em `public.organizacoes` levanta** `record "new" has no field ...` —
+   quebrando `criar_organizacao()` com um erro cru dias depois.
+   **Esta migration não corta o acesso de ninguém** (ver abaixo).
+4. **`20260731_exclusoes_contadores_equipe.sql`** — aplicar **inteira**, agora que
+   o furo foi fechado nesta leva (ver a seguir).
+5. **`20260727_numero_unico_por_tenant.sql.pendente`** — **NÃO aplicar.**
+   Confirmado não-aplicável: o pré-requisito declarado no cabeçalho dela (o push
+   renumerar no 23505) não existe — `cloudSync.ts:699` faz o upsert sem olhar
+   `error.code` e o `catch` de `pushRowUnchecked` engole tudo. Aplicar hoje troca
+   "número duplicado, visível" por "documento que nunca sobe, silencioso".
+
+**Entre as quatro não há dependência nenhuma** — não compartilham objeto. As
+dependências são todas para trás (20260707, 20260615160744, 20260624, 20260725,
+20260708, 20260709, 20260715).
+
+### Armadilha de ordem que não é de arquivo
+
+Aplicar **sempre em ordem de nome de arquivo** (`supabase db push` faz isso). Se
+alguém re-rodar uma migration antiga à mão no SQL editor **depois** desta leva, o
+buraco correspondente reabre em silêncio:
+
+- re-rodar `20260718_rls_owner_backdoor.sql` **recria** `membros_admin_insert` e
+  desfaz a 20260729;
+- re-rodar `20260707_multitenant.sql` **recria** `clientes_owner_write` (FOR ALL,
+  self) e apaga `clientes_membro_insert` da 20260719 — a partir daí o cliente que
+  o técnico cadastra volta a nascer fora do tenant do dono e a sumir da lista.
+
+### O que a 20260731 tinha e não tem mais
+
+A policy `exclusoes_equipe_insert` limitava o **tenant** e não a **tabela**. Um
+técnico ativo podia inserir em `exclusoes` uma linha com `user_id = <dono>` e
+`tabela = 'recibos'`; no sync seguinte a **sessão do próprio dono** executava o
+hard delete e passava na RLS, porque quem apagava era ele. Deputado confuso.
+
+O cabeçalho da migration justificava a policy aberta dizendo que o membro "já pode
+apagar as linhas de negócio do dono". **Conferido nesta leva: ele pode apagar 4
+das 10 tabelas de `DELETABLE_TABLES`**, não as 10 — e nem as 5 que a revisão
+adversarial supôs. `clientes` **não** está entre elas desde a 20260719
+(`clientes_owner_delete`), então a exposição era de **seis** tabelas: `clientes`,
+`servicos`, `produtos`, `recibos`, `modelos`, `depoimentos`.
+
+O `with check` agora exige as duas condições, e a lista de tabelas é literal e
+fechada: `orcamentos`, `agendamentos`, `ordens_servico`, `equipamentos` — exatamente
+aquelas em que a equipe já tem policy de DELETE. Nada legítimo é bloqueado: o
+tombstone que o membro grava para si mesmo continua passando por `exclusoes_owner`
+(permissiva, self-only, FOR ALL), que é por onde 100% dos tombstones do app passam
+hoje.
+
+**Fica aberto, de propósito:** `contadores_equipe_update` deixa o membro escrever
+qualquer `valor` no contador do dono. Dano máximo = queimar a numeração para a
+frente (fusão é `Math.max`, monotônica). Não dá para restringir sem quebrar o caso
+legítimo. Registrado, não priorizado.
+
+**Falta no teste:** `scripts/teste-isolamento-tenant.ts` checa que a equipe não
+ganhou DELETE nem UPDATE em `exclusoes` — o vetor era INSERT com `tabela` livre.
+Os 44 testes passavam com o buraco aberto.
+
+### O que exige decisão do dono antes de rodar
+
+1. **Nada nas quatro exige decisão de negócio.** Em particular, **a 20260730 não
+   liga nem desliga o paywall e não corta ninguém**: o trigger só levanta exceção,
+   não faz UPDATE nem backfill; o DROP de `convites_gestao_insert` fecha uma porta
+   que **nenhum código do produto usa** (o app chama `POST /equipe/convite` e o
+   painel manda convidar pelo celular); e o gate do worker não fica mais duro.
+   Ela **protege** a decisão futura, impedindo o cliente de se re-conceder o flag
+   pelo PostgREST.
+2. **A decisão de negócio continua sendo outra linha, e só o dono roda:**
+   `update public.organizacoes set equipe_grandfathered = false;` — **essa** corta
+   gente.
+3. **Atrito conhecido ao aplicar a 20260730:** quem tomar 402 (`plano_requer_empresa`)
+   lê **"Não consegui criar o convite agora. Tente de novo."** — e tentar de novo
+   nunca vai funcionar. `traduzirErroConvite` (`src/services/equipe.ts:299-316`)
+   não tem esse caso e cai no `default`. Conserto de uma linha; vale junto, não é
+   bloqueante.
+
 ## Destrava RECEITA (sem isso, ninguém paga)
 - [ ] **MP_WEBHOOK_SECRET** ausente no cofre do worker (o `MP_ACCESS_TOKEN` já está lá). Único item que liga Pix/cartão. Registrar o webhook no painel Mercado Pago.
 - [ ] **3 migrations no Supabase de produção** (ordem importa, fora de ordem = 500/503): `20260724_webhook_events.sql` → `20260725_equipe_grandfathering.sql` → `20260726_credit_ledger_imutavel.sql`. O código já assume que existem.
@@ -34,7 +158,7 @@ sozinho). Toda a máquina de idempotência só começa a valer com ela aplicada.
 - [ ] Abrir + pagar conta Play Console (cartão/CNPJ).
 - [ ] Decidir conta pessoal vs. organização (pessoal = teste fechado 12 testadores × 14 dias antes de produção; organização isenta).
 - [ ] Login EAS/Expo (`eas whoami` = Not logged in agora).
-- [ ] Aprovar screenshots + feature graphic 1024×500 (não existem no repo).
+- [ ] Aprovar screenshots + feature graphic. **Existem e estão conformes** (medido byte a byte em 19/07, não lido de laudo): 8 PNGs 1080×1920 truecolor sem alpha em `assets/loja/screenshots/` (3,87 MB no total) + `feature-graphic.png` 1024×500 + `icone-512.png`. Regerar é `node scripts/telas/loja.mjs` — sem emulador, sem adb, sem APK. Falta só o **olhar do dono**, não o arquivo.
 - [ ] Responder questionário de classificação de conteúdo (IARC) e aceitar termos.
 - [ ] Clique final de publicar/enviar para revisão.
 - [ ] Confirmar senha da keystore de upload no cofre (chave já existe: `CONFIG CLAUDE/olli-keystore/olli-upload.jks`).

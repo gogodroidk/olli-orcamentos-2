@@ -10,7 +10,7 @@
       "canais": 3,
       "temAlpha": false,
       "formato": "png",
-      "bytes": 527261,
+      "bytes": 527346,
       "proporcao": 0.5625,
       "regras": {
         "formato": true,
@@ -52,7 +52,7 @@
       "canais": 3,
       "temAlpha": false,
       "formato": "png",
-      "bytes": 488714,
+      "bytes": 511277,
       "proporcao": 0.5625,
       "regras": {
         "formato": true,
@@ -73,7 +73,7 @@
       "canais": 3,
       "temAlpha": false,
       "formato": "png",
-      "bytes": 413022,
+      "bytes": 507966,
       "proporcao": 0.5625,
       "regras": {
         "formato": true,
@@ -157,7 +157,7 @@
       "canais": 3,
       "temAlpha": false,
       "formato": "png",
-      "bytes": 443874,
+      "bytes": 460232,
       "proporcao": 0.5625,
       "regras": {
         "formato": true,
@@ -170,6 +170,96 @@
         "resolucaoDeDestaque": true
       },
       "ok": true
+    }
+  ],
+  "ocupacao": [
+    {
+      "arquivo": "01-novo-orcamento-itens.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2532,
+      "linhasComConteudo": 2096,
+      "ocupacao": 82,
+      "rodapeVazioPct": 0.9,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "02-orcamento-aprovado.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2556,
+      "linhasComConteudo": 2452,
+      "ocupacao": 95.9,
+      "rodapeVazioPct": 0,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "03-lista-orcamentos.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2378,
+      "linhasComConteudo": 2244,
+      "ocupacao": 87.8,
+      "rodapeVazioPct": 7,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "04-ordem-servico.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2485,
+      "linhasComConteudo": 2268,
+      "ocupacao": 88.7,
+      "rodapeVazioPct": 2.8,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "05-agenda.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2520,
+      "linhasComConteudo": 1577,
+      "ocupacao": 61.7,
+      "rodapeVazioPct": 1.4,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "06-codigos-erro.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2556,
+      "linhasComConteudo": 2219,
+      "ocupacao": 86.8,
+      "rodapeVazioPct": 0,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "07-diagnostico-ia.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 1424,
+      "linhasComConteudo": 1370,
+      "ocupacao": 53.6,
+      "rodapeVazioPct": 44.3,
+      "oca": false,
+      "rodapeVazioTolerado": 50
+    },
+    {
+      "arquivo": "08-clientes.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2556,
+      "linhasComConteudo": 1782,
+      "ocupacao": 69.7,
+      "rodapeVazioPct": 0,
+      "oca": false,
+      "rodapeVazioTolerado": 20
     }
   ],
   "faltando": []

@@ -120,11 +120,110 @@ export function imgSrc(dataUri: string | undefined): string {
 
 /* ─── Blocos ───────────────────────────────────────────────────────── */
 
-/** Linha "rótulo: valor" de um quadro de qualificação. Omite valor vazio. */
+/**
+ * Linha "rótulo: valor" de um quadro de qualificação. Omite valor vazio.
+ *
+ * A omissão é DE PROPÓSITO e continua certa para "Contato" — mas ela apaga em
+ * silêncio os campos que qualificam quem assina. Quem paga essa conta é
+ * `qualificacaoPendente`, logo abaixo: o papel não ganha placeholder, a TELA
+ * ganha o aviso.
+ */
 export function linhaInfo(rotulo: string, valor?: string): string {
   const v = (valor ?? '').trim();
   if (!v) return '';
   return `<div class="info-row"><span class="info-label">${escapeHtml(rotulo)}</span><span class="info-value">${escapeHtml(v)}</span></div>`;
+}
+
+/* ─── Qualificação das partes ──────────────────────────────────────────── */
+
+/** Os três documentos jurídicos. Casa com `TipoDocumento` do modal de geração. */
+export type TipoDocumentoJuridico = 'contrato' | 'garantia' | 'conclusao';
+
+/** Um campo de qualificação que ESTE documento vai imprimir em branco. */
+export interface CampoFaltante {
+  /** Nome do campo como o prestador o vê na tela onde ele preenche. */
+  campo: string;
+  /** Onde ele conserta. Sem isso o aviso vira reclamação sem saída. */
+  onde: 'Meu Negócio' | 'cadastro do cliente';
+}
+
+/** Dados do cliente que o documento imprime — vêm do orçamento. */
+export interface ClienteDoDocumento {
+  nome?: string;
+  cpfCnpj?: string;
+  endereco?: string;
+}
+
+/**
+ * O que vai sair EM BRANCO na qualificação das partes deste documento.
+ *
+ * O PROBLEMA. `linhaInfo` some com a linha vazia, então CNPJ/CPF da CONTRATADA e
+ * CPF/endereço do CONTRATANTE desaparecem sem placeholder e sem aviso — e o
+ * contrato afirma, três linhas abaixo, "As partes acima qualificadas...". Sem
+ * nome de cliente o bloco inteiro sai como um retângulo com borda e nada dentro.
+ *
+ * POR QUE AVISAR, E NÃO RECUSAR NEM PREENCHER. Recusar quebra o offline-first: o
+ * prestador está na casa do cliente e precisa do papel agora. Encher de "_____"
+ * entrega ao cliente um documento com cara de rascunho. O certo é o terceiro
+ * caminho — o mesmo do `<AvisoCep>`: informar ANTES, nomear o que falta e onde
+ * se conserta, e deixar gerar mesmo assim. Quem decide é quem está lá.
+ *
+ * SÓ ENTRA AQUI O QUE O PAPEL REALMENTE IMPRIME EM BRANCO. O endereço do cliente
+ * some no contrato (`o.clienteEndereco` vai cru para `linhaInfo`), mas nos
+ * termos ele já cai num texto de fallback e nunca fica vazio — avisar sobre
+ * campo que o documento resolve sozinho ensina o prestador a ignorar o aviso, e
+ * aí o aviso que importa também é ignorado.
+ */
+export function qualificacaoPendente(
+  tipo: TipoDocumentoJuridico,
+  cliente: ClienteDoDocumento,
+  empresa: Empresa,
+): CampoFaltante[] {
+  const vazio = (v?: string) => !(v ?? '').trim();
+  const faltando: CampoFaltante[] = [];
+
+  // CONTRATADA. Os três documentos imprimem a linha de CNPJ/CPF do prestador.
+  if (!documentoDaEmpresa(empresa)) {
+    faltando.push({ campo: 'CNPJ ou CPF do seu negócio', onde: 'Meu Negócio' });
+  }
+  // Contrato e termo de garantia imprimem o endereço da empresa; a conclusão não.
+  if (tipo !== 'conclusao' && !enderecoDaEmpresa(empresa)) {
+    faltando.push({ campo: 'endereço do seu negócio', onde: 'Meu Negócio' });
+  }
+
+  // CONTRATANTE. O nome é o pior: sem ele o bloco sai vazio e a linha de
+  // assinatura fica sem nome embaixo.
+  if (vazio(cliente.nome)) {
+    faltando.push({ campo: 'nome do cliente', onde: 'cadastro do cliente' });
+  }
+  if (vazio(cliente.cpfCnpj)) {
+    faltando.push({ campo: 'CPF ou CNPJ do cliente', onde: 'cadastro do cliente' });
+  }
+  if (tipo === 'contrato' && vazio(cliente.endereco)) {
+    faltando.push({ campo: 'endereço do cliente', onde: 'cadastro do cliente' });
+  }
+
+  return faltando;
+}
+
+/**
+ * O aviso em uma frase, montado da lista. Vive aqui, e não no JSX, porque é
+ * texto de produto: tem que ser o MESMO no app e no painel, e tem que poder ser
+ * conferido por teste sem montar componente.
+ *
+ * A frase diz o que falta, onde conserta e que dá para gerar assim mesmo —
+ * nessa ordem. Nunca diz "não é possível gerar": é possível, e às vezes é o
+ * certo (cliente que só quer o papel na mão hoje).
+ */
+export function textoQualificacaoPendente(faltando: readonly CampoFaltante[]): string {
+  if (faltando.length === 0) return '';
+  const lista = faltando.map(f => f.campo);
+  const campos = lista.length === 1
+    ? lista[0]
+    : `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}`;
+  const lugares = [...new Set(faltando.map(f => f.onde))].join(' e em ');
+  return `Este documento vai sair sem ${campos} — são os campos que identificam quem assina. `
+    + `Você pode preencher em ${lugares} e gerar de novo, ou gerar assim mesmo.`;
 }
 
 /** Endereço da empresa em uma linha (rua · cidade/UF). */
@@ -335,9 +434,19 @@ export function cssDocumentoBase(cor: string): string {
   .test-col .ass-linha { margin-top: 0; }
   .test-col .ass-cap { text-align: left; }
 
+  /* O aviso jurídico é INFORMAÇÃO, não letra miúda de rodapé.
+   * Estava em 9.5px e #8A93A2 — a menor fonte e o PIOR contraste do documento
+   * inteiro (3.10:1, abaixo do mínimo de 4.5:1), contra um corpo de 12.5px a
+   * 12.39:1. A honestidade existia no texto e desaparecia na diagramação: um
+   * aviso que se esconde não é aviso, e este presta um serviço às DUAS partes
+   * (informa que a garantia legal do CDC vale de qualquer jeito).
+   * Agora 11px / #4A5261 = 7.86:1 — legível, e ainda SUBORDINADO ao corpo
+   * (menor e mais claro que os 12.5px #2C3542 da cláusula), para o documento
+   * não virar panfleto de advertência. Os dois números são MEDIDOS pelo teste,
+   * com a mesma função de contraste do tema, lendo o CSS que de fato sai. */
   .aviso { margin-top: 26px; border-top: 1px solid #E7E9EE; padding-top: 10px; page-break-inside: avoid; }
-  .aviso-tit { font-size: 9.5px; font-weight: 800; color: #6B7484; text-transform: uppercase; letter-spacing: 1px; }
-  .aviso-txt { font-size: 9.5px; color: #8A93A2; line-height: 1.55; margin-top: 3px; }
+  .aviso-tit { font-size: 10.5px; font-weight: 800; color: #6B7484; text-transform: uppercase; letter-spacing: 1px; }
+  .aviso-txt { font-size: 11px; color: #4A5261; line-height: 1.55; margin-top: 3px; }
   .selo { display: flex; align-items: center; justify-content: center; gap: 6px;
           font-size: 10px; color: #B0B7C2; font-weight: 600; margin-top: 10px; }
 

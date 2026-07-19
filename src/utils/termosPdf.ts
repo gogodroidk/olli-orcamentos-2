@@ -110,6 +110,13 @@ export const GARANTIA_ONUS_PADRAO = [
 
 export interface TermoGarantiaDados {
   numero: string;
+  /**
+   * Cor de marca DAQUELE orçamento. O contrato já a honrava
+   * (`corDoDocumento(opts?.corMarca ?? o.corMarca, empresa)`) e os termos não —
+   * então contrato e termo do MESMO serviço, no mesmo dia, para o mesmo
+   * cliente, saíam em cores diferentes. Colhida em `dadosGarantiaDeOrcamento`.
+   */
+  corMarca?: string;
   clienteNome: string;
   clienteCpfCnpj?: string;
   clienteTelefone?: string;
@@ -139,6 +146,7 @@ export function dadosGarantiaDeOrcamento(
   const contato = [empresa.telefone || empresa.whatsapp, empresa.email].filter(Boolean).join(' ou ');
   const base: TermoGarantiaDados = {
     numero: o.numero,
+    corMarca: o.corMarca,
     clienteNome: o.clienteNome,
     clienteCpfCnpj: o.clienteCpfCnpj,
     clienteTelefone: o.clienteTelefone,
@@ -177,7 +185,8 @@ export function gerarHtmlTermoGarantia(
   imagens: { logo: string; assinaturaPrestador: string },
   opts?: OpcoesTermo,
 ): string {
-  const cor = corDoDocumento(opts?.corMarca, empresa);
+  // Mesma precedência do contrato: opção explícita > cor do orçamento > empresa.
+  const cor = corDoDocumento(opts?.corMarca ?? d.corMarca, empresa);
   const conclusaoBR = dataBR(d.dataConclusao);
   const validoAte = somarDiasBR(d.dataConclusao, d.prazoDias);
   const docEmpresa = documentoDaEmpresa(empresa);
@@ -278,6 +287,8 @@ export async function compartilharPdfTermoGarantia(
 
 export interface TermoConclusaoDados {
   numero: string;
+  /** Cor de marca daquele orçamento — ver a nota em `TermoGarantiaDados`. */
+  corMarca?: string;
   clienteNome: string;
   clienteCpfCnpj?: string;
   clienteTelefone?: string;
@@ -299,6 +310,7 @@ export function dadosConclusaoDeOrcamento(
 ): TermoConclusaoDados {
   const base: TermoConclusaoDados = {
     numero: o.numero,
+    corMarca: o.corMarca,
     clienteNome: o.clienteNome,
     clienteCpfCnpj: o.clienteCpfCnpj,
     clienteTelefone: o.clienteTelefone,
@@ -322,7 +334,7 @@ export function gerarHtmlTermoConclusao(
   imagens: { logo: string; assinaturaPrestador: string },
   opts?: OpcoesTermo,
 ): string {
-  const cor = corDoDocumento(opts?.corMarca, empresa);
+  const cor = corDoDocumento(opts?.corMarca ?? d.corMarca, empresa);
   const conclusaoBR = dataBR(d.dataConclusao);
   const docEmpresa = documentoDaEmpresa(empresa);
   const pendencias = (d.pendencias ?? '').trim();

@@ -22,7 +22,8 @@ import { Empresa, ServicoItem, Segmento, SEGMENTOS } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF } from '../utils/masks';
-import { consultarCep } from '../services/cep';
+import { useCepLookup } from '../services/cep';
+import { AvisoCep } from '../components/AvisoCep';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId } from '../services/verticais';
 import { VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
@@ -112,8 +113,6 @@ export default function OnboardingScreen() {
   }, []);
   // partes do endereço (compostas em emp.endereco ao concluir)
   const [end, setEnd] = useState<EnderecoForm>({ cep: '', rua: '', numero: '', complemento: '', bairro: '' });
-  const [cepLoading, setCepLoading] = useState(false);
-  const [cepInfo, setCepInfo] = useState<string | null>(null);
   // CNPJ: cadastro mágico (autofill + dedução da vertical).
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cnpjInfo, setCnpjInfo] = useState<string | null>(null);
@@ -135,50 +134,58 @@ export default function OnboardingScreen() {
   }
 
   // ─── CEP: busca automática ao completar 8 dígitos ──────────────
-  function onCepChange(masked: string) {
-    setEnd(p => ({ ...p, cep: masked }));
-    setCepInfo(null);
-    const digits = masked.replace(/\D/g, '');
-    if (digits.length === 8) void lookupCep(digits);
-  }
-
-  async function lookupCep(digits: string) {
-    setCepLoading(true);
-    setCepInfo(null);
-    try {
-      // Os quatro estados são distintos DE PROPÓSITO. A versão anterior tratava
-      // "esse CEP não existe" e "não consegui consultar" com a mesma frase — e aí
-      // o usuário conferia o próprio dedo por um problema nosso, ou desistia de um
-      // CEP que estava certo. Cada um tem a sua mensagem e todos liberam a
-      // digitação manual: a consulta é atalho, nunca barreira.
-      const r = await consultarCep(digits);
-      if (r.estado === 'ok') {
-        // preenche e mantém editável; só completa o que está vazio
-        setEnd(p => ({
-          ...p,
-          rua: r.endereco.logradouro || p.rua,
-          bairro: r.endereco.bairro || p.bairro,
-        }));
-        setEmp(p => ({
-          ...p,
-          cidade: r.endereco.cidade || p.cidade,
-          estado: r.endereco.uf || p.estado,
-        }));
-        setCepInfo('Endereço encontrado — confira e complete o número.');
-        Haptics.selectionAsync().catch(() => {});
-      } else if (r.estado === 'nao_encontrado') {
-        setCepInfo('Não achei esse CEP. Confira o número ou preencha o endereço à mão.');
-      } else if (r.estado === 'invalido') {
-        setCepInfo('CEP incompleto. Precisa dos 8 dígitos.');
-      } else {
-        setCepInfo('Não consegui consultar agora (sem internet?). Pode preencher à mão.');
-      }
-    } catch {
-      setCepInfo('Não consegui consultar agora. Pode preencher à mão.');
-    } finally {
-      setCepLoading(false);
-    }
-  }
+  //
+  // ESTA TELA TINHA A TERCEIRA FORMA DE FAZER ISSO, e as duas diferenças eram
+  // defeito, não estilo:
+  //
+  //  (1) SOBRESCREVIA o que o usuário digitou. Era `cidade: r.endereco.cidade
+  //      || p.cidade`, que só respeita o valor dele quando o CEP NÃO traz
+  //      cidade — ou seja, quase nunca. O comentário acima daquelas linhas
+  //      dizia "só completa o que está vazio"; o código fazia o oposto. O
+  //      caminho real: o cadastro mágico por CNPJ preenchia cidade/UF da sede
+  //      (corretos), o prestador descia e digitava o CEP da OFICINA, e a
+  //      cidade da sede era apagada em silêncio — a mesma cidade que vira o
+  //      FORO do contrato (`foroPadrao`, utils/contratoPdf.ts) e o cabeçalho de
+  //      todo documento. `mesclarEndereco` já resolve isso há três telas: campo
+  //      com conteúdo NÃO é tocado, divergência vira pergunta com botão.
+  //
+  //  (2) NÃO TINHA GUARDA DE CORRIDA. Duas consultas no ar (apagou um dígito e
+  //      digitou outro) e a mais lenta vencia, com a frase "Endereço
+  //      encontrado" por cima do endereço errado. O `pedidoRef` do hook
+  //      descarta resposta velha.
+  //
+  // O <AvisoCep> traz de brinde o que o `<Text>` único daqui não tinha: ícone
+  // próprio e `accessibilityRole="alert"` separando "esse CEP não existe" de
+  // "não consegui consultar". Nada aqui bloqueia digitação — segue atalho.
+  const endRef = useRef(end);
+  endRef.current = end;
+  const empRef = useRef(emp);
+  empRef.current = emp;
+  const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
+    (campos, achado) => {
+      setEnd(p => ({
+        ...p,
+        // `campos` só traz o que o mesclador LIBEROU (campo que estava vazio).
+        // `rua` é o `endereco` do mesclador — mesmo campo, outro nome aqui.
+        ...(campos.endereco !== undefined ? { rua: campos.endereco } : null),
+        // Bairro não passa pelo mesclador (o cadastro de cliente não tem esse
+        // campo, então `CamposEndereco` não o carrega). Mesma regra aplicada à
+        // mão, explícita: só entra em campo vazio.
+        ...(!p.bairro.trim() && achado.bairro ? { bairro: achado.bairro } : null),
+      }));
+      setEmp(p => ({
+        ...p,
+        ...(campos.cidade !== undefined ? { cidade: campos.cidade } : null),
+        ...(campos.estado !== undefined ? { estado: campos.estado } : null),
+      }));
+      Haptics.selectionAsync().catch(() => {});
+    },
+    () => ({ endereco: endRef.current.rua, cidade: empRef.current.cidade, estado: empRef.current.estado }),
+    // Fluxo único: uma empresa só, sem troca de registro — a chave é constante.
+    // O parâmetro é obrigatório justamente para esta decisão ser declarada, e
+    // não esquecida, em cada tela nova que usar o hook.
+    'onboarding',
+  );
 
   // ─── CNPJ: cadastro mágico (F1 da estratégia) ──────────────────
   // Preenche a empresa pela BrasilAPI (via worker) e DEDUZ a vertical pelo CNAE,
@@ -507,14 +514,15 @@ export default function OnboardingScreen() {
             <Text style={styles.hint}>Digite o CEP que a gente preenche o resto pra você.</Text>
 
             <View style={styles.card}>
-              <View style={styles.cepRow}>
-                <OlliInput label="CEP" mask="cep" value={end.cep} onChangeText={onCepChange}
-                  placeholder="00000-000" leftIcon="map-marker-radius" containerStyle={{ flex: 1, marginBottom: 0 }} />
-                {cepLoading && <ActivityIndicator size="small" color={cores.accentLight} style={styles.cepSpinner} />}
-              </View>
-              {cepInfo ? <Text style={styles.cepInfo}>{cepInfo}</Text> : null}
-
-              <View style={{ height: Spacing.base }} />
+              <OlliInput label="CEP" mask="cep" value={end.cep}
+                onChangeText={v => onCepChange(v, masked => setEnd(p => ({ ...p, cep: masked })))}
+                placeholder="00000-000" leftIcon="map-marker-radius" containerStyle={{ marginBottom: Spacing.sm }} />
+              {/* Mesmo componente das outras três telas: o spinner virou um dos
+                  seis estados, e "não existe" deixou de parecer com "não
+                  consegui" — que é a distinção pela qual todo o services/cep.ts
+                  existe. A divergência sai com botão: o CEP nunca sobrescreve
+                  cidade/UF sozinho. */}
+              <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
 
               <OlliInput label="Rua / Logradouro" value={end.rua} onChangeText={v => setEnd(p => ({ ...p, rua: v }))} placeholder="Ex: Rua das Flores" leftIcon="road-variant" />
               <View style={styles.rowFields}>
@@ -756,9 +764,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
   segChipTextActive: { color: textoSobre(c.accentLight) },
 
-  cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  cepSpinner: { marginLeft: 10, marginBottom: 14 },
-  cepInfo: { fontSize: 12.5, color: c.accentLight, marginTop: 8, fontWeight: '600' },
+  // (o spinner e o texto único do CEP viraram estados do <AvisoCep>)
 
   brandPickRow: { flexDirection: 'row', justifyContent: 'center', gap: 24 },
   brandItem: { alignItems: 'center' },

@@ -205,6 +205,13 @@ export default function ClientesScreen() {
   const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
     campos => setEditing(p => (p ? { ...p, ...campos } : p)),
     () => ({ endereco: editingRef.current?.endereco, cidade: editingRef.current?.cidade, estado: editingRef.current?.estado }),
+    // De QUEM é o veredito do CEP. Sem isto o hook não desmonta junto com o
+    // modal (`visible={!!editing}` não desmonta este componente), e a caixa
+    // amarela do cliente anterior sobrevivia — com o botão "Usar o do CEP"
+    // ativo — sobre o formulário do próximo. `'fechado'` é um valor à parte de
+    // propósito: fechar e reabrir "Novo Cliente" TEM que zerar, senão dois
+    // cadastros novos seguidos compartilhariam o mesmo veredito.
+    editing ? (editing.id ?? 'novo') : 'fechado',
   );
 
   // useCallback (dep [query]): mesma semântica de "sempre closure fresca" de

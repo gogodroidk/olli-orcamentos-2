@@ -48,6 +48,11 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
   const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
     campos => setForm(p => ({ ...p, ...campos })),
     () => ({ endereco: formRef.current.endereco, cidade: formRef.current.cidade, estado: formRef.current.estado }),
+    // De QUEM é o veredito. Este painel troca de cliente sem desmontar (o
+    // `useEffect` abaixo só recarrega `form`), então sem chave a caixa amarela
+    // de um cliente sobrevivia sobre o cadastro do outro — com o botão que
+    // grava. `'fechado'` entra na conta para que reabrir também zere.
+    visivel ? (cliente?.id ?? 'novo') : 'fechado',
   );
 
   const ehNovo = !cliente;

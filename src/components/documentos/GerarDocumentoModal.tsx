@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Modal, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, Modal, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Fonts, useCores, useEstilos, sombrasDe, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Fonts, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../../theme';
 import { OlliButton } from '../OlliButton';
 import { OlliSkeleton } from '../OlliSkeleton';
 import { PdfPreviewModal } from '../PdfPreviewModal';
@@ -13,7 +13,7 @@ import { RECURSO_REMOVE_MARCA } from '../../services/planos';
 import { Empresa, Orcamento } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
-import { AVISO_APP } from '../../utils/documentoBase';
+import { AVISO_APP, qualificacaoPendente, textoQualificacaoPendente } from '../../utils/documentoBase';
 import { montarHtmlContratoCompleto, termosPadraoContrato } from '../../utils/contratoPdf';
 import {
   dadosConclusaoDeOrcamento,
@@ -147,6 +147,24 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
 
   const assinado = !!escolhido?.assinaturaContratoUri;
 
+  /**
+   * O que a qualificação das partes vai imprimir EM BRANCO neste documento.
+   *
+   * O aviso aparece junto do botão que gera — é ali que a decisão é tomada, e é
+   * ali que ele ainda dá tempo de voltar. Ele NÃO desabilita nada: o prestador
+   * pode estar na casa do cliente precisando do papel agora, e a informação
+   * pertence a ele, não ao app. Mesma postura do `<AvisoCep>`: informa, diz onde
+   * conserta, e quem decide é quem está lá.
+   */
+  const pendencias = useMemo(() => {
+    if (!escolhido || !empresa) return [];
+    return qualificacaoPendente(
+      tipo,
+      { nome: escolhido.clienteNome, cpfCnpj: escolhido.clienteCpfCnpj, endereco: escolhido.clienteEndereco },
+      empresa,
+    );
+  }, [escolhido, empresa, tipo]);
+
   return (
     <Modal visible={visivel} animationType="slide" onRequestClose={aoFechar} presentationStyle="pageSheet">
       <View style={[styles.container, { paddingTop: insets.top ? 0 : Spacing.md }]}>
@@ -233,6 +251,12 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
               <View style={styles.erroLinha}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={16} color={cores.danger} />
                 <Text style={styles.erroTexto}>Não consegui salvar a assinatura. Tente assinar de novo.</Text>
+              </View>
+            )}
+            {pendencias.length > 0 && (
+              <View style={styles.pendenciaBox} accessibilityRole="alert">
+                <MaterialCommunityIcons name="account-alert-outline" size={16} color={cores.warning} />
+                <Text style={styles.pendenciaTexto}>{textoQualificacaoPendente(pendencias)}</Text>
               </View>
             )}
             <TouchableOpacity
@@ -326,6 +350,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     minHeight: 48, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline,
   },
   assinarTexto: { fontSize: 13.5, fontFamily: Fonts.bold, color: c.accentLight },
+  // Mesma caixa do <AvisoCep>: avisa sem bloquear, e o botão continua ativo.
+  pendenciaBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: c.warningLight, borderWidth: 1, borderColor: comAlfa(c.warning, 0.35),
+    borderRadius: BorderRadius.md, padding: Spacing.md,
+  },
+  pendenciaTexto: { flex: 1, fontSize: 12.5, fontFamily: Fonts.regular, color: c.onSurface, lineHeight: 17 },
   erroLinha: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   erroTexto: { flex: 1, fontSize: 12.5, fontFamily: Fonts.regular, color: c.danger },
 });

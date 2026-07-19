@@ -18,18 +18,22 @@
  *
  * A descrição dos planos vem de `planos-base.ts` (cópia do app) — nunca de memória.
  */
-import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check, Crown, MessageCircle, RotateCw, Sparkles, Users } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { paraBr } from "@/olli/datas";
+// A leitura da assinatura saiu daqui para `olli/marcaDocumento`: ela ganhou um
+// SEGUNDO leitor (o gerador de documentos, que decide se o selo OLLI sai) e duas
+// cópias da mesma consulta é como esta tela e o papel impresso passariam a
+// discordar sobre o plano de quem paga. Mesma query, mesma resposta, um lugar só.
+import { useMinhaAssinatura } from "@/olli/marcaDocumento";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
+import { ehMembroNaoDono } from "@/olli/papel";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import { nomeDoPlano, PLANOS_BASE } from "./planos-base";
-import { derivar, type LinhaAssinatura, type PlanoId, type ResumoAssinatura, SEM_ASSINATURA } from "./tipos";
+import type { PlanoId, ResumoAssinatura } from "./tipos";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -45,33 +49,6 @@ function dataBr(iso: string | undefined): string | null {
 	return Number.isNaN(d.getTime()) ? null : paraBr(d);
 }
 
-/** Leitura da assinatura do usuário logado. RLS já limita à própria linha. */
-function useMinhaAssinatura() {
-	return useQuery({
-		queryKey: ["olli", "assinatura", "me"],
-		queryFn: async (): Promise<ResumoAssinatura> => {
-			const { data: sessao, error: erroSessao } = await supabase.auth.getUser();
-			if (erroSessao) throw erroSessao;
-			const meuId = sessao.user?.id;
-			if (!meuId) throw new Error("Sessão não encontrada. Entre de novo para ver seu plano.");
-
-			// Só estas 3 colunas: são as que o app tem grant de SELECT (services/planos.ts).
-			const { data, error } = await supabase
-				.from("assinaturas")
-				.select("plano, status, current_period_end")
-				.eq("user_id", meuId)
-				.maybeSingle();
-			// O erro SOBE (vira isError) de propósito: quem chama tem que distinguir
-			// "falhou" de "não tem assinatura". Engolir aqui recriaria o bug crônico.
-			if (error) throw error;
-
-			return data ? derivar(data as LinhaAssinatura) : SEM_ASSINATURA;
-		},
-		staleTime: 60_000,
-		retry: 1,
-	});
-}
-
 export default function Planos() {
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
 
@@ -80,13 +57,14 @@ export default function Planos() {
 	// organização. Sem checar o papel, esta tela leria "sem linha" como "Grátis" e
 	// mostraria "Você está no plano Grátis" pra quem trabalha numa empresa PAGANTE.
 	const contexto = useContextoDeEscrita();
-	const papel = contexto.data?.papel;
-	const ehDono = papel === "owner" || papel === "pessoal";
 	// Só tratamos como "membro não-dono" quando o papel foi CONFIRMADO — carregando
 	// ou com erro, cai no caminho normal (mesma cautela do "papel indeterminado
 	// bloqueia" usado em Meu Negócio: aqui não bloqueia leitura, só não afirma nada
-	// que não sabemos).
-	const membroNaoDono = !contexto.isLoading && !contexto.isError && !!papel && !ehDono;
+	// que não sabemos). `ehMembroNaoDono` é a MESMA função que decide se o selo do
+	// OLLI sai do documento (olli/marcaRegra.ts): a regra de quem é dono da conta
+	// mora num lugar só.
+	const membroNaoDono =
+		!contexto.isLoading && !contexto.isError && ehMembroNaoDono(contexto.data?.papel);
 
 	return (
 		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">

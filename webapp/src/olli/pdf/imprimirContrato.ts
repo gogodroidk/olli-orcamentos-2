@@ -34,10 +34,18 @@
  * pra falar com expo-print/expo-sharing. É a fronteira certa — o painel imprime
  * pelo navegador (`imprimirHtml`), o mesmo caminho do PDF do orçamento.
  *
- * MARCA D'ÁGUA: `removerMarca` não é passado, igual ao PDF do orçamento do painel.
- * O painel não tem gate de plano (nenhum `usePlano`/`temAcesso` existe aqui), e
- * inventar um entitlement no lugar de ler o do app seria decidir cobrança por
- * chute. O selo do OLLI fica — como já fica no orçamento impresso daqui.
+ * MARCA D'ÁGUA: `removerMarca` É passado, pelo chamador, e vem da assinatura REAL.
+ * Aqui já esteve escrito que "o painel não tem gate de plano, e inventar um
+ * entitlement seria decidir cobrança por chute" — era verdade e deixou de ser. O
+ * painel passou a ler a assinatura (`olli/marcaDocumento.ts`, a mesma consulta da
+ * tela de Planos), e enquanto a justificativa envelhecia calada o assinante
+ * Pro/Empresa recebia o contrato SEM selo pelo celular e COM selo pelo computador —
+ * o mesmo prestador, o mesmo orçamento, dois papéis diferentes na mão do cliente.
+ *
+ * Quem decide continua sendo o chamador, não este arquivo: ele é quem sabe se a
+ * leitura do plano terminou, falhou ou confirmou. Por isso o parâmetro é opcional e
+ * o default é o selo FICAR — omitir por engano volta ao lado seguro (mostrar a marca
+ * de quem paga), nunca ao lado que entrega de graça o que é vendido.
  */
 import type { ContratoPadrao, Empresa, Orcamento } from "@dominio";
 import {
@@ -204,15 +212,19 @@ export function tetosDoContrato(o: Orcamento, empresa: Empresa): {
  * quando existe: quem já assinou no aparelho não pode receber, no computador, um
  * papel sem a assinatura que o cliente deu. Quem não assinou continua com a linha
  * em branco pra assinar na mão — que é o fluxo do painel.
+ *
+ * `removerMarca` vem resolvido de fora (ver o cabeçalho). Ausente = selo impresso.
  */
 export async function imprimirContrato(
 	o: Orcamento,
 	empresa: Empresa,
 	termos: TermosContrato,
+	opcoes?: { removerMarca?: boolean },
 ): Promise<void> {
 	const html = await montarHtmlContratoCompleto(o, empresa, termos, {
 		assinaturaClienteUri: o.assinaturaContratoUri,
 		dataAssinaturaCliente: o.dataAssinaturaContrato,
+		removerMarca: opcoes?.removerMarca === true,
 	});
 	await imprimirHtml(html);
 }

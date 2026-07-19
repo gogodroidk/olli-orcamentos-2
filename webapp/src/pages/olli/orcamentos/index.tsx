@@ -41,6 +41,8 @@ import { useLocation, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
 import { lazyComRetry } from "@/components/lazy/carregar-chunk";
+import { useQueryClient } from "@tanstack/react-query";
+import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
@@ -313,6 +315,8 @@ export default function OrcamentosPage() {
 	const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
 	const excluir = useExcluir("orcamentos");
+	/** Usado só para AGUARDAR a leitura do plano no clique do PDF (ver `verPdf`). */
+	const qc = useQueryClient();
 
 	const linhas = useMemo(() => {
 		let lista = data ?? [];
@@ -412,10 +416,27 @@ export default function OrcamentosPage() {
 			return;
 		}
 		setPdfEmCurso(linha.id);
-		const tarefa = imprimirOrcamento(blob, empresa).finally(() => setPdfEmCurso(null));
+		/**
+		 * O SELO DO OLLI é resolvido ANTES de montar o documento, e o clique ESPERA
+		 * por isso. `resolverMarcaDoDocumento` lê a assinatura real (cache quente =
+		 * instantâneo) e nunca lança: plano que não carrega não pode impedir o
+		 * prestador de imprimir. Quando não dá para confirmar, o selo fica — e o
+		 * toast de sucesso conta que ficou, em vez de deixá-lo descobrir no papel.
+		 */
+		const tarefa = resolverMarcaDoDocumento(qc)
+			.then(async (marca) => {
+				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });
+				return marca;
+			})
+			.finally(() => setPdfEmCurso(null));
 		toast.promise(tarefa, {
 			loading: "Preparando o PDF…",
-			success: "Abri a janela de impressão — escolha “Salvar como PDF”.",
+			success: (marca) => {
+				const aviso = avisoDaMarca(marca);
+				return aviso
+					? `Abri a janela de impressão. ${aviso}`
+					: "Abri a janela de impressão — escolha “Salvar como PDF”.";
+			},
 			error: "Não consegui gerar o PDF agora. Tente de novo.",
 		});
 	};

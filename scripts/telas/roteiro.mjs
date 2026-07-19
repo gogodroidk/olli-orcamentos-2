@@ -51,7 +51,10 @@ export const TELAS_CELULAR = [
     esperar: 'Clínica Vida & Saúde',
     titulo: 'Todos os orçamentos',
     legenda: 'O que está em aberto, o que foi aprovado e o que virou dinheiro — numa tela só.',
-    alt: 'Lista de orçamentos do OLLI com três propostas em status diferentes: aprovado, enviado e rascunho.',
+    // Derivado da imagem, não de memória: são quatro cartões (o 4º entrou para
+    // fechar o rodapé vazio da captura — ver `ORCAMENTOS_EXTRA` em elenco.mjs) e
+    // os quatro estados são os que a tela imprime.
+    alt: 'Lista de orçamentos do OLLI com quatro propostas em status diferentes: em negociação, rascunho, enviado e aprovado.',
   },
   {
     id: 'agenda',
@@ -75,7 +78,10 @@ export const TELAS_CELULAR = [
     esperar: 'Clínica Vida & Saúde',
     titulo: 'Do orçamento à ordem de serviço',
     legenda: 'O sim do cliente vira ordem de serviço com um toque — mesmo cliente, mesmo valor, sem redigitar nada.',
-    alt: 'Tela de ordens de serviço do OLLI mostrando a OS nº 0001, aberta, gerada a partir do orçamento 00126 da Clínica Vida & Saúde.',
+    // Derivado da imagem: a tela deixou de ter UMA ordem (67% de fundo vazio na
+    // vitrine da Play) e passou a ter seis, em cinco estados. A OS do topo é a
+    // que nasceu do orçamento aprovado — que é o que a legenda promete.
+    alt: 'Lista de ordens de serviço do OLLI com seis ordens em estados diferentes — aberta, agendada, em execução, pausada e concluída —, cada uma com o cliente e o andamento do checklist. No topo, a ordem gerada a partir do orçamento 00126 da Clínica Vida & Saúde.',
   },
   {
     id: 'diagnostico-ia',

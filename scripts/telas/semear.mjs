@@ -14,7 +14,7 @@
  * vazio e não existe dado real ao alcance do browser. O risco de vazar dado de
  * cliente não é mitigado por política — ele é ausente por arquitetura.
  */
-import { AGENDAMENTOS, CLIENTES, EMPRESA, ITENS_ORCAMENTO, ORCAMENTOS_EXTRA, ORDEM_SERVICO } from './elenco.mjs';
+import { AGENDAMENTOS, CLIENTES, EMPRESA, ITENS_ORCAMENTO, ORCAMENTOS_EXTRA, ORDENS_SERVICO } from './elenco.mjs';
 
 const ESPERA = 15000;
 
@@ -222,22 +222,200 @@ export async function criarAgendamentos(page, base) {
 }
 
 /**
- * Cria a OS A PARTIR DO ORÇAMENTO APROVADO, e não "manual", de propósito: é a
- * história que a landing precisa contar — o cliente aprovou, o serviço vira
- * ordem, o técnico executa. Uma OS manual mostraria a mesma tela contando uma
- * história pior.
+ * Abre "Nova OS" e cria uma ordem, deixando o DETALHE dela aberto — que é onde
+ * status e checklist são editados. O app abre esse detalhe sozinho ao criar
+ * (`onCriada` faz `setDetalheId`, `OrdemServicoScreen.tsx:360-364`).
+ *
+ * `deOrcamento: true` usa o caminho "De um orçamento aprovado", que é a história
+ * que a vitrine precisa contar — o cliente aprovou, o serviço vira ordem. As
+ * outras vão pelo "Manual", que é o caminho real de quem já estava com a OS na
+ * cabeça antes de existir orçamento.
  */
-export async function criarOrdemServico(page, base, cliente) {
+async function abrirNovaOS(page, base, os) {
   await page.goto(`${base}/ordens`, { waitUntil: 'domcontentloaded' });
   await esperarTexto(page, 'Ordens de serviço', 60000);
   await dispensarDicas(page);
   await clicar(page, 'Nova OS');
   await esperarTexto(page, 'Nova ordem de serviço');
-  await clicar(page, 'De um orçamento aprovado');
-  await clicar(page, cliente.nome);
-  await clicar(page, 'Gerar ordem de serviço');
-  await page.waitForURL(/\/ordens/, { timeout: 30000 }).catch(() => {});
-  await esperarTexto(page, cliente.nome, 30000);
+
+  if (os.deOrcamento) {
+    await clicar(page, 'De um orçamento aprovado');
+    // A linha do orçamento é escolhida pela META ("Nº 00126 · Aprovado"), e não
+    // pelo nome do cliente. O nome não serve mais: com a lista de OS já semeada
+    // atrás do modal, `getByText(nome).last()` cai num cartão da lista de trás,
+    // que o modal cobre — o clique ficava batendo em elemento coberto até dar
+    // timeout. A meta só existe dentro deste modal.
+    const linhas = page.getByText(/^Nº \d+ · Aprovado$/);
+    await linhas.first().waitFor({ state: 'visible', timeout: ESPERA });
+    const quantas = await linhas.count();
+    if (quantas !== 1) {
+      // Dois aprovados elegíveis tornaria a escolha uma loteria, e a screenshot
+      // mudaria de conteúdo sem ninguém mexer em nada. Melhor parar.
+      throw new Error(`esperava 1 orçamento aprovado elegível em "Nova OS", achei ${quantas}`);
+    }
+    await linhas.first().click();
+    await clicar(page, 'Gerar ordem de serviço');
+  } else {
+    await clicar(page, 'Manual');
+    await esperarTexto(page, 'Título do serviço');
+    await preencher(page, 'Nome do cliente', os.cliente.nome);
+    await preencher(page, 'Ex.: Manutenção do ar-condicionado', os.titulo);
+    if (os.descricao) await preencher(page, 'Detalhes do que precisa ser feito...', os.descricao);
+    await clicar(page, 'Criar ordem de serviço');
+  }
+
+  // Âncora: o bloco "Checklist" só existe no DETALHE. Esperar pelo nome do
+  // cliente não serviria — ele já está escrito no formulário que acabei de
+  // preencher, e a espera passaria antes de a OS existir.
+  await esperarTexto(page, 'Checklist', 30000);
+
+  // O título de uma OS manual é o que eu digitei; o da OS nascida de orçamento
+  // é escrito pelo APP ("Orçamento <nº>", `src/services/ordemServico.ts:93`).
+  // Ler do cabeçalho do detalhe em vez de repetir a regra aqui é o que impede
+  // a conferência final de comparar contra um número decorado.
+  if (os.titulo) return os.titulo;
+  const cabecalho = page.getByText(/^Orçamento \d+$/).first();
+  await cabecalho.waitFor({ state: 'visible', timeout: ESPERA });
+  return (await cabecalho.textContent()).trim();
+}
+
+/**
+ * Preenche o checklist e ajusta o status da OS que está aberta no detalhe.
+ *
+ * As três gravações desta tela têm tempos DIFERENTES, e ignorar isso foi o que
+ * fez a primeira rodada sair com uma OS "Aberta" onde devia estar "Agendada" e
+ * um checklist "0/3" onde devia estar "0/4":
+ *
+ *  · `adicionarItem` grava na hora (`OrdemServicoScreen.tsx:484`) — mas duas
+ *    gravações em voo terminam fora de ordem e a última a chegar vence com a
+ *    lista que ELA calculou. Duas adições coladas perdem uma.
+ *  · `toggleItem` tem autosave com DEBOUNCE de 500 ms (`:464-466`).
+ *  · `mudarStatus` só atualiza o estado DEPOIS do await da gravação
+ *    (`:434-438`), o que dá uma âncora de verdade: o crachá do cabeçalho.
+ *
+ * O que garante o resultado não é nenhuma espera aqui — é a conferência de
+ * `semearOrdens`, que relê a lista do banco. As esperas só evitam que a
+ * conferência reprove por corrida.
+ */
+async function preencherDetalheOS(page, os) {
+  for (const item of os.checklist ?? []) {
+    await preencher(page, 'Adicionar item...', item);
+    await page.getByLabel('Adicionar item').last().click();
+    await esperarTexto(page, item);
+    // Relógio declarado, e não âncora, porque não existe âncora honesta aqui: o
+    // que muda quando a gravação termina é o cartão ATRÁS do modal, e o rótulo
+    // dele ("0/3") pode existir em outra OS já semeada. 150 ms fecha a janela
+    // entre duas escritas do mesmo campo.
+    await page.waitForTimeout(150);
+  }
+
+  // Marca os `feitos` primeiros itens. O alvo do toque é o TEXTO do item (a
+  // linha inteira é o botão), o que evita depender do ícone da caixinha.
+  const marcados = os.checklist?.slice(0, os.feitos ?? 0) ?? [];
+  for (const item of marcados) {
+    await clicar(page, item);
+  }
+  // Espera o debounce de 500 ms do autosave. Duração CONHECIDA, não "carregar":
+  // 900 ms é folga. Tem de vir ANTES da troca de status, senão o patch de status
+  // e o do checklist disputam a mesma linha.
+  if (marcados.length) await page.waitForTimeout(900);
+
+  if (os.status && os.status !== 'Aberta') {
+    const rotulo = page.getByText(os.status, { exact: true });
+    const antes = await rotulo.count();
+    // `.last()` pega a opção do grid: o rótulo também aparece nos filtros da
+    // lista atrás do modal, que vêm antes no DOM.
+    await rotulo.last().click();
+    // ÂNCORA DE GRAVAÇÃO: o crachá do cabeçalho do modal desenha `ordem.status`,
+    // que só troca depois do await de `atualizarStatusOS`. Uma ocorrência a mais
+    // do rótulo na tela significa que o banco já respondeu. Sem esta espera, a
+    // navegação para a OS seguinte abortava a gravação — e a OS ficava "Aberta"
+    // sem erro nenhum no caminho.
+    await rotulo.nth(antes).waitFor({ state: 'attached', timeout: ESPERA });
+  }
+}
+
+/**
+ * Semeia as ordens de serviço e CONFERE o resultado lendo a lista de volta.
+ *
+ * Percorre `ORDENS_SERVICO` de trás para frente porque a lista da tela ordena
+ * por `atualizadoEm` desc: quem é criado por último aparece em cima.
+ */
+export async function semearOrdens(page, base, log = () => {}) {
+  const titulos = new Map();
+  for (const os of [...ORDENS_SERVICO].reverse()) {
+    log(`OS ${os.titulo ?? 'do orçamento aprovado'} (${os.cliente.nome})`);
+    titulos.set(os, await abrirNovaOS(page, base, os));
+    await preencherDetalheOS(page, os);
+  }
+
+  await page.goto(`${base}/ordens`, { waitUntil: 'domcontentloaded' });
+  await esperarTexto(page, 'Ordens de serviço', 60000);
+  await dispensarDicas(page);
+  await conferirListaDeOrdens(page, titulos);
+}
+
+/**
+ * Confere a lista de ordens de serviço contra o elenco, na ORDEM.
+ *
+ * Lê o texto visível da tela e fatia em blocos por título. A primeira versão
+ * desta conferência perguntava "existe algum '0/4' na tela?" e passou com a OS
+ * errada: outra ordem tinha 0/4, e a que devia ter 0/4 ficou com 0/3. Buscar
+ * global é a versão de screenshot do "não sei virou não tem" — o dado sumiu e o
+ * portão disse que estava tudo certo.
+ *
+ * Confere três coisas por OS, dentro do bloco DELA: cliente, crachá de status e
+ * chip do checklist. E confere a ordem, porque a primeira imagem da lista é a
+ * OS nascida do orçamento aprovado — é ela que a legenda da vitrine promete.
+ */
+async function conferirListaDeOrdens(page, titulos) {
+  const linhas = (await page.evaluate(() => document.body.innerText))
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const problemas = [];
+  let anterior = -1;
+  const posicoes = ORDENS_SERVICO.map((os) => linhas.indexOf(titulos.get(os)));
+
+  ORDENS_SERVICO.forEach((os, i) => {
+    const titulo = titulos.get(os);
+    const inicio = posicoes[i];
+    if (inicio < 0) {
+      problemas.push(`"${titulo}" não está na lista`);
+      return;
+    }
+    if (inicio <= anterior) {
+      problemas.push(`"${titulo}" saiu fora de ordem (a lista ordena por última alteração)`);
+    }
+    anterior = inicio;
+
+    // O bloco vai até o título da próxima OS (ou o fim da tela).
+    const fim = posicoes.slice(i + 1).find((p) => p > inicio) ?? linhas.length;
+    const bloco = linhas.slice(inicio, fim);
+
+    if (!bloco.includes(os.cliente.nome)) {
+      problemas.push(`"${titulo}" não está com o cliente ${os.cliente.nome}`);
+    }
+    const status = os.status ?? 'Aberta';
+    if (!bloco.includes(status)) {
+      problemas.push(`"${titulo}" devia estar "${status}" e o crachá diz outra coisa`);
+    }
+    const total = os.checklist?.length ?? 0;
+    if (total) {
+      const chip = `${os.feitos ?? 0}/${total}`;
+      if (!bloco.includes(chip)) {
+        problemas.push(`"${titulo}" devia estar com o checklist ${chip}`);
+      }
+    }
+  });
+
+  if (problemas.length) {
+    throw new Error(
+      `a lista de ordens de serviço não bate com o elenco:\n  - ${problemas.join('\n  - ')}\n` +
+        'Isto é gravação perdida, não tela vazia. Não capture por cima.',
+    );
+  }
 }
 
 /**
@@ -267,10 +445,12 @@ export async function semearTudo(page, base, log = () => {}) {
     console.warn('  agenda não semeada:', e.message.split('\n')[0]);
   });
 
-  log('ordem de serviço');
-  await criarOrdemServico(page, base, CLIENTES[0]).catch((e) => {
-    console.warn('  ordem de serviço não semeada:', e.message.split('\n')[0]);
-  });
+  log('ordens de serviço');
+  // SEM `.catch()` aqui, ao contrário da agenda: a 4ª screenshot da vitrine é a
+  // lista de ordens de serviço, e semeadura silenciosamente pulada é justamente
+  // como aquela tela foi parar na loja com 70% de fundo chapado. Falhar a
+  // rodada custa uma execução; publicar a tela oca custa a listagem.
+  await semearOrdens(page, base, (o) => log(`  ${o}`));
 
   return feito;
 }

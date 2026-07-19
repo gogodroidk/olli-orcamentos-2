@@ -90,10 +90,104 @@ a Guideline 3.1.1); decisão já tomada (D-16), falta codar. Ver `docs/LOJAS.md`
 | Palavras-chave + análise da concorrência real na Play | `assets/loja/PALAVRAS-CHAVE.md` | Pronto (28 de 29 termos cobertos, o ausente é decisão documentada) |
 | **Feature graphic 1024×500**, 24-bit sem alpha | `assets/loja/feature-graphic.png` | **Gerado** da marca real. Regera com `node assets/loja/gerar.js` |
 | **Ícone da ficha 512×512**, 32-bit com alpha | `assets/loja/icone-512.png` | **Gerado.** O `assets/icon.png` de origem não tinha alpha (medido: 3 canais) — o script corrige |
-| Roteiro das 8 screenshots + comandos exatos de captura | `assets/loja/SCREENSHOTS.md` | Pronto |
-| Script que converte print cru → screenshot válida da Play | `assets/loja/montar-screenshots.js` | Pronto e **testado ponta a ponta** |
+| **As 8 screenshots 1080×1920**, 24-bit sem alpha | `assets/loja/screenshots/NN-*.png` | **Geradas e conformes.** Regera com `node scripts/telas/loja.mjs` |
+| Roteiro das 8 screenshots + comandos exatos de captura | `assets/loja/SCREENSHOTS.md` | **Histórico.** Descreve o caminho por emulador+adb, que não é mais usado — ver `scripts/telas/loja.mjs` |
+| Script que converte print cru → screenshot válida da Play | `assets/loja/montar-screenshots.js` | Vivo, mas hoje só como porta de entrada do caminho antigo. A moldura de verdade é `scripts/telas/moldura-loja.mjs`, compartilhada pelos dois |
 | Respostas do IARC e do formulário de Segurança dos Dados | `assets/loja/CLASSIFICACAO-E-DATA-SAFETY.md` | Pronto |
 | Redirect `/privacidade` → `/legal/privacidade/` | `web/astro.config.mjs` | **Já existe** (o alerta de 404 dos docs antigos está resolvido no código; falta só confirmar no ar) |
+
+---
+
+# 📸 AS 8 SCREENSHOTS — estado medido (19/07)
+
+Gerar/regerar: **`node scripts/telas/loja.mjs`** (usa o export web já em
+`.expo/telas-build`; `--exportar` refaz o export antes). Não precisa de emulador,
+de adb, de APK nem de login — o app é exportado para a web **sem nuvem**, e é por
+isso que a captura roda sozinha.
+
+## Formato — os 8 passam
+
+Medido **byte a byte no cabeçalho PNG**, sem sharp, para não confiar na mesma
+biblioteca que gerou o laudo: os 8 são **1080×1920**, colorType 2 (truecolor RGB),
+3 canais, **sem alpha** e sem chunk `tRNS`, 8 bits, não-entrelaçados, 432–552 KB
+(**3,87 MB no total**). Só existem os chunks `IHDR`/`pHYs`/`IDAT`/`IEND` — nenhum
+`eXIf`/`tEXt`/`iTXt`/`iCCP`, ou seja, nenhum caminho de máquina ou nome de usuário
+vazando junto com a imagem. Proporção 0,5625 = 9:16 exato.
+
+## Conteúdo — a regra que faltava
+
+Formato e conteúdo são portões diferentes, e só o primeiro existia. A
+`04-ordem-servico` passava em **todas** as regras da Play com **69,7% da altura
+vazia** — porque nenhuma regra da Play fala de vazio. Uma tela oca não é recusada
+pela loja; é recusada pelo prestador que desliza a vitrine e vê "app sem nada
+dentro" na 4ª imagem.
+
+`node scripts/telas/medir-ocupacao.mjs` mede isso, e `loja.mjs` agora **reprova a
+rodada** quando uma tela passa do limite (20% de rodapé vazio).
+
+A tabela abaixo é a medição **do arquivo emoldurado** (`medir-ocupacao.mjs` sem
+argumento), que é a única forma de ter o número do "antes" — as capturas cruas
+daquela leva não existem mais. O pipeline mede a captura **crua**, antes da
+moldura, e por isso dá números um pouco menores para as mesmas telas (7,0% e
+2,8% em vez de 7,9% e 5,2%): é a mesma tela, medida em resolução diferente. Os
+dois valores ficam registrados em `conformidade.json`.
+
+| tela | rodapé vazio ANTES | DEPOIS |
+| --- | --- | --- |
+| 01-novo-orcamento-itens | 1,0% | 1,0% |
+| 02-orcamento-aprovado | 1,0% | 1,0% |
+| **03-lista-orcamentos** | **23,0%** | **7,9%** |
+| **04-ordem-servico** | **69,7%** | **5,2%** |
+| 05-agenda | 1,5% | 1,5% |
+| 06-codigos-erro | 0,3% | 0,3% |
+| 07-diagnostico-ia | 44,5% | 44,5% (tolerância declarada) |
+| 08-clientes | 0,1% | 0,1% |
+
+O conserto foi de **dado de semeadura**, não de imagem: a lista de ordens de
+serviço passou de 1 para 6 ordens em 5 estados, com checklist andando; a de
+orçamentos, de 3 para 4. Tudo em `scripts/telas/elenco.mjs`, semeado pela
+interface real do app.
+
+**Duas rodadas seguidas produziram os 8 arquivos com md5 idêntico** — a semeadura
+nova não quebrou o determinismo do pipeline.
+
+## O que continua aberto (decisão, não defeito)
+
+- **`07-diagnostico-ia` tem 44,5% de rodapé vazio e fica assim.** É um formulário:
+  abaixo de "Pedir diagnóstico" fica o espaço da RESPOSTA, e a resposta vem do
+  worker de IA, que o build offline não alcança. A tolerância está **escrita e
+  justificada** no roteiro de `loja.mjs`, não escondida afrouxando o limite geral.
+  Para fechar de verdade seria preciso capturar com o worker de pé.
+- **Sem screenshots de tablet.** `app.json:11` traz `supportsTablet: false`, mas
+  essa chave é do **iOS**; no Android o app roda em tablet por padrão. Não é
+  bloqueio (o mínimo de 2 já está satisfeito) — é elegibilidade perdida nas
+  superfícies de tablet e Chromebook, onde a Google pede ~4 por classe.
+- **`Ramalho Climatização` e `contato@ramalhoclima.com.br` são o negócio real do
+  dono** (`elenco.mjs:43-52`). É consentido por definição, mas publicar na Play
+  amarra o nome dele ao produto. Se não for o desejado: **uma linha** no elenco e
+  recaptura.
+- **O relógio congelado (`AGORA`) cai num SÁBADO.** `elenco.mjs` documenta a
+  intenção como "sexta-feira, 18/07/2026" e 18/07/2026 é sábado — `05-agenda`
+  publica "Sábado, 18 de julho". Não mexi: trocar `AGORA` desloca data em toda
+  tela e na landing, e a agenda não está oca (1,5%). Conserto quando alguém fizer
+  a próxima recaptura: mover para uma quarta/quinta de manhã **e** espalhar
+  `AGENDAMENTOS` por `dias: -2,-1,0,0,+1,+2`, no mesmo movimento.
+
+## ⚠️ A landing ficou DESATUALIZADA em relação a este elenco
+
+`web/public/telas/` foi gerado com o elenco ANTIGO (1 ordem de serviço, 3
+orçamentos) e **não foi regerado nesta leva** — `capturar-telas.mjs` escreve em
+`web/`, que é de outra frente. As imagens no ar continuam válidas e corretas; elas
+só não mostram mais o que o elenco descreve, e os `alt` de `roteiro.mjs` (que eu
+atualizei para bater com as novas capturas da Play) agora descrevem uma imagem que
+a landing ainda não tem.
+
+**Quem for recapturar a landing:** rode `node scripts/telas/capturar-telas.mjs` e
+resolva junto os achados de `REVISAO_TELAS.md` §B — a legenda da agenda promete
+"endereço" que a imagem não mostra (`roteiro.mjs:61`), o cartão de computador é
+ilegível a 440 px, e faltam os degraus de 496w/880w no `srcset` (−77 KB no celular).
+Antes disso, leia o §C2 da mesma revisão: uma captura que falha no meio **apaga a
+esteira da landing em silêncio**, porque o `rmSync` acontece antes do loop.
 
 ---
 
@@ -147,8 +241,11 @@ IA sobe desligada em silêncio.)
 11. [ ] Decidir sobre `EXPO_PUBLIC_POSTHOG_KEY` (bloqueio 3).
 12. [ ] `eas build -p android --profile production` → `.aab` assinado (build na nuvem; não precisa
     Android Studio). ⚠️ regra do dono: só depois do ciclo comercial estar ok.
-13. [ ] Capturar as 8 telas e rodar `node assets/loja/montar-screenshots.js`
-    (passo a passo em `assets/loja/SCREENSHOTS.md`).
+13. [x] ~~Capturar as 8 telas e rodar `node assets/loja/montar-screenshots.js`~~ — **FEITO.**
+    As 8 screenshots estão commitadas em `assets/loja/screenshots/`, conformes e conferidas
+    (ver "As 8 screenshots" abaixo). **Não suba o emulador para refazer isto.** O caminho antigo
+    (emulador + adb + `montar-screenshots.js`) foi substituído por `node scripts/telas/loja.mjs`,
+    que não precisa de aparelho, de APK nem de login. Só rode de novo se mudar tela ou elenco.
 
 ### Fase 3 — preencher a Console (Claude cola, dono clica)
 14. [ ] Criar o app: nome, idioma padrão **pt-BR**, tipo App, **gratuito**.

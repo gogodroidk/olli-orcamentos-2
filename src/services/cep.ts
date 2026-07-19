@@ -351,6 +351,23 @@ export function aplicarDivergencias(divergencias: DivergenciaCep[]): CamposEnder
 /** `ocioso` = ninguém consultou ainda (≠ de "consultei e não achei"). */
 export type EstadoBuscaCep = 'ocioso' | 'consultando' | 'ok' | 'nao_encontrado' | 'invalido' | 'indisponivel';
 
+/**
+ * Lista vazia COMPARTILHADA, não `[]` a cada limpeza.
+ *
+ * O reset por `chave` roda na fase de render (ver abaixo). `setDivergencias([])`
+ * com literal novo nunca é igual ao estado anterior, então o React re-renderiza
+ * mesmo quando não havia nada a limpar. Com uma referência estável ele desiste
+ * sozinho (`Object.is`) e o caso comum — abrir uma tela que já estava limpa —
+ * custa zero render extra.
+ *
+ * Congelada em runtime porque é compartilhada: quem mutasse isto mutaria o
+ * "vazio" de todas as telas de uma vez. O TIPO continua mutável de propósito —
+ * `BuscaCep.divergencias` é `DivergenciaCep[]`, e trocar por `readonly` só para
+ * enfeitar esta linha arrastaria o <AvisoCep> e as quatro telas junto.
+ */
+const SEM_DIVERGENCIA: DivergenciaCep[] = [];
+Object.freeze(SEM_DIVERGENCIA);
+
 export interface BuscaCep {
   estadoCep: EstadoBuscaCep;
   /** O endereço achado, para a tela poder mostrar bairro (que não tem campo próprio). */
@@ -368,14 +385,42 @@ export interface BuscaCep {
  *
  * `lerAtual` é o que permite a regra "não sobrescreve": o hook precisa saber o
  * que já está no formulário no momento da resposta — não no momento do toque.
+ *
+ * ─── `chave`: A QUE REGISTRO ESTE VEREDITO PERTENCE ────────────────────────
+ * O hook vive no componente PAI, que não desmonta entre um cliente e outro (o
+ * formulário é `<Modal visible=...>`, não montagem condicional do dono do
+ * estado). Fechar e reabrir reseta o formulário e os erros — `estadoCep`,
+ * `enderecoCep` e `divergencias` ficavam. Resultado real: cadastrava o cliente
+ * A com divergência de cidade, salvava, abria "Novo Cliente", e a caixa amarela
+ * do A continuava na tela com o botão "Usar o do CEP" ATIVO. Um toque gravava a
+ * cidade do A no cliente B, calado. E pior que o botão: uma resposta de CEP
+ * ainda no ar quando o formulário troca caía dentro do registro NOVO, porque
+ * `preencherRef` sempre aponta para o formulário atual.
+ *
+ * DUAS SAÍDAS EXISTIAM. Expor um `limpar()` para cada tela chamar ao abrir o
+ * modal é a mais óbvia — e é exatamente assim que esta família de bug nasce:
+ * são QUATRO telas hoje, e a quinta esquece. `chave` foi escolhida porque
+ * transfere a obrigação do revisor para o compilador: o parâmetro é
+ * OBRIGATÓRIO, então uma tela nova não compila sem declarar de quem é o
+ * veredito, e o hook se invalida sozinho quando essa resposta muda. Nenhuma
+ * tela precisa lembrar de limpar nada.
+ *
+ * O que passar: algo que mude quando o ASSUNTO muda — o id do cliente em
+ * edição, um marcador de "formulário fechado", ou uma constante em fluxo único
+ * (Onboarding: uma empresa só, sem troca de registro).
+ *
+ * O reset roda na FASE DE RENDER, não em `useEffect`: efeito só corre depois da
+ * pintura, e um único quadro com a caixa amarela do cliente anterior sobre o
+ * formulário em branco já é o toque errado.
  */
 export function useCepLookup(
   preencher: (campos: CamposEndereco, achado: EnderecoCEP) => void,
-  lerAtual: () => CamposEndereco = () => ({}),
+  lerAtual: () => CamposEndereco,
+  chave: string | number,
 ): BuscaCep {
   const [estadoCep, setEstadoCep] = useState<EstadoBuscaCep>('ocioso');
   const [enderecoCep, setEnderecoCep] = useState<EnderecoCEP | null>(null);
-  const [divergencias, setDivergencias] = useState<DivergenciaCep[]>([]);
+  const [divergencias, setDivergencias] = useState<DivergenciaCep[]>(SEM_DIVERGENCIA);
   /**
    * Sequência da consulta. Sem ela, apagar um dígito e digitar outro deixa duas
    * consultas no ar e a MAIS LENTA vence — o formulário fica com o endereço do
@@ -386,6 +431,18 @@ export function useCepLookup(
   lerAtualRef.current = lerAtual;
   const preencherRef = useRef(preencher);
   preencherRef.current = preencher;
+
+  // Trocou o assunto: o veredito anterior morre AQUI, antes de qualquer pintura.
+  const chaveRef = useRef(chave);
+  if (chaveRef.current !== chave) {
+    chaveRef.current = chave;
+    // Incrementar o pedido é metade do conserto: derruba também a consulta que
+    // ainda está no ar do registro ANTERIOR, que senão preencheria o novo.
+    pedidoRef.current += 1;
+    setEstadoCep('ocioso');
+    setEnderecoCep(null);
+    setDivergencias(SEM_DIVERGENCIA);
+  }
 
   const onCepChange = useCallback((masked: string, atualizarCampo: (masked: string) => void) => {
     // O campo é atualizado SEMPRE e primeiro. A consulta é enfeite por cima da
@@ -398,13 +455,13 @@ export function useCepLookup(
       pedidoRef.current += 1;
       setEstadoCep('ocioso');
       setEnderecoCep(null);
-      setDivergencias([]);
+      setDivergencias(SEM_DIVERGENCIA);
       return;
     }
 
     const meu = (pedidoRef.current += 1);
     setEstadoCep('consultando');
-    setDivergencias([]);
+    setDivergencias(SEM_DIVERGENCIA);
     void consultarCep(digits)
       .then(r => {
         if (meu !== pedidoRef.current) return; // resposta velha: descarta
@@ -433,7 +490,7 @@ export function useCepLookup(
   const usarDoCep = useCallback(() => {
     if (divergencias.length === 0 || !enderecoCep) return;
     preencherRef.current(aplicarDivergencias(divergencias), enderecoCep);
-    setDivergencias([]);
+    setDivergencias(SEM_DIVERGENCIA);
   }, [divergencias, enderecoCep]);
 
   return { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep };
