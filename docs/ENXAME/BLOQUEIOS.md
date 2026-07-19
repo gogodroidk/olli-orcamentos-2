@@ -3,6 +3,28 @@
 > Regra do loop: item humano → registra aqui e segue. Quando o dono voltar, esta é a lista dele.
 > Fonte: Onda 1 (2026-07-17). Marcar `[x]` quando o dono resolver.
 
+## ✅ DESTRAVADO EM 19/07 — não peça mais isso ao dono
+
+O dono autorizou execução total e estes itens **foram feitos**, com verificação
+depois de cada passo:
+
+- [x] **As migrations foram APLICADAS em produção** (MCP do Supabase, projeto
+      `yiaeplqinnnnniyvwtls`): `ia_cota_gratis` · `mp_preapproval_id` ·
+      `membro_consentimento` · `unicidade_por_tenant` · `paywall_empresa_selado` ·
+      `exclusoes_contadores_equipe` (com a whitelist que fecha o confused deputy).
+      Provado: cota devolve `consumida` ×3, `esgotada` na 4ª, `ja_contada` no retry.
+- [x] **O worker foi PUBLICADO** (`olli-diagnostico`). `diagnostico.` e `link.`
+      respondem 200 e os **9 secrets seguem intactos** (deploy não apaga secret —
+      confirmado pela terceira vez).
+- [x] Painel e landing no ar com o código atual. APK recompilado (126,9 MB).
+
+**Consequência prática:** a cobrança de IA deixou de ser ilimitada, e o vetor de
+exfiltração por `organizacao_membros` está fechado. O que sobra abaixo é só o que
+exige senha, conta ou assinatura de contrato — coisas que um agente não faz.
+
+> ⚠️ A seção seguinte (custo do deploy) já foi PAGA: o worker subiu em 19/07.
+> Fica registrada como histórico do que aconteceu, não como aviso pendente.
+
 ## ⚠️ LEIA ANTES DE `wrangler deploy` (custo medido, 18/07)
 
 O deploy do worker tem **um custo de uma vez, em crédito de cliente**, e é melhor
