@@ -61,8 +61,14 @@ export const TELAS_CELULAR = [
     rota: '/agenda',
     esperar: 'Instalação de 2 splits',
     titulo: 'A semana no lugar',
+    // Esta legenda prometia "endereço" quando o cartão não mostrava endereço
+    // nenhum — copy escrita de memória, não derivada da tela. Ela virou verdade
+    // pelo lado certo: o elenco passou a semear `endereco`, e o cartão agora
+    // desenha o marcador de mapa e o botão de rota. NÃO desfaça um sem o outro.
     legenda: 'As visitas do dia com cliente, horário e endereço. O que ia ficar no papel do bolso.',
-    alt: 'Tela de agenda do OLLI mostrando as visitas marcadas do dia com nome do cliente e título do serviço.',
+    // Derivado da imagem: quatro visitas, cada uma com hora própria, cliente,
+    // etiqueta do tipo e endereço.
+    alt: 'Tela de agenda do OLLI mostrando quatro visitas do dia, cada uma com horário, nome do cliente, tipo do serviço e endereço, e um botão de traçar rota.',
   },
   {
     id: 'clientes',
@@ -70,7 +76,10 @@ export const TELAS_CELULAR = [
     esperar: 'Clínica Vida & Saúde',
     titulo: 'A carteira de clientes',
     legenda: 'Quem já é cliente, o que já foi feito e como falar com ele. Sem depender da memória.',
-    alt: 'Lista de clientes cadastrados no OLLI com nome e telefone de cada um.',
+    // Derivado da imagem: seis clientes, em ordem alfabética, com telefone e
+    // cidade. Eram quatro — e dois eram o MESMO cliente duplicado pela
+    // semeadura (ver `CLIENTES_EXTRA` em elenco.mjs).
+    alt: 'Lista de clientes cadastrados no OLLI com seis clientes em ordem alfabética, cada um com telefone e cidade.',
   },
   {
     id: 'ordem-servico',

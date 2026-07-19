@@ -68,11 +68,16 @@ function kb(bytes) {
 }
 
 /**
- * Grava uma tela em AVIF (principal) e WebP (reserva), em 2× e 1×.
+ * Codifica uma tela em AVIF (principal) e WebP (reserva), em 2× e 1×, e devolve
+ * os BYTES — não grava nada.
+ *
+ * Gravar só no fim é o que impede a esteira da landing de sumir no meio de uma
+ * rodada que falhou; o porquê está em `main`.
+ *
  * O `<picture>` da landing serve AVIF para ~95% dos browsers e WebP para o
  * resto — ninguém vê imagem quebrada, e nenhum formato pesa por todos.
  */
-async function gravarImagens(png, id, largura2x, altura2x) {
+async function renderizarImagens(png, id, largura2x, altura2x) {
   const larguras = [
     { sufixo: '@2x', w: largura2x, h: altura2x },
     { sufixo: '', w: Math.round(largura2x / 2), h: Math.round(altura2x / 2) },
@@ -82,9 +87,20 @@ async function gravarImagens(png, id, largura2x, altura2x) {
     const base = sharp(png).resize(w, h, { fit: 'fill' });
     const avif = `${id}${sufixo}.avif`;
     const webp = `${id}${sufixo}.webp`;
-    await base.clone().avif({ quality: QUALIDADE_AVIF, effort: 6 }).toFile(join(SAIDA, avif));
-    await base.clone().webp({ quality: QUALIDADE_WEBP }).toFile(join(SAIDA, webp));
-    arquivos.push({ arquivo: avif, largura: w, altura: h }, { arquivo: webp, largura: w, altura: h });
+    arquivos.push(
+      {
+        arquivo: avif,
+        largura: w,
+        altura: h,
+        bytes: await base.clone().avif({ quality: QUALIDADE_AVIF, effort: 6 }).toBuffer(),
+      },
+      {
+        arquivo: webp,
+        largura: w,
+        altura: h,
+        bytes: await base.clone().webp({ quality: QUALIDADE_WEBP }).toBuffer(),
+      },
+    );
   }
   return arquivos;
 }
@@ -98,12 +114,25 @@ async function main() {
     process.exit(1);
   }
 
-  rmSync(SAIDA, { recursive: true, force: true });
-  mkdirSync(SAIDA, { recursive: true });
-
+  // ── NADA é apagado aqui ──────────────────────────────────────────────────
+  //
+  // A versão anterior fazia `rmSync(SAIDA)` NESTE ponto, antes de semear e antes
+  // de capturar, e o `telas.json` só era escrito depois do loop inteiro. Uma
+  // captura que estourasse na 5ª de 8 deixava a pasta pela metade e SEM
+  // manifesto — e aí `carregarTelas()` encontrava ENOENT, devolvia
+  // `{ estado: "ausente" }` (que é o caminho legítimo de "ainda não geraram") e
+  // a esteira sumia da landing sem erro nenhum: o build passava, o deploy
+  // passava, a seção não existia mais.
+  //
+  // É exatamente o defeito que `web/src/lib/telas.ts` gasta quarenta linhas
+  // jurando impedir — a porta foi trancada para MANIFESTO QUEBRADO e ficou
+  // aberta para MANIFESTO APAGADO. As imagens agora ficam em memória (32
+  // arquivos, menos de 1 MB somados) e a pasta só é trocada no fim, quando as
+  // oito existirem. Mesmo tratamento que `loja.mjs` já dava à pasta da Play.
   const { url, fechar } = await servir(DIST);
   const browser = await abrirNavegador();
   const manifesto = [];
+  const falhas = [];
 
   try {
     // ── Celular ──────────────────────────────────────────────────────────
@@ -115,10 +144,18 @@ async function main() {
 
     console.log('\nCapturando telas de celular (393×852 @2x):');
     for (const tela of TELAS_CELULAR) {
-      const png = await capturarTela(page, url, tela, ctx);
-      const arquivos = await gravarImagens(png, tela.id, CELULAR.width * 2, CELULAR.height * 2);
-      manifesto.push({ ...descrever(tela, 'celular'), arquivos });
-      console.log(`  ✓ ${tela.id}`);
+      try {
+        const png = await capturarTela(page, url, tela, ctx);
+        const arquivos = await renderizarImagens(png, tela.id, CELULAR.width * 2, CELULAR.height * 2);
+        manifesto.push({ ...descrever(tela, 'celular'), arquivos });
+        console.log(`  ✓ ${tela.id}`);
+      } catch (e) {
+        // Uma tela que não capturou é uma tela QUE FALTA, não uma tela que "não
+        // tinha". Registra, segue para as outras (uma rodada tem de reportar
+        // todos os problemas, não o primeiro) e a rodada termina em erro.
+        falhas.push({ id: tela.id, motivo: e.message.split('\n')[0] });
+        console.error(`  X ${tela.id} — ${e.message.split('\n')[0]}`);
+      }
     }
     // ── Computador, no MESMO contexto ────────────────────────────────────
     // O banco do app na web mora no armazenamento do contexto do browser, então
@@ -134,15 +171,39 @@ async function main() {
 
     console.log('Capturando telas de computador (1440×900 @2x):');
     for (const tela of TELAS_DESKTOP) {
-      const png = await capturarTela(page, url, tela, ctx);
-      const arquivos = await gravarImagens(png, tela.id, DESKTOP.width * 2, DESKTOP.height * 2);
-      manifesto.push({ ...descrever(tela, 'computador'), arquivos });
-      console.log(`  ✓ ${tela.id}`);
+      try {
+        const png = await capturarTela(page, url, tela, ctx);
+        const arquivos = await renderizarImagens(png, tela.id, DESKTOP.width * 2, DESKTOP.height * 2);
+        manifesto.push({ ...descrever(tela, 'computador'), arquivos });
+        console.log(`  ✓ ${tela.id}`);
+      } catch (e) {
+        falhas.push({ id: tela.id, motivo: e.message.split('\n')[0] });
+        console.error(`  X ${tela.id} — ${e.message.split('\n')[0]}`);
+      }
     }
     await page.context().close();
   } finally {
     await browser.close();
     await fechar();
+  }
+
+  // ── Só agora a pasta é trocada ───────────────────────────────────────────
+  // Leva incompleta NÃO substitui leva boa. Se faltou tela, o que está em disco
+  // (e commitado) continua sendo a última leva completa, a landing continua com
+  // a esteira que já tinha, e o processo sai em erro dizendo o que faltou.
+  const esperadas = TELAS_CELULAR.length + TELAS_DESKTOP.length;
+  if (falhas.length || manifesto.length !== esperadas) {
+    console.error(`\n${falhas.length} tela(s) NÃO foram capturadas:`);
+    for (const f of falhas) console.error(`  - ${f.id}: ${f.motivo}`);
+    console.error(`\nNADA foi apagado: a leva anterior continua em ${SAIDA}.`);
+    console.error('A esteira da landing NÃO pode ir ao ar pela metade — some sem erro nenhum.');
+    process.exit(1);
+  }
+
+  rmSync(SAIDA, { recursive: true, force: true });
+  mkdirSync(SAIDA, { recursive: true });
+  for (const tela of manifesto) {
+    for (const a of tela.arquivos) writeFileSync(join(SAIDA, a.arquivo), a.bytes);
   }
 
   writeFileSync(
@@ -160,7 +221,13 @@ async function main() {
         geradoPor: 'node scripts/telas/gerar.mjs',
         dadosFicticios:
           'Todos os nomes, telefones, endereços e valores são inventados e vivem em scripts/telas/elenco.mjs. Nenhum dado de cliente real passou por aqui: o build de captura roda sem nuvem e o banco é um SQLite local vazio.',
-        telas: manifesto,
+        // `bytes` sai fora: ele existe só para adiar a gravação até o fim da
+        // rodada. Deixá-lo passar despejaria as imagens inteiras, em base64,
+        // dentro do manifesto que a landing baixa.
+        telas: manifesto.map((t) => ({
+          ...t,
+          arquivos: t.arquivos.map(({ bytes, ...resto }) => resto),
+        })),
       },
       null,
       2,

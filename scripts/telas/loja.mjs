@@ -67,7 +67,19 @@ const ROTEIRO_LOJA = [
   { de: 'orcamento-aprovado', legenda: ['Aprovado, com PDF', 'e envio no WhatsApp'] },
   { de: 'lista-orcamentos', legenda: ['Tudo que está em aberto', 'numa tela só'] },
   { de: 'ordem-servico', legenda: ['O "sim" do cliente', 'vira ordem de serviço'] },
-  { de: 'agenda', legenda: ['A semana inteira', 'no lugar certo'] },
+  {
+    de: 'agenda',
+    // A legenda anterior era "A semana inteira / no lugar certo" — e a imagem
+    // mostra a visão de DIA, com a aba "Dia" selecionada e a data de um dia só
+    // no cabeçalho. Prometer a semana numa foto do dia é a mesma classe de erro
+    // que a legenda da landing que prometia "endereço" numa imagem sem
+    // endereço: copy escrita de memória em vez de derivada da tela.
+    //
+    // A nova diz o que a imagem entrega: quatro visitas, cada uma com hora e
+    // endereço. A semana existe no produto (as abas Dia/Semana/Mês estão ali) e
+    // é vendida na tela de computador, onde ela realmente aparece.
+    legenda: ['O dia inteiro, com', 'hora e endereço'],
+  },
   {
     // Esta tela NÃO está no roteiro da landing e entra aqui de propósito: é a
     // única do conjunto que responde "e quando eu estiver no telhado sem sinal?".
@@ -262,7 +274,10 @@ async function main() {
   const ocas = [];
   for (const f of feitas) {
     const limite = f.vazioTolerado;
-    const oca = f.ocupacao.rodapeVazioPct > limite;
+    // Duas medidas, um limite. O rodapé sozinho deixou passar `05-agenda`
+    // (1,5% de rodapé, 25,2% de faixa vazia no meio, escondida pela barra de
+    // abas) e `08-clientes` (0,1% e 25,6%, escondida pelo botão "+").
+    const oca = f.ocupacao.rodapeVazioPct > limite || f.ocupacao.maiorFaixaVaziaPct > limite;
     if (oca) ocas.push({ arquivo: f.arquivo, ...f.ocupacao, limite });
     console.log(
       ocupacaoEmLinha(f.arquivo, { ...f.ocupacao, oca }) +
@@ -300,7 +315,9 @@ async function main() {
           arquivo: f.arquivo,
           ...f.ocupacao,
           rodapeVazioTolerado: f.vazioTolerado,
-          oca: f.ocupacao.rodapeVazioPct > f.vazioTolerado,
+          oca:
+            f.ocupacao.rodapeVazioPct > f.vazioTolerado ||
+            f.ocupacao.maiorFaixaVaziaPct > f.vazioTolerado,
         })),
         faltando: falhas,
       },
@@ -317,9 +334,13 @@ async function main() {
     process.exit(1);
   }
   if (ocas.length) {
-    console.error(`\n${ocas.length} tela(s) com rodapé vazio acima do tolerado:`);
+    console.error(`\n${ocas.length} tela(s) com vazio acima do tolerado:`);
     for (const o of ocas) {
-      console.error(`  - ${o.arquivo}: ${o.rodapeVazioPct}% vazio (limite ${o.limite}%)`);
+      console.error(
+        `  - ${o.arquivo}: rodapé ${o.rodapeVazioPct}% · maior faixa vazia ` +
+          `${o.maiorFaixaVaziaPct}%${o.maiorFaixaVaziaEmY != null ? ` a partir de y=${o.maiorFaixaVaziaEmY}` : ''} ` +
+          `(limite ${o.limite}%)`,
+      );
     }
     console.error(
       '\nIsto é falta de DADO, não de código: semeie mais conteúdo em scripts/telas/elenco.mjs',

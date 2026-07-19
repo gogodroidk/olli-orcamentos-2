@@ -8,9 +8,12 @@ import { OlliInput } from '../OlliInput';
 import { saveEmpresa } from '../../database/database';
 import { ContratoPadrao, Empresa } from '../../types';
 import {
+  AVISO_PREVIO_MAX,
   AVISO_PREVIO_PADRAO,
   GARANTIA_PADRAO,
+  JUROS_MES_MAX,
   JUROS_MES_PADRAO,
+  MULTA_ATRASO_MAX,
   MULTA_ATRASO_PADRAO,
   OBRIGACOES_CONTRATADA_PADRAO,
   OBRIGACOES_CONTRATANTE_PADRAO,
@@ -32,9 +35,12 @@ import {
  * juiz derruba, com o cliente dele no meio.
  */
 
-const MULTA_MAX = 2;
-const JUROS_MAX = 10;
-const AVISO_MAX = 90;
+// Os tetos vêm de `contratoPdf` (fonte única, ver o bloco "Tetos" lá). Esta tela
+// já grampeia com o MESMO número que o gerador aplica no PDF, por construção e
+// não por coincidência — antes eram três `const` locais que só batiam de sorte.
+const MULTA_MAX = MULTA_ATRASO_MAX;
+const JUROS_MAX = JUROS_MES_MAX;
+const AVISO_MAX = AVISO_PREVIO_MAX;
 
 interface Props {
   visivel: boolean;

@@ -84,6 +84,29 @@ const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITA
 # Assets com hash no nome são imutáveis — pode cachear pra sempre.
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
+
+# As capturas de tela NÃO têm hash no nome (moram em public/, o Vite não as
+# processa), então o padrão do worker de assets vale pra elas: max-age=0,
+# must-revalidate. Medido em produção (19/07, Slow 4G + CPU 4×, DPR 3, VISITA
+# REPETIDA com cache quente): as 8 imagens revalidam, devolvem 304 com corpo
+# vazio — 300 b cada, 2.400 b no total, os bytes já estavam certos — e mesmo
+# assim custam 1.439 ms de relógio, porque o que se paga é o ROUND-TRIP, não o
+# byte. Com a janela abaixo, quem volta no mesmo dia não faz nenhuma dessas 8
+# requisições.
+#
+# POR QUE 1 DIA E NÃO 1 ANO: sem hash no nome, cache longo é irreversível —
+# recapturar as telas não invalidaria nada e o visitante veria a tela velha até
+# a janela expirar. 1 dia fresco + 1 dia servindo do cache enquanto revalida
+# atrás limita a defasagem visível a ~2 dias, que é o preço honesto de um nome
+# de arquivo estável. Se um dia isto incomodar, a correção certa é dar hash ao
+# nome no pipeline de captura (scripts/telas/capturar-telas.mjs) e só então
+# subir para "immutable" — não esticar a janela em cima de nome instável.
+#
+# (Sem crase neste bloco de propósito: ele mora DENTRO de um template literal,
+# e uma crase aqui fecharia a string no meio. O astro check pegou exatamente
+# isso quando esta regra foi escrita.)
+/telas/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=86400
 `;
 
 writeFileSync(join(DIST, "_headers"), conteudo, "utf8");

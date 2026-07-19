@@ -81,3 +81,19 @@ export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
 export function temAcessoRecurso(plano: PlanoId, recurso: Recurso): boolean {
   return RECURSOS_POR_PLANO[plano]?.has(recurso) ?? false;
 }
+
+/**
+ * Cota mensal de usos de IA no plano Grátis.
+ *
+ * Mora AQUI, junto do resto do "que plano libera o quê", e não em `planos.ts`
+ * (que importa AsyncStorage e Supabase), porque é um LIMITE DE PLANO: a tela de
+ * planos precisa exibi-lo — "3 usos de IA por mês" é a linha que faz o Pro valer
+ * a pena — e a tela não pode depender de um módulo com rede para escrever um
+ * número. `planos.ts` re-exporta daqui, então nenhum call site mudou.
+ *
+ * A IA no grátis é gate por COTA, não por plano: por isso `ia_ilimitada` (o
+ * recurso) e este número (o limite de quem não o tem) são a mesma verdade vista
+ * de dois lados — quem tem o recurso não consulta o contador (ver
+ * `getUsosIaRestantes`).
+ */
+export const IA_USOS_GRATIS_MES = 3;

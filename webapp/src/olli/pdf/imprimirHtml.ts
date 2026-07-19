@@ -15,6 +15,35 @@
  * pior que documento que não sai.
  */
 
+/**
+ * Espera o conteúdo estar REALMENTE pronto para virar papel: fontes carregadas e
+ * imagens decodificadas. Nunca rejeita e nunca fica preso.
+ *
+ * O teto de tempo é a parte importante. Se uma imagem quebrar (data URI corrompido,
+ * QR que não gerou), esperar para sempre deixaria o botão mudo — o usuário clica,
+ * não acontece nada, e ele não tem como saber por quê. Imprimir sem aquela imagem é
+ * pior que a prévia perfeita e melhor que a tela morta: ele vê o documento, percebe
+ * o que faltou, e decide. Erro não pode virar silêncio.
+ */
+function prontoParaImprimir(win: Window, tetoMs = 3000): Promise<void> {
+	const doc = win.document;
+	const imagens = Array.from(doc.images ?? []).map(
+		(img) =>
+			img.complete
+				? Promise.resolve()
+				: new Promise<void>((ok) => {
+						img.addEventListener("load", () => ok(), { once: true });
+						// `error` também resolve: uma imagem que falhou não pode segurar o
+						// documento inteiro de sair.
+						img.addEventListener("error", () => ok(), { once: true });
+					}),
+	);
+	// `document.fonts` não existe em todo navegador; ausência não é motivo de espera.
+	const fontes = doc.fonts?.ready ? doc.fonts.ready.then(() => undefined) : Promise.resolve();
+	const teto = new Promise<void>((ok) => setTimeout(ok, tetoMs));
+	return Promise.race([Promise.all([...imagens, fontes]).then(() => undefined), teto]);
+}
+
 /** Imprime um HTML via iframe oculto. Resolve após disparar o diálogo; remove o iframe depois. */
 export function imprimirHtml(html: string): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -62,9 +91,21 @@ export function imprimirHtml(html: string): Promise<void> {
 				}
 				// afterprint fecha o ciclo quando o navegador o suporta; o timer é a rede.
 				win.onafterprint = finalizar;
-				win.focus();
-				win.print();
-				setTimeout(finalizar, 800);
+
+				// ESPERAR AS IMAGENS ANTES DE IMPRIMIR — este era o bug da "página em
+				// branco". `onload` do iframe dispara quando o DOCUMENTO carregou, mas o
+				// QR do Pix, o logo e a marca d'água ainda não decodificaram; chamando
+				// `print()` ali, a prévia era montada com o layout vazio ("1 página"), e
+				// só depois de cancelar — tempo em que as imagens terminavam — o
+				// documento aparecia inteiro. O usuário via um orçamento em branco do
+				// próprio cliente.
+				prontoParaImprimir(win).then(() => {
+					// A janela pode ter sido desmontada enquanto esperávamos.
+					if (!iframe.parentNode) return;
+					win.focus();
+					win.print();
+					setTimeout(finalizar, 800);
+				});
 			} catch (e) {
 				limpar();
 				reject(e instanceof Error ? e : new Error("Falha ao imprimir."));

@@ -71,6 +71,25 @@ export interface TermosContrato {
 export const MULTA_ATRASO_PADRAO = 2;
 export const JUROS_MES_PADRAO = 1;
 export const AVISO_PREVIO_PADRAO = 5;
+
+/* ─── Tetos ────────────────────────────────────────────────────────────────
+ * O TETO é lei; o padrão é escolha nossa. Por isso são constantes separadas.
+ *
+ * Estes três números são a ÚNICA fonte: `termosPadraoContrato` (abaixo) usa-os
+ * para grampear o que sai no PDF, e `EditorClausulasContrato` importa-os para
+ * grampear o que entra E para escrever o texto de ajuda ("Teto de 2% (CDC art.
+ * 52, §1º)"). Antes o editor declarava a própria cópia (`const MULTA_MAX = 2`) —
+ * batia com a daqui por sorte, não por construção. Numa cópia o dia ruim é
+ * assim: alguém corrige o teto num arquivo, o outro continua no valor velho, e
+ * as duas metades discordam do jeito mais silencioso possível — a tela promete
+ * ao prestador um limite que o gerador não aplica (ou o gerador corta um valor
+ * que a tela deixou digitar, sem dizer que cortou).
+ *
+ * `MULTA_ATRASO_MAX` é o art. 52, §1º, do CDC. Não suba sem advogado.
+ */
+export const MULTA_ATRASO_MAX = 2;
+export const JUROS_MES_MAX = 10;
+export const AVISO_PREVIO_MAX = 90;
 export const GARANTIA_PADRAO = '90 (noventa) dias, contados da conclusão do serviço, sobre a execução e sobre as peças aplicadas.';
 
 export const OBRIGACOES_CONTRATADA_PADRAO = [
@@ -218,9 +237,9 @@ export function termosPadraoContrato(
     prazo: prazoDoOrcamento(o),
     pagamento: pagamentoDoOrcamento(o),
     garantia: textoOuPadrao(o.garantia, textoOuPadrao(padrao?.garantia, textoOuPadrao(empresa.garantiaPadrao, GARANTIA_PADRAO))),
-    multaAtrasoPercent: numeroOuPadrao(padrao?.multaAtrasoPercent, MULTA_ATRASO_PADRAO, 0, 2),
-    jurosMesPercent: numeroOuPadrao(padrao?.jurosMesPercent, JUROS_MES_PADRAO, 0, 10),
-    avisoPrevioDias: Math.round(numeroOuPadrao(padrao?.avisoPrevioDias, AVISO_PREVIO_PADRAO, 0, 90)),
+    multaAtrasoPercent: numeroOuPadrao(padrao?.multaAtrasoPercent, MULTA_ATRASO_PADRAO, 0, MULTA_ATRASO_MAX),
+    jurosMesPercent: numeroOuPadrao(padrao?.jurosMesPercent, JUROS_MES_PADRAO, 0, JUROS_MES_MAX),
+    avisoPrevioDias: Math.round(numeroOuPadrao(padrao?.avisoPrevioDias, AVISO_PREVIO_PADRAO, 0, AVISO_PREVIO_MAX)),
     foro: textoOuPadrao(padrao?.foro, foroPadrao(empresa)),
     obrigacoesContratada: textoOuPadrao(padrao?.obrigacoesContratada, OBRIGACOES_CONTRATADA_PADRAO),
     obrigacoesContratante: textoOuPadrao(padrao?.obrigacoesContratante, OBRIGACOES_CONTRATANTE_PADRAO),

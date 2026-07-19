@@ -45,10 +45,30 @@
  * DOMINANTE dela — que é o que acontece num fundo chapado de app. Onde há
  * cartão, texto, ícone ou separador, a linha tem pixels destoando da dominante.
  *
- * O número que importa é o do RODAPÉ: quanto sobra depois da última linha com
- * conteúdo. Vazio no meio da tela é respiro de layout; vazio contínuo até o fim
- * é o app parecendo que não tem nada dentro. É a diferença entre uma tela
- * arejada e uma tela oca.
+ * São DOIS números, e o segundo existe porque o primeiro tem um ponto cego
+ * demonstrado:
+ *
+ *  1. RODAPÉ VAZIO — quanto sobra depois da última linha com conteúdo.
+ *  2. MAIOR FAIXA VAZIA CONTÍNUA — o maior bloco de linhas vazias em QUALQUER
+ *     altura da tela.
+ *
+ * ─── Por que o rodapé sozinho não basta (medido) ───────────────────────────
+ *
+ * O rodapé só enxerga vazio que chega até a última linha. Basta um elemento
+ * colado embaixo — barra de abas, botão flutuante "+", botão primário fixo —
+ * para o contador zerar e uma tela oca passar como cheia. Não é hipótese:
+ *
+ *     tela             rodapé vazio     maior faixa vazia
+ *     05-agenda             1,5%              25,2%   <- barra de abas embaixo
+ *     08-clientes           0,1%              25,6%   <- botão "+" flutuante
+ *
+ * As duas foram para a pasta da Play com um quarto da tela em branco no meio,
+ * aprovadas por um portão que dizia "1,5%". Um medidor que só olha o rodapé é
+ * um medidor que reprova a tela oca óbvia e libera a tela oca com enfeite no pé.
+ *
+ * Vazio no meio da tela em pequena dose é respiro de layout — por isso o limite
+ * não é zero. Um QUINTO da altura sem nada é outra coisa: é o app parecendo que
+ * não tem conteúdo para aquela tela.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -90,6 +110,14 @@ const MIN_PIXELS_DE_CONTEUDO = 24;
 
 /** Acima deste percentual de rodapé vazio a tela é reprovada. */
 export const MAX_RODAPE_VAZIO = 20;
+/**
+ * Acima deste percentual de faixa vazia CONTÍNUA (em qualquer altura) a tela é
+ * reprovada. Mesmo valor do rodapé, e de propósito: as duas medidas respondem à
+ * mesma pergunta ("quanto desta tela é nada?") e um limite diferente para cada
+ * uma só criaria discussão sobre qual vale. As telas boas do conjunto medem de
+ * 2,3% a 7,9% — 20% não aperta nenhuma delas.
+ */
+export const MAX_FAIXA_VAZIA = 20;
 
 function difere(px, i, j) {
   return (
@@ -143,6 +171,14 @@ export async function medirBuffer(png, recorte) {
 
   let ultimaComConteudo = -1;
   let linhasComConteudo = 0;
+  // Maior sequência de linhas vazias, e onde ela começa. Contadas no mesmo
+  // varrimento: uma segunda passada leria os mesmos 2,4 milhões de pixels só
+  // para chegar à mesma conclusão.
+  let maiorFaixaVazia = 0;
+  let inicioDaMaiorFaixa = 0;
+  let faixaAtual = 0;
+  let inicioDaFaixaAtual = 0;
+
   for (let y = 0; y < altura; y++) {
     const base = y * largura * canais;
     const dom = dominanteDaLinha(px, base, x0, x1, canais);
@@ -153,11 +189,20 @@ export async function medirBuffer(png, recorte) {
     if (destoando > MIN_PIXELS_DE_CONTEUDO) {
       linhasComConteudo++;
       ultimaComConteudo = y;
+      faixaAtual = 0;
+    } else {
+      if (faixaAtual === 0) inicioDaFaixaAtual = y;
+      faixaAtual++;
+      if (faixaAtual > maiorFaixaVazia) {
+        maiorFaixaVazia = faixaAtual;
+        inicioDaMaiorFaixa = inicioDaFaixaAtual;
+      }
     }
   }
 
   const rodapeVazio = altura - (ultimaComConteudo + 1);
   const rodapeVazioPct = +((rodapeVazio / altura) * 100).toFixed(1);
+  const maiorFaixaVaziaPct = +((maiorFaixaVazia / altura) * 100).toFixed(1);
   return {
     largura,
     altura,
@@ -165,7 +210,11 @@ export async function medirBuffer(png, recorte) {
     linhasComConteudo,
     ocupacao: +((linhasComConteudo / altura) * 100).toFixed(1),
     rodapeVazioPct,
-    oca: rodapeVazioPct > MAX_RODAPE_VAZIO,
+    maiorFaixaVaziaPct,
+    // Onde olhar quando o número reprova. Sem isto, "25,6% vazio" manda alguém
+    // procurar o buraco a olho numa imagem de 1517 px de altura.
+    maiorFaixaVaziaEmY: maiorFaixaVazia ? inicioDaMaiorFaixa : null,
+    oca: rodapeVazioPct > MAX_RODAPE_VAZIO || maiorFaixaVaziaPct > MAX_FAIXA_VAZIA,
   };
 }
 
@@ -173,9 +222,10 @@ export async function medirBuffer(png, recorte) {
 export function ocupacaoEmLinha(nome, m) {
   return (
     `  ${m.oca ? 'X  ' : 'OK '} ${String(nome).padEnd(30)} ` +
-    `última linha ${String(m.ultimaLinhaComConteudo).padStart(4)}/${m.altura}  ` +
     `ocupação ${String(m.ocupacao).padStart(5)}%  ` +
-    `rodapé vazio ${String(m.rodapeVazioPct).padStart(5)}%` +
+    `rodapé vazio ${String(m.rodapeVazioPct).padStart(5)}%  ` +
+    `maior faixa vazia ${String(m.maiorFaixaVaziaPct ?? 0).padStart(5)}%` +
+    (m.maiorFaixaVaziaEmY != null ? ` (y=${m.maiorFaixaVaziaEmY})` : '') +
     (m.oca ? '  <- TELA OCA' : '')
   );
 }
@@ -222,7 +272,10 @@ async function main() {
     const nome = alvo.split(/[\\/]/).pop();
     const limite = tolerancias.get(nome) ?? MAX_RODAPE_VAZIO;
     const m = await medirBuffer(alvo, recorte);
-    const oca = m.rodapeVazioPct > limite;
+    // A tolerância declarada vale para as DUAS medidas. Uma tela que ganhou
+    // exceção ganhou por ser um formulário com espaço de resposta em branco — e
+    // esse espaço é o mesmo, seja lido como rodapé, seja lido como faixa.
+    const oca = m.rodapeVazioPct > limite || m.maiorFaixaVaziaPct > limite;
     if (oca) reprovou = true;
     console.log(
       ocupacaoEmLinha(nome, { ...m, oca }) +
@@ -230,7 +283,8 @@ async function main() {
     );
   }
   console.log(
-    `\nRegra: rodapé vazio acima de ${MAX_RODAPE_VAZIO}% é tela que vende "app sem nada dentro".`,
+    `\nRegra: rodapé vazio acima de ${MAX_RODAPE_VAZIO}% OU faixa vazia contínua acima de ` +
+      `${MAX_FAIXA_VAZIA}% é tela que vende "app sem nada dentro".`,
   );
   if (reprovou) process.exitCode = 1;
 }

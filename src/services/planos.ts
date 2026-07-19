@@ -8,9 +8,9 @@ const CACHE_KEY = 'olli.plano.cache';
 const GRACA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type { PlanoId, Recurso } from './entitlements';
-export { RECURSOS_POR_PLANO, RECURSO_REMOVE_MARCA, temAcessoRecurso } from './entitlements';
+export { RECURSOS_POR_PLANO, RECURSO_REMOVE_MARCA, temAcessoRecurso, IA_USOS_GRATIS_MES } from './entitlements';
 import type { PlanoId, Recurso } from './entitlements';
-import { temAcessoRecurso } from './entitlements';
+import { temAcessoRecurso, IA_USOS_GRATIS_MES } from './entitlements';
 
 export interface PlanoAtual {
   plano: PlanoId;
@@ -155,8 +155,9 @@ export function invalidarCachePlano(): void {
 /** Chave NOVA (o roadmap pede chave nova): guarda { mes: 'YYYY-MM', usos: n }. */
 const IA_USOS_KEY = 'olli.ia.usos.mes';
 
-/** Cota mensal de usos de IA no plano Grátis. */
-export const IA_USOS_GRATIS_MES = 3;
+// IA_USOS_GRATIS_MES mudou de casa para `./entitlements` (módulo puro) e é
+// re-exportado no topo deste arquivo — a tela de planos precisa EXIBIR essa cota
+// e não pode importar um módulo que puxa AsyncStorage/Supabase junto.
 
 interface ContadorIa {
   /** competência 'YYYY-MM' à qual os usos pertencem. */

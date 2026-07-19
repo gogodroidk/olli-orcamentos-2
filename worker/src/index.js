@@ -54,7 +54,7 @@ import { handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { cobrarCreditoVoz } from './creditos.js';
 import { gemini } from './gemini.js';
-import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva } from './util.js';
+import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import { rotuloVertical, vozSystem, vozPrompt, VOZ_MAX, handleVoz, handleVozConversa } from './voz.js';
 
 const CORS = {
@@ -64,10 +64,10 @@ const CORS = {
   'Access-Control-Max-Age': '86400',
 };
 
-function json(obj, status = 200) {
+function json(obj, status = 200, extraHeaders) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', ...CORS },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...CORS, ...(extraHeaders || {}) },
   });
 }
 
@@ -363,15 +363,19 @@ async function handleEta(request, env) {
   if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
   // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
-  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta). Mesmo
-  // padrão do IA_RL, aplicado ANTES de gastar a chamada externa.
-  if (env.ETA_RL) {
-    try {
-      const { success } = await env.ETA_RL.limit({ key: user.id });
-      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-    } catch {
-      // binding ausente: não bloqueia
-    }
+  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta).
+  //
+  // FAIL-CLOSED (`sensivel: true`), igual ao /eta/saida (etaSaida.js:570), que
+  // chama a MESMA API com a MESMA chave. Antes daqui morava o padrão gracioso
+  // (`if (env.ETA_RL) { try … } catch {}`): limiter ausente ou mudo virava
+  // permissão, calado. Não é hipótese — o docblock de rateLimit.js registra que
+  // um build por Git já apagou os 5 rate limiters em produção, e "sem limiter" é
+  // indistinguível de "dentro do limite" para quem chama. A conta que sobra é do
+  // dono, na Google. Recusar um pedido legítimo é mais barato que deixar a porta
+  // paga aberta sem vigia — e é o que a rota irmã já fazia.
+  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
+  if (!deixaPassar(estadoLimite, { sensivel: true })) {
+    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
   }
 
   const raw = parseJsonBody(corpo.raw);
@@ -565,14 +569,11 @@ async function handleGeocode(request, env) {
 
   // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
   // pode custar 1 chamada à Geocoding API (paga). Mesmo binding do /eta — as duas
-  // rotas alimentam o mesmo fluxo (endereço → coordenada → rota).
-  if (env.ETA_RL) {
-    try {
-      const { success } = await env.ETA_RL.limit({ key: user.id });
-      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-    } catch {
-      // binding ausente: não bloqueia
-    }
+  // rotas alimentam o mesmo fluxo (endereço → coordenada → rota) — e, agora,
+  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver /eta acima).
+  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
+  if (!deixaPassar(estadoLimite, { sensivel: true })) {
+    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
   }
 
   const raw = parseJsonBody(corpo.raw);
@@ -894,7 +895,16 @@ const handler = {
     if (request.method === 'GET' && url.pathname === '/') {
       return json({ ok: true, service: 'olli-diagnostico', ia: env.GEMINI_API_KEY ? 'on' : 'off' });
     }
-    if (request.method !== 'POST') return json({ ok: false, erro: 'metodo_nao_suportado' }, 405);
+    // EXISTÊNCIA primeiro, MÉTODO depois (achado A4 — ver METODOS_POR_ROTA).
+    // Path que não existe leva 404 e nenhum `Allow`; path que existe com o verbo
+    // errado leva 405 dizendo qual verbo serve. Só passa daqui uma requisição
+    // que casa com rota E método — e, como /eta, /eta/saida, /geocodificar e
+    // GET '/' já retornaram acima, o que sobra é exatamente POST em IA_ROUTES.
+    const metodosAceitos = metodosDaRota(url.pathname);
+    if (!metodosAceitos) return json({ ok: false, erro: 'nao_encontrado' }, 404);
+    if (!metodosAceitos.split(', ').includes(request.method)) {
+      return json({ ok: false, erro: 'metodo_nao_suportado' }, 405, { Allow: metodosAceitos });
+    }
 
     // RATE-LIMIT POR IP em /transcrever (B1/O2-18). Áudio é o maior corpo aceito
     // (até 4MB) e o de maior custo (Gemini) por requisição — o teto de payload

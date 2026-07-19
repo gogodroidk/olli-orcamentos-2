@@ -227,6 +227,37 @@ const RAIZ_PUBLICA = acharRaizPublica();
 const DIR_TELAS = new URL("telas/", RAIZ_PUBLICA);
 const CAMINHO_MANIFESTO = new URL("telas.json", DIR_TELAS);
 
+/**
+ * NOME DE ARQUIVO → SEGMENTO DE URL. Não é a mesma coisa, e a diferença custava
+ * um round-trip por imagem em TODO celular.
+ *
+ * Os arquivos 2× se chamam `agenda@2x.avif`. Emitido cru no `srcset`, o `@` vai
+ * pro fio como `@`, e o worker de assets da Cloudflare não serve esse caminho:
+ * ele NORMALIZA a URL e devolve **307 → `/telas/agenda%402x.avif`** antes de
+ * entregar o arquivo. Medido em produção (19/07):
+ *
+ *     curl -D- .../telas/agenda@2x.avif    → 307, Location: .../agenda%402x.avif
+ *     curl -D- .../telas/agenda%402x.avif  → 200, 30.600 b, zero redirect
+ *
+ * Passava despercebido porque **só acontece em tela retina**: com DPR 1 o
+ * navegador escolhe o candidato 393w (sem `@`) e o 307 nunca ocorre. Em DPR 3 —
+ * ou seja, o celular do prestador, que é o público — ele ocorre em 7 das 8
+ * imagens. Medido em Slow 4G + CPU 4×, cache frio, mesma página e mesma rede,
+ * mudando SÓ a codificação: 4.089 ms → 1.925 ms para carregar a esteira
+ * inteira, com os MESMOS bytes (215.488 b nos dois lados). O ganho é redirect
+ * removido, não imagem degradada.
+ *
+ * `encodeURIComponent` e não um `replaceAll("@", "%40")`: o que está errado não
+ * é o `@` especificamente, é emitir nome de arquivo onde se espera URL. Ele
+ * também escapa a VÍRGULA — que em `srcset` é o separador entre candidatos, e um
+ * arquivo com vírgula no nome partiria a lista ao meio.
+ *
+ * Não há risco de codificar duas vezes (`%40` → `%2540`): o schema `Arquivo`
+ * acima só aceita `^[a-z0-9@.-]+\.(avif|webp)$`, que não admite `%`. A entrada
+ * é, por contrato, sempre um nome cru.
+ */
+const urlDaTela = (arquivo: string) => `/telas/${encodeURIComponent(arquivo)}`;
+
 function montar(t: TelaBruta): TelaPronta {
 	const porExt = (ext: string) =>
 		t.arquivos
@@ -235,7 +266,7 @@ function montar(t: TelaBruta): TelaPronta {
 	const avif = porExt("avif");
 	const webp = porExt("webp");
 	const srcset = (lista: typeof avif) =>
-		lista.map((a) => `/telas/${a.arquivo} ${a.largura}w`).join(", ");
+		lista.map((a) => `${urlDaTela(a.arquivo)} ${a.largura}w`).join(", ");
 
 	const larguraExibida = LARGURA_EXIBIDA[t.superficie];
 	// A proporção vem do MENOR arquivo, que é o mesmo enquadramento do maior —
@@ -250,7 +281,7 @@ function montar(t: TelaBruta): TelaPronta {
 		destaque: t.destaque,
 		srcsetAvif: srcset(avif),
 		srcsetWebp: srcset(webp),
-		src: `/telas/${(webp[0] ?? avif[0]).arquivo}`,
+		src: urlDaTela((webp[0] ?? avif[0]).arquivo),
 		larguraExibida,
 		alturaExibida: Math.round((larguraExibida * base.altura) / base.largura),
 	};

@@ -100,12 +100,33 @@ export async function carregarMinhaOrganizacao(): Promise<LeituraOrganizacao> {
 
     // limit(1) em vez de maybeSingle(): se o usuário for membro de mais de uma
     // org (edge case — o schema garante UNIQUE(org_id,user_id), não UNIQUE(user_id)),
-    // pegamos a primeira em vez de errar e cair como "pessoal".
+    // pegamos UMA em vez de errar e cair como "pessoal".
+    //
+    // O `.order('criado_em')` NÃO é enfeite. Esta linha escolhe o TENANT DE
+    // ESCRITA do app inteiro: `cloudSync` chama `carregarMinhaOrganizacao` e usa
+    // o `ownerUserId` daqui para carimbar cada linha que sobe (ver
+    // `resolverContextoEquipe`, cloudSync.ts:594-640). `limit(1)` sem `order by`
+    // não é "a primeira": é a que o Postgres devolver naquele plano de execução,
+    // que pode mudar entre duas chamadas do MESMO aparelho. Quem é membro
+    // legítimo de duas orgs teria o orçamento gravado na org A hoje e na org B
+    // amanhã — dado de uma empresa indo parar na outra, sem erro nenhum na tela.
+    //
+    // `criado_em` é `timestamptz not null default now()`
+    // (20260707_multitenant.sql:47), então a ordenação é total e estável: a
+    // membresia MAIS ANTIGA sempre vence, em qualquer aparelho, para sempre.
+    //
+    // Ascendente por `criado_em` é a MESMA regra do painel
+    // (`webapp/src/olli/mutacoes.ts`, `opcoesContextoDeEscrita`). Isso é
+    // deliberado e é o ponto todo: app e painel precisam concordar sobre em qual
+    // empresa o usuário está gravando, senão o celular e o navegador do mesmo
+    // dono escrevem em tenants diferentes — que é o bug que esta linha conserta,
+    // só que pior, porque ninguém compara os dois.
     const { data: membros, error } = await supabase
       .from('organizacao_membros')
       .select('org_id, papel, ativo')
       .eq('user_id', user.id)
       .eq('ativo', true)
+      .order('criado_em', { ascending: true })
       .limit(1);
 
     if (error) return { status: 'erro' }; // a consulta falhou: NÃO é "sem org"
