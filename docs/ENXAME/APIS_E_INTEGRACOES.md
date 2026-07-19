@@ -33,7 +33,8 @@ Conferido no código, com arquivo e linha de entrada:
 | Coisa | Onde vive | Estado |
 |---|---|---|
 | **CNPJ → cadastro mágico** | `src/services/cnpj.ts` → worker `GET /cnpj/:14dig` (`worker/src/index.js:422`) | **Em produção.** Proxy fino da **BrasilAPI** (grátis, sem chave), cache 30 dias, autenticado + rate limit. Devolve razão, fantasia, CNAE principal + secundários, endereço. Dedução CNAE→vertical no cliente (`src/services/verticais.ts`). Trata os 4 estados (`ok`/`nao_encontrado`/`invalido`/`indisponivel`). |
-| **CEP → endereço** | `src/services/cep.ts` (+ hook `useCepLookup`) | **Em produção.** ViaCEP direto do app, timeout 5s, falha silenciosa → digitação manual. |
+| **CEP → endereço** | `src/services/cep.ts` (+ hook `useCepLookup`) · **worker `GET /cep/:8dig` (`worker/src/brasil.js`)** | **App: em produção** (ViaCEP direto, timeout 5s, falha silenciosa → digitação manual). **Worker: PRONTO, não ligado no app** — dois provedores, três estados, cache. Ver §11.1. |
+| **Feriados nacionais** | worker `GET /feriados/:ano` (`worker/src/brasil.js`) | **PRONTO, não ligado no app.** Calculado, zero rede. Ver §11.2. |
 | **ETA com trânsito** | `src/services/eta.ts` → worker `POST /eta` (`worker/src/index.js:354`) | **Em produção.** Google **Routes API** (`computeRoutes`, `TRAFFIC_AWARE`), chave só no worker, rate limit por usuário antes do fetch pago. |
 | **Geocodificação** | worker `POST /geocodificar` (`worker/src/index.js:518`) | **Em produção.** Google Geocoding API, mesma chave restrita. |
 | **IA (diagnóstico, voz→orçamento, chat)** | `worker/src/gemini.js`, `worker/src/voz.js`, `src/services/olliIA.ts`, `olliAssistente.ts` | **Em produção.** Gemini (`gemini-2.5-flash` por default). Fallback offline de 698 códigos. |
@@ -333,9 +334,9 @@ bloqueio **B3**. **Custo: zero.** Não é decisão de engenharia, é 10 minutos 
 | **NFS-e Nacional (emissão direta pelo OLLI)** | ✅ API | grátis, mas exige custódia de certificado | **G** | 🔴 **NÃO ENTRA AINDA** (risco, não custo) |
 | **Avaliação no Google (link direto, sem API)** | ✅ | **R$ 0** | **P** | 🟢 **ENTRA JÁ** |
 | **Google Business Profile API** | ✅ | grátis, mas **quota 0 até aprovação manual** | G | 🟡 **ENTRA DEPOIS** |
-| **BrasilAPI — CEP v2** | ✅ | grátis, agrega 4 fontes | P | 🟡 **ENTRA DEPOIS** (rede de segurança do ViaCEP) |
+| **BrasilAPI — CEP v2** | ✅ | grátis, agrega 4 fontes | P | ✅ **FEITO** (§11.1) — e o 404 dela é ambíguo, ver §11.4 |
 | **IBGE — municípios/UF** | ✅ | grátis | P | 🟡 **ENTRA DEPOIS** (dado estático, embutir) |
-| **BrasilAPI — feriados nacionais** | ✅ | grátis | P | 🟡 **ENTRA DEPOIS** (barato e simpático) |
+| **BrasilAPI — feriados nacionais** | ✅ | grátis | P | ❌ **DESCARTADA** — feriado é **calculável**; e o `type` dela está errado pro nosso uso (§11.2) |
 | **ReceitaWS** | ⚠️ | grátis: **3 consultas/min**; pago: R$149–699/mês | P | 🔴 **NÃO ENTRA** — BrasilAPI já resolve de graça |
 | **CNPJ.ws / CNPJá** | ⚠️ | free tier apertado, pago | P | 🔴 **NÃO ENTRA** — mesma razão |
 | **Tabela FIPE** | ✅ | grátis via BrasilAPI | P | 🔴 **NÃO ENTRA** — prestador não vende carro |
@@ -458,9 +459,12 @@ dela **no worker** — o app não precisa saber. Só não é urgente.
 - **IBGE municípios/UF**: dado **estático**. Não integre API para isso — **baixe uma vez, embuta
   um JSON no app.** 5.570 municípios cabem em poucas centenas de KB e funcionam **offline**, que
   é o que importa para este público. API para dado que não muda é dependência de rede de graça.
-- **Feriados nacionais (BrasilAPI)**: barato, simpático, evita agendar serviço em 7 de setembro.
-  Mesma regra: baixa o ano inteiro de uma vez e guarda. Feriado **municipal** a BrasilAPI não
-  cobre — e é justamente o que mais atrapalha o prestador. Honestidade: resolve 60% do problema.
+- ~~**Feriados nacionais (BrasilAPI)**~~ → **FEITO, mas SEM a BrasilAPI** (§11.2). A intuição
+  ("baixa o ano inteiro e guarda") estava certa; a fonte, não. Feriado nacional é **calculável**
+  — datas fixas em lei + deslocamento da Páscoa — então virou cálculo local, zero rede, que é o
+  que faz a agenda funcionar sem sinal. E a BrasilAPI marca Carnaval e Corpus Christi como
+  `national`, o que a Portaria MGI nº 11.460/2025 contradiz. Feriado **municipal** continua fora
+  (não existe base nacional confiável), agora declarado na resposta em vez de omitido.
 
 ### 5.6. NFS-e Nacional — a verdade completa sobre a dificuldade
 
@@ -519,6 +523,12 @@ segue proibida até a Onda 9 fechar.
 | 7 | **Roteiro do dia (Route Matrix)** | alto | M | R$ 0–324 | 7 |
 | 8 | Feriados + IBGE embutidos | baixo | P | R$ 0 | 8 |
 | 9 | Fallback CNPJ e CEP no worker | seguro, não visível | P | R$ 0 | 9 |
+
+> **Correção de ranking feita na execução (§11).** As linhas 8 e 9 estavam subestimadas:
+> classificadas como "baixo valor" e "não visível", elas eram as duas únicas do documento
+> que **não dependiam de nada do dono** — e a de CEP escondia um erro de correção, não de
+> conveniência (§11.4). Foram as que entraram. Valor por esforço é bom critério; **"posso
+> fazer isso hoje sem esperar ninguém" é critério melhor** quando o gargalo é humano.
 | 10 | GBP API (ler/responder avaliações) | médio | G (aprovação Google) | R$ 0 | 10 |
 
 **Soma de tudo que é "ENTRA JÁ" em escala de 1.000 prestadores: ~R$ 670/mês.** Menos de
@@ -626,3 +636,215 @@ https://www.socialhub.pro/blog/preco-whatsapp-api-2026-brasil/
 **Código lido:** `src/services/{cnpj,cep,equipamentos,googleAgenda,verticais,radarClientes}.ts` ·
 `src/services/ports/{MapsProvider,FiscalProvider}.ts` · `src/utils/pixBrCode.ts` ·
 `worker/src/{index,gemini,voz,creditos}.js` · `docs/INTEGRATION_BACKLOG.md`
+
+---
+
+## 11. EXECUTADO — onda K2 (2026-07-18)
+
+> O ranking da §6 foi seguido **com um filtro**, e o filtro mudou a ordem: só entrou o
+> que **não depende de conta nova do dono**. Ele já é o gargalo (`BLOQUEIOS.md`), e
+> código que nasce esperando alguém assinar alguma coisa é código morto no repositório.
+>
+> Isso derrubou os dois primeiros do ranking (§11.5 explica cada um) e promoveu duas
+> linhas que estavam no fim da lista como "barato e simpático". Elas se revelaram menos
+> simpáticas e mais necessárias do que o inventário supunha — a §11.4 é o motivo.
+>
+> **Nada foi ligado no app.** `src/` é de outro agente nesta onda. O que existe é o
+> endpoint, testado, com o contrato abaixo.
+
+**Arquivos:** `worker/src/brasil.js` (novo) · `worker/src/util.js` (+2 funções) ·
+`worker/src/index.js` (rotas + CNPJ) · `worker/wrangler.jsonc` (binding `CEP_RL`) ·
+`scripts/teste-brasil-dados.ts` (novo, na cadeia do `npm test`).
+
+**Gate:** `node --check` em cada `.js` · `npm run typecheck` exit 0 · `npm test` verde
+(161 asserções no arquivo novo) · **mutation check: 19 mutações, 19 mortas** — e uma
+delas só morreu depois que o teste foi reforçado, ver §11.4.
+
+### 11.1. `GET /cep/<8 dígitos>` — endereço do cliente
+
+Autenticado (JWT Supabase). Rate limit `CEP_RL` por usuário, 30/min, conferido **antes**
+de qualquer fetch e **depois** do cache (acerto de cache não gasta upstream, então não
+compete por balde — sem isso o prestador que revisita o mesmo cliente leva 429 de graça).
+
+```
+200 { ok:true,  estado:'ok', endereco:{cep,logradouro,bairro,cidade,uf[,lat,lng]},
+                fonte:'brasilapi'|'viacep', cache:boolean }
+404 { ok:false, estado:'nao_encontrado', cep }   → confirmado pelo ViaCEP. Ação: conferir o número.
+400 { ok:false, estado:'invalido' }              → não são 8 dígitos. Ação: corrigir o campo.
+200 { ok:false, estado:'indisponivel', erro }    → não consegui consultar. Ação: digitar e seguir.
+401/429 idem `indisponivel`.
+```
+
+**Cadeia:** BrasilAPI CEP v2 → (falhou ou 404) → ViaCEP. O ViaCEP é a **segunda porta e o
+árbitro**: `nao_encontrado` só sai com a marca dele. Por quê: §11.4.
+
+**Cache:** memória do isolate. 30 dias no positivo, **24h no negativo** (CEP inexistente
+hoje pode existir mês que vem; insistir 30 dias faria o app afirmar que o endereço do
+cliente é inválido). `indisponivel` **nunca** é cacheado — guardar um erro de 3 s por 30
+dias transforma falha passageira em CEP morto.
+
+Não é tabela no Supabase (exigiria migration, e endpoint que só funciona depois que
+alguém roda SQL nasce quebrado) nem CDN da Cloudflare (a rota é autenticada, e
+`Authorization` faz a borda pular o cache — `Cache-Control` aqui seria enfeite).
+
+**Economia — contada, não estimada** (as três viram asserção no teste):
+
+| Situação | Chamadas upstream |
+|---|---|
+| mesmo CEP 2× no mesmo isolate | **1**, não 2 |
+| CEP inexistente 10× | **2**, não 20 |
+| pior caso (miss + primeira porta falhando) | 2 |
+
+Não há fatura para economizar aqui — os dois upstreams são grátis e sem chave. O que se
+protege é cota de fair-use de projeto comunitário sem SLA, e latência na mão de quem está
+em pé, de luva, numa rede ruim.
+
+### 11.2. `GET /feriados/<ano>` — **sem rede**
+
+Autenticado. **Zero chamadas externas** (o teste prova: roda com `globalThis.fetch`
+sabotado para lançar e conta 0 tentativas). Sem rate limit, e é decisão, não esquecimento:
+a rota não chama ninguém e não gasta cota de terceiro — limitador ali seria ritual.
+
+```
+200 { ok:true, estado:'ok', ano, feriados:[{data,nome,tipo,diaSemana}],
+      fonte:'calculo_local', municipaisIncluidos:false, estaduaisIncluidos:false }
+400 { ok:false, estado:'invalido', erro:'ano_invalido', intervalo:[1900,2199] }
+```
+
+**Não é proxy da BrasilAPI, e não é preguiça — é correção.** Duas razões que se somam:
+
+1. **Feriado nacional é calculável.** Datas fixas estão em lei; as móveis são todas
+   deslocamento da Páscoa (aritmética fechada). Uma agenda de campo que precisa de sinal
+   para saber que 7 de setembro é feriado falha exatamente onde é usada.
+2. **A resposta da BrasilAPI está errada para este uso.** Verificado ao vivo: ela devolve
+   Carnaval e Corpus Christi como `"type":"national"` e ainda lista a Páscoa. Pela
+   **Portaria MGI nº 11.460/2025** (calendário oficial de 2026), Carnaval e Corpus Christi
+   são **ponto facultativo**, e a Páscoa não está no calendário — é domingo.
+
+Aqui a distinção é explícita porque para o prestador ela é operacional, não jurídica:
+`nacional` = quase tudo fecha · `facultativo` = comércio abre, vale perguntar antes de
+marcar. **2026 sai com 10 nacionais** (o mesmo número da portaria) **e 4 facultativos.**
+
+Ficaram de fora, de propósito, os facultativos de **servidor federal** (Dia do Servidor
+Público, 24 e 31/12 após as 14h): não mudam se o cliente do prestador vai estar em casa.
+
+⚠️ **Feriado municipal não está aqui e não tem como estar** — não existe base nacional
+confiável, são 5.570 calendários. E é justo o que mais atrapalha: aniversário de cidade
+esvazia a agenda. Por isso a resposta carrega `municipaisIncluidos:false`, para a tela
+poder dizer "não incluí os feriados da sua cidade" em vez de o app parecer mais esperto
+do que é. A honestidade da §5.5 ("resolve 60%") continua valendo, agora por escrito na API.
+
+### 11.3. `/cnpj` — a melhoria da §5.4, e um bug que estava em produção
+
+A §5.4 pedia usar o que já vem na resposta. Ao fazer isso apareceu um bug vivo:
+
+```js
+mei: !!d.opcao_pelo_mei,   // ← estava assim
+```
+
+A BrasilAPI devolve `opcao_pelo_mei: null` quando a Receita não informou — **confirmado ao
+vivo num CNPJ real, existente e ativo**. `!!null` é `false`: "não sei se é MEI" chegava na
+tela como **"não é MEI"**. É `olli-gate-erro-vira-vazio` em uma linha, e deixa de ser
+detalhe em **1º de setembro de 2026** — pela Resolução CGSN nº 189/2026 o regime de NFS-e
+do cliente depende justamente de ser MEI/ME/EPP do Simples (§2.2 e §5.6).
+
+O campo legado `mei` **foi mantido** (o `src/services/cnpj.ts` lê ele, e `src/` é de outro
+agente). Foram **somados** os campos honestos: `meiEstado` e `simplesEstado`
+(`'sim'|'nao'|'desconhecido'`), `situacaoCadastral` e `ativa` (`true|false|null`).
+`ativa:false` é "esta empresa foi BAIXADA"; `ativa:null` é "não consegui confirmar" — e
+emitir nota para uma ou outra são decisões diferentes.
+
+**Consequência que quase passou batido:** o `cnpj_cache` tem 30 dias de vida. Sem versão
+de formato, um CNPJ consultado ontem devolveria hoje um objeto **sem** os campos novos, e
+`undefined` viraria um quarto estado silencioso — exatamente o que os campos existem para
+impedir. O cache passou a ser versionado (`_v`, removido antes de ir pro app); linha velha
+é tratada como stale e reconsultada uma vez.
+
+**Não entrou:** segundo provedor de CNPJ atrás da BrasilAPI (§5.4). Os candidatos grátis
+(ReceitaWS, CNPJ.ws público) limitam a **3 consultas/minuto** — como rede de segurança
+para o momento em que a BrasilAPI cai, 3/min não segura nada. Fallback que quebra no
+primeiro pico é fallback de mentira. Fica aberto.
+
+### 11.4. O achado que redesenhou a rota de CEP
+
+Verificado ao vivo em 2026-07-18 (comandos reproduzidos no rodapé do teste):
+
+```
+GET https://brasilapi.com.br/api/cep/v2/00000000  → 404
+{"name":"CepPromiseError","type":"service_error",
+ "message":"Todos os serviços de CEP retornaram erro.","errors":[...]}
+```
+
+Esse corpo é literalmente *"todos os provedores falharam"* — e é **o mesmo** que a
+BrasilAPI devolve quando o CEP não existe e quando os quatro upstreams dela estão fora.
+Não há campo que separe os dois casos. **Um 404 da BrasilAPI não é prova de ausência.**
+
+Traduzir aquele 404 direto em "CEP não existe" seria importar o bug da casa de dentro do
+fornecedor — e o efeito na mão do prestador é concreto: o app diz "esse CEP não existe" e
+ele liga para o cliente conferir o endereço, na frente do cliente, porque a internet
+piscou. Daí a regra: **só o ViaCEP produz `nao_encontrado`** (marca dele: `{"erro":"true"}`
+com HTTP 200 — e é **string**, não booleano como diz a doc antiga; comparar com `=== true`
+deixaria o inexistente passar como endereço em branco).
+
+Duas coisas que só apareceram por causa do mutation check, e valem registro:
+
+- A mutação mais importante — enfiar `if (status === 404) return 'nao_encontrado'` dentro
+  do leitor da BrasilAPI — **sobreviveu na primeira rodada**. Sobreviveu porque hoje é
+  inofensiva: `handleCep` só ramifica em `'ok'`, então o valor morre sem ser lido. Mas é
+  uma armadilha carregada: basta alguém acrescentar depois um `if (viaBrasil.estado ===
+  'nao_encontrado')` achando que trata "um caso que faltava". Nenhum teste de
+  comportamento pega código que ainda não é lido — a asserção sobre o **fonte** foi
+  reforçada (escopada ao corpo da função) e agora pega.
+- A coordenada que a BrasilAPI v2 promete (`location.coordinates`) **veio vazia nas 5
+  consultas reais** (Sé/SP, Centro/RJ, Centro/BH, Centro/Floripa, Sarandi/PR). Existe no
+  contrato, quase nunca no dado. É lida quando vier (economiza uma chamada paga de
+  Geocoding), e **nada** pode ser desenhado contando com ela — inclusive o ETA.
+
+### 11.5. O que NÃO foi feito, e por quê — os dois primeiros do ranking
+
+**🥇 Clima (§5.1) — bloqueado em conta do dono, e o inventário está certo.**
+Revalidado na fonte em 2026-07-18: o free tier do Open-Meteo é **300.000 chamadas/mês**
+com **"Commercial use ❌"** e a frase *"The free API is for non-commercial use,
+rate-limited to 10,000 calls/day, and carries no uptime guarantee"*. O OLLI cobra
+assinatura. O plano Standard (1M chamadas/mês) resolve legalmente — e exige **cartão do
+dono**. Nenhuma alternativa escapa disso: OpenWeather exige conta e cobra por chamada;
+o INMET é grátis mas sem doc e sem SLA (§5 já dizia: fallback, nunca primário).
+
+Deliberadamente **não** foi escrito um `/clima` que fica escuro esperando um secret. Código
+que só liga depois que alguém assina algo é dívida com aparência de entrega, e o dono
+descobriria a dependência ao revisar, não ao decidir. **Fica como item de decisão dele:
+US$29/mês para o produto inteiro é a melhor relação valor/custo do documento** (§3.2),
+e é uma assinatura, não uma linha de código.
+
+**🥈 Places Autocomplete (§4.2) — depende de passo de console do dono.**
+A §4.1 diz que ligar Places é "um clique, sem passo humano". Meio verdade: o billing está
+ligado, mas a chave `OLLI_ROUTES_API_KEY` é **restrita a Routes + Geocoding**. Sem ampliar
+a restrição, toda chamada volta `REQUEST_DENIED` — endpoint pronto e inútil. É o passo 1
+da §9, e continua sendo do dono. Quando ele fizer, a §4.2 continua correta, **inclusive a
+pegadinha dos US$226/mês**: `sessionToken` + debounce 300 ms + mínimo de 4 caracteres não
+são otimização, são a diferença entre US$85 e US$311 por mês.
+
+Enquanto isso, o `/cep` acima cobre o caso mais comum (o cliente sabe o CEP dele) e
+funciona **hoje**, sem depender de ninguém.
+
+**Também não entrou:** IBGE municípios embutido (§5.5) — é geração de asset em `src/`,
+que é de outro agente nesta onda. Continua valendo a regra: baixar uma vez, embutir JSON,
+funcionar offline. Nunca API em runtime para dado que não muda.
+
+### 11.6. Para quem for ligar isto no app (contrato, não sugestão)
+
+1. **`/cep` substitui o `buscarCep` de `src/services/cep.ts`, não convive com ele.** Manter
+   os dois é manter a falha silenciosa viva na metade dos caminhos.
+2. **Os quatro estados têm que virar quatro comportamentos de tela.** Se `indisponivel` e
+   `nao_encontrado` renderizarem a mesma mensagem, todo este arquivo foi desperdício —
+   é literalmente o bug que ele existe para matar.
+3. **`/feriados` é para baixar o ano inteiro UMA vez e guardar** (AsyncStorage/SQLite).
+   Consultar por dia joga fora a única vantagem que importa: funcionar sem sinal.
+4. **`municipaisIncluidos:false` precisa aparecer na tela.** Silenciar isso faz o app
+   afirmar que não há feriado quando ele só não sabe.
+5. **No `/cnpj`, decidir por `meiEstado`/`simplesEstado`/`ativa`** — nunca pelo `mei`
+   legado, que ainda colapsa "não sei" em "não".
+6. **Provisionar `CEP_RL`** no próximo `wrangler deploy` (já declarado no `wrangler.jsonc`).
+   Até lá a rota funciona sem teto, de propósito: `sensivel:false`, porque derrubar cadastro
+   de cliente por limitador ausente é pior que o abuso que ele previne. ⚠️ Ler o aviso de
+   custo do deploy em `BLOQUEIOS.md` antes de subir.

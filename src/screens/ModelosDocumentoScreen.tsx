@@ -9,8 +9,18 @@ import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type C
 import { GradientHeader } from '../components/GradientHeader';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
+import { GerarDocumentoModal, TITULOS_DOCUMENTO, type TipoDocumento } from '../components/documentos/GerarDocumentoModal';
+import { EditorClausulasContrato } from '../components/documentos/EditorClausulasContrato';
 import { PDF_MODELS } from '../steps/Step4Personalizacao';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
+import { AVISO_APP } from '../utils/documentoBase';
+import { montarHtmlContratoCompleto, termosPadraoContrato } from '../utils/contratoPdf';
+import {
+  dadosConclusaoDeOrcamento,
+  dadosGarantiaDeOrcamento,
+  montarHtmlTermoConclusao,
+  montarHtmlTermoGarantia,
+} from '../utils/termosPdf';
 import { getEmpresa, saveEmpresa, getDepoimentos } from '../database/database';
 import { Empresa, Depoimento, ItemOrcamento, ModeloPdfId, ModeloReciboId, Orcamento, Recibo } from '../types';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -81,6 +91,25 @@ const EMPRESA_EXEMPLO: Empresa = {
   normas: '', nomePrestador: 'Responsável Técnico',
 };
 
+/**
+ * CONTRATO E TERMOS — os documentos que faltavam.
+ *
+ * O app sabia propor (orçamento) e sabia dar quitação (recibo), mas não tinha
+ * nada entre as duas pontas: o papel que registra o que foi combinado, a
+ * garantia por escrito e o aceite do serviço entregue. `desc` diz o que o
+ * documento resolve NA VIDA do prestador, não o que ele é no papel.
+ */
+const DOCUMENTOS_JURIDICOS: Array<{
+  id: TipoDocumento;
+  desc: string;
+  color: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+}> = [
+  { id: 'contrato', desc: 'O que foi combinado, por escrito — antes de começar o serviço', color: '#0B6FCE', icon: 'file-sign' },
+  { id: 'garantia', desc: 'A garantia que você dá, com prazo, cobertura e como acionar', color: '#0E7C66', icon: 'shield-check-outline' },
+  { id: 'conclusao', desc: 'O cliente declara que recebeu e conferiu — fecha o serviço', color: '#7A4FD1', icon: 'clipboard-check-outline' },
+];
+
 /** Recibo fictício para a PRÉVIA de cada modelo (mesmo HTML do recibo enviado). */
 function reciboDeExemplo(): Recibo {
   return {
@@ -113,6 +142,11 @@ export default function ModelosDocumentoScreen() {
   const [padraoRecibo, setPadraoRecibo] = useState<ModeloReciboId>('classico');
   const [salvandoRecibo, setSalvandoRecibo] = useState<ModeloReciboId | null>(null);
   const [previewRecibo, setPreviewRecibo] = useState<ModeloReciboId | null>(null);
+  // Contrato e termos: exemplo (prévia com dados fictícios), geração a partir de
+  // um orçamento REAL, e o editor de cláusulas padrão.
+  const [exemploDoc, setExemploDoc] = useState<TipoDocumento | null>(null);
+  const [gerarDoc, setGerarDoc] = useState<TipoDocumento | null>(null);
+  const [editorAberto, setEditorAberto] = useState(false);
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -180,12 +214,29 @@ export default function ModelosDocumentoScreen() {
     }
   }
 
+  /**
+   * HTML da PRÉVIA de exemplo de cada documento jurídico. Usa o mesmo orçamento
+   * fictício das prévias de modelo, então o prestador vê o documento REAL (mesmo
+   * gerador do PDF que ele vai enviar), preenchido — e não um mock chapado.
+   */
+  async function htmlDeExemplo(tipo: TipoDocumento): Promise<string> {
+    const emp = empresa ?? EMPRESA_EXEMPLO;
+    const orc = orcamentoDeExemplo(padrao, emp.corMarca);
+    if (tipo === 'contrato') {
+      return montarHtmlContratoCompleto(orc, emp, termosPadraoContrato(orc, emp, emp.contratoPadrao));
+    }
+    if (tipo === 'garantia') {
+      return montarHtmlTermoGarantia(dadosGarantiaDeOrcamento(orc, emp), emp);
+    }
+    return montarHtmlTermoConclusao(dadosConclusaoDeOrcamento(orc, emp), emp);
+  }
+
   return (
     <View style={styles.container}>
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title="Modelos de documento"
-        subtitle="O visual dos seus orçamentos"
+        subtitle="O visual e as cláusulas dos seus documentos"
       />
 
       <ScrollView
@@ -319,6 +370,75 @@ export default function ModelosDocumentoScreen() {
             </AnimatedEntrance>
           );
         })}
+
+        {/* ─── CONTRATO E TERMOS ─── */}
+        <View style={styles.divisor}>
+          <Text style={styles.divisorTitulo}>Contrato e termos</Text>
+          <Text style={styles.divisorSub}>
+            Os documentos que fecham o serviço — preenchidos com o que já está no orçamento.
+          </Text>
+        </View>
+
+        <View style={styles.avisoJuridico}>
+          <MaterialCommunityIcons name="scale-balance" size={16} color={cores.onSurfaceVariant} />
+          <Text style={styles.avisoJuridicoTexto}>{AVISO_APP}</Text>
+        </View>
+
+        {DOCUMENTOS_JURIDICOS.map((d, i) => (
+          <AnimatedEntrance key={d.id} index={Math.min(i, 8)}>
+            <View style={styles.card}>
+              <View style={[styles.iconChip, { backgroundColor: comAlfa(d.color, 0.16) }]}>
+                <MaterialCommunityIcons name={d.icon} size={24} color={d.color} />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nome}>{TITULOS_DOCUMENTO[d.id]}</Text>
+                <Text style={styles.desc}>{d.desc}</Text>
+
+                <View style={styles.acoesDoc}>
+                  <TouchableOpacity
+                    style={styles.acaoDoc}
+                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setExemploDoc(d.id); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ver exemplo de ${TITULOS_DOCUMENTO[d.id]}`}
+                  >
+                    <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
+                    <Text style={styles.acaoDocText}>Ver exemplo</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.acaoDoc}
+                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setGerarDoc(d.id); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Gerar ${TITULOS_DOCUMENTO[d.id]} a partir de um orçamento`}
+                  >
+                    <MaterialCommunityIcons name="file-export-outline" size={15} color={cores.accentLight} />
+                    <Text style={styles.acaoDocText}>Gerar de um orçamento</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </AnimatedEntrance>
+        ))}
+
+        <AnimatedEntrance index={3}>
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); setEditorAberto(true); }}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="Editar as cláusulas padrão do contrato"
+          >
+            <View style={[styles.iconChip, { backgroundColor: comAlfa('#6B7686', 0.16) }]}>
+              <MaterialCommunityIcons name="text-box-edit-outline" size={24} color={cores.onSurfaceVariant} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nome}>Cláusulas padrão do contrato</Text>
+              <Text style={styles.desc}>Garantia, multa, prazo de rescisão e foro — ajuste uma vez</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
+          </TouchableOpacity>
+        </AnimatedEntrance>
       </ScrollView>
 
       <PdfPreviewModal
@@ -335,6 +455,32 @@ export default function ModelosDocumentoScreen() {
         titulo="Prévia do recibo"
         chave={previewRecibo ?? ''}
         construirHtml={() => montarHtmlRecibo(reciboDeExemplo(), empresa ?? EMPRESA_EXEMPLO, { modelo: previewRecibo ?? 'classico', corMarca: empresa?.corMarca })}
+      />
+
+      {/* Exemplo (dados fictícios) — mesmo gerador do documento enviado. */}
+      <PdfPreviewModal
+        visible={exemploDoc !== null}
+        onClose={() => setExemploDoc(null)}
+        empresa={empresa}
+        titulo={exemploDoc ? `Exemplo · ${TITULOS_DOCUMENTO[exemploDoc]}` : 'Exemplo'}
+        chave={exemploDoc ?? ''}
+        construirHtml={() => htmlDeExemplo(exemploDoc ?? 'contrato')}
+        nomeArquivo={exemploDoc ? `exemplo-${exemploDoc}` : undefined}
+      />
+
+      {/* Documento REAL, a partir de um orçamento salvo. */}
+      <GerarDocumentoModal
+        visivel={gerarDoc !== null}
+        tipo={gerarDoc ?? 'contrato'}
+        empresa={empresa}
+        aoFechar={() => setGerarDoc(null)}
+      />
+
+      <EditorClausulasContrato
+        visivel={editorAberto}
+        empresa={empresa}
+        aoFechar={() => setEditorAberto(false)}
+        aoSalvar={setEmpresa}
       />
     </View>
   );
@@ -356,6 +502,16 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   desc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   verBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, alignSelf: 'flex-start' },
   verBtnText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+
+  // Duas ações por card (ver exemplo / gerar). minHeight 44 = alvo de dedo.
+  acoesDoc: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginTop: 6 },
+  acaoDoc: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 },
+  acaoDocText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  avisoJuridico: {
+    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+    backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, padding: Spacing.md,
+  },
+  avisoJuridicoTexto: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17 },
   radio: { width: 26, alignItems: 'center' },
 
   divisor: { marginTop: 10, marginBottom: 2 },

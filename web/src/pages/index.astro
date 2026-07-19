@@ -1,4 +1,5 @@
 ---
+import EsteiraTelas from "../components/EsteiraTelas.astro";
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
@@ -283,13 +284,13 @@ const schemaFaq = {
           ao orçamento fechado.
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
-          Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
+          Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand-fg">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
           <a href={APP_CADASTRO_URL} class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
             Criar meu primeiro orçamento — grátis
           </a>
-          <a href="#como" class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
+          <a href="#como" class="rounded-acao border border-line bg-card px-7 py-3.5 text-center text-base font-semibold text-ink shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2">
             Ver como funciona
           </a>
         </div>
@@ -299,7 +300,7 @@ const schemaFaq = {
           {OFICIOS.map((o) => (
             <a
               href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-              class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+              class="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-slate shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2"
             >
               <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
             </a>
@@ -353,7 +354,7 @@ const schemaFaq = {
   </section>
 
   <!-- ══════════ BARRA DE CONFIANÇA ══════════ -->
-  <section class="border-y border-line bg-paper">
+  <section class="faixa-recuo">
     <div class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-6 py-10 sm:grid-cols-4">
       {/*
         CC-05: a barra abria com "698 códigos HVAC" — 3 dos 4 números eram de
@@ -404,12 +405,12 @@ const schemaFaq = {
       {OFICIOS.map((o) => (
         <a
           href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-          class="olli-revela group rounded-cartao border border-line bg-white p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
+          class="olli-revela group rounded-cartao border border-line bg-card p-6 shadow-e1 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-e2"
         >
           <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-8 w-8" />
-          <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand">{o.label}</h3>
+          <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand-fg">{o.label}</h3>
           <p class="mt-1.5 text-sm leading-relaxed text-slate">{o.tagline}</p>
-          <span class="mt-3 inline-block text-sm font-semibold text-brand">Ver o app pra {o.label.toLowerCase()} →</span>
+          <span class="mt-3 inline-block text-sm font-semibold text-brand-fg">Ver o app pra {o.label.toLowerCase()} →</span>
         </a>
       ))}
       <div class="olli-revela rounded-cartao border border-dashed border-line bg-paper p-6">
@@ -449,8 +450,8 @@ const schemaFaq = {
     */}
     <div class="mt-14 grid gap-6 md:grid-cols-3">
       {passos.map((p, i) => (
-        <div class="olli-revela relative rounded-cartao border border-line bg-white p-7">
-          <div class="text-sm font-extrabold text-brand tnum">{p.n}</div>
+        <div class="olli-revela relative rounded-cartao border border-line bg-card p-7 shadow-e1">
+          <div class="text-sm font-extrabold text-brand-fg tnum">{p.n}</div>
           <div class="mt-2 h-0.5 w-12 overflow-clip rounded-fio bg-line" aria-hidden="true">
             <div class="olli-passo-linha h-full w-full brand-gradient" style={`--olli-passo:${i}`}></div>
           </div>
@@ -461,8 +462,18 @@ const schemaFaq = {
     </div>
   </section>
 
+  {/* ══════════ ESTEIRA DE TELAS ══════════
+      Posição escolhida, não sobra de layout: vem LOGO DEPOIS dos três passos.
+      O visitante acabou de ler o que acontece ("chega a conversa → você monta →
+      fecha o negócio") e a pergunta que se forma na cabeça dele é "tá, mas como
+      é isso na prática?". A esteira responde no exato momento da dúvida.
+
+      Não renderiza nada enquanto as capturas não existirem — ver o cabeçalho de
+      EsteiraTelas.astro. Manifesto quebrado NÃO cai aqui: mata o build. */}
+  <EsteiraTelas />
+
   <!-- ══════════ RECURSOS ══════════ -->
-  <section id="recursos" class="border-y border-line bg-paper">
+  <section id="recursos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
       {/* Só o cabeçalho anima. Os 8 cartões NÃO — e isso é conter, não
           esquecer: no celular eles viram 8 revelações seguidas na mesma
@@ -474,8 +485,8 @@ const schemaFaq = {
       </div>
       <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {recursos.map((r) => (
-          <div class="rounded-cartao border border-line bg-white p-6 transition">
-            <div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand">
+          <div class="rounded-cartao border border-line bg-card p-6 shadow-e1 transition hover:shadow-e2">
+            <div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
               <Icone nome={r.icon} class="h-5 w-5" />
             </div>
             <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
@@ -486,18 +497,33 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ DESTAQUE IA ══════════ -->
-  <section class="mx-auto max-w-7xl px-6 py-24">
+  <!-- ══════════ DESTAQUE IA — A ZONA FUNDA ══════════
+       Era um bloco navy de 1280px de largura boiando numa página branca. Agora é
+       uma FAIXA que atravessa a tela inteira, com as bordas derretendo na cor da
+       página (ver `.zona-funda` no global.css).
+
+       O motivo não é gosto, é arquitetura de página: nove seções claras seguidas
+       são uma planície, e o visitante rola por elas sem marcar nenhuma. A página
+       passa a ter um arco — clara na entrada, FUNDA no meio, clara no fechamento —
+       e o ponto mais fundo é exatamente onde mora o argumento que nenhum
+       concorrente tem. Profundidade usada para hierarquia, não para enfeite.
+
+       Custo: zero. É a mesma pintura, com outra largura. -->
+  <section class="zona-funda py-28 md:py-32">
     {/* `overflow-clip`: este bloco e a trilha da barra abaixo sao ancestrais da
         `.olli-barra`. Com `overflow-hidden` os dois viravam container de scroll
         e a barra nascia com progresso travado em 1 — cheia, sem nunca encher.
         Mesma troca, mesmo motivo do hero. */}
-    <div class="overflow-clip rounded-bloco bg-brand-ink text-white">
-      <div class="grid items-center gap-10 p-10 md:grid-cols-2 md:p-14">
+    <div class="relative mx-auto max-w-7xl overflow-clip px-6">
+      <div class="grid items-center gap-10 md:grid-cols-2">
         <div>
           <span class="eyebrow !text-cyan">IA de diagnóstico</span>
           <h2 class="mt-4 text-[clamp(1.8rem,3.5vw,2.8rem)] font-extrabold leading-tight">A IA que fala a língua do técnico.</h2>
-          <p class="mt-4 max-w-md text-white/70">
+          {/* `text-white/78` e não `/70`: medido, branco a 70% sobre #0A2547 dá
+              8,18:1 e a 78% dá 9,78:1. Os dois passam AA de sobra — a subida é
+              para o SOL, não para o WCAG. O público lê esta página no celular em
+              obra, e sob luz direta a régua que vale é luminância, não razão. */}
+          <p class="mt-4 max-w-md text-white/78">
             Descreva o sintoma ou informe o código de erro: a OLLI aponta o provável componente, a faixa da peça e um grau de confiança. São <strong class="text-white">698 códigos de erro</strong> de climatização e diagnóstico por sintoma — pra você chegar com a peça certa.
           </p>
         </div>
@@ -514,7 +540,7 @@ const schemaFaq = {
             <div class="h-1.5 flex-1 overflow-clip rounded-full bg-white/10">
               <div class="olli-barra h-full w-full brand-gradient"></div>
             </div>
-            <span class="tnum text-xs text-white/70">confiança 82%</span>
+            <span class="tnum text-xs text-white/78">confiança 82%</span>
           </div>
         </div>
       </div>
@@ -528,7 +554,7 @@ const schemaFaq = {
        OLLI nasceu dentro de uma empresa de campo de verdade. Sem foto ainda — o texto
        se sustenta sozinho; o slot está pronto pra foto real do Igor/equipe entrar. -->
   <section class="mx-auto max-w-5xl px-6 py-20">
-    <div class="rounded-bloco border border-line bg-white p-8 sm:p-12">
+    <div class="rounded-bloco border border-line bg-card p-8 shadow-e2 sm:p-12">
       <span class="eyebrow">Quem faz a OLLI</span>
       <h2 class="mt-4 max-w-2xl text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">
         Feita por quem vive de campo.
@@ -549,7 +575,7 @@ const schemaFaq = {
   </section>
 
   <!-- ══════════ PLANOS ══════════ -->
-  <section id="planos" class="border-y border-line bg-paper">
+  <section id="planos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
       <div class="olli-revela mx-auto max-w-2xl text-center">
         <span class="eyebrow">Planos</span>
@@ -566,8 +592,17 @@ const schemaFaq = {
           destaque — se a versão mudar, é aqui que se confere de novo. */}
       <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
         {planos.map((p) => (
-          <div class={`olli-revela flex h-full flex-col rounded-cartao border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
-            {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-tint px-3 py-1 text-xs font-bold text-brand">Recomendado</span>}
+          <div class={`olli-revela flex h-full flex-col rounded-cartao border bg-card p-8 ${p.destaque ? 'border-brand shadow-e3 lg:-translate-y-3' : 'border-line shadow-e1'}`}>
+            {/* ÂMBAR, e é aqui que o acento secundário ganha o salário dele.
+                O selo era `bg-tint text-brand` — o MESMO azul do botão que fica
+                20px abaixo dele, dentro do MESMO cartão. Duas coisas no mesmo tom
+                não se destacam: se anulam. Em âmbar o selo marca a recomendação
+                sem disputar o azul, que a partir daqui é só de AÇÃO.
+                Véu #FFF5CC + tinta #7A4100 = 7,43:1 (a receita do painel: no
+                claro o Badge usa "-darker" sobre "-lighter"). Âmbar de
+                PREENCHIMENTO com texto branco daria 4,00:1 e reprovaria — por
+                isso não existe em lugar nenhum desta página. */}
+            {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-ambar-veu px-3 py-1 text-xs font-bold text-ambar-tinta">Recomendado</span>}
             <h3 class="text-lg font-bold text-ink">{p.nome}</h3>
             <p class="mt-1 text-sm text-muted">{p.desc}</p>
             <div class="mt-5 flex items-baseline gap-1">
@@ -583,7 +618,7 @@ const schemaFaq = {
               href={p.href}
               target={p.href === WHATSAPP_URL ? '_blank' : undefined}
               rel={p.href === WHATSAPP_URL ? 'noopener' : undefined}
-              class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}
+              class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand-fg'}`}
             >{p.cta}</a>
           </div>
         ))}
@@ -606,12 +641,12 @@ const schemaFaq = {
         então o primeiro e o último item ENCOSTAM na borda arredondada e o fundo
         do <summary> no :hover vazava pelo canto. Já era bug latente com 16px;
         a 28px ficaria visível. É a regra do raio aninhado. */}
-    <div class="mt-12 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-white">
+    <div class="mt-12 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-card shadow-e1">
       {faq.map((f) => (
         <details class="group">
           <summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
             {f.q}
-            <span class="text-brand transition group-open:rotate-45" aria-hidden="true">+</span>
+            <span class="text-brand-fg transition group-open:rotate-45" aria-hidden="true">+</span>
           </summary>
           <p class="px-6 pb-5 text-slate">{f.a}</p>
         </details>
@@ -626,7 +661,7 @@ const schemaFaq = {
     <div class="olli-revela relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
       <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
       <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
-      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-acao bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
+      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-acao bg-white px-8 py-3.5 text-base font-bold text-brand-fg shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
     </div>
   </section>
   </main>

@@ -162,7 +162,7 @@ function BrowserScreen() {
 						<span
 							key={item}
 							className={`flex items-center gap-1.5 rounded-md px-1.5 py-[5px] text-[8.5px] font-semibold ${
-								i === 0 ? "bg-tint text-brand" : "text-slate"
+								i === 0 ? "bg-tint text-brand-fg" : "text-slate"
 							}`}
 						>
 							<span
@@ -344,7 +344,7 @@ function PainelRow({
 }) {
 	const cores = {
 		mint: "bg-mint/15 text-check",
-		brand: "bg-tint text-brand",
+		brand: "bg-tint text-brand-fg",
 		muted: "bg-paper text-muted",
 	}[tom];
 	return (
@@ -487,7 +487,7 @@ function PhoneScreen() {
 				<div className="flex items-start gap-1.5 rounded-xl bg-tint px-2.5 py-2 text-[9.5px] leading-snug text-brand-ink">
 					<span className="mt-[1px] text-[10px]">✨</span>
 					<span>
-						<b className="text-brand">IA:</b> manutenção sugerida a cada 90 dias
+						<b className="text-brand-fg">IA:</b> manutenção sugerida a cada 90 dias
 						· confiança 94%
 					</span>
 				</div>
@@ -559,7 +559,7 @@ function RecentRow({
 			<div className="min-w-0 flex-1">
 				<p className="truncate text-[10.5px] font-semibold text-ink">{nome}</p>
 				<p
-					className={`text-[8.5px] font-medium ${muted ? "text-muted" : "text-brand"}`}
+					className={`text-[8.5px] font-medium ${muted ? "text-muted" : "text-brand-fg"}`}
 				>
 					{status}
 				</p>
@@ -580,7 +580,7 @@ function TabIcon({
 }) {
 	return (
 		<span
-			className={`flex flex-col items-center gap-0.5 ${active ? "text-brand" : "text-muted"}`}
+			className={`flex flex-col items-center gap-0.5 ${active ? "text-brand-fg" : "text-muted"}`}
 		>
 			<svg
 				viewBox="0 0 20 20"

@@ -37,7 +37,7 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
       {categorias.map((cat) => (
         <a
           href={`#${cat.id}`}
-          class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+          class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
         >
           {cat.titulo}
         </a>
@@ -69,7 +69,7 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
                         <ol class="space-y-2.5">
                           {bloco.conteudo.map((passo, i) => (
                             <li class="flex gap-3">
-                              <span class="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand tnum">
+                              <span class="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-tint text-xs font-bold text-brand-fg tnum">
                                 {i + 1}
                               </span>
                               <span class="leading-relaxed text-slate">{passo}</span>

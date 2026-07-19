@@ -170,7 +170,7 @@ const schemaFaq = {
 		<!-- ══════════ HERO DO OFÍCIO ══════════ -->
 		<section class="mx-auto max-w-4xl px-6 pb-16 pt-14">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="hover:text-brand">Início</a>
+				<a href="/" class="hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
 				<span class="text-slate">{oficio.label}</span>
 			</nav>
@@ -189,7 +189,7 @@ const schemaFaq = {
 				>
 				<a
 					href="/#planos"
-					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 					>Ver os planos</a
 				>
 			</div>
@@ -215,8 +215,16 @@ const schemaFaq = {
 		     Conteúdo 100% derivado de calculosOficio.ts: nome, descrição e a NORMA em
 		     que cada conta se apoia. É o que diferencia esta página de uma landing
 		     genérica — e é impossível ela mentir, porque é o próprio app falando. -->
+		{/* `faixa-recuo` (global.css) e não `border-y border-line bg-paper`: mesma
+		    costura em degradê da home. As 6 páginas de ofício são landing também, e
+		    uma delas com emenda dura no meio de um site que derrete as outras
+		    denuncia que foram feitas em momentos diferentes.
+
+		    O comentário fica AQUI FORA e não dentro do `&&` logo abaixo: aquela
+		    expressão tem que devolver UM elemento, e um comentário JSX conta como
+		    filho — foi assim que esta linha quebrou o build na primeira tentativa. */}
 		{calculos.length > 0 && (
-			<section class="border-y border-line bg-paper">
+			<section class="faixa-recuo">
 				<div class="mx-auto max-w-4xl px-6 py-20">
 					<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
 						{calculos.length} ferramenta{calculos.length > 1 ? "s" : ""} de {profissao}, dentro do orçamento.
@@ -229,7 +237,7 @@ const schemaFaq = {
 					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
 						{calculos.map((c) => (
 							<li class="rounded-cartao border border-line bg-white p-6">
-								<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand">
+								<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
 									<Icone nome={ICONE_POR_MDI[c.icon] ?? ""} class="h-5 w-5" />
 								</div>
 								<h3 class="mt-2.5 font-bold text-ink">{c.nome}</h3>
@@ -266,17 +274,17 @@ const schemaFaq = {
 				</h2>
 				<ol class="mt-8 grid gap-4 sm:grid-cols-3">
 					<li class="rounded-cartao border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand tnum">01</div>
+						<div class="text-sm font-extrabold text-brand-fg tnum">01</div>
 						<h3 class="mt-2 font-bold text-ink">Orçamento</h3>
 						<p class="mt-1.5 text-sm text-slate">Fala o serviço, a OLLI monta o PDF e manda o link pro cliente aprovar.</p>
 					</li>
 					<li class="rounded-cartao border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand tnum">02</div>
+						<div class="text-sm font-extrabold text-brand-fg tnum">02</div>
 						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
 						<p class="mt-1.5 text-sm text-slate">Aprovou, virou OS: checklist, fotos e assinatura do cliente na tela.</p>
 					</li>
 					<li class="rounded-cartao border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand tnum">03</div>
+						<div class="text-sm font-extrabold text-brand-fg tnum">03</div>
 						<h3 class="mt-2 font-bold text-ink">Recibo</h3>
 						<p class="mt-1.5 text-sm text-slate">Recebeu, emite o recibo. O histórico do cliente fica guardado pra próxima.</p>
 					</li>
@@ -308,7 +316,7 @@ const schemaFaq = {
 					<details class="group">
 						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
 							{f.q}
-							<span class="text-brand transition group-open:rotate-45" aria-hidden="true">+</span>
+							<span class="text-brand-fg transition group-open:rotate-45" aria-hidden="true">+</span>
 						</summary>
 						<p class="px-6 pb-5 text-slate">{f.a}</p>
 					</details>
@@ -323,7 +331,7 @@ const schemaFaq = {
 					href={`${WHATSAPP_URL}?text=${waMsg}`}
 					target="_blank"
 					rel="noopener"
-					class="font-semibold text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
+					class="font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
 					>Chama no WhatsApp</a
 				>.
 			</p>
@@ -337,7 +345,7 @@ const schemaFaq = {
 					<li>
 						<a
 							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
 						>
 							<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
 						</a>

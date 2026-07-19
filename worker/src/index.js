@@ -51,9 +51,10 @@ import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaSaida } from './etaSaida.js';
+import { handleCep, handleFeriados } from './brasil.js';
 import { cobrarCreditoVoz } from './creditos.js';
 import { gemini } from './gemini.js';
-import { parseJsonBody, parseJsonLoose, cortar } from './util.js';
+import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva } from './util.js';
 import { rotuloVertical, vozSystem, vozPrompt, VOZ_MAX, handleVoz, handleVozConversa } from './voz.js';
 
 const CORS = {
@@ -469,7 +470,24 @@ async function handleCnpj(cnpjBruto, request, env) {
       uf: String(d.uf || ''),
       cep: String(d.cep || '').replace(/\D/g, ''),
       porte: String(d.porte || ''),
+      // CAMPO LEGADO, mantido só por compatibilidade com src/services/cnpj.ts
+      // (`mei: !!e?.mei`). Ele COLAPSA três estados em dois: a BrasilAPI devolve
+      // `opcao_pelo_mei: null` quando não sabe (confirmado ao vivo em
+      // 2026-07-18 num CNPJ real), e `!!null` vira `false` — "não sei" virando
+      // "não é MEI", que é o bug da casa `olli-gate-erro-vira-vazio`. Quem for
+      // decidir alguma coisa deve usar `meiEstado` abaixo, nunca este.
       mei: !!d.opcao_pelo_mei,
+      // ─── Os três estados, honestos (usar ESTES) ───
+      // Isto deixa de ser detalhe burocrático em 1º de setembro de 2026: pela
+      // Resolução CGSN nº 189/2026, MEI/ME/EPP do Simples passam a emitir NFS-e
+      // só pelo Emissor Nacional. Um app que "acha" que o cliente não é MEI
+      // porque a API não respondeu manda o prestador pro caminho fiscal errado.
+      meiEstado: tresEstados(d.opcao_pelo_mei),
+      simplesEstado: tresEstados(d.opcao_pelo_simples),
+      // Situação cadastral: cobrar e emitir nota para empresa BAIXADA é problema
+      // do prestador, não da Receita. String vazia = a API não informou.
+      situacaoCadastral: String(d.descricao_situacao_cadastral || ''),
+      ativa: empresaAtiva(d),
     };
     void gravarCacheCnpj(env, cnpj, empresa); // best-effort, não bloqueia a resposta
     return json({ ok: true, empresa });
@@ -477,6 +495,19 @@ async function handleCnpj(cnpjBruto, request, env) {
     return json({ ok: false, erro: 'consulta_falhou' }, 502);
   }
 }
+
+// `tresEstados` e `empresaAtiva` vivem em ./util.js (import no topo) — mesmo
+// motivo do parseJsonBody: são a parte deste arquivo que MERECE teste unitário,
+// e index.js não é importável pelo teste (carrega @sentry/cloudflare, que só
+// existe em worker/node_modules).
+
+// Versão do formato de `empresa` gravado em cnpj_cache. Existe porque o cache
+// tem 30 dias de vida e acabou de ganhar campos (meiEstado/simplesEstado/
+// situacaoCadastral/ativa): sem a versão, um CNPJ consultado ontem devolveria
+// hoje um objeto SEM esses campos, e `undefined` viraria um quarto estado
+// silencioso — exatamente o que os campos novos existem para impedir. Linha
+// velha = tratada como stale, reconsultada uma vez (a BrasilAPI é grátis).
+const CNPJ_CACHE_V = 2;
 
 // Headers de service_role para o cache de CNPJ (mesmo padrão inline do resto do worker).
 function cnpjCacheHeaders(env, extra) {
@@ -494,7 +525,14 @@ async function lerCacheCnpj(env, cnpj) {
     if (!Array.isArray(arr) || !arr.length) return null;
     const idade = Date.now() - new Date(arr[0].atualizado_em).getTime();
     if (!(idade >= 0) || idade > 30 * 24 * 3600 * 1000) return null; // > 30 dias = stale
-    return arr[0].dados || null;
+    const dados = arr[0].dados;
+    if (!dados || typeof dados !== 'object') return null;
+    // Formato antigo (sem os campos de três estados) = stale, mesmo dentro dos
+    // 30 dias. Servir o objeto velho encheria `meiEstado`/`ativa` de `undefined`
+    // na tela, que é "não sei" disfarçado de campo inexistente.
+    if (dados._v !== CNPJ_CACHE_V) return null;
+    const { _v, ...empresa } = dados; // `_v` é controle do cache, não vai pro app
+    return empresa;
   } catch {
     return null;
   }
@@ -507,7 +545,7 @@ async function gravarCacheCnpj(env, cnpj, empresa) {
     await fetch(`${env.SUPABASE_URL}/rest/v1/cnpj_cache?on_conflict=cnpj`, {
       method: 'POST',
       headers: cnpjCacheHeaders(env, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
-      body: JSON.stringify({ cnpj, dados: empresa, atualizado_em: new Date().toISOString() }),
+      body: JSON.stringify({ cnpj, dados: { ...empresa, _v: CNPJ_CACHE_V }, atualizado_em: new Date().toISOString() }),
     });
   } catch { /* best-effort */ }
 }
@@ -809,6 +847,25 @@ const handler = {
     // Cadastro mágico por CNPJ — GET /cnpj/<14 dígitos>, autenticado (ver handleCnpj).
     if (url.pathname.startsWith('/cnpj/') && request.method === 'GET') {
       return handleCnpj(url.pathname.slice('/cnpj/'.length), request, env);
+    }
+
+    // Endereço a partir do CEP — GET /cep/<8 dígitos>, autenticado (ver brasil.js).
+    // Sai do aparelho e vem pro worker por UM motivo: o `src/services/cep.ts`
+    // atual devolve null tanto para "CEP não existe" quanto para "ViaCEP fora do
+    // ar", e essas duas coisas pedem ações opostas do prestador. Aqui são dois
+    // estados distintos, e `nao_encontrado` só sai com confirmação do ViaCEP —
+    // o 404 da BrasilAPI é ambíguo por contrato (docblock de brasil.js).
+    if (url.pathname.startsWith('/cep/') && request.method === 'GET') {
+      return handleCep(request, env, url.pathname.slice('/cep/'.length));
+    }
+
+    // Feriados nacionais do ano — GET /feriados/<ano>, autenticado e SEM REDE.
+    // Calculado aqui (datas fixas em lei + deslocamento da Páscoa), não é proxy:
+    // agenda de campo não pode depender de sinal pra saber que 7 de setembro é
+    // feriado. Também corrige o que a BrasilAPI erra pro nosso uso — Carnaval e
+    // Corpus Christi são ponto FACULTATIVO, não feriado nacional.
+    if (url.pathname.startsWith('/feriados/') && request.method === 'GET') {
+      return handleFeriados(request, env, url.pathname.slice('/feriados/'.length));
     }
 
     if (url.pathname === '/eta' && request.method === 'POST') {

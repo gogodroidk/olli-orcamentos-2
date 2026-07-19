@@ -64,6 +64,16 @@
     // estranho consegue esgotar/derrubar o token que confirma os Pix pagos.
     // Teto ALTO de propósito: o volume real de webhook do MP é de unidades por
     // minuto, e 429 aqui só faz o MP REENVIAR (nenhum pagamento se perde).
-    { "name": "MPHOOK_RL", "namespace_id": "1010", "simple": { "limit": 120, "period": 60 } }
+    { "name": "MPHOOK_RL", "namespace_id": "1010", "simple": { "limit": 120, "period": 60 } },
+    // /cep por usuário. O upstream é GRÁTIS (BrasilAPI + ViaCEP), então isto não
+    // protege fatura — protege o fair-use de um projeto comunitário sem SLA e
+    // impede que o worker vire ferramenta de raspagem de base de CEP em nome do
+    // OLLI. Teto folgado de propósito: o uso legítimo é 1 consulta por cliente
+    // novo, e acerto de cache nem chega aqui (é conferido ANTES — ver brasil.js).
+    // Enquanto o binding não for provisionado por um deploy, `checarLimite`
+    // devolve `indisponivel` e a rota SEGUE (política `sensivel:false`), porque
+    // derrubar cadastro de cliente por causa de limitador ausente seria pior que
+    // o abuso que ele previne. /feriados não tem binding: não chama ninguém.
+    { "name": "CEP_RL", "namespace_id": "1011", "simple": { "limit": 30, "period": 60 } }
   ]
 }

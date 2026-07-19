@@ -73,12 +73,12 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
 				<ol itemscope itemtype="https://schema.org/BreadcrumbList" class="flex flex-wrap items-center gap-1.5">
 					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-						<a itemprop="item" href="/" class="hover:text-brand"><span itemprop="name">Início</span></a>
+						<a itemprop="item" href="/" class="hover:text-brand-fg"><span itemprop="name">Início</span></a>
 						<meta itemprop="position" content="1" />
 					</li>
 					<li aria-hidden="true">/</li>
 					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="text-slate">
-						<a itemprop="item" href="/blog/" class="hover:text-brand"><span itemprop="name">Blog</span></a>
+						<a itemprop="item" href="/blog/" class="hover:text-brand-fg"><span itemprop="name">Blog</span></a>
 						<meta itemprop="position" content="2" />
 					</li>
 					{!primeira && <li aria-hidden="true">/</li>}
@@ -126,10 +126,10 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 								<li>
 									<a
 										href={`/blog/categoria/${categoria.id}/`}
-										class="inline-flex min-h-11 items-center gap-2 rounded-campo border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
+										class="inline-flex min-h-11 items-center gap-2 rounded-campo border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 									>
 										{categoria.nome}
-										<span class="tnum rounded-full bg-tint px-2 py-0.5 text-xs text-brand">{n}</span>
+										<span class="tnum rounded-full bg-tint px-2 py-0.5 text-xs text-brand-fg">{n}</span>
 									</a>
 								</li>
 							) : (
@@ -172,7 +172,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 							<a
 								href={page.url.prev}
 								rel="prev"
-								class="inline-flex min-h-11 items-center rounded-acao border border-line bg-white px-5 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
+								class="inline-flex min-h-11 items-center rounded-acao border border-line bg-white px-5 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 							>
 								← Mais recentes
 							</a>
@@ -186,7 +186,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 							<a
 								href={page.url.next}
 								rel="next"
-								class="inline-flex min-h-11 items-center rounded-acao border border-line bg-white px-5 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
+								class="inline-flex min-h-11 items-center rounded-acao border border-line bg-white px-5 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 							>
 								Mais antigos →
 							</a>
@@ -217,7 +217,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 					>
 					<a
 						href="/blog/rss.xml"
-						class="inline-flex min-h-11 items-center justify-center rounded-acao border border-line bg-white px-7 py-3.5 text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+						class="inline-flex min-h-11 items-center justify-center rounded-acao border border-line bg-white px-7 py-3.5 text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 						>Assinar por RSS</a
 					>
 				</div>

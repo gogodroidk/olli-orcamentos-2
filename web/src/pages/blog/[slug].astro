@@ -111,12 +111,12 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
 				<ol itemscope itemtype="https://schema.org/BreadcrumbList" class="flex flex-wrap items-center gap-1.5">
 					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-						<a itemprop="item" href="/" class="hover:text-brand"><span itemprop="name">Início</span></a>
+						<a itemprop="item" href="/" class="hover:text-brand-fg"><span itemprop="name">Início</span></a>
 						<meta itemprop="position" content="1" />
 					</li>
 					<li aria-hidden="true">/</li>
 					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-						<a itemprop="item" href="/blog/" class="hover:text-brand"><span itemprop="name">Blog</span></a>
+						<a itemprop="item" href="/blog/" class="hover:text-brand-fg"><span itemprop="name">Blog</span></a>
 						<meta itemprop="position" content="2" />
 					</li>
 					{
@@ -124,7 +124,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 							<>
 								<li aria-hidden="true">/</li>
 								<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-									<a itemprop="item" href={`/blog/categoria/${post.data.categoria}/`} class="hover:text-brand">
+									<a itemprop="item" href={`/blog/categoria/${post.data.categoria}/`} class="hover:text-brand-fg">
 										<span itemprop="name">{categoria.nome}</span>
 									</a>
 									<meta itemprop="position" content="3" />
@@ -141,7 +141,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 						temRotaCategoria ? (
 							<a
 								href={`/blog/categoria/${post.data.categoria}/`}
-								class="inline-flex items-center rounded-full bg-tint px-2.5 py-1 font-semibold text-brand transition hover:bg-brand hover:text-white"
+								class="inline-flex items-center rounded-full bg-tint px-2.5 py-1 font-semibold text-brand-fg transition hover:bg-brand hover:text-white"
 							>
 								{categoria.nome}
 							</a>
@@ -202,7 +202,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 						href={paginaDoOficio.href}
 						class="flex min-h-11 flex-col gap-1 rounded-cartao border border-line bg-paper p-6 transition hover:border-brand"
 					>
-						<span class="text-sm font-semibold text-brand">
+						<span class="text-sm font-semibold text-brand-fg">
 							OLLI para {paginaDoOficio.profissao} →
 						</span>
 						<span class="text-sm text-slate">
@@ -246,7 +246,7 @@ const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cada
 					>
 					<a
 						href="/blog/"
-						class="inline-flex min-h-11 items-center justify-center rounded-acao border border-line bg-white px-7 py-3.5 text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+						class="inline-flex min-h-11 items-center justify-center rounded-acao border border-line bg-white px-7 py-3.5 text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 						>Ver todos os textos</a
 					>
 				</div>

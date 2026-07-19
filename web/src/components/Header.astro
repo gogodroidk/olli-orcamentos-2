@@ -26,7 +26,12 @@ interface Props {
 const { class: containerClass = "max-w-7xl" } = Astro.props;
 ---
 
-<header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
+{/* `bg-card/85` e não `bg-white/80`: a barra é uma superfície FLUTUANTE, então
+    ela pertence ao topo da escada de elevação (--color-card), não a um branco
+    fora da família de matiz. Com a página agora em #F0F4F8, o branco puro daqui
+    ficaria mais claro que o próprio cartão e inverteria a ordem da escada — é o
+    mesmo cuidado que TEMA_CLARO.md §7.6 registrou para o `surfaceGlass` do app. */}
+<header class="sticky top-0 z-50 border-b border-line/70 bg-card/85 backdrop-blur-lg">
   <nav class={`mx-auto flex ${containerClass} items-center justify-between px-6 py-3.5`}>
     <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
     <slot name="nav" />

@@ -90,6 +90,25 @@ export const SEGMENTOS: { id: Segmento; label: string; icon: string }[] = [
   { id: 'outro', label: 'Outro', icon: 'dots-horizontal' },
 ];
 
+/**
+ * Cláusulas padrão do contrato de prestação de serviço (persistidas na Empresa).
+ * Vive aqui, e não em utils/contratoPdf.ts, para o tipo não depender do gerador
+ * de PDF — `Empresa` é lida por banco, sync e telas que nada têm com documento.
+ *
+ * Percentuais são NÚMEROS (2 = 2%). Vazio/ausente = usar o default do app; um
+ * valor corrompido também cai no default em vez de imprimir "NaN%" no contrato.
+ */
+export interface ContratoPadrao {
+  garantia?: string;
+  multaAtrasoPercent?: number;
+  jurosMesPercent?: number;
+  avisoPrevioDias?: number;
+  foro?: string;
+  obrigacoesContratada?: string;
+  obrigacoesContratante?: string;
+  clausulasExtras?: string;
+}
+
 export interface Empresa {
   id: string;
   nome: string;
@@ -136,6 +155,14 @@ export interface Empresa {
   licencaAmbiental?: string;
   responsavelTecnico?: string;
   responsavelTecnicoRegistro?: string;
+  /**
+   * Cláusulas padrão do CONTRATO de prestação de serviço, ajustadas uma vez em
+   * Conta → Modelos de documento e reaproveitadas em todo contrato novo. Tudo
+   * opcional: o que estiver vazio cai no default do app (ver
+   * src/utils/contratoPdf.ts → termosPadraoContrato). Schema-less no SQLite
+   * (id + data JSON) → nenhuma migração.
+   */
+  contratoPadrao?: ContratoPadrao;
   /** Modelo de PDF padrão para orçamentos novos (escolhido em Conta → Modelos de documento). */
   modeloPdfPadrao?: ModeloPdfId;
   /** Modelo padrão do recibo (escolhido em Conta → Modelos de documento). */
@@ -282,6 +309,16 @@ export interface Orcamento {
   assinaturaPrestadorUri?: string;
   assinaturaClienteUri?: string;
   dataAssinaturaCliente?: string;
+  /**
+   * Assinatura do cliente NO CONTRATO de prestação de serviço — campo próprio,
+   * separado de `assinaturaClienteUri` de propósito. Aquela é o aceite da
+   * PROPOSTA; esta é a assinatura de um documento diferente, com outro texto e
+   * outra data. Guardar as duas no mesmo campo faria a assinatura do contrato
+   * aparecer no PDF do orçamento (e vice-versa) — o app diria que o cliente
+   * assinou algo que ele não viu. Aditivos e opcionais: vivem no blob JSON.
+   */
+  assinaturaContratoUri?: string;
+  dataAssinaturaContrato?: string;
   validadeOrcamento?: string;
   exibirAprovacao: boolean;
   exibirRecusa: boolean;

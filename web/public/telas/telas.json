@@ -1,0 +1,247 @@
+{
+  "base": "/telas/",
+  "geradoPor": "node scripts/telas/gerar.mjs",
+  "dadosFicticios": "Todos os nomes, telefones, endereços e valores são inventados e vivem em scripts/telas/elenco.mjs. Nenhum dado de cliente real passou por aqui: o build de captura roda sem nuvem e o banco é um SQLite local vazio.",
+  "telas": [
+    {
+      "id": "orcamento-aprovado",
+      "titulo": "Orçamento aprovado",
+      "legenda": "O momento em que o serviço vira dinheiro: proposta de R$ 2.480 aprovada, com link, PDF e WhatsApp a um toque.",
+      "alt": "Tela do OLLI mostrando o orçamento nº 00126 da Clínica Vida & Saúde com status Aprovado e os botões de enviar por WhatsApp, gerar link e gerar PDF.",
+      "superficie": "celular",
+      "destaque": true,
+      "arquivos": [
+        {
+          "arquivo": "orcamento-aprovado@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "orcamento-aprovado@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "orcamento-aprovado.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "orcamento-aprovado.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "novo-orcamento-itens",
+      "titulo": "Montar o orçamento",
+      "legenda": "Três serviços, R$ 2.480 somados na hora. Sem planilha, sem calculadora, sem voltar em casa para digitar.",
+      "alt": "Passo de itens do orçamento no OLLI, com três serviços de ar-condicionado listados e o valor total de R$ 2.480,00.",
+      "superficie": "celular",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "novo-orcamento-itens@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "novo-orcamento-itens@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "novo-orcamento-itens.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "novo-orcamento-itens.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "lista-orcamentos",
+      "titulo": "Todos os orçamentos",
+      "legenda": "O que está em aberto, o que foi aprovado e o que virou dinheiro — numa tela só.",
+      "alt": "Lista de orçamentos do OLLI com três propostas em status diferentes: aprovado, enviado e rascunho.",
+      "superficie": "celular",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "lista-orcamentos@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "lista-orcamentos@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "lista-orcamentos.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "lista-orcamentos.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "agenda",
+      "titulo": "A semana no lugar",
+      "legenda": "As visitas do dia com cliente, horário e endereço. O que ia ficar no papel do bolso.",
+      "alt": "Tela de agenda do OLLI mostrando as visitas marcadas do dia com nome do cliente e título do serviço.",
+      "superficie": "celular",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "agenda@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "agenda@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "agenda.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "agenda.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "clientes",
+      "titulo": "A carteira de clientes",
+      "legenda": "Quem já é cliente, o que já foi feito e como falar com ele. Sem depender da memória.",
+      "alt": "Lista de clientes cadastrados no OLLI com nome e telefone de cada um.",
+      "superficie": "celular",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "clientes@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "clientes@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "clientes.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "clientes.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "ordem-servico",
+      "titulo": "Do orçamento à ordem de serviço",
+      "legenda": "O sim do cliente vira ordem de serviço com um toque — mesmo cliente, mesmo valor, sem redigitar nada.",
+      "alt": "Tela de ordens de serviço do OLLI mostrando a OS nº 0001, aberta, gerada a partir do orçamento 00126 da Clínica Vida & Saúde.",
+      "superficie": "celular",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "ordem-servico@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "ordem-servico@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "ordem-servico.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "ordem-servico.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "diagnostico-ia",
+      "titulo": "Diagnóstico assistido",
+      "legenda": "Código no display e sintoma na mão: a OLLI ajuda a achar o defeito e a peça antes de você abrir o equipamento.",
+      "alt": "Tela de diagnóstico guiado do OLLI preenchida com marca Springer Midea, modelo 42MACA12S5, código E5 e a descrição do sintoma do equipamento.",
+      "superficie": "celular",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "diagnostico-ia@2x.avif",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "diagnostico-ia@2x.webp",
+          "largura": 786,
+          "altura": 1704
+        },
+        {
+          "arquivo": "diagnostico-ia.avif",
+          "largura": 393,
+          "altura": 852
+        },
+        {
+          "arquivo": "diagnostico-ia.webp",
+          "largura": 393,
+          "altura": 852
+        }
+      ]
+    },
+    {
+      "id": "agenda-computador",
+      "titulo": "A semana inteira na tela grande",
+      "legenda": "No computador o OLLI abre a semana toda: dá para ver os buracos da agenda antes de prometer prazo ao cliente.",
+      "alt": "Agenda semanal do OLLI na versão para computador, com barra lateral de navegação e as visitas distribuídas pelos dias da semana.",
+      "superficie": "computador",
+      "destaque": false,
+      "arquivos": [
+        {
+          "arquivo": "agenda-computador@2x.avif",
+          "largura": 2880,
+          "altura": 1800
+        },
+        {
+          "arquivo": "agenda-computador@2x.webp",
+          "largura": 2880,
+          "altura": 1800
+        },
+        {
+          "arquivo": "agenda-computador.avif",
+          "largura": 1440,
+          "altura": 900
+        },
+        {
+          "arquivo": "agenda-computador.webp",
+          "largura": 1440,
+          "altura": 900
+        }
+      ]
+    }
+  ]
+}

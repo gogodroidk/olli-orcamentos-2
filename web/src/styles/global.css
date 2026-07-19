@@ -14,24 +14,95 @@
   Landing clara e moderna (SaaS de campo), a MESMA linguagem do painel.
 */
 @theme {
-  /* Marca */
-  --color-brand: #0b6fce;          /* azul OLLI — CTA, links, primária */
+  /* ─────────────────────────────────────────────────────────────────────────
+     MARCA — `brand` é PREENCHIMENTO, `brand-fg` é PRIMEIRO PLANO.
+
+     A distinção não foi inventada aqui: é a mesma que `src/theme/cores.ts:389`
+     documenta para o app ("`primary` é a marca PURA — é preenchimento de botão;
+     `primaryLight` é a variante de PRIMEIRO PLANO, é ela que passa pelo ajuste
+     de contraste"). A landing não tinha essa separação e por isso pintava rótulo
+     com a cor de botão.
+
+     Por que ela passou a ser necessária: a escada de superfícies abaixo desceu a
+     faixa recuada de #F6F9FC (L* 97,78) para #E5EAF2 (L* 92,54), e MEDIDO,
+     #0B6FCE sobre #E5EAF2 dá 4,22:1 — reprova AA para texto normal. #0A69C3 dá
+     4,55:1 na mesma superfície e 5,41:1 no cartão. A matiz é a MESMA (209,2°) e
+     a diferença de luminosidade é ΔL* 1,5 — a marca não muda, o rótulo passa.
+
+     `--color-brand` continua #0B6FCE cravado: é ele que preenche botão, gradiente
+     e logo. A marca não se abandona; muda só quem pinta TEXTO.
+     ───────────────────────────────────────────────────────────────────────── */
+  --color-brand: #0b6fce;          /* azul OLLI — PREENCHIMENTO (botão, gradiente, logo) */
+  --color-brand-fg: #0a69c3;       /* azul OLLI — TEXTO/ícone sobre superfície clara (AA em toda a escada) */
   --color-brand-strong: #0a55a6;   /* hover/press */
-  --color-brand-ink: #0a2547;      /* navy profundo — heros, rodapé */
-  --color-cyan: #3fd8ea;           /* ciano do gradiente da logo */
-  --color-mint: #2be39a;           /* menta — sucesso / "negócio fechado" (tint decorativo: bg-mint/15) */
-  /* a11y-01: o ✓ em text-mint sobre fundo claro dava contraste 1.67:1 (ilegível).
-     Este verde escuro dá ~5,2:1 no branco — passa AA pra texto. Os checks usam
-     text-check; o mint claro continua só nos tints de fundo. */
-  --color-check: #0a7d4f;          /* verde do ✓ — acessível sobre fundo claro */
+  --color-brand-ink: #0a2547;      /* navy profundo — zona funda, rodapé */
+  --color-cyan: #3fd8ea;           /* ciano do gradiente da logo — 1,72:1 no branco: SÓ gradiente/fundo escuro */
+  --color-mint: #2be39a;           /* menta — 1,67:1 no branco: SÓ tint decorativo (bg-mint/15) e fundo escuro */
+  /* a11y-01: o ✓ em text-mint sobre fundo claro dava 1,67:1 (ilegível). Este
+     verde escuro passa AA. Escurecido de #0A7D4F para #0A794D junto com a escada:
+     no #E5EAF2 novo o antigo caía para 4,34:1 e reprovava. Agora dá 4,51:1. */
+  --color-check: #0a794d;          /* verde do ✓ — AA em toda a escada clara */
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     ACENTO SECUNDÁRIO — âmbar. NÃO É COR NOVA: é o `warning` do próprio produto.
+
+     `src/theme/cores.ts:349` → STATUS_BASE.warning = '#D98008'
+     `webapp/src/theme/tokens/color.ts` → warning.dark #B76E00 / darker #7A4100 /
+                                          lighter #FFF5CC
+
+     Por que ele precisou existir na landing: MEDIDO, sobre superfície clara a
+     landing tinha exatamente UM acento que passa AA como texto — #0B6FCE (5,02:1).
+     Ciano (1,72:1) e menta (1,67:1) reprovam, então só servem de decoração. O
+     resultado é que sobrancelha, rótulo de seção, link de cartão, selo
+     "Recomendado", número do passo e o BOTÃO DE CONVERSÃO eram todos o mesmo
+     azul: o CTA não tinha monopólio nenhum da cor da marca, então não vencia a
+     página. O âmbar dá um segundo canal de ênfase que não rouba o azul de ação.
+
+     ⚠️ REGRA DE USO, e ela é medida: âmbar NUNCA é preenchimento com texto branco
+     — #FFFFFF sobre #B76E00 dá 4,00:1 e REPROVA. A receita é a do painel
+     (Badge usa "-darker" no claro): véu #FFF5CC + tinta #7A4100 = 7,43:1.
+     ───────────────────────────────────────────────────────────────────────── */
+  --color-ambar: #b76e00;          /* traço/ícone âmbar sobre superfície clara (4,00:1 — só ≥24px ou ícone) */
+  --color-ambar-veu: #fff5cc;      /* véu de fundo do selo */
+  --color-ambar-tinta: #7a4100;    /* TEXTO sobre o véu — 7,43:1 */
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     ESCADA DE ELEVAÇÃO — o que mudou de fato, e por quê.
+
+     DIAGNÓSTICO MEDIDO (antes): o cartão da landing era #FFFFFF e o corpo da
+     página TAMBÉM era #FFFFFF. ΔL* entre cartão e página: 0,00. Sobre as faixas
+     `bg-paper` (#F6F9FC) o degrau era ΔL* 2,22. Amplitude total da escada: 2,22.
+     Não existia elevação — existia uma cor só, chamada por três nomes. É
+     exatamente o defeito que `docs/ENXAME/TEMA_CLARO.md` §2 mediu no app
+     ("o claro não tem escada, o escuro tem") e a landing tinha a mesma doença.
+
+     A CORREÇÃO, e a parte importante: os hexes abaixo NÃO foram inventados aqui.
+     São os MESMOS que TEMA_CLARO.md §7.1 já provou para o tema claro do app
+     (surfaceVariant #D9E1EC · background #E5EAF2 · surface #F0F4F8 ·
+     surfaceElevated #FDFDFE). Adotá-los aqui tem um efeito colateral que vale
+     mais que a estética: `docs/ENXAME/CATALOGO_VISUAL.md` abre dizendo que as
+     três superfícies do produto "parecem produtos de empresas diferentes" — a
+     partir daqui a landing e o app compartilham LITERALMENTE a mesma escada.
+
+     MEDIDO (depois): degraus de ΔL* 3,30 / 3,46 / 3,34, amplitude 10,10 — 4,5×
+     a de antes. Matiz 210–217° em todos os degraus: família única, sem o branco
+     neutro (s = 0%) que quebrava a família no meio e fazia o cartão ler como
+     "sujo" por contraste simultâneo.
+
+     Contraste conferido em TODOS os pares texto × superfície: 0 reprovações.
+     ───────────────────────────────────────────────────────────────────────── */
+  --color-line: #d9e1ec;           /* L* 89,23 — hairline / degrau recuado */
+  --color-paper: #e5eaf2;          /* L* 92,54 — faixa RECUADA (seção que afunda) */
+  --color-fundo: #f0f4f8;          /* L* 96,00 — a PÁGINA (body) */
+  --color-card: #fdfdfe;           /* L* 99,33 — CARTÃO: o topo da escada, onde o texto mora */
+  --color-tint: #e5eff9;           /* véu de marca — comAlfa(#0B6FCE, .10) achatado sobre o cartão */
 
   /* Neutros */
-  --color-ink: #0f1c2e;            /* texto principal (navy quase-preto) */
-  --color-slate: #475569;          /* texto secundário */
-  --color-muted: #64748b;          /* texto terciário */
-  --color-line: #e2e8f0;           /* bordas/hairlines */
-  --color-paper: #f6f9fc;          /* superfície suave */
-  --color-tint: #eef4fb;           /* tint azul suave */
+  --color-ink: #0f1c2e;            /* texto principal — 16,85:1 no cartão */
+  --color-slate: #475569;          /* texto secundário — 7,45:1 no cartão, 6,27:1 na faixa recuada */
+  /* Escurecido de #64748B junto com a escada: na faixa recuada nova o antigo dava
+     4,17:1 e reprovava. #5C6A7F dá 4,55:1 lá e 5,40:1 no cartão. */
+  --color-muted: #5c6a7f;          /* texto terciário — AA em toda a escada */
 
   /* Tipografia */
   --font-sans: "Rubik Variable", ui-sans-serif, system-ui, sans-serif;
@@ -67,6 +138,29 @@
   --radius-caixa: 28px;   /* superfície que AGRUPA cartões/linhas (FAQ, tabela) */
   --radius-bloco: 36px;   /* bloco-seção de largura total. TETO. */
   /* pílula = rounded-full, já existe no Tailwind */
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     SOMBRA — três degraus, e ela é NAVY, não preta.
+
+     Antes: os cartões da landing não tinham sombra nenhuma em repouso (só
+     `border border-line`), e o único `shadow-lg` aparecia no :hover. Com página
+     e cartão os dois em #FFFFFF, sombra era a ÚNICA pista de elevação possível —
+     e ela não estava lá. Agora a escada de superfícies já separa os planos, e a
+     sombra passa a CONFIRMAR o degrau em vez de ser o único sinal dele.
+
+     Navy (#0A2547) e não preto porque a página do OLLI é fria: sombra preta
+     sobre superfície fria vira cinza morto. Mesma decisão de TEMA_CLARO.md §7.4.
+
+     MEDIDO — quanto cada alfa cava na página (#F0F4F8):
+       α 0,05 → ΔL* 3,61  ·  α 0,07 → ΔL* 5,24  ·  α 0,10 → ΔL* 7,43
+       α 0,14 → ΔL* 10,39 ·  α 0,18 → ΔL* 13,29
+     Para comparar: a sombra `md` do app hoje cava ΔL* 0,69 (ela some).
+
+     Só `box-shadow` — nenhum destes degraus anima. Quem anima é transform.
+     ───────────────────────────────────────────────────────────────────────── */
+  --shadow-e1: 0 1px 2px rgba(10, 37, 71, 0.04), 0 2px 8px -2px rgba(10, 37, 71, 0.06);
+  --shadow-e2: 0 2px 4px rgba(10, 37, 71, 0.05), 0 12px 24px -8px rgba(10, 37, 71, 0.1);
+  --shadow-e3: 0 4px 10px rgba(10, 37, 71, 0.06), 0 28px 56px -18px rgba(10, 37, 71, 0.18);
 
   /* Movimento */
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
@@ -140,7 +234,12 @@ body {
 	margin: 0;
 	font-family: var(--font-sans);
 	color: var(--color-ink);
-	background: #ffffff;
+	/* A PÁGINA DESCE. Era #FFFFFF — o mesmo branco dos cartões, ΔL* 0,00 entre
+	   os dois. Agora é o degrau `fundo` da escada (L* 96,00), e o cartão
+	   (#FDFDFE, L* 99,33) passa a FLUTUAR sobre ele em vez de se dissolver.
+	   Nenhum texto perdeu contraste com isso: o texto mora no cartão, e o
+	   cartão continua no topo da escada. */
+	background: var(--color-fundo);
 
 	/* `clip` e NÃO `hidden` — e isto é pré-requisito do movimento no scroll,
 	   não preferência de estilo.
@@ -170,7 +269,10 @@ body {
 	font-feature-settings: "tnum" 1;
 }
 
-/* Etiqueta/eyebrow de seção. */
+/* Etiqueta/eyebrow de seção.
+   `brand-fg` e não `brand`: a sobrancelha é TEXTO, e ela aparece tanto no cartão
+   quanto na faixa recuada (#E5EAF2), onde #0B6FCE dá 4,22:1 e reprova. Trocar
+   aqui conserta as 7 sobrancelhas do site numa linha só. */
 .eyebrow {
 	display: inline-flex;
 	align-items: center;
@@ -179,7 +281,7 @@ body {
 	font-weight: 700;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	color: var(--color-brand);
+	color: var(--color-brand-fg);
 }
 
 /* Gradiente de marca reutilizável. */
@@ -191,6 +293,99 @@ body {
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COSTURA ENTRE SEÇÕES — profundidade sem peso.
+
+   O pedido do dono foi "algo completo, imersivo". Imersão aqui NÃO é 3D: o
+   visitante é prestador em 4G. A sensação de continuidade vem de a página ter
+   PLANOS e de as seções se emendarem em vez de se empilharem.
+
+   Antes, as faixas `bg-paper` eram separadas por `border-y border-line`: uma
+   linha dura de 1px, que lê como "fim de bloco". Agora a faixa recuada tem um
+   degradê nas duas bordas que derrete a página dentro dela e vice-versa — a
+   transição vira profundidade, não emenda.
+
+   Custo: 0 KB de JS, 0 elementos novos, nenhuma animação. É pintura.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* ⚠️ CAMADA DE FUNDO, e NÃO `::before`/`::after` posicionados.
+
+   A primeira versão usava dois pseudo-elementos `position: absolute`. Funciona
+   até não funcionar: pseudo-elemento posicionado pinta ACIMA do conteúdo não
+   posicionado do mesmo contexto de empilhamento, então a emenda passava por
+   cima dos primeiros pixels da seção. Enquanto o degradê couber no padding
+   ninguém vê; no dia em que alguém reduzir o `py-24`, ou numa fonte maior, a
+   sobrancelha começa a ser lavada por uma névoa clara — e o sintoma ("o texto
+   está meio apagado") não aponta para a causa.
+
+   Fundo em camadas não tem esse problema em construção nenhuma: background
+   SEMPRE pinta atrás do conteúdo. Também custa dois boxes a menos por seção e
+   dispensa `position: relative` e `z-index` na marcação.
+
+   rgba literal e não `var(--color-fundo), transparent`: `transparent` é
+   rgba(0,0,0,0), e interpolar até ele passa por preto em qualquer engine que
+   não faça interpolação pré-multiplicada. O alfa-zero DA PRÓPRIA COR não tem
+   esse risco em engine nenhuma. Os três números são #F0F4F8 = --color-fundo. */
+.faixa-recuo {
+	background-color: var(--color-paper);
+	background-image:
+		linear-gradient(to bottom, rgb(240 244 248 / 1), rgb(240 244 248 / 0)),
+		linear-gradient(to top, rgb(240 244 248 / 1), rgb(240 244 248 / 0));
+	background-repeat: no-repeat;
+	background-position:
+		top center,
+		bottom center;
+	background-size:
+		100% 40px,
+		100% 40px;
+}
+
+/* ZONA FUNDA — o fundo do poço do arco de rolagem.
+   A página conta uma história de profundidade: clara na entrada, FUNDA no meio
+   (onde mora o argumento que diferencia o produto: a IA), clara de novo no
+   fechamento. Sem isso, 9 seções claras seguidas viram uma planície.
+   O navy some nas bordas para a página, então a descida e a subida são suaves. */
+/* ⚠️ RAMPA COM PARADAS, e não um degradê de duas pontas.
+   Aqui o salto é grande (L* 96 → L* 15), e um degradê LINEAR de alfa sobre esse
+   salto produz uma barra clara visível de ~40px no lugar de uma emenda — foi o
+   que apareceu na primeira captura desta seção: lia como lâmpada fluorescente,
+   não como névoa. As paradas abaixo aproximam um ease-out no ALFA: cai rápido
+   no começo (a parte clara fica fina) e tem cauda longa (a transição fica
+   comprida). Mesmo número de pixels, leitura completamente diferente.
+
+   Mesma escolha de camada de fundo da `.faixa-recuo` acima, pelo mesmo motivo —
+   e aqui ela importa mais: a seção tem `py-28` (112px) e a emenda tem 120px,
+   então como pseudo-elemento ela cobriria os 8px de cima da sobrancelha. */
+.zona-funda {
+	background-color: var(--color-brand-ink);
+	color: #fff;
+	background-image:
+		linear-gradient(
+			to bottom,
+			rgb(240 244 248 / 1) 0%,
+			rgb(240 244 248 / 0.72) 10%,
+			rgb(240 244 248 / 0.42) 25%,
+			rgb(240 244 248 / 0.2) 45%,
+			rgb(240 244 248 / 0.06) 70%,
+			rgb(240 244 248 / 0) 100%
+		),
+		linear-gradient(
+			to top,
+			rgb(240 244 248 / 1) 0%,
+			rgb(240 244 248 / 0.72) 10%,
+			rgb(240 244 248 / 0.42) 25%,
+			rgb(240 244 248 / 0.2) 45%,
+			rgb(240 244 248 / 0.06) 70%,
+			rgb(240 244 248 / 0) 100%
+		);
+	background-repeat: no-repeat;
+	background-position:
+		top center,
+		bottom center;
+	background-size:
+		100% 120px,
+		100% 120px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -248,6 +443,45 @@ body {
 	transform-origin: left; /* base = escala 1 = linha inteira */
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   ESTEIRA DE TELAS — a base é uma LISTA ROLÁVEL NATIVA, e isso é a peça
+   importante, não o movimento.
+
+   O que o dono pediu foi "embaixo tem que ter várias telas vindo". A tentação
+   é marquee em loop infinito; recusado, e o motivo é medível em bateria: é
+   movimento contínuo fora do controle do usuário, compete com a leitura e
+   obriga a duplicar o DOM. Aqui as telas VÊM enquanto ele rola e PARAM quando
+   ele para — que é literalmente o que ele descreveu.
+
+   Estas declarações ficam FORA dos guardas de propósito: elas não são
+   animação, são a lista. Sem JS, sem animação, com reduced-motion e em
+   navegador sem suporte a scroll-driven, a esteira continua sendo uma faixa
+   rolável com dedo, com Tab/setas e com leitor de tela. O movimento é enfeite
+   por cima; a funcionalidade não depende dele.
+   ───────────────────────────────────────────────────────────────────────── */
+.olli-esteira-trilho {
+	display: flex;
+	gap: 1rem;
+	overflow-x: auto;
+	scroll-snap-type: x proximity;
+	/* `proximity` e não `mandatory`: com mandatory o dedo não consegue parar
+	   entre duas telas para ler a legenda — o trilho puxa sozinho. */
+	scroll-padding-inline: 1.5rem;
+	padding-inline: 1.5rem;
+	padding-block: 0.5rem 1.25rem;
+	/* Barra de rolagem fina em vez de escondida: esconder a barra esconde a
+	   AFFORDANCE — quem não vê que rola, não rola. */
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-line) transparent;
+	/* `overscroll-behavior-x: contain` impede que o fim da esteira vire
+	   "voltar página" no gesto lateral do celular. */
+	overscroll-behavior-x: contain;
+}
+.olli-esteira-item {
+	scroll-snap-align: center;
+	flex: 0 0 auto;
+}
+
 @media (prefers-reduced-motion: no-preference) {
 	@supports (animation-timeline: view()) {
 		/* Revelação padrão: sobe 16px e resolve a opacidade. */
@@ -286,6 +520,40 @@ body {
 			animation-timeline: view();
 			animation-range: cover calc(12% + var(--olli-passo, 0) * var(--olli-stagger))
 				cover calc(46% + var(--olli-passo, 0) * var(--olli-stagger));
+		}
+
+		/* ─────────────────────────────────────────────────────────────────
+		   ESTEIRA — as telas "vindo" conforme rola.
+
+		   ⚠️ TIMELINE NOMEADA, e NÃO `view()`. Este é o detalhe que faz a
+		   coisa funcionar, e ele é exatamente o mesmo bug que já derrubou o
+		   hero e a barra da IA neste arquivo, com outra roupa:
+
+		   `animation-timeline: view()` resolve contra o SCROLLPORT MAIS
+		   PRÓXIMO. Os itens da esteira moram dentro de `.olli-esteira-trilho`,
+		   que é `overflow-x: auto` — ou seja, É um container de scroll. Um
+		   `view()` num item resolveria contra o trilho horizontal, não contra
+		   a página, e a animação nasceria travada (o item já está "coberto" no
+		   eixo do trilho desde o primeiro frame).
+
+		   `view-timeline-name` na SEÇÃO resolve isso pelo nome: o item procura
+		   a timeline `--esteira` subindo a árvore, e acha a da seção —
+		   independente de quantos containers de scroll existirem no caminho.
+		   A timeline mede a seção contra a viewport, que é o que se quer.
+		   ───────────────────────────────────────────────────────────────── */
+		.olli-esteira {
+			view-timeline-name: --esteira;
+			view-timeline-axis: block;
+		}
+		.olli-esteira-item {
+			animation: olli-esteira-entra var(--olli-ease-scroll) both;
+			animation-timeline: --esteira;
+			/* Stagger deslocando início E fim juntos (mesma regra dos passos).
+			   `--olli-passo` é limitado a 3 no template: com 8 telas, um
+			   stagger que cresce sem teto faria a última só terminar depois de
+			   a seção já ter passado da tela. */
+			animation-range: entry calc(18% + var(--olli-passo, 0) * var(--olli-stagger))
+				cover calc(42% + var(--olli-passo, 0) * var(--olli-stagger));
 		}
 	}
 }
@@ -334,6 +602,26 @@ body {
 	}
 	to {
 		transform: scaleX(1);
+	}
+}
+
+/* A tela "vem": entra pela direita e assenta. Só transform e opacity.
+   O deslocamento horizontal é maior que o teto de 28px dos textos (aqui são
+   40px) e isso é deliberado: o teto existe porque texto que chega atrasado em
+   relação ao dedo parece travamento. Uma tela de produto de 260px de largura
+   deslocando 40px é 15% da própria largura — lê como "chegando", não como
+   atraso. A opacidade fecha em 55% para a legenda ficar legível cedo. */
+@keyframes olli-esteira-entra {
+	from {
+		opacity: 0;
+		transform: translate3d(40px, var(--olli-sobe-sm), 0);
+	}
+	55% {
+		opacity: 1;
+	}
+	to {
+		opacity: 1;
+		transform: none;
 	}
 }
 

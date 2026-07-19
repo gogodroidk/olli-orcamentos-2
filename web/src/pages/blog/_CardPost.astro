@@ -42,7 +42,7 @@ const atualizado = post.data.atualizadoEm;
 			temRota ? (
 				<a
 					href={`/blog/categoria/${post.data.categoria}/`}
-					class="relative z-10 inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 font-semibold text-brand transition hover:bg-brand hover:text-white"
+					class="relative z-10 inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 font-semibold text-brand-fg transition hover:bg-brand hover:text-white"
 				>
 					<span aria-hidden="true" class="h-1.5 w-1.5 rounded-full bg-current" />
 					{categoria.nome}
@@ -75,7 +75,7 @@ const atualizado = post.data.atualizadoEm;
 		*/}
 		<a
 			href={href}
-			class="after:absolute after:inset-0 after:content-[''] hover:text-brand focus-visible:outline-none focus-visible:text-brand"
+			class="after:absolute after:inset-0 after:content-[''] hover:text-brand-fg focus-visible:outline-none focus-visible:text-brand-fg"
 		>
 			{post.data.titulo}
 		</a>
@@ -87,7 +87,7 @@ const atualizado = post.data.atualizadoEm;
 
 	<span
 		aria-hidden="true"
-		class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand"
+		class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-fg"
 	>
 		Ler
 		<span class="transition-transform duration-[var(--olli-dur-1)] group-hover:translate-x-0.5">→</span>

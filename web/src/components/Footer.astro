@@ -87,7 +87,7 @@ const CLASSE_LEGAL = "text-slate";
         <p class="text-xs font-bold uppercase tracking-[0.12em] text-muted">A OLLI no seu ofício</p>
         <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
           {OFICIOS.map((o) => (
-            <a href={`/para/${SLUG_POR_OFICIO[o.id]}/`} class="text-slate transition hover:text-brand">{o.label}</a>
+            <a href={`/para/${SLUG_POR_OFICIO[o.id]}/`} class="text-slate transition hover:text-brand-fg">{o.label}</a>
           ))}
         </div>
       </nav>
@@ -101,11 +101,11 @@ const CLASSE_LEGAL = "text-slate";
           <br />
           <span>{enderecoEmLinha(empresa)}</span>
           <br />
-          <a href={whatsappUrl} class="transition hover:text-brand">WhatsApp {EMPRESA.whatsappLegivel}</a>
+          <a href={whatsappUrl} class="transition hover:text-brand-fg">WhatsApp {EMPRESA.whatsappLegivel}</a>
           {emailContato && (
             <>
               <span> · </span>
-              <a href={`mailto:${emailContato}`} class="transition hover:text-brand">{emailContato}</a>
+              <a href={`mailto:${emailContato}`} class="transition hover:text-brand-fg">{emailContato}</a>
             </>
           )}
         </address>
@@ -116,7 +116,7 @@ const CLASSE_LEGAL = "text-slate";
   <footer class="border-t border-line bg-paper">
     <div class={`mx-auto ${containerClass} px-6 py-8`}>
       <div class="flex flex-col items-center justify-between gap-3 text-sm text-muted sm:flex-row">
-        <a href="/" class="hover:text-brand">← Voltar para o início</a>
+        <a href="/" class="hover:text-brand-fg">← Voltar para o início</a>
         <p>© {ano} OLLI Orçamentos</p>
       </div>
 
@@ -129,9 +129,9 @@ const CLASSE_LEGAL = "text-slate";
             <span>CNPJ {empresa.cnpj}</span>
           </>
         )}
-        <a href="/legal/privacidade/" class="underline-offset-2 transition hover:text-brand hover:underline">Privacidade</a>
-        <a href="/legal/termos/" class="underline-offset-2 transition hover:text-brand hover:underline">Termos</a>
-        <a href="/ajuda/" class="underline-offset-2 transition hover:text-brand hover:underline">Ajuda</a>
+        <a href="/legal/privacidade/" class="underline-offset-2 transition hover:text-brand-fg hover:underline">Privacidade</a>
+        <a href="/legal/termos/" class="underline-offset-2 transition hover:text-brand-fg hover:underline">Termos</a>
+        <a href="/ajuda/" class="underline-offset-2 transition hover:text-brand-fg hover:underline">Ajuda</a>
       </div>
     </div>
   </footer>

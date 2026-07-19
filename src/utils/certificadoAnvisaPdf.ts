@@ -143,7 +143,7 @@ export async function montarHtmlCertificadoAnvisa(
 <body>
   <div class="topo">
     <div class="marca">
-      ${logoData ? `<img src="${logoData}"/>` : ''}
+      ${logoData ? `<img src="${escapeHtml(logoData)}"/>` : ''}
       <div>
         <div class="marca-nome">${escapeHtml(empresa.nome)}</div>
         ${empresa.especialidade ? `<div class="marca-esp">${escapeHtml(empresa.especialidade)}</div>` : ''}
@@ -188,7 +188,7 @@ export async function montarHtmlCertificadoAnvisa(
   ${dados.observacoes ? `<div class="obs"><strong>Orientações:</strong> ${escapeHtml(dados.observacoes)}</div>` : ''}
 
   <div class="assinatura">
-    ${assinaturaData ? `<img src="${assinaturaData}"/>` : ''}
+    ${assinaturaData ? `<img src="${escapeHtml(assinaturaData)}"/>` : ''}
     <div class="linha-ass">${escapeHtml(empresa.responsavelTecnico || empresa.nomePrestador || empresa.nome)}</div>
     ${empresa.responsavelTecnicoRegistro ? `<div class="rt">Responsável técnico · ${escapeHtml(empresa.responsavelTecnicoRegistro)}</div>` : ''}
   </div>

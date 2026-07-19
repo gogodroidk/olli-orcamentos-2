@@ -32,3 +32,42 @@ export function parseJsonLoose(s) {
 export function cortar(v, max) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
+
+/**
+ * 'sim' | 'nao' | 'desconhecido' — normalização de flag de terceiro que tem
+ * TRÊS valores possíveis, não dois.
+ *
+ * Nasceu do `mei: !!d.opcao_pelo_mei` do handleCnpj: a BrasilAPI devolve `null`
+ * quando a Receita não informou (confirmado ao vivo em 2026-07-18 num CNPJ
+ * real), e `!!null` é `false` — "não sei se é MEI" chegando na tela como "não é
+ * MEI". É o bug recorrente da casa (`olli-gate-erro-vira-vazio`) na sua versão
+ * de uma linha só.
+ *
+ * Deixou de ser detalhe em 1º de setembro de 2026: pela Resolução CGSN nº
+ * 189/2026 o regime de NFS-e do cliente depende justamente de ser MEI/ME/EPP do
+ * Simples. Afirmar "não é" sem saber manda o prestador pro caminho fiscal errado.
+ */
+export function tresEstados(v) {
+  if (v === true) return 'sim';
+  if (v === false) return 'nao';
+  return 'desconhecido';
+}
+
+/**
+ * A empresa está ativa na Receita? `true` | `false` | `null`.
+ *
+ * O `null` é o ponto do exercício: "esta empresa foi BAIXADA" e "não consegui
+ * confirmar a situação" pedem coisas diferentes de quem vai emitir a nota. A
+ * Receita publica os dois formatos — código numérico (2 = ATIVA) e texto — e só
+ * afirmamos quando pelo menos um deles falou. Nenhum dos dois presente = `null`,
+ * nunca `false`.
+ *
+ * Códigos: 1 NULA · 2 ATIVA · 3 SUSPENSA · 4 INAPTA · 8 BAIXADA.
+ */
+export function empresaAtiva(d) {
+  const codigo = Number(d && d.situacao_cadastral);
+  if (Number.isFinite(codigo) && codigo > 0) return codigo === 2;
+  const texto = String((d && d.descricao_situacao_cadastral) || '').trim().toUpperCase();
+  if (texto) return texto === 'ATIVA';
+  return null;
+}
