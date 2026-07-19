@@ -22,7 +22,7 @@ import { Empresa, ServicoItem, Segmento, SEGMENTOS } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF } from '../utils/masks';
-import { buscarCep } from '../services/cep';
+import { consultarCep } from '../services/cep';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId } from '../services/verticais';
 import { VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
@@ -146,26 +146,35 @@ export default function OnboardingScreen() {
     setCepLoading(true);
     setCepInfo(null);
     try {
-      const r = await buscarCep(digits);
-      if (r) {
-        // preenche e mantém editável; só sobrescreve cidade/UF e a rua/bairro
+      // Os quatro estados são distintos DE PROPÓSITO. A versão anterior tratava
+      // "esse CEP não existe" e "não consegui consultar" com a mesma frase — e aí
+      // o usuário conferia o próprio dedo por um problema nosso, ou desistia de um
+      // CEP que estava certo. Cada um tem a sua mensagem e todos liberam a
+      // digitação manual: a consulta é atalho, nunca barreira.
+      const r = await consultarCep(digits);
+      if (r.estado === 'ok') {
+        // preenche e mantém editável; só completa o que está vazio
         setEnd(p => ({
           ...p,
-          rua: r.logradouro || p.rua,
-          bairro: r.bairro || p.bairro,
+          rua: r.endereco.logradouro || p.rua,
+          bairro: r.endereco.bairro || p.bairro,
         }));
         setEmp(p => ({
           ...p,
-          cidade: r.cidade || p.cidade,
-          estado: r.uf || p.estado,
+          cidade: r.endereco.cidade || p.cidade,
+          estado: r.endereco.uf || p.estado,
         }));
         setCepInfo('Endereço encontrado — confira e complete o número.');
         Haptics.selectionAsync().catch(() => {});
+      } else if (r.estado === 'nao_encontrado') {
+        setCepInfo('Não achei esse CEP. Confira o número ou preencha o endereço à mão.');
+      } else if (r.estado === 'invalido') {
+        setCepInfo('CEP incompleto. Precisa dos 8 dígitos.');
       } else {
-        setCepInfo('Não achei esse CEP. Pode preencher manualmente.');
+        setCepInfo('Não consegui consultar agora (sem internet?). Pode preencher à mão.');
       }
     } catch {
-      setCepInfo('Não consegui buscar agora. Preencha manualmente.');
+      setCepInfo('Não consegui consultar agora. Pode preencher à mão.');
     } finally {
       setCepLoading(false);
     }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,7 @@ import { OlliButton } from '../../components/OlliButton';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { saveCliente, deleteCliente } from '../../database/database';
 import { useCepLookup } from '../../services/cep';
+import { AvisoCep } from '../../components/AvisoCep';
 import { isValidCPF, isValidCNPJ } from '../../utils/masks';
 import { generateId } from '../../utils/id';
 import { nowISO } from '../../utils/date';
@@ -36,14 +37,18 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
   const [erros, setErros] = useState<Erros>({});
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
-  const { cepLoading, onCepChange } = useCepLookup((r) => {
-    setForm((p) => ({
-      ...p,
-      endereco: p.endereco?.trim() ? p.endereco : r.logradouro,
-      cidade: r.cidade || p.cidade,
-      estado: r.uf || p.estado,
-    }));
-  });
+  // Mesmo padrão do ClientesScreen (mobile): o hook preenche só o que está
+  // VAZIO e devolve o que divergiu em `divergencias`, para o <AvisoCep> mostrar
+  // com botão — nunca sobrescrita silenciosa do que o usuário já digitou.
+  //
+  // O ref existe porque a resposta do CEP chega DEPOIS: o hook precisa ler o
+  // formulário como ele está no instante da resposta, não no do toque.
+  const formRef = useRef<Partial<Cliente>>(form);
+  formRef.current = form;
+  const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
+    campos => setForm(p => ({ ...p, ...campos })),
+    () => ({ endereco: formRef.current.endereco, cidade: formRef.current.cidade, estado: formRef.current.estado }),
+  );
 
   const ehNovo = !cliente;
 
@@ -164,6 +169,18 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
               leftIcon="domain"
               error={erros.cnpj}
             />
+            {/* CEP ANTES do endereço: como último campo, o atalho só chegava
+                depois de tudo já digitado — e aí não economiza toque nenhum. */}
+            <OlliInput
+              label="CEP"
+              mask="cep"
+              value={form.cep ?? ''}
+              onChangeText={(v) => onCepChange(v, (masked) => setForm((p) => ({ ...p, cep: masked })))}
+              placeholder="00000-000"
+              leftIcon="mailbox"
+              containerStyle={{ marginBottom: Spacing.sm }}
+            />
+            <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
             <OlliInput
               label="Endereço"
               value={form.endereco ?? ''}
@@ -194,18 +211,6 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
                 maxLength={2}
                 containerStyle={{ flex: 1 }}
               />
-            </View>
-            <View style={styles.linhaCep}>
-              <OlliInput
-                label="CEP"
-                mask="cep"
-                value={form.cep ?? ''}
-                onChangeText={(v) => onCepChange(v, (masked) => setForm((p) => ({ ...p, cep: masked })))}
-                placeholder="00000-000"
-                leftIcon="mailbox"
-                containerStyle={{ flex: 1, marginBottom: 0 }}
-              />
-              {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
             </View>
           </ScrollView>
 

@@ -1,0 +1,176 @@
+{
+  "geradoPor": "node scripts/telas/loja.mjs",
+  "regrasEm": "https://support.google.com/googleplay/android-developer/answer/9866151",
+  "dadosFicticios": "Todos os nomes, telefones, endereços e valores são inventados e vivem em scripts/telas/elenco.mjs. O build de captura roda sem nuvem e o banco é um SQLite local vazio: nenhum dado de cliente real passou por aqui.",
+  "capturas": [
+    {
+      "arquivo": "01-novo-orcamento-itens.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 527261,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "02-orcamento-aprovado.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 565387,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "03-lista-orcamentos.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 488714,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "04-ordem-servico.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 413022,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "05-agenda.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 499478,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "06-codigos-erro.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 544876,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "07-diagnostico-ia.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 442214,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "08-clientes.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 443874,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    }
+  ],
+  "faltando": []
+}

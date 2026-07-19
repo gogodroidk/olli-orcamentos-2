@@ -23,6 +23,7 @@ import { getAgendamentos } from '../services/agenda';
 import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
 import { clientesParaReconquistar } from '../services/radarClientes';
 import { useCepLookup } from '../services/cep';
+import { AvisoCep } from '../components/AvisoCep';
 import { onSyncAplicado } from '../services/cloudSync';
 import { Cliente } from '../types';
 import { generateId } from '../utils/id';
@@ -189,14 +190,22 @@ export default function ClientesScreen() {
   // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
   // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
   const [radarMeses, setRadarMeses] = useState<Map<string, number>>(new Map());
-  const { cepLoading, onCepChange } = useCepLookup(r => {
-    setEditing(p => p ? {
-      ...p,
-      endereco: p.endereco?.trim() ? p.endereco : r.logradouro,
-      cidade: r.cidade || p.cidade,
-      estado: r.uf || p.estado,
-    } : p);
-  });
+  /**
+   * CEP → endereço. `mesclarEndereco` (em services/cep) já decidiu o que PODE
+   * ser preenchido: só campo vazio. O que ele digitou diferente vira pergunta
+   * no <AvisoCep>, com botão — nunca sobrescrita silenciosa. A versão anterior
+   * fazia `cidade: r.cidade || p.cidade`, que apagava a cidade digitada à mão
+   * sem ele ver.
+   *
+   * `editingRef` existe porque a resposta chega DEPOIS: o hook precisa ler o
+   * formulário como ele está no instante da resposta, não no do toque.
+   */
+  const editingRef = useRef<Partial<Cliente> | null>(null);
+  editingRef.current = editing;
+  const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
+    campos => setEditing(p => (p ? { ...p, ...campos } : p)),
+    () => ({ endereco: editingRef.current?.endereco, cidade: editingRef.current?.cidade, estado: editingRef.current?.estado }),
+  );
 
   // useCallback (dep [query]): mesma semântica de "sempre closure fresca" de
   // uma function declaration redefinida a cada render, só que com identidade
@@ -609,15 +618,18 @@ export default function ClientesScreen() {
               <AvisoClienteDuplicado duplicados={duplicados} erro={carregandoErro} onAbrirExistente={abrirClienteExistente} />
               <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
               <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
+              {/* CEP ANTES do endereço, e isto é a feature inteira. Enquanto ele
+                  era o último campo, o prestador já tinha digitado rua, cidade e
+                  UF antes de o atalho ter chance de servir para alguma coisa —
+                  um autocompletar que chega depois da digitação não economiza
+                  toque nenhum. Agora: digita 8 dígitos, os três de baixo vêm. */}
+              <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => onCepChange(v, masked => setEditing(p => p ? { ...p, cep: masked } : p))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ marginBottom: Spacing.sm }} />
+              <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
               <OlliInput label="Endereço" value={editing.endereco ?? ''} onChangeText={v => setEditing(p => p ? { ...p, endereco: v } : p)} placeholder="Rua, número" leftIcon="map-marker" />
               <OlliInput label="Complemento" value={editing.complemento ?? ''} onChangeText={v => setEditing(p => p ? { ...p, complemento: v } : p)} placeholder="Apto, bloco, referência" />
               <View style={styles.rowFields}>
                 <OlliInput label="Cidade" value={editing.cidade ?? ''} onChangeText={v => setEditing(p => p ? { ...p, cidade: v } : p)} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10 }} />
                 <OlliInput label="UF" value={editing.estado ?? ''} onChangeText={v => setEditing(p => p ? { ...p, estado: v.toUpperCase().slice(0, 2) } : p)} placeholder="SP" autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
-              </View>
-              <View style={styles.cepRow}>
-                <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => onCepChange(v, masked => setEditing(p => p ? { ...p, cep: masked } : p))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
-                {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
               </View>
             </ScrollView>
             <View style={[styles.modalFooter, { paddingBottom: insets.bottom + Spacing.base }]}>
@@ -743,8 +755,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   rowFields: { flexDirection: 'row' },
-  cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  cepSpinner: { marginLeft: 10, marginBottom: 14 },
+  // (o spinner do CEP virou estado do <AvisoCep>, que fala em vez de só girar)
 
   // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
   // padrão de overlay de modal — sem chave "scrim" na paleta).

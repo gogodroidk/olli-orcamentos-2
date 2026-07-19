@@ -22,6 +22,19 @@
  */
 export const DB_PARTICOES_KEY = 'olli.db.particoes';
 
+/**
+ * Prefixo do calendário de feriados nacionais baixado por ANO
+ * (`olli.feriados.2026`, ver `services/feriados`).
+ *
+ * ⚠️ **NÃO** entre com estas chaves em `APP_DATA_STORAGE_KEYS.** Não é dado do
+ * usuário: é calendário público, igual para todo mundo, e não diz nada sobre
+ * quem usou o aparelho. Apagá-lo no logout só faria o próximo login começar
+ * cego a feriados até achar sinal — cobrando rede de quem talvez não tenha.
+ * (Mesmo raciocínio de `DB_PARTICOES_KEY`, por motivo oposto: aquela é sensível
+ * demais para sumir, esta é impessoal demais para valer a pena sumir.)
+ */
+export const FERIADOS_ANO_KEY_PREFIX = 'olli.feriados.';
+
 /** Checklist do dia (HojeScreen). */
 export const CHECKLIST_KEY = 'olli.hoje.checklist';
 /** Histórico do chat com a OLLI (OlliChatScreen). */

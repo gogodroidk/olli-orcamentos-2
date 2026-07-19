@@ -25,8 +25,8 @@
  * a rede.
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { conferirBundleSemCredenciais } from './guarda-bundle.mjs';
 
 const RAIZ = resolve(process.cwd());
 // Saída do export DENTRO de `.expo/`, que já é ignorado pelo git: um build de
@@ -34,24 +34,6 @@ const RAIZ = resolve(process.cwd());
 // gerar imagens. Também evita brigar com o `dist/` do `npm run export:web`.
 const DIST = resolve('.expo/telas-build');
 const soCaptura = process.argv.includes('--so-captura');
-
-/**
- * O identificador do projeto Supabase de produção, lido de `src/config.ts` (o
- * mesmo lugar de onde o app o tiraria). Procurar por "supabase.co" não serve:
- * essa string aparece no código da biblioteca e no texto de onboarding, e o
- * portão dispararia sempre. O que precisa NÃO estar no bundle é o projeto.
- */
-function refDoProjetoDeProducao() {
-  const config = readFileSync(resolve('src/config.ts'), 'utf8');
-  const m = config.match(/https:\/\/([a-z0-9]+)\.supabase\.co/i);
-  if (!m) {
-    console.error('\nPAREI: não consegui ler a URL do Supabase em src/config.ts.');
-    console.error('Sem saber qual é o projeto de produção, não dá para garantir que ele');
-    console.error('ficou FORA do bundle — e "não sei" aqui não pode virar "tudo certo".\n');
-    process.exit(1);
-  }
-  return m[1];
-}
 
 /**
  * `shell` só para o `npx` (no Windows ele é um .cmd e não roda sem shell). Para
@@ -66,28 +48,6 @@ function rodar(comando, args, env, { usarShell = false } = {}) {
     env: { ...process.env, ...env },
   });
   if (r.status !== 0) process.exit(r.status ?? 1);
-}
-
-function conferirBundleSemCredenciais() {
-  const ref = refDoProjetoDeProducao();
-  const dirJs = join(DIST, '_expo/static/js/web');
-  let achou = false;
-  for (const arquivo of readdirSync(dirJs)) {
-    if (!arquivo.endsWith('.js')) continue;
-    if (readFileSync(join(dirJs, arquivo), 'utf8').includes(ref)) {
-      console.error(`\nPAREI: o projeto "${ref}" apareceu em ${arquivo}.`);
-      console.error('O export saiu COM a nuvem ligada. Um browser de captura com credencial de');
-      console.error('produção na mão pode fotografar dado de cliente real — e screenshot');
-      console.error('publicado não se despublica. Confira as variáveis do export.\n');
-      process.exit(1);
-    }
-    achou = true;
-  }
-  if (!achou) {
-    console.error(`\nPAREI: não achei nenhum bundle .js em ${dirJs}. O export falhou?\n`);
-    process.exit(1);
-  }
-  console.log(`Bundle conferido: o projeto "${ref}" não está lá dentro.`);
 }
 
 if (!soCaptura) {
@@ -105,7 +65,7 @@ if (!soCaptura) {
 }
 
 console.log('\n2/3  Conferindo o bundle…');
-conferirBundleSemCredenciais();
+conferirBundleSemCredenciais(DIST);
 
 console.log('\n3/3  Capturando as telas…');
 rodar(process.execPath, ['scripts/telas/capturar-telas.mjs'], {});

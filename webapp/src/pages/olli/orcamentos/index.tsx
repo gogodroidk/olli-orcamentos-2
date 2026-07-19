@@ -24,6 +24,7 @@ import { STATUS_LABELS } from "@dominio";
 import {
 	AlertTriangle,
 	Copy,
+	FileSignature,
 	FileText,
 	Inbox,
 	Loader2,
@@ -35,9 +36,11 @@ import {
 	Search,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
+import { lazyComRetry } from "@/components/lazy/carregar-chunk";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
@@ -62,6 +65,13 @@ import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+/**
+ * Contrato carregado SOB DEMANDA: ele arrasta o gerador de PDF do contrato, e
+ * quem só abre a lista de orçamentos (a maioria, o tempo todo) não deve pagar
+ * esse download. `lazyComRetry` reentrega o pedaço se a rede falhar — o público
+ * é prestador em 4G ruim, onde chunk que não baixa é comum e viraria tela morta.
+ */
+const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
 import FormOrcamento, { duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
 
 /**
@@ -137,6 +147,7 @@ function StatusDoOrcamento({ valor }: { valor: string | null }) {
 function MenuDaLinha({
 	linha,
 	onVerPdf,
+	onGerarContrato,
 	onEditar,
 	onDuplicar,
 	onExcluir,
@@ -144,6 +155,7 @@ function MenuDaLinha({
 	linha: LinhaOrcamento;
 	/** O MESMO caminho do clique na linha — o menu não tem uma segunda versão da regra. */
 	onVerPdf: (linha: LinhaOrcamento) => void;
+	onGerarContrato: (linha: LinhaOrcamento) => void;
 	onEditar: (linha: LinhaOrcamento) => void;
 	onDuplicar: (blob: Orcamento) => void;
 	onExcluir: (blob: Orcamento) => void;
@@ -180,6 +192,14 @@ function MenuDaLinha({
 							<Printer className="mr-2 size-4" />
 							Ver / imprimir PDF
 						</DropdownMenuItem>
+						{/* CONTRATO: o mesmo gerador do celular (src/utils/contratoPdf), com as
+						    cláusulas ajustáveis antes de imprimir. Vem logo abaixo do PDF porque é
+						    a sequência real do trabalho — o prestador manda a proposta e, quando o
+						    cliente aceita, emite o contrato do MESMO orçamento, sem redigitar nada. */}
+						<DropdownMenuItem onSelect={() => onGerarContrato(linha)}>
+							<FileSignature className="mr-2 size-4" />
+							Gerar contrato
+						</DropdownMenuItem>
 						<DropdownMenuItem onSelect={() => onEditar(linha)}>
 							<Pencil className="mr-2 size-4" />
 							{bloqueado ? "Editar (já enviado)" : "Editar"}
@@ -211,12 +231,14 @@ function MenuDaLinha({
 function AcoesDoOrcamento({
 	linha,
 	onVerPdf,
+	onGerarContrato,
 	onEditar,
 	onDuplicar,
 	onExcluir,
 }: {
 	linha: LinhaOrcamento;
 	onVerPdf: (linha: LinhaOrcamento) => void;
+	onGerarContrato: (linha: LinhaOrcamento) => void;
 	onEditar: (linha: LinhaOrcamento) => void;
 	onDuplicar: (blob: Orcamento) => void;
 	onExcluir: (blob: Orcamento) => void;
@@ -239,6 +261,7 @@ function AcoesDoOrcamento({
 			<MenuDaLinha
 				linha={linha}
 				onVerPdf={onVerPdf}
+				onGerarContrato={onGerarContrato}
 				onEditar={onEditar}
 				onDuplicar={onDuplicar}
 				onExcluir={onExcluir}
@@ -284,6 +307,8 @@ export default function OrcamentosPage() {
 	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean } | null>(null);
 	/** id da linha cujo PDF está sendo montado — a linha mostra isso, não fica muda. */
 	const [pdfEmCurso, setPdfEmCurso] = useState<string | null>(null);
+	/** O orçamento que virou contrato — o diálogo abre em cima do BLOB, nunca da linha. */
+	const [contratoDe, setContratoDe] = useState<Orcamento | null>(null);
 	const [excluindo, setExcluindo] = useState<Orcamento | null>(null);
 	const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
@@ -393,6 +418,33 @@ export default function OrcamentosPage() {
 			success: "Abri a janela de impressão — escolha “Salvar como PDF”.",
 			error: "Não consegui gerar o PDF agora. Tente de novo.",
 		});
+	};
+
+	/**
+	 * GERAR CONTRATO — o documento que diz o que foi combinado, a partir do orçamento
+	 * que o cliente já aceitou. O prestador não redigita nada: o diálogo abre com as
+	 * cláusulas colhidas do orçamento + do cadastro, prontas pra ajustar.
+	 *
+	 * As MESMAS duas guardas do PDF, pelo mesmo motivo: sem o blob não existe
+	 * documento (itens, valor, sinal moram nele), e sem o cadastro da empresa o
+	 * contrato sairia sem CONTRATADA — um contrato com uma parte em branco é pior
+	 * que nenhum contrato. Cada caso diz o que fazer, não trava mudo.
+	 */
+	const gerarContrato = (linha: LinhaOrcamento) => {
+		const blob = blobDe(linha);
+		if (!blob) {
+			toast.error("Este orçamento está sem os dados completos — abra-o no celular para gerar o contrato.", {
+				position: "top-center",
+			});
+			return;
+		}
+		if (!empresa) {
+			toast.error("Complete o cadastro do seu negócio (Meu Negócio) antes de gerar o contrato.", {
+				position: "top-center",
+			});
+			return;
+		}
+		setContratoDe(blob);
 	};
 
 	/** Editar: SEMPRE em cima do blob. A trava de "já enviado" mora no FormOrcamento. */
@@ -622,6 +674,7 @@ export default function OrcamentosPage() {
 													<AcoesDoOrcamento
 														linha={l}
 														onVerPdf={verPdf}
+														onGerarContrato={gerarContrato}
 														onEditar={abrirEdicao}
 														onDuplicar={duplicar}
 														onExcluir={pedirExclusao}
@@ -678,6 +731,7 @@ export default function OrcamentosPage() {
 								<AcoesDoOrcamento
 									linha={l}
 									onVerPdf={verPdf}
+									onGerarContrato={gerarContrato}
 									onEditar={abrirEdicao}
 									onDuplicar={duplicar}
 									onExcluir={pedirExclusao}
@@ -707,6 +761,28 @@ export default function OrcamentosPage() {
 					ehNovo={editor.ehNovo}
 					aoDuplicar={duplicar}
 				/>
+			)}
+
+			{/* ─────────────  Contrato  ─────────────
+			    `key` no id do orçamento: o formulário do diálogo é semeado UMA vez, na
+			    montagem. Sem a chave, abrir o contrato de um segundo orçamento reaproveitaria
+			    a instância e mostraria as cláusulas do PRIMEIRO — o prestador imprimiria o
+			    objeto e o prazo do cliente errado sem nada na tela denunciando.
+			    `empresa` já foi checada em `gerarContrato`; o `&&` é a garantia de tipo. */}
+			{contratoDe && empresa && (
+				/* Se o pedaço do contrato não baixar, a fronteira diz isso em português
+				   e deixa fechar — em vez de diálogo em branco, que o usuário lê como
+				   "o sistema perdeu meu orçamento". */
+				<ChunkBoundary oQue="o contrato">
+					<Suspense fallback={null}>
+						<DialogoContrato
+							key={contratoDe.id}
+							orcamento={contratoDe}
+							empresa={empresa}
+							aoFechar={() => setContratoDe(null)}
+						/>
+					</Suspense>
+				</ChunkBoundary>
 			)}
 
 			{/* ─────────────  Exclusão (soft delete)  ───────────── */}
