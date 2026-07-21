@@ -5,7 +5,9 @@ import { ChevronRight, MoreHorizontal } from "lucide-react"
 import { cn } from "@/utils"
 
 function Breadcrumb({ ...props }: React.ComponentProps<"nav">) {
-  return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />
+  // Nome do marco em pt-BR: o painel é pt-BR fixo e este texto é lido em voz alta
+  // ("navegação, breadcrumb" era o que saía).
+  return <nav aria-label="Trilha de navegação" data-slot="breadcrumb" {...props} />
 }
 
 function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
@@ -93,7 +95,7 @@ function BreadcrumbEllipsis({
       {...props}
     >
       <MoreHorizontal className="size-4" />
-      <span className="sr-only">More</span>
+      <span className="sr-only">Mais páginas</span>
     </span>
   )
 }

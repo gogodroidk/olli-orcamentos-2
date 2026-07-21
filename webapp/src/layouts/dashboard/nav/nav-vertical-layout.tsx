@@ -29,6 +29,9 @@ export function NavVerticalLayout({ data, className }: Props) {
 	return (
 		<nav
 			data-slot="slash-layout-nav"
+			// Sem nome, o leitor de tela anunciava só "navegação" — e o painel tem três
+			// marcos de navegação (menu, trilha, e o menu do celular).
+			aria-label="Menu principal"
 			className={cn(
 				"fixed inset-y-0 left-0 flex-col h-full bg-background border-r border-dashed z-nav transition-[width] duration-300 ease-in-out",
 				className,

@@ -4,7 +4,8 @@ import { NavGroup } from "./nav-group";
 
 export function NavHorizontal({ data, className, ...props }: NavProps) {
 	return (
-		<nav
+		// <div> pelo mesmo motivo do NavVertical: já vive dentro do <nav> do layout.
+		<div
 			className={cn(
 				"flex items-center gap-1 min-h-[var(--layout-nav-height-horizontal)] border-b border-dashed",
 				className,
@@ -14,6 +15,6 @@ export function NavHorizontal({ data, className, ...props }: NavProps) {
 			{data.map((group, index) => (
 				<NavGroup key={group.name || index} name={group.name} items={group.items} />
 			))}
-		</nav>
+		</div>
 	);
 }

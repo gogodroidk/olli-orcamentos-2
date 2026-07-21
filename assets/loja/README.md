@@ -27,17 +27,27 @@ node assets/loja/palavras.js            # cobertura de palavras-chave na ficha
 As screenshots NÃO saem daqui. Elas são geradas do app de verdade, por outro pipeline:
 
 ```bash
-node scripts/telas/loja.mjs             # as 8 screenshots, do app real, sem emulador
-node scripts/telas/medir-ocupacao.mjs   # reconfere quanto de cada tela é fundo vazio
+node scripts/telas/loja.mjs                        # as 8 screenshots, do app real, sem emulador
+node scripts/telas/medir-ocupacao.mjs              # reconfere quanto de cada tela é fundo vazio
+node scripts/telas/gate-privacidade.mjs --conferir # testa o portão de privacidade contra dado plantado
 ```
+
+⚠️ `medir-ocupacao.mjs` mede o arquivo **emoldurado**, recortado de volta (698×1517); o
+`conformidade.json` mede a **captura crua** (1179×2556). A coluna `ocupação` sai mais baixa no
+primeiro porque a redução borra texto fino — o **veredito** (oca / não oca) é o mesmo nos dois. O
+comando imprime esse aviso sozinho.
 
 `node assets/loja/montar-screenshots.js` ainda existe e ainda funciona, mas é a porta de entrada do
 caminho ANTIGO (print cru de emulador → 1080×1920). Não é preciso rodá-lo: `loja.mjs` já entrega o
 arquivo final. A moldura de verdade é `scripts/telas/moldura-loja.mjs`, compartilhada pelos dois.
 
-`medir.js` sai com código **1** se algum campo estourar o limite. `loja.mjs` e `medir-ocupacao.mjs`
-saem com **1** se alguma imagem reprovar na regra da Play ou aparecer oca — os outros são
-informativos.
+`medir.js` sai com código **1** se algum campo estourar o limite. `loja.mjs`, `medir-ocupacao.mjs` e
+`gate-privacidade.mjs --conferir` saem com **1** se alguma imagem reprovar na regra da Play, aparecer
+oca, ou se o portão de privacidade estiver cego — os outros são informativos.
+
+**`loja.mjs` não toca esta pasta antes de todos os portões passarem.** As oito imagens ficam em
+memória e a pasta só é trocada no fim: uma rodada que produza imagem fora de formato ou tela oca sai
+em erro **sem** destruir a leva conforme que está commitada.
 
 ## A regra desta pasta
 

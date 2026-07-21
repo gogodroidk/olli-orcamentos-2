@@ -286,6 +286,27 @@ async function main() {
     `\nRegra: rodapé vazio acima de ${MAX_RODAPE_VAZIO}% OU faixa vazia contínua acima de ` +
       `${MAX_FAIXA_VAZIA}% é tela que vende "app sem nada dentro".`,
   );
+
+  // ── Por que estes números não batem com os do conformidade.json ──────────
+  //
+  // Aqui a medição sai do arquivo EMOLDURADO, recortado de volta: o print vive
+  // em 698x1517. O pipeline mede a captura CRUA, que é 1179x2556 — quase o
+  // dobro da resolução. Reduzir borra texto miúdo e borda de 1 px, então menos
+  // linhas cruzam o limiar de "tem conteúdo" e a coluna `ocupação` sai bem mais
+  // baixa aqui (04-ordem-servico: 88,7% no laudo, ~42% por este caminho).
+  //
+  // Dizer isto em voz alta é o ponto: quem rodar este comando para reconferir a
+  // tabela de `docs/ENXAME/LOJA.md` vai ver números diferentes e precisa saber
+  // que não é imagem que mudou. O que as duas medições têm de concordar — e
+  // concordam — é o VEREDITO: rodapé e faixa vazia respondem igual nas duas.
+  if (emoldurados) {
+    console.log(
+      '\nMedido do arquivo emoldurado, recortado de volta ' +
+        `(${RECORTE_DA_MOLDURA.largura}x${RECORTE_DA_MOLDURA.altura}). A coluna "ocupação" NÃO é\n` +
+        'comparável com a de assets/loja/screenshots/conformidade.json, que mede a captura crua\n' +
+        'em 1179x2556: a redução borra texto fino. O veredito (oca / não oca) é o mesmo nas duas.',
+    );
+  }
   if (reprovou) process.exitCode = 1;
 }
 

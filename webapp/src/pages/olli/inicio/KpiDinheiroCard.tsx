@@ -74,7 +74,18 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 			// próprio <a> (fora do Card, que tem overflow-hidden e recortaria um anel
 			// interno). Antes o único indicador era `group-focus-visible:ring-primary/50`
 			// — 1px a 50% de opacidade, que a auditoria não conseguiu enxergar.
-			className="group block h-full rounded-xl outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+			//
+			// SEM `outline-none` aqui — e isso NÃO é estilo, é o que faz o anel existir.
+			// No Tailwind v4 `outline-none` não é só `outline-style:none`: ele grava
+			// `--tw-outline-style: none` NO PRÓPRIO ELEMENTO, e `outline-2` aplica
+			// `outline-style: var(--tw-outline-style)`. Com os dois na mesma className o
+			// segundo lia o "none" do primeiro: medido no navegador com foco de teclado
+			// real, dava `outline-style: none` (largura 2px e cor #0B6FCE certas, estilo
+			// nenhum) — ou seja, ANEL INVISÍVEL mesmo com `:focus-visible` casando.
+			// Forçar `--tw-outline-style: solid` na mão fazia o anel aparecer na hora.
+			// O `outline-none` também não fazia falta: o contorno padrão do navegador em
+			// link só aparece em `:focus-visible`, que é exatamente o que a gente pinta.
+			className="group block h-full rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
 		>
 			<Card className="relative h-full gap-0 overflow-hidden p-5 shadow-sm ring-1 ring-transparent transition-all duration-200 group-hover:-translate-y-1 group-hover:border-primary/30 group-hover:shadow-lg group-focus-visible:border-primary group-focus-visible:ring-2 group-focus-visible:ring-primary motion-reduce:transition-none motion-reduce:group-hover:translate-y-0">
 				<div

@@ -70,13 +70,38 @@ export default function FormDialog({
 
 	return (
 		<Dialog open={aberto} onOpenChange={(v) => !v && fecharComGuarda()}>
-			<DialogContent className={largo ? "max-w-3xl" : "max-w-lg"}>
+			{/*
+			 * TETO DE ALTURA + rolagem do diálogo inteiro — isto é o que salva o
+			 * formulário quando o TECLADO do celular sobe.
+			 *
+			 * O `DialogContent` do shadcn nasce com `max-height: none` (medido) e fica
+			 * `fixed top-1/2 -translate-y-1/2`: centrado, sem limite e sem rolagem
+			 * própria. Só a ScrollArea do corpo rolava. Medido no navegador a 375 × 360
+			 * (celular com o teclado aberto), o diálogo "Novo cliente" ficava com 423px
+			 * de altura e sobrava 32px para CIMA e 32px para BAIXO — o TÍTULO ficava em
+			 * y = -8, fora da tela e sem como trazer de volta, porque o que rola é o
+			 * corpo, não o diálogo.
+			 *
+			 * `dvh` (não `vh`): é a unidade que acompanha o teclado subindo.
+			 * `overflow-y-auto` é a rede: se mesmo assim não couber, o diálogo inteiro
+			 * rola e o título e o "Salvar" continuam alcançáveis.
+			 */}
+			<DialogContent className={`max-h-[calc(100dvh-1.5rem)] overflow-y-auto ${largo ? "max-w-3xl" : "max-w-lg"}`}>
 				<DialogHeader>
 					<DialogTitle>{titulo}</DialogTitle>
 					{descricao && <DialogDescription>{descricao}</DialogDescription>}
 				</DialogHeader>
 
-				<ScrollArea className="max-h-[65vh] pr-3">
+				{/* `dvh` no lugar de `vh`: com o teclado aberto, `vh` continua contando a
+				    tela inteira em navegador que não encolhe o viewport de layout, e o
+				    corpo pedia altura que não existia mais.
+				    (Tentei também trocar por `flex-1 min-h-0` para o corpo encolher
+				    sozinho; não serve: o Viewport do ScrollArea daqui usa `asChild` +
+				    `h-full`, e medido no navegador o `height:100%` não resolveu contra a
+				    altura vinda do flex — a raiz ficou com 121px e o viewport com 690px,
+				    ou seja, campo cortado e inalcançável. Por isso o teto fica no
+				    diálogo, com o rodapé grudado.) */}
+				<ScrollArea className="max-h-[65dvh] pr-3">
 					<div className="px-0.5 pb-1">{children}</div>
 				</ScrollArea>
 
@@ -89,7 +114,11 @@ export default function FormDialog({
 					</p>
 				)}
 
-				<DialogFooter>
+				{/* Rodapé GRUDADO no fim do diálogo: como quem rola agora é o diálogo
+				    inteiro (teto acima), sem `sticky` o "Salvar" descia junto e sumia —
+				    medido a 375 × 360, ele ficava fora da tela. Com `sticky bottom-0` o
+				    botão fica sempre à vista, que era a promessa original. */}
+				<DialogFooter className="sticky bottom-0 -mb-2 bg-background pb-2">
 					<Button type="button" variant="outline" onClick={fecharComGuarda} disabled={salvando}>
 						Cancelar
 					</Button>

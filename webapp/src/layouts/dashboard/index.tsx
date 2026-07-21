@@ -24,8 +24,42 @@ export default function DashboardLayout() {
 		// #09090B no claro). Portais (Sheet/Dropdown/Dialog) saem para fora desta
 		// div e por isso já trazem foreground próprio nos componentes de ui/.
 		<div data-slot="slash-layout-root" className="w-full min-h-screen bg-background text-foreground">
+			<PularParaConteudo />
 			{isMobile ? <MobileLayout /> : <PcLayout />}
 		</div>
+	);
+}
+
+/**
+ * "Pular para o conteúdo" — o primeiro Tab de qualquer tela do painel.
+ *
+ * Medido no painel carregado (desktop, 1280px): a tela de Início tem 37 paradas de
+ * foco, e as 22 PRIMEIRAS são o menu lateral. Sem este atalho, quem usa teclado
+ * atravessava o menu inteiro a CADA troca de tela só para chegar no conteúdo — e o
+ * painel não tinha nenhum (a landing já tinha o dela).
+ *
+ * `focus:` e não `focus-visible:`: o link é invisível até receber foco, então ele
+ * PRECISA aparecer em qualquer forma de foco, senão o usuário estaria com o foco
+ * num link que não existe na tela.
+ */
+function PularParaConteudo() {
+	return (
+		<a
+			href="#conteudo"
+			onClick={(e) => {
+				// Foco explícito em vez de deixar o navegador resolver o "#": com o
+				// react-router no meio, o pulo por hash rola a página mas nem sempre
+				// move o foco — e mover o foco é o ponto inteiro do atalho.
+				const alvo = document.getElementById("conteudo");
+				if (!alvo) return;
+				e.preventDefault();
+				alvo.focus();
+				alvo.scrollIntoView({ block: "start" });
+			}}
+			className="sr-only rounded-lg font-semibold text-sm focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-tooltip focus:bg-primary focus:px-4 focus:py-2.5 focus:text-primary-foreground focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+		>
+			Pular para o conteúdo
+		</a>
 	);
 }
 

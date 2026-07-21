@@ -74,7 +74,11 @@ export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa 
 					<p className="mt-2 text-sm text-text-secondary">
 						{legenda(radar)}
 						{radar.jaRecebido > 0 && (
-							<span className="text-text-disabled"> · já entrou {formatBRL(radar.jaRecebido)}</span>
+							// `text-text-secondary`, não `-disabled`: isto é DINHEIRO que já entrou,
+							// informação de verdade — e o token "disabled" (#919EAB) mede 2,73:1
+							// sobre o branco a 12px, medido na tela carregada no tema claro. O
+							// "disabled" existe para controle desligado, não para texto que informa.
+							<span className="text-text-secondary"> · já entrou {formatBRL(radar.jaRecebido)}</span>
 						)}
 					</p>
 

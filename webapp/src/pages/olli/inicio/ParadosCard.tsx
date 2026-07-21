@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, MessageCircle, PhoneOff, RotateCw, TimerReset } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
+import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { linkWhatsapp, listarParados, paramStatus, STATUS_EM_JOGO, WHATSAPP_TEXTO, WHATSAPP_VERDE } from "./financeiro";
@@ -122,12 +123,15 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 												{identifica}
 												{p.valor === null ? "sem valor" : formatBRL(p.valor)}
 											</span>
-											<span
-												className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
-												style={{ backgroundColor: `${meta.color}1A`, color: meta.color }}
-											>
-												{meta.label}
-											</span>
+											{/* `Badge variant={meta.badge}` — o mesmo caminho que o
+											    RecentOrcamentosCard já usava — no lugar de uma pílula com a cor
+											    crua do status sobre 10% dela mesma. Medida a contraste na tela
+											    carregada (tema claro), a pílula à mão reprovava feio: "Visualizado"
+											    #3FD8EA sobre #ECFBFD dava 1,62:1, "Em negociação" #F59E0B sobre
+											    #FEF5E7 dava 1,99:1 e até "Enviado" ficava em 4,38:1 — tudo abaixo
+											    dos 4,5:1. As variantes do Badge já foram levadas para os tokens
+											    `-dark`/`-darker` numa onda anterior justamente por isso. */}
+											<Badge variant={meta.badge}>{meta.label}</Badge>
 											<span className="font-semibold text-warning-darker tabular-nums dark:text-warning">
 												há {plural(p.dias, "dia")}
 											</span>

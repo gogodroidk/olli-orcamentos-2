@@ -149,7 +149,9 @@ export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
 										/>
 										<span className="flex-1 truncate text-sm text-text-secondary">{g.meta.label}</span>
 										<span className="text-sm font-semibold text-text-primary tabular-nums">{formatInt(g.total)}</span>
-										<span className="w-9 shrink-0 text-right text-xs text-text-disabled tabular-nums">{pct}%</span>
+										{/* `-secondary` e não `-disabled`: a porcentagem é o dado da legenda.
+									    Medido a 10,5px no tema claro, o token "disabled" dava 2,73:1. */}
+									<span className="w-9 shrink-0 text-right text-xs text-text-secondary tabular-nums">{pct}%</span>
 									</li>
 								);
 							})}

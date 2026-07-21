@@ -1,6 +1,8 @@
 /**
  * PORTÃO DE PRIVACIDADE — roda ANTES de gravar cada imagem.
  *
+ *     node scripts/telas/gate-privacidade.mjs --conferir
+ *
  * Screenshot publicado não se despublica: já foi para o cache do Google, para o
  * Wayback e para o print de alguém. Por isso aqui a regra é FALHAR, não avisar.
  *
@@ -32,6 +34,19 @@
  * O portão NÃO substitui uma conferência humana da primeira leva. Ele pega o
  * previsível (o telefone num toast, o nome num autocomplete fora do foco do
  * olhar); olho humano pega o resto (um avatar com foto de gente de verdade).
+ *
+ * ─── Por que existe um `--conferir` ────────────────────────────────────────
+ *
+ * A limitação (2) acima já foi um defeito de verdade: o cabeçalho jurava cobrir
+ * "o texto visível da tela" e não cobria o valor de campo — a superfície mais
+ * óbvia de entrada de dado, e a que o pipeline usa DE PROPÓSITO em duas telas
+ * publicadas. Ninguém percebeu porque a única prova de que o portão funciona era
+ * ele não reclamar, e um portão cego também não reclama.
+ *
+ * `--conferir` sobe o mesmo Chromium do pipeline numa página de teste com dado
+ * sensível em nó de texto E em campo, e exige que o portão pegue os dois. Roda
+ * em segundos e não depende do build do app. Comentário não prova nada; isto
+ * prova.
  */
 import { CONTATOS_PERMITIDOS, NOMES_PERMITIDOS } from './elenco.mjs';
 
@@ -79,7 +94,7 @@ export function conferirTexto(texto) {
  * com formulário em branco — e portão que grita errado toda vez é portão que
  * ninguém lê.
  */
-async function lerTextoVisivel(page) {
+export async function lerTextoVisivel(page) {
   return page.evaluate(() => {
     const valores = [...document.querySelectorAll('input, textarea, select')]
       .map((e) => e.value)
@@ -103,4 +118,87 @@ export async function conferirPagina(page, idDaTela) {
 /** Confere que os nomes que a landing vai publicar são mesmo os do elenco. */
 export function nomesDoElencoPresentes(texto) {
   return NOMES_PERMITIDOS.filter((n) => texto.includes(n));
+}
+
+/**
+ * AUTOTESTE — `node scripts/telas/gate-privacidade.mjs --conferir`
+ *
+ * Duas perguntas, e as duas precisam de resposta certa para o portão prestar:
+ *
+ *   1. Ele PEGA dado sensível fora do elenco? Inclusive quando o dado está
+ *      dentro de `<input>`, `<textarea>` e `<select>` — que é onde ele era cego.
+ *   2. Ele CALA a boca quando só há dado do elenco? Portão que grita errado é
+ *      portão que alguém desliga na terceira vez.
+ *
+ * O caso 2 não é enfeite: a tentação de "cobrir mais" é incluir `placeholder`, e
+ * o app é cheio de placeholder com cara de dado real ("(11) 99999-9999"). Se
+ * alguém fizer isso, este teste reprova na hora, com o motivo escrito.
+ */
+async function autoTeste() {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ headless: true });
+  const falhas = [];
+  try {
+    const page = await browser.newPage();
+
+    // ── Caso 1: dado sensível em nó de texto E em campo ──────────────────
+    // O telefone do `<div>` é o controle: se ele não for pego, o problema é
+    // outro e não vale acusar o campo.
+    await page.setContent(`
+      <div>Cliente: Fulano — (11) 98765-4321</div>
+      <input value="01310-100">
+      <textarea>fale com joao@empresa.com.br</textarea>
+      <select><option value="123.456.789-09" selected>doc</option></select>
+      <input placeholder="(11) 99999-9999">
+    `);
+    const texto = await lerTextoVisivel(page);
+    const achados = conferirTexto(texto);
+    const esperados = [
+      ['telefone em nó de texto (controle)', '(11) 98765-4321'],
+      ['CEP em <input>', '01310-100'],
+      ['e-mail em <textarea>', 'joao@empresa.com.br'],
+      ['CPF em <select>', '123.456.789-09'],
+    ];
+    for (const [oQue, valor] of esperados) {
+      if (!achados.some((v) => v.includes(valor))) {
+        falhas.push(`NÃO pegou ${oQue}: "${valor}" passou batido`);
+      }
+    }
+    // O placeholder fica de fora de propósito (ver `lerTextoVisivel`).
+    if (achados.some((v) => v.includes('(11) 99999-9999'))) {
+      falhas.push(
+        'pegou o PLACEHOLDER "(11) 99999-9999" — ele é texto do app, não dado; ' +
+          'incluí-lo faz o portão reprovar toda tela com formulário em branco',
+      );
+    }
+
+    // ── Caso 2: só dado do elenco, em campo — tem de passar limpo ────────
+    const doElenco = CONTATOS_PERMITIDOS[0];
+    if (!doElenco) falhas.push('CONTATOS_PERMITIDOS está vazio: o elenco não tem contato nenhum');
+    else {
+      await page.setContent(`<div>topo</div><input value="${doElenco}">`);
+      const limpo = conferirTexto(await lerTextoVisivel(page));
+      if (limpo.length) {
+        falhas.push(`reprovou dado DO ELENCO ("${doElenco}"): ${limpo.join(' | ')}`);
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+
+  if (falhas.length) {
+    console.error('\nO PORTÃO DE PRIVACIDADE ESTÁ QUEBRADO:');
+    for (const f of falhas) console.error(`  - ${f}`);
+    console.error('\nNão capture nada até consertar: este portão é o que separa');
+    console.error('dado de cliente real de um screenshot que não se despublica.\n');
+    process.exit(1);
+  }
+  console.log('Portão de privacidade OK:');
+  console.log('  · pega CPF/CEP/e-mail/telefone fora do elenco, em texto E em campo de formulário');
+  console.log('  · ignora placeholder (texto do app, não dado)');
+  console.log('  · não reprova contato do próprio elenco');
+}
+
+if (process.argv[1]?.endsWith('gate-privacidade.mjs') && process.argv.includes('--conferir')) {
+  await autoTeste();
 }

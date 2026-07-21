@@ -48,8 +48,13 @@ export function NavMobileLayout({ data }: NavProps) {
 					<Logo />
 					<span className="text-xl font-bold text-text-primary">{GLOBAL_CONFIG.appName}</span>
 				</div>
+				{/* O <nav> vive AQUI (e não dentro do NavVertical, que é <div> por já
+				    morar dentro de um <nav> nos layouts de desktop) — na gaveta ele é
+				    o único marco de navegação da tela, e precisa de nome. */}
 				<ScrollArea className="flex-1 min-h-0">
-					<NavVertical data={data} />
+					<nav aria-label="Menu principal">
+						<NavVertical data={data} />
+					</nav>
 				</ScrollArea>
 				{/* SAIR no rodapé do menu: no celular é aqui que o usuário procura sair,
 				    não atrás do avatar do cabeçalho. Mesma ação e mesma confirmação do

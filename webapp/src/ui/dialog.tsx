@@ -61,9 +61,22 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+        {/* O "X" de FECHAR de TODO diálogo do painel passa por aqui — FormDialog,
+            exclusão, contrato, calculadora, paleta de comandos. Duas correções que
+            valem para todos eles:
+
+            1. O nome acessível era "Close", em INGLÊS, num painel pt-BR fixo: medido
+               com um diálogo aberto no navegador, o leitor de tela anunciava
+               "Close, botão". Agora é "Fechar".
+            2. O alvo de toque media 15,2 × 15,2 px (medido) — o ícone e nada mais,
+               `padding: 0`. No celular, fechar um formulário virava mira. `alvo-toque`
+               (utilitário do global.css, já usado nas listas) põe uma área de 44 × 44
+               px por ::after, sem mexer no desenho nem empurrar o título. */}
+        <DialogPrimitive.Close
+          aria-label="Fechar"
+          className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground alvo-toque absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+        >
           <XIcon />
-          <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>

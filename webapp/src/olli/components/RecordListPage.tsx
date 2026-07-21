@@ -217,7 +217,12 @@ export default function RecordListPage({
 				<Button
 					variant="ghost"
 					size="icon"
-					className="size-8 text-text-secondary"
+					// `alvo-toque`: medido a 375px, este "…" era o único menu de linha do
+					// painel com 32 × 32 px de alvo — catálogo, equipamentos, orçamentos e
+					// recibos já usavam o utilitário. E aqui errar o alvo é pior do que
+					// parece: o card inteiro abre o registro, então o dedo que passa perto
+					// do "…" abre o formulário em vez do menu.
+					className="size-8 alvo-toque text-text-secondary"
 					aria-label={`Ações de ${nomeDaLinha(row)}`}
 					// A linha inteira é clicável no mouse; o clique no menu não pode
 					// abrir o registro por baixo.
@@ -349,12 +354,23 @@ export default function RecordListPage({
 										{cols.map((c) => (
 											<th
 												key={c}
+												scope="col"
 												className={cn("whitespace-nowrap px-4 py-3 font-semibold", isMoneyKey(c) && "text-right")}
 											>
 												{prettify(c)}
 											</th>
 										))}
-										{temMenu && <th className="w-12 px-4 py-3 font-semibold sr-only">Ações</th>}
+										{/* `sr-only` no <span> DENTRO da célula, nunca na própria <th>: medido no
+										    navegador, a classe na <th> a deixava `position:absolute; display:block`
+										    — ou seja, ela parava de ser célula de tabela. O cabeçalho ficava com 4
+										    células reais para 5 do corpo, então a coluna do menu "…" não tinha
+										    cabeçalho associado (e o `w-12` também não valia, porque o `w-px` do
+										    sr-only ganhava). Assim a célula continua célula e só o texto some. */}
+										{temMenu && (
+											<th scope="col" className="w-12 px-4 py-3 font-semibold">
+												<span className="sr-only">Ações</span>
+											</th>
+										)}
 									</tr>
 								</thead>
 								<tbody>

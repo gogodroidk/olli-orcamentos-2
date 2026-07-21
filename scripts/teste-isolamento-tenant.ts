@@ -69,6 +69,27 @@ function estadoFinalPolicy(nome: string): 'existe' | 'removida' | 'nunca' {
   return estado;
 }
 
+/**
+ * O TEXTO da policy como ela fica DEPOIS de todas as migrations — o último
+ * `create policy <nome> … ;` que sobrevive. `estadoFinalPolicy` só responde
+ * "existe"; para afirmar sobre o CONTEÚDO de um `with check` é preciso o corpo.
+ * Mesma razão de ser: uma policy recriada num arquivo de nome maior manda.
+ */
+function corpoFinalPolicy(nome: string): string {
+  let corpo = '';
+  for (const { sql } of SQL_EM_ORDEM) {
+    const limpo = sql.replace(/--[^\n]*/g, '');
+    const re = new RegExp(`create\\s+policy\\s+${nome}\\b`, 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(limpo)) !== null) {
+      const resto = limpo.slice(m.index);
+      const fim = resto.indexOf(';');
+      corpo = fim === -1 ? resto : resto.slice(0, fim);
+    }
+  }
+  return corpo;
+}
+
 /** Idem para índice: `create unique index ... <nome>` vs `drop index ... <nome>`. */
 function estadoFinalIndice(nome: string): 'existe' | 'removida' | 'nunca' {
   let estado: 'existe' | 'removida' | 'nunca' = 'nunca';
@@ -199,6 +220,50 @@ checar(
   clausulas.every((c) => DV.test(c)),
   true,
 );
+
+// ── O DEPUTADO CONFUSO (rodapé da 20260731, "CONFERÊNCIA") ─────────────────
+// O grão de TENANT sozinho NÃO fecha `exclusoes`: ele diz em nome de QUEM se
+// apaga, não O QUE se apaga. Sem a lista de tabelas no `with check`, um técnico
+// ATIVO插 planta `(user_id=<dono>, tabela='recibos')`; no sync seguinte o
+// ATIVO planta `(user_id=<dono>, tabela='recibos')`; no sync seguinte o
+// `applyCloudTombstones` do DONO lê a linha (a self-only devolve, o user_id é
+// dele), `localDeleteById` + `removeRow` rodam COM A SESSÃO DO DONO e passam em
+// `recibos_owner_write`. Quem executa o DELETE é o dono, autorizado, a mando de
+// uma linha que o técnico plantou.
+//
+// POR QUE A ASSERÇÃO TEM DE VIVER AQUI, E NÃO NO APP: não existe coluna de
+// autoria em `exclusoes`. O aparelho do dono não tem como distinguir o tombstone
+// que ele criou do que plantaram no tenant dele — e filtrar por tabela no app
+// quebraria o próprio A3 (o técnico PRECISA aplicar localmente a exclusão de
+// `clientes`/`recibos` feita pelo dono, senão o registro ressuscita). A policy é
+// o ÚNICO lugar onde isso pode ser barrado, então este teste é o único guarda.
+const checkInsertExclusoes = corpoFinalPolicy('exclusoes_equipe_insert');
+const listaTabelas = /\btabela\s+in\s*\(([^)]*)\)/i.exec(checkInsertExclusoes);
+checar('exclusoes: o INSERT restringe também a TABELA, não só o tenant', !!listaTabelas, true);
+
+const tabelasPermitidas = new Set(
+  [...(listaTabelas?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]),
+);
+// As 6 de escrita reservada ao dono (levantamento tabela a tabela no cabeçalho
+// da 20260731). Nenhuma pode entrar na lista: são exatamente as que o membro NÃO
+// consegue apagar direto, e portanto as que a procuração escalaria.
+for (const reservada of ['clientes', 'servicos', 'produtos', 'recibos', 'modelos', 'depoimentos']) {
+  checar(`  e NÃO deixa plantar tombstone de '${reservada}' (escrita é do dono)`, tabelasPermitidas.has(reservada), false);
+}
+// A outra ponta: a lista não pode conter nome que o app não saiba apagar — seria
+// uma permissão que não compra nada e mascara erro de digitação ('orcamento').
+const DELETABLE_APP = new Set(
+  [...(/const DELETABLE_TABLES = new Set<string>\(\[([\s\S]*?)\]\)/.exec(
+    readFileSync(join(AQUI, '..', 'src', 'services', 'cloudSync.ts'), 'utf8'),
+  )?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]),
+);
+checar('a allow-list do app foi lida (DELETABLE_TABLES)', DELETABLE_APP.size > 0, true);
+checar(
+  'toda tabela permitida na policy existe em DELETABLE_TABLES do app',
+  [...tabelasPermitidas].every((t) => DELETABLE_APP.has(t)),
+  true,
+);
+checar('e a lista não está vazia (senão o INSERT não serve para nada)', tabelasPermitidas.size > 0, true);
 
 // DELIBERADAMENTE fora: quem apaga o tombstone do dono ressuscita o registro.
 checar(

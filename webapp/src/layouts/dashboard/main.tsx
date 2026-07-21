@@ -43,6 +43,14 @@ const Main = () => {
 		<AuthGuard checkAny={currentNavAuth} fallback={<Page403 />}>
 			<main
 				data-slot="slash-layout-main"
+				// Alvo do "Pular para o conteúdo" (ver layouts/dashboard/index.tsx).
+				// `tabIndex={-1}`: sem isso o foco NÃO vai para cá — <main> não é
+				// focável por natureza, o link só rolaria a página e a próxima tecla
+				// Tab voltaria para o menu, que é exatamente o que o atalho existe
+				// para evitar. Com -1 ele recebe foco por programa e continua fora da
+				// ordem de Tab.
+				id="conteudo"
+				tabIndex={-1}
 				className={cn(
 					"flex-auto w-full flex flex-col",
 					"transition-[max-width] duration-300 ease-in-out",

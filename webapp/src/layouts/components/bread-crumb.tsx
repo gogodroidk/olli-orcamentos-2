@@ -136,7 +136,9 @@ export default function BreadCrumb({ maxItems = 3 }: BreadCrumbProps) {
 				<BreadcrumbSeparator />
 				<BreadcrumbItem>
 					<DropdownMenu>
-						<DropdownMenuTrigger className="flex items-center gap-1">
+						{/* O gatilho precisa do nome aqui: o BreadcrumbEllipsis é
+						    `aria-hidden`, então sozinho ele deixava o botão sem nome. */}
+						<DropdownMenuTrigger className="flex items-center gap-1" aria-label="Mostrar páginas ocultas da trilha">
 							<BreadcrumbEllipsis />
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start">

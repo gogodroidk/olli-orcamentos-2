@@ -192,7 +192,11 @@ async function main() {
   // quando a semeadura ganhou conferência estrita: ela agora falha de propósito
   // quando uma gravação se perde, e o preço não pode ser ficar sem screenshot
   // nenhuma para a loja. As imagens ficam em memória (8 × ~500 KB) e a pasta só
-  // é trocada no fim, quando as oito existirem. Mesmo defeito que
+  // é trocada no fim, quando as oito existirem E PASSAREM em todos os portões —
+  // formato e vazio inclusive. Este último pedaço faltava: a conferência de
+  // formato lia do disco, o que obrigava a gravar antes de saber se a leva
+  // prestava, e uma rodada que produzisse oito imagens ocas reprovava
+  // corretamente depois de já ter apagado as oito boas. Mesmo defeito que
   // `REVISAO_TELAS.md` §C2 aponta no pipeline da landing.
   const { url, fechar } = await servir(DIST);
   const browser = await abrirNavegador();
@@ -236,10 +240,10 @@ async function main() {
     await fechar();
   }
 
-  // ── Só agora a pasta é trocada ───────────────────────────────────────────
-  // Leva incompleta NÃO substitui leva boa. Se faltou tela, o que está em disco
-  // (e commitado) continua sendo a última leva conforme, e o processo sai em
-  // erro dizendo o que faltou.
+  // ── Portões, TODOS antes de a pasta ser tocada ───────────────────────────
+  // Leva ruim NÃO substitui leva boa. Se faltou tela, o que está em disco (e
+  // commitado) continua sendo a última leva conforme, e o processo sai em erro
+  // dizendo o que faltou.
   if (falhas.length) {
     console.error(`\n${falhas.length} tela(s) NÃO foram capturadas:`);
     for (const f of falhas) console.error(`  - ${f.arquivo}: ${f.motivo}`);
@@ -248,17 +252,27 @@ async function main() {
     process.exit(1);
   }
 
-  rmSync(SAIDA, { recursive: true, force: true });
-  mkdirSync(SAIDA, { recursive: true });
-  for (const f of feitas) writeFileSync(f.destino, f.png);
+  if (feitas.length < REGRAS.minCapturas) {
+    console.error(`\nSó ${feitas.length} screenshot(s): a Play não publica a listagem com menos de ${REGRAS.minCapturas}.`);
+    console.error(`NADA foi apagado: a leva anterior continua em ${SAIDA}.`);
+    process.exit(1);
+  }
 
-  // ── Laudo de conformidade: tudo MEDIDO do arquivo em disco ───────────────
+  // ── Laudo de conformidade: MEDIDO dos bytes que iriam para o disco ───────
+  //
+  // Medido do BUFFER, não do arquivo gravado, e a diferença é a única que
+  // importa aqui: enquanto a conferência lia de disco, a pasta já tinha sido
+  // apagada e reescrita antes de alguém saber se a leva prestava. Uma rodada
+  // que produzisse oito imagens com alpha — ou oito telas ocas — reprovava
+  // corretamente, mas só DEPOIS de destruir a leva conforme que estava
+  // commitada. `git checkout` desfaz, se alguém perceber; o ponto é não
+  // depender disso. São exatamente os mesmos bytes: `writeFileSync` grava o
+  // buffer inteiro, então `png.length` é o tamanho do arquivo final.
   console.log('\nConferindo cada arquivo contra as regras da Play:');
   let algumReprovado = false;
   const laudos = [];
   for (const f of feitas) {
-    const bytes = statSync(f.destino).size;
-    const c = await conferirConformidade(f.destino, bytes);
+    const c = await conferirConformidade(f.png, f.png.length);
     laudos.push({ arquivo: f.arquivo, ...c });
     if (!c.ok) algumReprovado = true;
     console.log(laudoEmLinha(f.arquivo, c));
@@ -283,6 +297,46 @@ async function main() {
       ocupacaoEmLinha(f.arquivo, { ...f.ocupacao, oca }) +
         (limite !== MAX_RODAPE_VAZIO ? `  (tolerância declarada: ${limite}%)` : ''),
     );
+  }
+
+  // ── Os dois portões decidem ANTES de a pasta ser trocada ────────────────
+  if (algumReprovado) {
+    console.error('\nPelo menos um arquivo REPROVOU nas regras da Play (ver linhas com "X" acima).');
+    console.error(`NADA foi gravado: a leva anterior continua em ${SAIDA}. Não suba.`);
+    process.exit(1);
+  }
+  if (ocas.length) {
+    console.error(`\n${ocas.length} tela(s) com vazio acima do tolerado:`);
+    for (const o of ocas) {
+      console.error(
+        `  - ${o.arquivo}: rodapé ${o.rodapeVazioPct}% · maior faixa vazia ` +
+          `${o.maiorFaixaVaziaPct}%${o.maiorFaixaVaziaEmY != null ? ` a partir de y=${o.maiorFaixaVaziaEmY}` : ''} ` +
+          `(limite ${o.limite}%)`,
+      );
+    }
+    console.error(
+      '\nIsto é falta de DADO, não de código: semeie mais conteúdo em scripts/telas/elenco.mjs',
+    );
+    console.error('e capture de novo. Tela oca vende "app sem nada dentro". Não suba.');
+    console.error(`NADA foi gravado: a leva anterior continua em ${SAIDA}.`);
+    process.exit(1);
+  }
+
+  // ── Passou em tudo: só agora a pasta é trocada ───────────────────────────
+  rmSync(SAIDA, { recursive: true, force: true });
+  mkdirSync(SAIDA, { recursive: true });
+  for (const f of feitas) writeFileSync(f.destino, f.png);
+
+  // Reconfere do DISCO o que acabou de ser gravado. O laudo do buffer decidiu;
+  // esta linha só prova que o arquivo tem os bytes que o laudo mediu — disco
+  // cheio e gravação truncada não avisam por conta própria.
+  for (const f of feitas) {
+    const gravado = statSync(f.destino).size;
+    if (gravado !== f.png.length) {
+      console.error(`\n${f.arquivo} saiu com ${gravado} bytes e o laudo mediu ${f.png.length}.`);
+      console.error('A gravação não bateu com o que foi conferido. Rode de novo.');
+      process.exit(1);
+    }
   }
 
   const comDestaque = laudos.filter((l) => l.regras.resolucaoDeDestaque).length;
@@ -327,31 +381,11 @@ async function main() {
     'utf8',
   );
 
-  // `falhas` já saiu em erro lá em cima, ANTES de trocar a pasta — chegar aqui
-  // significa que as oito existem. `faltando` fica no laudo por completude.
-  if (algumReprovado) {
-    console.error('\nPelo menos um arquivo REPROVOU nas regras da Play (ver linhas com "X" acima). Não suba.');
-    process.exit(1);
-  }
-  if (ocas.length) {
-    console.error(`\n${ocas.length} tela(s) com vazio acima do tolerado:`);
-    for (const o of ocas) {
-      console.error(
-        `  - ${o.arquivo}: rodapé ${o.rodapeVazioPct}% · maior faixa vazia ` +
-          `${o.maiorFaixaVaziaPct}%${o.maiorFaixaVaziaEmY != null ? ` a partir de y=${o.maiorFaixaVaziaEmY}` : ''} ` +
-          `(limite ${o.limite}%)`,
-      );
-    }
-    console.error(
-      '\nIsto é falta de DADO, não de código: semeie mais conteúdo em scripts/telas/elenco.mjs',
-    );
-    console.error('e capture de novo. Tela oca vende "app sem nada dentro". Não suba.');
-    process.exit(1);
-  }
-  if (feitas.length < REGRAS.minCapturas) {
-    console.error(`\nSó ${feitas.length} screenshot(s): a Play não publica a listagem com menos de ${REGRAS.minCapturas}.`);
-    process.exit(1);
-  }
+  // Todos os portões (quantidade, captura faltando, formato, vazio) já
+  // decidiram ANTES de a pasta ser trocada. Chegar aqui significa que as oito
+  // existem e passaram. `faltando: []` fica no laudo por completude — ele é o
+  // documento que alguém lê meses depois para saber se a leva foi inteira.
+  console.log('\nTudo conforme. Ficha e passo a passo em docs/ENXAME/LOJA.md.');
 }
 
 await main();
