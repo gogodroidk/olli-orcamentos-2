@@ -1,0 +1,42 @@
+---
+/**
+ * Header.astro — cabeçalho único do site (LANDING_BRIEF/auditoria G2).
+ *
+ * Padroniza sticky + largura + opacidade no valor do index (sticky top-0 z-50,
+ * max-w-7xl, bg-white/80 + backdrop-blur-lg + border-line/70): ajuda e legal/*
+ * tinham cabeçalho estático, bg-white/85 sem "-lg" e largura menor (4xl/3xl), o
+ * que fazia a barra "pular" de comportamento ao navegar entre páginas do site.
+ *
+ * A navegação em si muda por página (a home tem "Como funciona/Recursos/
+ * Planos/Seu ofício", ajuda/legal só têm "← Voltar"), então fica em slots — cada
+ * página continua dona do próprio conteúdo, só herda sticky/largura/opacidade.
+ *
+ * - slot "nav"   → nav do meio, opcional (só a home usa hoje).
+ * - slot default → ações da direita (CTA, "Entrar", "← Voltar pra home"…).
+ *
+ * `class` (mesmo padrão de OlliLogo.astro) permite estreitar o container em
+ * páginas de leitura, se algum dia for preciso — o default já é o max-w-7xl
+ * pedido pela auditoria.
+ */
+import OlliLogo from "./OlliLogo.astro";
+
+interface Props {
+	class?: string;
+}
+const { class: containerClass = "max-w-7xl" } = Astro.props;
+---
+
+{/* `bg-card/85` e não `bg-white/80`: a barra é uma superfície FLUTUANTE, então
+    ela pertence ao topo da escada de elevação (--color-card), não a um branco
+    fora da família de matiz. Com a página agora em #F0F4F8, o branco puro daqui
+    ficaria mais claro que o próprio cartão e inverteria a ordem da escada — é o
+    mesmo cuidado que TEMA_CLARO.md §7.6 registrou para o `surfaceGlass` do app. */}
+<header class="sticky top-0 z-50 border-b border-line/70 bg-card/85 backdrop-blur-lg">
+  <nav class={`mx-auto flex ${containerClass} items-center justify-between px-6 py-3.5`}>
+    <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
+    <slot name="nav" />
+    <div class="flex items-center gap-2">
+      <slot />
+    </div>
+  </nav>
+</header>

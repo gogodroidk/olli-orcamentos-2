@@ -10,7 +10,7 @@ import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
 import { StatusBadge } from '../../components/StatusBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
-import { getOrcamentos } from '../../database/database';
+import { getOrcamentos, edicaoBloqueada } from '../../database/database';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
@@ -127,7 +127,15 @@ export default function OrcamentosDesktopScreen() {
       render: (o) => (
         <View style={styles.acoesLinha}>
           <AcaoIcone icone="eye-outline" rotulo="Ver" onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })} />
-          <AcaoIcone icone="pencil-outline" rotulo="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })} />
+          {/* Editar SOME depois que o cliente recebeu o documento — mesma regra do
+              app mobile (`OrcamentosScreen`) e do painel (`FormOrcamento`). O
+              `saveOrcamento` recusa a edição de um orçamento aceito, então este
+              lápis abria a tela inteira só para falhar no "Salvar", com o que o
+              usuário digitou indo junto. "Ver" ao lado leva à tela que tem
+              "Duplicar", que é o caminho que funciona. */}
+          {!edicaoBloqueada(o.status) && (
+            <AcaoIcone icone="pencil-outline" rotulo="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })} />
+          )}
           <AcaoIcone icone="receipt" rotulo="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })} />
         </View>
       ),
@@ -279,7 +287,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   chipLabel: {
     ...Typography.caption,
-    fontSize: 12.5,
     fontWeight: '600',
     color: c.onSurfaceVariant,
   },

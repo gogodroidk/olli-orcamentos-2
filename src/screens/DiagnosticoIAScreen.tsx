@@ -13,15 +13,47 @@ import { OlliInput } from '../components/OlliInput';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EstadoIA } from '../components/EstadoIA';
+import { SinalizarIA } from '../components/SinalizarIA';
 import { diagnosticarCaso, motivoFalhaDiagnostico, type MotivoFalhaIA } from '../services/olliIA';
 import { buscaExternaUrl, confiancaBaixa, type TipoErroIA } from '../services/erroIA';
-import { DiagnosticoResultado } from '../types';
+import { DiagnosticoIA, DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePlano } from '../hooks/usePlano';
 
 /** Depois de quantos segundos de loading o botão "Cancelar" aparece. */
 const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 4;
+
+/**
+ * O diagnóstico gerado, remontado como o texto corrido que o usuário LEU na
+ * tela — é isso que ele denuncia quando toca em "Sinalizar", então é isso que
+ * precisa chegar em quem modera. Um resumo só não serve: a frase problemática
+ * pode estar num teste, numa peça ou na mensagem pro cliente.
+ * Sem `fontes` (links, não conteúdo gerado) e sem `nivelConfianca` (metadado).
+ */
+function textoDoDiagnostico(d: DiagnosticoIA): string {
+  const lista = (titulo: string, itens: string[]) =>
+    itens?.length ? `${titulo}:\n${itens.map(t => `- ${t}`).join('\n')}` : '';
+  return [
+    d.resumo,
+    d.significadoProvavel,
+    lista('Testes em ordem', d.testesEmOrdem),
+    lista('Causas mais comuns', d.causasComuns),
+    lista('Peças suspeitas', d.pecasSuspeitas),
+    lista('Não faça ainda', d.naoFacaAinda),
+    d.mensagemCliente ? `Mensagem pro cliente:\n${d.mensagemCliente}` : '',
+    d.sugestaoOrcamento ? `Sugestão de orçamento:\n${d.sugestaoOrcamento}` : '',
+  ].filter(Boolean).join('\n\n');
+}
+
+/** O pedido do usuário, do jeito que ele digitou — nada além dos 4 campos do form. */
+function descreverPedido(p: { marca?: string; modelo?: string; codigo?: string; sintoma?: string }): string {
+  return [
+    [p.marca, p.modelo].filter(Boolean).join(' '),
+    p.codigo ? `código ${p.codigo}` : '',
+    p.sintoma ? `sintoma: ${p.sintoma}` : '',
+  ].filter(Boolean).join(' · ');
+}
 
 type Route = RouteProp<RootStackParamList, 'DiagnosticoIA'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -40,6 +72,18 @@ export default function DiagnosticoIAScreen() {
   const [loading, setLoading] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const [res, setRes] = useState<DiagnosticoResultado | null>(null);
+  // Contador de CONSULTAS (não de conteúdo). É a `key` do <SinalizarIA>: esta
+  // tela reusa o mesmo lugar da árvore a cada "Pedir diagnóstico", e sem key o
+  // "Obrigado, vamos revisar" de um diagnóstico antigo ficaria colado no novo.
+  // `key={textoGerado}` não serve: quando a consulta cai no cache o texto volta
+  // IDÊNTICO, a key não muda e a instância antiga sobrevive — o caso mais
+  // provável de todos, porque quem repete a mesma consulta é quem já viu o
+  // resultado. Um número que só cresce remonta sempre, inclusive aí.
+  const [idDaConsulta, setIdDaConsulta] = useState(0);
+  // O pedido CONGELADO no instante da chamada. Ler os campos do form na hora de
+  // sinalizar mandaria o que está na tela AGORA — e eles continuam editáveis
+  // depois do resultado, então o moderador receberia um par que nunca existiu.
+  const [pedidoDoResultado, setPedidoDoResultado] = useState('');
   const [motivoErro, setMotivoErro] = useState<MotivoFalhaIA>(null);
   const [avisoCota, setAvisoCota] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -72,14 +116,21 @@ export default function DiagnosticoIAScreen() {
     setMotivoErro(null);
     setAvisoCota(iaNuvemEsgotada);
     cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+    const alvo = {
+      marca: marca.trim() || undefined,
+      modelo: modelo.trim() || undefined,
+      codigo: codigo.trim() || undefined,
+      sintoma: sintoma.trim() || undefined,
+    };
     try {
-      const r = await diagnosticarCaso({
-        marca: marca.trim() || undefined,
-        modelo: modelo.trim() || undefined,
-        codigo: codigo.trim() || undefined,
-        sintoma: sintoma.trim() || undefined,
-      }, controller.signal, { forcarOffline: iaNuvemEsgotada });
+      const r = await diagnosticarCaso(alvo, controller.signal, { forcarOffline: iaNuvemEsgotada });
       setRes(r);
+      // Anda junto com o resultado: é o que remonta o <SinalizarIA> (ver o
+      // comentário de `idDaConsulta`). Se um dia alguém puder trocar `res` por
+      // outro caminho, o incremento tem que ir junto — resultado novo com
+      // instância velha é a denúncia fantasma voltando.
+      setIdDaConsulta(n => n + 1);
+      setPedidoDoResultado(descreverPedido(alvo));
       setMotivoErro(motivoFalhaDiagnostico());
       // Só consome cota quando a NUVEM realmente respondeu (fonte 'ia').
       // A base offline (fonte 'base') e o cache são sempre livres.
@@ -98,6 +149,8 @@ export default function DiagnosticoIAScreen() {
   }
 
   const d = res?.diagnostico;
+  /** O texto gerado que o usuário está lendo — é ele que viaja na denúncia. */
+  const textoGerado = d ? textoDoDiagnostico(d) : '';
 
   // Taxonomia única de erro (erroIA.ts): decide UM motivo pra mostrar, nunca dois
   // avisos concorrentes (cota esgotada tinha prioridade visual, mas o aviso
@@ -295,6 +348,25 @@ export default function DiagnosticoIAScreen() {
               onPress={criarOrcamento}
               icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />}
               style={{ marginTop: 16 }}
+            />
+
+            {/* Denúncia de conteúdo gerado (política de AI-Generated Content da
+                Google Play) — depois e bem abaixo do CTA, de propósito. O
+                diagnóstico continua na tela inteiro: sinalizar não apaga nada.
+
+                DECISÃO DECLARADA: o botão aparece em TODAS as fontes, inclusive
+                `fonte === 'base'` (a base offline de códigos, que não é gerada
+                por modelo). O usuário não distingue a origem, e um botão que
+                some conforme a fonte ensina que "às vezes não dá pra sinalizar"
+                — o custo de moderar uma denúncia da base é ler um texto a mais;
+                o de esconder o caminho é o buraco de conformidade. O /admin
+                separa pelo `contexto->>'tela'` se algum dia precisar. */}
+            <SinalizarIA
+              key={idDaConsulta}
+              tela="DiagnosticoIAScreen"
+              resposta={textoGerado}
+              pedido={pedidoDoResultado}
+              style={{ marginTop: 14, alignSelf: 'center' }}
             />
           </View>
         )}

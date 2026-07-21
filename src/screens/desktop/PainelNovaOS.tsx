@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
@@ -118,28 +118,44 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
   const styles = useEstilos(criarEstilos);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [orcamentosErro, setOrcamentosErro] = useState(false);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const ativoRef = useRef(true);
+  useEffect(() => () => { ativoRef.current = false; }, []);
 
-  useEffect(() => {
-    let ativo = true;
-    (async () => {
-      try {
-        const [todos, ordens] = await Promise.all([getOrcamentos(), getOrdens()]);
-        // Um orçamento gera no máximo uma OS: some quem já tem OS gerada.
-        const jaComOS = new Set(ordens.map((os) => os.orcamentoId).filter((id): id is string => !!id));
-        const elegiveis = todos.filter((o) => (o.status === 'aprovado' || o.status === 'convertido') && !jaComOS.has(o.id));
-        if (ativo) setOrcamentos(elegiveis);
-      } catch {
-        if (ativo) setOrcamentos([]);
-      } finally {
-        if (ativo) setCarregando(false);
-      }
-    })();
-    return () => { ativo = false; };
+  const carregarOrcamentos = useCallback(async () => {
+    setCarregando(true);
+    setOrcamentosErro(false);
+    try {
+      const [todos, ordens] = await Promise.all([getOrcamentos(), getOrdens()]);
+      // Um orçamento gera no máximo uma OS: some quem já tem OS gerada.
+      const jaComOS = new Set(ordens.map((os) => os.orcamentoId).filter((id): id is string => !!id));
+      const elegiveis = todos.filter((o) => (o.status === 'aprovado' || o.status === 'convertido') && !jaComOS.has(o.id));
+      if (ativoRef.current) setOrcamentos(elegiveis);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      if (ativoRef.current) setOrcamentosErro(true);
+    } finally {
+      if (ativoRef.current) setCarregando(false);
+    }
   }, []);
+
+  useEffect(() => { carregarOrcamentos(); }, [carregarOrcamentos]);
 
   if (carregando) {
     return <View style={{ padding: Spacing.xl, alignItems: 'center' }}><ActivityIndicator size="small" color={cores.primary} /></View>;
+  }
+
+  if (orcamentosErro) {
+    return (
+      <EmptyState
+        icon="alert-circle-outline"
+        title="Não deu para carregar"
+        subtitle="Não conseguimos buscar os orçamentos elegíveis agora. Verifique a conexão e tente de novo."
+        actionLabel="Tentar de novo"
+        onAction={carregarOrcamentos}
+      />
+    );
   }
 
   if (orcamentos.length === 0) {
@@ -254,7 +270,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   focoVisivel: { outlineWidth: 2, outlineColor: c.accent, outlineStyle: 'solid', outlineOffset: 2 } as any,
   raiz: { flex: 1, flexDirection: 'row' },
   fundoClicavel: { flex: 1, backgroundColor: 'rgba(5,12,22,0.60)' },
-  painel: { width: 460, height: '100%', backgroundColor: c.surface, borderLeftWidth: 1, borderLeftColor: c.outline },
+  painel: { width: 420, height: '100%', backgroundColor: c.surface, borderLeftWidth: 1, borderLeftColor: c.outline },
   cabecalho: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, borderBottomWidth: 1, borderBottomColor: c.outline,
@@ -278,9 +294,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   orcRowHover: { backgroundColor: c.surfacePressed },
   orcRowSel: { borderColor: c.accent, backgroundColor: c.accentContainer },
-  orcCliente: { fontSize: 14.5, fontWeight: '700' as const, color: c.onSurface },
+  orcCliente: { ...Typography.body, fontWeight: '700' as const, color: c.onSurface },
   orcMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
-  orcValor: { fontSize: 14.5, fontWeight: '800' as const, color: c.primaryLight },
+  orcValor: { ...Typography.body, fontWeight: '800' as const, color: c.primaryLight },
 
   manualLabel: { fontSize: 13, fontWeight: '800' as const, color: c.onSurfaceVariant, marginTop: 6, marginBottom: 2 },
 

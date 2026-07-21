@@ -5,8 +5,15 @@ import useLocale from "@/locales/use-locale";
 import { useRouter } from "@/routes/hooks";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandSeparator } from "@/ui/command";
-import { ScrollArea } from "@/ui/scroll-area";
+import {
+	CommandDialog,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandSeparator,
+} from "@/ui/command";
 import { Text } from "@/ui/typography";
 import { useFilteredNavData } from "../dashboard/nav";
 
@@ -103,25 +110,54 @@ const SearchBar = () => {
 
 	return (
 		<>
+			{/* O ic-search.svg é currentColor e o variant ghost não define cor de texto:
+			    a lupa herdava o preto padrão do navegador e ficava em 1,27:1 sobre o
+			    fundo `bg-action-selected` do escuro. Com o token vai a 16,57:1. */}
 			<Button
 				variant="ghost"
-				className="bg-action-selected px-2 rounded-lg"
+				className="bg-action-selected px-2 rounded-lg min-h-[44px] text-text-primary"
 				size="sm"
 				onClick={() => setOpen(true)}
 				aria-label={`Buscar (${isMac ? "Cmd" : "Ctrl"}+K)`}
 			>
 				<div className="flex items-center justify-center gap-4">
 					<Icon icon="local:ic-search" size="20" />
-					<kbd className="flex items-center justify-center rounded-md bg-primary/80 text-common-white px-1.5 py-0.5 text-sm font-semibold">
+					{/* Azul CHEIO, não `bg-primary/80`: medido no navegador, o branco sobre o azul
+					    a 80% (composto sobre o botão cinza da busca) dava 3,64:1 — reprova nos
+					    4,5:1 da WCAG para texto pequeno. Sem a transparência vai a 5,02:1. */}
+					<kbd className="flex items-center justify-center rounded-md bg-primary text-common-white px-1.5 py-0.5 text-sm font-semibold">
 						{isMac ? <Icon icon="qlementine-icons:key-cmd-16" /> : <span>Ctrl</span>}
 						<span>K</span>
 					</kbd>
 				</div>
 			</Button>
 
-			<CommandDialog open={open} onOpenChange={setOpen}>
+			<CommandDialog
+				open={open}
+				onOpenChange={setOpen}
+				title={t("sys.search.title")}
+				description={t("sys.search.description")}
+			>
 				<CommandInput placeholder={t("sys.search.placeholder")} value={searchQuery} onValueChange={setSearchQuery} />
-				<ScrollArea className="h-[400px]">
+				{/*
+				 * `CommandList` (não um `ScrollArea` solto) — é ele que faz a paleta
+				 * FUNCIONAR sem mouse, não só ficar bonita.
+				 *
+				 * Aqui morava um `<ScrollArea className="h-[400px]">`, e sem o
+				 * `Command.List` do cmdk a paleta ficava puramente de mouse. Medido no
+				 * navegador, com a paleta aberta e teclado de verdade: `aria-controls` do
+				 * combobox apontava para um id INEXISTENTE, `aria-activedescendant`
+				 * ficava `null`, ↓ não selecionava nada (`data-selected` nunca virava
+				 * true), Enter não navegava e Esc não fechava — ou seja, Ctrl+K abria um
+				 * diálogo do qual só dava para sair clicando. E o rodapé desta mesma
+				 * paleta promete "↑ ↓ navegar · ↵ selecionar · ESC fechar".
+				 *
+				 * O cmdk registra os itens, calcula o selecionado e trata as setas a
+				 * partir do elemento da lista; sem ele nada disso existe. A rolagem, que
+				 * era o motivo do ScrollArea, o próprio `CommandList` já faz
+				 * (`overflow-y-auto`) — só precisa da altura.
+				 */}
+				<CommandList className="max-h-[400px]">
 					<CommandEmpty>{t("sys.search.empty")}</CommandEmpty>
 					<CommandGroup heading={t("sys.search.group")}>
 						{flattenedItems.map(({ key, label }) => (
@@ -135,7 +171,7 @@ const SearchBar = () => {
 							</CommandItem>
 						))}
 					</CommandGroup>
-				</ScrollArea>
+				</CommandList>
 				<CommandSeparator />
 				<div className="flex flex-wrap text-text-primary p-2 justify-end gap-2">
 					<div className="flex items-center gap-1">

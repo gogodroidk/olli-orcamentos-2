@@ -122,7 +122,8 @@ export type RootStackParamList = {
   CertificadoAnvisa: undefined;
   // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
   FerramentasOficio: undefined;
-  // Saldo de créditos + recarga por Pix (AbacatePay).
+  // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
+  // do OLLI; ver src/services/pixCreditos.ts → /mp/*).
   Creditos: undefined;
   Planos: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
@@ -157,8 +158,6 @@ export type RootStackParamList = {
   // detecta qual doc mostrar pelo route.name (começa com 'term' = Termos).
   Privacidade: undefined;
   Termos: undefined;
-  // Home do técnico (papel === 'tecnico') — full-bleed, mobile-only.
-  TecnicoHome: undefined;
 };
 
 export type TabParamList = {
@@ -547,9 +546,6 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Ajuda" component={AjudaCentro} />
       <Stack.Screen name="Privacidade" component={LegalCentro} />
       <Stack.Screen name="Termos" component={LegalCentro} />
-      {/* Home do técnico como rota de stack: full-bleed, mobile-only (não recebe
-          wrap desktop — a própria tela se vira). */}
-      <Stack.Screen name="TecnicoHome" component={TecnicoHomeScreen} />
     </Stack.Navigator>
   );
 }

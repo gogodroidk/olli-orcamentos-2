@@ -1,0 +1,138 @@
+---
+/**
+ * Footer.astro — rodapé único do site (LANDING_BRIEF/auditoria G2: 4 rodapés
+ * escritos à mão e divergentes entre si — link "Início" vs "Entrar", com/sem
+ * "Ajuda", com/sem copyright, com/sem link de volta).
+ *
+ * `variante`:
+ *   'completo' — logo + navegação + os 6 ofícios. Usado nas páginas "hub":
+ *                home, ajuda, legal/*.
+ *   'minimal'  — enxuto, para as páginas de CONVERSÃO (/para/[oficio]) e a 404,
+ *                onde a navegação completa seria distração antes do CTA.
+ *
+ * DUAS CORREÇÕES QUE ESTE ARQUIVO CARREGA (e que não podem regredir):
+ *
+ * 1. A variante `minimal` tinha SÓ "← Voltar" e copyright — ou seja, as 6 páginas
+ *    /para/[oficio] e a 404, que são exatamente as páginas para onde o SEO por
+ *    ofício manda tráfego FRIO, eram as únicas sem Privacidade, Termos e
+ *    identidade da empresa. Quem chegou por "app de orçamento para eletricista"
+ *    não tinha como descobrir quem é a OLLI sem voltar para a home. Link legal em
+ *    rodapé não compete com CTA — a economia visual continua, a lacuna não.
+ *
+ * 2. O rodapé não linkava /para/* em lugar nenhum do site (grep devolvia uma
+ *    única ocorrência, e era comentário). /ajuda/, /legal/* e a 404 eram becos
+ *    sem saída: não passavam autoridade nenhuma para as 6 páginas que convertem.
+ *
+ * `class` (mesmo padrão de OlliLogo.astro) deixa cada página manter a largura do
+ * próprio conteúdo — a home é max-w-7xl, ajuda é max-w-4xl, legal é max-w-3xl.
+ */
+import {
+	EMPRESA,
+	emailContatoPublicavel,
+	enderecoEmLinha,
+	identidadePublicavel,
+} from "../data/empresa";
+import { OFICIOS, SLUG_POR_OFICIO } from "../data/oficios";
+import OlliLogo from "./OlliLogo.astro";
+
+interface Props {
+	variante?: "completo" | "minimal";
+	class?: string;
+}
+const { variante = "completo", class: containerClass = "max-w-7xl" } = Astro.props;
+
+const APP_URL = "https://app.olliorcamentos.online";
+const ano = new Date().getFullYear();
+
+/**
+ * O GATE da identidade jurídica. `null` enquanto o dono não preencher
+ * `web/src/data/empresa.ts` — e aí o bloco institucional simplesmente NÃO É
+ * RENDERIZADO. Nada falso vai ao ar por esquecimento; isto é código, não
+ * disciplina. (Decreto 7.962/2013, art. 2º, I e II: nome empresarial, CNPJ e
+ * endereço em local de destaque. Enquanto o dado não existir, a obrigação segue
+ * descumprida — mas inventar o número seria pior que a omissão.)
+ */
+const empresa = identidadePublicavel();
+const emailContato = emailContatoPublicavel();
+const whatsappUrl = `https://wa.me/${EMPRESA.whatsapp}`;
+
+/**
+ * `text-slate` (#475569), NÃO `text-muted` (#64748b): medido sobre `bg-paper`
+ * (#f6f9fc), muted dá 4.50:1 — em cima da linha do AA, sem margem nenhuma — e
+ * slate dá 7.17:1. Dado jurídico é o que o cético vai ler com atenção; não pode
+ * ficar no fio do contraste.
+ */
+const CLASSE_LEGAL = "text-slate";
+---
+
+{variante === "completo" ? (
+  <footer class="border-t border-line bg-paper">
+    <div class={`mx-auto ${containerClass} px-6 py-10`}>
+      <div class="flex flex-col items-center justify-between gap-6 sm:flex-row">
+        <a href="/" aria-label="OLLI — início"><OlliLogo size={32} /></a>
+        <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+          <a href="/planos/" class="transition hover:text-ink">Planos</a>
+          <a href="/#recursos" class="transition hover:text-ink">Recursos</a>
+          <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
+          <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
+          <a href="/ajuda/" class="transition hover:text-ink">Ajuda</a>
+          <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
+        </div>
+        <p class="text-sm text-muted">© {ano} OLLI Orçamentos</p>
+      </div>
+
+      {/* Os 6 ofícios: é daqui que /ajuda/, /legal/* e a 404 passam a alcançar —
+          e a passar autoridade para — as páginas que efetivamente convertem. */}
+      <nav aria-label="OLLI por ofício" class="mt-8 border-t border-line pt-6">
+        <p class="text-xs font-bold uppercase tracking-[0.12em] text-muted">A OLLI no seu ofício</p>
+        <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          {OFICIOS.map((o) => (
+            <a href={`/para/${SLUG_POR_OFICIO[o.id]}/`} class="text-slate transition hover:text-brand-fg">{o.label}</a>
+          ))}
+        </div>
+      </nav>
+
+      {empresa && (
+        <address class={`mt-6 border-t border-line pt-6 text-xs not-italic leading-relaxed ${CLASSE_LEGAL}`}>
+          {/* Texto SELECIONÁVEL, nunca imagem: gente copia o CNPJ e cola na
+              Receita para conferir. Esse é justamente o ponto de existir aqui. */}
+          <span class="font-semibold">{empresa.razaoSocial}</span>
+          <span> · CNPJ {empresa.cnpj}</span>
+          <br />
+          <span>{enderecoEmLinha(empresa)}</span>
+          <br />
+          <a href={whatsappUrl} class="transition hover:text-brand-fg">WhatsApp {EMPRESA.whatsappLegivel}</a>
+          {emailContato && (
+            <>
+              <span> · </span>
+              <a href={`mailto:${emailContato}`} class="transition hover:text-brand-fg">{emailContato}</a>
+            </>
+          )}
+        </address>
+      )}
+    </div>
+  </footer>
+) : (
+  <footer class="border-t border-line bg-paper">
+    <div class={`mx-auto ${containerClass} px-6 py-8`}>
+      <div class="flex flex-col items-center justify-between gap-3 text-sm text-muted sm:flex-row">
+        <a href="/" class="hover:text-brand-fg">← Voltar para o início</a>
+        <p>© {ano} OLLI Orçamentos</p>
+      </div>
+
+      {/* A segunda linha que faltava nas 7 páginas de conversão. Uma linha,
+          text-xs — a economia visual da variante continua de pé. */}
+      <div class={`mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs sm:justify-start ${CLASSE_LEGAL}`}>
+        {empresa && (
+          <>
+            <span class="font-semibold">{empresa.razaoSocial}</span>
+            <span>CNPJ {empresa.cnpj}</span>
+          </>
+        )}
+        <a href="/legal/privacidade/" class="underline-offset-2 transition hover:text-brand-fg hover:underline">Privacidade</a>
+        <a href="/legal/termos/" class="underline-offset-2 transition hover:text-brand-fg hover:underline">Termos</a>
+        <a href="/ajuda/" class="underline-offset-2 transition hover:text-brand-fg hover:underline">Ajuda</a>
+      </div>
+    </div>
+  </footer>
+)}

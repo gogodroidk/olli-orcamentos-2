@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliPressable } from '../components/OlliPressable';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { SeletorTema } from '../components/SeletorTema';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
@@ -21,24 +22,44 @@ import type { VerticalId } from '../services/verticais';
 import { haCalculoParaOficio } from '../services/calculosOficio';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
+import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
+import { cancelarTodosLembretes, temPermissaoNotificacao, pedirPermissaoNotificacao } from '../services/agenda';
+import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
+import {
+  cancelarRitualDiario, reagendarRitualDiario, getPreferenciasRitual, setPreferenciaRitual,
+} from '../services/ritualDiario';
 
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../services/supabase';
 import {
   backupManualVersionado,
+  estadoBackupNuvem,
+  resumoBackupNuvem,
+  COPY_BACKUP_NUVEM,
   getUltimoBackupVersionadoData,
   listBackupsVersionados,
   restoreBackupById,
   BackupVersionadoResumo,
 } from '../services/backup';
+import type { MotivoBackupNuvem } from '../services/contextoEquipe';
 import { abortarSyncEmAndamento, onSyncAplicado } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
-import { AUTO_BACKUP_TOGGLE_KEY } from '../services/storageKeys';
+import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
+
+/**
+ * iOS (Guideline 3.1.1): sem StoreKit, a assinatura não pode ser vendida dentro
+ * do app nem apontada para fora (link-out também é proibido). A tela de Planos já
+ * respeita isso (PlanosScreen.tsx, mesma constante); aqui o card do PRO ainda
+ * prometia "Assine direto no app" num aparelho onde nada disso acontece. Ver os
+ * planos continua permitido — o proibido é vender —, então o botão fica, sem a
+ * promessa de compra e sem mandar ninguém para o site.
+ */
+const COMPRA_NO_APP = Platform.OS !== 'ios';
 
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
@@ -181,54 +202,117 @@ export default function ContaScreen() {
   const [showExcluir, setShowExcluir] = useState(false);
 
   const [user, setUser] = useState<PerfilUsuario | null>(null);
+  /**
+   * O usuário entrou com a Apple? TRÊS estados — `true` | `false` | `null` (=
+   * ainda não sei). Alimenta o aviso de revogação no modal de excluir conta.
+   *
+   * `null` NÃO é "não usa Apple": quando o `app_metadata` da sessão não traz
+   * provedor nenhum, o modal mostra a versão condicional do aviso ("se você
+   * entrou com a Apple..."). Colapsar a dúvida em `false` esconderia a
+   * instrução justamente de quem precisa dela, e a pessoa sairia achando que
+   * apagou tudo enquanto o OLLI continua listado no Apple ID dela.
+   */
+  const [loginApple, setLoginApple] = useState<boolean | null>(null);
   // Sessão perdida DENTRO das Tabs (só deveria acontecer com sessão corrompida/
   // expirada). Dispara o guarda defensivo "Sessão expirada".
   const [sessaoPerdida, setSessaoPerdida] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  // 3 estados explícitos: `null` = ainda carregando; depois, o MOTIVO real
+  // ('permitido' | 'somente_dono' | 'indeterminado'). Sem isto a tela dizia
+  // "Backup automático: ativo" para um membro de equipe, cujo backup a guarda de
+  // backup.ts recusa — o técnico se achava protegido e o único sinal contrário
+  // era um console.warn que ninguém lê.
+  const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
   const [busy, setBusy] = useState(false);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   // Toggle "Mostrar dicas contextuais" (onboarding.ts) — carregado no foco.
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
+  // Preferências do Ritual diário ("Bom dia da OLLI" / "Fechar o dia") — 3
+  // canais independentes (services/ritualDiario.ts). Defaults do produto: os
+  // 2 avisos ligados, domingo mudo — refletidos aqui só até o load() real chegar.
+  const [ritualBomDia, setRitualBomDia] = useState(true);
+  const [ritualFecharDia, setRitualFecharDia] = useState(true);
+  const [ritualDomingo, setRitualDomingo] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `backupsErro` só vira
+  // `true` se a leitura de fato falhar — sem isso o modal mostrava "Nenhuma
+  // cópia de segurança ainda" mesmo quando havia cópias e a busca só falhou.
+  const [backupsErro, setBackupsErro] = useState(false);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira `true` se a leitura de fato falhar — sem isso o load() sem try/catch
+  // deixava o skeleton preso pra sempre (setCarregando(false) nunca rodava).
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
 
   const load = useCallback(async () => {
-    const emp = await getEmpresa();
-    setEmpresa(emp);
+    setCarregandoErro(false);
     try {
-      const toggle = await AsyncStorage.getItem(AUTO_BACKUP_TOGGLE_KEY);
-      setAutoBackupAtivo(toggle !== '0');
-    } catch { /* best-effort: mantém o default (ativo) */ }
-    // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
-    setAjudaAtiva(await estaAtiva());
-    if (configured) {
-      const u = await getCurrentUser();
-      if (u) {
-        const meta = (u.user_metadata ?? {}) as Record<string, any>;
-        setUser({
-          email: u.email,
-          nome: typeof meta.full_name === 'string' ? meta.full_name : undefined,
-          telefone: typeof meta.telefone === 'string' ? meta.telefone : undefined,
-          avatarUrl: typeof meta.avatar_url === 'string' && meta.avatar_url ? meta.avatar_url : undefined,
-        });
-        setAvatarErro(false);
-        setSessaoPerdida(false);
-        setLastBackup(await getUltimoBackupVersionadoData());
-      } else {
-        // Dentro das Tabs SEMPRE há sessão. Se caiu aqui sem usuário, a sessão
-        // expirou/corrompeu — mostra o guarda defensivo em vez de um form de login.
-        setUser(null);
-        setSessaoPerdida(true);
-        setLastBackup(null);
+      const emp = await getEmpresa();
+      setEmpresa(emp);
+      try {
+        const toggle = await AsyncStorage.getItem(AUTO_BACKUP_TOGGLE_KEY);
+        setAutoBackupAtivo(toggle !== '0');
+      } catch { /* best-effort: mantém o default (ativo) */ }
+      // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
+      setAjudaAtiva(await estaAtiva());
+      // Preferências do Ritual diário (getPreferenciasRitual nunca lança — cai
+      // nos defaults do produto se a leitura falhar).
+      const ritual = await getPreferenciasRitual();
+      setRitualBomDia(ritual.bomDia);
+      setRitualFecharDia(ritual.fecharDia);
+      setRitualDomingo(ritual.domingo);
+      if (configured) {
+        const u = await getCurrentUser();
+        if (u) {
+          const meta = (u.user_metadata ?? {}) as Record<string, any>;
+          setUser({
+            email: u.email,
+            nome: typeof meta.full_name === 'string' ? meta.full_name : undefined,
+            telefone: typeof meta.telefone === 'string' ? meta.telefone : undefined,
+            avatarUrl: typeof meta.avatar_url === 'string' && meta.avatar_url ? meta.avatar_url : undefined,
+          });
+          setAvatarErro(false);
+          setSessaoPerdida(false);
+          // Provedores do login (Supabase Auth). `providers` é a lista completa
+          // (uma conta pode ter e-mail E Apple); `provider` é só o primeiro.
+          // Sem nenhum dos dois, fica `null` = não sei — ver o estado lá em cima.
+          const appMeta = (u.app_metadata ?? {}) as Record<string, any>;
+          const provs = Array.isArray(appMeta.providers)
+            ? appMeta.providers.filter((p: unknown): p is string => typeof p === 'string')
+            : [];
+          setLoginApple(
+            provs.length
+              ? provs.includes('apple')
+              : typeof appMeta.provider === 'string' && appMeta.provider
+                ? appMeta.provider === 'apple'
+                : null,
+          );
+          setLastBackup(await getUltimoBackupVersionadoData());
+          // `estadoBackupNuvem` nunca lança e devolve 'indeterminado' quando não
+          // consegue decidir — nunca 'permitido' por omissão.
+          setMotivoBackup(await estadoBackupNuvem());
+        } else {
+          // Dentro das Tabs SEMPRE há sessão. Se caiu aqui sem usuário, a sessão
+          // expirou/corrompeu — mostra o guarda defensivo em vez de um form de login.
+          setUser(null);
+          setSessaoPerdida(true);
+          setLastBackup(null);
+          setMotivoBackup(null);
+          setLoginApple(null); // volta a "não sei", nunca a "não é Apple"
+        }
       }
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira tela de conta "vazia" enganosa.
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
     }
-    setCarregando(false);
   }, [configured]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -274,6 +358,33 @@ export default function ContaScreen() {
     else await desligarAjuda();
   }
 
+  /**
+   * Liga/desliga um canal do Ritual diário (Bom dia / Fechar o dia / domingo).
+   * Otimista, com reversão em falha (mesmo padrão de `handleToggleAutoBackup`).
+   * Ligar um canal de NOTIFICAÇÃO (bomDia/fecharDia) sem permissão concedida
+   * ainda pede o prompt do sistema aqui — é o MESMO par `temPermissaoNotificacao`
+   * /`pedirPermissaoNotificacao` que a Agenda usa (services/agenda.ts), só sem a
+   * caixa de explicação amigável dela: o próprio rótulo do switch já explica o
+   * que está sendo ligado, e o toque no switch já É o pedido explícito do
+   * usuário. Depois de salvar, reagenda o ritual pra respeitar o toggle na hora
+   * — sem esperar o próximo boot/sync.
+   */
+  async function handleToggleRitual(canal: 'bomDia' | 'fecharDia' | 'domingo', v: boolean) {
+    Haptics.selectionAsync().catch(() => {});
+    const setters = { bomDia: setRitualBomDia, fecharDia: setRitualFecharDia, domingo: setRitualDomingo };
+    setters[canal](v);
+    try {
+      await setPreferenciaRitual(canal, v);
+      if (v && canal !== 'domingo' && Platform.OS !== 'web' && !(await temPermissaoNotificacao())) {
+        await pedirPermissaoNotificacao();
+      }
+      void reagendarRitualDiario().catch(() => {});
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
+      setters[canal](!v);
+    }
+  }
+
   /** "Rever apresentação e dicas": religa a ajuda, esquece dicas vistas e refaz o onboarding. */
   async function handleReverApresentacao() {
     Haptics.selectionAsync().catch(() => {});
@@ -286,17 +397,25 @@ export default function ContaScreen() {
     );
   }
 
-  /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
-  async function handleAbrirBackups() {
-    Haptics.selectionAsync().catch(() => {});
-    setShowBackups(true);
+  /** Carrega (ou recarrega) a lista de cópias de segurança da nuvem. */
+  const carregarBackups = useCallback(async () => {
     setCarregandoBackups(true);
+    setBackupsErro(false);
     try {
       setBackups(await listBackupsVersionados());
-    } catch (e: any) {
-      Alert.alert('Erro', e?.message ?? 'Não foi possível carregar as cópias de segurança.');
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira "nenhuma cópia" silencioso.
+      setBackupsErro(true);
+    } finally {
+      setCarregandoBackups(false);
     }
-    setCarregandoBackups(false);
+  }, []);
+
+  /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
+  function handleAbrirBackups() {
+    Haptics.selectionAsync().catch(() => {});
+    setShowBackups(true);
+    carregarBackups();
   }
 
   /** Restaura uma cópia específica da lista, com confirmação dupla (é destrutivo). */
@@ -361,6 +480,30 @@ export default function ContaScreen() {
               // Os dados FICAM no aparelho, como o botão promete: eles moram na
               // partição desta conta (database/particao.ts) e ninguém mais os abre.
               abortarSyncEmAndamento();
+              // Cancela os lembretes locais (agenda + vencimento PMOC) ANTES do
+              // signOut: como os dados FICAM no aparelho neste fluxo, o
+              // `clearAllLocalData` (que também cancela) não roda aqui — sem esta
+              // chamada, os lembretes da conta que está saindo continuariam
+              // disparando depois, mostrando nome/endereço do cliente para quem
+              // logar em seguida no mesmo aparelho (vazamento de dado entre
+              // contas). Best-effort e nunca lança; a próxima sessão (mesma conta
+              // ou outra) reagenda os seus via resincronizarLembretes* no sync.
+              await cancelarTodosLembretes().catch(() => {});
+              await cancelarTodosLembretesPmoc().catch(() => {});
+              await cancelarRitualDiario().catch(() => {});
+              // O que este botão promete manter são os DADOS — e eles vivem na
+              // partição SQLite desta conta, que ninguém mais abre. O AsyncStorage
+              // NÃO é particionado: a conversa com a OLLI, o checklist do dia, o
+              // e-mail pendente de confirmação e os carimbos de sync ficavam
+              // inteiros para o PRÓXIMO usuário do aparelho, que abria o chat e
+              // lia a conversa de outra pessoa. Aqui esse rastro sai, igual ao que
+              // o clearAllLocalData já fazia no caminho "apagar dados" — mesma
+              // allow-list, para os dois caminhos nunca divergirem.
+              // Custo aceito: checklist e snooze do radar voltam da nuvem no
+              // próximo login (extras_sync); o histórico do chat NÃO volta, e é
+              // exatamente por não ter como amarrá-lo à conta que ele não pode
+              // ficar. Best-effort: falhar aqui não pode impedir a saída.
+              await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS).catch(() => {});
               // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
               // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
               // competir com ele (corrida de navegação).
@@ -604,6 +747,16 @@ export default function ContaScreen() {
               ))}
             </View>
           </>
+        ) : carregandoErro ? (
+          <View style={{ paddingHorizontal: Spacing.base, minHeight: 320 }}>
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar os dados da sua conta agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={load}
+            />
+          </View>
         ) : (
         <>
         {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
@@ -684,18 +837,22 @@ export default function ContaScreen() {
                   <MaterialCommunityIcons name="crown-outline" size={16} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.proBadgeText}>OLLI PRO</Text>
                 </View>
-                <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
+                <View style={styles.soonPill}><Text style={styles.soonPillText}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text></View>
               </View>
               <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
-              <Text style={styles.proSub}>Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.</Text>
+              <Text style={styles.proSub}>
+                {COMPRA_NO_APP
+                  ? 'Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.'
+                  : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
+              </Text>
               <OlliPressable
                 style={styles.proBtn}
                 haptic={false}
                 scaleTo={0.97}
-                accessibilityLabel="Ver planos e assinar"
+                accessibilityLabel={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
               >
-                <Text style={styles.proBtnText}>Ver planos e assinar</Text>
+                <Text style={styles.proBtnText}>{COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
               </OlliPressable>
             </View>
@@ -881,6 +1038,64 @@ export default function ContaScreen() {
           </View>
         </AnimatedEntrance>
 
+        {/* NOTIFICAÇÕES — Ritual diário (services/ritualDiario.ts): "Bom dia da
+            OLLI" (~7h, só com sinal real) e "Fechar o dia" (~18h, só com
+            movimento no dia), com domingo mudo por padrão. Cada canal é
+            independente e o ritual respeita os 3 na hora (handleToggleRitual
+            reagenda depois de salvar — sem esperar o próximo boot/sync). */}
+        <AnimatedEntrance index={5}>
+          <Text style={styles.sectionTitle}>Notificações</Text>
+          <View style={styles.toolsCard}>
+            <View style={[styles.toolRow, styles.toolDivider]}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.accent + '1E', borderColor: cores.accent + '3A' }]}>
+                <MaterialCommunityIcons name="weather-sunset-up" size={20} color={cores.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Bom dia da OLLI</Text>
+                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente sumido)</Text>
+              </View>
+              <Switch
+                value={ritualBomDia}
+                onValueChange={(v) => handleToggleRitual('bomDia', v)}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ritualBomDia ? cores.primary : '#fff'}
+              />
+            </View>
+
+            <View style={[styles.toolRow, styles.toolDivider]}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
+                <MaterialCommunityIcons name="weather-night" size={20} color={cores.primaryLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Fechar o dia</Text>
+                <Text style={styles.toolDesc}>~18h, só nos dias com movimento — prévia do relatório falado</Text>
+              </View>
+              <Switch
+                value={ritualFecharDia}
+                onValueChange={(v) => handleToggleRitual('fecharDia', v)}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ritualFecharDia ? cores.primary : '#fff'}
+              />
+            </View>
+
+            <View style={styles.toolRow}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
+                <MaterialCommunityIcons name="calendar-remove-outline" size={20} color={cores.onSurfaceVariant} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>Notificar aos domingos</Text>
+                <Text style={styles.toolDesc}>Desligado por padrão — domingo é dia mudo</Text>
+              </View>
+              <Switch
+                value={ritualDomingo}
+                onValueChange={(v) => handleToggleRitual('domingo', v)}
+                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                thumbColor={ritualDomingo ? cores.primary : '#fff'}
+              />
+            </View>
+          </View>
+        </AnimatedEntrance>
+
         {/* CONTA E BACKUP */}
         <AnimatedEntrance index={5}>
           <Text style={styles.sectionTitle}>Conta e backup</Text>
@@ -918,29 +1133,49 @@ export default function ContaScreen() {
                   </View>
                 </View>
               </View>
-              <View style={styles.backupStatus}>
-                <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={20} color={lastBackup ? cores.success : cores.warning} />
-                <Text style={styles.backupText}>
-                  {autoBackupAtivo
-                    ? (lastBackup ? `Backup automático: ativo — última cópia ${formatDateTime(lastBackup)}` : 'Backup automático: ativo — ainda sem cópias')
-                    : 'Backup automático: desativado'}
+              {(() => {
+                const r = resumoBackupNuvem(motivoBackup, autoBackupAtivo, lastBackup);
+                const corTom = r.tom === 'success' ? cores.success : r.tom === 'warning' ? cores.warning : cores.onSurfaceMuted;
+                return (
+                  <View style={styles.backupStatus}>
+                    <MaterialCommunityIcons name={r.icone} size={20} color={corTom} />
+                    <Text style={styles.backupText}>{r.texto}</Text>
+                  </View>
+                );
+              })()}
+
+              {/* MEMBRO DE EQUIPE: o toggle e o botão não fazem nada para ele — a
+                  guarda de backup.ts recusa o snapshot porque o banco local
+                  contém a base da empresa. Em vez de deixar dois controles
+                  mentindo, a tela explica de quem é a responsabilidade. "Ver
+                  cópias de segurança" continua: as cópias dele são dele. */}
+              {motivoBackup === 'somente_dono' ? (
+                <Text style={[styles.autoBackupHint, { marginBottom: Spacing.base }]}>
+                  {COPY_BACKUP_NUVEM.somente_dono.detalhe}
                 </Text>
-              </View>
+              ) : (
+                <>
+                  {motivoBackup === 'indeterminado' && (
+                    <Text style={[styles.autoBackupHint, { marginBottom: Spacing.base }]}>
+                      {COPY_BACKUP_NUVEM.indeterminado.detalhe}
+                    </Text>
+                  )}
+                  <View style={styles.autoBackupRow}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={styles.autoBackupLabel}>Backup automático diário</Text>
+                      <Text style={styles.autoBackupHint}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
+                    </View>
+                    <Switch
+                      value={autoBackupAtivo}
+                      onValueChange={handleToggleAutoBackup}
+                      trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                      thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
+                    />
+                  </View>
 
-              <View style={styles.autoBackupRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.autoBackupLabel}>Backup automático diário</Text>
-                  <Text style={styles.autoBackupHint}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
-                </View>
-                <Switch
-                  value={autoBackupAtivo}
-                  onValueChange={handleToggleAutoBackup}
-                  trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                  thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
-                />
-              </View>
-
-              <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
+                  <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
+                </>
+              )}
               <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={cores.primary} />} />
             </View>
 
@@ -977,6 +1212,14 @@ export default function ContaScreen() {
           <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
             {carregandoBackups ? (
               <ActivityIndicator color={cores.primary} style={{ marginTop: 24 }} />
+            ) : backupsErro ? (
+              <View style={styles.backupsEmpty}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={32} color={cores.warning} />
+                <Text style={styles.backupsEmptyText}>Não foi possível carregar suas cópias de segurança agora. Verifique a conexão e tente de novo.</Text>
+                <TouchableOpacity onPress={carregarBackups} activeOpacity={0.8}>
+                  <Text style={styles.backupsEmptyLink}>Tentar de novo</Text>
+                </TouchableOpacity>
+              </View>
             ) : backups.length === 0 ? (
               <View style={styles.backupsEmpty}>
                 <MaterialCommunityIcons name="cloud-off-outline" size={32} color={cores.onSurfaceMuted} />
@@ -1073,6 +1316,7 @@ export default function ContaScreen() {
       {showExcluir && (
         <ModalExcluirConta
           busy={busy}
+          loginApple={loginApple}
           onFechar={() => setShowExcluir(false)}
           onConfirmar={confirmarExclusaoFinal}
         />
@@ -1085,14 +1329,47 @@ export default function ContaScreen() {
  * Modal "Excluir minha conta": lista o que será apagado, deixa claro que é
  * irreversível e exige que o usuário digite EXCLUIR (1ª confirmação). O botão
  * dispara o Alert final do pai (2ª confirmação) que efetiva a exclusão.
+ *
+ * `loginApple` (true | false | null=não sei) controla o aviso de revogação do
+ * "Entrar com a Apple" — ver `avisoApple` abaixo.
  */
 function ModalExcluirConta({
-  busy, onFechar, onConfirmar,
-}: { busy: boolean; onFechar: () => void; onConfirmar: () => void }) {
+  busy, loginApple, onFechar, onConfirmar,
+}: { busy: boolean; loginApple: boolean | null; onFechar: () => void; onConfirmar: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [texto, setTexto] = useState('');
   const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
+
+  /**
+   * SIGN IN WITH APPLE — a metade da exclusão que não é nossa.
+   *
+   * Apagar a conta aqui apaga tudo do NOSSO lado, mas a autorização "Entrar com
+   * a Apple" mora no Apple ID da pessoa. Enquanto o worker não revoga o token de
+   * verdade (faltam os secrets APPLE_* e o app mandar o `authorizationCode` na
+   * exclusão — ver a seção SIGN IN WITH APPLE em worker/src/conta.js), o OLLI
+   * continua aparecendo na lista dela depois da exclusão. Prometer "apagamos
+   * tudo" e deixar isso para trás seria a mentira que este texto existe para não
+   * contar; a saída honesta é dizer onde fica e como tirar.
+   *
+   * Três estados, um texto para cada — e a dúvida (`null`) mostra a versão
+   * condicional em vez de esconder: quem entrou com a Apple e não vir o aviso
+   * sai achando que não sobrou nada.
+   */
+  const avisoApple = loginApple === false ? null : (
+    <View style={styles.excluirAppleNota}>
+      <MaterialCommunityIcons name="apple" size={16} color={cores.onSurfaceVariant} />
+      <Text style={styles.excluirAppleTexto}>
+        {loginApple === true
+          ? 'Você entrou com a Apple. A autorização “Entrar com a Apple” fica guardada no seu Apple ID e só sai por lá: '
+          : 'Se você entrou com a Apple, a autorização “Entrar com a Apple” fica guardada no seu Apple ID e só sai por lá: '}
+        <Text style={styles.excluirAppleForte}>
+          Ajustes → seu nome → Início de Sessão e Segurança → Entrar com a Apple → OLLI → Parar de usar
+        </Text>
+        . Pelo navegador dá no mesmo em appleid.apple.com. Isso não afeta a exclusão dos seus dados aqui, que é definitiva.
+      </Text>
+    </View>
+  );
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onFechar}>
@@ -1126,6 +1403,8 @@ function ModalExcluirConta({
             <Text style={styles.excluirNota}>
               Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
             </Text>
+
+            {avisoApple}
 
             <Text style={styles.sheetLabel}>Para confirmar, digite EXCLUIR</Text>
             <TextInput
@@ -1330,7 +1609,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow,
     padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm,
   },
-  assinaturaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  assinaturaIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   assinaturaTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   assinaturaSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 
@@ -1349,6 +1628,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   excluirItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
   excluirItemText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
   excluirNota: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, marginTop: Spacing.base },
+  // Aviso da revogação do Sign in with Apple: informativo, não perigo — por isso
+  // superfície neutra, e não o vermelho do `perigoBanner` logo acima (que marca a
+  // ação irreversível). Ver `avisoApple` em ModalExcluirConta.
+  excluirAppleNota: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, padding: 12, marginTop: 10 },
+  excluirAppleTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
+  excluirAppleForte: { fontWeight: '700', color: c.onSurface },
   excluirCancelar: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
   excluirCancelarText: { fontSize: 14, fontWeight: '700', color: c.onSurfaceVariant },
   profileName: { fontSize: 18, fontWeight: '800', color: c.onSurface },
@@ -1379,7 +1664,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   blocoAparencia: { marginHorizontal: Spacing.base },
   toolRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   toolDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
-  toolIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  toolIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   toolLabel: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   toolDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 1 },
   card: { backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, padding: Spacing.base, marginHorizontal: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.outlineDark, ...sombrasDe(c).sm },
@@ -1409,8 +1694,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   backupsEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: Spacing.lg, gap: 12 },
   backupsEmptyText: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  backupsEmptyLink: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
   backupItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md, marginBottom: 10 },
-  backupItemIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  backupItemIcon: { width: 38, height: 38, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   backupItemDate: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   backupItemMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
@@ -1419,7 +1705,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Empresa / Equipe (Onda 2)
   empresaCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   empresaHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  empresaIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  empresaIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   empresaNome: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   empresaPapel: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   empresaBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 14, paddingVertical: 12 },

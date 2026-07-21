@@ -1,15 +1,23 @@
 import { AlertTriangle, PieChart, RotateCw } from "lucide-react";
-import { lazy, Suspense, useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { useChart } from "@/components/chart/useChart";
+import { lazyComRetry } from "@/components/lazy/carregar-chunk";
+import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
+import { useVisivelUmaVez } from "@/hooks/use-visivel-uma-vez";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { agruparPorStatus, formatInt, type OrcamentoRow } from "./helpers";
 
-// Import PREGUIÇOSO: react-apexcharts (~152KB gzip) só entra no bundle quando este
+// Import PREGUIÇOSO: react-apexcharts (~157KB gzip) só entra no bundle quando este
 // card realmente renderiza o gráfico — a rota padrão do painel (Início) não pode
 // esperar essa dependência inteira baixar por causa de UM donut. `useChart` (acima)
 // não puxa a lib de verdade — só o tipo `ApexOptions` (import type, apagado no build).
-const Chart = lazy(() => import("@/components/chart/chart").then((m) => ({ default: m.Chart })));
+//
+// E o download só COMEÇA quando o donut encosta na tela (ver useVisivelUmaVez logo
+// abaixo). No celular ele nasce bem abaixo da dobra: antes disto, todo mundo que
+// tinha ao menos um orçamento pagava a biblioteca inteira ao abrir o Início, mesmo
+// sem rolar até ela. Quem abre o gráfico paga o gráfico; quem não abre, não paga.
+const Chart = lazyComRetry(() => import("@/components/chart/chart").then((m) => ({ default: m.Chart })));
 
 interface Props {
 	rows: OrcamentoRow[] | undefined;
@@ -26,6 +34,7 @@ interface Props {
  * loop contínuo).
  */
 export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
+	const { ref: areaGrafico, visivel: graficoNaTela } = useVisivelUmaVez<HTMLDivElement>();
 	const grupos = useMemo(() => (rows ? agruparPorStatus(rows) : []), [rows]);
 	const total = useMemo(() => grupos.reduce((s, g) => s + g.total, 0), [grupos]);
 
@@ -113,10 +122,20 @@ export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
 					</div>
 				) : (
 					<div className="grid items-center gap-6 md:grid-cols-[minmax(0,210px)_1fr]">
-						<div className="mx-auto w-full max-w-[240px]">
-							<Suspense fallback={<Skeleton className="mx-auto size-[200px] rounded-full" />}>
-								<Chart type="donut" series={series} options={chartOptions} height={230} />
-							</Suspense>
+						<div ref={areaGrafico} className="mx-auto w-full max-w-[240px]">
+							{graficoNaTela ? (
+								// A fronteira é INLINE: se a biblioteca do gráfico não baixar, quem
+								// some é o donut — a legenda ao lado (número e % por status, que é
+								// o dado que decide) continua na tela. Derrubar o card inteiro por
+								// causa do desenho seria perder a informação junto com o enfeite.
+								<ChunkBoundary variante="inline" oQue="o gráfico">
+									<Suspense fallback={<Skeleton className="mx-auto size-[200px] rounded-full" />}>
+										<Chart type="donut" series={series} options={chartOptions} height={230} />
+									</Suspense>
+								</ChunkBoundary>
+							) : (
+								<Skeleton className="mx-auto size-[200px] rounded-full" />
+							)}
 						</div>
 						<ul className="grid gap-2.5">
 							{grupos.map((g) => {
@@ -130,7 +149,9 @@ export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
 										/>
 										<span className="flex-1 truncate text-sm text-text-secondary">{g.meta.label}</span>
 										<span className="text-sm font-semibold text-text-primary tabular-nums">{formatInt(g.total)}</span>
-										<span className="w-9 shrink-0 text-right text-xs text-text-disabled tabular-nums">{pct}%</span>
+										{/* `-secondary` e não `-disabled`: a porcentagem é o dado da legenda.
+									    Medido a 10,5px no tema claro, o token "disabled" dava 2,73:1. */}
+									<span className="w-9 shrink-0 text-right text-xs text-text-secondary tabular-nums">{pct}%</span>
 									</li>
 								);
 							})}

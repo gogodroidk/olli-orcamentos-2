@@ -822,7 +822,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   artigoResumo: {
     ...Typography.body,
-    fontSize: 15.5,
     color: c.onSurfaceVariant,
     lineHeight: 22,
     marginTop: Spacing.sm,
@@ -830,7 +829,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   paragrafo: {
     ...Typography.body,
-    fontSize: 15.5,
     color: c.onSurface,
     lineHeight: 24,
     marginTop: Spacing.lg,

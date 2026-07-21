@@ -1,15 +1,13 @@
-import { chain } from "ramda";
-
 /**
  * Flatten an array containing a tree structure
  * @param {T[]} trees - An array containing a tree structure
  * @returns {T[]} - Flattened array
  */
 export function flattenTrees<T extends { children?: T[] }>(trees: T[] = []): T[] {
-	return chain((node) => {
-		const children = node.children || [];
-		return [node, ...flattenTrees(children)];
-	}, trees);
+	// `flatMap` nativo no lugar do `chain` do ramda: mesmo resultado, e esta função
+	// roda no boot (monta o mapa de permissões do menu), então trazia a biblioteca
+	// inteira para o caminho da primeira tela.
+	return trees.flatMap((node) => [node, ...flattenTrees(node.children || [])]);
 }
 
 /**

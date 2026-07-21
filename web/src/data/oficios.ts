@@ -91,6 +91,26 @@ export const OFICIO_GERAL: OficioLanding = {
 /** Total REAL de calculadoras — a página não chuta número. */
 export const TOTAL_CALCULADORAS = CALCULOS.length;
 
+/**
+ * `VerticalId` → nome do ícone lucide (componente `<Icone nome={...} />`).
+ *
+ * O emoji de cada ofício (`v.emoji`) continua vindo de `verticais.ts` — é a
+ * fonte, e outras partes do produto podem querer o glifo puro. Este mapa é só
+ * a camada de APRESENTAÇÃO da landing: emoji não casa com o resto da UI (que
+ * usa lucide-react no painel), então aqui trocamos o glifo por um ícone SVG
+ * no mesmo estilo. Exaustivo de propósito — vertical nova sem entrada aqui
+ * não compila, em vez de renderizar um ícone vazio em silêncio.
+ */
+export const ICONE_POR_OFICIO: Record<VerticalId, string> = {
+  refrigeracao: 'snowflake',
+  eletrica: 'zap',
+  hidraulica: 'droplet',
+  pintura: 'paint-roller',
+  dedetizacao: 'bug',
+  jardinagem: 'leaf',
+  geral: 'wrench',
+};
+
 /* ───────────────────────── SEO: as páginas /para/[oficio] ─────────────────────── */
 
 /**

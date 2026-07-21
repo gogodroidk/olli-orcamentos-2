@@ -11,6 +11,7 @@ import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
+import { EmailAutocompleteInput } from "./components/EmailAutocompleteInput";
 import { OAuthButtons } from "./components/OAuthButtons";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
 
@@ -77,7 +78,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 							<FormItem>
 								<FormLabel>{t("sys.login.userName")}</FormLabel>
 								<FormControl>
-									<Input type="email" autoComplete="email" placeholder="voce@empresa.com.br" {...field} />
+									<EmailAutocompleteInput placeholder="voce@empresa.com.br" {...field} />
 								</FormControl>
 								<FormMessage />
 							</FormItem>

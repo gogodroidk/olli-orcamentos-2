@@ -8,6 +8,7 @@ import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem,
 import { restaurePodeTocarNaNuvem } from '../services/contextoEquipe';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
+import { cancelarRitualDiario } from '../services/ritualDiario';
 import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
 import {
   DB_LEGADO,
@@ -1226,23 +1227,117 @@ function impressaoComercial(o: Orcamento): string {
 }
 
 /**
- * Salva o orçamento. REGRA DE OURO (mestre 13.5): se o orçamento JÁ persistido
- * está numa proposta enviada (enviado/visualizado/em_negociacao/aguardando_
- * assinatura) e a EDIÇÃO muda o conteúdo comercial, congelamos o estado ANTERIOR
- * como uma VERSÃO antes de sobrescrever — o que o cliente viu nunca some. Uma
- * simples troca de status (ex.: o link marcou "visualizado") não gera versão.
+ * ACORDO ACEITO — o cliente não só viu a proposta, ele DISSE SIM. `aprovado` é o
+ * aceite; `convertido` já virou recibo/serviço fechado. Mudar preço, item ou
+ * garantia depois disso não é corrigir um documento, é trocar o contrato debaixo
+ * do nariz de quem assinou (e descasar orçamento e recibo, no caso do convertido).
+ */
+export function acordoAceito(status: StatusOrcamento): boolean {
+  return status === 'aprovado' || status === 'convertido';
+}
+
+/**
+ * Status em que a EDIÇÃO do orçamento não é oferecida — o cliente já tem o
+ * documento em mãos. Gêmea de `edicaoBloqueada` em
+ * `webapp/src/pages/olli/orcamentos/FormOrcamento.tsx`: o MESMO documento tinha
+ * duas regras conforme o usuário abrisse no celular ou no painel. O caminho
+ * honesto nos dois é DUPLICAR como novo rascunho — o original continua valendo.
+ *
+ * Mora aqui, e não em `src/types` ao lado de `propostaJaEnviada`, que seria o
+ * lugar natural — mover é uma unificação pendente, sem mudança de comportamento.
+ *
+ * A paridade com o painel é verificada por `scripts/teste-numero-web.ts`: as duas
+ * definições têm que aceitar e recusar exatamente os mesmos status.
+ */
+export function edicaoBloqueada(status: StatusOrcamento): boolean {
+  return propostaJaEnviada(status) || acordoAceito(status);
+}
+
+/**
+ * Recusa de gravação por regra comercial — NÃO é falha técnica. Tipada para que a
+ * UI possa distinguir "tente de novo em instantes" (transitório) de "isto não vai
+ * funcionar nunca, use Duplicar" (permanente).
+ *
+ * COMO CONSUMIR: prefira `e?.codigo === 'ORCAMENTO_ACEITO'` a `instanceof` — o
+ * campo `codigo` sobrevive ao serializar/reconstruir o erro através de camadas
+ * (bridge, sync, re-throw), e não obriga a tela a importar esta classe. É o que
+ * `NovoOrcamentoScreen.tsx` (handleSave/handleRascunho) faz: nesta recusa mostra
+ * "duplique como novo rascunho" em vez de "tente novamente em instantes", porque
+ * tentar de novo nunca vai funcionar. Tratar isto como falha transitória é
+ * mandar o usuário repetir para sempre um caminho fechado, perdendo o que digitou.
+ */
+export class OrcamentoAceitoError extends Error {
+  readonly codigo = 'ORCAMENTO_ACEITO' as const;
+  constructor(public readonly status: StatusOrcamento) {
+    super(
+      'Este orçamento já foi aceito pelo cliente. Para mudar valores ou itens, duplique como novo rascunho.',
+    );
+    this.name = 'OrcamentoAceitoError';
+  }
+}
+
+/**
+ * Salva o orçamento. Duas regras, ambas sobre o estado JÁ PERSISTIDO:
+ *
+ * 1. ACEITO NÃO SE REESCREVE. Se o anterior está em `acordoAceito` (aprovado/
+ *    convertido) e a impressão COMERCIAL muda, recusamos. Antes daqui, o app
+ *    sobrescrevia calado um documento aprovado — e sem nem gerar versão, porque o
+ *    versionamento abaixo só cobre `propostaJaEnviada`. O painel já recusava a
+ *    mesma edição, então o mesmo orçamento tinha duas regras.
+ * 2. PROPOSTA ENVIADA GERA VERSÃO (mestre 13.5). Enviado/visualizado/
+ *    em_negociacao/aguardando_assinatura: a edição passa, mas congelamos o estado
+ *    anterior como VERSÃO antes de sobrescrever — o que o cliente viu nunca some.
+ *
+ *    POR QUE A REGRA 2 QUASE NUNCA DISPARA, e ainda assim fica. As telas que
+ *    levam ao editor (`OrcamentosScreen`, `VisualizarOrcamentoScreen` e a tabela
+ *    de `desktop/OrcamentosDesktopScreen`) escondem "Editar" para todo status em
+ *    `edicaoBloqueada` — que COBRE `propostaJaEnviada` inteiro —, e o próprio
+ *    editor (`NovoOrcamentoScreen`) recusa abrir em modo edição nesses status,
+ *    o que fecha também o deep link `orcamentos/:id/editar` (`linking.ts`), que
+ *    não passa por tela nenhuma. Quem chega ao editor está em rascunho/recusado/
+ *    expirado/cancelado: sem conteúdo protegido a versionar.
+ *
+ *    Manter a regra 2 NÃO é indecisão — é a rede para o caminho que ninguém
+ *    previu. Um gate de UI é uma linha que some num refactor; esta é a única
+ *    trava que fica entre um `saveOrcamento` qualquer e a sobrescrita do que o
+ *    cliente já viu. `scripts/teste-numero-web.ts` guarda os gates acima para que
+ *    sumir deles seja falha de teste, não descoberta em produção.
+ *
+ *    Fora do alcance destas duas regras, de propósito: o PULL da nuvem grava por
+ *    `localUpsertOrcamento` (INSERT OR REPLACE cru), não por aqui. Mudança que
+ *    vem do painel/link num orçamento aprovado pousa local sem recusa — a nuvem
+ *    é a autoridade do que já foi sincronizado, e recusá-la aqui deixaria o
+ *    aparelho permanentemente dessincronizado. A tela de Versões continua viva de
+ *    qualquer forma: ela lista também o que a nuvem/painel gerou
+ *    (`clienteLink.ts`), não só o que este `saveOrcamento` congela.
+ *
+ * As duas comparam `impressaoComercial`, que ignora os campos voláteis: trocar SÓ
+ * o status (o link marcou "visualizado", o cliente aprovou, o dono converteu),
+ * assinar ou mandar para a lixeira passa em qualquer status. É por isso que a
+ * recusa não trava o funil nem o sync do link — só a edição de conteúdo.
  */
 export async function saveOrcamento(o: Orcamento): Promise<void> {
   const db = await getDb();
 
+  // Lido FORA do try/catch de propósito: se a leitura falhar, não sabemos em que
+  // estado o documento está — e "não sei" não pode virar "não tem trava" e liberar
+  // a sobrescrita de um contrato aceito. Falha aqui = falha do save (alto), não
+  // silêncio. Na prática só quebra com o SQLite quebrado, que derrubaria o INSERT
+  // logo abaixo de qualquer jeito.
+  const anterior = await getOrcamento(o.id);
+  // A comparação só importa nos status que travam ou versionam. Fora deles (o caso
+  // comum: rascunho sendo editado) nem serializamos — a impressão comercial percorre
+  // o objeto INTEIRO, fotos inclusive, e não vale pagar isso a cada tecla salva.
+  const mudouConteudoProtegido =
+    !!anterior && edicaoBloqueada(anterior.status) && impressaoComercial(anterior) !== impressaoComercial(o);
+
+  if (anterior && mudouConteudoProtegido && acordoAceito(anterior.status)) {
+    throw new OrcamentoAceitoError(anterior.status);
+  }
+
   // Snapshot da versão anterior, quando aplicável (best-effort: nunca impede o save).
   try {
-    const anterior = await getOrcamento(o.id);
-    if (
-      anterior &&
-      propostaJaEnviada(anterior.status) &&
-      impressaoComercial(anterior) !== impressaoComercial(o)
-    ) {
+    if (anterior && mudouConteudoProtegido && propostaJaEnviada(anterior.status)) {
       await congelarVersaoOrcamento(anterior);
     }
   } catch {
@@ -1440,22 +1535,101 @@ function mirrorVersaoNuvem(versao: OrcamentoVersao): void {
   }
 }
 
+/** Tabelas numeradas por `contadores` (o sufixo do número é `<seq><aa>`). */
+type TabelaNumerada = 'orcamentos' | 'recibos';
+
 /**
- * Contador monotônico: SEMPRE cresce, mesmo após excluir registros.
- * Na primeira vez, semeia a partir do total existente (migração suave),
- * evitando colidir com números já gerados pela versão antiga.
+ * Extrai o SEQUENCIAL de um número de documento. Formato `<seq><aa>` (orçamento
+ * `00126` = seq 1 + ano 26) ou `REC-<seq><aa>` (recibo): o sequencial é TUDO menos
+ * os 2 últimos dígitos. Devolve 0 para número ausente/legado fora do formato.
+ *
+ * CÓPIA FIEL do `extrairSequencia` do painel (`webapp/src/olli/mutacoes.ts`) — de
+ * propósito, incluindo o `\s*$` e o casamento pela CAUDA de dígitos. Os dois lados
+ * têm que ler o mesmo texto do mesmo jeito; se um deles enxergar um sequencial
+ * MENOR que o outro num número torto (`'X00126'`, `'00126 '`), ele reemite um
+ * número que o outro já deu por usado — que é exatamente a colisão que esta frente
+ * existe para fechar.
  */
-async function proximoNaSequencia(chave: string, tabelaParaSemear: string): Promise<number> {
+function extrairSequencia(numero: unknown): number {
+  const bruto = String(numero ?? '').replace(/^REC-/i, '');
+  const m = /(\d+)(\d{2})\s*$/.exec(bruto);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * MAIOR sequencial já usado nos DOCUMENTOS desta tabela — a fonte da verdade da
+ * numeração, a mesma que o painel usa (`proximoNumeroDocumento`) e a mesma técnica
+ * já adotada pela OS (`services/ordemServico.proximoNumeroOS`).
+ *
+ * Lê a coluna e parseia em JS, em vez de um MAX(SUBSTR+CAST) em SQL. O SQL seria
+ * mais barato, mas o `CAST` do SQLite e o regex do painel discordam justamente nos
+ * números tortos (prefixo estranho, espaço no fim) — e discordar aqui é reemitir
+ * número. Vale a varredura: é UMA coluna de texto curto, lida uma vez por documento
+ * criado, num banco de um prestador (o painel faz o mesmo com até 1000 linhas).
+ *
+ * INCLUI a lixeira: um orçamento soft-deletado continua com o número dele reservado
+ * (o cliente pode ter o PDF em mãos). Liberar o número faria dois documentos
+ * diferentes nascerem como `00126`.
+ */
+async function maiorSequenciaDocumento(tabela: TabelaNumerada): Promise<number> {
+  const db = await getDb();
+  const linhas = await db.getAllAsync<{ numero: string | null }>(
+    `SELECT numero FROM ${tabela} WHERE numero IS NOT NULL`,
+  );
+  return linhas.reduce((max, l) => Math.max(max, extrairSequencia(l.numero)), 0);
+}
+
+/**
+ * Próximo sequencial do documento. UMA fonte da verdade — os DOCUMENTOS — e o
+ * contador como piso monotônico por cima dela.
+ *
+ * POR QUE MUDOU: o contador local sozinho não enxerga o que o PAINEL criou. O
+ * painel numera por MAX(numero)+1 na nuvem e não mexe em `contadores` (a tabela
+ * tem RLS por-usuário, então dono e técnico teriam contadores separados sobre o
+ * mesmo conjunto — ver o cabeçalho de `proximoNumeroDocumento`). O resultado era
+ * colisão garantida no caminho mais banal: com 001–003 no ar, o painel emitia o
+ * 004 (MAX+1) sem tocar no contador; o celular sincronizava, seguia com contador
+ * 3 e emitia OUTRO 004. Dois orçamentos de clientes diferentes com o mesmo número
+ * — que é o que o cliente cita quando paga.
+ *
+ * A CORREÇÃO é tomar `MAX(contador, maior sequencial em documento) + 1`. Como o
+ * SQLite local é espelho da nuvem depois do sync, esse MAX local vê o documento
+ * que o painel criou, e os dois lados passam a derivar do MESMO fato.
+ *
+ * OFFLINE: continua funcionando sem rede, porque o piso é lido do banco LOCAL —
+ * nada de "perguntar à nuvem" na hora de criar. O contador segue no jogo porque é
+ * o que segura o número queimado: se o usuário abre o formulário, o app reserva o
+ * 004 e ele desiste, o contador fica em 4 enquanto o MAX dos documentos ainda é 3.
+ * O painel pode usar esse 004 livre (não pertence a documento nenhum) e o celular
+ * segue no 005 — divergência sem colisão, porque o contador só fica À FRENTE dos
+ * documentos, nunca atrás.
+ *
+ * O QUE ISTO **NÃO** RESOLVE: dois aparelhos criando ao mesmo tempo, um deles sem
+ * rede. Aí os dois leem o mesmo piso e emitem o mesmo número, e só o banco pode
+ * arbitrar — ver `supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente`
+ * (UNIQUE + renumeração no push), que é passo humano. A extensão `.pendente` é de
+ * propósito: o índice NÃO pode entrar antes de `mirrorPush` tratar o 23505 (o
+ * arquivo explica), e `.sql` puro seria aplicado por qualquer varredura.
+ */
+async function proximoNaSequencia(chave: string, tabela: TabelaNumerada): Promise<number> {
   const db = await getDb();
   let resultado = 1;
+  // Piso lido ANTES da transação: o driver do expo-sqlite não aninha statements de
+  // outra conexão dentro de withTransactionAsync, e este SELECT não precisa da
+  // mesma janela atômica — ele só pode CRESCER entre a leitura e a gravação, e o
+  // MAX() com o contador abaixo já absorve isso.
+  const pisoDocumentos = await maiorSequenciaDocumento(tabela);
   await db.withTransactionAsync(async () => {
     const row = await db.getFirstAsync<{ valor: number }>('SELECT valor FROM contadores WHERE chave = ?', [chave]);
     let atual = row?.valor;
     if (atual == null) {
-      const cnt = await db.getFirstAsync<{ c: number }>(`SELECT COUNT(*) as c FROM ${tabelaParaSemear}`);
+      // Primeira vez: semeia pelo total (migração suave da versão antiga). Mantido
+      // como piso adicional porque cobre o acervo LEGADO cujo número não casa com
+      // `<seq><aa>` e, por isso, não aparece em `maiorSequenciaDocumento`.
+      const cnt = await db.getFirstAsync<{ c: number }>(`SELECT COUNT(*) as c FROM ${tabela}`);
       atual = cnt?.c ?? 0;
     }
-    resultado = atual + 1;
+    resultado = Math.max(atual, pisoDocumentos) + 1;
     await db.runAsync('INSERT OR REPLACE INTO contadores (chave, valor) VALUES (?, ?)', [chave, resultado]);
   });
   return resultado;
@@ -2518,10 +2692,10 @@ export async function clearAllLocalData(): Promise<void> {
       await database.runAsync(`DELETE FROM ${tabela}`);
     }
   });
-  // 2) Notificações agendadas — cancela os lembretes de agenda E de vencimento
-  // PMOC da conta anterior ANTES de apagar os mapas que permitem cancelá-los,
-  // senão continuariam disparando no aparelho (com nome/endereço do cliente)
-  // após a troca de conta. Best-effort.
+  // 2) Notificações agendadas — cancela os lembretes de agenda, de vencimento
+  // PMOC e do ritual diário ("Bom dia"/"Fechar o dia") da conta anterior ANTES
+  // de apagar os mapas que permitem cancelá-los, senão continuariam disparando
+  // no aparelho (com nome/endereço/dado do cliente) após a troca de conta. Best-effort.
   try {
     await cancelarTodosLembretes();
   } catch {
@@ -2529,6 +2703,11 @@ export async function clearAllLocalData(): Promise<void> {
   }
   try {
     await cancelarTodosLembretesPmoc();
+  } catch {
+    // não bloqueia o logout
+  }
+  try {
+    await cancelarRitualDiario();
   } catch {
     // não bloqueia o logout
   }

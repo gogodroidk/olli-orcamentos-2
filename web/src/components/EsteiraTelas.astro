@@ -1,0 +1,108 @@
+---
+/**
+ * EsteiraTelas.astro — "embaixo tem que ter várias telas vindo" (o pedido literal).
+ *
+ * ── ELA FUNCIONA VAZIA ──────────────────────────────────────────────────────
+ * As capturas vêm de `scripts/telas/capturar-telas.mjs`. Enquanto o manifesto
+ * não existir, `carregarTelas()` devolve `estado: "ausente"` e este componente
+ * renderiza NADA — nem título órfão, nem moldura vazia, nem espaço reservado. A
+ * landing compila e sobe sem a seção; quando os arquivos chegarem, ela aparece
+ * sozinha. Manifesto presente e QUEBRADO não cai aqui: o build morre em telas.ts.
+ *
+ * ── O MOVIMENTO É ENFEITE; A LISTA É A FUNCIONALIDADE ───────────────────────
+ * A base é `overflow-x: auto` + `scroll-snap` (`.olli-esteira-trilho`, no
+ * global.css): rola com o dedo, com a barra e com o teclado, e funciona com
+ * leitor de tela — sem uma linha de JS. O scroll-driven entra POR CIMA. Em
+ * `prefers-reduced-motion`, ou em navegador sem suporte, o enfeite não existe e
+ * sobra a lista, 100% utilizável. Não são duas implementações: é a mesma.
+ * (Verificado: com reduced-motion, 0 animações vivas e opacidade mínima 1.)
+ *
+ * ── ESTAS IMAGENS SÃO CONTEÚDO, NÃO DECORAÇÃO ───────────────────────────────
+ * O hero desenhado é `aria-hidden="true"` e isso está certo — é um desenho.
+ * Telas reais carregam o argumento de venda, então cada uma tem `alt` de verdade
+ * (o schema recusa "screenshot do app") e a faixa é uma <ul> navegável.
+ */
+import { carregarTelas } from "../data/telas";
+
+const { estado, telas } = carregarTelas();
+---
+
+{
+	estado === "pronto" && telas.length > 0 && (
+		<section id="telas" class="olli-esteira relative py-24">
+			<div class="mx-auto max-w-7xl px-6">
+				<div class="olli-revela mx-auto max-w-2xl text-center">
+					<span class="eyebrow">Por dentro</span>
+					<h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">
+						É esta a tela que o seu cliente vai ver.
+					</h2>
+					<p class="mt-5 text-lg leading-relaxed text-slate">
+						Sem maquete e sem promessa: são capturas do produto rodando, com
+						dados de exemplo. Arraste para o lado.
+					</p>
+				</div>
+			</div>
+
+			{/*
+			  O trilho SANGRA até a borda da tela (o padding lateral vive nele, não
+			  num container). Faixa rolável que termina antes da borda parece
+			  cortada; terminando na borda, ela diz "tem mais para aquele lado"
+			  sozinha, sem precisar de seta nem de instrução.
+
+			  `tabindex="0"` num container rolável não é enfeite de acessibilidade:
+			  sem ele, quem navega por teclado não consegue focar a faixa e as
+			  setas não rolam nada — a região fica inalcançável.
+			*/}
+			<ul
+				class="olli-esteira-trilho mt-14 list-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"
+				tabindex="0"
+				aria-label="Telas do produto — role para o lado para ver todas"
+			>
+				{/* Teto de 3 no `--olli-passo`: com 9 telas, um stagger que cresce sem
+				    limite faria a última só terminar de entrar depois de a seção já
+				    ter saído da tela — o token do sistema já fixa "máx. 3 passos". */}
+				{telas.map((t, i) => (
+					<li class="olli-esteira-item" style={`--olli-passo:${Math.min(i, 3)}`}>
+						<figure
+							class="flex h-full flex-col overflow-clip rounded-cartao border border-line bg-card shadow-e1"
+							style={`width:${t.larguraExibida}px`}
+						>
+							{/*
+							  `sizes` com a largura FIXA em px, e não `100vw`: o cartão tem
+							  largura cravada, então dizer a verdade ao navegador é o que o
+							  deixa escolher o 1× em tela comum e o 2× só em tela densa. Com
+							  `100vw` ele baixaria sempre o maior — no celular do público,
+							  em 4G, isso é dinheiro do prestador.
+							*/}
+							<picture>
+								<source
+									type="image/avif"
+									srcset={t.srcsetAvif}
+									sizes={`${t.larguraExibida}px`}
+								/>
+								<source
+									type="image/webp"
+									srcset={t.srcsetWebp}
+									sizes={`${t.larguraExibida}px`}
+								/>
+								<img
+									src={t.src}
+									alt={t.alt}
+									width={t.larguraExibida}
+									height={t.alturaExibida}
+									loading="lazy"
+									decoding="async"
+									class="block h-auto w-full bg-paper"
+								/>
+							</picture>
+							<figcaption class="flex-1 border-t border-line p-4">
+								<p class="text-sm font-bold text-ink">{t.titulo}</p>
+								<p class="mt-1 text-sm leading-snug text-slate">{t.legenda}</p>
+							</figcaption>
+						</figure>
+					</li>
+				))}
+			</ul>
+		</section>
+	)
+}

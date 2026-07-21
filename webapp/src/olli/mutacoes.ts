@@ -14,7 +14,7 @@
  * 3. SOFT DELETE — excluir é carimbar `excluidoEm` (no blob) + `excluido_em` (coluna).
  *    Apagar de verdade ressuscitaria o registro no próximo sync do celular.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import {
 	agora,
@@ -40,51 +40,58 @@ export interface ContextoDeEscrita {
  * Regra idêntica à do app (`cloudSync.ts`): membro com papel != 'owner' grava no
  * tenant do dono da organização. Sem membresia = conta pessoal = próprio tenant.
  *
- * A query pode falhar — e nesse caso o hook fica em `isError`. Quem grava é
+ * A query pode falhar — e nesse caso quem lê fica em `isError`. Quem grava é
  * obrigado a checar (ver `useSalvar`): sem resposta, não grava.
+ *
+ * Exportado como OPÇÕES (e não só como hook) porque há um consumo imperativo: o
+ * `resolverMarcaDoDocumento` (olli/marcaDocumento.ts) precisa AGUARDAR o papel no
+ * clique do botão de PDF, e `fetchQuery` com esta mesma chave reaproveita o cache
+ * em vez de abrir uma segunda leitura que poderia responder diferente.
  */
+export const opcoesContextoDeEscrita = queryOptions({
+	queryKey: ["olli", "contexto-escrita"],
+	queryFn: async (): Promise<ContextoDeEscrita> => {
+		const { data: sessao } = await supabase.auth.getUser();
+		const meuId = sessao.user?.id;
+		if (!meuId) throw new Error("Sessão não encontrada.");
+
+		// RLS já restringe as linhas às minhas. NÃO usamos `maybeSingle`: um usuário
+		// pode ser membro de DUAS organizações, e aí `maybeSingle` lançaria erro e
+		// BLOQUEARIA toda gravação dele. Pegamos a membresia mais ANTIGA (determinístico,
+		// igual ao app). Conta pessoal (sem organização) simplesmente não tem linha.
+		const { data: membros, error } = await supabase
+			.from("organizacao_membros")
+			.select("org_id, papel, ativo")
+			.eq("user_id", meuId)
+			.eq("ativo", true)
+			.order("criado_em", { ascending: true })
+			.limit(1);
+		if (error) throw error;
+		const membro = membros?.[0];
+
+		if (!membro || membro.papel === "owner") {
+			return { ownerUserId: null, papel: membro?.papel ?? "pessoal" };
+		}
+
+		const { data: org, error: erroOrg } = await supabase
+			.from("organizacoes")
+			.select("owner_user_id")
+			.eq("id", membro.org_id)
+			.maybeSingle();
+		if (erroOrg) throw erroOrg;
+		if (!org?.owner_user_id) {
+			// Sou membro não-dono mas não achei o dono: gravar aqui criaria a linha
+			// no MEU tenant e a empresa nunca a veria. Falhar alto é o certo.
+			throw new Error("Não foi possível identificar o dono da sua organização.");
+		}
+		return { ownerUserId: org.owner_user_id as string, papel: membro.papel as string };
+	},
+	staleTime: 5 * 60_000,
+	retry: 1,
+});
+
 export function useContextoDeEscrita() {
-	return useQuery({
-		queryKey: ["olli", "contexto-escrita"],
-		queryFn: async (): Promise<ContextoDeEscrita> => {
-			const { data: sessao } = await supabase.auth.getUser();
-			const meuId = sessao.user?.id;
-			if (!meuId) throw new Error("Sessão não encontrada.");
-
-			// RLS já restringe as linhas às minhas. NÃO usamos `maybeSingle`: um usuário
-			// pode ser membro de DUAS organizações, e aí `maybeSingle` lançaria erro e
-			// BLOQUEARIA toda gravação dele. Pegamos a membresia mais ANTIGA (determinístico,
-			// igual ao app). Conta pessoal (sem organização) simplesmente não tem linha.
-			const { data: membros, error } = await supabase
-				.from("organizacao_membros")
-				.select("org_id, papel, ativo")
-				.eq("user_id", meuId)
-				.eq("ativo", true)
-				.order("criado_em", { ascending: true })
-				.limit(1);
-			if (error) throw error;
-			const membro = membros?.[0];
-
-			if (!membro || membro.papel === "owner") {
-				return { ownerUserId: null, papel: membro?.papel ?? "pessoal" };
-			}
-
-			const { data: org, error: erroOrg } = await supabase
-				.from("organizacoes")
-				.select("owner_user_id")
-				.eq("id", membro.org_id)
-				.maybeSingle();
-			if (erroOrg) throw erroOrg;
-			if (!org?.owner_user_id) {
-				// Sou membro não-dono mas não achei o dono: gravar aqui criaria a linha
-				// no MEU tenant e a empresa nunca a veria. Falhar alto é o certo.
-				throw new Error("Não foi possível identificar o dono da sua organização.");
-			}
-			return { ownerUserId: org.owner_user_id as string, papel: membro.papel as string };
-		},
-		staleTime: 5 * 60_000,
-		retry: 1,
-	});
+	return useQuery(opcoesContextoDeEscrita);
 }
 
 /* ─────────────────────────────  2. Numeração  ──────────────────────────────── */
@@ -115,6 +122,17 @@ function extrairSequencia(numero: unknown): number {
  *
  * INCLUI a lixeira (sem filtro de `excluido_em`): um documento apagado NÃO pode liberar
  * o número, senão dois documentos diferentes acabariam com o mesmo `00126`.
+ *
+ * O APP FAZ O MESMO (desde `proximoNaSequencia` em `src/database/database.ts`). Isso
+ * não era verdade: o celular numerava só pelo contador local, que não enxerga o
+ * documento criado AQUI — o painel emitia o 004 por MAX+1 sem tocar em `contadores`,
+ * e o celular, ainda no contador 3, emitia outro 004. Hoje o app tira o número de
+ * `MAX(contador local, maior sequencial nos documentos) + 1`, sobre o SQLite que é
+ * espelho desta base: mesma fonte (os documentos), com o contador só como piso
+ * monotônico para o número já reservado num formulário aberto. A colisão que sobra é
+ * a de dois criadores simultâneos com um deles offline — arbitrável só no banco (ver
+ * `supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente`, passo humano
+ * — a extensão trava a aplicação automática, o próprio arquivo diz o porquê).
  *
  * Ordenamos por `criado_em` desc: como o sequencial só cresce, o documento mais recente
  * carrega o maior número — então, mesmo se o PostgREST capar a resposta em ~1000 linhas,
@@ -148,12 +166,23 @@ export async function proximoNumeroDocumento(chave: "orcamento" | "recibo"): Pro
  * Próximo número de ORDEM DE SERVIÇO — `OS-0001`.
  *
  * A OS NÃO usa `contadores`: o app deriva do MAIOR sufixo numérico já existente em
- * `ordens_servico`, **incluindo as excluídas** (por isso o `incluirExcluidos`). Se
- * ignorássemos a lixeira, uma OS apagada liberaria o número e duas OS diferentes
- * acabariam com o mesmo `OS-0007` — em documento que vai pro cliente.
+ * `ordens_servico`, **incluindo as excluídas**. Se ignorássemos a lixeira, uma OS
+ * apagada liberaria o número e duas OS diferentes acabariam com o mesmo `OS-0007`
+ * — em documento que vai pro cliente.
+ *
+ * Mesma técnica de `proximoNumeroDocumento`: sem `.order()`/`.limit()`, o PostgREST
+ * corta a resposta em ~1000 linhas e, passado esse volume de OS, o "maior sufixo"
+ * calculado sobre um recorte arbitrário fica menor que o real — duas OS nascem com
+ * o mesmo número. Ordenamos por `criado_em` desc (o sequencial só cresce, então a
+ * OS mais recente carrega o maior número) e limitamos a 1000: mesmo cortada, a
+ * página devolvida já contém o máximo real.
  */
 export async function proximoNumeroOs(): Promise<string> {
-	const { data, error } = await supabase.from("ordens_servico").select("numero");
+	const { data, error } = await supabase
+		.from("ordens_servico")
+		.select("numero")
+		.order("criado_em", { ascending: false })
+		.limit(1000);
 	if (error) throw error;
 
 	const maior = (data ?? []).reduce((max, linha) => {

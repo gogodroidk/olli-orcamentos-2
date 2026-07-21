@@ -1,0 +1,97 @@
+---
+/**
+ * ComparativoPlanos.astro — a tabela "o que cada plano inclui".
+ *
+ * A MATRIZ de ✓ / — / Em breve NÃO é digitada: `linhasComparativo()` a computa de
+ * `src/services/entitlements.ts` (a mesma fonte que a UI e o worker consultam),
+ * via `temAcessoRecurso`. Adicionar um recurso a um plano em `entitlements` faz a
+ * linha aparecer aqui sozinha; tirar, some. Ver `data/recursos.ts`.
+ *
+ * Três estados, nunca dois (P0 da casa: "não sei" nunca vira "não tem"):
+ *   ✓ = incluído · — = não incluído · "Em breve" = concedido pelo plano, mas o
+ *   produto ainda não entrega (mapa da equipe e painel da empresa — Onda 8).
+ */
+import {
+	NOME_PLANO,
+	PLANOS_ORDEM,
+	linhasComparativo,
+} from "../data/recursos";
+
+const linhas = linhasComparativo();
+---
+
+{/* `table-fixed` + `w-full` + `<colgroup>`: a tabela CABE em qualquer largura
+    (rótulo quebra em linha, coluna de plano estreita), então não precisa de rolagem
+    horizontal e a página nunca ganha barra lateral — MEDIDO: htmlScrollWidth 375 no
+    celular de 375px. Uma <table> com `min-width` dentro de um scroll container vaza
+    para o scrollWidth da raiz mesmo com o body em overflow-clip; a tabela fluida
+    não. `overflow-x-auto` fica só de rede de segurança para um rótulo sem espaços. */}
+<div class="overflow-x-auto rounded-caixa border border-line bg-card shadow-e1">
+	<table class="w-full table-fixed border-collapse text-left text-sm">
+		<caption class="sr-only">Comparativo de recursos incluídos em cada plano da OLLI.</caption>
+		{/* Larguras MEDIDAS para caber em 375px sem rolagem: no celular a coluna do
+		    rótulo cede espaço (37%) para as 3 de plano (21% cada) segurarem palavras
+		    inquebráveis como "Empresa"/"Ilimitada"; do `sm` para cima o rótulo volta
+		    a ser largo (46/18). `table-fixed` faz a <col> valer. */}
+		<colgroup>
+			<col class="w-[37%] sm:w-[46%]" />
+			<col class="w-[21%] sm:w-[18%]" />
+			<col class="w-[21%] sm:w-[18%]" />
+			<col class="w-[21%] sm:w-[18%]" />
+		</colgroup>
+		<thead>
+			<tr class="border-b border-line">
+				<th scope="col" class="px-3 py-4 text-sm font-bold text-ink sm:px-5">Recurso</th>
+				{PLANOS_ORDEM.map((id) => (
+					<th
+						scope="col"
+						class={`px-1 py-4 text-center text-xs font-bold sm:px-4 sm:text-sm ${id === "pro" ? "bg-tint text-brand-fg" : "text-ink"}`}
+					>
+						{NOME_PLANO[id]}
+						{/* No celular a coluna do Pro é estreita e "Recomendado" (palavra
+						    inquebrável) vazava a célula; o fundo tinto já marca a coluna.
+						    Some no estreito, aparece do `sm` para cima, onde cabe. */}
+						{id === "pro" && (
+							<span class="mt-0.5 hidden text-[0.65rem] font-bold uppercase tracking-wide text-ambar-tinta sm:block">Recomendado</span>
+						)}
+					</th>
+				))}
+			</tr>
+		</thead>
+		<tbody>
+			{linhas.map((linha) => (
+				<tr class="border-b border-line last:border-0">
+					<th scope="row" class="px-3 py-3.5 text-left font-medium text-slate break-words hyphens-auto sm:px-5">{linha.titulo}</th>
+					{PLANOS_ORDEM.map((id) => {
+						const c = linha.celulas[id];
+						return (
+							<td class={`px-1 py-3.5 text-center align-middle sm:px-4 ${id === "pro" ? "bg-tint" : ""}`}>
+								{c.tipo === "texto" ? (
+									<span
+										class={c.valor === "Em breve"
+											? "text-xs font-medium text-muted"
+											: "text-xs font-semibold text-ink sm:text-sm"}
+									>{c.valor}</span>
+								) : c.tipo === "sim" ? (
+									<Fragment>
+										<span class="text-lg font-bold text-check" aria-hidden="true">✓</span>
+										<span class="sr-only">Incluído</span>
+									</Fragment>
+								) : (
+									<Fragment>
+										<span class="text-muted" aria-hidden="true">—</span>
+										<span class="sr-only">Não incluído</span>
+									</Fragment>
+								)}
+							</td>
+						);
+					})}
+				</tr>
+			))}
+		</tbody>
+	</table>
+</div>
+<p class="mt-3 text-xs leading-relaxed text-muted">
+	<strong class="font-semibold text-slate">Em breve</strong> = recurso já incluído no plano, em finalização no produto —
+	por isso ainda não marcamos como pronto.
+</p>

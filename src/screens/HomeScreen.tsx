@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, type Cores } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, corCategoria, type Cores } from '../theme';
 import {
   getEmpresa, getClientes,
   getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getOrcamentosParadosAgregado, getUltimosOrcamentos,
@@ -16,6 +16,7 @@ import { onSyncAplicado } from '../services/cloudSync';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
 import { clientesParaReconquistar, mensagemReconquista, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
 import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../services/radarCobranca';
+import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
@@ -23,6 +24,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, Orcamento, Agendamento, Cliente, TIPO_AGENDAMENTO_LABELS, STATUS_PROPOSTA_ENVIADA } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { EtaChip } from '../components/EtaChip';
+import { AvisoSaidaCard } from '../components/AvisoSaidaCard';
+import { lerAvisoSaida, type AvisoSaida } from '../services/avisoSaida';
+import { reagendarAvisoSaidaDoDia } from '../services/ritualDiario';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
@@ -30,6 +34,7 @@ import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
+import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
 import { track, Eventos } from '../services/analytics';
@@ -151,8 +156,13 @@ export default function HomeScreen() {
   const [olliMenu, setOlliMenu] = useState(false);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira `true` se o Promise.all de load() de fato falhar — sem isso o
+  // skeleton ficava preso pra sempre (setCarregando(false) nunca rodava).
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [radarTotal, setRadarTotal] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
+  const [radarErro, setRadarErro] = useState(false);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
 
@@ -162,6 +172,15 @@ export default function HomeScreen() {
   const [cobranca, setCobranca] = useState<OrcamentoParaCobrar[]>([]);
   const [cobrancaCarregando, setCobrancaCarregando] = useState(true);
   const [cobrancaErro, setCobrancaErro] = useState(false);
+
+  // RADAR DE FOLLOW-UP — propostas enviadas/visualizadas que o cliente não
+  // respondeu, paradas há >= 3 dias (o passo ANTES do radar de cobrança).
+  // 3 estados explícitos (nunca colapsar erro em vazio): `followUpErro` só
+  // vira `true` se a leitura de fato falhar; lista vazia com sucesso é
+  // "nenhuma proposta parada".
+  const [followUp, setFollowUp] = useState<OrcamentoParaFollowUp[]>([]);
+  const [followUpCarregando, setFollowUpCarregando] = useState(true);
+  const [followUpErro, setFollowUpErro] = useState(false);
 
   // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra
   // shimmer). O destino vem de coordenada salva OU do endereço (o serviço
@@ -203,34 +222,81 @@ export default function HomeScreen() {
     if (temEta) buscarEta();
   }, [temEta, buscarEta]);
 
+  // ─── "SAIA ÀS 14:23 PARA CHEGAR ÀS 15:00" ────────────────────────────────
+  // Diferente do EtaChip acima, isto NÃO busca nada ao focar a tela: só LÊ o
+  // que `services/avisoSaida.ts` já calculou e guardou (o cálculo roda no
+  // reagendamento do ritual diário, 1× por parada). O motivo é custo — cada
+  // cálculo é uma chamada da Routes API no SKU Pro, e recalcular a cada foco
+  // de Home viraria centenas de chamadas por mês por prestador.
+  //
+  // `null` tem dois significados diferentes e o card sabe distingui-los: aqui,
+  // "não há registro para esta parada" (nada foi tentado → o card não aparece).
+  // Um registro de FALHA existe e aparece, com o motivo — porque aí a tentativa
+  // aconteceu, e sumir com o card seria "não sei" virando "não tem".
+  const [avisoSaida, setAvisoSaida] = useState<AvisoSaida | null>(null);
+  const [recalculandoSaida, setRecalculandoSaida] = useState(false);
+
+  const lerSaida = useCallback(async () => {
+    if (!proxima) { setAvisoSaida(null); return; }
+    setAvisoSaida(await lerAvisoSaida(proxima.id, proxima.inicio));
+  }, [proxima]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void lerSaida();
+    }, [lerSaida]),
+  );
+
+  /** O ÚNICO caminho da Home que gasta uma chamada paga — e só porque ele tocou. */
+  const recalcularSaida = useCallback(async () => {
+    if (recalculandoSaida) return;
+    setRecalculandoSaida(true);
+    try {
+      await reagendarAvisoSaidaDoDia(true);
+      await lerSaida();
+    } finally {
+      setRecalculandoSaida(false);
+    }
+  }, [recalculandoSaida, lerSaida]);
+
   const load = useCallback(async () => {
-    const [total, aprov, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
-      getOrcamentosTotalAtivos(),
-      getOrcamentosAgregadoPorStatus(['aprovado']),
-      getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
-      getOrcamentosParadosAgregado(STATUS_PROPOSTA_ENVIADA, 5),
-      getUltimosOrcamentos(4),
-      getEmpresa(), getProximoAgendamento(), getClientes(),
-    ]);
-    setTotalOrcamentos(total);
-    setAprovadosResumo(aprov);
-    setEmAbertoResumo(aberto);
-    setParadosResumo(parados);
-    setRecentes(recentesLista);
-    setEmpresa(emp);
-    setProxima(prox);
-    setClientes(cli);
-    setCarregando(false);
+    setCarregandoErro(false);
+    try {
+      const [total, aprov, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
+        getOrcamentosTotalAtivos(),
+        getOrcamentosAgregadoPorStatus(['aprovado']),
+        getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
+        getOrcamentosParadosAgregado(STATUS_PROPOSTA_ENVIADA, 5),
+        getUltimosOrcamentos(4),
+        getEmpresa(), getProximoAgendamento(), getClientes(),
+      ]);
+      setTotalOrcamentos(total);
+      setAprovadosResumo(aprov);
+      setEmAbertoResumo(aberto);
+      setParadosResumo(parados);
+      setRecentes(recentesLista);
+      setEmpresa(emp);
+      setProxima(prox);
+      setClientes(cli);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira skeleton infinito nem
+      // colapsa em telas "vazias" enganosas (StarterCard, hero sem visita etc.).
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
+    }
   }, []);
 
   const loadRadar = useCallback(async () => {
+    setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
       // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser —
       // busca até 4 (1 mostrado + até 3 contados no "+N"); Pro vê os 3 de sempre.
       setRadarTotal(lista.slice(0, 4));
     } catch {
-      setRadarTotal([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setRadarErro(true);
     } finally {
       setRadarCarregando(false);
     }
@@ -249,13 +315,35 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); }, [load, loadRadar, loadCobranca]));
+  const loadFollowUp = useCallback(async () => {
+    setFollowUpErro(false);
+    try {
+      const lista = await orcamentosParaFollowUp();
+      setFollowUp(lista);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setFollowUpErro(true);
+    } finally {
+      setFollowUpCarregando(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); loadFollowUp(); }, [load, loadRadar, loadCobranca, loadFollowUp]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); }), [load, loadRadar, loadCobranca]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); loadFollowUp(); }), [load, loadRadar, loadCobranca, loadFollowUp]);
 
-  const refresh = async () => { setRefreshing(true); await Promise.all([load(), loadRadar(), loadCobranca()]); setRefreshing(false); };
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load(), loadRadar(), loadCobranca(), loadFollowUp()]);
+    } finally {
+      // finally garante que o pull-to-refresh nunca fica preso, mesmo se algo
+      // além das 4 chamadas (que já se protegem com try/catch) rejeitar.
+      setRefreshing(false);
+    }
+  };
 
   async function chamarNoWhatsApp(item: ClienteParaReconquistar) {
     if (!item.cliente.telefone?.trim()) {
@@ -293,6 +381,22 @@ export default function HomeScreen() {
     Haptics.selectionAsync().catch(() => {});
     try {
       await abrirWhatsApp(telefone, mensagemCobranca(item));
+    } catch {
+      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+    }
+  }
+
+  async function followUpNoWhatsApp(item: OrcamentoParaFollowUp) {
+    // O orçamento já guarda o telefone denormalizado — funciona mesmo se o
+    // cadastro do cliente tiver sido excluído depois do envio.
+    const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
+    if (!telefone?.trim()) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await abrirWhatsApp(telefone, mensagemFollowUp(item));
     } catch {
       // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
     }
@@ -341,9 +445,14 @@ export default function HomeScreen() {
   // ENVIADA), não só os dois estados antigos. Sem isso as propostas mais
   // quentes (visualizado/em_negociação) sumiam do funil e do radar de parados.
   const conversao = totalOrcamentos ? Math.round((aprovadosResumo.contagem / totalOrcamentos) * 100) : 0;
-  const valorParado = paradosResumo.valorTotal;
-  const valorCobranca = cobranca.reduce((s, item) => s + item.valor, 0);
   const conversaoDetalhe = totalOrcamentos ? `${aprovadosResumo.contagem}/${totalOrcamentos} aprovados` : 'sem histórico';
+  /**
+   * `false` SÓ quando a leitura terminou e disse que não existe nenhum orçamento.
+   * Enquanto carrega — ou quando a leitura falhou — vale `null` (não sabemos), e
+   * o palco NÃO se esconde por causa disso: "não sei" nunca pode ser lido como
+   * "não tem" (o mesmo P0 dos radares, aplicado ao gate de exibição).
+   */
+  const temHistorico = carregando || carregandoErro ? null : totalOrcamentos > 0;
   const emAbertoDetalhe = paradosResumo.contagem > 0 ? `${paradosResumo.contagem} parados` : 'sem atrasos';
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
@@ -383,6 +492,32 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* PALCO DO DINHEIRO PARADO — a PRIMEIRA coisa depois do cumprimento.
+            Os radares de cobrança e de follow-up já existiam e acertavam; o que
+            faltava era hierarquia: "R$ 800 parados há 12 dias" estava desenhado
+            como mais um card no meio da rolagem, com o mesmo peso de um atalho
+            de menu. A lógica continua nos services — aqui só muda o palco e a
+            distância até a ação (cobrar no WhatsApp sem navegar).
+            Os 3 estados de cada radar vão INTEIROS para o componente: é ele que
+            garante que "não deu para verificar" nunca vire "você não tem nada a
+            receber". */}
+        <AnimatedEntrance index={0}>
+          <PainelDinheiroParado
+            cobranca={cobranca}
+            cobrancaCarregando={cobrancaCarregando}
+            cobrancaErro={cobrancaErro}
+            onRecarregarCobranca={loadCobranca}
+            onCobrar={cobrarNoWhatsApp}
+            followUp={followUp}
+            followUpCarregando={followUpCarregando}
+            followUpErro={followUpErro}
+            onRecarregarFollowUp={loadFollowUp}
+            onFollowUp={followUpNoWhatsApp}
+            temHistorico={temHistorico}
+            onVerTodos={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Orcamentos'); }}
+          />
+        </AnimatedEntrance>
+
         {/* HERO — AO VIVO · próxima parada (empty-state até existir agenda) */}
         <AnimatedEntrance index={0}>
           <LinearGradient
@@ -400,6 +535,16 @@ export default function HomeScreen() {
               <View style={styles.heroEmpty}>
                 <MaterialCommunityIcons name="dots-horizontal" size={30} color={heroAcento} />
                 <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Carregando…</Text>
+              </View>
+            ) : carregandoErro ? (
+              <View style={styles.heroEmpty}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={30} color={heroAcento} />
+                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Não deu para carregar</Text>
+                <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Não conseguimos buscar seus dados agora. Verifique a conexão e tente de novo.</Text>
+                <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); load(); }} activeOpacity={0.85}>
+                  <MaterialCommunityIcons name="refresh" size={18} color={textoSobre(cores.accentLight)} />
+                  <Text style={styles.heroBtnText}>Tentar de novo</Text>
+                </TouchableOpacity>
               </View>
             ) : proxima ? (
               <View style={styles.heroFilled}>
@@ -420,6 +565,20 @@ export default function HomeScreen() {
                       resultado={etaResultado}
                       horario={!isNaN(new Date(proxima.inicio).getTime()) ? new Date(proxima.inicio) : undefined}
                       onTentarNovamente={tentarEtaNovamente}
+                    />
+                  </View>
+                ) : null}
+                {/* "A que horas eu preciso sair" — a única estimativa do hero que
+                    aparece TAMBÉM no APK: não depende de localização (a origem
+                    vem do cadastro), ao contrário do EtaChip acima, que o
+                    `temEta` esconde no nativo. Renderiza sozinho quando não há
+                    registro para esta parada. */}
+                {avisoSaida ? (
+                  <View style={styles.heroSaida}>
+                    <AvisoSaidaCard
+                      aviso={avisoSaida}
+                      onAtualizar={recalcularSaida}
+                      atualizando={recalculandoSaida}
                     />
                   </View>
                 ) : null}
@@ -485,6 +644,16 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
+        ) : carregandoErro ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.sm }}>
+            <View style={styles.avisoLinha}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+              <Text style={styles.avisoLinhaTexto}>Não deu para carregar seus números agora.</Text>
+              <TouchableOpacity onPress={load} activeOpacity={0.8}>
+                <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : (
           <AnimatedEntrance index={1}>
             <View style={styles.kpis}>
@@ -524,6 +693,19 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
+        ) : radarErro ? (
+          <>
+            <Text style={styles.sectionTitle}>Radar de clientes</Text>
+            <View style={{ paddingHorizontal: Spacing.base }}>
+              <View style={styles.avisoLinha}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                <Text style={styles.avisoLinhaTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <TouchableOpacity onPress={loadRadar} activeOpacity={0.8}>
+                  <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
         ) : radar.length > 0 ? (
           <>
             <Text style={styles.sectionTitle}>Radar de clientes</Text>
@@ -577,76 +759,11 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        {/* RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
-            3 estados explícitos: carregando (skeleton) / erro (nunca vira "vazio")
-            / vazio de verdade ("tudo recebido"). */}
-        {cobrancaCarregando ? (
-          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
-            <OlliSkeleton width="50%" height={16} />
-            <View style={styles.radarCard}>
-              <OlliSkeleton width={42} height={42} radius={21} />
-              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                <OlliSkeleton width="60%" height={14} />
-                <OlliSkeleton width="35%" height={12} />
-              </View>
-            </View>
-          </View>
-        ) : (
-          <>
-            <Text style={styles.sectionTitle}>Radar de cobrança</Text>
-            {cobrancaErro ? (
-              <View style={{ paddingHorizontal: Spacing.base }}>
-                <View style={styles.cobrancaAviso}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-                  <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar o radar de cobrança agora.</Text>
-                  <TouchableOpacity onPress={loadCobranca} activeOpacity={0.8}>
-                    <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : cobranca.length === 0 ? (
-              <View style={{ paddingHorizontal: Spacing.base }}>
-                <View style={styles.cobrancaVazio}>
-                  <MaterialCommunityIcons name="check-circle-outline" size={20} color={cores.success} />
-                  <Text style={styles.cobrancaVazioTexto}>Tudo recebido — nenhum orçamento aprovado esperando pagamento.</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
-                <Text style={styles.cobrancaResumo}>
-                  {cobranca.length} orçamento{cobranca.length > 1 ? 's' : ''} aprovado{cobranca.length > 1 ? 's' : ''} sem pagamento · {formatCurrency(valorCobranca)} parado
-                </Text>
-                {cobranca.slice(0, 3).map((item, i) => (
-                  <AnimatedEntrance key={item.orcamento.id} index={2 + i}>
-                    <View style={styles.radarCard}>
-                      <View style={styles.radarTop}>
-                        <View style={styles.radarAvatar}>
-                          <Text style={styles.radarAvatarText}>{item.orcamento.clienteNome.charAt(0).toUpperCase()}</Text>
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.radarName} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
-                          <Text style={styles.radarMeta}>
-                            {formatCurrency(item.valor)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.radarActions}>
-                        <OlliPressable style={styles.radarBtnPrimary} onPress={() => cobrarNoWhatsApp(item)} haptic={false}>
-                          <MaterialCommunityIcons
-                            name="whatsapp"
-                            size={16}
-                            color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
-                          />
-                          <Text style={styles.radarBtnPrimaryText}>Cobrar no WhatsApp</Text>
-                        </OlliPressable>
-                      </View>
-                    </View>
-                  </AnimatedEntrance>
-                ))}
-              </View>
-            )}
-          </>
-        )}
+        {/* RADAR DE COBRANÇA e PROPOSTAS PARADAS subiram para o PALCO no topo
+            (PainelDinheiroParado). Ficavam aqui, no meio da rolagem, com o mesmo
+            peso visual de um atalho — dinheiro parado não pode ser mais um card
+            entre cards. Os 3 estados de cada um continuam intactos: agora vivem
+            dentro do palco, não sumiram. */}
 
         {/* ANZOL — Diagnóstico por código de erro (offline, único no BR) */}
         <AnimatedEntrance index={2}>
@@ -671,21 +788,13 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </AnimatedEntrance>
 
-        {/* LEMBRETE DA OLLI — orçamentos parados */}
-        {paradosResumo.contagem > 0 && (
-          <AnimatedEntrance index={2}>
-            <View style={styles.lembrete}>
-              <OlliMascot size={40} float={false} onDark />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.lembreteTitle}>{paradosResumo.contagem} orçamento{paradosResumo.contagem > 1 ? 's' : ''} parado{paradosResumo.contagem > 1 ? 's' : ''} há +5 dias</Text>
-                <Text style={styles.lembreteSub}>{formatCurrency(valorParado)} em jogo. Priorize o follow-up.</Text>
-              </View>
-              <TouchableOpacity style={styles.cobrarBtn} onPress={() => nav.navigate('Orcamentos')} activeOpacity={0.85}>
-                <Text style={styles.cobrarText}>Cobrar</Text>
-              </TouchableOpacity>
-            </View>
-          </AnimatedEntrance>
-        )}
+        {/* O antigo "LEMBRETE DA OLLI — N orçamentos parados há +5 dias" saiu:
+            era a MESMA população do radar de follow-up (STATUS_PROPOSTA_ENVIADA
+            sem movimentação), dita com menos informação — só a contagem — e com
+            uma ação que apenas NAVEGAVA para a lista. O palco no topo já mostra
+            o valor, o tempo e o botão que abre o WhatsApp com a mensagem pronta.
+            Dois cards para o mesmo dinheiro é exatamente o ruído que apagava o
+            aviso. O contador do robô (badge) continua usando `paradosResumo`. */}
 
         <Text style={styles.sectionTitle}>Mais atalhos</Text>
         <AnimatedEntrance index={3}>
@@ -722,7 +831,7 @@ export default function HomeScreen() {
           </View>
         </AnimatedEntrance>
 
-        {!carregando && totalOrcamentos === 0 && (
+        {!carregando && !carregandoErro && totalOrcamentos === 0 && (
           <AnimatedEntrance index={3}>
             <StarterCard
               onCreate={() => nav.navigate('NovoOrcamento', {})}
@@ -741,7 +850,7 @@ export default function HomeScreen() {
             )}
             <Action icon="file-plus" label="Orçar" color={cores.accentLight} onPress={() => nav.navigate('NovoOrcamento', {})} />
             <Action icon="receipt" label="Recibo" color={cores.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
-            <Action icon="account-group" label="Clientes" color="#A78BFA" onPress={() => nav.navigate('Clientes')} />
+            <Action icon="account-group" label="Clientes" color={corCategoria('#A78BFA', cores.surface)} onPress={() => nav.navigate('Clientes')} />
             {!ehTecnico && (
               <Action icon="clipboard-check-outline" label={rotuloOS} color={cores.accentLight} onPress={() => nav.navigate('OrdemServico')} />
             )}
@@ -768,6 +877,16 @@ export default function HomeScreen() {
                 </View>
               </View>
             ))}
+          </View>
+        ) : carregandoErro ? (
+          <View style={styles.emptyRecent}>
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar seus orçamentos agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={load}
+            />
           </View>
         ) : recentes.length === 0 ? (
           <View style={styles.emptyRecent}>
@@ -929,7 +1048,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   name: { fontSize: 21, fontWeight: '800', color: c.onBackground, marginTop: 1 },
   company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },
   // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
-  olliBtn: { width: 48, height: 48, borderRadius: 15, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  olliBtn: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: c.danger, borderWidth: 2, borderColor: c.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
   // Branco fixo: convenção universal de badge de notificação sobre uma cor de
   // status saturada — sem chave "onDanger" na paleta (ver rule 7).
@@ -963,6 +1082,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   heroAddrText: { flex: 1, fontSize: 12.5 },
   heroEta: { marginTop: 8, alignItems: 'flex-start' },
+  heroSaida: { marginTop: 8, alignSelf: 'stretch' },
   // "Estou a caminho" (item 1.3): mesmo verde/contraste do botão de WhatsApp
   // do Radar de clientes (radarBtnPrimary) — convenção única pra "ação de
   // WhatsApp" no app inteiro.
@@ -981,15 +1101,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   kpiDivider: { width: 1, backgroundColor: c.outline, marginVertical: 4 },
 
   anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
-  anzolIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  anzolIcon: { width: 46, height: 46, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   anzolTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
   anzolSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
-
-  lembrete: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginHorizontal: Spacing.base, marginTop: 12 },
-  lembreteTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  lembreteSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
-  cobrarBtn: { backgroundColor: c.warning, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 8 },
-  cobrarText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.warning) },
 
   processCard: { marginHorizontal: Spacing.base, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm },
   processGrid: { flexDirection: 'row', gap: 8 },
@@ -1021,7 +1135,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     ...sombrasDe(c).md,
   },
   starterTop: { flexDirection: 'row', alignItems: 'center' },
-  starterIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.32)', justifyContent: 'center', alignItems: 'center' },
+  starterIcon: { width: 46, height: 46, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.32)', justifyContent: 'center', alignItems: 'center' },
   starterTitle: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
   starterSub: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 2 },
   starterSteps: { flexDirection: 'row', gap: 8, marginTop: 14 },
@@ -1050,16 +1164,15 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
   radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
-  // RADAR DE COBRANÇA — resumo + estados erro/vazio (nunca colapsados um no outro).
-  cobrancaResumo: { fontSize: 12.5, color: c.onSurfaceVariant, fontWeight: '600' },
-  cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md },
-  cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
-  cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
-  cobrancaVazio: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceGlass, borderWidth: 1, borderColor: c.outlineDark, borderRadius: BorderRadius.xl, padding: Spacing.md },
-  cobrancaVazioTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  // Linha de "não deu para carregar X" + retry. Genérica de propósito: serve os
+  // KPIs e o radar de clientes (o radar de cobrança levou a sua para o palco).
+  // Um erro NUNCA vira ausência silenciosa em nenhum desses três lugares.
+  avisoLinha: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md },
+  avisoLinhaTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
+  avisoLinhaAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
-  radarTeaserIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
+  radarTeaserIcon: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
   radarTeaserTitle: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
   radarTeaserSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
 
@@ -1076,11 +1189,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sheet: { backgroundColor: c.surface, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
   sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: Spacing.base },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },
-  sheetMascot: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
+  sheetMascot: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
-  sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  sheetIcon: { width: 44, height: 44, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });

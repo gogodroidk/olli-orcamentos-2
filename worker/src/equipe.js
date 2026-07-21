@@ -115,12 +115,20 @@ function sbHeaders(env, extra = {}) {
  * Membership do usuário na sua organização (a org é 1:1 com o membro nesta v1).
  * Retorna { org_id, papel } se o usuário é membro ATIVO de alguma org, null se
  * não pertence a nenhuma, ou { error:true } em falha de backend.
+ *
+ * `order=criado_em.asc` NÃO é enfeite: `limit(1)` sem ordenação deixa o Postgres
+ * escolher a linha, e esta escolha decide EM QUAL ORG o convite é criado e QUAL
+ * plano é cobrado. Quem é membro de duas orgs (a própria + a de um cliente) teria
+ * o resultado variando entre requisições idênticas — e um gate de dinheiro que
+ * varia sozinho é impossível de auditar depois. A membresia MAIS ANTIGA é a mesma
+ * regra já documentada no painel (`webapp/src/olli/mutacoes.ts`), então os dois
+ * lados passam a responder a mesma coisa.
  */
 async function getMembership(env, userId) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/organizacao_membros?user_id=eq.${encodeURIComponent(userId)}` +
-        `&ativo=eq.true&select=org_id,papel&limit=1`,
+        `&ativo=eq.true&select=org_id,papel&order=criado_em.asc&limit=1`,
       { headers: sbHeaders(env) },
     );
     if (!r.ok) return { error: true };

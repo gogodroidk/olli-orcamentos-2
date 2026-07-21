@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
@@ -74,10 +74,20 @@ function diasAte(iso: string): number {
   return Math.round((alvo.getTime() - hoje.getTime()) / 86400000);
 }
 
-/** Resumo derivado por plano a partir da versão vigente — mesmo cálculo do mobile. */
+/**
+ * Resumo derivado por plano a partir da versão vigente — mesmo cálculo do mobile.
+ *
+ * `periodicidades` (contagem) acompanha `periodicidadeLabels` mesmo não sendo
+ * consumido nesta tela: é o MESMO shape de resumo que a tela mobile
+ * (PmocPlanosScreen) usa no chip "N periodicidades". Mantendo os dois campos
+ * alinhados nas duas telas, um ajuste futuro num lado não quebra o outro em
+ * silêncio por divergência de shape.
+ */
 interface ResumoPlano {
   equipamentos: number;
   numeroVersao?: number;
+  /** Contagem de periodicidades definidas. */
+  periodicidades: number;
   /** Rótulos únicos das frequências das periodicidades ("Mensal", "Trimestral"...). */
   periodicidadeLabels: string[];
   /**
@@ -95,7 +105,7 @@ function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
   const cor = criarSitPmocCor(cores)[situacao] ?? cores.onSurfaceVariant;
   return (
     <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
-      <Text style={[styles.statusBadgeText, { color: cor }]} numberOfLines={1}>
+      <Text style={[styles.statusBadgeText, { color: corCategoriaEmChip(cor, cores.surface) }]} numberOfLines={1}>
         {SIT_PMOC_LABEL[situacao] ?? situacao}
       </Text>
     </View>
@@ -122,12 +132,17 @@ export default function PmocDesktopScreen() {
   const [resumos, setResumos] = useState<Record<string, ResumoPlano>>({});
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `erro` só vira `true`
+  // se o load de fato falhar — a lista NÃO é esvaziada no catch, senão a tabela
+  // mostraria "nada por aqui" quando na verdade a leitura só falhou agora.
+  const [erro, setErro] = useState(false);
   const [gerandoId, setGerandoId] = useState<string | null>(null);
   const [painelVisivel, setPainelVisivel] = useState(false);
 
   const podeGerar = podeGerarPmoc(pode('ver_valores_agregados'));
 
   const carregar = useCallback(async () => {
+    setErro(false);
     try {
       const [lista, listaClientes] = await Promise.all([listarPlanos(), getClientes()]);
       setPlanos(lista);
@@ -152,18 +167,18 @@ export default function PmocDesktopScreen() {
             return [p.id, {
               equipamentos: vigente?.equipamentoIds.length ?? 0,
               numeroVersao: vigente?.numeroVersao,
+              periodicidades: pers.length,
               periodicidadeLabels: labels,
               proximaVisita: vencimentos[0] ?? null,
             }];
           } catch {
-            return [p.id, { equipamentos: 0, periodicidadeLabels: [], proximaVisita: null }];
+            return [p.id, { equipamentos: 0, periodicidades: 0, periodicidadeLabels: [], proximaVisita: null }];
           }
         }),
       );
       setResumos(Object.fromEntries(pares));
     } catch {
-      setPlanos([]);
-      setResumos({});
+      setErro(true);
     } finally {
       setCarregando(false);
     }
@@ -396,18 +411,31 @@ export default function PmocDesktopScreen() {
     >
       <TabelaDados<PmocPlano>
         colunas={colunas}
-        dados={linhas}
+        // Em erro, força "sem linhas" pra cair no `vazio` abaixo com o aviso de
+        // retry — em vez de listar dados possivelmente desatualizados de uma
+        // carga anterior enquanto a leitura atual falhou.
+        dados={erro ? [] : linhas}
         carregando={carregando}
         aoClicarLinha={(p) => abrirPlano(p.id)}
         ordenacaoInicial={{ chave: 'proximaVisita', direcao: 'asc' }}
         vazio={
-          <EmptyState
-            icon="clipboard-text-clock-outline"
-            title="Nenhum plano de manutenção ainda"
-            subtitle="Um plano PMOC organiza as visitas programadas dos equipamentos de um cliente. Crie o primeiro e defina as periodicidades."
-            actionLabel="Criar primeiro plano"
-            onAction={abrirNovo}
-          />
+          erro ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não foi possível carregar"
+              subtitle="Não conseguimos buscar os planos PMOC agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={carregar}
+            />
+          ) : (
+            <EmptyState
+              icon="clipboard-text-clock-outline"
+              title="Nenhum plano de manutenção ainda"
+              subtitle="Um plano PMOC organiza as visitas programadas dos equipamentos de um cliente. Crie o primeiro e defina as periodicidades."
+              actionLabel="Criar primeiro plano"
+              onAction={abrirNovo}
+            />
+          )
         }
       />
 
@@ -499,94 +527,94 @@ function PainelNovoPlano({
     }
   }
 
-  if (!visivel) return null;
-
   return (
-    <View style={styles.raizPainel} accessibilityRole="none">
-      <Pressable style={styles.fundoClicavel} onPress={aoFechar} accessibilityRole="button" accessibilityLabel="Fechar" />
-      <View style={styles.painel}>
-        <View style={styles.cabecalho}>
-          <Text style={styles.tituloPainel}>Novo plano de manutenção</Text>
-          <Pressable
-            onPress={aoFechar}
-            accessibilityRole="button"
-            accessibilityLabel="Fechar"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={({ hovered, focused }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover, focused && styles.focoVisivel]}
-          >
-            <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
-          </Pressable>
-        </View>
+    <Modal visible={visivel} transparent animationType="fade" onRequestClose={aoFechar}>
+      <View style={styles.raizPainel} accessibilityRole="none">
+        <Pressable style={styles.fundoClicavel} onPress={aoFechar} accessibilityRole="button" accessibilityLabel="Fechar" />
+        <View style={styles.painel}>
+          <View style={styles.cabecalho}>
+            <Text style={styles.tituloPainel}>Novo plano de manutenção</Text>
+            <Pressable
+              onPress={aoFechar}
+              accessibilityRole="button"
+              accessibilityLabel="Fechar"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={({ hovered, focused }: PressableWebState) => [styles.botaoFechar, hovered && styles.botaoFecharHover, focused && styles.focoVisivel]}
+            >
+              <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
+            </Pressable>
+          </View>
 
-        <ScrollView contentContainerStyle={styles.conteudoPainel} keyboardShouldPersistTaps="handled">
-          <OlliInput
-            label="Título do plano"
-            required
-            autoFocus
-            value={titulo}
-            onChangeText={setTitulo}
-            placeholder='Ex.: "PMOC — Edifício Aurora"'
-            leftIcon="clipboard-text-outline"
-            error={erro && !titulo.trim() ? erro : undefined}
-          />
+          <ScrollView contentContainerStyle={styles.conteudoPainel} keyboardShouldPersistTaps="handled">
+            <OlliInput
+              label="Título do plano"
+              required
+              autoFocus
+              value={titulo}
+              onChangeText={setTitulo}
+              placeholder='Ex.: "PMOC — Edifício Aurora"'
+              leftIcon="clipboard-text-outline"
+              error={erro && !titulo.trim() ? erro : undefined}
+            />
 
-          <Text style={styles.rotuloSecao}>Cliente (opcional)</Text>
-          <OlliInput
-            value={buscaCliente}
-            onChangeText={setBuscaCliente}
-            placeholder="Buscar cliente…"
-            leftIcon="magnify"
-          />
+            <Text style={styles.rotuloSecao}>Cliente (opcional)</Text>
+            <OlliInput
+              value={buscaCliente}
+              onChangeText={setBuscaCliente}
+              placeholder="Buscar cliente…"
+              leftIcon="magnify"
+            />
 
-          <Pressable
-            onPress={() => setClienteId(undefined)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: !clienteId }}
-            style={({ hovered, focused }: PressableWebState) => [
-              styles.clienteRow, !clienteId && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
-            ]}
-          >
-            <MaterialCommunityIcons name="account-off-outline" size={18} color={cores.onSurfaceVariant} />
-            <Text style={styles.clienteRowTexto}>Sem cliente vinculado</Text>
-            {!clienteId && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
-          </Pressable>
+            <Pressable
+              onPress={() => setClienteId(undefined)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !clienteId }}
+              style={({ hovered, focused }: PressableWebState) => [
+                styles.clienteRow, !clienteId && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
+              ]}
+            >
+              <MaterialCommunityIcons name="account-off-outline" size={18} color={cores.onSurfaceVariant} />
+              <Text style={styles.clienteRowTexto}>Sem cliente vinculado</Text>
+              {!clienteId && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
+            </Pressable>
 
-          {clientesFiltrados.slice(0, 30).map((c) => {
-            const sel = clienteId === c.id;
-            return (
-              <Pressable
-                key={c.id}
-                onPress={() => setClienteId(c.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: sel }}
-                style={({ hovered, focused }: PressableWebState) => [
-                  styles.clienteRow, sel && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
-                ]}
-              >
-                <MaterialCommunityIcons name="account-outline" size={18} color={sel ? cores.accentLight : cores.onSurfaceVariant} />
-                <Text style={[styles.clienteRowTexto, sel && { color: cores.onSurface }]} numberOfLines={1}>{c.nome}</Text>
-                {sel && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
-              </Pressable>
-            );
-          })}
+            {clientesFiltrados.slice(0, 30).map((c) => {
+              const sel = clienteId === c.id;
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => setClienteId(c.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sel }}
+                  style={({ hovered, focused }: PressableWebState) => [
+                    styles.clienteRow, sel && styles.clienteRowAtivo, hovered && styles.clienteRowHover, focused && styles.focoVisivel,
+                  ]}
+                >
+                  <MaterialCommunityIcons name="account-outline" size={18} color={sel ? cores.accentLight : cores.onSurfaceVariant} />
+                  <Text style={[styles.clienteRowTexto, sel && { color: cores.onSurface }]} numberOfLines={1}>{c.nome}</Text>
+                  {sel && <MaterialCommunityIcons name="check" size={18} color={cores.accentLight} />}
+                </Pressable>
+              );
+            })}
 
-          {erro && titulo.trim() ? <Text style={styles.erroTexto}>{erro}</Text> : null}
-        </ScrollView>
+            {erro && titulo.trim() ? <Text style={styles.erroTexto}>{erro}</Text> : null}
+          </ScrollView>
 
-        <View style={styles.rodapePainel}>
-          <OlliButton
-            label="Criar plano"
-            variant="gradient"
-            size="lg"
-            fullWidth
-            loading={salvando}
-            onPress={salvar}
-            disabled={!titulo.trim() || salvando}
-            icon={<MaterialCommunityIcons name="plus" size={18} color="#fff" />}
-          />
+          <View style={styles.rodapePainel}>
+            <OlliButton
+              label="Criar plano"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              loading={salvando}
+              onPress={salvar}
+              disabled={!titulo.trim() || salvando}
+              icon={<MaterialCommunityIcons name="plus" size={18} color="#fff" />}
+            />
+          </View>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -637,13 +665,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   acaoIconeHover: { backgroundColor: c.surfacePressed },
 
-  // Painel lateral "Novo plano" — mesma casca do PainelCliente (420px, direita).
+  // Painel lateral "Novo plano" — mesma casca do PainelCliente (420px, direita),
+  // dentro de <Modal>: sem position/zIndex manual, o Modal já cobre o viewport.
   raizPainel: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    flex: 1,
     flexDirection: 'row',
-    zIndex: 20,
-  } as any,
+  },
   fundoClicavel: { flex: 1, backgroundColor: 'rgba(5,12,22,0.60)' },
   painel: {
     width: 420, height: '100%', backgroundColor: c.surface,

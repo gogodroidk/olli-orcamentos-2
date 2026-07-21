@@ -26,6 +26,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCurrentUser } from './supabase';
 import { exportAllData } from '../database/database';
 import { AUTO_BACKUP_TOGGLE_KEY, AUTO_BACKUP_ULTIMO_KEY } from './storageKeys';
+import { garantirContextoEquipe } from './cloudSync';
+import { backupNuvemPermitido } from './contextoEquipe';
 import {
   inserirBackupVersionado,
   podarBackupsVersionados,
@@ -51,10 +53,15 @@ async function autoBackupHabilitado(): Promise<boolean> {
 
 /**
  * Roda o backup automático diário, se for a hora certa. Passos:
+ *  0) Sai cedo se quem está logado NÃO é o dono do tenant (membro de equipe) ou
+ *     se não dá para saber. Isto é um ATALHO, não a trava: a trava de verdade
+ *     está em `inserirBackupVersionado` (backup.ts), onde o `user_id` é
+ *     carimbado, e ela cobre também o botão manual. O comentário no corpo diz
+ *     por que o atalho existe mesmo assim.
  *  1) No-op se deslogado, toggle desligado, ou já houve 'diario' nas últimas 24h
- *     (carimbo local em AsyncStorage evita até uma consulta de rede na maioria
- *     das aberturas do app — a fonte de verdade do throttle é a própria tabela,
- *     consultada no passo 2, para cobrir o caso de troca de aparelho).
+ *     (o carimbo local em AsyncStorage poupa a consulta de rede do passo 2 — a
+ *     fonte de verdade do throttle é a própria tabela, consultada no passo 2,
+ *     para cobrir o caso de troca de aparelho).
  *  2) Confirma na nuvem que não há 'diario' recente (2ª camada do throttle —
  *     cobre reinstalação/troca de aparelho, onde o carimbo local não existe).
  *  3) Gera o snapshot (exportAllData, reaproveitado de database.ts) e insere
@@ -72,6 +79,33 @@ export async function maybeAutoBackup(): Promise<void> {
 
     const user = await getCurrentUser();
     if (!user) return; // deslogado: sem tabela versionada para escrever (RLS exige dono)
+
+    // POR QUE ESTA CHECAGEM CONTINUA AQUI, se `inserirBackupVersionado` já
+    // recusa (backup.ts, onde o `user_id` é carimbado — é lá que mora a trava
+    // que cobre os três caminhos, inclusive o botão manual)?
+    //
+    // Porque sem ela o membro de equipe pagaria a recusa CARO, em toda abertura
+    // do app, para sempre: o fluxo abaixo faria a consulta de rede do throttle e
+    // então a exportação — serializar o banco INTEIRO — só para o insert ser
+    // recusado no fim. E, como nenhum backup sai, `AUTO_BACKUP_ULTIMO_KEY`
+    // nunca é carimbado, então o atalho local das 24h nunca engata e o ciclo se
+    // repete no próximo start. Sair antes do throttle troca isso por uma leitura
+    // de contexto que, no caminho comum, já vem do cache (`garantirContextoEquipe`).
+    //
+    // NÃO carimbamos AUTO_BACKUP_ULTIMO_KEY aqui de propósito: nenhum backup foi
+    // feito, e um carimbo faria a próxima abertura pular a checagem por 24h — se
+    // o contexto resolver para dono nesse meio-tempo, o backup dele sai na hora.
+    const ctx = await garantirContextoEquipe();
+    if (!backupNuvemPermitido(ctx)) {
+      // Diagnóstico de desenvolvedor. O que o USUÁRIO vê está na tela Conta
+      // (ContaScreen/ContaDesktopScreen leem `estadoBackupNuvem`) — um
+      // console.warn nunca foi aviso para ninguém.
+      console.warn(
+        `[autoBackup] backup na nuvem NÃO gerado: contexto de equipe "${ctx.status}"` +
+          ' (só o dono do tenant faz backup — o banco local contém dados da empresa).',
+      );
+      return;
+    }
 
     const ultimoLocal = await AsyncStorage.getItem(AUTO_BACKUP_ULTIMO_KEY).catch(() => null);
     if (ultimoLocal) {

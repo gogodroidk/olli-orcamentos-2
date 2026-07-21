@@ -1,26 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Animated,
+  View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
-import { Motion } from '../theme/motion';
+import { Spacing, useCores, useEstilos, comAlfa, textoSobre, type Cores } from '../theme';
+import { Motion, useReducedMotion } from '../theme/motion';
 import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { Celebracao } from '../components/Celebracao';
-import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa } from '../database/database';
+import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada } from '../database/database';
 import { Orcamento, ItemOrcamento, FormaPagamento, Cliente, Empresa } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO, todayISO } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { track, Eventos } from '../services/analytics';
+import { getUltimasFormasPagamento, salvarUltimasFormasPagamento } from '../services/formasPagamentoPadrao';
 
 // Steps
 import Step1Cliente from '../steps/Step1Cliente';
@@ -58,7 +60,7 @@ function validadeEmDias(days: number): string {
  * redigitar validade/garantia/condições/observações/PIX em todo orçamento
  * novo — ele ainda pode sobrescrever qualquer campo nos passos seguintes.
  */
-function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
+function emptyOrcamento(numero: string, empresa: Empresa | null, formasPagamentoPadrao?: FormaPagamento): Orcamento {
   const validadeDias = empresa?.validadeDiasPadrao ?? 15;
   return {
     id: generateId(),
@@ -86,7 +88,10 @@ function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
     // Modelo de PDF padrão escolhido em Conta → Modelos de documento (o técnico
     // ainda troca por orçamento em Step4). Sem padrão, Step4 assume 'editorial'.
     modeloPdf: empresa?.modeloPdfPadrao || undefined,
-    formasPagamento: defaultFormas,
+    // Smart default: última combinação que a empresa realmente usou (ver
+    // services/formasPagamentoPadrao) — cai no PIX-só estático quando ainda
+    // não há nenhuma salva (empresa nova).
+    formasPagamento: formasPagamentoPadrao ?? defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
     exibirAprovacao: true,
@@ -171,8 +176,18 @@ export default function NovoOrcamentoScreen() {
   const fade = useRef(new Animated.Value(1)).current;
   // Preenchimento animado da barra de progresso do wizard (0 a 1 = passo 1 a 4).
   const stepProgress = useRef(new Animated.Value(0)).current;
+  const reduzirMovimento = useReducedMotion();
 
   const animateStep = useCallback((dir: 1 | -1, novoStep: number) => {
+    const progressoFinal = novoStep / (STEPS.length - 1);
+    // reduced-motion: troca de passo direto no estado final — sem slide, sem
+    // fade, sem preenchimento animado da barra de progresso.
+    if (reduzirMovimento) {
+      slide.setValue(0);
+      fade.setValue(1);
+      stepProgress.setValue(progressoFinal);
+      return;
+    }
     slide.setValue(dir * 40);
     fade.setValue(0);
     Animated.parallel([
@@ -180,12 +195,12 @@ export default function NovoOrcamentoScreen() {
       Animated.timing(fade, { toValue: 1, duration: Motion.dur.base, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }),
     ]).start();
     Animated.timing(stepProgress, {
-      toValue: novoStep / (STEPS.length - 1),
+      toValue: progressoFinal,
       duration: Motion.dur.base,
       easing: Motion.easing.standard,
       useNativeDriver: false,
     }).start();
-  }, [slide, fade, stepProgress]);
+  }, [slide, fade, stepProgress, reduzirMovimento]);
 
   function goNext() {
     if (!canAdvance()) return;
@@ -206,6 +221,21 @@ export default function NovoOrcamentoScreen() {
       if (isEdit && orcamentoId) {
         const existing = await getOrcamento(orcamentoId);
         if (existing) {
+          // TRAVA DO PRÓPRIO EDITOR (gêmea da de `FormOrcamento.tsx` no painel).
+          // As telas que trazem o usuário até aqui já escondem "Editar" nesses
+          // status, mas esta é a única guarda que cobre quem NÃO passa por tela:
+          // o deep link `orcamentos/:id/editar` (`linking.ts`) abre o editor
+          // direto pela URL. Sem ela, o usuário preenche a tela inteira e só
+          // descobre no "Salvar" que `saveOrcamento` recusa — perdendo o que
+          // digitou. Recusar na porta custa zero e aponta o caminho que funciona.
+          if (edicaoBloqueada(existing.status)) {
+            avisar(
+              'Este orçamento não pode mais ser editado',
+              'O cliente já recebeu este documento. Para mudar valores ou itens, use "Duplicar" — nasce um rascunho novo e o orçamento original continua valendo.',
+            );
+            goBackOrHome(nav);
+            return;
+          }
           setOrc(existing);
           // Itens de um orçamento já salvo (fora deste fluxo) com preço 0 são
           // tratados como já confirmados, para não travar a edição de um
@@ -218,7 +248,8 @@ export default function NovoOrcamentoScreen() {
         }
       }
       const numero = await getNextOrcamentoNumber();
-      let base = emptyOrcamento(numero, emp);
+      const formasPagamentoPadrao = await getUltimasFormasPagamento(emp?.id);
+      let base = emptyOrcamento(numero, emp, formasPagamentoPadrao ?? undefined);
 
       // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
       if (prefillClienteId) {
@@ -285,6 +316,24 @@ export default function NovoOrcamentoScreen() {
     return true;
   }
 
+  /**
+   * Uma falha de save não é uma só. `saveOrcamento` recusa por REGRA COMERCIAL
+   * (orçamento já aceito pelo cliente) com `codigo: 'ORCAMENTO_ACEITO'`, e isso é
+   * PERMANENTE: "tente novamente em instantes" manda o usuário repetir para
+   * sempre um caminho que nunca vai abrir, e o trabalho digitado some junto.
+   * Lemos o `codigo` em vez de `instanceof` — sobrevive ao erro cruzar camadas.
+   */
+  function avisarFalhaSalvar(e: unknown) {
+    if ((e as { codigo?: string } | null)?.codigo === 'ORCAMENTO_ACEITO') {
+      avisar(
+        'Este orçamento já foi aceito',
+        'O cliente aceitou este orçamento, então ele não muda mais. Volte e use "Duplicar" para criar um rascunho novo com estas alterações — o original continua valendo.',
+      );
+      return;
+    }
+    avisar('Não foi possível salvar', 'Tente novamente em instantes.');
+  }
+
   async function handleSave(finalOrc?: Partial<Orcamento>) {
     if (!orc) return;
     setSaving(true);
@@ -295,21 +344,22 @@ export default function NovoOrcamentoScreen() {
         atualizadoEm: nowISO(),
       };
       await saveOrcamento(calcTotais(toSave));
+      // Smart default (fire-and-forget): o que o técnico realmente marcou
+      // aqui vira o próximo padrão desta empresa — não precisa esperar nem
+      // pode travar a navegação abaixo se falhar.
+      void salvarUltimasFormasPagamento(empresa?.id, toSave.formasPagamento);
       // Celebração só na criação (editar um orçamento existente não repete a
       // festa) — o overlay dispara e a navegação real acontece no onDone dele,
       // pra dar tempo do usuário ver a animação antes de trocar de tela.
       if (!isEdit) {
+        track(Eventos.quoteCreated, { origem: 'manual', itens: toSave.itens.length });
         pendingNavRef.current = toSave.id;
         setCelebrando(true);
       } else {
         nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
       }
-    } catch {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
-      } else {
-        Alert.alert('Erro', 'Não foi possível salvar o orçamento agora. Tente novamente.');
-      }
+    } catch (e) {
+      avisarFalhaSalvar(e);
     } finally {
       setSaving(false);
     }
@@ -320,21 +370,19 @@ export default function NovoOrcamentoScreen() {
     setSaving(true);
     try {
       await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
+      void salvarUltimasFormasPagamento(empresa?.id, orc.formasPagamento);
+      if (!isEdit) track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
         goBackOrHome(nav);
         return;
       }
       // Feedback não bloqueante: haptic de sucesso + volta direto, sem exigir
-      // toque em "OK" para sair (o Alert só entra no caminho de erro abaixo).
+      // toque em "OK" para sair (o aviso só entra no caminho de erro abaixo).
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       goBackOrHome(nav);
-    } catch {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        avisar('Não foi possível salvar', 'Tente novamente em instantes.');
-      } else {
-        Alert.alert('Erro', 'Não foi possível salvar o rascunho agora. Tente novamente.');
-      }
+    } catch (e) {
+      avisarFalhaSalvar(e);
     } finally {
       setSaving(false);
     }
@@ -342,15 +390,8 @@ export default function NovoOrcamentoScreen() {
 
   function handleBack() {
     if (step === 0) {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
-          .then(ok => { if (ok) goBackOrHome(nav); });
-        return;
-      }
-      Alert.alert('Cancelar orçamento', 'Deseja descartar este orçamento?', [
-        { text: 'Continuar editando', style: 'cancel' },
-        { text: 'Descartar', style: 'destructive', onPress: () => goBackOrHome(nav) },
-      ]);
+      void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
+        .then(ok => { if (ok) goBackOrHome(nav); });
       return;
     }
     const novoStep = step - 1;
@@ -395,7 +436,7 @@ export default function NovoOrcamentoScreen() {
             accessibilityHint="Abre a OLLI Voz para preencher cliente e itens deste orçamento."
             accessibilityLabel="Preencher orçamento por voz"
           >
-            <MaterialCommunityIcons name="microphone" size={16} color="#fff" />
+            <MaterialCommunityIcons name="microphone" size={16} color={textoSobre(cores.voice)} />
             <Text style={styles.voiceText} numberOfLines={1}>Preencher por voz</Text>
           </TouchableOpacity>
         }
@@ -578,5 +619,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
-  voiceText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  voiceText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.voice) },
 });

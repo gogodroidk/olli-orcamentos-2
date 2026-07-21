@@ -327,14 +327,20 @@ export async function handleCheckout(request, env) {
     // (customer.subscription.updated/deleted) casa o evento com a linha certa.
     fields['subscription_data[metadata][user_id]'] = user.id;
   } else {
-    // AVULSO (pagamento único → 12 meses de acesso). Antes fixava SÓ cartão para
-    // evitar o caminho assíncrono; agora OMITE payment_method_types para o Checkout
-    // oferecer os métodos ATIVOS da conta: cartão parcelado hoje, e Pix (mode=payment,
-    // à vista) entra SOZINHO assim que o dono ativar o Pix no dashboard da Stripe —
-    // sem mudar código. O caminho assíncrono do Pix JÁ é tratado: o webhook em
-    // checkout.session.completed defere quando payment_status != 'paid' e libera em
-    // checkout.session.async_payment_succeeded (processar12x). Pix não parcela, então
-    // a opção de installments abaixo se aplica só ao cartão (o Stripe ignora no Pix).
+    // AVULSO (pagamento único → 12 meses de acesso), FIXADO EM CARTÃO.
+    //
+    // `payment_method_types[0]='card'` não é redundante: é o que mantém a decisão do
+    // dono ("cartão no Stripe, Pix no Mercado Pago") verdadeira sem depender de
+    // ninguém. OMITIR este campo faz o Checkout oferecer todos os métodos ATIVOS da
+    // conta — então, no dia em que o Pix for ligado no dashboard da Stripe (ação de
+    // painel, sem deploy, sem code review), o OLLI passaria a vender Pix pela
+    // Stripe sozinho, com a taxa da Stripe, fora do MP, e sem nenhum alarme. A
+    // versão anterior deste bloco tratava isso como recurso ("entra sozinho"); sob
+    // a decisão atual é um vazamento silencioso de gateway. Pix é do MP: /mp/pix.
+    //
+    // Pix não parcela, e agora não entra: a opção de installments abaixo vale para
+    // o cartão, que é o único método que este checkout aceita.
+    fields['payment_method_types[0]'] = 'card';
     fields['payment_method_options[card][installments][enabled]'] = 'true';
     fields['metadata[origem]'] = '12x';
     fields['metadata[meses_acesso]'] = '12';

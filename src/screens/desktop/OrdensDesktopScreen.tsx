@@ -63,6 +63,7 @@ export default function OrdensDesktopScreen() {
 
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [ordensErro, setOrdensErro] = useState(false);
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todas');
   const [userId, setUserId] = useState<string | null>(null);
@@ -79,12 +80,14 @@ export default function OrdensDesktopScreen() {
   }, []);
 
   const carregar = useCallback(async () => {
+    setOrdensErro(false);
     try {
       const lista = ehTecnico ? (userId ? await getMinhasOrdens(userId) : []) : await getOrdens();
       lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
       setOrdens(lista);
     } catch {
-      setOrdens([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setOrdensErro(true);
     } finally {
       setCarregando(false);
     }
@@ -287,19 +290,29 @@ export default function OrdensDesktopScreen() {
         carregando={carregando || carregandoConta}
         aoClicarLinha={(o) => abrirDetalhe(o.id)}
         vazio={
-          <EmptyState
-            icon="clipboard-check-outline"
-            title={ehTecnico ? 'Nenhuma OS para você' : 'Nenhuma ordem de serviço'}
-            subtitle={
-              busca
-                ? 'Nenhum resultado para sua busca.'
-                : ehTecnico
-                ? 'Quando o escritório te atribuir uma ordem, ela aparece aqui.'
-                : 'Crie a primeira ordem a partir de um orçamento aprovado ou manualmente.'
-            }
-            actionLabel={ehGestao && !busca ? 'Nova OS' : undefined}
-            onAction={ehGestao && !busca ? () => setNovaVisivel(true) : undefined}
-          />
+          ordensErro ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar suas ordens de serviço agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={carregar}
+            />
+          ) : (
+            <EmptyState
+              icon="clipboard-check-outline"
+              title={ehTecnico ? 'Nenhuma OS para você' : 'Nenhuma ordem de serviço'}
+              subtitle={
+                busca
+                  ? 'Nenhum resultado para sua busca.'
+                  : ehTecnico
+                  ? 'Quando o escritório te atribuir uma ordem, ela aparece aqui.'
+                  : 'Crie a primeira ordem a partir de um orçamento aprovado ou manualmente.'
+              }
+              actionLabel={ehGestao && !busca ? 'Nova OS' : undefined}
+              onAction={ehGestao && !busca ? () => setNovaVisivel(true) : undefined}
+            />
+          )
         }
       />
 

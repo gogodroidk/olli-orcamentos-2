@@ -44,7 +44,11 @@ export type NavGroupProps = Omit<NavListProps, "data" | "depth"> & {
 /**
  * Main
  */
-export type NavProps = React.ComponentProps<"nav"> &
+// `"div"`, não `"nav"`: NavVertical/NavMini/NavHorizontal renderizam <div> — o marco
+// <nav> (com nome) mora nos layouts, uma vez só, para não aninhar dois marcos de
+// navegação sem nome. Manter `"nav"` aqui deixava o `ref` tipado como HTMLElement e
+// o tsc reclamava na hora de espalhar as props no <div>.
+export type NavProps = React.ComponentProps<"div"> &
 	Omit<NavListProps, "data" | "depth"> & {
 		data: {
 			name?: string;

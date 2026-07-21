@@ -14,12 +14,22 @@
  *    Ver o comentário em `webapp/src/olli/datas.ts`.
  * 3. A lixeira já foi filtrada lá atrás (`useOlliList` só traz `excluido_em IS NULL`).
  */
+import { type Orcamento, STATUS_PROPOSTA_ENVIADA } from "@dominio";
 import { brParaYmd } from "@/olli/datas";
 import type { AgendamentoRow, OrcamentoRow, ReciboRow } from "./helpers";
 import { valorOrcamento } from "./helpers";
 
-/** Proposta VIVA na mão do cliente — ainda pode virar dinheiro. */
-export const STATUS_EM_JOGO = ["enviado", "visualizado", "em_negociacao", "aguardando_assinatura"] as const;
+/**
+ * Proposta VIVA na mão do cliente — ainda pode virar dinheiro.
+ *
+ * NÃO é uma lista nova: é a `STATUS_PROPOSTA_ENVIADA` do app (`src/types/index.ts`),
+ * a MESMA constante que o `radarFollowUp.ts` do celular usa para decidir "esta
+ * proposta já foi ao cliente". Antes o painel tinha uma cópia literal dos 4 slugs e
+ * o `listarParados` abaixo olhava só DOIS deles ("enviado"/"visualizado") — app e
+ * painel contavam propostas paradas diferentes em cima do mesmo dado, que é pior do
+ * que não ter o radar. Importando a constante, divergir vira erro de compilação.
+ */
+export const STATUS_EM_JOGO = STATUS_PROPOSTA_ENVIADA;
 
 /** Proposta GANHA — o dinheiro é seu, falta entrar. */
 export const STATUS_A_RECEBER = ["aprovado", "convertido"] as const;
@@ -76,14 +86,78 @@ export function valorRecibo(r: ReciboRow): number | null {
 	return null;
 }
 
+/** Uma linha do dinheiro parado: um orçamento GANHO que ainda não foi pago por inteiro. */
+export interface DinheiroParado {
+	id: string;
+	numero: string;
+	cliente: string;
+	/** Telefone cru do blob (vazio → sem WhatsApp possível). */
+	telefone: string;
+	/** Ainda devido (valor do orçamento − recibos dele). Sempre > 0. */
+	saldo: number;
+	/** Valor CHEIO aprovado — é dele que a mensagem de cobrança fala. */
+	valorTotal: number;
+	/** Quanto já entrou deste orçamento. 0 = ninguém pagou nada ainda. */
+	jaPago: number;
+	/**
+	 * Dias desde a última mexida (proxy de "desde quando está aprovado", igual ao
+	 * app). `null` = nenhuma data legível — o item CONTINUA aparecendo, porque
+	 * esconder dinheiro por falta de data seria apagar o que o dono tem a receber.
+	 */
+	dias: number | null;
+	status: string;
+	/**
+	 * O blob do orçamento. É dele que sai o telefone e é ele que alimenta a MESMA
+	 * função de mensagem que o celular usa (`montarMensagemCobranca`). `null` numa
+	 * linha antiga sem blob: a linha aparece, só não tem botão de cobrar.
+	 */
+	dados: Orcamento | null;
+}
+
+/** O radar de dinheiro parado inteiro: a lista + os totais que a tela mostra. */
+export interface RadarDinheiro extends SomaAReceber {
+	/** As linhas, mais parado primeiro (sem data legível por último). */
+	linhas: DinheiroParado[];
+	/** Dias do item mais antigo — o "há N dias" do título. `null` = nenhuma data legível. */
+	diasMaisAntigo: number | null;
+}
+
 /**
- * Ganho mas ainda não pago: Σ(valor do orçamento aprovado/convertido) − Σ(recibos dele).
+ * O RADAR DE DINHEIRO PARADO — orçamento ganho que ainda não virou dinheiro no bolso.
+ *
+ * ═══ ESPELHO DA REGRA DO APP, COM UMA DIFERENÇA DECLARADA ═══
+ * O celular tem esta mesma pergunta em `src/services/radarCobranca.ts`. Não dá para
+ * IMPORTAR aquele arquivo: ele lê o SQLite do aparelho (`database/database.ts` →
+ * expo-sqlite) e devolve objetos de domínio, enquanto aqui a fonte são as `Row` do
+ * Supabase. O que dava para reusar foi reusado de verdade — a mensagem de WhatsApp e
+ * o Pix Copia e Cola saem das MESMAS funções do app (ver `radares.ts`).
+ *
+ * A regra de "quanto tempo parado" é idêntica: `atualizado_em → criado_em` como proxy
+ * da aprovação (`dataAprovacao` no app), dias inteiros, mais parado primeiro.
+ *
+ * A regra de "o que conta como parado" é um SUPERCONJUNTO da do app, de propósito:
+ *   • app ....... status === 'aprovado' E nenhum recibo vinculado;
+ *   • painel .... status aprovado OU convertido, com SALDO > 0 (abate os recibos).
+ * Dois motivos, e nenhum deles é preguiça:
+ *   1. Este número tem que bater com o KPI "A receber" que já está na MESMA tela —
+ *      duas contas diferentes de dinheiro parado lado a lado é pior que nenhuma. Por
+ *      isso `calcularAReceber` agora é derivado DESTA função, não uma segunda soma.
+ *   2. Pelo saldo, um orçamento com pagamento PARCIAL (sinal) continua sendo dinheiro
+ *      parado. Na regra do app ele some do radar inteiro no instante em que o primeiro
+ *      recibo é emitido — o resto vira dinheiro invisível.
+ * A garantia que isso dá: o painel NUNCA mostra menos dinheiro parado que o celular
+ * (o conjunto do app está contido neste). O erro perigoso — o app avisar "R$ 800
+ * esperando" e o painel dizer "nada parado" — é impossível por construção.
  *
  * O saldo é calculado POR ORÇAMENTO e travado em 0 no piso. Sem esse trava-piso, um
  * cliente que pagou a mais num serviço (troco, gorjeta, valor arredondado) abateria a
  * dívida de OUTRO cliente e o dono cobraria de menos — dinheiro que some da tela.
  */
-export function calcularAReceber(orcamentos: OrcamentoRow[], recibos: ReciboRow[]): SomaAReceber {
+export function listarDinheiroParado(
+	orcamentos: OrcamentoRow[],
+	recibos: ReciboRow[],
+	agora: Date = new Date(),
+): RadarDinheiro {
 	// Quanto já entrou por orçamento.
 	const recebidoPorOrc = new Map<string, number>();
 	for (const r of recibos) {
@@ -94,14 +168,15 @@ export function calcularAReceber(orcamentos: OrcamentoRow[], recibos: ReciboRow[
 		recebidoPorOrc.set(orcId, (recebidoPorOrc.get(orcId) ?? 0) + v);
 	}
 
+	const linhas: DinheiroParado[] = [];
 	let total = 0;
-	let itens = 0;
 	let semValor = 0;
 	let jaRecebido = 0;
 	let quitados = 0;
 
 	for (const o of orcamentos) {
-		if (!aReceber.has(slug(o.status))) continue;
+		const s = slug(o.status);
+		if (!aReceber.has(s)) continue;
 		const v = valorOrcamento(o);
 		if (v === null) {
 			semValor++;
@@ -115,9 +190,52 @@ export function calcularAReceber(orcamentos: OrcamentoRow[], recibos: ReciboRow[
 			continue;
 		}
 		total += saldo;
-		itens++;
+
+		const t = ultimaMexida(o);
+		linhas.push({
+			id: (o.id ?? "").trim(),
+			numero: (o.numero ?? o.dados?.numero ?? "").trim(),
+			cliente: (o.cliente_nome ?? o.dados?.clienteNome ?? "").trim() || "Cliente não informado",
+			telefone: (o.dados?.clienteTelefone ?? "").trim(),
+			saldo,
+			valorTotal: v,
+			jaPago: Math.min(pago, v),
+			dias: Number.isFinite(t) ? Math.max(0, Math.floor((agora.getTime() - t) / 86_400_000)) : null,
+			status: s,
+			dados: o.dados ?? null,
+		});
 	}
 
+	// Mais parado primeiro (é quem precisa de cobrança antes). Sem data legível vai
+	// para o fim — não some, só não tem como disputar prioridade por tempo. Empate de
+	// dias desempata pelo maior saldo: entre dois de 12 dias, o de R$ 900 vem antes.
+	linhas.sort((a, b) => {
+		if (a.dias === b.dias) return b.saldo - a.saldo;
+		if (a.dias === null) return 1;
+		if (b.dias === null) return -1;
+		return b.dias - a.dias;
+	});
+
+	return {
+		linhas,
+		total,
+		itens: linhas.length,
+		semValor,
+		jaRecebido,
+		quitados,
+		diasMaisAntigo: linhas.length > 0 ? linhas[0].dias : null,
+	};
+}
+
+/**
+ * Ganho mas ainda não pago: Σ(valor do orçamento aprovado/convertido) − Σ(recibos dele).
+ *
+ * Derivado de `listarDinheiroParado` de propósito: o KPI "A receber" e o radar de
+ * dinheiro parado são o MESMO dinheiro, e agora saem da mesma passagem de código —
+ * não há como um dizer R$ 2.340 e o outro R$ 1.900 na mesma tela.
+ */
+export function calcularAReceber(orcamentos: OrcamentoRow[], recibos: ReciboRow[]): SomaAReceber {
+	const { total, itens, semValor, jaRecebido, quitados } = listarDinheiroParado(orcamentos, recibos);
 	return { total, itens, semValor, jaRecebido, quitados };
 }
 
@@ -228,15 +346,21 @@ function ultimaMexida(o: OrcamentoRow): number {
 }
 
 /**
- * Orçamentos ENVIADOS/VISUALIZADOS esquecidos há mais de `minDias`. É a lista que
- * faz o dono ganhar dinheiro: proposta na mão do cliente, sem resposta, sem cobrança.
- * Mais parado primeiro. Sem data legível → fica de fora (não inventamos "0 dias").
+ * Propostas JÁ ENVIADAS ao cliente e esquecidas há mais de `minDias` — o degrau
+ * ANTES do dinheiro parado: aqui o cliente ainda nem respondeu. Mais parado
+ * primeiro. Sem data legível → fica de fora (não inventamos "0 dias").
+ *
+ * ESPELHO DO APP: mesma pergunta de `src/services/radarFollowUp.ts` (mesmo limiar
+ * de 3 dias, mesmo proxy `atualizado_em → criado_em`, mesma ordem). O status agora
+ * sai de `STATUS_EM_JOGO`, que É a `STATUS_PROPOSTA_ENVIADA` do app — antes esta
+ * função olhava só "enviado"/"visualizado" e escondia do painel toda proposta em
+ * negociação ou aguardando assinatura que o celular mostrava como parada.
  */
 export function listarParados(orcamentos: OrcamentoRow[], minDias = 3, agora: Date = new Date()): Parado[] {
 	const parados: Parado[] = [];
 	for (const o of orcamentos) {
 		const s = slug(o.status);
-		if (s !== "enviado" && s !== "visualizado") continue;
+		if (!emJogo.has(s)) continue;
 		const t = ultimaMexida(o);
 		if (!Number.isFinite(t)) continue;
 		const dias = Math.floor((agora.getTime() - t) / 86_400_000);

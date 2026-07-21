@@ -27,6 +27,7 @@ import type { CategoriaHvac, CriticidadeEquipamento, Equipamento, SituacaoEquipa
 import { STATUS_EQUIP_LABELS } from "@dominio";
 import { X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { Campo } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
@@ -37,7 +38,15 @@ import { useSalvar } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
-import { CATEGORIAS, CRITICIDADES, formatarBtu, REFRIGERANTES_SUGERIDOS, TENSOES_SUGERIDAS } from "./equipamento";
+import {
+	CATEGORIAS,
+	CRITICIDADES,
+	formatarBtu,
+	type LinhaAsset,
+	linhaParaEquipamento,
+	REFRIGERANTES_SUGERIDOS,
+	TENSOES_SUGERIDAS,
+} from "./equipamento";
 
 /** Radix Select não aceita `value=""`. Este é o "não informado" de categoria/criticidade. */
 const VAZIO = "__vazio__";
@@ -143,13 +152,34 @@ export default function FormEquipamento({ aberto, aoFechar, equipamento }: Props
 		}
 		setErroValidacao(null);
 
+		// LOST UPDATE: entre abrir este diálogo e salvar, o celular pode ter tirado
+		// fotos ou revogado o QR deste equipamento. A prop `equipamento` foi capturada
+		// na ABERTURA — partir dela apagaria o que mudou nesse meio-tempo. Numa edição,
+		// relemos a linha FRESCA do banco agora e partimos DELA (mesmo padrão de
+		// `carregarOsFresca`/FormOs.tsx e da releitura de FormOrcamento.tsx). Num
+		// cadastro novo não há o que reler.
+		let base: Equipamento | null = equipamento;
+		if (equipamento) {
+			const { data, error } = await supabase.from("assets").select("*").eq("id", equipamento.id).maybeSingle();
+			if (error) {
+				setErroValidacao("Não consegui confirmar o estado atual deste equipamento. Tente de novo.");
+				return;
+			}
+			if (!data) {
+				setErroValidacao("Este equipamento não existe mais. Atualize a página.");
+				return;
+			}
+			base = linhaParaEquipamento(data as LinhaAsset);
+		}
+
 		const agora = agoraIso();
 		const equipamentoSalvo: Equipamento = {
-			// Parte do registro INTEIRO: preserva fotos, localId, qrToken, qrRevogadoEm
-			// e criadoEm. Ver cabeçalho — montar do zero apagaria o trabalho de campo.
-			...(equipamento ?? {}),
+			// Parte do registro INTEIRO (fresco): preserva fotos, localId, qrToken,
+			// qrRevogadoEm e criadoEm. Ver cabeçalho — montar do zero apagaria o
+			// trabalho de campo.
+			...(base ?? {}),
 
-			id: equipamento?.id ?? novoId(),
+			id: base?.id ?? novoId(),
 			clienteId: clienteId || undefined,
 			categoria: cat as CategoriaHvac | undefined,
 			fabricante: fabricante.trim() || undefined,
@@ -165,10 +195,10 @@ export default function FormEquipamento({ aberto, aoFechar, equipamento }: Props
 			codigoInterno: codigoInterno.trim() || undefined,
 
 			// O QR nasce no BANCO. Vazio no cadastro novo (o contrato omite a coluna e o
-			// DEFAULT gera); na edição, reenvia o MESMO token. Nunca inventamos um.
-			qrToken: equipamento?.qrToken ?? "",
-			fotos: equipamento?.fotos ?? [],
-			criadoEm: equipamento?.criadoEm ?? agora,
+			// DEFAULT gera); na edição, reenvia o MESMO token (agora fresco). Nunca inventamos um.
+			qrToken: base?.qrToken ?? "",
+			fotos: base?.fotos ?? [],
+			criadoEm: base?.criadoEm ?? agora,
 			atualizadoEm: agora,
 		};
 

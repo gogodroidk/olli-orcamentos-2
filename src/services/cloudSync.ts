@@ -16,7 +16,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
-import { classificarContextoEquipe, decidirEscritaEquipe } from './contextoEquipe';
+import { classificarContextoEquipe, decidirEscritaEquipe, decidirEmpresaEquipe } from './contextoEquipe';
 import type { ContextoEquipe } from './contextoEquipe';
 import { abrirParticaoDoUsuario, donoDoBancoAberto, getDb } from '../database/database';
 import { podeSincronizar } from '../database/particao';
@@ -536,7 +536,11 @@ export async function pushRow(table: SyncTable, objLocal: unknown): Promise<void
  * Upsert sem checar sessão — para o caminho em LOTE (pushAllLocal), que valida a
  * sessão UMA vez antes de iterar (evita um getUser() por linha). NUNCA lança.
  *
- * GUARDA ESPECIAL PARA `empresa`: é upsert por `user_id` (uma linha por dono,
+ * GUARDA ESPECIAL PARA `empresa` (são DUAS, nesta ordem): antes de qualquer
+ * comparação de carimbo, quem NÃO é dono do tenant nem sequer tenta o upsert —
+ * senão o membro de equipe grava uma cópia da empresa do dono no tenant dele
+ * (ver o bloco no corpo da função). Passada essa, vem a guarda de carimbo:
+ * `empresa` é upsert por `user_id` (uma linha por dono,
  * onConflict 'user_id'), então dois aparelhos do MESMO dono editando "Meu
  * Negócio" em momentos diferentes se alternavam em "último a salvar vence" —
  * sem proteção, o aparelho que sincronizasse por último sempre vencia, mesmo
@@ -566,10 +570,14 @@ export async function pushRow(table: SyncTable, objLocal: unknown): Promise<void
 let contextoEquipe: ContextoEquipe = { status: 'desconhecido' };
 
 /**
- * Tabelas cuja escrita depende de saber QUEM somos (dono vs membro). Só estas
- * são adiadas quando o contexto é `desconhecido`. `empresa`/`servicos`/`produtos`/
- * `recibos` seguem escrita só do dono (nunca recebem injeção de user_id), então
- * não dependem do contexto e continuam passando.
+ * Tabelas que o membro de equipe grava NO TENANT DO DONO (injeção de `user_id`).
+ * Adiadas quando o contexto é `desconhecido`.
+ *
+ * `empresa` NÃO entra aqui, mas também depende do contexto — por outro motivo e
+ * com outra decisão: ela é a única linha ÚNICA POR DONO, ninguém injeta user_id
+ * nela, e o membro simplesmente NÃO a escreve (guarda própria em
+ * pushRowUnchecked, ver ali). `servicos`/`produtos`/`recibos` seguem escrita só
+ * do dono via RLS e não dependem do contexto: continuam passando.
  */
 const TABELAS_TENANT_EQUIPE: ReadonlySet<SyncTable> = new Set<SyncTable>([
   'clientes',
@@ -611,6 +619,33 @@ export async function garantirContextoEquipe(): Promise<ContextoEquipe> {
 }
 
 /**
+ * De QUEM é a linha `empresa` que este aparelho deve ler, e se ele pode escrevê-la.
+ * Resolve o contexto (sob demanda) e traduz pela decisão pura `decidirEmpresaEquipe`;
+ * o `userId` do caso `pessoal` só aparece aqui porque depende da sessão.
+ *
+ * `null` = NÃO TOQUE em `empresa` agora (contexto indeterminado ou sem sessão) —
+ * o mesmo fail-closed das tabelas de tenant. NUNCA lança.
+ */
+async function alvoEmpresa(): Promise<{ userId: string; souDono: boolean } | null> {
+  try {
+    const d = decidirEmpresaEquipe(await garantirContextoEquipe());
+    if (!d.ler) return null;
+    // Roteia pelo DISCRIMINANTE (`escrever`), não pela truthiness de
+    // `ownerUserId`. São a mesma coisa só enquanto o banco garantir que todo
+    // membro tem um dono com id não-vazio (`organizacoes.owner_user_id not null`);
+    // no dia em que um `ownerUserId` chegar vazio, ramificar pela truthiness dele
+    // mandaria o MEMBRO para o ramo do dono — `getCurrentUser()` devolveria o id
+    // dele e `souDono: true` reabriria o vazamento inteiro. `escrever` é o campo
+    // que `decidirEmpresaEquipe` calcula justamente para responder a esta pergunta.
+    if (!d.escrever) return { userId: d.ownerUserId, souDono: false };
+    const user = await getCurrentUser();
+    return user?.id ? { userId: user.id, souDono: true } : null;
+  } catch {
+    return null; // não consegui decidir = não escrevo nem leio (fail-closed)
+  }
+}
+
+/**
  * Esquece quem somos. Chamado no logout/troca de conta (`abortarSyncEmAndamento`)
  * para que o contexto do usuário ANTERIOR nunca carimbe uma linha do próximo.
  */
@@ -621,12 +656,25 @@ function resetarContextoEquipe(): void {
 async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<void> {
   try {
     if (!objLocal || !supabase) return;
-    if (table === 'empresa' && (await empresaNuvemMudouDesdeUltimoPull())) {
-      // Outro aparelho editou a empresa depois do nosso último pull: não
-      // sobrescrever — e puxar a versão mais nova para o local convergir em vez
-      // de ficar divergente em silêncio (a edição local perde, estado fica são).
-      void pullEmpresaMaisNova().catch(() => {});
-      return;
+    if (table === 'empresa') {
+      // SÓ O DONO DO TENANT ESCREVE `empresa`. O membro de equipe puxou para o
+      // SQLite a empresa do DONO (precisa dela para emitir documento em nome da
+      // empresa) e este upsert vai SEM `user_id` — o default `auth.uid()` o
+      // carimbaria com o id do MEMBRO, criando no tenant dele uma cópia do
+      // CNPJ/logo/endereço/chave Pix do dono, que sobrevive à saída dele da
+      // equipe. Também não há o que perder: a RLS (`empresa_owner_write`) já
+      // recusa a escrita na linha do dono, então para o membro este push nunca
+      // teve efeito legítimo. `desconhecido` não passa pelo mesmo motivo das
+      // tabelas de tenant — não saber de quem é a linha nunca autoriza gravá-la.
+      const alvo = await alvoEmpresa();
+      if (!alvo?.souDono) return;
+      if (await empresaNuvemMudouDesdeUltimoPull(alvo.userId)) {
+        // Outro aparelho editou a empresa depois do nosso último pull: não
+        // sobrescrever — e puxar a versão mais nova para o local convergir em vez
+        // de ficar divergente em silêncio (a edição local perde, estado fica são).
+        void pullEmpresaMaisNova(alvo.userId).catch(() => {});
+        return;
+      }
     }
     const row = TO_ROW[table](objLocal);
     // Membro não-dono: cliente/orçamento/agendamento/OS/equipamento e o plano PMOC
@@ -635,8 +683,9 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     // e o dono nunca a veria (P1-3: cliente cadastrado pelo técnico no wizard sumia
     // em silêncio). `clientes` entrou nesta lista porque o wizard deixa o técnico
     // cadastrar cliente — a RLS de INSERT foi aberta a membro ativo em migration
-    // dedicada (ver 20260719_clientes_insert_equipe.sql). (empresa/servicos/produtos/
-    // recibos seguem escrita só do dono — não injetar.)
+    // dedicada (ver 20260719_clientes_insert_equipe.sql). (servicos/produtos/recibos
+    // seguem escrita só do dono — não injetar. `empresa` também não injeta, mas tem
+    // guarda PRÓPRIA e mais dura logo acima: o membro nem tenta o upsert.)
     if (TABELAS_TENANT_EQUIPE.has(table)) {
       const decisao = decidirEscritaEquipe(await garantirContextoEquipe());
       // Não sabemos o tenant: NÃO chutar. Adiar o espelho é inócuo (o SQLite local
@@ -660,7 +709,7 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
  * aparelho escreveu depois da última vez que vimos a nuvem. Sem carimbo local
  * devolve false → o push acontece (piso seguro). NUNCA lança.
  */
-async function empresaNuvemMudouDesdeUltimoPull(): Promise<boolean> {
+async function empresaNuvemMudouDesdeUltimoPull(userId: string): Promise<boolean> {
   try {
     if (!supabase) return false;
     const stampLocal = await AsyncStorage.getItem(EMPRESA_STAMP_KEY).catch(() => null);
@@ -671,10 +720,18 @@ async function empresaNuvemMudouDesdeUltimoPull(): Promise<boolean> {
       // o antigo "return false" era o piso INSEGURO). Devolver true faz o chamador
       // puxar a nuvem em vez de empurrar, e o local converge. Se a nuvem não tem
       // empresa, é usuário novo criando a dele → false libera o push (fluxo correto).
-      const { data } = await supabase.from('empresa').select('user_id').maybeSingle();
+      // `.eq(user_id)`: sem o filtro, um membro de equipe enxerga (RLS
+      // `empresa_select` → donos_visiveis) a linha do DONO além da própria, e o
+      // maybeSingle devolvia erro com 2 linhas — ou, pior, a resposta era sobre a
+      // empresa de OUTRA pessoa. Só perguntamos sobre a linha do nosso tenant.
+      const { data } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
       return !!data;
     }
-    const { data } = await supabase.from('empresa').select('atualizado_em').maybeSingle();
+    const { data } = await supabase
+      .from('empresa')
+      .select('atualizado_em')
+      .eq('user_id', userId)
+      .maybeSingle();
     const remoto = (data as any)?.atualizado_em as string | undefined;
     return tsMaisNovo(remoto, stampLocal);
   } catch {
@@ -688,10 +745,12 @@ async function empresaNuvemMudouDesdeUltimoPull(): Promise<boolean> {
  * último pull): em vez de divergir em silêncio, o local converge para a nuvem.
  * NUNCA lança.
  */
-async function pullEmpresaMaisNova(): Promise<void> {
+async function pullEmpresaMaisNova(userId: string): Promise<void> {
   try {
     if (!supabase) return;
-    const { data } = await supabase.from('empresa').select('*').maybeSingle();
+    // Escopado ao tenant (ver empresaNuvemMudouDesdeUltimoPull): sem o filtro, a
+    // "versão mais nova" podia ser a empresa de outro dono visível pela RLS.
+    const { data } = await supabase.from('empresa').select('*').eq('user_id', userId).maybeSingle();
     const emp = rowToEmpresa(data);
     if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
   } catch {
@@ -1280,12 +1339,22 @@ export async function pullAll(geracao?: number): Promise<void> {
     await applyCloudTombstones(geracao);
     if (syncAbortado(geracao)) return;
 
-    // empresa (uma linha por usuário)
+    // empresa (uma linha por usuário) — SEMPRE escopada a um tenant explícito.
+    // O membro de equipe LEGITIMAMENTE puxa a empresa do DONO (é a marca que sai
+    // nos documentos que ele emite), mas o `select('*')` sem filtro deixava a RLS
+    // decidir sozinha QUAL linha vinha: um membro que já tinha empresa própria
+    // enxergava DUAS e o maybeSingle devolvia erro — ele nunca mais recebia a
+    // marca da empresa, em silêncio. Com contexto `desconhecido`, alvoEmpresa
+    // devolve null e o pull é ADIADO: não dá para dizer de quem seria a linha, e
+    // o local (fonte da verdade) segue intacto até o próximo sync saber quem somos.
     try {
-      const { data } = await supabase.from('empresa').select('*').maybeSingle();
-      if (syncAbortado(geracao)) return;
-      const emp = rowToEmpresa(data);
-      if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
+      const alvo = await alvoEmpresa();
+      if (alvo) {
+        const { data } = await supabase.from('empresa').select('*').eq('user_id', alvo.userId).maybeSingle();
+        if (syncAbortado(geracao)) return;
+        const emp = rowToEmpresa(data);
+        if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
+      }
     } catch {}
 
     await pullTable<Cliente>('clientes', rowToCliente, localUpsertCliente, geracao);
@@ -2162,6 +2231,16 @@ export async function syncOnLogin(): Promise<void> {
     // em OUTRO aparelho só cancela o lembrete aqui após esta reconciliação.
     void import('./pmoc')
       .then(m => m.resincronizarLembretesPmoc())
+      .catch(() => {});
+    // Ritual diário ("Bom dia da OLLI" / "Fechar o dia") — reagendado aqui pelo
+    // MESMO motivo dos dois acima: é o ponto onde o app já "abriu com sessão
+    // válida e recalculou" (boot com sessão dispara INITIAL_SESSION → aqui; todo
+    // sync seguinte também). Sem TaskManager/BackgroundFetch neste app, este é o
+    // único lugar seguro (partição já resolvida) para o reagendamento automático
+    // — ver services/ritualDiario.ts. Import tardio pelo mesmo motivo de ciclo de
+    // carga; fire-and-forget, nunca lança.
+    void import('./ritualDiario')
+      .then(m => m.reagendarRitualDiario())
       .catch(() => {});
     // Sinaliza que a nuvem já foi baixada para o SQLite: as telas que se
     // inscreveram refazem o fetch e o estado "vazio" inicial some sozinho.

@@ -31,7 +31,7 @@ import {
 } from '../database/database';
 import { getEquipamentos } from './equipamentos';
 import { criarOSManual, getOrdem } from './ordemServico';
-import { agendarLembretesPmoc, cancelarLembretesPmoc } from './pmocLembretes';
+import { agendarLembretesPmoc, cancelarLembretesPmoc, type LembretePmocInput } from './pmocLembretes';
 import { generateId } from '../utils/id';
 import { FREQUENCIAS_PMOC, CATEGORIAS_HVAC } from '../types';
 import type {
@@ -637,15 +637,29 @@ export async function aprovarVersao(
 // ─── 5) RECONCILIAÇÃO DE LEMBRETES (gancho de sync) ───────────────────────────
 
 /**
+ * Teto defensivo de VISITAS com lembrete agendado nesta reconciliação. Cada
+ * visita gera até `DIAS_ANTECEDENCIA_PMOC.length` (3) notificações — o Android
+ * limita o app a ~500 notificações agendadas no total (contando também os
+ * lembretes de agenda, `agenda.ts`). Um cliente com muitos planos/equipamentos
+ * recorrentes, todos com visitas pendentes, poderia estourar esse teto do SO
+ * silenciosamente (as notificações extras simplesmente não seriam agendadas).
+ * 150 visitas × 3 = até 450, deixando folga para os lembretes de agenda.
+ */
+export const MAX_VISITAS_COM_LEMBRETE_PMOC = 150;
+
+/**
  * Reconcilia os lembretes locais de vencimento PMOC com o estado atual (planos
  * ativos × visitas geradas × status da OS de cada uma). Cancela o lembrete de
  * visitas cuja OS já não existe, está na lixeira ou terminou
- * (concluída/cancelada) e (re)agenda as demais. Mesmo motivo da reconciliação
- * de agenda (`agenda.ts.resincronizarLembretes`): o PULL do sync grava
- * `ordens_servico`/`pmoc_ordens_geradas` direto no SQLite (localUpsert*, em
- * cloudSync.ts), sem passar por `atualizarStatusOS`/`gerarOrdensDoPlano` — sem
- * isto, uma OS concluída em OUTRO aparelho continuaria lembrando neste depois
- * do sync. NUNCA lança.
+ * (concluída/cancelada) e (re)agenda as demais — até o teto de
+ * {@link MAX_VISITAS_COM_LEMBRETE_PMOC}, priorizando as visitas com vencimento
+ * mais PRÓXIMO (as mais úteis ao técnico); o excedente fica sem lembrete em vez
+ * de arriscar estourar o limite de notificações agendadas do Android. Mesmo
+ * motivo da reconciliação de agenda (`agenda.ts.resincronizarLembretes`): o
+ * PULL do sync grava `ordens_servico`/`pmoc_ordens_geradas` direto no SQLite
+ * (localUpsert*, em cloudSync.ts), sem passar por
+ * `atualizarStatusOS`/`gerarOrdensDoPlano` — sem isto, uma OS concluída em
+ * OUTRO aparelho continuaria lembrando neste depois do sync. NUNCA lança.
  *
  * GAP CONHECIDO (aceito, minimal): só varre planos ATIVOS (`getPmocPlanos`) —
  * um plano movido para a lixeira com visitas pendentes não tem o lembrete
@@ -660,6 +674,10 @@ export async function resincronizarLembretesPmoc(): Promise<void> {
     const clientes = await getClientes();
     const nomePorCliente = new Map(clientes.map((c) => [c.id, c.nome]));
 
+    // 1ª passada: cancela o que não deve mais lembrar (sempre, sem teto — cancelar
+    // nunca aumenta a contagem de notificações agendadas) e junta o resto como
+    // candidato a lembrete.
+    const candidatos: LembretePmocInput[] = [];
     for (const plano of planos) {
       const clienteNome = plano.clienteId ? nomePorCliente.get(plano.clienteId) : undefined;
       const geradas = await getOrdensGeradas(plano.id);
@@ -671,7 +689,7 @@ export async function resincronizarLembretesPmoc(): Promise<void> {
             continue;
           }
           const eq = mapaEquip.get(g.equipamentoId);
-          await agendarLembretesPmoc({
+          candidatos.push({
             ordemId: g.ordemId,
             vencimento: g.vencimento,
             tituloEquipamento: eq ? descreverEquipamento(eq) : 'Equipamento',
@@ -681,6 +699,23 @@ export async function resincronizarLembretesPmoc(): Promise<void> {
           // pula visita problemática, segue o resto
         }
       }
+    }
+
+    // 2ª passada: prioriza vencimento mais próximo primeiro e corta no teto.
+    candidatos.sort((a, b) => (a.vencimento ?? '9999-99-99').localeCompare(b.vencimento ?? '9999-99-99'));
+    const priorizados = candidatos.slice(0, MAX_VISITAS_COM_LEMBRETE_PMOC);
+    const cortados = candidatos.slice(MAX_VISITAS_COM_LEMBRETE_PMOC);
+
+    for (const c of priorizados) {
+      try {
+        await agendarLembretesPmoc(c);
+      } catch {
+        // pula visita problemática, segue o resto
+      }
+    }
+    // Visita cortada pelo teto não deve ficar com um lembrete velho agendado.
+    for (const c of cortados) {
+      await cancelarLembretesPmoc(c.ordemId);
     }
   } catch {
     // best-effort: reconciliação de lembretes PMOC nunca afeta os dados locais

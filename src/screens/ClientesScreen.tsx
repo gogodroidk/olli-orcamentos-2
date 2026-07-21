@@ -1,15 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoria, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -17,16 +17,19 @@ import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliSkeleton } from '../components/OlliSkeleton';
+import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
 import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
 import { clientesParaReconquistar } from '../services/radarClientes';
 import { useCepLookup } from '../services/cep';
+import { AvisoCep } from '../components/AvisoCep';
 import { onSyncAplicado } from '../services/cloudSync';
 import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
+import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -173,6 +176,11 @@ export default function ClientesScreen() {
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio, mesmo padrão de
+  // AgendaScreen): `carregandoErro` só vira `true` se load() de fato falhar —
+  // sem isso a tela mostraria "Nenhum cliente" mesmo quando a leitura caiu
+  // (e o aviso de duplicado, que depende desta mesma lista, ficaria mudo).
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   // Modo de seleção múltipla (exclusão em lote para a Lixeira).
@@ -182,14 +190,29 @@ export default function ClientesScreen() {
   // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
   // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
   const [radarMeses, setRadarMeses] = useState<Map<string, number>>(new Map());
-  const { cepLoading, onCepChange } = useCepLookup(r => {
-    setEditing(p => p ? {
-      ...p,
-      endereco: p.endereco?.trim() ? p.endereco : r.logradouro,
-      cidade: r.cidade || p.cidade,
-      estado: r.uf || p.estado,
-    } : p);
-  });
+  /**
+   * CEP → endereço. `mesclarEndereco` (em services/cep) já decidiu o que PODE
+   * ser preenchido: só campo vazio. O que ele digitou diferente vira pergunta
+   * no <AvisoCep>, com botão — nunca sobrescrita silenciosa. A versão anterior
+   * fazia `cidade: r.cidade || p.cidade`, que apagava a cidade digitada à mão
+   * sem ele ver.
+   *
+   * `editingRef` existe porque a resposta chega DEPOIS: o hook precisa ler o
+   * formulário como ele está no instante da resposta, não no do toque.
+   */
+  const editingRef = useRef<Partial<Cliente> | null>(null);
+  editingRef.current = editing;
+  const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
+    campos => setEditing(p => (p ? { ...p, ...campos } : p)),
+    () => ({ endereco: editingRef.current?.endereco, cidade: editingRef.current?.cidade, estado: editingRef.current?.estado }),
+    // De QUEM é o veredito do CEP. Sem isto o hook não desmonta junto com o
+    // modal (`visible={!!editing}` não desmonta este componente), e a caixa
+    // amarela do cliente anterior sobrevivia — com o botão "Usar o do CEP"
+    // ativo — sobre o formulário do próximo. `'fechado'` é um valor à parte de
+    // propósito: fechar e reabrir "Novo Cliente" TEM que zerar, senão dois
+    // cadastros novos seguidos compartilhariam o mesmo veredito.
+    editing ? (editing.id ?? 'novo') : 'fechado',
+  );
 
   // useCallback (dep [query]): mesma semântica de "sempre closure fresca" de
   // uma function declaration redefinida a cada render, só que com identidade
@@ -198,10 +221,17 @@ export default function ClientesScreen() {
   // por sua vez deixa a linha memoizada (React.memo) da FlatList realmente
   // pular re-render em updates que não afetam a lista (ex.: digitar no modal).
   const load = useCallback(async () => {
-    const all = await getClientes();
-    setClientes(all);
-    applyFilter(all, query);
-    setCarregando(false);
+    setCarregandoErro(false);
+    try {
+      const all = await getClientes();
+      setClientes(all);
+      applyFilter(all, query);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira "Nenhum cliente" silencioso.
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
+    }
   }, [query]);
 
   const loadRadar = useCallback(async () => {
@@ -234,6 +264,23 @@ export default function ClientesScreen() {
   function handleSearch(q: string) {
     setQuery(q);
     applyFilter(clientes, q);
+  }
+
+  // Aviso NÃO BLOQUEANTE de cliente duplicado (mesmo comportamento do painel
+  // web) — recalcula a cada tecla em telefone/CPF/CNPJ do formulário aberto.
+  const duplicados = useMemo(
+    () => editing
+      ? encontrarClientesDuplicados(clientes, { telefone: editing.telefone, cpf: editing.cpf, cnpj: editing.cnpj }, editing.id)
+      : [],
+    [clientes, editing?.telefone, editing?.cpf, editing?.cnpj, editing?.id],
+  );
+
+  // "Abrir" no aviso troca o alvo do formulário para o cadastro já existente,
+  // em vez do que está sendo digitado — mesma ideia do `aoAbrirExistente` do painel.
+  function abrirClienteExistente(c: Cliente) {
+    setEditing({ ...c });
+    setIsNew(false);
+    setErrors({});
   }
 
   async function handleSave() {
@@ -402,6 +449,21 @@ export default function ClientesScreen() {
     }
   }
 
+  // Mesmo tratamento de telefone ausente do WhatsApp acima — só troca o app
+  // que abre (discador em vez do WhatsApp).
+  async function chamarTelefone(c: Cliente) {
+    if (!c.telefone?.trim()) {
+      Alert.alert('Ligar', 'Este cliente não tem telefone cadastrado.');
+      return;
+    }
+    setAcoes(null);
+    try {
+      await Linking.openURL(`tel:${c.telefone.replace(/[^\d+]/g, '')}`);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o telefone.');
+    }
+  }
+
   function editarCliente(c: Cliente) {
     setAcoes(null);
     setEditing({ ...c });
@@ -485,6 +547,16 @@ export default function ClientesScreen() {
             </View>
           ))}
         </View>
+      ) : carregandoErro ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Não deu para carregar"
+            subtitle="Não conseguimos buscar seus clientes agora. Verifique a conexão e tente de novo."
+            actionLabel="Tentar de novo"
+            onAction={load}
+          />
+        </View>
       ) : (
       <FlatList
         data={filtered}
@@ -550,17 +622,21 @@ export default function ClientesScreen() {
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <OlliInput label="Nome completo" required autoFocus={isNew} value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
               <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, telefone: v } : p); setErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={errors.telefone} />
+              <AvisoClienteDuplicado duplicados={duplicados} erro={carregandoErro} onAbrirExistente={abrirClienteExistente} />
               <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
               <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
+              {/* CEP ANTES do endereço, e isto é a feature inteira. Enquanto ele
+                  era o último campo, o prestador já tinha digitado rua, cidade e
+                  UF antes de o atalho ter chance de servir para alguma coisa —
+                  um autocompletar que chega depois da digitação não economiza
+                  toque nenhum. Agora: digita 8 dígitos, os três de baixo vêm. */}
+              <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => onCepChange(v, masked => setEditing(p => p ? { ...p, cep: masked } : p))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ marginBottom: Spacing.sm }} />
+              <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
               <OlliInput label="Endereço" value={editing.endereco ?? ''} onChangeText={v => setEditing(p => p ? { ...p, endereco: v } : p)} placeholder="Rua, número" leftIcon="map-marker" />
               <OlliInput label="Complemento" value={editing.complemento ?? ''} onChangeText={v => setEditing(p => p ? { ...p, complemento: v } : p)} placeholder="Apto, bloco, referência" />
               <View style={styles.rowFields}>
                 <OlliInput label="Cidade" value={editing.cidade ?? ''} onChangeText={v => setEditing(p => p ? { ...p, cidade: v } : p)} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10 }} />
                 <OlliInput label="UF" value={editing.estado ?? ''} onChangeText={v => setEditing(p => p ? { ...p, estado: v.toUpperCase().slice(0, 2) } : p)} placeholder="SP" autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
-              </View>
-              <View style={styles.cepRow}>
-                <OlliInput label="CEP" mask="cep" value={editing.cep ?? ''} onChangeText={v => onCepChange(v, masked => setEditing(p => p ? { ...p, cep: masked } : p))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
-                {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
               </View>
             </ScrollView>
             <View style={[styles.modalFooter, { paddingBottom: insets.bottom + Spacing.base }]}>
@@ -594,8 +670,16 @@ export default function ClientesScreen() {
                   desc="Já com este cliente"
                   onPress={() => novoOrcamento(acoes)}
                 />
-                <SheetAction icon="calendar-plus" color="#A78BFA" label="Agendar visita" desc="Adicionar à agenda" onPress={() => agendarVisita(acoes)} />
+                <SheetAction
+                  icon="calendar-plus"
+                  color="#A78BFA" // contraste-ok: prop só vira o fundo/borda translúcidos do chip (color+'1E'/'3A' sobre c.surface — não se toca); o ícone real usa iconColor, ajustado por corCategoria contra cores.surface (mesmo padrão de "Novo orçamento" acima)
+                  iconColor={corCategoria('#A78BFA', cores.surface)}
+                  label="Agendar visita"
+                  desc="Adicionar à agenda"
+                  onPress={() => agendarVisita(acoes)}
+                />
                 <SheetAction icon="whatsapp" color={cores.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
+                <SheetAction icon="phone" color={cores.success} label="Ligar" desc="Chamada direta" onPress={() => chamarTelefone(acoes)} />
                 <SheetAction icon="pencil-outline" color={cores.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
               </>
             )}
@@ -678,8 +762,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   rowFields: { flexDirection: 'row' },
-  cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  cepSpinner: { marginLeft: 10, marginBottom: 14 },
+  // (o spinner do CEP virou estado do <AvisoCep>, que fala em vez de só girar)
 
   // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
   // padrão de overlay de modal — sem chave "scrim" na paleta).
@@ -690,7 +773,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sheetName: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
-  sheetIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  sheetIcon: { width: 44, height: 44, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });

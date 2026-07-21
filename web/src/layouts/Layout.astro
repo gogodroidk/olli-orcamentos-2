@@ -1,4 +1,10 @@
 ---
+import {
+	EMPRESA,
+	emailContatoPublicavel,
+	identidadePublicavel,
+} from "../data/empresa";
+import { PRECO_EMPRESA, PRECO_PRO } from "../data/planos";
 import "../styles/global.css";
 
 interface Props {
@@ -10,11 +16,17 @@ interface Props {
 	 * que é dela. Cada item vira uma tag `<script type="application/ld+json">`.
 	 */
 	schemas?: unknown[];
+	/**
+	 * Páginas que não devem ser indexadas (404, por exemplo) passam `noindex`.
+	 * Sem isso o buscador pode indexar uma página de erro como se fosse conteúdo.
+	 */
+	noindex?: boolean;
 }
 const {
 	schemas = [],
 	titulo = "OLLI — do orçamento ao recibo, sem planilha",
 	descricao = "O sistema de campo do prestador de serviço: orçamento, ordem de serviço, PMOC e recibo no celular e no computador — com IA que entende o defeito do equipamento, não só a nota. Grátis para começar.",
+	noindex = false,
 } = Astro.props;
 const canonical = new URL(
 	Astro.url.pathname,
@@ -30,10 +42,21 @@ const canonical = new URL(
  * inventar nota é penalidade do Google (e mentira). Entra quando houver avaliação —
  * é a mesma regra de "copy derivada da fonte", aplicada a schema.
  *
- * Os `offers` espelham o Stripe live (R$ 0 / 39 / 99). Quem mexer em preço tem de
- * mexer aqui também — por isso os três estão juntos e comentados.
+ * Os `offers` são DERIVADOS de `data/planos.ts` (o espelho do Stripe live) — o
+ * preço mensal de cada plano em reais, sem literal digitado aqui. Mexeu no preço na
+ * fonte, o schema acompanha sozinho.
  */
 const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
+
+/**
+ * IDENTIDADE JURÍDICA no schema — só entra quando EXISTE (ver data/empresa.ts).
+ *
+ * `identidadePublicavel()` devolve null enquanto o dono não preencher razão
+ * social, CNPJ e endereço. Espalhar `taxID: "PREENCHER"` pelo JSON-LD seria pior
+ * que não ter: o Google leria dado inválido e o cético leria mentira.
+ */
+const empresa = identidadePublicavel();
+const emailContato = emailContatoPublicavel();
 
 const schemaOrganizacao = {
 	"@context": "https://schema.org",
@@ -44,9 +67,40 @@ const schemaOrganizacao = {
 	"@id": `${ORIGEM}#organizacao`,
 	name: "OLLI",
 	url: ORIGEM,
-	logo: new URL("/og-image.png", ORIGEM).href,
+	// LOGO ≠ BANNER. Isto apontava para /og-image.png, que é o banner 1200×630 do
+	// Open Graph (239 KB, proporção 1,9:1). O Google exige logo rastreável e
+	// QUADRADO, ≥112×112 — um banner é recortado ou simplesmente descartado, e o
+	// resultado é a marca não aparecer no Knowledge Panel. O ícone de 512×512 já
+	// existe em /public e é quadrado.
+	logo: new URL("/icon-512.png", ORIGEM).href,
 	description: "Sistema de campo para prestadores de serviço no Brasil: orçamento, ordem de serviço e recibo.",
 	areaServed: { "@type": "Country", name: "Brasil" },
+	// DELIBERADAMENTE `Organization` E NÃO `LocalBusiness`: LocalBusiness descreve
+	// negócio com ponto físico onde o cliente comparece, e puxa expectativa de
+	// horário de funcionamento e avaliação local. A OLLI é SaaS nacional — o
+	// cliente nunca vai ao endereço. Seria schema mentindo sobre o conteúdo.
+	...(empresa
+		? {
+				legalName: empresa.razaoSocial,
+				taxID: empresa.cnpj,
+				address: {
+					"@type": "PostalAddress",
+					streetAddress: empresa.endereco.logradouro,
+					addressLocality: empresa.endereco.cidade,
+					addressRegion: empresa.endereco.uf,
+					postalCode: empresa.endereco.cep,
+					addressCountry: empresa.endereco.pais,
+				},
+			}
+		: {}),
+	...(emailContato ? { email: emailContato } : {}),
+	contactPoint: {
+		"@type": "ContactPoint",
+		contactType: "customer support",
+		telephone: `+${EMPRESA.whatsapp}`,
+		availableLanguage: "Portuguese",
+		areaServed: "BR",
+	},
 };
 
 const schemaApp = {
@@ -57,11 +111,12 @@ const schemaApp = {
 	operatingSystem: "Android, Web",
 	inLanguage: "pt-BR",
 	url: ORIGEM,
-	// Preços do Stripe live. SEM aggregateRating — ver o comentário acima.
+	// Preços DERIVADOS de data/planos.ts (Stripe live) — mensal em reais, sem
+	// literal. SEM aggregateRating — ver o comentário acima.
 	offers: [
 		{ "@type": "Offer", name: "Grátis", price: "0", priceCurrency: "BRL" },
-		{ "@type": "Offer", name: "Pro", price: "39", priceCurrency: "BRL" },
-		{ "@type": "Offer", name: "Empresa", price: "99", priceCurrency: "BRL" },
+		{ "@type": "Offer", name: "Pro", price: String(PRECO_PRO.mensalCentavos / 100), priceCurrency: "BRL" },
+		{ "@type": "Offer", name: "Empresa", price: String(PRECO_EMPRESA.mensalCentavos / 100), priceCurrency: "BRL" },
 	],
 };
 
@@ -91,12 +146,28 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/*
+      Ícones: o SVG serve a aba (nítido em qualquer tamanho); os PNG grandes
+      existem porque ao FIXAR o site na barra de tarefas o Chrome procura um
+      ícone de 192/512 e, não achando, estica o menor que houver. Era esse o
+      caminho que caía no favicon.ico antigo — que era o logo padrão do template
+      Astro, não a OLLI. Sem os tamanhos grandes declarados aqui, os arquivos em
+      /public não são encontrados.
+    */}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    {/* display:"browser" no manifest — dá os ícones grandes sem tornar o site
+        instalável como app. A web antiga "virava PWA" e isso foi motivo de
+        reconstrução; não reintroduzir por causa de um ícone. */}
+    <link rel="manifest" href="/site.webmanifest" />
     <title>{titulo}</title>
     <meta name="description" content={descricao} />
     <link rel="canonical" href={canonical} />
     <meta name="theme-color" content="#0b6fce" />
+    {noindex && <meta name="robots" content="noindex" />}
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OLLI Orçamentos" />

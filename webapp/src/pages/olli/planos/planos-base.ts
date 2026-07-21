@@ -1,5 +1,8 @@
 /**
- * OS PLANOS — cópia literal de `PLANOS_BASE` (src/screens/PlanosScreen.tsx, ~linha 80).
+ * OS PLANOS — nome, tagline e benefícios, cópia de `PLANOS_BASE`
+ * (src/screens/PlanosScreen.tsx, ~linha 80). O PREÇO não mora mais aqui: vem de
+ * `@precos` (a mesma fonte da landing, conferida contra a Stripe live), para não existir
+ * dois lugares onde um R$ possa divergir. Ver `precos.ts`.
  *
  * ⚠️ NADA AQUI PODE SER ESCRITO DE MEMÓRIA. Já aconteceu neste projeto (está
  * documentado no próprio PlanosScreen): a página web anunciou "o Pro libera
@@ -7,18 +10,16 @@
  * recurso de equipe que a própria tela do app marca "(em breve)". Isso é promessa
  * que o produto não cumpre, cobrada em dinheiro.
  *
- * Preço, benefício e o "(em breve)" vêm do app. Se lá mudar, mude aqui.
- *
- * O que o plano DE FATO libera em código está em `src/services/planos.ts`
- * (RECURSOS_POR_PLANO) — os benefícios abaixo são a leitura comercial disso.
+ * Benefício e o "(em breve)" vêm do app. Se lá mudar, mude aqui. O que o plano DE FATO
+ * libera em código está em `src/services/entitlements.ts` (RECURSOS_POR_PLANO), lido
+ * direto pelo comparativo (ver `recursos.ts`) — os benefícios abaixo são a leitura
+ * comercial disso.
  */
 import type { PlanoId } from "./tipos";
 
 export interface PlanoBase {
 	id: PlanoId;
 	nome: string;
-	preco: string;
-	periodo?: string;
 	tagline: string;
 	destaque?: boolean;
 	beneficios: string[];
@@ -28,7 +29,6 @@ export const PLANOS_BASE: readonly PlanoBase[] = [
 	{
 		id: "gratis",
 		nome: "Grátis",
-		preco: "R$ 0",
 		tagline: "Tudo que você precisa pra começar a fechar negócio.",
 		beneficios: [
 			"Orçamentos e recibos ilimitados",
@@ -41,8 +41,6 @@ export const PLANOS_BASE: readonly PlanoBase[] = [
 	{
 		id: "pro",
 		nome: "Pro",
-		preco: "R$ 39",
-		periodo: "/mês",
 		tagline: "Para o autônomo que quer vender mais e ganhar tempo.",
 		destaque: true,
 		beneficios: [
@@ -55,8 +53,6 @@ export const PLANOS_BASE: readonly PlanoBase[] = [
 	{
 		id: "empresa",
 		nome: "Empresa",
-		preco: "R$ 99",
-		periodo: "/mês",
 		tagline: "Para equipes que atendem em campo todos os dias.",
 		beneficios: [
 			"Tudo do plano Pro",

@@ -1,8 +1,20 @@
 ---
+import EsteiraTelas from "../components/EsteiraTelas.astro";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
-import OlliLogo from "../components/OlliLogo.astro";
+import Icone from "../components/Icone.astro";
+import PlanosPrecos from "../components/PlanosPrecos.astro";
 import Layout from "../layouts/Layout.astro";
-import { OFICIOS, OFICIO_GERAL, SLUG_POR_OFICIO, TOTAL_CALCULADORAS } from "../data/oficios";
+import {
+	ICONE_POR_OFICIO,
+	OFICIOS,
+	OFICIO_GERAL,
+	SLUG_POR_OFICIO,
+	TOTAL_CALCULADORAS,
+} from "../data/oficios";
+// Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
+import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -10,47 +22,45 @@ const APP_URL = "https://app.olliorcamentos.online";
 // ?modo=cadastro). Sem isto, "Criar meu primeiro orçamento" caía na tela de
 // LOGIN e o cadastro ficava escondido atrás de um link. "Entrar" continua no APP_URL.
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
-// WhatsApp oficial de vendas/suporte (mesmo número usado no app, ver src/config.ts).
-const WHATSAPP_URL = "https://wa.me/5511941727487";
 
 const recursos = [
 	{
-		icon: "🧾",
+		icon: "file-text",
 		titulo: "Orçamento em minutos",
 		texto:
 			"Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.",
 	},
 	{
-		icon: "🛠️",
+		icon: "clipboard-list",
 		titulo: "Ordem de serviço",
 		texto:
 			"Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.",
 	},
 	{
-		icon: "🧠",
+		icon: "brain",
 		titulo: "IA que entende o defeito",
 		texto:
 			"Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.",
 	},
 	{
-		icon: "❄️",
+		icon: "calendar-check",
 		titulo: "PMOC (Lei 13.589)",
 		texto:
 			"Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.",
 	},
 	{
-		icon: "📇",
+		icon: "users",
 		titulo: "Clientes e cobrança",
 		texto: "Cadastro, histórico e radar de quem sumiu ou está para cobrar.",
 	},
 	{
-		icon: "🧮",
+		icon: "calculator",
 		titulo: "Calculadoras de ofício",
 		texto:
 			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.",
 	},
 	{
-		icon: "📅",
+		icon: "calendar",
 		titulo: "Agenda e equipe",
 		// "e a equipe no mapa" saiu daqui: a captura de localização em background só
 		// liga na Onda 8 (ver o cabeçalho de src/screens/EquipeAoVivoScreen.tsx) e hoje
@@ -61,7 +71,7 @@ const recursos = [
 			"Agendamentos, técnicos com papéis e permissões, e o trabalho de todo mundo num lugar só.",
 	},
 	{
-		icon: "📄",
+		icon: "receipt",
 		titulo: "Recibo e PDF bonito",
 		texto:
 			"Recibo e documentos com a sua marca — do orçamento ao comprovante, sem planilha.",
@@ -96,64 +106,6 @@ const passos = [
 	},
 ];
 
-const planos = [
-	{
-		nome: "Grátis",
-		preco: "R$ 0",
-		periodo: "/mês",
-		destaque: false,
-		desc: "Pra sair do caderno e do grupo de WhatsApp.",
-		itens: [
-			"Orçamentos, recibos, clientes e agenda ilimitados",
-			"Diagnóstico HVAC por código de erro",
-			"Link do orçamento pro cliente aprovar",
-			"IA de diagnóstico: 3 usos/mês",
-		],
-		cta: "Começar grátis",
-		primary: true,
-		href: APP_CADASTRO_URL,
-	},
-	{
-		nome: "Pro",
-		preco: "R$ 39",
-		periodo: "/mês",
-		destaque: true,
-		desc: "Pra quem vive de campo e já não cabe no grátis.",
-		itens: [
-			"Tudo do Grátis",
-			"IA sem limite de uso",
-			"Tira a marca OLLI do PDF",
-			"Relatórios, metas e radar de clientes",
-			"Todos os modelos de documento",
-		],
-		cta: "Assinar o Pro",
-		primary: true,
-		href: APP_CADASTRO_URL,
-	},
-	{
-		nome: "Empresa",
-		preco: "R$ 99",
-		periodo: "/mês",
-		destaque: false,
-		desc: "Pra equipe que atende em campo todo dia.",
-		itens: [
-			"Tudo do Pro",
-			// Equipe NÃO é "(em breve)": a Onda 2 está CONCLUÍDA no EXECUTION_LOG
-			// (organizacoes + organizacao_membros com papéis owner/admin/gestor/tecnico
-			// + convites com token/expiração, RLS testada). Dizer "em breve" aqui era
-			// SUBvender a feature principal do plano de R$ 99.
-			"Equipe com papéis e permissões",
-			// Este "(em breve)" é VERDADE e fica: a captura de localização em background
-			// depende do prebuild com expo-location (Onda 8). Hoje só funciona na web.
-			"Equipe ao vivo no mapa (em breve)",
-			"Painel de gestão da empresa (em breve)",
-		],
-		cta: "Falar com a gente",
-		primary: false,
-		href: WHATSAPP_URL,
-	},
-];
-
 const faq = [
 	{
 		q: "Preciso pagar para testar?",
@@ -161,7 +113,7 @@ const faq = [
 	},
 	{
 		q: "Funciona no celular e no computador?",
-		a: "Sim. É o mesmo sistema no app do celular e no navegador do computador — você escolhe onde trabalhar.",
+		a: "Sim. Hoje a OLLI roda no navegador do celular e do computador — você entra e já começa, sem instalar app nem configurar nada. O aplicativo Android está a caminho das lojas.",
 	},
 	{
 		q: "Serve pro meu ofício?",
@@ -173,11 +125,11 @@ const faq = [
 	},
 	// ── Expansão 4 → 9 (LANDING_BRIEF, Fase 2). Escritas como a pessoa pergunta pra
 	// IA, resposta auto-suficiente nas 2 primeiras frases e com número concreto —
-	// os preços saem do array `planos` acima, que espelha o Stripe live (R$ 0/39/99);
+	// os preços saem de `data/planos.ts` (espelho do Stripe live), interpolados aqui;
 	// as contagens saem de `data/oficios.ts`, que lê o código do app.
 	{
 		q: "Quanto custa um app de orçamento?",
-		a: "Na OLLI: R$ 0 no plano Grátis, sem prazo pra acabar. O Pro custa R$ 39/mês e o Empresa R$ 99/mês — os dois abaixo do DAS do MEI. A maioria dos sistemas de campo no Brasil nem publica preço: você fala com um consultor e paga por técnico. Aqui o preço está nesta página, e o Grátis não é teste de 7 dias.",
+		a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês — os dois abaixo do DAS do MEI. A maioria dos sistemas de campo no Brasil nem publica preço: você fala com um consultor e paga por técnico. Aqui o preço está nesta página, e o Grátis não é teste de 7 dias.`,
 	},
 	{
 		q: "Existe app grátis de ordem de serviço?",
@@ -215,28 +167,45 @@ const schemaFaq = {
 };
 ---
 
-<Layout schemas={[schemaFaq]}>
-  <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
+{/*
+  TÍTULO DA HOME — a home era a ÚNICA rota do site que não passava `titulo`, e por
+  isso caía no default do Layout ("OLLI — do orçamento ao recibo, sem planilha"):
+  46 caracteres, bonito, e com ZERO palavra que alguém digita no Google. As outras
+  5 rotas já passavam o próprio. Quem busca este produto busca "app de orçamento",
+  "ordem de serviço" e "para prestador" — as três estão aqui, na ordem em que são
+  buscadas, e a marca fica no fim porque ninguém procura por ela ainda.
+*/}
+<Layout
+  titulo="App de Orçamento e Ordem de Serviço para Prestador | OLLI"
+  descricao="Monte o orçamento no celular, o cliente aprova por link e a ordem de serviço e o recibo saem do mesmo lugar. Com as calculadoras do seu ofício dentro do orçamento. Grátis para começar, sem cartão."
+  schemas={[schemaFaq]}
+>
+  <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-campo focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
 
   <!-- ══════════ NAV ══════════ -->
-  <header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
-    <nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-      <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
-      <div class="hidden items-center gap-8 md:flex">
-        <a href="#como" class="text-sm font-medium text-slate transition hover:text-ink">Como funciona</a>
-        <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
-        <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
-      </div>
-      <div class="flex items-center gap-2">
-        <a href={APP_URL} class="rounded-lg px-4 py-2 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-        <a href={APP_CADASTRO_URL} class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
-      </div>
-    </nav>
-  </header>
+  <Header>
+    <div slot="nav" class="hidden items-center gap-8 md:flex">
+      <a href="#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
+      <a href="#como" class="text-sm font-medium text-slate transition hover:text-ink">Como funciona</a>
+      <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
+      <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
+    </div>
+    <a href={APP_URL} class="rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+    <a href={APP_CADASTRO_URL} class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+  </Header>
 
   <main id="conteudo">
   <!-- ══════════ HERO ══════════ -->
-  <section class="relative overflow-hidden">
+  {/* `overflow-clip` e NÃO `overflow-hidden`: `hidden` faz esta section virar
+      container de scroll, e a `animation-timeline: view()` do wrapper dos
+      aparelhos passa a resolver contra ELA — um scroller que nunca rola. O
+      resultado medido era progresso CONGELADO em 0,5000 com a página em
+      scrollY 0, 300 e 700: o hero simplesmente não derivava. `clip` recorta
+      igual (os blobs continuam contidos) sem criar container de scroll.
+
+      Comentário entre chaves, e não comentário de HTML: o de HTML é servido ao
+      visitante em toda visita; este o Astro remove do HTML final. */}
+  <section class="relative overflow-clip">
     <div class="pointer-events-none absolute inset-0 -z-10">
       <div class="absolute -right-40 -top-40 h-[38rem] w-[38rem] rounded-full opacity-60 blur-3xl" style="background: radial-gradient(closest-side, rgba(63,216,234,.28), transparent)"></div>
       <div class="absolute -left-40 top-40 h-[34rem] w-[34rem] rounded-full opacity-50 blur-3xl" style="background: radial-gradient(closest-side, rgba(11,111,206,.20), transparent)"></div>
@@ -248,19 +217,23 @@ const schemaFaq = {
          empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. -->
     <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
       <div class="min-w-0">
-        <span class="eyebrow">● Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
+        <span class="eyebrow"><span aria-hidden="true">●</span> Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
         <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
-          Do <span class="brand-text">áudio no WhatsApp</span><br />
+          {/* O {" "} é obrigatório: no mobile o <br> é `hidden` (display:none) e a
+              quebra de linha do código não vira espaço — a manchete saía grudada,
+              "WhatsAppao orçamento fechado". Espaço explícito resolve nos dois
+              casos (no desktop ele cai antes da quebra e não aparece). */}
+          Do <span class="brand-text">áudio no WhatsApp</span>{" "}<br class="hidden sm:inline" />
           ao orçamento fechado.
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
-          Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
+          Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand-fg">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-          <a href={APP_CADASTRO_URL} class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
+          <a href={APP_CADASTRO_URL} class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
             Criar meu primeiro orçamento — grátis
           </a>
-          <a href="#como" class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand">
+          <a href="#como" class="rounded-acao border border-line bg-card px-7 py-3.5 text-center text-base font-semibold text-ink shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2">
             Ver como funciona
           </a>
         </div>
@@ -270,9 +243,9 @@ const schemaFaq = {
           {OFICIOS.map((o) => (
             <a
               href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-              class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+              class="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-slate shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2"
             >
-              <span aria-hidden="true">{o.emoji}</span>{o.label}
+              <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
             </a>
           ))}
         </div>
@@ -283,14 +256,48 @@ const schemaFaq = {
         </div>
       </div>
 
-      <div class="min-w-0 lg:pl-6">
-        <HeroDevices client:load />
+      {/*
+        O MOVIMENTO DO HERO MORA AQUI, NO WRAPPER ESTÁTICO — nunca dentro do
+        HeroDevices.tsx. Três razões, todas concretas:
+
+        1. No celular a ilha não hidrata (`client:media` logo abaixo). Movimento
+           declarado dentro do React simplesmente não aconteceria no aparelho do
+           público. Como classe CSS no HTML estático, ele roda sem uma linha de JS.
+        2. Quando as telas reais substituírem o conteúdo da moldura, a troca é do
+           conteúdo — o movimento sobrevive intacto. Dentro do componente, aquela
+           leva reabriria esta inteira.
+        3. `animation-range: cover` e não `entry`: no desktop os aparelhos já
+           estão INTEIRAMENTE visíveis no scroll 0, então a fase `entry` já
+           terminou e a animação nasceria congelada em 100%. `cover` cobre todo o
+           período em que o elemento intersecta a viewport, então no load o hero
+           está no MEIO do range e continua progredindo conforme se desce.
+
+        Deriva, não revelação: só translateY, zero opacity. Os aparelhos estão
+        sempre visíveis em qualquer progresso — o que muda é a pose. A pose do
+        meio do range (o que se vê ao carregar) é exatamente a composição que já
+        está no ar hoje, então quem não anima não perde nada.
+      */}
+      <div class="olli-hero-deriva min-w-0 lg:pl-6">
+        {/*
+          client:media, NÃO client:load. O componente é `aria-hidden="true"` (é
+          decoração) e a ÚNICA coisa nele que precisa de JS é o parallax de MOUSE.
+          Com `client:load` o celular do prestador baixava, parseava e executava
+          react-dom + motion + o componente — 104,5 KB gzip — para alimentar um
+          efeito de mouse num aparelho que não tem mouse.
+
+          O HTML da ilha é gerado no build (SSG) e vai igual para todo mundo: o
+          hero APARECE em qualquer aparelho. O que muda é só quem paga o JS.
+          Pré-requisito disto: HeroDevices não pode ter estado inicial invisível —
+          ver o comentário em HeroDevices.tsx, é o que impede o hero de sumir no
+          celular.
+        */}
+        <HeroDevices client:media="(hover: hover) and (pointer: fine)" />
       </div>
     </div>
   </section>
 
   <!-- ══════════ BARRA DE CONFIANÇA ══════════ -->
-  <section class="border-y border-line bg-paper">
+  <section class="faixa-recuo">
     <div class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-6 py-10 sm:grid-cols-4">
       {/*
         CC-05: a barra abria com "698 códigos HVAC" — 3 dos 4 números eram de
@@ -301,7 +308,7 @@ const schemaFaq = {
         TOTAL_CALCULADORAS saem de data/oficios.ts (o mesmo catálogo do app).
       */}
       {[
-        { k: 'R$ 0', v: 'grátis, sem prazo' },
+        { k: reais(0), v: 'grátis, sem prazo' },
         { k: String(OFICIOS.length), v: 'ofícios atendidos' },
         { k: String(TOTAL_CALCULADORAS), v: 'calculadoras de campo' },
         { k: '698', v: 'códigos de erro (climatização)' },
@@ -326,7 +333,7 @@ const schemaFaq = {
        está marcado como indisponível, e vender "(em breve)" como pronto é o erro que
        esta landing já cometeu antes. -->
   <section id="oficios" class="mx-auto max-w-7xl px-6 py-24">
-    <div class="mx-auto max-w-2xl text-center">
+    <div class="olli-revela mx-auto max-w-2xl text-center">
       <span class="eyebrow">Feito pro seu ofício</span>
       <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">
         A OLLI se veste do seu serviço.
@@ -341,16 +348,16 @@ const schemaFaq = {
       {OFICIOS.map((o) => (
         <a
           href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-          class="group rounded-2xl border border-line bg-white p-6 transition hover:border-brand/40"
+          class="olli-revela group rounded-cartao border border-line bg-card p-6 shadow-e1 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-e2"
         >
-          <div class="text-3xl" aria-hidden="true">{o.emoji}</div>
-          <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand">{o.label}</h3>
+          <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-8 w-8" />
+          <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand-fg">{o.label}</h3>
           <p class="mt-1.5 text-sm leading-relaxed text-slate">{o.tagline}</p>
-          <span class="mt-3 inline-block text-sm font-semibold text-brand">Ver o app pra {o.label.toLowerCase()} →</span>
+          <span class="mt-3 inline-block text-sm font-semibold text-brand-fg">Ver o app pra {o.label.toLowerCase()} →</span>
         </a>
       ))}
-      <div class="rounded-2xl border border-dashed border-line bg-paper p-6">
-        <div class="text-3xl" aria-hidden="true">{OFICIO_GERAL.emoji}</div>
+      <div class="olli-revela rounded-cartao border border-dashed border-line bg-paper p-6">
+        <Icone nome={ICONE_POR_OFICIO[OFICIO_GERAL.id]} class="h-8 w-8" />
         <h3 class="mt-3 text-lg font-bold text-ink">{OFICIO_GERAL.label}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-slate">{OFICIO_GERAL.tagline}</p>
       </div>
@@ -364,14 +371,33 @@ const schemaFaq = {
 
   <!-- ══════════ COMO FUNCIONA ══════════ -->
   <section id="como" class="mx-auto max-w-7xl px-6 py-24">
-    <div class="mx-auto max-w-2xl text-center">
+    <div class="olli-revela mx-auto max-w-2xl text-center">
       <span class="eyebrow">Como funciona</span>
       <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Três passos. Zero planilha.</h2>
     </div>
+    {/*
+      O único movimento NARRATIVO da página: a régua sob cada número cresce
+      conforme se desce, e a linha crescendo É o progresso do fluxo de trabalho
+      que o texto está descrevendo. Movimento que comunica estado, não que
+      enfeita — por isso ele existe aqui e não nos 8 cartões de Recursos.
+
+      Fica DENTRO do cartão de propósito: uma linha ligando os três por cima das
+      calhas da grade exigiria posicionamento absoluto atravessando `gap`, que
+      quebra quando a grade vira 1 coluna no celular. Contida no cartão, ela
+      funciona igual nas duas larguras.
+
+      `--olli-passo` escalona início E fim do range (deslocar só o fim deixaria
+      os últimos mais LENTOS em vez de atrasados). No celular a grade é de 1
+      coluna e o escalonamento já viria de graça pela posição; no desktop, onde
+      os três dividem a mesma linha, é ele que produz o 01 → 02 → 03.
+    */}
     <div class="mt-14 grid gap-6 md:grid-cols-3">
-      {passos.map((p) => (
-        <div class="relative rounded-2xl border border-line bg-white p-7">
-          <div class="text-sm font-extrabold text-brand tnum">{p.n}</div>
+      {passos.map((p, i) => (
+        <div class="olli-revela relative rounded-cartao border border-line bg-card p-7 shadow-e1">
+          <div class="text-sm font-extrabold text-brand-fg tnum">{p.n}</div>
+          <div class="mt-2 h-0.5 w-12 overflow-clip rounded-fio bg-line" aria-hidden="true">
+            <div class="olli-passo-linha h-full w-full brand-gradient" style={`--olli-passo:${i}`}></div>
+          </div>
           <h3 class="mt-3 text-xl font-bold text-ink">{p.titulo}</h3>
           <p class="mt-2 text-slate">{p.texto}</p>
         </div>
@@ -379,17 +405,33 @@ const schemaFaq = {
     </div>
   </section>
 
+  {/* ══════════ ESTEIRA DE TELAS ══════════
+      Posição escolhida, não sobra de layout: vem LOGO DEPOIS dos três passos.
+      O visitante acabou de ler o que acontece ("chega a conversa → você monta →
+      fecha o negócio") e a pergunta que se forma na cabeça dele é "tá, mas como
+      é isso na prática?". A esteira responde no exato momento da dúvida.
+
+      Não renderiza nada enquanto as capturas não existirem — ver o cabeçalho de
+      EsteiraTelas.astro. Manifesto quebrado NÃO cai aqui: mata o build. */}
+  <EsteiraTelas />
+
   <!-- ══════════ RECURSOS ══════════ -->
-  <section id="recursos" class="border-y border-line bg-paper">
+  <section id="recursos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
-      <div class="mx-auto max-w-2xl text-center">
+      {/* Só o cabeçalho anima. Os 8 cartões NÃO — e isso é conter, não
+          esquecer: no celular eles viram 8 revelações seguidas na mesma
+          rolagem, que é exatamente onde reveal deixa de ser respiro e vira
+          ruído. Se um dia entrarem, que seja opacity sem deslocamento. */}
+      <div class="olli-revela-curta mx-auto max-w-2xl text-center">
         <span class="eyebrow">Tudo num lugar só</span>
         <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Do orçamento ao recibo, sem sair da OLLI.</h2>
       </div>
       <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {recursos.map((r) => (
-          <div class="rounded-2xl border border-line bg-white p-6 transition hover:-translate-y-1 hover:shadow-lg hover:shadow-brand/5">
-            <div class="grid h-11 w-11 place-items-center rounded-xl bg-tint text-xl">{r.icon}</div>
+          <div class="rounded-cartao border border-line bg-card p-6 shadow-e1 transition hover:shadow-e2">
+            <div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
+              <Icone nome={r.icon} class="h-5 w-5" />
+            </div>
             <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-slate">{r.texto}</p>
           </div>
@@ -398,25 +440,50 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ DESTAQUE IA ══════════ -->
-  <section class="mx-auto max-w-7xl px-6 py-24">
-    <div class="overflow-hidden rounded-3xl bg-brand-ink text-white">
-      <div class="grid items-center gap-10 p-10 md:grid-cols-2 md:p-14">
+  <!-- ══════════ DESTAQUE IA — A ZONA FUNDA ══════════
+       Era um bloco navy de 1280px de largura boiando numa página branca. Agora é
+       uma FAIXA que atravessa a tela inteira, com as bordas derretendo na cor da
+       página (ver `.zona-funda` no global.css).
+
+       O motivo não é gosto, é arquitetura de página: nove seções claras seguidas
+       são uma planície, e o visitante rola por elas sem marcar nenhuma. A página
+       passa a ter um arco — clara na entrada, FUNDA no meio, clara no fechamento —
+       e o ponto mais fundo é exatamente onde mora o argumento que nenhum
+       concorrente tem. Profundidade usada para hierarquia, não para enfeite.
+
+       Custo: zero. É a mesma pintura, com outra largura. -->
+  <section class="zona-funda py-28 md:py-32">
+    {/* `overflow-clip`: este bloco e a trilha da barra abaixo sao ancestrais da
+        `.olli-barra`. Com `overflow-hidden` os dois viravam container de scroll
+        e a barra nascia com progresso travado em 1 — cheia, sem nunca encher.
+        Mesma troca, mesmo motivo do hero. */}
+    <div class="relative mx-auto max-w-7xl overflow-clip px-6">
+      <div class="grid items-center gap-10 md:grid-cols-2">
         <div>
           <span class="eyebrow !text-cyan">IA de diagnóstico</span>
           <h2 class="mt-4 text-[clamp(1.8rem,3.5vw,2.8rem)] font-extrabold leading-tight">A IA que fala a língua do técnico.</h2>
-          <p class="mt-4 max-w-md text-white/70">
+          {/* `text-white/78` e não `/70`: medido, branco a 70% sobre #0A2547 dá
+              8,18:1 e a 78% dá 9,78:1. Os dois passam AA de sobra — a subida é
+              para o SOL, não para o WCAG. O público lê esta página no celular em
+              obra, e sob luz direta a régua que vale é luminância, não razão. */}
+          <p class="mt-4 max-w-md text-white/78">
             Descreva o sintoma ou informe o código de erro: a OLLI aponta o provável componente, a faixa da peça e um grau de confiança. São <strong class="text-white">698 códigos de erro</strong> de climatização e diagnóstico por sintoma — pra você chegar com a peça certa.
           </p>
         </div>
-        <div class="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
+        <div class="rounded-cartao bg-white/5 p-6 ring-1 ring-white/10">
           <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Diagnóstico</div>
           <p class="mt-3 text-sm text-white/80">Provável: <strong class="text-cyan">capacitor do compressor</strong> <span class="tnum">— 45/5 µF</span></p>
           <div class="mt-3 flex items-center gap-3">
-            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-              <div class="h-full rounded-full brand-gradient" style="width:82%"></div>
+            {/* width:82% virou scaleX(0.82) no CSS: animar `width` é reflow por
+                frame e perde o compositor. O filho é `w-full` e a escala faz os
+                82%; o trilho já tem overflow-hidden + rounded-full, então ele
+                clipa as pontas e o filho retangular ainda aparece arredondado —
+                sem a distorção de raio que scaleX normalmente causa.
+                O valor de base vive fora dos guardas: quem não anima vê 82%. */}
+            <div class="h-1.5 flex-1 overflow-clip rounded-full bg-white/10">
+              <div class="olli-barra h-full w-full brand-gradient"></div>
             </div>
-            <span class="tnum text-xs text-white/70">confiança 82%</span>
+            <span class="tnum text-xs text-white/78">confiança 82%</span>
           </div>
         </div>
       </div>
@@ -430,7 +497,7 @@ const schemaFaq = {
        OLLI nasceu dentro de uma empresa de campo de verdade. Sem foto ainda — o texto
        se sustenta sozinho; o slot está pronto pra foto real do Igor/equipe entrar. -->
   <section class="mx-auto max-w-5xl px-6 py-20">
-    <div class="rounded-3xl border border-line bg-white p-8 sm:p-12">
+    <div class="rounded-bloco border border-line bg-card p-8 shadow-e2 sm:p-12">
       <span class="eyebrow">Quem faz a OLLI</span>
       <h2 class="mt-4 max-w-2xl text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">
         Feita por quem vive de campo.
@@ -450,39 +517,24 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ PLANOS ══════════ -->
-  <section id="planos" class="border-y border-line bg-paper">
+  <!-- ══════════ PLANOS ══════════
+       Os cartões, o alternador mensal/anual e o 12× honesto moram em
+       PlanosPrecos.astro — a MESMA marcação que a página /planos usa, para o preço
+       nunca divergir entre as duas. Preço vem de data/planos.ts (Stripe live) e as
+       features de entitlements.ts via data/recursos.ts: nenhum literal aqui. -->
+  <section id="planos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
-      <div class="mx-auto max-w-2xl text-center">
+      <div class="olli-revela mx-auto max-w-2xl text-center">
         <span class="eyebrow">Planos</span>
         <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Comece de graça. Pague quando crescer.</h2>
-        <p class="mt-4 text-slate">O grátis é sério e sem prazo. O Pro ainda sai em até 12×.</p>
+        <p class="mt-4 text-slate">O grátis é sério e sem prazo. No mensal, ou no anual com {DESCONTO_ANUAL_ROTULO} de desconto.</p>
       </div>
-      <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
-        {planos.map((p) => (
-          <div class={`flex h-full flex-col rounded-2xl border bg-white p-8 ${p.destaque ? 'border-brand shadow-xl shadow-brand/10 lg:-translate-y-3' : 'border-line'}`}>
-            {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-tint px-3 py-1 text-xs font-bold text-brand">Recomendado</span>}
-            <h3 class="text-lg font-bold text-ink">{p.nome}</h3>
-            <p class="mt-1 text-sm text-muted">{p.desc}</p>
-            <div class="mt-5 flex items-baseline gap-1">
-              <span class="text-4xl font-extrabold tracking-tight text-ink tnum">{p.preco}</span>
-              <span class="text-base font-medium text-muted">{p.periodo}</span>
-            </div>
-            <ul class="mt-6 flex-1 space-y-3 text-sm text-slate">
-              {p.itens.map((i) => (
-                <li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-check">✓</span><span>{i}</span></li>
-              ))}
-            </ul>
-            <a
-              href={p.href}
-              target={p.href === WHATSAPP_URL ? '_blank' : undefined}
-              rel={p.href === WHATSAPP_URL ? 'noopener' : undefined}
-              class={`mt-7 block rounded-xl px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand'}`}
-            >{p.cta}</a>
-          </div>
-        ))}
+      <div class="mt-14">
+        <PlanosPrecos />
       </div>
-      <p class="mt-10 text-center text-sm text-muted">Sem cartão pra testar. Sem fidelidade. Cancela quando quiser.</p>
+      <p class="mt-8 text-center text-sm">
+        <a href="/planos/" class="font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 transition hover:decoration-brand">Comparar todos os recursos, lado a lado →</a>
+      </p>
     </div>
   </section>
 
@@ -492,12 +544,20 @@ const schemaFaq = {
       <span class="eyebrow">Perguntas</span>
       <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Ainda na dúvida?</h2>
     </div>
-    <div class="mt-12 divide-y divide-line rounded-2xl border border-line bg-white">
+    {/* `caixa` (28) e não `cartao` (20): esta superfície AGRUPA linhas, e precisa
+        ser visivelmente maior que o cartão que ela contém — senão a hierarquia
+        some (era o defeito antigo: cartão e caixa eram os dois 16px).
+
+        `overflow-hidden` NÃO é decoração: os <details> não têm padding lateral,
+        então o primeiro e o último item ENCOSTAM na borda arredondada e o fundo
+        do <summary> no :hover vazava pelo canto. Já era bug latente com 16px;
+        a 28px ficaria visível. É a regra do raio aninhado. */}
+    <div class="mt-12 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-card shadow-e1">
       {faq.map((f) => (
         <details class="group">
           <summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
             {f.q}
-            <span class="text-brand transition group-open:rotate-45" aria-hidden="true">＋</span>
+            <span class="text-brand-fg transition group-open:rotate-45" aria-hidden="true">+</span>
           </summary>
           <p class="px-6 pb-5 text-slate">{f.a}</p>
         </details>
@@ -507,26 +567,16 @@ const schemaFaq = {
 
   <!-- ══════════ CTA FINAL ══════════ -->
   <section class="mx-auto max-w-7xl px-6 pb-24">
-    <div class="relative overflow-hidden rounded-3xl px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
+    {/* Revelação sóbria: é o último pedido de conversão da página, tem que
+        estar cheio e legível rápido. */}
+    <div class="olli-revela relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
       <h2 class="mx-auto max-w-2xl text-[clamp(2rem,4vw,3rem)] font-extrabold leading-tight">Seu próximo orçamento pode sair em minutos.</h2>
       <p class="mx-auto mt-4 max-w-xl text-white/85">Troque o caderno e a planilha pela OLLI. Grátis pra começar, no celular e no computador.</p>
-      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-xl bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
+      <a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-acao bg-white px-8 py-3.5 text-base font-bold text-brand-fg shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
     </div>
   </section>
   </main>
 
   <!-- ══════════ RODAPÉ ══════════ -->
-  <footer class="border-t border-line bg-paper">
-    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 py-10 sm:flex-row">
-      <OlliLogo size={32} />
-      <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-        <a href="#planos" class="transition hover:text-ink">Planos</a>
-        <a href="#recursos" class="transition hover:text-ink">Recursos</a>
-        <a href="/legal/privacidade/" class="transition hover:text-ink">Privacidade</a>
-        <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
-        <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
-      </div>
-      <p class="text-sm text-muted">© 2026 OLLI Orçamentos</p>
-    </div>
-  </footer>
+  <Footer />
 </Layout>

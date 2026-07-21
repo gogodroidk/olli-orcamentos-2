@@ -97,6 +97,7 @@ export default function LixeiraDesktopScreen() {
   const [busca, setBusca] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState<TipoLixeira | 'todos'>('todos');
   const [carregando, setCarregando] = useState(true);
+  const [itensErro, setItensErro] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [esvaziando, setEsvaziando] = useState(false);
   // Guarda a LINHA (não o ItemLixeira cru): precisa do `itemId` real pra o
@@ -105,11 +106,13 @@ export default function LixeiraDesktopScreen() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const carregar = useCallback(async () => {
+    setItensErro(false);
     try {
       const lista = await getItensNaLixeira();
       setItens(lista);
     } catch {
-      setItens([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setItensErro(true);
     } finally {
       setCarregando(false);
     }
@@ -333,11 +336,21 @@ export default function LixeiraDesktopScreen() {
         carregando={carregando}
         ordenacaoInicial={{ chave: 'expiraEm', direcao: 'asc' }}
         vazio={
-          <EmptyState
-            icon="delete-empty-outline"
-            title="Lixeira vazia"
-            subtitle="Nada foi excluído por aqui. O que você apagar aparece nesta tela e pode ser restaurado."
-          />
+          itensErro ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="Não deu para carregar"
+              subtitle="Não conseguimos buscar sua lixeira agora. Verifique a conexão e tente de novo."
+              actionLabel="Tentar de novo"
+              onAction={carregar}
+            />
+          ) : (
+            <EmptyState
+              icon="delete-empty-outline"
+              title="Lixeira vazia"
+              subtitle="Nada foi excluído por aqui. O que você apagar aparece nesta tela e pode ser restaurado."
+            />
+          )
         }
       />
 
@@ -492,7 +505,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   toastDesfazerLabel: {
     ...Typography.button,
-    fontSize: 12.5,
+    fontSize: Typography.caption.fontSize,
     color: c.accentLight,
   },
 });

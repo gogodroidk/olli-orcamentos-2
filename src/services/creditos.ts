@@ -25,6 +25,23 @@ export async function getMeuSaldo(): Promise<number | null> {
   }
 }
 
+/**
+ * `true` quando a resposta de uma rota de IA (paga com `confirmarCredito:true`)
+ * indica falta de saldo — usado pelo gate gracioso da voz para cair na opção
+ * "Ver planos" em vez de mostrar um erro genérico. O worker devolve
+ * `{ ok:false, erro:'sem_creditos' }` (ver `cobrarCreditoVoz`/`consumirCreditos`
+ * em `worker/src/creditos.js`, motivo `'sem_saldo'` no consumo de lá) — robusto
+ * ao vocabulário exato: casa `sem_saldo`/`sem_credito(s)`/`creditos_insuficientes`
+ * em `motivo` ou `erro`, e também o status HTTP 402 (Payment Required),
+ * semanticamente correto para o caso.
+ */
+export function respostaSemCreditos(status: number, data: unknown): boolean {
+  if (status === 402) return true;
+  const d = (data ?? {}) as { motivo?: unknown; erro?: unknown };
+  const s = `${typeof d.motivo === 'string' ? d.motivo : ''} ${typeof d.erro === 'string' ? d.erro : ''}`;
+  return /sem_saldo|sem_credito|creditos?_insuficient/i.test(s);
+}
+
 /** "1.234 créditos" / "1 crédito" / "0 créditos". */
 export function formatarCreditos(n: number): string {
   return `${n.toLocaleString('pt-BR')} crédito${n === 1 ? '' : 's'}`;

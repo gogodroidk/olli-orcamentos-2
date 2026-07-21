@@ -8,7 +8,7 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TimePickerModal } from 'react-native-paper-dates';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corCategoriaEmChip, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { ChipsFiltro, ItemChipFiltro } from '../../components/web/ChipsFiltro';
@@ -316,7 +316,7 @@ export default function AgendaDesktopScreen() {
             onPress={() => abrirNovo()}
             style={({ hovered, focused }: PressableWebState) => [styles.novoBtn, hovered && styles.novoBtnHover, focused && styles.focoVisivel]}
           >
-            <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accent)} />
+            <MaterialCommunityIcons name="calendar-plus" size={18} color={cores.onPrimary} />
             <Text style={styles.novoBtnText}>Novo agendamento</Text>
           </Pressable>
         </View>
@@ -679,10 +679,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   hojeBtnText: { ...Typography.body, color: c.onSurface, fontSize: 13 },
   novoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, height: 36, borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.md, backgroundColor: c.accent, marginLeft: Spacing.sm,
+    paddingHorizontal: Spacing.md, backgroundColor: c.primary, marginLeft: Spacing.sm,
   },
   novoBtnHover: { opacity: 0.9 },
-  novoBtnText: { ...Typography.button, fontSize: 13, color: textoSobre(c.accent) },
+  novoBtnText: { ...Typography.button, fontSize: 13, color: c.onPrimary },
 
   grade: { flexDirection: 'row', gap: Spacing.sm, width: '100%' },
   coluna: {
@@ -704,7 +704,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   cardHover: { backgroundColor: c.surfacePressed },
   cardHora: { fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted },
-  cardTitulo: { ...Typography.bodySmall, color: c.onSurface, fontSize: 12.5, marginTop: 2 },
+  cardTitulo: { ...Typography.bodySmall, color: c.onSurface, marginTop: 2 },
   cardCliente: { ...Typography.caption, color: c.onSurfaceVariant, fontSize: 11, marginTop: 1 },
   cardStatus: { fontSize: 10.5, fontWeight: '700', marginTop: 3 },
   strike: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
@@ -730,7 +730,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // accent escolhido no tema via comAlfa.
   modalAcaoLink: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: comAlfa(c.accent, 0.10), borderWidth: 1, borderColor: comAlfa(c.accent, 0.30), borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 8 },
   modalAcaoLinkHover: { backgroundColor: comAlfa(c.accent, 0.18) },
-  modalAcaoLinkTexto: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
+  modalAcaoLinkTexto: { ...Typography.bodySmall, fontWeight: '700', color: c.accentLight },
   modalBotoes: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.lg },
   modalIconBtn: { width: 40, height: 40, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
   modalIconBtnHover: { backgroundColor: c.surfacePressed },
@@ -739,7 +739,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tipoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.md },
   tipoOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: BorderRadius.sm, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
   tipoOptionHover: { backgroundColor: c.surfacePressed },
-  tipoOptionText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  tipoOptionText: { ...Typography.caption, fontWeight: '700', color: c.onSurfaceVariant },
   rowFields: { flexDirection: 'row' },
   modalFooterBtns: { marginTop: Spacing.md },
 
@@ -756,5 +756,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // SOBREPOSIÇÃO (1.5) — aviso não-bloqueante, mesmo par warning/warningLight
   // usado nos avisos mobile (EmitirReciboScreen) — "atenção, mas segue".
   avisoConflito: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: c.warning, borderRadius: BorderRadius.md, padding: 10, marginBottom: Spacing.md },
-  avisoConflitoText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 17 },
+  avisoConflitoText: { flex: 1, ...Typography.bodySmall, color: c.onSurface, lineHeight: 17 },
 });

@@ -83,3 +83,95 @@ export function decidirEscritaEquipe(ctx: ContextoEquipe): DecisaoEscrita {
 export function restaurePodeTocarNaNuvem(ctx: ContextoEquipe): boolean {
   return ctx.status === 'pessoal';
 }
+
+/**
+ * Um BACKUP AUTOMÁTICO pode ser gravado na nuvem (`backups_versionados`)? (O0-5)
+ *
+ * Mesma raiz do `restaurePodeTocarNaNuvem`, no sentido inverso — lá o snapshot
+ * DESCE, aqui ele SOBE:
+ *
+ * 1. o aparelho do membro puxa, por sync de equipe, as linhas do DONO;
+ * 2. o SQLite local NÃO tem coluna de tenant, então `exportAllData()` devolve um
+ *    snapshot INTEIRO onde os dados do dono e os do membro são indistinguíveis;
+ * 3. `inserirBackupVersionado` grava esse snapshot sob o `user_id` do MEMBRO —
+ *    ou seja, a base de clientes do dono passa a existir dentro do tenant de
+ *    outra pessoa, que a leva embora ao ser desligada da equipe (a linha em
+ *    `backups_versionados` é dela e sobrevive à saída da org).
+ *
+ * Por isso só a conta `pessoal` (dono do próprio tenant) gera backup na nuvem, e
+ * `desconhecido` também não: "não sei de quem é este banco" nunca autoriza copiá-lo
+ * para um tenant. O dono NÃO perde nada — o backup dele continua igual, e os dados
+ * que o membro enxerga já estão protegidos pelo backup do próprio dono, que é de
+ * onde eles vieram.
+ */
+export function backupNuvemPermitido(ctx: ContextoEquipe): boolean {
+  return motivoBackupNuvem(ctx) === 'permitido';
+}
+
+/**
+ * O MESMO julgamento de `backupNuvemPermitido`, mas dizendo POR QUÊ — porque um
+ * booleano só sabe responder "não" e a tela precisa contar duas histórias bem
+ * diferentes ao usuário:
+ *
+ *  - `somente_dono` (membro de equipe): não é falha nem espera. O backup da conta
+ *    é do dono da empresa e sempre será; não há nada que o membro possa fazer, e
+ *    dizer a ele "backup automático: ativo" é mentira (a guarda vai recusar).
+ *  - `indeterminado`: é o fail-closed temporário — offline, RLS, servidor fora.
+ *    Pode virar `permitido` no próximo minuto, então a tela diz "ainda não deu
+ *    para confirmar", não "você não pode".
+ *
+ * Colapsar os dois num `false` é o bug recorrente da casa pelo avesso: aqui o
+ * dado EXISTE (sabemos exatamente qual dos dois é) e era a UI que o jogava fora.
+ */
+export type MotivoBackupNuvem = 'permitido' | 'somente_dono' | 'indeterminado';
+
+export function motivoBackupNuvem(ctx: ContextoEquipe): MotivoBackupNuvem {
+  switch (ctx.status) {
+    case 'pessoal':
+      return 'permitido';
+    case 'membro':
+      return 'somente_dono';
+    case 'desconhecido':
+      return 'indeterminado';
+  }
+}
+
+/**
+ * O que fazer com a linha `empresa` (cadastro/marca do negócio) dado o contexto.
+ *
+ * `empresa` é a única tabela de linha ÚNICA POR DONO (upsert por `user_id`), e a
+ * RLS (`empresa_owner_write`, 20260707_multitenant.sql) deixa o membro LER a
+ * empresa do dono mas só escrever no próprio `user_id`. A combinação disso com um
+ * push sem filtro é o vazamento: o membro puxa a empresa do DONO para o SQLite,
+ * o push manda a linha SEM `user_id`, o default `auth.uid()` carimba o MEMBRO —
+ * e nasce, no tenant dele, uma cópia do CNPJ/logo/endereço/chave Pix do dono, que
+ * continua lá depois que ele sai da equipe.
+ *
+ * Daí os dois eixos serem separados:
+ *  - `ler`: o membro PRECISA da marca do dono para emitir documento em nome da
+ *    empresa — este é o caso legítimo e ele continua valendo. Só `desconhecido`
+ *    não lê, porque aí não dá para dizer de quem é a linha que voltaria.
+ *  - `escrever`: SÓ o dono do tenant. Para o membro não há sequer caso de uso —
+ *    a RLS já recusaria a linha do dono, e o único efeito possível do push era
+ *    criar a tal cópia no tenant dele.
+ *
+ * `ownerUserId` é o filtro `user_id` do SELECT. Sem ele o `maybeSingle()` do pull
+ * ainda quebrava por outro motivo: um membro que já tinha empresa própria enxerga
+ * DUAS linhas e o PostgREST devolve erro em vez de linha — o membro nunca mais
+ * recebia a marca da empresa (o caso legítimo, quebrado em silêncio).
+ */
+export type DecisaoEmpresa =
+  | { ler: false; escrever: false } // desconhecido: não sei de quem é a empresa
+  | { ler: true; escrever: true; ownerUserId: null } // pessoal/dono: a empresa é dele
+  | { ler: true; escrever: false; ownerUserId: string }; // membro: lê a do dono, não escreve
+
+export function decidirEmpresaEquipe(ctx: ContextoEquipe): DecisaoEmpresa {
+  switch (ctx.status) {
+    case 'desconhecido':
+      return { ler: false, escrever: false };
+    case 'pessoal':
+      return { ler: true, escrever: true, ownerUserId: null };
+    case 'membro':
+      return { ler: true, escrever: false, ownerUserId: ctx.ownerUserId };
+  }
+}

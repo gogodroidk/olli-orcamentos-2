@@ -1,0 +1,386 @@
+---
+/**
+ * /blog/[slug]/ — o post.
+ *
+ * SLUG PLANO, sem categoria e sem ano. Recategorizar um post não pode custar um
+ * 301; e os textos de preço são atualizados em janeiro NA MESMA URL, que é o
+ * mecanismo de frescor mais barato que este blog tem. Ver `content/taxonomia.ts`.
+ *
+ * DADO ESTRUTURADO EM MICRODATA (BlogPosting + BreadcrumbList), não em JSON-LD.
+ * Medido, não preferido: o `scripts/gerar-headers.mjs` autoriza por hash sha256
+ * cada <script> inline do site — inclusive os `application/ld+json` — e a linha
+ * do CSP no `_headers` tem teto de 2.000 caracteres no Cloudflare (hoje ela usa
+ * 1.338 com 18 hashes). Um JSON-LD distinto por post custaria ~55 caracteres
+ * cada, e por volta do 12º post a linha estouraria — sem erro de build, apenas
+ * o CSP inteiro deixando de ser aplicado. Microdata custa ZERO hash: o blog pode
+ * crescer sem teto. E, como o dado estruturado passa a ser a própria marcação do
+ * texto na tela, é impossível o schema dizer uma coisa e a página outra — que é
+ * exatamente a regra da casa ("serializar do MESMO dado que a tela mostra")
+ * levada ao limite.
+ *
+ * O QUE FALTA E NÃO ESTÁ NO MEU ALCANCE: `og:type` continua "website" para os
+ * posts, porque `Layout.astro` o declara fixo e não aceita prop de tipo. Não
+ * afeta a busca (o BlogPosting está aqui), afeta o cartão social. Está anotado
+ * para quem for mexer no Layout.
+ */
+import type { GetStaticPaths } from 'astro';
+import { render } from 'astro:content';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { categoriaPorId, type CategoriaId } from '../../content/taxonomia';
+import { PROFISSAO_POR_OFICIO, SLUG_POR_OFICIO } from '../../data/oficios';
+import CardPost from './_CardPost.astro';
+import {
+	categoriasComRota,
+	dataIso,
+	dataLonga,
+	minutosDeLeitura,
+	postsPublicados,
+	relacionados,
+} from './_dados';
+
+export const getStaticPaths = (async () => {
+	const posts = await postsPublicados();
+	return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}) satisfies GetStaticPaths;
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+
+const todos = await postsPublicados();
+const comRota = categoriasComRota(todos);
+const categoria = categoriaPorId(post.data.categoria as CategoriaId);
+const temRotaCategoria = comRota.includes(post.data.categoria as CategoriaId);
+const leitura = minutosDeLeitura(post.body);
+const proximos = relacionados(post, todos);
+
+const ORIGEM = Astro.site?.origin ?? 'https://olliorcamentos.online';
+const canonical = new URL(Astro.url.pathname, ORIGEM).href;
+const publicado = post.data.publicadoEm;
+const modificado = post.data.atualizadoEm ?? post.data.publicadoEm;
+
+/**
+ * A ponte com `/para/[oficio]/`: um post de ofício específico linka a página que
+ * converte, e a página de ofício linka de volta os posts dela. Link interno nos
+ * dois sentidos, sem nenhuma página nova. Post com `oficio: 'todos'` não gera
+ * link — apontar para uma página de ofício arbitrária seria link de enfeite.
+ */
+const oficio = post.data.oficio;
+const paginaDoOficio =
+	oficio !== 'todos' && oficio in SLUG_POR_OFICIO
+		? {
+				href: `/para/${SLUG_POR_OFICIO[oficio as keyof typeof SLUG_POR_OFICIO]}/`,
+				profissao: PROFISSAO_POR_OFICIO[oficio as keyof typeof PROFISSAO_POR_OFICIO],
+			}
+		: null;
+
+const APP_CADASTRO_URL = 'https://app.olliorcamentos.online/auth/login?modo=cadastro';
+---
+
+<Layout titulo={`${post.data.titulo} | OLLI`} descricao={post.data.descricao}>
+	<Header>
+		<a
+			href={APP_CADASTRO_URL}
+			class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+			>Começar grátis</a
+		>
+	</Header>
+
+	<main id="conteudo">
+		<article
+			itemscope
+			itemtype="https://schema.org/BlogPosting"
+			class="mx-auto max-w-3xl px-6 pb-16 pt-14"
+		>
+			<meta itemprop="inLanguage" content="pt-BR" />
+			<meta itemprop="description" content={post.data.descricao} />
+			<meta itemprop="articleSection" content={categoria.nome} />
+			<link itemprop="mainEntityOfPage" href={canonical} />
+			{/*
+				`publisher` reaproveita o @id do nó Organization que o Layout já emite em
+				toda página. Redeclarar a organização inteira criaria dois nós concorrentes
+				— e o `logo` fica de fora aqui de propósito: ele já está no nó do Layout,
+				e repetir dado que pode divergir é como copy inventada nasce.
+			*/}
+			<div itemprop="publisher" itemscope itemtype="https://schema.org/Organization" itemid={`${ORIGEM}#organizacao`}>
+				<meta itemprop="name" content="OLLI" />
+				<link itemprop="url" href={`${ORIGEM}/`} />
+			</div>
+
+			<nav aria-label="Você está aqui" class="text-sm text-muted">
+				<ol itemscope itemtype="https://schema.org/BreadcrumbList" class="flex flex-wrap items-center gap-1.5">
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+						<a itemprop="item" href="/" class="hover:text-brand-fg"><span itemprop="name">Início</span></a>
+						<meta itemprop="position" content="1" />
+					</li>
+					<li aria-hidden="true">/</li>
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+						<a itemprop="item" href="/blog/" class="hover:text-brand-fg"><span itemprop="name">Blog</span></a>
+						<meta itemprop="position" content="2" />
+					</li>
+					{
+						temRotaCategoria && (
+							<>
+								<li aria-hidden="true">/</li>
+								<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+									<a itemprop="item" href={`/blog/categoria/${post.data.categoria}/`} class="hover:text-brand-fg">
+										<span itemprop="name">{categoria.nome}</span>
+									</a>
+									<meta itemprop="position" content="3" />
+								</li>
+							</>
+						)
+					}
+				</ol>
+			</nav>
+
+			<header class="mt-6">
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+					{
+						temRotaCategoria ? (
+							<a
+								href={`/blog/categoria/${post.data.categoria}/`}
+								class="inline-flex items-center rounded-full bg-tint px-2.5 py-1 font-semibold text-brand-fg transition hover:bg-brand hover:text-white"
+							>
+								{categoria.nome}
+							</a>
+						) : (
+							<span class="inline-flex items-center rounded-full bg-paper px-2.5 py-1 font-semibold text-slate">
+								{categoria.nome}
+							</span>
+						)
+					}
+					<span class="tnum text-muted">~{leitura} min de leitura</span>
+				</div>
+
+				{/*
+					O H1 é o LCP desta página, e é texto: chega no primeiro byte, sem
+					esperar fonte, imagem ou JS. É por isso que não há capa acima da dobra.
+				*/}
+				<h1
+					itemprop="headline"
+					class="mt-4 text-[clamp(1.9rem,4.2vw,2.9rem)] font-extrabold leading-[1.12] tracking-tight text-ink"
+				>
+					{post.data.titulo}
+				</h1>
+
+				<p class="mt-5 text-lg leading-relaxed text-slate">{post.data.descricao}</p>
+
+				<div class="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-4 text-sm text-muted">
+					<span>
+						Publicado em{' '}
+						<time itemprop="datePublished" datetime={dataIso(publicado)} class="tnum">
+							{dataLonga(publicado)}
+						</time>
+					</span>
+					{
+						post.data.atualizadoEm && (
+							<span>
+								· Atualizado em{' '}
+								<time itemprop="dateModified" datetime={dataIso(modificado)} class="tnum">
+									{dataLonga(modificado)}
+								</time>
+							</span>
+						)
+					}
+					{/* Sem `atualizadoEm`, dateModified ainda precisa existir no schema. */}
+					{!post.data.atualizadoEm && <meta itemprop="dateModified" content={dataIso(modificado)} />}
+				</div>
+			</header>
+
+			<div itemprop="articleBody" class="prosa mt-10">
+				<Content />
+			</div>
+		</article>
+
+		{/* ══════════ PONTE COM A PÁGINA DO OFÍCIO ══════════ */}
+		{
+			paginaDoOficio && (
+				<section class="mx-auto max-w-3xl px-6 pb-4">
+					<a
+						href={paginaDoOficio.href}
+						class="flex min-h-11 flex-col gap-1 rounded-cartao border border-line bg-paper p-6 transition hover:border-brand"
+					>
+						<span class="text-sm font-semibold text-brand-fg">
+							OLLI para {paginaDoOficio.profissao} →
+						</span>
+						<span class="text-sm text-slate">
+							As ferramentas de cálculo, os documentos e o ciclo de orçamento a recibo
+							do seu ofício, numa página só.
+						</span>
+					</a>
+				</section>
+			)
+		}
+
+		{/* ══════════ LEITURA RELACIONADA ══════════ */}
+		{
+			proximos.length > 0 && (
+				<section class="mx-auto max-w-5xl px-6 py-14">
+					<h2 class="text-2xl font-bold tracking-tight text-ink">Continue por aqui</h2>
+					<div class="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+						{proximos.map((p) => (
+							<CardPost post={p} comRota={comRota} />
+						))}
+					</div>
+				</section>
+			)
+		}
+
+		{/* ══════════ CTA ══════════ */}
+		<section class="mx-auto max-w-5xl px-6 pb-20">
+			<div class="rounded-caixa border border-line bg-paper p-8 sm:p-10">
+				<h2 class="text-2xl font-bold tracking-tight text-ink">
+					O orçamento sai do mesmo lugar que a OS e o recibo
+				</h2>
+				<p class="mt-3 max-w-xl text-slate">
+					Sem redigitar três vezes, com o cálculo do seu ofício dentro do item e o
+					cliente aprovando por um link. Grátis para começar — sem prazo e sem cartão.
+				</p>
+				<div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+					<a
+						href={APP_CADASTRO_URL}
+						class="inline-flex min-h-11 items-center justify-center rounded-acao bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+						>Criar minha conta grátis</a
+					>
+					<a
+						href="/blog/"
+						class="inline-flex min-h-11 items-center justify-center rounded-acao border border-line bg-white px-7 py-3.5 text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
+						>Ver todos os textos</a
+					>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<Footer class="max-w-5xl" />
+</Layout>
+
+{/*
+  ESTILO DO CORPO DO POST.
+
+  `:global()` porque o HTML vem do Markdown renderizado, que não recebe o
+  atributo de escopo do Astro. O escopo continua existindo — `.prosa` é que é
+  escopada —, então nada disto vaza para o resto do site.
+
+  Astro compila este bloco para um ARQUIVO CSS, não para <style> inline: não
+  entra na contagem de hashes do CSP.
+
+  Sem plugin de tipografia de propósito: são ~40 linhas contra uma dependência
+  nova, e o controle de medida de linha (~68 caracteres) e de ritmo vertical
+  fica onde dá para conferir.
+*/}
+<style>
+	.prosa {
+		font-size: 1.0625rem;
+		line-height: 1.75;
+		color: var(--color-slate);
+	}
+	.prosa :global(> * + *) {
+		margin-top: 1.25em;
+	}
+	.prosa :global(h2) {
+		margin-top: 2.5em;
+		font-size: 1.6rem;
+		font-weight: 800;
+		line-height: 1.25;
+		letter-spacing: -0.015em;
+		color: var(--color-ink);
+		scroll-margin-top: 5rem;
+	}
+	.prosa :global(h3) {
+		margin-top: 2em;
+		font-size: 1.2rem;
+		font-weight: 700;
+		line-height: 1.35;
+		color: var(--color-ink);
+		scroll-margin-top: 5rem;
+	}
+	.prosa :global(strong) {
+		font-weight: 700;
+		color: var(--color-ink);
+	}
+	.prosa :global(a) {
+		color: var(--color-brand);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		text-decoration-thickness: 1px;
+		transition: color var(--olli-dur-1) var(--ease-out-soft);
+	}
+	.prosa :global(a:hover) {
+		color: var(--color-brand-strong);
+	}
+	.prosa :global(ul),
+	.prosa :global(ol) {
+		padding-left: 1.35em;
+	}
+	.prosa :global(ul) {
+		list-style: disc;
+	}
+	.prosa :global(ol) {
+		list-style: decimal;
+	}
+	.prosa :global(li + li) {
+		margin-top: 0.5em;
+	}
+	.prosa :global(li::marker) {
+		color: var(--color-muted);
+	}
+	.prosa :global(blockquote) {
+		border-left: 3px solid var(--color-brand);
+		background: var(--color-tint);
+		border-radius: 0 var(--radius-campo) var(--radius-campo) 0;
+		padding: 1rem 1.25rem;
+		font-style: normal;
+	}
+	.prosa :global(blockquote > * + *) {
+		margin-top: 0.75em;
+	}
+	/* Tabela e bloco de código rolam DENTRO da própria caixa: o corpo da página
+	   nunca pode rolar na horizontal num celular de 360px. */
+	.prosa :global(table) {
+		display: block;
+		width: 100%;
+		overflow-x: auto;
+		border-collapse: collapse;
+		font-size: 0.9375rem;
+		-webkit-overflow-scrolling: touch;
+	}
+	.prosa :global(th),
+	.prosa :global(td) {
+		border-bottom: 1px solid var(--color-line);
+		padding: 0.65rem 0.9rem;
+		text-align: left;
+		vertical-align: top;
+	}
+	.prosa :global(th) {
+		background: var(--color-paper);
+		font-weight: 700;
+		color: var(--color-ink);
+		white-space: nowrap;
+	}
+	.prosa :global(pre) {
+		overflow-x: auto;
+		border-radius: var(--radius-cartao);
+		border: 1px solid var(--color-line);
+		background: var(--color-paper);
+		padding: 1rem 1.15rem;
+		font-size: 0.875rem;
+		line-height: 1.6;
+	}
+	.prosa :global(code) {
+		font-size: 0.9em;
+	}
+	.prosa :global(:not(pre) > code) {
+		border-radius: var(--radius-fio);
+		background: var(--color-tint);
+		padding: 0.15em 0.4em;
+		color: var(--color-brand-ink);
+	}
+	.prosa :global(hr) {
+		border: 0;
+		border-top: 1px solid var(--color-line);
+		margin-top: 2.5em;
+	}
+</style>

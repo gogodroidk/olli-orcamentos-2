@@ -24,16 +24,12 @@ function ResetForm() {
 
 	const form = useForm<ResetFormValues>({ defaultValues: { email: "" } });
 
-	// NOTA: ainda não existe uma rota /nova-senha para o link do e-mail cair
-	// e chamar supabase.auth.updateUser({password}) — o link volta pro login.
-	// Criar essa rota é trabalho de roteamento (routes/sections), fora do
-	// escopo deste lote (login-auth). O e-mail e o feedback já são reais.
 	const onFinish = async (values: ResetFormValues) => {
 		if (loading) return;
 		setLoading(true);
 		try {
 			const { error } = await supabase.auth.resetPasswordForEmail(values.email.trim(), {
-				redirectTo: `${window.location.origin}/auth/login`,
+				redirectTo: `${window.location.origin}/nova-senha`,
 			});
 			if (error) throw error;
 			setSent(true);

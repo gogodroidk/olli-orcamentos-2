@@ -1,12 +1,14 @@
+import type { Empresa } from "@dominio";
 import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { ClientesEsfriandoCard } from "./ClientesEsfriandoCard";
 import { FaixaHoje } from "./FaixaHoje";
 import {
-	calcularAReceber,
 	calcularEmJogo,
 	calcularRecebidoNoMes,
 	calcularTaxaAprovacao,
+	listarDinheiroParado,
 	paramStatus,
 	STATUS_A_RECEBER,
 	STATUS_EM_JOGO,
@@ -14,6 +16,8 @@ import {
 import { formatBRL, formatPct, mesPorExtenso, type OrcamentoRow, plural, type ReciboRow } from "./helpers";
 import { KpiDinheiroCard } from "./KpiDinheiroCard";
 import { ParadosCard } from "./ParadosCard";
+import { PrimeirosPassosCard } from "./PrimeirosPassosCard";
+import { RadarDinheiroCard } from "./RadarDinheiroCard";
 import { RecentOrcamentosCard } from "./RecentOrcamentosCard";
 import { StatusDonutCard } from "./StatusDonutCard";
 import { WelcomeHeader } from "./WelcomeHeader";
@@ -40,15 +44,36 @@ import { WelcomeHeader } from "./WelcomeHeader";
 export default function Inicio() {
 	const orcQ = useOlliList<OrcamentoRow>("orcamentos", { orderBy: "criado_em", ascending: false });
 	const recQ = useOlliList<ReciboRow>("recibos", { orderBy: "criado_em", ascending: false });
-	const { data: empresa } = useMinhaEmpresa();
+	// Leitura mínima só para saber SE existe cliente (1 linha, 1 coluna) — não entra
+	// em nenhum cálculo, serve só para o gate do onboarding abaixo.
+	const cliQ = useOlliList<{ id?: string | null }>("clientes", { limit: 1, colunas: "id" });
+	const { data: empresaLinha } = useMinhaEmpresa();
 
-	const nomeEmpresa = ((empresa?.nome as string | undefined) ?? "").trim() || undefined;
+	// `empresa` é tabela de BLOB: o objeto de domínio inteiro mora em `dados` (ver
+	// `empresaToRow` no cloudSync do app). Daqui saem nome, cidade e CHAVE PIX — é o
+	// que deixa a cobrança do radar sair com o Pix Copia e Cola já montado.
+	const empresa = (empresaLinha?.dados as Empresa | undefined) ?? null;
+	// Blob primeiro, coluna-espelho depois (mesma tolerância do `pickBrandColor`): antes
+	// isto lia só `empresaLinha.nome`, que NÃO é coluna de `empresa` — o nome do dono
+	// nunca chegava ao texto de cobrança.
+	const nomeEmpresa = (empresa?.nome ?? (empresaLinha?.nome as string | undefined) ?? "").trim() || undefined;
+
+	// Conta claramente NOVA: as duas consultas TERMINARAM com sucesso (não é
+	// "carregando" nem "erro" travestido de vazio) e as duas vieram vazias. Só aí
+	// mostramos o guia de primeiros passos — nunca durante loading/erro, senão um
+	// erro de rede apagaria os dados reais do dono da tela.
+	const contaNova =
+		orcQ.isSuccess && (orcQ.data?.length ?? -1) === 0 && cliQ.isSuccess && (cliQ.data?.length ?? -1) === 0;
 
 	const emJogo = useMemo(() => (orcQ.data ? calcularEmJogo(orcQ.data) : null), [orcQ.data]);
-	const aReceber = useMemo(
-		() => (orcQ.data && recQ.data ? calcularAReceber(orcQ.data, recQ.data) : null),
+	// UMA passagem alimenta o radar de dinheiro parado E o KPI "A receber". Eles são o
+	// MESMO dinheiro: calcular duas vezes seria criar a chance de a faixa do topo e o
+	// cartão logo abaixo discordarem sobre quanto o dono tem a receber.
+	const radarDinheiro = useMemo(
+		() => (orcQ.data && recQ.data ? listarDinheiroParado(orcQ.data, recQ.data) : null),
 		[orcQ.data, recQ.data],
 	);
+	const aReceber = radarDinheiro;
 	const recebido = useMemo(() => (recQ.data ? calcularRecebidoNoMes(recQ.data) : null), [recQ.data]);
 	const taxa = useMemo(() => (orcQ.data ? calcularTaxaAprovacao(orcQ.data, 30) : null), [orcQ.data]);
 
@@ -75,8 +100,32 @@ export default function Inicio() {
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
 			<WelcomeHeader />
 
-			{/* Os 4 números que decidem o mês. Cada um leva à lista já filtrada. */}
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			{contaNova && <PrimeirosPassosCard />}
+
+			{/*
+			 * O PALCO. O radar de dinheiro parado vem ANTES dos KPIs de propósito: é a
+			 * única coisa desta tela que pede uma ação hoje. Os quatro números abaixo
+			 * explicam o mês; este diz o que fazer agora, e traz o botão junto.
+			 * Some da hierarquia (vira faixa curta) quando não há nada parado.
+			 */}
+			<RadarDinheiroCard
+				radar={radarDinheiro}
+				isLoading={orcQ.isLoading || recQ.isLoading}
+				isError={orcQ.isError || recQ.isError}
+				onRetry={recarregarTudo}
+				empresa={empresa}
+			/>
+
+			{/*
+			 * Os 4 números que decidem o mês. Cada um leva à lista já filtrada.
+			 *
+			 * Breakpoint em `lg` (1024px), não só em `xl` (1280px): sem o `lg:grid-cols-4`,
+			 * a grade ficava PRESA em 2 colunas por toda a faixa 640–1279px — no mínimo do
+			 * layout desktop (~1024px) sobrava tela de sobra e os 4 cartões viravam 2
+			 * blocos esticados e desproporcionais, em vez de ocupar a largura em 4. Mesmo
+			 * ajuste já feito no app-desktop (`KpiGrid`, Onda 11 — 2/4 colunas em 1024/1280px).
+			 */}
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 				<KpiDinheiroCard
 					label="Em jogo"
 					valor={emJogo ? formatBRL(emJogo.total) : "—"}
@@ -174,6 +223,20 @@ export default function Inicio() {
 					/>
 				</div>
 			</div>
+
+			{/*
+			 * O terceiro radar do celular que faltava aqui: quem já foi cliente e sumiu.
+			 * Fica abaixo do dinheiro porque é receita de amanhã, não de hoje — mas na
+			 * mesma tela, com a mesma ação de um toque.
+			 */}
+			<ClientesEsfriandoCard
+				orcamentos={orcQ.data}
+				recibos={recQ.data}
+				orcRecCarregando={orcQ.isLoading || recQ.isLoading}
+				orcRecErro={orcQ.isError || recQ.isError}
+				onRetry={recarregarTudo}
+				empresa={empresa}
+			/>
 
 			<RecentOrcamentosCard
 				rows={orcQ.data}

@@ -48,11 +48,32 @@
     // /cnpj por usuário: consulta a BrasilAPI (grátis, mas com fair-use) e evita
     // que usem o worker pra raspar CNPJ em massa. Baixo volume (cadastro), teto folgado.
     { "name": "CNPJ_RL", "namespace_id": "1006", "simple": { "limit": 20, "period": 60 } },
-    // Rotas Pix AbacatePay (criar cobrança/status) por usuário: barra criação em
-    // massa de cobranças. Não cobre o webhook (servidor-a-servidor da AbacatePay).
-    { "name": "ABACATE_RL", "namespace_id": "1007", "simple": { "limit": 12, "period": 60 } },
-    // Rotas Mercado Pago (criar cobrança Pix/assinatura/status) por usuário. Não
+    // (namespace_id 1007 era o ABACATE_RL, removido junto com o AbacatePay —
+    // provedor de Pix sem nenhum chamador. Não reaproveitar o id: manter o buraco
+    // deixa claro que o binding saiu de propósito.)
+    // Rotas Mercado Pago (criar cobrança Pix/status) por usuário. Não
     // cobre o webhook (servidor-a-servidor do MP, autenticado por x-signature).
-    { "name": "MP_RL", "namespace_id": "1008", "simple": { "limit": 12, "period": 60 } }
+    { "name": "MP_RL", "namespace_id": "1008", "simple": { "limit": 12, "period": 60 } },
+    // /transcrever por IP (B1/O2-18): complementa o IA_RL (que é por usuário) —
+    // barra abuso via várias contas atrás do mesmo IP no endpoint de maior corpo
+    // (áudio, até 4MB) e maior custo por chamada. Checado ANTES de bufferizar.
+    { "name": "TRANSCREVER_RL", "namespace_id": "1009", "simple": { "limit": 20, "period": 60 } },
+    // /mp/webhook por IP, SÓ no caminho não-assinado (enquanto MP_WEBHOOK_SECRET
+    // não estiver no cofre). Sem isto a rota é pública e sem teto, e cada POST
+    // dispara um GET à API do Mercado Pago com o token de PRODUÇÃO do dono — um
+    // estranho consegue esgotar/derrubar o token que confirma os Pix pagos.
+    // Teto ALTO de propósito: o volume real de webhook do MP é de unidades por
+    // minuto, e 429 aqui só faz o MP REENVIAR (nenhum pagamento se perde).
+    { "name": "MPHOOK_RL", "namespace_id": "1010", "simple": { "limit": 120, "period": 60 } },
+    // /cep por usuário. O upstream é GRÁTIS (BrasilAPI + ViaCEP), então isto não
+    // protege fatura — protege o fair-use de um projeto comunitário sem SLA e
+    // impede que o worker vire ferramenta de raspagem de base de CEP em nome do
+    // OLLI. Teto folgado de propósito: o uso legítimo é 1 consulta por cliente
+    // novo, e acerto de cache nem chega aqui (é conferido ANTES — ver brasil.js).
+    // Enquanto o binding não for provisionado por um deploy, `checarLimite`
+    // devolve `indisponivel` e a rota SEGUE (política `sensivel:false`), porque
+    // derrubar cadastro de cliente por causa de limitador ausente seria pior que
+    // o abuso que ele previne. /feriados não tem binding: não chama ninguém.
+    { "name": "CEP_RL", "namespace_id": "1011", "simple": { "limit": 30, "period": 60 } }
   ]
 }

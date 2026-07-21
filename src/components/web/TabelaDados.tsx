@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, FlatList, StyleSheet, DimensionValue, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliSkeleton } from '../OlliSkeleton';
@@ -78,6 +79,7 @@ export function TabelaDados<T extends { id: string }>({
 }: Props<T>) {
   const [ordenacao, setOrdenacao] = useState(ordenacaoInicial ?? null);
   const styles = useEstilos(criarEstilos);
+  const cores = useCores();
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenacao) return dados;
@@ -186,6 +188,21 @@ export function TabelaDados<T extends { id: string }>({
           )}
         </View>
       </ScrollView>
+      {/*
+       * Indicador estático de overflow horizontal: em telas estreitas (mínimo do
+       * modo desktop, 1024px) a tabela costuma exceder a largura visível e rolar
+       * lateralmente sem nenhum sinal de que há mais colunas à direita. Medir o
+       * overflow de verdade (largura do conteúdo vs. do viewport) pediria layout
+       * assíncrono; uma sombra sempre presente na borda direita já resolve o sinal
+       * mínimo — mais simples e sem risco de ficar dessincronizada do scroll.
+       */}
+      <LinearGradient
+        colors={['transparent', cores.onSurface + '22']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.indicadorOverflow}
+        pointerEvents="none"
+      />
     </View>
   );
 }
@@ -310,6 +327,16 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   tabela: {
     minWidth: '100%',
+  },
+  // Ver comentário no JSX: sombra fixa na borda direita, sinal mínimo de que a
+  // tabela rola horizontalmente. `wrap` tem overflow:hidden, então isto nunca
+  // vaza pra fora do cartão nem quebra o borderRadius do canto.
+  indicadorOverflow: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: 20,
   },
   header: {
     flexDirection: 'row',

@@ -1,0 +1,200 @@
+---
+/**
+ * PlanosPrecos.astro — os 3 cartões de plano com o ALTERNADOR mensal/anual.
+ *
+ * Usado na home (`#planos`) e na página dedicada (`/planos`). Uma marcação só, um
+ * comportamento só — se divergissem, o preço divergiria, e preço divergente é o
+ * incidente que esta casa já teve 5 vezes.
+ *
+ * ═══ TUDO DERIVADO DA FONTE ═══
+ *  - Preços: `data/planos.ts` (espelho da Stripe live). Zero literal de R$ aqui.
+ *  - Bullets de feature: `data/recursos.ts` → `entitlements.ts`. Os itens "Tudo do
+ *    X, mais…" são a DIFERENÇA dos conjuntos de entitlements, não uma lista digitada.
+ *  - O 12× vem com a verdade (ver abaixo), nunca vendido como desconto.
+ *
+ * ═══ O ALTERNADOR NÃO HIDRATA NADA ═══
+ * Dois `<input type="radio">` + `:has()` no CSS trocam os preços de todos os
+ * cartões. 0 KB de JS, 0 ilha React. No celular do prestador (onde o hero nem
+ * hidrata) isto funciona sem uma linha de script. Sem suporte a `:has()` o
+ * alternador não troca e a página fica no MENSAL — que é preço verdadeiro: nada
+ * some, nada mente. Ver `.periodo-seg` / `.preco-*` no global.css.
+ *
+ * ⚠ IDs FIXOS (`periodo-mensal` / `periodo-anual`): renderize este componente UMA
+ * vez por página. Duas instâncias na mesma página colidiriam os ids dos radios.
+ */
+import {
+	DESCONTO_ANUAL_ROTULO,
+	PRECO_EMPRESA,
+	PRECO_PRO,
+	precoNoPeriodo,
+	reais,
+} from "../data/planos";
+import {
+	IA_USOS_GRATIS_MES,
+	RECURSOS_BASE,
+	recursosAdicionais,
+	rotuloBullet,
+} from "../data/recursos";
+
+// O app (painel) mora em outro subdomínio. CTA de assinatura abre o cadastro
+// direto (?modo=cadastro), Empresa fala no WhatsApp de vendas.
+const APP_URL = "https://app.olliorcamentos.online";
+const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
+const WHATSAPP_URL = "https://wa.me/5511941727487";
+
+// Preços nos dois períodos — já mastigados por precoNoPeriodo (valor/sufixo/nota).
+const proMensal = precoNoPeriodo(PRECO_PRO, "mensal");
+const proAnual = precoNoPeriodo(PRECO_PRO, "anual");
+const empresaMensal = precoNoPeriodo(PRECO_EMPRESA, "mensal");
+const empresaAnual = precoNoPeriodo(PRECO_EMPRESA, "anual");
+
+/**
+ * O 12× do Pro — a VERDADE. Só existe se a Stripe tem o produto avulso (a Empresa
+ * não tem: `parceladoCentavos` é null). É 12 × mensal = o ano CHEIO parcelado, mais
+ * caro que o anual à vista. Ver o ⚠ no cabeçalho de data/planos.ts. `aMais` é a
+ * diferença real (parcelado − anual), calculada, nunca digitada.
+ */
+const parceladoCentavos = PRECO_PRO.parceladoCentavos;
+const parcelaCentavos = PRECO_PRO.parcelaCentavos;
+const doze =
+	parceladoCentavos !== null && parcelaCentavos !== null
+		? {
+				parcela: reais(parcelaCentavos),
+				total: reais(parceladoCentavos),
+				anualAVista: reais(PRECO_PRO.anualCentavos),
+				aMais: reais(parceladoCentavos - PRECO_PRO.anualCentavos),
+			}
+		: null;
+
+// Bullets derivados de entitlements — ver data/recursos.ts.
+const bulletsGratis = [
+	...RECURSOS_BASE,
+	`IA de diagnóstico: ${IA_USOS_GRATIS_MES} usos por mês`,
+];
+const bulletsPro = ["Tudo do Grátis", ...recursosAdicionais("pro", "gratis").map(rotuloBullet)];
+const bulletsEmpresa = ["Tudo do Pro", ...recursosAdicionais("empresa", "pro").map(rotuloBullet)];
+
+type PrecoPeriodo = ReturnType<typeof precoNoPeriodo>;
+interface Cartao {
+	nome: string;
+	desc: string;
+	destaque: boolean;
+	/** null = plano grátis (preço estático R$ 0, sem alternador). */
+	mensal: PrecoPeriodo | null;
+	anual: PrecoPeriodo | null;
+	bullets: string[];
+	cta: string;
+	href: string;
+	primary: boolean;
+	doze?: typeof doze;
+}
+
+const cartoes: Cartao[] = [
+	{
+		nome: "Grátis",
+		desc: "Pra sair do caderno e do grupo de WhatsApp.",
+		destaque: false,
+		mensal: null,
+		anual: null,
+		bullets: bulletsGratis,
+		cta: "Começar grátis",
+		href: APP_CADASTRO_URL,
+		primary: true,
+	},
+	{
+		nome: "Pro",
+		desc: "Pra quem vive de campo e já não cabe no grátis.",
+		destaque: true,
+		mensal: proMensal,
+		anual: proAnual,
+		bullets: bulletsPro,
+		cta: "Assinar o Pro",
+		href: APP_CADASTRO_URL,
+		primary: true,
+		doze,
+	},
+	{
+		nome: "Empresa",
+		desc: "Pra equipe que atende em campo todo dia.",
+		destaque: false,
+		mensal: empresaMensal,
+		anual: empresaAnual,
+		bullets: bulletsEmpresa,
+		cta: "Falar com a gente",
+		href: WHATSAPP_URL,
+		primary: false,
+	},
+];
+---
+
+<div class="planos-precos">
+	{/* ALTERNADOR — radios + :has(), 0 KB de JS. Ver o cabeçalho e global.css. */}
+	<fieldset class="periodo-seg mx-auto mb-10 flex w-fit items-center gap-1 rounded-full border border-line bg-card p-1 shadow-e1">
+		<legend class="sr-only">Período de cobrança</legend>
+		<input type="radio" name="periodo" id="periodo-mensal" class="sr-only" checked />
+		<label for="periodo-mensal" class="cursor-pointer select-none rounded-full px-6 py-3 text-sm font-semibold text-slate">Mensal</label>
+		<input type="radio" name="periodo" id="periodo-anual" class="sr-only" />
+		<label for="periodo-anual" class="flex cursor-pointer select-none items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-slate">
+			Anual
+			<span class="rounded-full bg-ambar-veu px-2 py-0.5 text-xs font-bold text-ambar-tinta">-{DESCONTO_ANUAL_ROTULO}</span>
+		</label>
+	</fieldset>
+
+	<div class="grid items-start gap-6 lg:grid-cols-3">
+		{cartoes.map((p) => (
+			<div class={`olli-revela flex h-full flex-col rounded-cartao border bg-card p-8 ${p.destaque ? "border-brand shadow-e3 lg:-translate-y-3" : "border-line shadow-e1"}`}>
+				{/* Selo âmbar (não azul): o azul é só de AÇÃO nesta página. Véu #FFF5CC
+				    + tinta #7A4100 = 7,43:1. Mesma receita do Badge do painel. */}
+				{p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-ambar-veu px-3 py-1 text-xs font-bold text-ambar-tinta">Recomendado</span>}
+				<h3 class="text-lg font-bold text-ink">{p.nome}</h3>
+				<p class="mt-1 text-sm text-muted">{p.desc}</p>
+
+				<div class="mt-5 min-h-[3.75rem]">
+					{p.mensal && p.anual ? (
+						<Fragment>
+							<div class="flex items-baseline gap-1">
+								<span class="preco-mensal items-baseline gap-1">
+									<span class="text-4xl font-extrabold tracking-tight text-ink tnum">{p.mensal.valor}</span>
+									<span class="text-base font-medium text-muted">{p.mensal.sufixo}</span>
+								</span>
+								<span class="preco-anual items-baseline gap-1">
+									<span class="text-4xl font-extrabold tracking-tight text-ink tnum">{p.anual.valor}</span>
+									<span class="text-base font-medium text-muted">{p.anual.sufixo}</span>
+								</span>
+							</div>
+							{p.anual.nota && <p class="nota-anual mt-1.5 text-sm font-medium text-check">{p.anual.nota}</p>}
+						</Fragment>
+					) : (
+						<div class="flex items-baseline gap-1">
+							<span class="text-4xl font-extrabold tracking-tight text-ink tnum">{reais(0)}</span>
+							<span class="text-base font-medium text-muted">/mês</span>
+						</div>
+					)}
+				</div>
+
+				<ul class="mt-6 flex-1 space-y-3 text-sm text-slate">
+					{p.bullets.map((b) => (
+						<li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-check">✓</span><span>{b}</span></li>
+					))}
+				</ul>
+
+				{p.doze && (
+					<p class="mt-5 rounded-campo border border-line bg-paper px-4 py-3 text-xs leading-relaxed text-slate">
+						Prefere no cartão? Dá pra parcelar o ano em <strong class="text-ink">12× de {p.doze.parcela}</strong>.
+						Só que isso soma <strong class="text-ink">{p.doze.total}</strong> — <strong class="text-ink">{p.doze.aMais} a mais</strong> que o
+						anual à vista ({p.doze.anualAVista}). O 12× é fôlego de caixa, <strong class="text-ink">não desconto</strong>.
+					</p>
+				)}
+
+				<a
+					href={p.href}
+					target={p.href === WHATSAPP_URL ? "_blank" : undefined}
+					rel={p.href === WHATSAPP_URL ? "noopener" : undefined}
+					class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? "bg-brand text-white hover:bg-brand-strong" : "border border-line text-ink hover:border-brand hover:text-brand-fg"}`}
+				>{p.cta}</a>
+			</div>
+		))}
+	</div>
+
+	<p class="mt-10 text-center text-sm text-muted">Sem cartão pra testar. Sem fidelidade. Cancela quando quiser.</p>
+</div>

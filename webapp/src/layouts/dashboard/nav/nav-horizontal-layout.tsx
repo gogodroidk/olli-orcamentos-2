@@ -6,6 +6,7 @@ export function NavHorizontalLayout({ data }: NavProps) {
 	return (
 		<nav
 			data-slot="slash-layout-nav"
+			aria-label="Menu principal"
 			className={
 				"w-full bg-background z-app-bar sticky top-[var(--layout-header-height)] left-0 right-0 grow-0 shrink-0"
 			}

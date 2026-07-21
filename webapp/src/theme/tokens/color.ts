@@ -57,24 +57,30 @@ export const presetsColors = {
  */
 export const paletteColors = {
 	primary: presetsColors[ThemeColorPresets.Default],
+	// success/warning/error "default" alinhados ao STATUS_BASE do app (ver
+	// src/theme/cores.ts) — mesma matiz de status nos dois produtos. Só o
+	// "default" muda: lighter/light/dark/darker já eram auditados para AA
+	// (ex.: Badge usa "-darker" no claro e "-light" no escuro, nunca "default")
+	// e a troca do "default" só MELHORA o contraste onde ele é usado puro
+	// (texto/ícone direto sobre branco ou sobre navy escuro).
 	success: {
 		lighter: "#D8FBDE",
 		light: "#86E8AB",
-		default: "#36B37E",
+		default: "#1FA971",
 		dark: "#1B806A",
 		darker: "#0A5554",
 	},
 	warning: {
 		lighter: "#FFF5CC",
 		light: "#FFD666",
-		default: "#FFAB00",
+		default: "#D98008",
 		dark: "#B76E00",
 		darker: "#7A4100",
 	},
 	error: {
 		lighter: "#FFE9D5",
 		light: "#FFAC82",
-		default: "#FF5630",
+		default: "#E5484D",
 		dark: "#B71D18",
 		darker: "#7A0916",
 	},
@@ -127,6 +133,16 @@ export const lightColorTokens = {
 	},
 };
 
+// Navy do DARK — mesma família do app (ver src/theme/cores.ts SUPERFICIES.escuro),
+// não o preto/zinza neutro que o painel usava. Escada de elevação por LUMINOSIDADE
+// (sem sombra preta, ver darkShadowTokens): fundo mais escuro → card/popover →
+// secondary/muted/accent/sidebar mais claro ainda.
+const navyDarkSurfaces = {
+	background: "#07111F", // fundo base — cores.ts SUPERFICIES.escuro.background
+	surface: "#102238", // card/popover — cores.ts SUPERFICIES.escuro.surface
+	surfaceElevated: "#16304D", // secondary/muted/accent/sidebar — cores.ts SUPERFICIES.escuro.surfaceElevated
+};
+
 export const darkColorTokens = {
 	palette: paletteColors,
 	common: commonColors,
@@ -137,8 +153,8 @@ export const darkColorTokens = {
 		disabled: paletteColors.gray[600],
 	},
 	background: {
-		default: commonColors.black,
-		paper: commonColors.black,
-		neutral: "#27272A",
+		default: navyDarkSurfaces.background,
+		paper: navyDarkSurfaces.surface,
+		neutral: navyDarkSurfaces.surfaceElevated,
 	},
 };

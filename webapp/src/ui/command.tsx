@@ -28,8 +28,11 @@ function Command({
 }
 
 function CommandDialog({
-  title = "Command Palette",
-  description = "Search for a command to run...",
+  // Nome/descrição acessíveis do diálogo, em pt-BR (o painel é pt-BR fixo). Antes o
+  // padrão era "Command Palette"/"Search for a command..." em INGLÊS, que o leitor de
+  // tela anunciava numa tela toda em português.
+  title = "Paleta de comandos",
+  description = "Busque uma página e pressione Enter para abrir.",
   children,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
@@ -38,11 +41,16 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
+      {/* O cabeçalho vive DENTRO do DialogContent: é assim que o Radix o conecta ao
+          diálogo (aria-labelledby/aria-describedby) e lhe dá um nome acessível. Antes
+          ficava FORA, como irmão do Content — então renderizava um "heading fantasma"
+          sempre presente no corpo da página (mesmo com o diálogo fechado) e o diálogo
+          aberto ficava SEM nome. `sr-only` mantém o texto só para o leitor de tela. */}
       <DialogContent className="overflow-hidden p-0">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         <Command className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
           {children}
         </Command>

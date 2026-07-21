@@ -19,15 +19,20 @@
  * seria exatamente a promessa vazia que a regra da casa proíbe.
  */
 import Layout from "../../layouts/Layout.astro";
-import OlliLogo from "../../components/OlliLogo.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import Icone from "../../components/Icone.astro";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
 import { VERTICAIS } from "../../../../src/services/verticais";
 import {
 	DOR_POR_OFICIO,
+	ICONE_POR_OFICIO,
 	OFICIOS,
 	PROFISSAO_POR_OFICIO,
 	SLUG_POR_OFICIO,
 } from "../../data/oficios";
+// Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
+import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -35,38 +40,41 @@ const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
 
 /**
- * MDI → emoji. `calculosDoOficio()` devolve `icon` no vocabulário do APP
- * (MaterialCommunityIcons do React Native: "flash", "water-outline"…). A web não
- * tem essa fonte, então renderizar `{c.icon}` cru imprimia a palavra `flash` em
- * inglês, em corpo 24px, nos 21 cards das 6 páginas — justo as que recebem anúncio.
+ * MDI → ícone lucide (componente `<Icone nome={...} />`). `calculosDoOficio()`
+ * devolve `icon` no vocabulário do APP (MaterialCommunityIcons do React
+ * Native: "flash", "water-outline"…). A web não tem essa fonte, então
+ * renderizar `{c.icon}` cru imprimia a palavra `flash` em inglês, em corpo
+ * 24px, nos 21 cards das 6 páginas — justo as que recebem anúncio.
  *
- * Mapa e não fonte de ícone: emoji não pesa byte nenhum, e a página já usa
- * `{o.emoji}` (linha ~203) — este é o vocabulário da casa aqui.
+ * Era emoji (mapa `EMOJI_POR_ICONE`); virou lucide pra casar com o resto da
+ * identidade — landing e painel (lucide-react) com o MESMO traço, não um
+ * mosaico de glifos de fonte de cada sistema operacional.
  *
- * O fallback é "" DE PROPÓSITO: calculadora nova no app não pode voltar a vazar
- * identificador cru pra produção. Some o enfeite, fica o título — degradação
- * silenciosa é melhor que texto errado, e o `aria-hidden` já diz que é decorativo.
+ * O fallback é "" DE PROPÓSITO (ver `Icone.astro`: nome desconhecido = svg
+ * vazio): calculadora nova no app não pode voltar a vazar identificador cru
+ * pra produção. Some o enfeite, fica o título — degradação silenciosa é
+ * melhor que texto errado.
  */
-const EMOJI_POR_ICONE: Record<string, string> = {
-	"air-conditioner": "❄️",
-	fence: "🚧",
-	flash: "⚡",
-	"flask-outline": "🧪",
-	"format-paint": "🎨",
-	fuse: "🔌",
-	"gas-cylinder": "🛢️",
-	gauge: "📊",
-	grass: "🌿",
-	pipe: "🔧",
-	shovel: "⛏️",
-	"sine-wave": "〰️",
-	sprout: "🌱",
-	thermometer: "🌡️",
-	"timer-sand": "⏳",
-	wall: "🧱",
-	"water-outline": "💧",
-	"water-percent": "💦",
-	"water-well": "🪣",
+const ICONE_POR_MDI: Record<string, string> = {
+	"air-conditioner": "wind",
+	fence: "fence",
+	flash: "zap",
+	"flask-outline": "flask-conical",
+	"format-paint": "paint-roller",
+	fuse: "power", // sem ícone lucide de disjuntor — "power" é o mais próximo
+	"gas-cylinder": "cylinder", // sem "botijão" em lucide — cilindro é o mais próximo
+	gauge: "gauge",
+	grass: "leaf",
+	pipe: "cable", // sem "tubo/eletroduto" em lucide — conduíte é o mais próximo
+	shovel: "shovel",
+	"sine-wave": "activity",
+	sprout: "sprout",
+	thermometer: "thermometer",
+	"timer-sand": "hourglass",
+	wall: "brick-wall",
+	"water-outline": "droplet",
+	"water-percent": "droplets",
+	"water-well": "database", // sem "poço/fossa" em lucide — reservatório é o mais próximo
 };
 
 export function getStaticPaths() {
@@ -115,7 +123,7 @@ const nomesCalc = calculos.map((c) => c.nome).join(", ");
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. O plano Grátis da OLLI faz orçamento, ordem de serviço e recibo sem limite para ${profissao}, sem prazo e sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no plano Pro (R$ 39/mês).`,
+		a: `Sim. O plano Grátis da OLLI faz orçamento, ordem de serviço e recibo sem limite para ${profissao}, sem prazo e sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no plano Pro (${reais(PRECO_PRO.mensalCentavos)}/mês).`,
 	},
 	...(calculos.length > 0
 		? [
@@ -127,7 +135,7 @@ const faqs = [
 		: []),
 	{
 		q: `A OLLI serve pra ${profissao} autônomo?`,
-		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Empresa (R$ 99/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
+		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
 	},
 	{
 		q: `Precisa instalar alguma coisa pra usar como ${profissao}?`,
@@ -152,41 +160,38 @@ const schemaFaq = {
 ---
 
 <Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]}>
-	<header class="sticky top-0 z-50 border-b border-line/70 bg-white/80 backdrop-blur-lg">
-		<nav class="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-			<a href="/" aria-label="OLLI — início"><OlliLogo /></a>
-			<a
-				href={APP_CADASTRO_URL}
-				class="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-strong"
-				>Começar grátis</a
-			>
-		</nav>
-	</header>
+	<Header>
+		<a
+			href={APP_CADASTRO_URL}
+			class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+			>Começar grátis</a
+		>
+	</Header>
 
 	<main id="conteudo">
 		<!-- ══════════ HERO DO OFÍCIO ══════════ -->
 		<section class="mx-auto max-w-4xl px-6 pb-16 pt-14">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="hover:text-brand">Início</a>
+				<a href="/" class="hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
 				<span class="text-slate">{oficio.label}</span>
 			</nav>
 
-			<span class="eyebrow mt-6 block">{oficio.emoji} {oficio.label}</span>
+			<span class="eyebrow mt-6 block"><Icone nome={ICONE_POR_OFICIO[oficio.id]} class="h-3.5 w-3.5" />{oficio.label}</span>
 			<h1 class="mt-4 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
-				App de orçamento e OS<br />para <span class="brand-text">{profissao}</span>.
+				App de orçamento e OS<br class="hidden sm:inline" />para <span class="brand-text">{profissao}</span>.
 			</h1>
 			<p class="mt-6 max-w-2xl text-lg leading-relaxed text-slate">{dor}</p>
 
 			<div class="mt-8 flex flex-col gap-3 sm:flex-row">
 				<a
 					href={APP_CADASTRO_URL}
-					class="rounded-xl bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+					class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
 					>Criar meu primeiro orçamento — grátis</a
 				>
 				<a
-					href="/#planos"
-					class="rounded-xl border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand"
+					href="/planos/"
+					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 					>Ver os planos</a
 				>
 			</div>
@@ -212,8 +217,16 @@ const schemaFaq = {
 		     Conteúdo 100% derivado de calculosOficio.ts: nome, descrição e a NORMA em
 		     que cada conta se apoia. É o que diferencia esta página de uma landing
 		     genérica — e é impossível ela mentir, porque é o próprio app falando. -->
+		{/* `faixa-recuo` (global.css) e não `border-y border-line bg-paper`: mesma
+		    costura em degradê da home. As 6 páginas de ofício são landing também, e
+		    uma delas com emenda dura no meio de um site que derrete as outras
+		    denuncia que foram feitas em momentos diferentes.
+
+		    O comentário fica AQUI FORA e não dentro do `&&` logo abaixo: aquela
+		    expressão tem que devolver UM elemento, e um comentário JSX conta como
+		    filho — foi assim que esta linha quebrou o build na primeira tentativa. */}
 		{calculos.length > 0 && (
-			<section class="border-y border-line bg-paper">
+			<section class="faixa-recuo">
 				<div class="mx-auto max-w-4xl px-6 py-20">
 					<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
 						{calculos.length} ferramenta{calculos.length > 1 ? "s" : ""} de {profissao}, dentro do orçamento.
@@ -225,8 +238,10 @@ const schemaFaq = {
 
 					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
 						{calculos.map((c) => (
-							<li class="rounded-2xl border border-line bg-white p-6">
-								<div class="text-2xl" aria-hidden="true">{EMOJI_POR_ICONE[c.icon] ?? ""}</div>
+							<li class="rounded-cartao border border-line bg-white p-6">
+								<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
+									<Icone nome={ICONE_POR_MDI[c.icon] ?? ""} class="h-5 w-5" />
+								</div>
 								<h3 class="mt-2.5 font-bold text-ink">{c.nome}</h3>
 								<p class="mt-1.5 text-sm leading-relaxed text-slate">{c.descricao}</p>
 								<p class="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{c.base}</p>
@@ -260,31 +275,31 @@ const schemaFaq = {
 					Do áudio do cliente ao dinheiro na conta.
 				</h2>
 				<ol class="mt-8 grid gap-4 sm:grid-cols-3">
-					<li class="rounded-2xl border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand tnum">01</div>
+					<li class="rounded-cartao border border-line bg-white p-6">
+						<div class="text-sm font-extrabold text-brand-fg tnum">01</div>
 						<h3 class="mt-2 font-bold text-ink">Orçamento</h3>
 						<p class="mt-1.5 text-sm text-slate">Fala o serviço, a OLLI monta o PDF e manda o link pro cliente aprovar.</p>
 					</li>
-					<li class="rounded-2xl border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand tnum">02</div>
+					<li class="rounded-cartao border border-line bg-white p-6">
+						<div class="text-sm font-extrabold text-brand-fg tnum">02</div>
 						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
 						<p class="mt-1.5 text-sm text-slate">Aprovou, virou OS: checklist, fotos e assinatura do cliente na tela.</p>
 					</li>
-					<li class="rounded-2xl border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand tnum">03</div>
+					<li class="rounded-cartao border border-line bg-white p-6">
+						<div class="text-sm font-extrabold text-brand-fg tnum">03</div>
 						<h3 class="mt-2 font-bold text-ink">Recibo</h3>
 						<p class="mt-1.5 text-sm text-slate">Recebeu, emite o recibo. O histórico do cliente fica guardado pra próxima.</p>
 					</li>
 				</ol>
 
-				<div class="mt-12 rounded-2xl border border-line bg-white p-8 text-center">
+				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
 					<p class="text-lg font-semibold text-ink">Comece de graça, sem cartão.</p>
 					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
 						O plano Grátis faz orçamento, OS, cliente e agenda sem limite — e não tem prazo pra acabar.
 					</p>
 					<a
 						href={APP_CADASTRO_URL}
-						class="mt-6 inline-block rounded-xl bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
+						class="mt-6 inline-block rounded-acao bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
 						>Criar meu primeiro orçamento</a
 					>
 				</div>
@@ -296,12 +311,14 @@ const schemaFaq = {
 			<h2 class="text-[clamp(1.7rem,3.5vw,2.4rem)] font-extrabold tracking-tight text-ink">
 				Perguntas de quem é {profissao}
 			</h2>
-			<div class="mt-8 divide-y divide-line rounded-2xl border border-line bg-white">
+			{/* Mesma caixa-que-agrupa do FAQ da home, mesmo `overflow-hidden` pelo
+			    mesmo motivo (raio aninhado com <details> sem padding lateral). */}
+			<div class="mt-8 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-white">
 				{faqs.map((f) => (
 					<details class="group">
 						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
 							{f.q}
-							<span class="text-brand transition group-open:rotate-45" aria-hidden="true">＋</span>
+							<span class="text-brand-fg transition group-open:rotate-45" aria-hidden="true">+</span>
 						</summary>
 						<p class="px-6 pb-5 text-slate">{f.a}</p>
 					</details>
@@ -316,7 +333,7 @@ const schemaFaq = {
 					href={`${WHATSAPP_URL}?text=${waMsg}`}
 					target="_blank"
 					rel="noopener"
-					class="font-semibold text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
+					class="font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
 					>Chama no WhatsApp</a
 				>.
 			</p>
@@ -330,9 +347,9 @@ const schemaFaq = {
 					<li>
 						<a
 							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand"
+							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
 						>
-							<span aria-hidden="true">{o.emoji}</span>{o.label}
+							<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
 						</a>
 					</li>
 				))}
@@ -340,9 +357,5 @@ const schemaFaq = {
 		</section>
 	</main>
 
-	<footer class="border-t border-line bg-paper">
-		<div class="mx-auto max-w-7xl px-6 py-10 text-sm text-muted">
-			<a href="/" class="hover:text-brand">← Voltar para o início</a>
-		</div>
-	</footer>
+	<Footer variante="minimal" />
 </Layout>

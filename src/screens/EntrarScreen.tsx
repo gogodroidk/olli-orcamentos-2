@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sobreSecundario, type Cores } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
+import { SugestoesEmail } from '../components/SugestoesEmail';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { AuroraBackground } from '../components/AuroraBackground';
@@ -23,11 +24,12 @@ import { LandingHero } from '../components/web/LandingHero';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import {
   isSupabaseConfigured, signIn, signUp, signInWithGoogle, supabase,
-  normalizarTelefoneBR, temDadosLocais,
+  normalizarTelefoneBR, temDadosLocais, getCurrentUser,
 } from '../services/supabase';
 import { getEmpresa, saveEmpresa } from '../database/database';
 import { ONBOARDED_KEY } from './OnboardingScreen';
 import { marcarVisto } from '../services/onboarding';
+import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
@@ -62,6 +64,11 @@ export default function EntrarScreen() {
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
   const [verSenha, setVerSenha] = useState(false);
+  // Controla a fileira de sugestões de provedor de e-mail (SugestoesEmail):
+  // some no blur com um pequeno atraso — sem o atraso, o toque na sugestão
+  // nunca chega a disparar porque o campo já perdeu o foco e o componente
+  // some antes do onPress.
+  const [emailFocado, setEmailFocado] = useState(false);
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [appleBusy, setAppleBusy] = useState(false);
@@ -142,16 +149,28 @@ export default function EntrarScreen() {
         //               faltar empresa, esta checagem roda de novo e se auto-cura.
         let estado: 'tem' | 'nao_tem' | 'nao_sei' = 'nao_sei';
         if (supabase) {
-          // 2 tentativas com backoff curto reduzem o 'nao_sei' por instabilidade momentânea.
-          for (let tentativa = 0; tentativa < 2 && estado === 'nao_sei'; tentativa++) {
-            try {
-              const { data, error } = await supabase.from('empresa').select('user_id').maybeSingle();
-              if (!error) estado = data ? 'tem' : 'nao_tem';
-            } catch { /* rede instável: tenta de novo */ }
-            if (estado === 'nao_sei' && tentativa === 0) {
-              await new Promise<void>((resolve) => setTimeout(resolve, 600));
+          // `.eq('user_id', ...)`: sem o filtro, um membro de equipe enxerga (RLS
+          // empresa_select → donos_visiveis) a linha do DONO além da própria — o
+          // maybeSingle erra com 2 linhas, ou pior, a resposta seria sobre a
+          // empresa de outra pessoa (mesmo padrão do vazamento corrigido no
+          // cloudSync — ver empresaNuvemMudouDesdeUltimoPull). getCurrentUser() lê
+          // a sessão local (sem rede) — acabamos de logar, ela já existe.
+          const usuario = await getCurrentUser();
+          const userId = usuario?.id;
+          if (userId) {
+            // 2 tentativas com backoff curto reduzem o 'nao_sei' por instabilidade momentânea.
+            for (let tentativa = 0; tentativa < 2 && estado === 'nao_sei'; tentativa++) {
+              try {
+                const { data, error } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
+                if (!error) estado = data ? 'tem' : 'nao_tem';
+              } catch { /* rede instável: tenta de novo */ }
+              if (estado === 'nao_sei' && tentativa === 0) {
+                await new Promise<void>((resolve) => setTimeout(resolve, 600));
+              }
             }
           }
+          // sem userId (sessão ainda não persistiu): estado permanece 'nao_sei' —
+          // piso não-destrutivo, igual à instabilidade de rede.
         }
         if (estado === 'tem') await marcarVisto();
         else if (estado === 'nao_tem') destino = 'Onboarding';
@@ -191,6 +210,10 @@ export default function EntrarScreen() {
     try {
       if (modo === 'signup') {
         const data = await signUp(emailLimpo, senha, nome.trim(), telefone);
+        // Cadastro concluído no Supabase (não lançou) — conta com sessão
+        // imediata OU pendente de confirmação de e-mail, tanto faz: o
+        // funil signup→orçamento começa aqui.
+        track(Eventos.signup);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         if (data.session) {
           await semearTelefoneEmpresa(telNormalizado);
@@ -297,7 +320,18 @@ export default function EntrarScreen() {
       {modo === 'signup' && (
         <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
       )}
-      <OlliInput label="E-mail" value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
+      <OlliInput
+        label="E-mail"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="voce@email.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        leftIcon="email"
+        onFocus={() => setEmailFocado(true)}
+        onBlur={() => setTimeout(() => setEmailFocado(false), 150)}
+      />
+      <SugestoesEmail email={email} focado={emailFocado} onSelecionar={setEmail} />
       {modo === 'signup' && (
         <OlliInput
           label="WhatsApp/Telefone"

@@ -78,19 +78,25 @@ export default function CodigosErroScreen() {
   const [naoAchei, setNaoAchei] = useState<Partial<CasoErro> | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erroBusca, setErroBusca] = useState(false);
+  // Marcas (chips de filtro) + total (subtítulo do cabeçalho): baixa prioridade
+  // (a busca principal funciona sem eles), mas uma falha real não deve
+  // desaparecer em silêncio — `headerErro` habilita o "Tentar de novo" abaixo
+  // da Regra de ouro. Também se autocorrige a cada foco na tela.
+  const [headerErro, setHeaderErro] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useFocusEffect(useCallback(() => {
-    (async () => {
-      try {
-        const [ms, t] = await Promise.all([getMarcasErro(), countCodigosErro()]);
-        setMarcas(ms);
-        setTotal(t);
-      } catch {
-        // contadores do cabeçalho são cosméticos — falha silenciosa
-      }
-    })();
-  }, []));
+  const carregarHeader = useCallback(async () => {
+    setHeaderErro(false);
+    try {
+      const [ms, t] = await Promise.all([getMarcasErro(), countCodigosErro()]);
+      setMarcas(ms);
+      setTotal(t);
+    } catch {
+      setHeaderErro(true);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { carregarHeader(); }, [carregarHeader]));
 
   const executarBusca = useCallback(async () => {
     const q = query.trim();
@@ -243,6 +249,18 @@ export default function CodigosErroScreen() {
           <Text style={styles.ouroBold}> nunca troque a placa sem testar</Text>. Código genérico não é diagnóstico.
         </Text>
       </View>
+
+      {/* MARCAS/TOTAL DO CABEÇALHO — falha real (não colapsa em silêncio): a
+          busca principal segue funcionando sem isso, mas oferece retry. */}
+      {headerErro && (
+        <View style={styles.ouro}>
+          <MaterialCommunityIcons name="alert-circle-outline" size={16} color={cores.warning} />
+          <Text style={styles.ouroText}>
+            Não deu para carregar as marcas e o total de códigos agora.{' '}
+            <Text style={styles.ouroLink} onPress={carregarHeader}>Tentar de novo</Text>
+          </Text>
+        </View>
+      )}
 
       {/* FILTROS — marca (rolagem) + severidade com cor distinta e contagem ao vivo */}
       <View style={styles.filtros}>
@@ -567,6 +585,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ouro: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(247,178,59,0.10)', borderBottomWidth: 1, borderBottomColor: 'rgba(247,178,59,0.22)', paddingHorizontal: Spacing.base, paddingVertical: 10 },
   ouroText: { flex: 1, fontSize: 11.5, lineHeight: 16, color: c.onSurfaceVariant },
   ouroBold: { fontWeight: '800', color: c.onSurface },
+  ouroLink: { fontWeight: '800', color: c.accentLight },
 
   // Uma faixa só pros dois eixos de filtro (marca + severidade): uma borda em vez
   // de duas, sobra mais tela pros resultados no celular.

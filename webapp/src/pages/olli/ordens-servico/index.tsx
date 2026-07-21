@@ -19,7 +19,8 @@ import { STATUS_OS_LABELS } from "@dominio";
 import { AlertTriangle, Camera, ClipboardList, Inbox, MoreHorizontal, Plus, RotateCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
-import { NameCell } from "@/olli/components/record-list-helpers";
+import { BotaoAbrirLinha, linhaClicavel, NameCell } from "@/olli/components/record-list-helpers";
+import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useOlliList } from "@/olli/data";
 import { useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -281,72 +282,90 @@ export default function OrdensServicoPage() {
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Cliente</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Serviço</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Técnico</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Agendada</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Checklist</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Fotos</th>
-									<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Valor</th>
-									<th className="px-4 py-3">
-										<span className="sr-only">Ações</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{lista.map((os) => (
-									<tr
-										key={os.id}
-										className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
-									>
-										<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
-											{os.numero || "—"}
-										</td>
-										<td className="px-4 py-3.5">
-											<NameCell name={os.clienteNome || "—"} />
-										</td>
-										<td className="px-4 py-3.5 text-text-primary">
-											<span className="line-clamp-1">{os.titulo || "—"}</span>
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<Badge variant={COR_STATUS[os.status]} className="font-medium">
-												{STATUS_OS_LABELS[os.status]}
-											</Badge>
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
-											{os.tecnicoNome || <span className="text-text-disabled">Não atribuída</span>}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
-											{formatarQuando(os.dataAgendada)}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<ProgressoChecklist os={os} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<Fotos qtd={os.fotos.length} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
-											{os.valor != null ? BRL.format(os.valor) : "—"}
-										</td>
-										<td className="px-2 py-3.5 text-right">
-											<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
-										</td>
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Cliente</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Serviço</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Técnico</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Agendada</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Checklist</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Fotos</th>
+										<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Valor</th>
+										<th className="px-4 py-3">
+											<span className="sr-only">Ações</span>
+										</th>
 									</tr>
-								))}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{lista.map((os) => (
+										// A linha inteira abre a ordem. O menu "…" segue intacto: `linhaClicavel`
+										// ignora cliques que nascem em qualquer controle — inclusive nos itens do
+										// menu, que portalam no DOM mas borbulham na árvore do React até aqui.
+										<tr
+											key={os.id}
+											{...linhaClicavel(
+												() => abrirEdicao(os),
+												"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
+											)}
+										>
+											<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
+												{os.numero || "—"}
+											</td>
+											<td className="px-4 py-3.5">
+												<NameCell name={os.clienteNome || "—"} />
+											</td>
+											{/* O título é a célula principal: é o texto mais descritivo da linha e o
+											    alvo maior. Ele carrega o caminho de teclado (Tab + Enter) — o Nº pode
+											    vir vazio ("—"), o que daria um alvo de foco minúsculo e mudo. */}
+											<td className="px-4 py-3.5 text-text-primary">
+												<BotaoAbrirLinha
+													rotulo={`Abrir ordem ${os.numero || "sem número"} — ${os.titulo || "sem título"}`}
+													aoAbrir={() => abrirEdicao(os)}
+													className="block w-full group-hover:underline"
+												>
+													<span className="line-clamp-1">{os.titulo || "—"}</span>
+												</BotaoAbrirLinha>
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<Badge variant={COR_STATUS[os.status]} className="font-medium">
+													{STATUS_OS_LABELS[os.status]}
+												</Badge>
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
+												{os.tecnicoNome || <span className="text-text-disabled">Não atribuída</span>}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
+												{formatarQuando(os.dataAgendada)}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<ProgressoChecklist os={os} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<Fotos qtd={os.fotos.length} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
+												{os.valor != null ? BRL.format(os.valor) : "—"}
+											</td>
+											<td className="px-2 py-3.5 text-right">
+												<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE */}
 					<div className="divide-y divide-border/60 md:hidden">
 						{lista.map((os) => (
-							<div key={os.id} className="p-4">
+							<div key={os.id} {...linhaClicavel(() => abrirEdicao(os), "p-4 transition-colors")}>
 								<div className="flex items-start justify-between gap-3">
 									<div className="min-w-0">
 										<div className="flex items-center gap-2">
@@ -355,7 +374,13 @@ export default function OrdensServicoPage() {
 												{STATUS_OS_LABELS[os.status]}
 											</Badge>
 										</div>
-										<p className="mt-1.5 line-clamp-1 text-sm font-medium text-text-primary">{os.titulo || "—"}</p>
+										<BotaoAbrirLinha
+											rotulo={`Abrir ordem ${os.numero || "sem número"} — ${os.titulo || "sem título"}`}
+											aoAbrir={() => abrirEdicao(os)}
+											className="mt-1.5 block w-full"
+										>
+											<span className="line-clamp-1 text-sm font-medium text-text-primary">{os.titulo || "—"}</span>
+										</BotaoAbrirLinha>
 										<p className="mt-0.5 line-clamp-1 text-sm text-text-secondary">{os.clienteNome || "—"}</p>
 									</div>
 									<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
@@ -432,7 +457,12 @@ function AcoesDaOrdem({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="size-8" aria-label={`Ações da ordem ${os.numero || os.titulo}`}>
+				<Button
+					variant="ghost"
+					size="icon"
+					className="size-8 alvo-toque"
+					aria-label={`Ações da ordem ${os.numero || os.titulo}`}
+				>
 					<MoreHorizontal className="size-4" />
 				</Button>
 			</DropdownMenuTrigger>

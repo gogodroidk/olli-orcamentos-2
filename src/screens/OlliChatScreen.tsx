@@ -9,13 +9,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EstadoIA } from '../components/EstadoIA';
 import { enviarChat, ChatMensagem } from '../services/olliAssistente';
+import { SinalizarIA } from '../components/SinalizarIA';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -231,7 +232,7 @@ export default function OlliChatScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {bolhas.map(b => (
+        {bolhas.map((b, i) => (
           <AnimatedEntrance key={b.id} from="bottom">
             <Balao
               role={b.role}
@@ -239,6 +240,9 @@ export default function OlliChatScreen() {
               falhou={b.falhou}
               onTentarDeNovo={() => tentarDeNovo(b.id)}
               onTransformarEmOrcamento={b.id !== 'olli-hello' ? () => criarOrcamentoDaResposta(b.texto) : undefined}
+              // A saudação fixa não é conteúdo gerado — não tem o que revisar nela.
+              podeSinalizar={b.id !== 'olli-hello'}
+              pedido={pedidoAntesDe(bolhas, i)}
             />
           </AnimatedEntrance>
         ))}
@@ -291,14 +295,27 @@ export default function OlliChatScreen() {
           activeOpacity={0.85}
           accessibilityLabel={iaEsgotada ? 'Ver planos' : 'Enviar mensagem'}
         >
-          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color="#fff" />
+          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color={textoSobre(iaEsgotada ? cores.plan : cores.primary)} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }: { role: 'user' | 'assistant'; texto: string; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void }) {
+/**
+ * O pedido que gerou a bolha `idx`: a última fala do usuário ANTES dela. Vai
+ * junto da denúncia — moderar uma resposta ofensiva sem a pergunta que a
+ * provocou é quase impossível, e o histórico do chat só existe neste aparelho
+ * (AsyncStorage), então quem revisa não tem como buscar isso depois.
+ */
+function pedidoAntesDe(bolhas: Bolha[], idx: number): string {
+  for (let i = idx - 1; i >= 0; i--) {
+    if (bolhas[i].role === 'user') return bolhas[i].texto;
+  }
+  return '';
+}
+
+function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento, podeSinalizar, pedido }: { role: 'user' | 'assistant'; texto: string; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void; podeSinalizar?: boolean; pedido?: string }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const isUser = role === 'user';
@@ -326,11 +343,18 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento }
             <Text style={styles.tentarDeNovoText}>Tentar de novo</Text>
           </TouchableOpacity>
         )}
-        {!falhou && onTransformarEmOrcamento && (
-          <TouchableOpacity style={styles.transformarBtn} onPress={onTransformarEmOrcamento} activeOpacity={0.75}>
-            <MaterialCommunityIcons name="file-plus-outline" size={14} color={cores.accentLight} />
-            <Text style={styles.transformarText}>Transformar em orçamento</Text>
-          </TouchableOpacity>
+        {!falhou && (onTransformarEmOrcamento || podeSinalizar) && (
+          <View style={styles.acoesRow}>
+            {onTransformarEmOrcamento && (
+              <TouchableOpacity style={styles.transformarBtn} onPress={onTransformarEmOrcamento} activeOpacity={0.75}>
+                <MaterialCommunityIcons name="file-plus-outline" size={14} color={cores.accentLight} />
+                <Text style={styles.transformarText}>Transformar em orçamento</Text>
+              </TouchableOpacity>
+            )}
+            {podeSinalizar && (
+              <SinalizarIA tela="OlliChatScreen" resposta={texto} pedido={pedido ?? ''} />
+            )}
+          </View>
         )}
       </View>
     </View>
@@ -396,7 +420,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   rowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   rowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 12 },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
-  olliAvatar: { width: 36, height: 36, borderRadius: 12, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  olliAvatar: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 8 },
 
   bubble: { maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 11 },
   bubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },
@@ -411,8 +435,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tentarDeNovoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
   tentarDeNovoText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
   cancelarText: { fontSize: 12.5, fontWeight: '600', color: c.onSurfaceVariant },
-  transformarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
+  acoesRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginTop: 6 },
+  transformarBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 },
   transformarText: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
+  // (o botão "Sinalizar" e seus estados vivem em components/SinalizarIA.tsx —
+  //  as três superfícies generativas compartilham o mesmo caminho de denúncia)
 
   sugestoesWrap: { marginTop: 8 },
   sugestoesLabel: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.8, color: c.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 },

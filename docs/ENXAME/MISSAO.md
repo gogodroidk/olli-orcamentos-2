@@ -1,0 +1,105 @@
+# OPERAÇÃO OLLI-PERFEITO — sala de guerra do enxame
+
+> Cérebro vivo da operação. Todo agente lê isto pra saber a missão, as regras e onde estamos.
+> Atualizado a cada onda pelo coordenador (thread principal). Fonte de verdade da OPERAÇÃO
+> (não do produto — produto é `docs/EXECUTION_LOG.md` + `docs/PILOTO/LEDGER.md`).
+
+## ⭐ SE VOCÊ ESTÁ RETOMANDO (pós-reset de contexto — dono pediu pra blindar em 18/07)
+**NÃO recomece, NÃO mude a direção.** Continue o programa deste doc. Estado em 18/07 08:44 (HEAD `97f59d3`):
+branch `claude/app-complete-analysis-optimization-9a1912`, **36 commits não pushados** (merge = ato do dono).
+- **Como retomar:** leia o "Log de ondas" abaixo (o que já foi feito) + as visões em `docs/ENXAME/`
+  (ENGAJAMENTO_VISAO, COMUNICACAO_VISAO, OLLI_VOZ_CONVERSA, CATALOGO_VISUAL, FACILITACOES, REAUDITORIA_PAINEL).
+  Se há mudança não-commitada na worktree = uma onda (Workflow) em andamento: rode **`npm run preflight`**
+  (o gate real: typecheck + 14 suítes + check:contraste + expo-doctor) + `cd webapp && npx tsc --noEmit` +
+  `cd web && npx astro check`, e commite antes de seguir.
+  (No Windows o preflight flaka com `Assertion failed ... uv` e **exit 127** no meio das suítes — é ambiental,
+  passa no retry. Rode 2x antes de reportar vermelho.)
+- **Regra anti-mentira de número** (custou um doc de entrega em 18/07): todo número em documento do dono
+  sai de comando rodado **naquela sessão**, com **commit-ish + horário** carimbados. Nunca copie número de
+  rascunho anterior, de outro doc, nem de relato de agente — nesta worktree há 3 sessões escrevendo e
+  "medi agora" vence em minutos. E antes de escrever um ⚠️ que manda o dono consertar algo, **rode o
+  comando e confirme que o problema ainda existe**.
+- **Próximas frentes:** engajamento Ondas 2-4 (ritual diário, push "cliente aprovou", feedback loop),
+  facilitações restantes (`FACILITACOES.md`), P2/P3 do painel (`REAUDITORIA_PAINEL.md`), e o **build final**.
+- **ENTREGÁVEIS FINAIS (dono): web + APK + iPhone prontos, tudo em sinergia.** iOS ENTROU no escopo
+  (build prep + IAP; antes era "esperar dia 20"). Ver `LOJA.md`. Humanos em `BLOQUEIOS.md` (não tente, só reporte).
+
+## Missão (pedido do dono, 2026-07-17)
+Deixar o OLLI **perfeito** — app (APK) + painel web + landing — com cara de empresa bilionária
+(Stripe/Apple): tudo funciona, tudo faz sentido, UX fenomenal, ícones que casam, zero fora de
+layout, onboarding, página de ajuda, sinergia entre telas. Análise de código caractere-por-caractere,
+sem código-lixo. Preparar a publicação na **Google Play** até o ponto dos cliques do dono. Apple: só
+depois de 20/07.
+
+## Decisões travadas
+1. **Todas as frentes em paralelo** — auditoria de código + perfeição UI/UX + destravar loja/comercial.
+2. **Play Store:** preparo TUDO (AAB assinado, listing, prints, data safety, content rating) e paro
+   nos cliques do dono (regra: não digito credencial, não aceito termos, não clico "publicar"). Começo
+   por faixa de **teste interno** (reversível), não produção direta.
+3. **Loop autônomo que NÃO para:** se não posso fazer algo → marca BLOQUEADO-HUMANO e pula. Se não há
+   o que fazer numa frente → próxima. Roda onda após onda até o dono voltar e mandar parar.
+
+## MANDATO 2ª leva (dono, 17/07) — APROVADO, executar tudo, dúvida→pesquisa+decide sozinho
+- **VOZ COMPLETA + COBRANÇA LIGADA** (Fase 2 cobrança server-side + Fase 3 Tier B: o assistente que
+  pergunta e executa — "um clique, ele fala, a IA faz; se não sair, pergunta e refaz"). É a joia da coroa.
+- **IDENTIDADE VISUAL UNIFICADA COMPLETA** — convergir as 3 pontas pra linguagem do app.
+- **FILOSOFIA-MÃE: menos cliques / facilitar a vida do usuário, EM TODAS AS TELAS.** Exemplo dado:
+  autocomplete de e-mail no login (digita o começo + @ → sugere gmail/hotmail/…). "Quanto menos cliques
+  pro resultado, melhor." Aplicar essa criatividade em tudo: smart defaults, autocomplete, one-tap,
+  prefill, menos passos. **Experiência perfeita do usuário é O FOCO.**
+- **Alvo de hoje:** sistema TOTALMENTE completo e funcional, toda tela aprofundada, nada quebrado, nada
+  fora da sinergia, cada botão faz sentido e leva a outro. Rodar no máximo (workflows/multi-agente).
+
+## Regras P0 (do OBJETIVO.md / ARMADILHAS — não são sugestão)
+1. **Erro nunca vira vazio** — todo gate de plano/permissão/vertical exige 3 estados (carregando|erro|valor).
+2. **Copy/preço/feature só derivada da fonte** (`PLANOS_BASE`, types, Stripe live) — nunca de memória.
+3. Wrangler: `env -u CLOUDFLARE_API_TOKEN` (token do .env é fraco e sabota o deploy).
+4. PowerShell não roda comando começando com dígito; MCP no Windows exige `setx` + reiniciar.
+5. **Verificar contra a realidade** — versão/licença = registry npm; "tem bug" = ler/rodar; nunca votação de céticos pra fato.
+6. **A FILA pode estar velha** — conferir no repo vivo se o item ainda é verdade ANTES de codar (lição 16/07).
+7. Gate de merge: `npm test` (root, **14 scripts** desde a Onda 26 — era 8) + `npm run typecheck` (exit 0) têm que continuar verdes.
+8. NÃO mexer em `diagnostico.`/`link.` (backend vivo). NÃO tocar domínio (decisão do dono).
+
+## Roteamento por custo (skill roteador-de-modelos)
+Braçal em lote → swarm/haiku · análise/inventário → sonnet · **síntese/decisão/escrita sensível → Opus** · Fable só horizonte longo.
+
+## Protocolo do loop (como o coordenador continua, mesmo após resumo de contexto)
+1. Cada **onda** = 1 Workflow (fan-out roteado + verificação adversarial).
+2. Ao completar, o coordenador: (a) sintetiza, (b) persiste achados nos docs desta pasta,
+   (c) aplica/agenda correções, (d) commita a onda, (e) lança a próxima onda.
+3. Nunca empurrar pra produção/loja/main sozinho — isso é ato do dono. Trabalho fica em commits locais.
+4. Item humano → registra em `LOJA.md`/`BLOQUEIOS.md` e segue.
+
+## Log de ondas
+- **Onda 1 — Reconhecimento** ✅ (2026-07-17): 6 agentes, 0 erro. Achados em `ACHADOS.md`, humanos em `BLOQUEIOS.md`, loja em `LOJA.md`.
+  - Correção crítica: memória mentia — `HEAD == main == origin/main == 1f38cd3`; os "29 commits não pushados" JÁ estão em produção.
+  - 2 gates estavam VERMELHOS (não documentado): `tsconfig` sem `web` no exclude + mock de env com nome velho. **Ambos corrigidos, gate verde confirmado** (`typecheck`/`test` exit 0).
+  - Mapa: app ~55 telas, painel ~19 rotas, landing 6 páginas. Padrão-raiz "erro vira vazio" em 18+ sítios do app.
+- **Onda 2 — Verdade & confiança** ✅ (2026-07-17): 5 clusters disjuntos, 0 erro. Root gate verde. Feito: skeleton infinito Home (3 estados+retry), EquipeAoVivo visível + copy, XSS `img()` no PDF, FAQ+404 landing, filtro KPI painel. Achado novo: benefício órfão `dashboard_empresa` (removido, decisão do dono pendente). ⚠️ web/webapp sem typecheck local (sem node_modules) — CI cobre.
+- **Onda 3 — Blindagem** ✅ (2026-07-17): 9 agentes, 0 erro. CI criado (3 jobs, push/PR). Sweep "erro vira vazio" fechado nas 12 telas de maior impacto (16 arquivos). typecheck+test exit 0. Achado novo: webapp com 2 lockfiles. A8 autocorrigiu o alvo (PmocPlanosScreen plural).
+- **Onda 4 — Segurança & dado que some & coerência** ✅ (2026-07-17): 4 agentes, 0 erro. Root gate + webapp typecheck (instalei deps) + 8 testes verdes. B1 worker (MP webhook cap + /transcrever cap+rate-limit; `TRANSCREVER_RL` precisa deploy→BLOQUEIOS). B3 gate vertical Diagnóstico + redirect privacidade. B4 reduced-motion do wizard. B2 e metade do B1 eram STALE (já feitos) — enxame confirmou sem duplicar. Efeito colateral do pnpm: `lefthook install` (hook benigno, não bloqueia).
+- **Onda 5 — Coerência visual & privacidade** ✅ (2026-07-17): 5 agentes, 0 erro. app typecheck+test + webapp tsc verdes. C1 (contraste badge PMOC desktop + rota morta), C2 (nav #oficios), C3 (onboarding "Primeiros passos" no painel), C4 (ConfirmDialog temático), C5 (notificação: cold-start deep-link + cancelar lembretes no logout "manter dados" + teto 150). C5 achou que o warm-start já existia (ffd1065).
+- **Onda 6 — QC VISUAL** ✅ (2026-07-17): auditoria por código (5 auditores) — screenshot ao vivo travou (hero 3D) e produção é pré-ondas, então fui por código. Catálogo em `CATALOGO_VISUAL.md`. Achados fortes: OlliButton com ícone `#fff` invisível sob marca clara (P0, 39 arquivos), PainelNovoPlano sem Modal (P0), vários contrastes de categoria, e o VEREDITO CROSS: 3 superfícies parecem 3 empresas (ícone/fonte/raio/dark divergem) → decisão de identidade do dono em BLOQUEIOS.
+  - **Nota de segurança:** NÃO digitei a senha da demo em login (regra dura de credenciais). Painel autenticado fica pro dono logar ou build local sem-senha.
+- **Onda 7 — Correção visual (bugs objetivos)** ✅ (2026-07-17): F1 contraste app (OlliButton cloneElement cura 39 telas + StepIndicator/categorias/voice/plan), F2 landing polish, F3 app-desktop (PainelNovoPlano→Modal, 460→420, CTA Agenda), F4 painel unifica ícone (solar→lucide). Gate app+painel verde. Identidade cross = dono (BLOQUEIOS).
+- **Onda 8 — Fecho de raízes + re-auditoria** ✅ (2026-07-17): G1 fecha "erro vira vazio" (Agenda/Conta/Step4/CodigosErro — 100% da raiz no app); G2 extrai Footer/Header na landing (dedupe, verificado com astro dev + DOM); G3 re-audita os 152 do painel → ~65 fechados, ~19 abertos (top-10 em `REAUDITORIA_PAINEL.md`). app typecheck+test + astro check (0 erros) verdes.
+- **Onda VOZ:** design ✅ (`OLLI_VOZ_CONVERSA.md`, 7 especialistas). **Tier A parcial ✅** (2026-07-17): Fase 0 (preço-nulo→R$0 com confirmação) + saudação + leitura-de-volta + banner de falta. tsc+test verdes. Pendentes seguros (follow-up): unificar mic (partir `vozNuvem.pararEEnviar`), casar cliente por voz, extração rica. **Fase 2 (cota/preço) e Fase 3 (Tier B) esperam o dono.**
+- **Onda 9 — bugs de dado + mic da voz** ✅ (2026-07-17): H1 (FormEquipamento relê fresco, proximoNumeroOs pagina, FormOs mescla checklist + copy honesta), H2 (senha demo fora dos docs, cache limpo no SIGNED_OUT via singleton), H3 (mic unificado — `vozNuvem` partido). app typecheck+test + webapp tsc verdes (test crashou 1x por flake de libuv do Node/Windows; passou no retry).
+- **Onda 10 — mop-up P2/P3 do painel** ✅ (2026-07-17): J1 a11y (badge -darker, aria-label preço/busca/LocalePicker, zh_CN fora), J2 **fluxo de redefinir senha consertado** (nova rota `/nova-senha` — antes mandava e-mail e não trocava a senha) + número de recibo no retry, J3 (MenuDaLinha içado, adapter antd órfão deletado). webapp tsc exit 0.
+- **Onda 11 — consistência visual do app** ✅ (2026-07-17): K1 token `BorderRadius.chip=14` (raio do chip de ícone unificado em 9 telas), K2 fontSize fracionário do desktop → Typography (25 sítios/8 arquivos), K3 TabelaDados com indicador de overflow + KpiGrid com breakpoint 2/4 colunas em 1024/1280px. app typecheck+test verdes. (⚠️ `npm test` no Windows flaka com abort de libuv ao encadear 8 processos — ambiental, passa no retry; CI é Linux, não afeta. P3 dev-exp.)
+- **Ondas 12-20 — 2ª leva do mandato** ✅ (2026-07-17/18): w12 autocomplete de e-mail no login (app+painel) + mapa de facilitações · w13 sinergia entre telas (cada botão leva a outro) · w14 assistente de comunicação (o OLLI dita a fala pro cliente) · w15 **voz Fase 2: cobrança de crédito de verdade** (opt-in, nunca auto-débito) · w16 **voz Fase 3 / Tier B** (a Olli pergunta e refaz) · w17 landing troca emoji por ícones SVG lucide · w18 painel adota Plus Jakarta + Spectral · w19 painel vira dark navy + status colors do app · w20 engajamento (gatilho diário Bom dia/Fechar o dia + analytics ligados).
+- **Onda 21 — feedback + fronteira app/painel** ✅ (2026-07-18): "Pulso da semana" na HojeScreen (5 emojis, 1x/14 dias, pulável, só em semana com movimento); barra de ações do orçamento quebra em linhas; painel abre orçamento pelo card do Quadro + Duplicar no catálogo. Fix: o tipo do produto não depende mais de migration (CHECK constraint rejeitaria 'pulso' e o insert sumiria calado → vai em `contexto.origem`). Fix: **gate do webapp estava VERMELHO (4 erros)** — `theme/fonts.ts` importava react-native e o tsc do painel alcançava; separado em `aplicarFontPatch.ts`.
+- **Onda 22 — prontidão de loja iOS + duplicado** ✅ (2026-07-18): `NSCameraUsageDescription` era sobrescrito calado pelo expo-camera (Info.plist publicado falaria só de QR, omitindo fotografar o serviço) e `NSMicrophoneUsageDescription` estava certo **por sorte da ordem** dos plugins — os dois unificados. `ITSAppUsesNonExemptEncryption: false` declarado. Aviso de cliente duplicado no app (com o 3º estado). Lembra a última combinação de formas de pagamento. Confirmado: bug histórico do RECORD_AUDIO **não** está presente.
+- **Onda 23 — AUDITORIA DE RISCO** ✅ (2026-07-18): 67 agentes, 6 auditores read-only × 3 céticos. **20 achados, 0 refutados** — sinal amarelo, não selo; os 4 de maior consequência reconferidos à mão e **confirmados**. Veredito: iPhone bloqueado por política (não engenharia), **dinheiro aberto em produção** (IA grátis para quem não mandasse `confirmarCredito`), **dado de cliente vazando entre contas**, documento comercial não confiável. Em `AUDITORIA_RISCO.md`.
+- **Onda 24 — P0 da auditoria** ✅ (2026-07-18): destrava App Store (`COMPRA_NO_APP` esconde a compra no iOS, mantém o estado; privacidade passa a cobrir iOS + Sentry + Mercado Pago); fecha vazamento entre contas (guarda de equipe no backup, pull de empresa filtrado por dono); documento (orçamento aprovado não reabre, numeração unificada); **cobrança de IA vira decisão de servidor**, fail-open declarado enquanto a migration não rodar. 3 migrations novas, NÃO aplicadas.
+- **Onda 25 — o que os revisores adversariais da 24 apontaram** ✅ (2026-07-18): a guarda estava no `maybeAutoBackup`, mas o `user_id` é carimbado no `inserirBackupVersionado`/`backupNow` — o botão "Fazer backup agora" passava por fora; desceu pra onde o dado é carimbado. A tela parou de dizer "backup automático: ativo" pra quem a guarda ia recusar. Idempotência: a chave descartava o hash do conteúdo quando vinha `creditoRef` (`else if`) — virava 100% escolhida pelo cliente; agora COMPÕE. E "não consegui consultar" deixou de gerar chave nova (cobrava o retry legítimo de novo).
+- **Onda 26 — o cluster de dinheiro tentou quebrar a 25, e quebrou** ✅ (2026-07-18): o fallback usava `refAcao`, mas a consulta busca por PREFIXO (`refAcao:j`) — cobrança feita com a RPC fora ficava invisível quando ela voltasse: **60/60 duplas** medidas em sonda, inclusive no exato momento de aplicar a migration. Chave passou a ser `${prefixo}estavel`: **0/60 nas duas direções**, 2 sondas independentes. Teto real da IA medido (migration aplicada: 1 chamada/crédito, 3/mês no grátis; **não aplicada: ilimitado**). iOS fechado (AssinaturaScreen) + bordas do documento (lápis do desktop e deep link). `teste-planos-ios.ts` estava fora da cadeia e não rodava → 14 suítes.
+- **Onda 27 — ENTREGA v1 (gate, sem código)** ✅ (2026-07-18): `docs/ENTREGA.md` escrito pro dono. **⛔ ESTE REGISTRO ESTAVA ERRADO EM 3 PONTOS — corrigido pela Onda 28, ver abaixo.** Errado: (a) "412 asserções" — a soma real é **455**; (b) o ⚠️ dizendo que `npm test` estava VERMELHO em `teste-numero-web` — **falso, e já era falso quando foi escrito**: o teste foi consertado às 08:06 (passou a ler `.sql.pendente`), o documento foi escrito às 08:13, e a suíte dá **63 ok / 0 falhas**. Não há rename para ninguém fechar; (c) "33 commits / 172 arquivos" — eram **36 / 173** no fim do dia. Lição: número copiado de rascunho anterior envelhece em minutos numa worktree com 3 sessões — **medir e carimbar o commit-ish**, não "medi agora".
+- **Onda 28 — ENTREGA v2 (documento remedido, sem código)** ✅ (2026-07-18, HEAD `97f59d3`, medido 08:43–08:51, worktree com 13 arquivos sujos de outras sessões): reescrita de `docs/ENTREGA.md` com **todo número saído de comando rodado na hora**. Gate real = **`npm run preflight` exit 0** (typecheck + 14 suítes + check:contraste + expo-doctor 21/21); **455 asserções, 0 falhas** (`17·51·20·63·11·23·11·8·26·100·39·24·43·19`); webapp `tsc` exit 0 e build exit 0 em **26,71 s** (maior chunk **1.143,57 kB** / 351,19 gzip); `astro check` 18 arquivos **0 erros / 1 hint**; `astro build` **11 páginas**; branch **36 commits, 173 arquivos, +11.483/−1.956**; **61 telas** (40+21, não "~55"). 1ª rodada do preflight saiu **exit 127** com abort de libuv — flaka do Windows, verde no retry (registrado no doc pro dono não se assustar).
+  - **APK:** existe e é de hoje — `C:\olli\...\app-release.apk`, **125.560.437 bytes**, 18/07 08:30:29, `online.olliorcamentos.app`, versionCode **9**, **assinado `CN=Android Debug`** ⇒ instala e testa, **não publica**. Bundle Hermes Android **8.005.304 bytes**, e é o mesmo que está dentro do APK. **Não foi aberto em aparelho.** Corrige o "não buildei" da v1.
+  - **Fato recebido que NÃO confirmou** (escrito no doc como ressalva, não como verdade): "bundles Hermes Android e iOS, 9,6 e 9,5 MB" — o Android mede **8,0 MB** e o **iOS não existe** (sem pasta `ios/`, sem nenhum `.jsbundle` na máquina).
+  - **Produção conferida por HTTP:** `app.olliorcamentos.online` **200** e `olliorcamentos.online` **200** às 08:50:49 — ambos servindo a versão pré-operação (branch não mesclada). Worker **não subiu** (decisão registrada; não verifiquei contra a Cloudflare — não rodo wrangler).
+  - **`BLOQUEIOS.md:29` continua dizendo "3 migrations" e o real é 5** (falta `20260727_ia_cota_gratis` e `20260728_mp_preapproval_id`) — **não corrigi lá porque outra sessão escreveu no arquivo às 08:31**; em vez disso a `ENTREGA.md` traz a lista das 5 e avisa em destaque que o checklist de lá está desatualizado. **Pendência para quem puder tocar `BLOQUEIOS.md`.**
+  - Também no doc: `env -u ...` trocado pela forma PowerShell (`Remove-Item Env:CLOUDFLARE_API_TOKEN`), aviso do **1 crédito extra** do deploy, aviso do **SENTRY_AUTH_TOKEN** (build de release falha sem ele; e o gradle deixa APK velho na pasta quando falha — conferir a data antes de publicar).
+- **Loop:** raiz "erro vira vazio" 100%, bugs de dado e P2/P3 do painel fechados, voz Tier A pronta. **Restam:** P2/P3 VISUAIS do app (squircle radius, fontSize desktop→Typography, TabelaDados overflow, KpiGrid breakpoint), P3 residuais do painel (STATUS_META, LoginAuthGuard flash, MotionLazy, deps antd no package.json), e as DECISÕES do dono (voz Fase 2/3 + cobrança, identidade visual cross, humanos). Cadência de polish até o dono voltar.
+- **Backlog restante** (ACHADOS): "erro vira vazio" em Agenda/Conta (grandes), re-sweep AUDITORIA_ABA_POR_ABA (152), dead code do template Slash, contraste tema claro painel, code-splitting web, prep Play (ícone 512, feature graphic).

@@ -15,19 +15,27 @@ import { usePermissao } from '../../hooks/usePermissao';
 import { usePlano } from '../../hooks/usePlano';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../../services/onboarding';
+import { PRECO_PRO, reais } from '../../services/precosPlanos';
+import { cancelarTodosLembretes } from '../../services/agenda';
+import { cancelarTodosLembretesPmoc } from '../../services/pmocLembretes';
+import { cancelarRitualDiario } from '../../services/ritualDiario';
 import { adicionarFotoGaleria } from '../../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../../services/equipe';
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../../services/supabase';
 import {
   backupManualVersionado,
+  estadoBackupNuvem,
+  resumoBackupNuvem,
+  COPY_BACKUP_NUVEM,
   getUltimoBackupVersionadoData,
   listBackupsVersionados,
   restoreBackupById,
   type BackupVersionadoResumo,
 } from '../../services/backup';
+import type { MotivoBackupNuvem } from '../../services/contextoEquipe';
 import { abortarSyncEmAndamento, onSyncAplicado } from '../../services/cloudSync';
 import { formatDateTime } from '../../utils/date';
-import { AUTO_BACKUP_TOGGLE_KEY } from '../../services/storageKeys';
+import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../../services/storageKeys';
 import { navigationRef } from '../../navigation/navigationRef';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { getEmpresa, clearAllLocalData } from '../../database/database';
@@ -103,6 +111,10 @@ export default function ContaDesktopScreen() {
   const [avatarErro, setAvatarErro] = useState(false);
   const [salvandoFoto, setSalvandoFoto] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  // 3 estados: `null` = carregando; depois o MOTIVO real. Paridade com a
+  // ContaScreen mobile — para um membro de equipe a guarda de backup.ts recusa o
+  // snapshot, e "Backup automático ativo" seria mentira aqui também.
+  const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
   const [carregando, setCarregando] = useState(true);
@@ -146,10 +158,13 @@ export default function ContaDesktopScreen() {
         setAvatarErro(false);
         setSessaoPerdida(false);
         setLastBackup(await getUltimoBackupVersionadoData());
+        // Nunca lança; devolve 'indeterminado' quando não consegue decidir.
+        setMotivoBackup(await estadoBackupNuvem());
       } else {
         setUser(null);
         setSessaoPerdida(true);
         setLastBackup(null);
+        setMotivoBackup(null);
       }
     }
     setCarregando(false);
@@ -346,6 +361,24 @@ export default function ContaDesktopScreen() {
       // voo grava depois da saída e o contexto de equipe de quem sai pode carimbar
       // linha de quem entra (o "apagar dados" logo abaixo já fazia certo).
       abortarSyncEmAndamento();
+      // Cancela os lembretes locais (agenda + vencimento PMOC + ritual diário)
+      // ANTES do multiRemove — mesma ordem e mesmo motivo da ContaScreen mobile
+      // (ver o comentário longo lá): sem isto, os lembretes da conta que está
+      // saindo continuariam disparando neste navegador para o próximo usuário.
+      // As 3 funções já são Platform-guarded para a chamada nativa (Notifications
+      // não existe/roda no navegador) e NUNCA lançam — `cancelarRitualDiario` já
+      // roda hoje neste mesmo caminho web via `clearAllLocalData` (database.ts),
+      // então chamá-la aqui não introduz risco novo, só fecha a mesma janela que
+      // "Limpar dados locais" já fecha.
+      await cancelarTodosLembretes().catch(() => {});
+      await cancelarTodosLembretesPmoc().catch(() => {});
+      await cancelarRitualDiario().catch(() => {});
+      // Rastro de sessão fora do SQLite (conversa com a OLLI, checklist do dia,
+      // carimbos de sync): o AsyncStorage NÃO é particionado por conta, então isto
+      // ficava visível para o próximo usuário deste navegador. Os DADOS, que é o
+      // que o botão promete manter, seguem intactos na partição desta conta.
+      // Paridade com a ContaScreen mobile — ver o comentário longo lá.
+      await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS).catch(() => {});
       await signOut();
     } catch (e: any) {
       avisar('Erro', e?.message ?? 'Não foi possível sair agora.');
@@ -586,7 +619,7 @@ export default function ContaDesktopScreen() {
                       <MaterialCommunityIcons name="crown-outline" size={15} color="#fff" />
                       <Text style={styles.upsellBadgeTexto}>OLLI PRO</Text>
                     </View>
-                    <Text style={styles.upsellPreco}>R$ 39/mês</Text>
+                    <Text style={styles.upsellPreco}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text>
                   </View>
                   <Text style={styles.upsellTitulo}>Leve o seu negócio ao próximo nível</Text>
                   <Text style={styles.upsellTexto}>Relatórios avançados, metas de vendas e suporte prioritário. Assine mensal ou anual com desconto.</Text>
@@ -719,37 +752,59 @@ export default function ContaDesktopScreen() {
                     </View>
                   </View>
 
-                  <View style={styles.backupStatus}>
-                    <MaterialCommunityIcons name={lastBackup ? 'cloud-check' : 'cloud-alert'} size={18} color={lastBackup ? cores.success : cores.warning} />
-                    <Text style={styles.textoMuted}>
-                      {autoBackupAtivo
-                        ? (lastBackup ? `Backup automático ativo — última cópia ${formatDateTime(lastBackup)}` : 'Backup automático ativo — ainda sem cópias')
-                        : 'Backup automático desativado'}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const r = resumoBackupNuvem(motivoBackup, autoBackupAtivo, lastBackup);
+                    const corTom = r.tom === 'success' ? cores.success : r.tom === 'warning' ? cores.warning : cores.onSurfaceMuted;
+                    return (
+                      <View style={styles.backupStatus}>
+                        <MaterialCommunityIcons name={r.icone} size={18} color={corTom} />
+                        <Text style={styles.textoMuted}>{r.texto}</Text>
+                      </View>
+                    );
+                  })()}
 
-                  <View style={styles.autoBackupRow}>
-                    <View style={{ flex: 1, marginRight: Spacing.md }}>
-                      <Text style={styles.perfilNome}>Backup automático diário</Text>
-                      <Text style={styles.perfilSub}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
-                    </View>
-                    <Switch
-                      value={autoBackupAtivo}
-                      onValueChange={handleToggleAutoBackup}
-                      trackColor={{ false: cores.outlineDark, true: comAlfa(cores.primary, 0.55) }}
-                      thumbColor={autoBackupAtivo ? cores.primary : cores.surface}
-                    />
-                  </View>
+                  {/* MEMBRO DE EQUIPE: paridade com a ContaScreen mobile — a guarda
+                      de backup.ts recusa o snapshot dele (o banco local contém a
+                      base da empresa), então o toggle e o botão de enviar sairiam
+                      de cena em vez de mentir. "Ver cópias de segurança" fica: as
+                      cópias que ele tem são dele. */}
+                  {motivoBackup === 'somente_dono' ? (
+                    <Text style={[styles.perfilSub, { marginBottom: Spacing.md }]}>
+                      {COPY_BACKUP_NUVEM.somente_dono.detalhe}
+                    </Text>
+                  ) : (
+                    <>
+                      {motivoBackup === 'indeterminado' && (
+                        <Text style={[styles.perfilSub, { marginBottom: Spacing.md }]}>
+                          {COPY_BACKUP_NUVEM.indeterminado.detalhe}
+                        </Text>
+                      )}
+                      <View style={styles.autoBackupRow}>
+                        <View style={{ flex: 1, marginRight: Spacing.md }}>
+                          <Text style={styles.perfilNome}>Backup automático diário</Text>
+                          <Text style={styles.perfilSub}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
+                        </View>
+                        <Switch
+                          value={autoBackupAtivo}
+                          onValueChange={handleToggleAutoBackup}
+                          trackColor={{ false: cores.outlineDark, true: comAlfa(cores.primary, 0.55) }}
+                          thumbColor={autoBackupAtivo ? cores.primary : cores.surface}
+                        />
+                      </View>
+                    </>
+                  )}
 
                   <View style={styles.botoesLinha}>
-                    <OlliButton
-                      label="Fazer backup agora"
-                      variant="gradient"
-                      size="md"
-                      loading={busyBackup}
-                      onPress={handleBackup}
-                      icon={<MaterialCommunityIcons name="cloud-upload" size={17} color="#fff" />}
-                    />
+                    {motivoBackup !== 'somente_dono' && (
+                      <OlliButton
+                        label="Fazer backup agora"
+                        variant="gradient"
+                        size="md"
+                        loading={busyBackup}
+                        onPress={handleBackup}
+                        icon={<MaterialCommunityIcons name="cloud-upload" size={17} color="#fff" />}
+                      />
+                    )}
                     <OlliButton
                       label="Ver cópias de segurança"
                       variant="outline"
@@ -1099,7 +1154,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // ── Perfil / Minha empresa ───────────────────────────────────────────────
   perfilLinha: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 52, height: 52, borderRadius: 16, backgroundColor: c.primaryContainer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatar: { width: 52, height: 52, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg: { width: 52, height: 52, borderRadius: 16 },
   avatarTexto: { fontSize: 20, fontWeight: '800', color: c.accentLight },
   avatarQuadrado: { width: 52, height: 52, borderRadius: BorderRadius.md, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

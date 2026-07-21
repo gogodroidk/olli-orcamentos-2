@@ -23,13 +23,14 @@
 import type { ItemChecklist, OrdemServico, StatusOS } from "@dominio";
 import { STATUS_OS_LABELS } from "@dominio";
 import { AlertTriangle, Camera, Loader2, Plus, RotateCw, Trash2 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Campo, CampoMoeda } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
 import { novoId } from "@/olli/contrato";
 import { agoraIso, localParaIso } from "@/olli/datas";
 import { proximoNumeroOs, useSalvar } from "@/olli/mutacoes";
+import { useUserInfo } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
 import { Input } from "@/ui/input";
@@ -64,6 +65,7 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 	const idForm = useId();
 	const salvar = useSalvar("ordens_servico");
 	const equipe = useTecnicos();
+	const meuId = useUserInfo().id;
 
 	const [clienteId, setClienteId] = useState<string>("");
 	const [clienteNome, setClienteNome] = useState("");
@@ -85,6 +87,18 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 
 	const idOs = ordem?.id ?? null;
 
+	// O checklist SEMEADO (o que a OS tinha quando o diálogo abriu) — referência, não
+	// estado: serve só para o merge no submit (ver `aoSubmeter`) saber quais itens o
+	// painel de fato TOCOU (`feito` diferente do semeado) versus quais só estão na
+	// tela porque vieram assim. Comparar contra isto, e não contra `ordem.checklist`
+	// (que pode ter sido invalidado/refeito por um refetch enquanto o form está aberto).
+	const checklistSemeadoRef = useRef<ItemChecklist[]>([]);
+
+	// Guarda se a sugestão de técnico (ver efeito abaixo) já agiu NESTA abertura do
+	// diálogo — sem isto, ela reapareceria sempre que o usuário limpasse o campo
+	//("Sem técnico atribuído"), impedindo uma OS sem responsável de propósito.
+	const sugestaoTecnicoAplicadaRef = useRef(false);
+
 	// O rascunho é semeado quando o diálogo ABRE (ou troca de OS) — e SÓ então. Depender
 	// dos campos de `ordem` (o que a regra pede) faria cada refetch da lista remontar o
 	// objeto e JOGAR FORA o que o usuário está digitando no formulário aberto.
@@ -102,11 +116,32 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 		setDataLocal(isoParaLocal(ordem?.dataAgendada));
 		setValor(ordem?.valor ?? 0);
 		setObservacoes(ordem?.observacoes ?? "");
-		setChecklist(ordem?.checklist ?? []);
+		const checklistInicial = ordem?.checklist ?? [];
+		setChecklist(checklistInicial);
+		checklistSemeadoRef.current = checklistInicial;
 		setNovoItem("");
 		setTentouSalvar(false);
 		setErro(null);
+		sugestaoTecnicoAplicadaRef.current = false;
 	}, [aberto, idOs]);
+
+	// Técnico pré-selecionado: só em OS NOVA (uma existente já traz `tecnicoId` do
+	// banco — nem que seja "nenhum", de propósito) e só quando o usuário logado
+	// consta na equipe. A equipe carrega em segundo plano, então este efeito roda de
+	// novo até ela chegar; `sugestaoTecnicoAplicadaRef` garante que ele só MEXE no
+	// campo uma vez por abertura — depois disso a escolha (ou a limpeza) do usuário
+	// prevalece, mantendo a opção de trocar.
+	useEffect(() => {
+		if (!aberto || ordem) return;
+		if (sugestaoTecnicoAplicadaRef.current) return;
+		if (!meuId || !equipe.isSuccess) return;
+		const eu = (equipe.data ?? []).find((m) => m.userId === meuId);
+		if (eu) {
+			setTecnicoId(eu.userId);
+			setTecnicoNome(eu.nome);
+		}
+		sugestaoTecnicoAplicadaRef.current = true;
+	}, [aberto, ordem, meuId, equipe.isSuccess, equipe.data]);
 
 	/* ─────────────────────────────  Checklist  ──────────────────────────────── */
 
@@ -197,7 +232,28 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 				// Relê do banco e mescla: fotos, orçamento de origem, número, criadoEm e
 				// o estado da lixeira vêm da linha FRESCA — não do que a lista carregou.
 				const fresca = await carregarOsFresca(ordem.id);
-				os = { ...fresca, ...campos };
+
+				// CHECKLIST: NÃO dá pra usar `campos.checklist` puro por cima do fresco —
+				// ele é a foto do que a tela tinha ao ABRIR mais as edições feitas aqui, e
+				// sobrescreveria de volta o `feito` que o técnico marcou no celular DEPOIS
+				// que este formulário abriu. Mescla por `id`: um item cujo `feito` o painel
+				// não tocou (== o valor semeado) herda o FRESCO; um item que o painel tocou
+				// (marcou/desmarcou aqui) usa o do painel. Texto sempre vem do painel — é o
+				// único lugar que o edita. Item novo (sem semente) não tem o que herdar: usa
+				// o do painel.
+				const semeadoPorId = new Map(checklistSemeadoRef.current.map((i) => [i.id, i]));
+				const frescoPorId = new Map(fresca.checklist.map((i) => [i.id, i]));
+				const checklistMesclado: ItemChecklist[] = itens.map((item) => {
+					const semeado = semeadoPorId.get(item.id);
+					const fresco = frescoPorId.get(item.id);
+					const painelTocouFeito = !semeado || semeado.feito !== item.feito;
+					return {
+						id: item.id,
+						texto: item.texto,
+						feito: painelTocouFeito || !fresco ? item.feito : fresco.feito,
+					};
+				});
+				os = { ...fresca, ...campos, checklist: checklistMesclado };
 			} else {
 				os = {
 					id: novoId(),
@@ -227,7 +283,7 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 			titulo={ordem ? `Editar ordem ${ordem.numero || ""}`.trim() : "Nova ordem de serviço"}
 			descricao={
 				ordem
-					? "As fotos e o checklist marcados em campo pelo técnico são preservados."
+					? "As fotos tiradas em campo são preservadas. No checklist, um item que o técnico marcou no celular depois que este formulário abriu é mantido — a não ser que você mude aquele item aqui."
 					: "O número (OS-0001) é gerado no momento de salvar."
 			}
 			erro={erro}

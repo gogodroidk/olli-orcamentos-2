@@ -13,6 +13,11 @@
     // Projeto separado: tem package.json, tsconfig.json, node_modules e build
     // próprios (`tsc && vite build`). Quem checa o painel é o tsc DELE.
     "webapp",
+    // Landing Astro: mesma história — package.json, tsconfig e `@astrojs/check`
+    // próprios. Sem isto, o tsc da raiz tenta compilar web/astro.config.mjs e
+    // reclama de `astro/config` (TS2307), deixando o gate vermelho num checkout
+    // limpo. Quem checa a landing é o toolchain do Astro.
+    "web",
     // Ferramentas Node (.mjs + testes que rodam via type stripping do Node, que
     // exige import com extensão `.ts` — proibido pelo config do app).
     "scripts",

@@ -31,10 +31,19 @@ export const Eventos = {
   // gateCta: o usuário tocou em "Ver planos" a partir de um gate.
   gateVisto: 'gate_visto',
   gateCta: 'gate_cta',
+  // Gate gracioso de Crédito na voz (cota grátis de IA esgotada): qual das 3
+  // opções o usuário escolheu no teaser — usar 1 crédito ou montar na mão
+  // ("Ver planos" continua usando gateCta, para caber no mesmo funil de sempre).
+  gateCreditoUsado: 'gate_credito_usado',
+  gateMontarNaMao: 'gate_montar_na_mao',
   // Central de Ajuda + Suporte (Frente 3).
   ajudaArtigoAberto: 'ajuda_artigo_aberto',
   ajudaBuscou: 'ajuda_buscou',
   ajudaSuporteContato: 'ajuda_suporte_contato',
+  // Pulso da semana (HojeScreen) — micro-feedback proativo, pulável, nunca bloqueia.
+  pulsoMostrado: 'pulso_mostrado',
+  pulsoRespondido: 'pulso_respondido',
+  pulsoDispensado: 'pulso_dispensado',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

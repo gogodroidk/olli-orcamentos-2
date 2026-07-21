@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, LayoutChangeEvent, Linking } from 'react-native';
+import { View, Text, StyleSheet, LayoutChangeEvent, Linking, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -101,6 +101,12 @@ export default function InicioDesktopScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { ehEmpresa, papel, pode, carregando: permCarregando } = usePermissao();
+  // Breakpoint explícito da fileira de 4 KPIs: em 1024-1279px (mínimo do modo
+  // desktop) 4×220 + gaps não cabe na largura útil e a quebra automática do
+  // flex-wrap cai pra um 2+2 desalinhado — força 2 colunas simétricas até
+  // 1279px; a partir de 1280px volta ao layout de 4 colunas de sempre.
+  const { width: larguraJanela } = useWindowDimensions();
+  const kpiDuasColunas = larguraJanela < 1280;
 
   // dashboard-agg: os KPIs comerciais chegam PRONTOS do SQLite (agregados),
   // não mais como o histórico inteiro de orçamentos pra reduzir aqui. Só a
@@ -119,6 +125,10 @@ export default function InicioDesktopScreen() {
   const [carregando, setCarregando] = useState(true);
   const [radar, setRadar] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
+  // 3 estados explícitos: `radarErro` só vira `true` numa falha de leitura de
+  // verdade; lista vazia com sucesso é "nenhum cliente sumido" (não é a mesma
+  // coisa). Mesmo padrão do radar de cobrança logo abaixo.
+  const [radarErro, setRadarErro] = useState(false);
   const [larguraGrafico, setLarguraGrafico] = useState(0);
 
   // RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
@@ -162,11 +172,13 @@ export default function InicioDesktopScreen() {
   }, []);
 
   const loadRadar = useCallback(async () => {
+    setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
       setRadar(lista.slice(0, 3));
     } catch {
-      setRadar([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setRadarErro(true);
     } finally {
       setRadarCarregando(false);
     }
@@ -431,6 +443,7 @@ export default function InicioDesktopScreen() {
           corIcone={cores.success}
           rodape={recibosNoMes.length ? `${recibosNoMes.length} pagamento${recibosNoMes.length === 1 ? '' : 's'} recebido${recibosNoMes.length === 1 ? '' : 's'}` : 'nenhum ainda este mês'}
           onPress={irParaRelatorios}
+          style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
         <KpiCard
           titulo="Em aberto"
@@ -439,6 +452,7 @@ export default function InicioDesktopScreen() {
           corIcone={cores.warning}
           rodape={`${emAbertoResumo.contagem} orçamento${emAbertoResumo.contagem === 1 ? '' : 's'} enviado${emAbertoResumo.contagem === 1 ? '' : 's'}`}
           onPress={irParaOrcamentos}
+          style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
         <KpiCard
           titulo="Contas a receber"
@@ -447,6 +461,7 @@ export default function InicioDesktopScreen() {
           corIcone={cores.accentLight}
           rodape={contasAReceberResumo.contagem ? `${contasAReceberResumo.contagem} aprovado${contasAReceberResumo.contagem === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
           onPress={irParaOrcamentos}
+          style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
         <KpiCard
           titulo="Taxa de aprovação"
@@ -455,6 +470,7 @@ export default function InicioDesktopScreen() {
           corIcone={cores.primaryLight}
           rodape={enviadosResumo.contagem ? `${aprovadosResumo.contagem}/${enviadosResumo.contagem} enviados` : 'sem envios ainda'}
           onPress={irParaRelatorios}
+          style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
       </View>
 
@@ -468,6 +484,7 @@ export default function InicioDesktopScreen() {
             corIcone={cores.accentLight}
             rodape={osEmAndamento.length ? 'toque para gerenciar' : 'nenhuma ativa'}
             onPress={irParaOrdens}
+            style={kpiDuasColunas && styles.kpiCardDuasColunas}
           />
           <KpiCard
             titulo="Em execução agora"
@@ -476,6 +493,7 @@ export default function InicioDesktopScreen() {
             corIcone={cores.warning}
             rodape="serviços na rua"
             onPress={irParaOrdens}
+            style={kpiDuasColunas && styles.kpiCardDuasColunas}
           />
           <KpiCard
             titulo="Concluídas no mês"
@@ -484,12 +502,14 @@ export default function InicioDesktopScreen() {
             corIcone={cores.success}
             rodape="ordens finalizadas"
             onPress={irParaOrdens}
+            style={kpiDuasColunas && styles.kpiCardDuasColunas}
           />
           <KpiCard
             titulo="Clientes ativos"
             valor={carregando ? '—' : String(clientesCount)}
             icone="account-group-outline"
             corIcone={cores.primaryLight}
+            style={kpiDuasColunas && styles.kpiCardDuasColunas}
           />
         </View>
       )}
@@ -554,6 +574,13 @@ export default function InicioDesktopScreen() {
             {radarCarregando ? (
               <View style={{ gap: 8, marginTop: 10 }}>
                 <OlliSkeleton width="100%" height={44} />
+              </View>
+            ) : radarErro ? (
+              <View style={{ marginTop: 10, gap: 6 }}>
+                <Text style={styles.visitaVazioTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <OlliPressable onPress={loadRadar} haptic={false}>
+                  <Text style={styles.verTodos}>Tentar de novo</Text>
+                </OlliPressable>
               </View>
             ) : radar.length === 0 ? (
               <Text style={styles.visitaVazioTexto}>Nenhum cliente sumido no momento.</Text>
@@ -813,6 +840,15 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.md,
     marginBottom: Spacing.lg,
+  },
+  // Aplicado só entre 1024-1279px (ver `kpiDuasColunas`): flexBasis de ~48%
+  // garante que só 2 cartões cabem por linha do flex-wrap acima, formando
+  // 2 colunas simétricas em vez do 2+2 desalinhado que o `minWidth:220` do
+  // KpiCard produzia nessa faixa. minWidth:0 evita que o mínimo padrão do
+  // cartão sobreponha esse cálculo em janelas mais estreitas.
+  kpiCardDuasColunas: {
+    flexBasis: '48%',
+    minWidth: 0,
   },
   linha2: {
     flexDirection: 'row',

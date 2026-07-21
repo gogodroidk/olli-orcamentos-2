@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
   TouchableOpacity, Modal, ActivityIndicator, Alert,
@@ -7,14 +7,17 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Orcamento, Cliente } from '../types';
-import { searchClientes, saveCliente } from '../database/database';
+import { searchClientes, saveCliente, getClientes } from '../database/database';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { useCepLookup } from '../services/cep';
+import { AvisoCep } from '../components/AvisoCep';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
+import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 
 interface Props {
   orc: Orcamento;
@@ -31,14 +34,39 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   const [nc, setNc] = useState<Partial<Cliente>>({});
   const [salvandoNovo, setSalvandoNovo] = useState(false);
   const [ncErrors, setNcErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
-  const { cepLoading, onCepChange } = useCepLookup(r => {
-    setNc(p => ({
-      ...p,
-      endereco: p.endereco?.trim() ? p.endereco : r.logradouro,
-      cidade: r.cidade || p.cidade,
-      estado: r.uf || p.estado,
-    }));
-  });
+  // Cadastro completo, só para o AVISO DE DUPLICADO (não bloqueia). 3 estados
+  // explícitos (nunca colapsar erro em "sem duplicata"): se a leitura falhar,
+  // `erroClientesDuplicados` avisa que a checagem não rodou — ver
+  // AvisoClienteDuplicado — mas o cadastro de cliente novo continua liberado.
+  const [todosClientes, setTodosClientes] = useState<Cliente[]>([]);
+  const [erroClientesDuplicados, setErroClientesDuplicados] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    getClientes()
+      .then(lista => { if (vivo) { setTodosClientes(lista); setErroClientesDuplicados(false); } })
+      .catch(() => { if (vivo) setErroClientesDuplicados(true); });
+    return () => { vivo = false; };
+  }, []);
+  const duplicados = useMemo(
+    () => encontrarClientesDuplicados(todosClientes, { telefone: nc.telefone, cpf: nc.cpf, cnpj: nc.cnpj }),
+    [todosClientes, nc.telefone, nc.cpf, nc.cnpj],
+  );
+  /**
+   * CEP → endereço. Só campo VAZIO é preenchido (`mesclarEndereco` decide isso);
+   * divergência vira pergunta com botão no <AvisoCep>, nunca sobrescrita muda.
+   * `ncRef` deixa o hook ler o formulário no instante da RESPOSTA, não no do toque.
+   */
+  const ncRef = useRef(nc);
+  ncRef.current = nc;
+  const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
+    campos => setNc(p => ({ ...p, ...campos })),
+    () => ({ endereco: ncRef.current.endereco, cidade: ncRef.current.cidade, estado: ncRef.current.estado }),
+    // De QUEM é o veredito. `setNc({})` limpava o formulário e deixava a caixa
+    // amarela do cliente anterior de pé; um toque em "Usar o do CEP" gravava a
+    // cidade dele no cliente seguinte. Aqui o modal é sempre um cadastro NOVO,
+    // então o que muda de assunto é abrir/fechar.
+    showNew ? 'novo' : 'fechado',
+  );
 
   const handleSearch = useCallback(async (q: string) => {
     setQuery(q);
@@ -62,6 +90,15 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     setQuery(c.nome);
     setShowResults(false);
   }, [onChange]);
+
+  // Aviso de duplicado ofereceu um cadastro já existente: usa ele em vez do
+  // que está sendo digitado — mesmo comportamento do painel (aoAbrirExistente).
+  const usarClienteExistente = useCallback((c: Cliente) => {
+    setShowNew(false);
+    setNc({});
+    setNcErrors({});
+    selectCliente(c);
+  }, [selectCliente]);
 
   async function saveNewCliente() {
     if (!nc.nome?.trim()) return;
@@ -212,17 +249,18 @@ export default function Step1Cliente({ orc, onChange }: Props) {
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
             <OlliInput label="Nome completo" required autoFocus value={nc.nome ?? ''} onChangeText={v => setNc(p => ({ ...p, nome: v }))} placeholder="Ex: João da Silva" leftIcon="account" />
             <OlliInput label="Telefone / WhatsApp" mask="phone" value={nc.telefone ?? ''} onChangeText={v => { setNc(p => ({ ...p, telefone: v })); setNcErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={ncErrors.telefone} />
+            <AvisoClienteDuplicado duplicados={duplicados} erro={erroClientesDuplicados} onAbrirExistente={usarClienteExistente} />
             <OlliInput label="CPF" mask="cpf" value={nc.cpf ?? ''} onChangeText={v => { setNc(p => ({ ...p, cpf: v })); setNcErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={ncErrors.cpf} />
             <OlliInput label="CNPJ" mask="cnpj" value={nc.cnpj ?? ''} onChangeText={v => { setNc(p => ({ ...p, cnpj: v })); setNcErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={ncErrors.cnpj} />
+            {/* CEP ANTES do endereço: enquanto ele era o último campo, o atalho
+                só chegava depois de o prestador já ter digitado tudo. */}
+            <OlliInput label="CEP" mask="cep" value={nc.cep ?? ''} onChangeText={v => onCepChange(v, masked => setNc(p => ({ ...p, cep: masked })))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ marginBottom: Spacing.sm }} />
+            <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
             <OlliInput label="Endereço" value={nc.endereco ?? ''} onChangeText={v => setNc(p => ({ ...p, endereco: v }))} placeholder="Rua, número" leftIcon="map-marker" />
             <OlliInput label="Complemento" value={nc.complemento ?? ''} onChangeText={v => setNc(p => ({ ...p, complemento: v }))} placeholder="Apto, bloco, referência" />
             <View style={styles.rowFields}>
               <OlliInput label="Cidade" value={nc.cidade ?? ''} onChangeText={v => setNc(p => ({ ...p, cidade: v }))} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10 }} />
               <OlliInput label="UF" value={nc.estado ?? ''} onChangeText={v => setNc(p => ({ ...p, estado: v.toUpperCase().slice(0, 2) }))} placeholder="SP" autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
-            </View>
-            <View style={styles.cepRow}>
-              <OlliInput label="CEP" mask="cep" value={nc.cep ?? ''} onChangeText={v => onCepChange(v, masked => setNc(p => ({ ...p, cep: masked })))} placeholder="00000-000" leftIcon="mailbox" containerStyle={{ flex: 1, marginBottom: 0 }} />
-              {cepLoading && <ActivityIndicator size="small" color={cores.primary} style={styles.cepSpinner} />}
             </View>
           </ScrollView>
           <View style={styles.modalFooter}>
@@ -287,6 +325,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   rowFields: { flexDirection: 'row' },
-  cepRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  cepSpinner: { marginLeft: 10, marginBottom: 14 },
+  // (o spinner do CEP virou estado do <AvisoCep>, que fala em vez de só girar)
 });

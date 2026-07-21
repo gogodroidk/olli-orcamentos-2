@@ -1,3 +1,6 @@
+# Este arquivo NÃO é o que produção serve: a Cloudflare injeta um bloco próprio
+# antes dele. O porquê e o que fazer a respeito estão documentados no repositório.
 User-agent: *
 Allow: /
+
 Sitemap: https://olliorcamentos.online/sitemap-index.xml

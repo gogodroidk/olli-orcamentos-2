@@ -195,6 +195,28 @@ function EquipeConteudo() {
           </AnimatedEntrance>
         )}
 
+        {/* Onda 2 — atalho para a Equipe ao vivo no mapa (plano Empresa). A tela de
+            destino já traz o próprio GateEquipe/GuardaPapel — este botão só navega;
+            quem chega lá sem plano ou papel de gestão vê a oferta/aviso certos. */}
+        <AnimatedEntrance index={podeGerenciar ? 2 : 1}>
+          <TouchableOpacity
+            style={styles.mapaEquipeBtn}
+            activeOpacity={0.85}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('EquipeAoVivo'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Ver equipe ao vivo no mapa"
+          >
+            <View style={styles.mapaEquipeIcon}>
+              <MaterialCommunityIcons name="map-marker-radius-outline" size={20} color={cores.accentLight} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.mapaEquipeTitulo}>Equipe ao vivo no mapa</Text>
+              <Text style={styles.mapaEquipeSub}>Veja a última localização de cada técnico</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+          </TouchableOpacity>
+        </AnimatedEntrance>
+
         <Text style={styles.sectionTitle}>Membros</Text>
 
         {carregando ? (
@@ -490,12 +512,17 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   emptyText: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 21, marginTop: Spacing.sm },
 
   orgCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...sombrasDe(c).sm },
-  orgAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
+  orgAvatar: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   orgNome: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   orgMeta: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
 
   convidarBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.accentLight, borderRadius: BorderRadius.lg, paddingVertical: 14, marginHorizontal: Spacing.base, marginTop: Spacing.base },
   convidarBtnText: { fontSize: 15, fontWeight: '800', color: textoSobre(c.accentLight) },
+
+  mapaEquipeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: Spacing.md, paddingVertical: 12, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
+  mapaEquipeIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
+  mapaEquipeTitulo: { fontSize: 14.5, fontWeight: '700', color: c.onSurface },
+  mapaEquipeSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
 
@@ -506,7 +533,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   membroRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   membroDivider: { borderBottomWidth: 1, borderBottomColor: c.outline },
   membroInativo: { opacity: 0.55 },
-  membroAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
+  membroAvatar: { width: 42, height: 42, borderRadius: BorderRadius.chip, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   membroAvatarText: { fontSize: 18, fontWeight: '800', color: c.accentLight },
   membroNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   membroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },

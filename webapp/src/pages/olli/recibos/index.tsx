@@ -27,6 +27,7 @@ import {
 import { useMemo, useState } from "react";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { NameCell } from "@/olli/components/record-list-helpers";
+import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -284,66 +285,69 @@ export default function RecibosPage() {
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Cliente</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Orçamento</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Forma</th>
-									<th className="whitespace-nowrap px-4 py-3 font-semibold">Recebido em</th>
-									<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Valor</th>
-									<th className="w-12 px-4 py-3">
-										<span className="sr-only">Ações</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{filtrados.map(({ linha, recibo }) => (
-									<tr
-										key={linha.id}
-										className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
-									>
-										<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
-											{recibo?.numero ?? linha.numero ?? "—"}
-											{recibo?.pdfEmitido === false && (
-												<Badge variant="warning" className="ml-2 font-medium">
-													PDF pendente
-												</Badge>
-											)}
-										</td>
-										<td className="px-4 py-3.5">
-											<NameCell name={recibo?.clienteNome ?? linha.cliente_nome ?? "—"} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
-											{recibo?.orcamentoNumero ? `Nº ${recibo.orcamentoNumero}` : "—"}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
-											{recibo?.formaPagamento ?? linha.forma_pagamento ?? "—"}
-										</td>
-										{/* Data do BLOB — a coluna está corrompida (ver cabeçalho). */}
-										<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
-											{recibo?.dataRecebimento || "—"}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
-											{valorExibivel(recibo?.valorRecebido ?? linha.valor_recebido)}
-										</td>
-										<td className="px-2 py-3.5 text-right">
-											<AcoesRecibo
-												recibo={recibo}
-												podeEscrever={escritaLiberada}
-												aoEditar={abrirEdicao}
-												aoExcluir={(r) => {
-													setErroExclusao(null);
-													setAExcluir(r);
-												}}
-											/>
-										</td>
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Cliente</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Orçamento</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Forma</th>
+										<th className="whitespace-nowrap px-4 py-3 font-semibold">Recebido em</th>
+										<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Valor</th>
+										<th className="w-12 px-4 py-3">
+											<span className="sr-only">Ações</span>
+										</th>
 									</tr>
-								))}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{filtrados.map(({ linha, recibo }) => (
+										<tr
+											key={linha.id}
+											className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+										>
+											<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
+												{recibo?.numero ?? linha.numero ?? "—"}
+												{recibo?.pdfEmitido === false && (
+													<Badge variant="warning" className="ml-2 font-medium">
+														PDF pendente
+													</Badge>
+												)}
+											</td>
+											<td className="px-4 py-3.5">
+												<NameCell name={recibo?.clienteNome ?? linha.cliente_nome ?? "—"} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
+												{recibo?.orcamentoNumero ? `Nº ${recibo.orcamentoNumero}` : "—"}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-text-secondary">
+												{recibo?.formaPagamento ?? linha.forma_pagamento ?? "—"}
+											</td>
+											{/* Data do BLOB — a coluna está corrompida (ver cabeçalho). */}
+											<td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-text-secondary">
+												{recibo?.dataRecebimento || "—"}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-right font-medium tabular-nums text-text-primary">
+												{valorExibivel(recibo?.valorRecebido ?? linha.valor_recebido)}
+											</td>
+											<td className="px-2 py-3.5 text-right">
+												<AcoesRecibo
+													recibo={recibo}
+													podeEscrever={escritaLiberada}
+													aoEditar={abrirEdicao}
+													aoExcluir={(r) => {
+														setErroExclusao(null);
+														setAExcluir(r);
+													}}
+												/>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE */}
@@ -488,7 +492,7 @@ function AcoesRecibo({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button type="button" variant="ghost" size="icon" className="size-8">
+				<Button type="button" variant="ghost" size="icon" className="size-8 alvo-toque">
 					<MoreHorizontal aria-hidden="true" className="size-4" />
 					<span className="sr-only">Ações do recibo {recibo.numero}</span>
 				</Button>

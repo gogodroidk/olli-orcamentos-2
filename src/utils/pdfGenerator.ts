@@ -1,9 +1,10 @@
 import { Orcamento, Empresa, Depoimento, ItemOrcamento } from '../types';
 import { formatCurrency, formatNumber } from './currency';
-import { formatDate, formatDateBR } from './date';
+import { formatDate, formatDateBR, formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 import { escapeHtml, safeHexColor } from './html';
+import { DEFAULT_ACCENT, monogramSvg } from './marcaOlli';
 
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
 export { abrirWhatsApp } from './exportarDocumento';
@@ -63,9 +64,20 @@ function capaFotoUriDe(o: Orcamento): string | undefined {
  */
 let IMG_CACHE: Record<string, string> = {};
 
+/**
+ * Toda chamada de `img()` vai direto para um atributo `src="..."` no HTML — mesmo
+ * ponto que o recibo protege (reciboPdf.montarHtmlRecibo escapa `logoData`/
+ * `assinaturaData` antes de interpolar). Aqui a URI pode vir de `imagemParaDataUri`,
+ * que repassa um `data:` já pronto SEM validar o conteúdo (imagemDataUri.ts:109) —
+ * um campo sincronizado adulterado (ex.: `empresa.logoUri` escrito direto na API)
+ * poderia fechar o atributo `src="..."` e injetar HTML/`<script>`. `escapeHtml` aqui
+ * é no-op para um data URI base64 legítimo (o alfabeto base64 não tem `< > & " '`) e
+ * neutraliza qualquer valor adulterado — mesma defesa do recibo, um único ponto
+ * central em vez de escapar em cada um dos chamadores de `img()`.
+ */
 function img(uri?: string): string {
   if (!uri) return '';
-  return IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : '');
+  return escapeHtml(IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : ''));
 }
 
 async function populateImages(o: Orcamento, empresa: Empresa): Promise<void> {
@@ -86,8 +98,13 @@ async function populateImages(o: Orcamento, empresa: Empresa): Promise<void> {
  * Cor de marca configurável (default #0B6FCE). Como o expo-print no
  * Android nem sempre suporta color-mix(), pré-calculamos os tons claros
  * (mistura do accent com branco) direto em JS para o visual ser fiel.
+ *
+ * `DEFAULT_ACCENT`, `monogramSvg` e `footerSeloOlliHtml` MORAM em `marcaOlli.ts`
+ * (módulo puro, sem react-native) e são reexportados aqui: todo call site antigo
+ * que importa `from './pdfGenerator'` continua valendo, e quem precisa só do selo
+ * (contrato, termos) não puxa a plataforma inteira junto.
  */
-export const DEFAULT_ACCENT = '#0B6FCE';
+export { DEFAULT_ACCENT, monogramSvg, footerSeloOlliHtml } from './marcaOlli';
 
 function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
@@ -115,29 +132,6 @@ function renderStars(n: number): string {
   // Clampa entre 0 e 5: '★'.repeat(n) lança RangeError para n<0 ou n>5.
   const k = Math.max(0, Math.min(5, Math.round(n || 0)));
   return '★'.repeat(k) + '☆'.repeat(5 - k);
-}
-
-/**
- * Monograma OLLI (marca d'água / selo) na cor do accent.
- * Exportado para reuso em outros documentos gerados pelo app (ex.: recibo),
- * garantindo a mesma identidade visual do orçamento em toda a família de PDFs.
- */
-export function monogramSvg(color: string, size: number, opacity: number): string {
-  // Símbolo oficial OLLI (rebrand v3) em versão mono — balão-documento + check.
-  return `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" style="opacity:${opacity};">
-    <path d="M22 49 L12 59.5 L30 50 Z" fill="${color}"/>
-    <rect x="9" y="8" width="46" height="44" rx="14.5" fill="${color}"/>
-    <path d="M18 32 l8 9 l20 -19" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-/**
- * Rodapé "selo OLLI" (monograma cinza + texto), no mesmo padrão usado no
- * rodapé do orçamento. Exportado para que outros documentos (ex.: recibo)
- * repliquem a mesma assinatura visual em vez de reinventar o próprio rodapé.
- */
-export function footerSeloOlliHtml(): string {
-  return `${monogramSvg('#C7CDD6', 14, 1)} Gerado com OLLI Orçamentos`;
 }
 
 function renderFotos(o: Orcamento): string {
@@ -896,9 +890,24 @@ ${renderCapa(o, empresa, planoCapa)}
     ${o.exibirAssinatura ? `
       <div class="signatures">
         <div class="sign-col">
-          ${o.solicitarAssinaturaCliente && img(o.assinaturaClienteUri) ? `<img src="${img(o.assinaturaClienteUri)}" class="sign-img" />` : ''}
+          ${/* A imagem entra quando ELA EXISTE. Antes o gate era também
+                `solicitarAssinaturaCliente`, um switch de PRÉ-envio ("peça a
+                assinatura ao cliente") cujo padrão é `false`: com ele no
+                caminho, a assinatura que o cliente acabou de fazer no aparelho
+                (VisualizarOrcamentoScreen → AssinaturaClienteModal) sumia do
+                documento na esmagadora maioria dos orçamentos — o app diria
+                "assinado" e o PDF sairia com a linha em branco. Assinatura
+                existente é FATO consumado do cliente; esconder fato é mentira
+                por omissão. O bloco inteiro continua sob `exibirAssinatura`. */''}
+          ${img(o.assinaturaClienteUri) ? `<img src="${img(o.assinaturaClienteUri)}" class="sign-img" />` : ''}
           <div class="sign-line"></div>
-          <div class="sign-caption">Aprovação do cliente · data</div>
+          ${/* Sem assinatura, a legenda continua sendo o rótulo da linha em
+                branco (assina-se no papel). Com assinatura, ela vira o registro
+                do aceite: colher data/hora e não imprimir em lugar nenhum
+                deixaria o carimbo do aceite só na tela de quem colheu. */''}
+          <div class="sign-caption">${o.dataAssinaturaCliente
+            ? `Assinado em ${escapeHtml(formatDateTime(o.dataAssinaturaCliente))}`
+            : 'Aprovação do cliente · data'}</div>
           <div class="sign-caption sign-name">${escapeHtml(o.clienteNome)}</div>
         </div>
         <div class="sign-col">

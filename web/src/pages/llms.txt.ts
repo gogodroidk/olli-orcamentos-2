@@ -23,23 +23,51 @@
  */
 import { calculosDoOficio } from "../../../src/services/calculosOficio";
 import { VERTICAIS } from "../../../src/services/verticais";
+import { enderecoEmLinha, identidadePublicavel } from "../data/empresa";
 import {
 	DOR_POR_OFICIO,
 	PROFISSAO_POR_OFICIO,
 	SLUG_POR_OFICIO,
 } from "../data/oficios";
+import {
+	DESCONTO_ANUAL_ROTULO,
+	PRECO_EMPRESA,
+	PRECO_PRO,
+	reais,
+} from "../data/planos";
 
 const ORIGEM = "https://olliorcamentos.online";
 
 /**
- * Espelha os `offers` do JSON-LD em `Layout.astro`, que por sua vez espelham o
- * Stripe live. Preço em três lugares é dívida conhecida — está anotado lá também.
+ * DERIVADO de `data/planos.ts` (o espelho do Stripe live) — a mesma fonte do
+ * JSON-LD do `Layout.astro` e dos cartões da tela. A antiga "dívida de preço em
+ * três lugares" foi paga: o número mora num lugar só e todo o resto importa dele.
  */
 const PLANOS_LLM = [
-	{ nome: "Grátis", preco: "R$ 0", nota: "sem prazo e sem cartão" },
-	{ nome: "Pro", preco: "R$ 39/mês", nota: "por usuário" },
-	{ nome: "Empresa", preco: "R$ 99/mês", nota: "com equipe" },
+	{ nome: "Grátis", preco: reais(0), nota: "sem prazo e sem cartão" },
+	{
+		nome: "Pro",
+		preco: `${reais(PRECO_PRO.mensalCentavos)}/mês`,
+		nota: `por usuário; no anual ${reais(PRECO_PRO.anualPorMesCentavos)}/mês (${reais(PRECO_PRO.anualCentavos)}/ano, ${DESCONTO_ANUAL_ROTULO} de desconto)`,
+	},
+	{
+		nome: "Empresa",
+		preco: `${reais(PRECO_EMPRESA.mensalCentavos)}/mês`,
+		nota: `com equipe; no anual ${reais(PRECO_EMPRESA.anualPorMesCentavos)}/mês (${reais(PRECO_EMPRESA.anualCentavos)}/ano, ${DESCONTO_ANUAL_ROTULO} de desconto)`,
+	},
 ];
+
+/**
+ * O 12× com a VERDADE, para a IA não citar "12× sem juros" como se fosse desconto.
+ * É o valor CHEIO do ano parcelado (só o Pro tem produto avulso na Stripe), mais
+ * caro que o anual à vista. Ver o ⚠ no cabeçalho de `data/planos.ts`.
+ */
+const doze_parcelado = PRECO_PRO.parceladoCentavos;
+const doze_parcela = PRECO_PRO.parcelaCentavos;
+const NOTA_DOZE =
+	doze_parcelado !== null && doze_parcela !== null
+		? `O Pro pode ser parcelado em 12× de ${reais(doze_parcela)} no cartão, mas isso soma ${reais(doze_parcelado)} — ${reais(doze_parcelado - PRECO_PRO.anualCentavos)} a mais que o anual à vista. O 12× é comodidade de fluxo de caixa, não desconto.`
+		: "";
 
 export async function GET() {
 	const oficios = VERTICAIS.map((v) => {
@@ -52,6 +80,20 @@ export async function GET() {
 	const planos = PLANOS_LLM.map(
 		(p) => `- **${p.nome}** — ${p.preco} (${p.nota}).`,
 	).join("\n");
+
+	/**
+	 * Identidade jurídica, para a IA citar a ENTIDADE certa e não "um app chamado
+	 * OLLI". Mesmo gate do rodapé: sem os dados preenchidos em data/empresa.ts, a
+	 * seção inteira não existe — buscador de IA repete o que lê, e um CNPJ
+	 * inventado viraria citação inventada com cara de fonte isenta.
+	 */
+	const empresa = identidadePublicavel();
+	const quemSomos = empresa
+		? `\n## Quem opera a OLLI\n\n` +
+			`- Razão social: ${empresa.razaoSocial}\n` +
+			`- CNPJ: ${empresa.cnpj}\n` +
+			`- Endereço: ${enderecoEmLinha(empresa)}\n`
+		: "";
 
 	const corpo = `# OLLI
 
@@ -66,10 +108,13 @@ ofício ficam dentro do orçamento — o resultado do cálculo vira item, sem
 calculadora de terceiro.
 
 Idioma: português do Brasil. País: Brasil. Moeda: BRL.
-
+${quemSomos}
 ## Preços
 
 ${planos}
+
+O plano anual sai mais barato que o mensal; o Grátis não é teste com prazo. ${NOTA_DOZE}
+Comparativo completo dos planos: ${ORIGEM}/planos/
 
 ## Páginas por ofício
 
@@ -96,6 +141,7 @@ ${oficios}
 ## Links
 
 - [Site](${ORIGEM}/)
+- [Planos e preços](${ORIGEM}/planos/)
 - [Central de Ajuda](${ORIGEM}/ajuda/)
 - [Termos de Uso](${ORIGEM}/legal/termos/)
 - [Política de Privacidade](${ORIGEM}/legal/privacidade/)

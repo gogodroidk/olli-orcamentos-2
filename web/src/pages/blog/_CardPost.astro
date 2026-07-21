@@ -1,0 +1,95 @@
+---
+/**
+ * _CardPost.astro — o cartão de post nas listagens.
+ *
+ * SEM IMAGEM DE CAPA, e é decisão, não falta de tempo. O público desta casa é
+ * Android intermediário em 4G na rua; doze capas numa listagem é o jeito mais
+ * rápido de tornar a página inútil justamente para quem ela serve. Capa entra no
+ * dia em que existir FOTO REAL de serviço — banco de imagem genérico não informa
+ * nada e ainda pesa.
+ *
+ * A cor da faixa vem da categoria e é decorativa: ela NUNCA é o único portador
+ * da informação (o rótulo de texto está do lado), porque cor sozinha não passa
+ * em daltonismo nem em tela sob sol.
+ *
+ * O rótulo da categoria só vira link quando a categoria tem página (gate de
+ * `MINIMO_POR_CATEGORIA`). Abaixo do gate ele é <span> — o leitor continua vendo
+ * a que assunto o post pertence, sem existir um link para uma página magra.
+ */
+import { categoriaPorId, type CategoriaId } from '../../content/taxonomia';
+import { dataIso, dataLonga, type Post } from './_dados';
+
+interface Props {
+	post: Post;
+	/** Categorias que passaram no gate — vem de `categoriasComRota()`. */
+	comRota: readonly CategoriaId[];
+	/** O primeiro cartão do índice ganha destaque visual. */
+	grande?: boolean;
+}
+const { post, comRota, grande = false } = Astro.props;
+
+const categoria = categoriaPorId(post.data.categoria as CategoriaId);
+const temRota = comRota.includes(post.data.categoria as CategoriaId);
+const href = `/blog/${post.id}/`;
+const atualizado = post.data.atualizadoEm;
+---
+
+<article
+	class={`group relative flex flex-col rounded-cartao border border-line bg-white p-6 transition duration-[var(--olli-dur-2)] hover:border-brand/50 hover:shadow-lg hover:shadow-brand/5 ${grande ? 'sm:p-8' : ''}`}
+>
+	<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+		{
+			temRota ? (
+				<a
+					href={`/blog/categoria/${post.data.categoria}/`}
+					class="relative z-10 inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 font-semibold text-brand-fg transition hover:bg-brand hover:text-white"
+				>
+					<span aria-hidden="true" class="h-1.5 w-1.5 rounded-full bg-current" />
+					{categoria.nome}
+				</a>
+			) : (
+				<span class="inline-flex items-center gap-1.5 rounded-full bg-paper px-2.5 py-1 font-semibold text-slate">
+					<span aria-hidden="true" class="h-1.5 w-1.5 rounded-full bg-current" />
+					{categoria.nome}
+				</span>
+			)
+		}
+		<time datetime={dataIso(post.data.publicadoEm)} class="tnum text-muted">
+			{dataLonga(post.data.publicadoEm)}
+		</time>
+		{
+			atualizado && (
+				<span class="tnum text-muted">· atualizado em {dataLonga(atualizado)}</span>
+			)
+		}
+	</div>
+
+	<h2
+		class={`mt-3 font-bold leading-snug tracking-tight text-ink ${grande ? 'text-2xl sm:text-[1.75rem]' : 'text-xl'}`}
+	>
+		{/*
+			Âncora em "stretched link": o <a> cobre o cartão inteiro via ::after, então
+			a área de toque é o cartão todo (muito acima dos 44px mínimos) sem embrulhar
+			o cartão num link — o que destruiria a semântica dos elementos internos e
+			transformaria o rótulo de categoria em link aninhado (HTML inválido).
+		*/}
+		<a
+			href={href}
+			class="after:absolute after:inset-0 after:content-[''] hover:text-brand-fg focus-visible:outline-none focus-visible:text-brand-fg"
+		>
+			{post.data.titulo}
+		</a>
+	</h2>
+
+	<p class={`mt-3 leading-relaxed text-slate ${grande ? 'text-base' : 'text-sm'}`}>
+		{post.data.descricao}
+	</p>
+
+	<span
+		aria-hidden="true"
+		class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-fg"
+	>
+		Ler
+		<span class="transition-transform duration-[var(--olli-dur-1)] group-hover:translate-x-0.5">→</span>
+	</span>
+</article>

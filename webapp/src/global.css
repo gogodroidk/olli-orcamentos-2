@@ -1,6 +1,25 @@
-/* import font */
-@import "@fontsource-variable/open-sans";
-@import "@fontsource-variable/inter";
+/* import font — mesma identidade do painel e da landing: Rubik no corpo,
+   Spectral (serifada) só em destaque de valor monetário (ver typography.ts).
+
+   Por que Rubik e não Plus Jakarta: o dono achou a letra anterior "estranha" e
+   pediu mais arredondada. Rubik tem os cantos das hastes arredondados (é a
+   assinatura dela) sobre um esqueleto de grotesca robusta — arredondada de
+   verdade, mas SEM afinar o traço, então segura tabela densa e número de
+   dinheiro. Checado no arquivo real (fontTools) antes de trocar:
+     · tnum (algarismo tabular) = SIM — os 3 pontos de R$ usam `tabular-nums`,
+       e uma fonte sem tnum quebraria o alinhamento em silêncio (foi por isso
+       que Nunito Sans foi descartada: não tem tnum);
+     · acentos/cedilha do português = cobertura completa;
+     · eixo wght 300–900 (cobre 400/500/600/700);
+     · self-hosted (o projeto tem CSP — nada de CDN do Google).
+   Só o subset latin baixa de fato (~34,5 kB, unicode-range corta o resto). */
+@import "@fontsource-variable/rubik";
+
+/* Spectral SÓ nos 600 e 700. A classe `font-serif` aparece em 3 lugares, todos
+   valor em R$, e todos com font-semibold (600) ou font-bold (700) — o peso 400
+   não era usado por ninguém e baixava 21 kB à toa. */
+@import "@fontsource/spectral/600.css";
+@import "@fontsource/spectral/700.css";
 
 /* editor */
 @import "react-quill/dist/quill.snow.css";
@@ -25,6 +44,49 @@
 
 	body {
 		background-color: var(--background);
+		/* A COR DO TEXTO TAMBÉM, não só o fundo.
+		 *
+		 * Sem esta linha o `body` ficava com a cor padrão do navegador (preto puro) nos
+		 * DOIS temas: o fundo virava navy no escuro e o texto continuava preto. Medido
+		 * no navegador, a tela de LOGIN no tema escuro dava 1,11:1 em "Entrar na sua
+		 * conta", "E-mail" e "Ainda não tem conta?" — texto invisível na porta de
+		 * entrada do painel. O dashboard escapava por acaso, porque o container dele
+		 * traz `text-foreground`; quem esquecesse a classe sumia.
+		 *
+		 * Herdar do token conserta a categoria inteira do problema em vez de uma tela:
+		 * esquecer a classe de cor passa a degradar para o tema certo, não para o
+		 * invisível. No tema claro muda de #000 para #09090B — imperceptível, e é o
+		 * valor que o design system já definia. */
+		color: var(--foreground);
+	}
+}
+
+/* ALVO DE TOQUE — 44px de área para o dedo, sem mudar o desenho do botão.
+ *
+ * Os botões de ícone das listas têm 32px. Isso funciona no mouse e falha na rua:
+ * o público do OLLI usa o painel em pé, no celular, muitas vezes de luva. 44px é
+ * o mínimo que a Apple e a WCAG (2.5.5) pedem, e a diferença entre acertar o botão
+ * e acertar a linha inteira.
+ *
+ * A área cresce por pseudo-elemento em vez de aumentar o botão de propósito: o
+ * layout das listas continua idêntico (o dono não vê nada mudar de lugar), só o
+ * que o dedo acerta é que fica maior.
+ *
+ * CUIDADO AO APLICAR EM BOTÕES VIZINHOS: a área invisível pode invadir a do lado
+ * e roubar o toque. Dois botões de 32px precisam de pelo menos 12px de espaço
+ * (`gap-3`) entre eles para as áreas de 44px encostarem sem se sobrepor. Onde há
+ * um botão de EXCLUIR ao lado de um de editar, isso não é detalhe: sobreposição
+ * ali significa apagar o equipamento do cliente por engano. */
+@utility alvo-toque {
+	position: relative;
+	&::after {
+		content: "";
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		height: 44px;
+		width: 44px;
+		transform: translate(-50%, -50%);
 	}
 }
 
@@ -97,13 +159,16 @@
 	--sidebar-ring: var(--colors-palette-primary-default);
 }
 
-/* Shadcn UI Dark Theme */
+/* Shadcn UI Dark Theme — navy da família do app (não preto/zinza), ver
+   theme/tokens/color.ts (darkColorTokens.background). Elevação por degrau de
+   luminosidade: background (mais escuro) → card/popover → secondary/muted/
+   accent/sidebar (--colors-background-neutral, mais claro ainda). */
 [data-theme-mode="dark"] {
-	--background: var(--colors-common-black);
+	--background: var(--colors-background-default);
 	--foreground: var(--colors-common-white);
-	--card: var(--colors-common-black);
+	--card: var(--colors-background-paper);
 	--card-foreground: var(--colors-common-white);
-	--popover: var(--colors-common-black);
+	--popover: var(--colors-background-paper);
 	--popover-foreground: var(--colors-common-white);
 	--primary: var(--colors-palette-primary-default);
 	--primary-foreground: var(--colors-common-white);

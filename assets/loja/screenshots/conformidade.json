@@ -1,0 +1,282 @@
+{
+  "geradoPor": "node scripts/telas/loja.mjs",
+  "regrasEm": "https://support.google.com/googleplay/android-developer/answer/9866151",
+  "dadosFicticios": "Todos os nomes, telefones, endereços e valores são inventados e vivem em scripts/telas/elenco.mjs. O build de captura roda sem nuvem e o banco é um SQLite local vazio: nenhum dado de cliente real passou por aqui.",
+  "capturas": [
+    {
+      "arquivo": "01-novo-orcamento-itens.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 527346,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "02-orcamento-aprovado.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 565075,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "03-lista-orcamentos.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 510988,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "04-ordem-servico.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 507966,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "05-agenda.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 552368,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "06-codigos-erro.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 544876,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "07-diagnostico-ia.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 442214,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    },
+    {
+      "arquivo": "08-clientes.png",
+      "largura": 1080,
+      "altura": 1920,
+      "canais": 3,
+      "temAlpha": false,
+      "formato": "png",
+      "bytes": 492659,
+      "proporcao": 0.5625,
+      "regras": {
+        "formato": true,
+        "semAlpha": true,
+        "ladoMinimo": true,
+        "ladoMaximo": true,
+        "regraDoDobro": true,
+        "proporcao": true,
+        "peso": true,
+        "resolucaoDeDestaque": true
+      },
+      "ok": true
+    }
+  ],
+  "ocupacao": [
+    {
+      "arquivo": "01-novo-orcamento-itens.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2532,
+      "linhasComConteudo": 2096,
+      "ocupacao": 82,
+      "rodapeVazioPct": 0.9,
+      "maiorFaixaVaziaPct": 4.1,
+      "maiorFaixaVaziaEmY": 2031,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "02-orcamento-aprovado.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2556,
+      "linhasComConteudo": 2452,
+      "ocupacao": 95.9,
+      "rodapeVazioPct": 0,
+      "maiorFaixaVaziaPct": 2,
+      "maiorFaixaVaziaEmY": 663,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "03-lista-orcamentos.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2378,
+      "linhasComConteudo": 2244,
+      "ocupacao": 87.8,
+      "rodapeVazioPct": 7,
+      "maiorFaixaVaziaPct": 7,
+      "maiorFaixaVaziaEmY": 2378,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "04-ordem-servico.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2485,
+      "linhasComConteudo": 2268,
+      "ocupacao": 88.7,
+      "rodapeVazioPct": 2.8,
+      "maiorFaixaVaziaPct": 2.8,
+      "maiorFaixaVaziaEmY": 2485,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "05-agenda.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2520,
+      "linhasComConteudo": 2112,
+      "ocupacao": 82.6,
+      "rodapeVazioPct": 1.4,
+      "maiorFaixaVaziaPct": 4.3,
+      "maiorFaixaVaziaEmY": 855,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "06-codigos-erro.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2556,
+      "linhasComConteudo": 2219,
+      "ocupacao": 86.8,
+      "rodapeVazioPct": 0,
+      "maiorFaixaVaziaPct": 3.4,
+      "maiorFaixaVaziaEmY": 790,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    },
+    {
+      "arquivo": "07-diagnostico-ia.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 1424,
+      "linhasComConteudo": 1370,
+      "ocupacao": 53.6,
+      "rodapeVazioPct": 44.3,
+      "maiorFaixaVaziaPct": 44.3,
+      "maiorFaixaVaziaEmY": 1424,
+      "oca": false,
+      "rodapeVazioTolerado": 50
+    },
+    {
+      "arquivo": "08-clientes.png",
+      "largura": 1179,
+      "altura": 2556,
+      "ultimaLinhaComConteudo": 2556,
+      "linhasComConteudo": 2313,
+      "ocupacao": 90.5,
+      "rodapeVazioPct": 0,
+      "maiorFaixaVaziaPct": 1.9,
+      "maiorFaixaVaziaEmY": 387,
+      "oca": false,
+      "rodapeVazioTolerado": 20
+    }
+  ],
+  "faltando": []
+}

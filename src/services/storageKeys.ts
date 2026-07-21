@@ -22,6 +22,19 @@
  */
 export const DB_PARTICOES_KEY = 'olli.db.particoes';
 
+/**
+ * Prefixo do calendário de feriados nacionais baixado por ANO
+ * (`olli.feriados.2026`, ver `services/feriados`).
+ *
+ * ⚠️ **NÃO** entre com estas chaves em `APP_DATA_STORAGE_KEYS.** Não é dado do
+ * usuário: é calendário público, igual para todo mundo, e não diz nada sobre
+ * quem usou o aparelho. Apagá-lo no logout só faria o próximo login começar
+ * cego a feriados até achar sinal — cobrando rede de quem talvez não tenha.
+ * (Mesmo raciocínio de `DB_PARTICOES_KEY`, por motivo oposto: aquela é sensível
+ * demais para sumir, esta é impessoal demais para valer a pena sumir.)
+ */
+export const FERIADOS_ANO_KEY_PREFIX = 'olli.feriados.';
+
 /** Checklist do dia (HojeScreen). */
 export const CHECKLIST_KEY = 'olli.hoje.checklist';
 /** Histórico do chat com a OLLI (OlliChatScreen). */
@@ -52,6 +65,17 @@ export const AUTO_BACKUP_ULTIMO_KEY = 'olli.autoBackup.ultimo';
  * herdaria os adiamentos de outra pessoa.
  */
 export const RADAR_SNOOZE_KEY = 'olli.radar.snooze';
+/** Mapa canal('bomDia'/'fecharDia')→notificação agendada do Ritual diário (services/ritualDiario). */
+export const RITUAL_NOTIF_MAP_KEY = 'olli.ritual.notif';
+/** Toggle do canal "Bom dia da OLLI" (~7h, services/ritualDiario). Default ligado quando ausente. */
+export const RITUAL_BOM_DIA_TOGGLE_KEY = 'olli.ritual.bomDia.ativo';
+/** Toggle do canal "Fechar o dia" (~18h, services/ritualDiario). Default ligado quando ausente. */
+export const RITUAL_FECHAR_DIA_TOGGLE_KEY = 'olli.ritual.fecharDia.ativo';
+/**
+ * Toggle "notificar também aos domingos" do Ritual diário. Default DESLIGADO
+ * quando ausente (domingo mudo por padrão — docs/ENXAME/COMUNICACAO_VISAO.md).
+ */
+export const RITUAL_DOMINGO_TOGGLE_KEY = 'olli.ritual.domingo.ativo';
 
 /**
  * Carimbos ISO da ÚLTIMA escrita LOCAL de cada "extra" sincronizado
@@ -76,6 +100,45 @@ export const RADAR_SNOOZE_STAMP_KEY = 'olli.radar.snooze.stamp';
 export const EMPRESA_STAMP_KEY = 'olli.empresa.stamp';
 
 /**
+ * Carimbo ISO da última vez que o "Pulso da semana" (micro-feedback discreto da
+ * HojeScreen) foi MOSTRADO ao usuário. Garante o "no máximo 1x a cada 14 dias" —
+ * gravado no momento em que o card aparece (não só quando o usuário responde),
+ * senão alguém que sempre dispensa sem tocar veria o card toda vez que abrisse o
+ * app. Dado de CONTA (a cadência é por pessoa) — entra em APP_DATA_STORAGE_KEYS
+ * para o próximo usuário do aparelho não herdar o carimbo de outra conta.
+ */
+export const PULSO_ULTIMO_KEY = 'olli.pulso.ultimo';
+
+/**
+ * Mapa empresaId→FormaPagamento com a ÚLTIMA combinação de formas de
+ * pagamento marcada pelo prestador (services/formasPagamentoPadrao). Smart
+ * default: em vez de todo orçamento novo reabrir só com PIX marcado, herda o
+ * que a empresa realmente usou da última vez. Dado de CONTA — entra em
+ * APP_DATA_STORAGE_KEYS para o próximo usuário do aparelho não herdar a
+ * combinação de outra empresa.
+ */
+export const FORMAS_PAGAMENTO_PADRAO_KEY = 'olli.orcamento.formasPagamentoPadrao';
+
+/**
+ * Cache local de DURAÇÃO de trajeto do "a que horas eu preciso sair"
+ * (services/etaSaida). Chave interna = origem+destino normalizados + faixa de
+ * hora + tipo de dia; valor = o que a Routes API devolveu, com carimbo. Existe
+ * por CUSTO: a Routes API é o único terceiro caro por uso do app (SKU Pro:
+ * US$ 10 por 1.000 chamadas), e o mesmo trajeto se repete muito no dia a dia
+ * de um prestador. Guarda ENDEREÇO DE CLIENTE normalizado → é dado de conta e
+ * entra em APP_DATA_STORAGE_KEYS.
+ */
+export const SAIDA_CACHE_KEY = 'olli.saida.cache';
+/**
+ * Notificação "hora de sair" atualmente agendada + o último resultado de
+ * cálculo (services/avisoSaida), incluindo os estados de FALHA. Guardar a
+ * falha é de propósito: é o que permite a Home dizer "não deu pra checar o
+ * trânsito" em vez de simplesmente não mostrar nada — sumir com o card
+ * transformaria "não sei" em "não tem".
+ */
+export const SAIDA_AVISO_KEY = 'olli.saida.aviso';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -93,4 +156,12 @@ export const APP_DATA_STORAGE_KEYS = [
   CHECKLIST_STAMP_KEY,
   RADAR_SNOOZE_STAMP_KEY,
   EMPRESA_STAMP_KEY,
+  RITUAL_NOTIF_MAP_KEY,
+  RITUAL_BOM_DIA_TOGGLE_KEY,
+  RITUAL_FECHAR_DIA_TOGGLE_KEY,
+  RITUAL_DOMINGO_TOGGLE_KEY,
+  PULSO_ULTIMO_KEY,
+  FORMAS_PAGAMENTO_PADRAO_KEY,
+  SAIDA_CACHE_KEY,
+  SAIDA_AVISO_KEY,
 ];

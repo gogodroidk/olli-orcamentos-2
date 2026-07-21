@@ -18,6 +18,7 @@ import { AlertTriangle, Inbox, Pencil, Plus, QrCode, RotateCw, Search, Trash2, X
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
+import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useOlliList } from "@/olli/data";
 import { useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -331,63 +332,66 @@ export default function EquipamentosPage() {
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									<th className="px-4 py-3 font-semibold">Equipamento</th>
-									<th className="px-4 py-3 font-semibold">Cliente</th>
-									<th className="px-4 py-3 font-semibold">Localização</th>
-									<th className="px-4 py-3 font-semibold">Situação</th>
-									<th className="px-4 py-3 font-semibold">Etiqueta</th>
-									<th className="px-4 py-3 text-right font-semibold">Ações</th>
-								</tr>
-							</thead>
-							<tbody>
-								{linhas.map((e) => (
-									<tr
-										key={e.id}
-										className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
-									>
-										<td className="px-4 py-3.5">
-											<div className="flex min-w-0 items-center gap-3">
-												<div
-													aria-hidden="true"
-													className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10"
-												>
-													<Icon icon="mdi:air-conditioner" size="18" className="text-primary" />
-												</div>
-												<div className="min-w-0">
-													<p className="truncate font-medium text-text-primary">{nomeEquipamento(e)}</p>
-													<p className="truncate text-xs text-text-secondary">
-														{subEquipamento(e) || e.numeroSerie || e.codigoInterno || "—"}
-													</p>
-												</div>
-											</div>
-										</td>
-										<td className="max-w-40 px-4 py-3.5">
-											<CelulaCliente vinculo={vinculoDe(e)} />
-										</td>
-										<td className="max-w-40 px-4 py-3.5">
-											{e.localizacao ? (
-												<span className="truncate text-text-secondary">{e.localizacao}</span>
-											) : (
-												<span className="text-text-disabled">—</span>
-											)}
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<SituacaoBadge situacao={e.situacao} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5">
-											<BadgeQr e={e} />
-										</td>
-										<td className="whitespace-nowrap px-4 py-3.5 text-right">
-											<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
-										</td>
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										<th className="px-4 py-3 font-semibold">Equipamento</th>
+										<th className="px-4 py-3 font-semibold">Cliente</th>
+										<th className="px-4 py-3 font-semibold">Localização</th>
+										<th className="px-4 py-3 font-semibold">Situação</th>
+										<th className="px-4 py-3 font-semibold">Etiqueta</th>
+										<th className="px-4 py-3 text-right font-semibold">Ações</th>
 									</tr>
-								))}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{linhas.map((e) => (
+										<tr
+											key={e.id}
+											className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+										>
+											<td className="px-4 py-3.5">
+												<div className="flex min-w-0 items-center gap-3">
+													<div
+														aria-hidden="true"
+														className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10"
+													>
+														<Icon icon="mdi:air-conditioner" size="18" className="text-primary" />
+													</div>
+													<div className="min-w-0">
+														<p className="truncate font-medium text-text-primary">{nomeEquipamento(e)}</p>
+														<p className="truncate text-xs text-text-secondary">
+															{subEquipamento(e) || e.numeroSerie || e.codigoInterno || "—"}
+														</p>
+													</div>
+												</div>
+											</td>
+											<td className="max-w-40 px-4 py-3.5">
+												<CelulaCliente vinculo={vinculoDe(e)} />
+											</td>
+											<td className="max-w-40 px-4 py-3.5">
+												{e.localizacao ? (
+													<span className="truncate text-text-secondary">{e.localizacao}</span>
+												) : (
+													<span className="text-text-disabled">—</span>
+												)}
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<SituacaoBadge situacao={e.situacao} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5">
+												<BadgeQr e={e} />
+											</td>
+											<td className="whitespace-nowrap px-4 py-3.5 text-right">
+												<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE */}
@@ -512,12 +516,15 @@ function AcoesLinha({
 }) {
 	const nome = nomeEquipamento(e);
 	return (
-		<div className="inline-flex items-center gap-1">
+		// `gap-3` (12px) e não `gap-1`: com `alvo-toque` cada botão passa a valer 44px
+		// para o dedo, e 32px de botão + 4px de espaço faria as áreas se sobreporem —
+		// o toque de EXCLUIR invadindo o de editar. Com 12px elas encostam sem invadir.
+		<div className="inline-flex items-center gap-3">
 			<Button
 				type="button"
 				variant="ghost"
 				size="icon"
-				className="size-8"
+				className="size-8 alvo-toque"
 				onClick={() => aoVerEtiqueta(e)}
 				aria-label={`Etiqueta QR de ${nome}`}
 				title="Etiqueta QR"
@@ -528,7 +535,7 @@ function AcoesLinha({
 				type="button"
 				variant="ghost"
 				size="icon"
-				className="size-8"
+				className="size-8 alvo-toque"
 				onClick={() => aoEditar(e)}
 				aria-label={`Editar ${nome}`}
 				title="Editar"
@@ -539,7 +546,7 @@ function AcoesLinha({
 				type="button"
 				variant="ghost"
 				size="icon"
-				className="size-8 text-text-secondary hover:text-error"
+				className="size-8 alvo-toque text-text-secondary hover:text-error"
 				onClick={() => aoExcluir(e)}
 				aria-label={`Excluir ${nome}`}
 				title="Excluir"

@@ -179,7 +179,9 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
     try {
       setDepoimentos(await getDepoimentos());
     } catch {
-      setDepoimentos([]);
+      // erro de verdade (leitura falhou) — NÃO colapsa a prova social em
+      // silêncio: mantém os depoimentos já carregados antes (se houver), em
+      // vez de zerar e fingir "sem depoimentos" quando a causa foi de rede.
     } finally {
       setCarregandoPreview(false);
     }

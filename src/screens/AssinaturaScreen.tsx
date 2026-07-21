@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl, TouchableOpacity, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,6 +25,26 @@ import {
 } from '../services/assinatura';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * iOS (Guideline 3.1.1): gerenciar uma assinatura JÁ existente (cancelar, ver
+ * método de pagamento, baixar recibo) é tolerado mesmo sem StoreKit — não é
+ * uma compra nova, então o botão que abre o Portal da Stripe continua ativo
+ * aqui. O que não pode é ANUNCIAR troca/upgrade de plano por esse caminho —
+ * isso lê como oferta de compra por fora do app. Por isso a dica abaixo do
+ * botão não menciona "trocar de plano" no iOS (`ANUNCIA_TROCA_PLANO`; o
+ * Portal em si é da Stripe e foge do nosso controle, mas nosso próprio texto
+ * não precisa convidar).
+ * O card de upsell do plano Grátis (mais abaixo) é outra história: para quem
+ * ainda NÃO paga, ele oferece assinar o Pro — isso É uma compra nova. No iOS
+ * ele perde a moldura de venda (`COMPRA_NO_APP`, mesmo interruptor de
+ * PlanosScreen/ContaScreen): sem "assinando o Pro...", e o botão vira "Ver os
+ * planos" (ainda navega para dentro do app — não é link-out).
+ */
+const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';
+/** Mesmo interruptor de PlanosScreen/ContaScreen — sem StoreKit, o card de
+ * upsell do Grátis (abaixo) não pode oferecer assinar o Pro no iOS. */
+const COMPRA_NO_APP = Platform.OS !== 'ios';
 
 const PLANO_LABEL: Record<PlanoId, string> = { gratis: 'Grátis', pro: 'Pro', empresa: 'Empresa' };
 
@@ -306,7 +326,9 @@ export default function AssinaturaScreen() {
                     style={{ marginTop: Spacing.base }}
                   />
                   <Text style={styles.gerenciarHint}>
-                    Você é levado ao ambiente seguro da Stripe para trocar de plano, atualizar o cartão, baixar recibos ou cancelar quando quiser.
+                    {ANUNCIA_TROCA_PLANO
+                      ? 'Você é levado ao ambiente seguro da Stripe para trocar de plano, atualizar o cartão, baixar recibos ou cancelar quando quiser.'
+                      : 'Você é levado ao ambiente seguro da Stripe para atualizar o cartão, baixar recibos ou cancelar quando quiser.'}
                   </Text>
                 </AnimatedEntrance>
               </>
@@ -329,7 +351,9 @@ export default function AssinaturaScreen() {
                   </View>
                   <Text style={styles.upsellTitle}>Você está no plano Grátis</Text>
                   <Text style={styles.upsellSub}>
-                    Assinando o Pro, seu escritório de bolso ganha músculo:
+                    {COMPRA_NO_APP
+                      ? 'Assinando o Pro, seu escritório de bolso ganha músculo:'
+                      : 'O plano Pro oferece:'}
                   </Text>
                   <View style={styles.beneficios}>
                     {[
@@ -346,7 +370,7 @@ export default function AssinaturaScreen() {
                     ))}
                   </View>
                   <OlliButton
-                    label="Ver planos e assinar"
+                    label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
                     variant="gradient"
                     size="lg"
                     fullWidth
@@ -422,7 +446,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   planHead: { flexDirection: 'row', alignItems: 'center' },
   planIcon: {
-    width: 44, height: 44, borderRadius: 14, backgroundColor: c.accentContainer,
+    width: 44, height: 44, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer,
     justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: c.strokeGlow,
   },
   planLabel: { fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },
@@ -484,7 +508,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   faturaStatus: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
   faturaStatusText: { fontSize: 11.5, fontWeight: '800' },
   reciboBtn: {
-    width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
+    width: 38, height: 38, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center',
     backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,
   },
   reciboBtnOff: { backgroundColor: 'transparent', borderColor: c.outline },

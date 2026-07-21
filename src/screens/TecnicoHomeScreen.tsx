@@ -54,6 +54,10 @@ export default function TecnicoHomeScreen() {
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira true quando a leitura falha de verdade — sinal instável em campo não
+  // pode virar "0 em execução / 0 hoje / 0 concluídas" indistinguível de dia vazio.
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [avancandoId, setAvancandoId] = useState<string | null>(null);
 
@@ -66,6 +70,7 @@ export default function TecnicoHomeScreen() {
   }, []);
 
   const load = useCallback(async () => {
+    setCarregandoErro(false);
     try {
       const [emp, lista] = await Promise.all([
         getEmpresa(),
@@ -76,7 +81,8 @@ export default function TecnicoHomeScreen() {
       lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
       setOrdens(lista);
     } catch {
-      setOrdens([]);
+      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
+      setCarregandoErro(true);
     } finally {
       setCarregando(false);
     }
@@ -149,6 +155,23 @@ export default function TecnicoHomeScreen() {
           <OlliSkeleton width="100%" height={150} radius={BorderRadius.lg} />
           <OlliSkeleton width="100%" height={150} radius={BorderRadius.lg} />
         </View>
+      </View>
+    );
+  }
+
+  if (carregandoErro) {
+    return (
+      <View style={styles.container}>
+        <View style={{ paddingTop: insets.top }}>
+          <BarraOffline />
+        </View>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Não deu para carregar"
+          subtitle="Não conseguimos buscar suas ordens de serviço agora. Verifique a conexão e tente de novo."
+          actionLabel="Tentar de novo"
+          onAction={load}
+        />
       </View>
     );
   }
@@ -258,8 +281,10 @@ export default function TecnicoHomeScreen() {
           )}
         </Secao>
 
-        {/* Estado vazio geral — caloroso, sem culpa. */}
-        {ordens.length === 0 && (
+        {/* Estado vazio geral — caloroso, sem culpa. Guardado por !carregandoErro
+            pra nunca mostrar "vazio" quando na verdade é erro (early-return acima
+            já cobre isso, mas o guard fica como segunda trava). */}
+        {!carregandoErro && ordens.length === 0 && (
           <EmptyState
             icon="clipboard-text-clock-outline"
             title="Nada atribuído a você ainda"

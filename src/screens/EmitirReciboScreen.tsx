@@ -25,7 +25,7 @@ import { exportarHtmlComoPdf, abrirWhatsApp } from '../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
-import { montarMensagemPedidoAvaliacao } from '../utils/mensagensOrcamento';
+import { montarMensagemPedidoAvaliacao, montarMensagemAgradecimento, montarMensagemPedidoIndicacao } from '../utils/mensagensOrcamento';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
@@ -74,6 +74,10 @@ function EmitirReciboConteudo() {
   // Histórico de recibos já emitidos (aba "Emitidos").
   const [emitidos, setEmitidos] = useState<Recibo[]>([]);
   const [carregandoEmitidos, setCarregandoEmitidos] = useState(false);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `emitidosErro` só vira
+  // true quando a leitura falhou de verdade — sem isso, o usuário via "Nenhum
+  // recibo emitido" mesmo tendo recibos, só porque a leitura deu erro.
+  const [emitidosErro, setEmitidosErro] = useState(false);
   const [reenviandoId, setReenviandoId] = useState<string | null>(null);
 
   // Recibo com pagamento já registrado (ex.: pelo botão "Registrar pagamento" na
@@ -133,11 +137,13 @@ function EmitirReciboConteudo() {
 
   const carregarEmitidos = useCallback(async () => {
     setCarregandoEmitidos(true);
+    setEmitidosErro(false);
     try {
       const lista = await getRecibos();
       setEmitidos(lista);
     } catch {
-      setEmitidos([]);
+      // erro de verdade (leitura falhou) — NUNCA colapsa em "nenhum recibo".
+      setEmitidosErro(true);
     } finally {
       setCarregandoEmitidos(false);
     }
@@ -305,6 +311,37 @@ function EmitirReciboConteudo() {
     }
   }
 
+  // Agradecer + pedir indicação logo após o recibo ser emitido (motor de
+  // boca-a-boca): o pagamento acabou de cair, é o melhor momento pra
+  // agradecer o cliente e pedir que ele indique o prestador a conhecidos.
+  // Mesmo padrão de 1 toque do pedido de avaliação — pré-preenche no
+  // WhatsApp, quem manda é sempre o prestador (nunca dispara sozinho).
+  async function handleAgradecer(nome: string, telefone: string) {
+    if (!telefone?.trim()) {
+      Alert.alert('WhatsApp', 'Cliente sem telefone cadastrado.');
+      return;
+    }
+    const msg = montarMensagemAgradecimento(nome, orc, empresa);
+    try {
+      await abrirWhatsApp(telefone, msg);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
+  }
+
+  async function handlePedirIndicacao(nome: string, telefone: string) {
+    if (!telefone?.trim()) {
+      Alert.alert('WhatsApp', 'Cliente sem telefone cadastrado.');
+      return;
+    }
+    const msg = montarMensagemPedidoIndicacao(nome, orc, empresa);
+    try {
+      await abrirWhatsApp(telefone, msg);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
+  }
+
   const semEmpresa = !carregandoEmpresa && !empresa;
 
   return (
@@ -406,6 +443,32 @@ function EmitirReciboConteudo() {
             style={{ marginTop: 4 }}
           />
 
+          {/* Recibo recém-emitido: agradecer e pedir indicação enquanto o
+              serviço está fresco e o cliente acabou de pagar satisfeito
+              (motor de boca-a-boca) — sempre opcional, nunca automático. */}
+          {!!numero && (
+            <>
+              <OlliButton
+                label="Agradecer no WhatsApp"
+                variant="outline"
+                size="lg"
+                fullWidth
+                onPress={() => handleAgradecer(clienteNome, clienteTelefone)}
+                icon={<MaterialCommunityIcons name="whatsapp" size={20} color={cores.whatsapp} />}
+                style={{ marginTop: 10 }}
+              />
+              <OlliButton
+                label="Pedir indicação"
+                variant="outline"
+                size="lg"
+                fullWidth
+                onPress={() => handlePedirIndicacao(clienteNome, clienteTelefone)}
+                icon={<MaterialCommunityIcons name="account-heart-outline" size={20} color={cores.accentLight} />}
+                style={{ marginTop: 10 }}
+              />
+            </>
+          )}
+
           {/* Recibo recém-emitido + link de avaliação cadastrado: oferece pedir
               a avaliação no Google na hora, enquanto o serviço está fresco. */}
           {!!numero && !!linkAvaliacao && (
@@ -435,6 +498,14 @@ function EmitirReciboConteudo() {
               <View style={{ paddingTop: 40, alignItems: 'center' }}>
                 <ActivityIndicator color={cores.primary} />
               </View>
+            ) : emitidosErro ? (
+              <EmptyState
+                icon="alert-circle-outline"
+                title="Não deu para carregar"
+                subtitle="Não conseguimos buscar seus recibos agora. Verifique a conexão e tente de novo."
+                actionLabel="Tentar de novo"
+                onAction={carregarEmitidos}
+              />
             ) : (
               <EmptyState
                 icon="receipt"

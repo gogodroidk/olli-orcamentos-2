@@ -3,7 +3,8 @@
  *
  * Endpoints (o app chama exatamente estes):
  *   POST /            → diagnóstico técnico (OLLI Técnica)
- *   POST /voz         → transcrição (texto) → itens de orçamento
+ *   POST /voz         → transcrição (texto) → itens de orçamento; ou conversa[]/historico[] → Tier B (pergunta/pronto)
+ *   POST /voz/conversa → mesmo Tier B acima, rota dedicada (alias de /voz com conversa[])
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
  *   GET  /            → health check
@@ -29,17 +30,31 @@
  * Também serve o LINK PÚBLICO do cliente (sem login):
  *   GET  /o/<token> → página do orçamento (aprovar/recusar/WhatsApp)
  *   POST /o/<token> → grava a resposta do cliente
+ *
+ * POST /voz também aceita um modo CONVERSA (Tier B, docs/ENXAME/OLLI_VOZ_CONVERSA.md):
+ * corpo com `conversa: [{papel:'user'|'olli', texto}]` em vez de `transcript` →
+ * a Olli pergunta de volta até ter cliente+item, então fecha com `pronto:true`
+ * (ver handleVozConversa em ./voz.js). POST /voz/conversa é a mesma coisa numa
+ * rota própria — o cliente pode usar qualquer uma das duas; ambas aceitam o
+ * histórico como `conversa` OU `historico` (alias) e um `fechar:true` opcional
+ * pra fechar sob pedido (não só no teto de turnos).
  */
 
 import * as Sentry from '@sentry/cloudflare';
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
-import { handleAbacate } from './abacate.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
+import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
+import { handleEtaSaida } from './etaSaida.js';
+import { handleCep, handleFeriados } from './brasil.js';
+import { cobrarCreditoVoz } from './creditos.js';
+import { gemini } from './gemini.js';
+import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
+import { rotuloVertical, vozSystem, vozPrompt, VOZ_MAX, handleVoz, handleVozConversa } from './voz.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -48,10 +63,10 @@ const CORS = {
   'Access-Control-Max-Age': '86400',
 };
 
-function json(obj, status = 200) {
+function json(obj, status = 200, extraHeaders) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', ...CORS },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...CORS, ...(extraHeaders || {}) },
   });
 }
 
@@ -78,6 +93,10 @@ const MAX_ETA_BODY_BYTES = 4096;
  * link.js/responderLink, replicada aqui para as rotas de custo (IA + Google).
  * Consome o body stream (só pode ser chamado 1x por request); quem chama
  * reaproveita `raw` para o parse — nunca lê a request de novo.
+ *
+ * Quem chama primeiro tenta `cabeNoTeto` (Content-Length) — corpo nem foi
+ * lido, rejeita ANTES de bufferizar. Isto aqui é a segunda camada, obrigatória
+ * porque chunked/sem header escapa da primeira (B1/O2-18, ver rateLimit.js).
  */
 async function bodyMuitoGrande(request, max) {
   let raw = '';
@@ -89,16 +108,9 @@ async function bodyMuitoGrande(request, max) {
   return { grande: raw.length > max, raw };
 }
 
-/** Parseia o texto já lido por bodyMuitoGrande. Nunca lança — {} em JSON inválido. */
-function parseJsonBody(raw) {
-  if (!raw) return {};
-  try {
-    const v = JSON.parse(raw);
-    return v && typeof v === 'object' ? v : {};
-  } catch {
-    return {};
-  }
-}
+// parseJsonBody/parseJsonLoose/cortar agora vivem em ./util.js (import no
+// topo) — extraídos pra serem importáveis sem @sentry/cloudflare (ver o
+// comentário desse arquivo).
 
 // Cache em memória do worker (por isolate) da validação de token → user. Evita
 // 1 round-trip a /auth/v1/user por CADA request de IA (chat manda 1 por
@@ -134,83 +146,15 @@ async function getUser(request, env) {
   }
 }
 
-/**
- * Chama o Gemini. `user` pode ser string (1 turno) ou array de `contents` (chat).
- * `userParts`, se vier, tem prioridade sobre `user`: array de parts cru (ex.:
- * texto + inline_data de áudio) montado como um único turno `{role:'user'}` —
- * usado por /transcrever para anexar o áudio junto do prompt de texto.
- * `timeoutMs` permite alongar o prazo para chamadas mais pesadas (ex.: áudio).
- */
-async function gemini(env, { system, user, userParts, wantJson = false, temperature = 0.4, timeoutMs = 25_000 }) {
-  const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
-  // A key vai em header (x-goog-api-key), NUNCA na query string: URLs de
-  // request costumam ser logadas por proxies/CDNs no caminho — na query a
-  // chave vazaria nesses logs. O endpoint aceita a key por header (suportado
-  // pela API do Gemini) exatamente para evitar isso.
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const body = {
-    contents: Array.isArray(userParts)
-      ? [{ role: 'user', parts: userParts }]
-      : Array.isArray(user)
-        ? user
-        : [{ role: 'user', parts: [{ text: user }] }],
-    generationConfig: {
-      temperature,
-      ...(wantJson ? { responseMimeType: 'application/json' } : {}),
-    },
-  };
-  if (system) body.systemInstruction = { parts: [{ text: system }] };
-
-  // AbortController: sem timeout, uma chamada presa ao Gemini segura o worker
-  // até o limite da própria plataforma (CPU/wall time), degradando todo mundo
-  // atrás na fila. 25s é generoso para geração de JSON curto (mais para áudio,
-  // via timeoutMs) e ainda cabe dentro do limite de request do Workers.
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  let r;
-  try {
-    r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    const timedOut = e && e.name === 'AbortError';
-    const err = new Error(timedOut ? 'timeout' : 'falha_rede');
-    err.overloaded = timedOut; // trata timeout como sobrecarga (503, não 502): retry faz sentido
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-  if (!r.ok) {
-    const txt = await r.text().catch(() => '');
-    const overloaded = r.status === 429 || r.status === 503 || /overload|quota|exhausted|rate|unavailable/i.test(txt);
-    const err = new Error(overloaded ? 'sobrecarregado' : `gemini_${r.status}`);
-    err.overloaded = overloaded;
-    throw err;
-  }
-  const data = await r.json();
-  return (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
-}
+// gemini() agora vive em ./gemini.js (import no topo) — mesmo motivo do
+// parseJsonBody/parseJsonLoose/cortar em ./util.js.
 
 // Contrato de rotas de IA (POST autenticado + rate limit). É a ÚNICA fonte da
 // verdade sobre quais paths POST caem na IA — o roteador (fetch) valida contra
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/chat', '/transcrever']);
-
-/** Parser de JSON tolerante (remove cercas ```json e lixo em volta). */
-function parseJsonLoose(s) {
-  if (!s) return null;
-  const cleaned = s.replace(/```json\s*|\s*```/g, '').trim();
-  try { return JSON.parse(cleaned); } catch {}
-  const a = cleaned.indexOf('{');
-  const b = cleaned.lastIndexOf('}');
-  if (a >= 0 && b > a) { try { return JSON.parse(cleaned.slice(a, b + 1)); } catch {} }
-  return null;
-}
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever']);
 
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
@@ -225,10 +169,6 @@ Responda SOMENTE com JSON válido no formato pedido.`;
 // Limites de sanitização de entrada do diagnóstico (defesa contra payload
 // gigante/prompt injection — ver MAX_BODY_BYTES para o limite geral do body).
 const DIAG_MAX = { marca: 80, codigo: 32, sintoma: 500, modelo: 80 };
-
-function cortar(v, max) {
-  return typeof v === 'string' ? v.trim().slice(0, max) : '';
-}
 
 // Remove os caracteres reservados do PostgREST (`,()*`) de um valor antes de
 // usá-lo num filtro de query string, e então codifica para URL. Sem isto um
@@ -422,15 +362,19 @@ async function handleEta(request, env) {
   if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
   // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
-  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta). Mesmo
-  // padrão do IA_RL, aplicado ANTES de gastar a chamada externa.
-  if (env.ETA_RL) {
-    try {
-      const { success } = await env.ETA_RL.limit({ key: user.id });
-      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-    } catch {
-      // binding ausente: não bloqueia
-    }
+  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta).
+  //
+  // FAIL-CLOSED (`sensivel: true`), igual ao /eta/saida (etaSaida.js:570), que
+  // chama a MESMA API com a MESMA chave. Antes daqui morava o padrão gracioso
+  // (`if (env.ETA_RL) { try … } catch {}`): limiter ausente ou mudo virava
+  // permissão, calado. Não é hipótese — o docblock de rateLimit.js registra que
+  // um build por Git já apagou os 5 rate limiters em produção, e "sem limiter" é
+  // indistinguível de "dentro do limite" para quem chama. A conta que sobra é do
+  // dono, na Google. Recusar um pedido legítimo é mais barato que deixar a porta
+  // paga aberta sem vigia — e é o que a rota irmã já fazia.
+  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
+  if (!deixaPassar(estadoLimite, { sensivel: true })) {
+    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
   }
 
   const raw = parseJsonBody(corpo.raw);
@@ -529,7 +473,24 @@ async function handleCnpj(cnpjBruto, request, env) {
       uf: String(d.uf || ''),
       cep: String(d.cep || '').replace(/\D/g, ''),
       porte: String(d.porte || ''),
+      // CAMPO LEGADO, mantido só por compatibilidade com src/services/cnpj.ts
+      // (`mei: !!e?.mei`). Ele COLAPSA três estados em dois: a BrasilAPI devolve
+      // `opcao_pelo_mei: null` quando não sabe (confirmado ao vivo em
+      // 2026-07-18 num CNPJ real), e `!!null` vira `false` — "não sei" virando
+      // "não é MEI", que é o bug da casa `olli-gate-erro-vira-vazio`. Quem for
+      // decidir alguma coisa deve usar `meiEstado` abaixo, nunca este.
       mei: !!d.opcao_pelo_mei,
+      // ─── Os três estados, honestos (usar ESTES) ───
+      // Isto deixa de ser detalhe burocrático em 1º de setembro de 2026: pela
+      // Resolução CGSN nº 189/2026, MEI/ME/EPP do Simples passam a emitir NFS-e
+      // só pelo Emissor Nacional. Um app que "acha" que o cliente não é MEI
+      // porque a API não respondeu manda o prestador pro caminho fiscal errado.
+      meiEstado: tresEstados(d.opcao_pelo_mei),
+      simplesEstado: tresEstados(d.opcao_pelo_simples),
+      // Situação cadastral: cobrar e emitir nota para empresa BAIXADA é problema
+      // do prestador, não da Receita. String vazia = a API não informou.
+      situacaoCadastral: String(d.descricao_situacao_cadastral || ''),
+      ativa: empresaAtiva(d),
     };
     void gravarCacheCnpj(env, cnpj, empresa); // best-effort, não bloqueia a resposta
     return json({ ok: true, empresa });
@@ -537,6 +498,19 @@ async function handleCnpj(cnpjBruto, request, env) {
     return json({ ok: false, erro: 'consulta_falhou' }, 502);
   }
 }
+
+// `tresEstados` e `empresaAtiva` vivem em ./util.js (import no topo) — mesmo
+// motivo do parseJsonBody: são a parte deste arquivo que MERECE teste unitário,
+// e index.js não é importável pelo teste (carrega @sentry/cloudflare, que só
+// existe em worker/node_modules).
+
+// Versão do formato de `empresa` gravado em cnpj_cache. Existe porque o cache
+// tem 30 dias de vida e acabou de ganhar campos (meiEstado/simplesEstado/
+// situacaoCadastral/ativa): sem a versão, um CNPJ consultado ontem devolveria
+// hoje um objeto SEM esses campos, e `undefined` viraria um quarto estado
+// silencioso — exatamente o que os campos novos existem para impedir. Linha
+// velha = tratada como stale, reconsultada uma vez (a BrasilAPI é grátis).
+const CNPJ_CACHE_V = 2;
 
 // Headers de service_role para o cache de CNPJ (mesmo padrão inline do resto do worker).
 function cnpjCacheHeaders(env, extra) {
@@ -554,7 +528,14 @@ async function lerCacheCnpj(env, cnpj) {
     if (!Array.isArray(arr) || !arr.length) return null;
     const idade = Date.now() - new Date(arr[0].atualizado_em).getTime();
     if (!(idade >= 0) || idade > 30 * 24 * 3600 * 1000) return null; // > 30 dias = stale
-    return arr[0].dados || null;
+    const dados = arr[0].dados;
+    if (!dados || typeof dados !== 'object') return null;
+    // Formato antigo (sem os campos de três estados) = stale, mesmo dentro dos
+    // 30 dias. Servir o objeto velho encheria `meiEstado`/`ativa` de `undefined`
+    // na tela, que é "não sei" disfarçado de campo inexistente.
+    if (dados._v !== CNPJ_CACHE_V) return null;
+    const { _v, ...empresa } = dados; // `_v` é controle do cache, não vai pro app
+    return empresa;
   } catch {
     return null;
   }
@@ -567,7 +548,7 @@ async function gravarCacheCnpj(env, cnpj, empresa) {
     await fetch(`${env.SUPABASE_URL}/rest/v1/cnpj_cache?on_conflict=cnpj`, {
       method: 'POST',
       headers: cnpjCacheHeaders(env, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
-      body: JSON.stringify({ cnpj, dados: empresa, atualizado_em: new Date().toISOString() }),
+      body: JSON.stringify({ cnpj, dados: { ...empresa, _v: CNPJ_CACHE_V }, atualizado_em: new Date().toISOString() }),
     });
   } catch { /* best-effort */ }
 }
@@ -587,14 +568,11 @@ async function handleGeocode(request, env) {
 
   // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
   // pode custar 1 chamada à Geocoding API (paga). Mesmo binding do /eta — as duas
-  // rotas alimentam o mesmo fluxo (endereço → coordenada → rota).
-  if (env.ETA_RL) {
-    try {
-      const { success } = await env.ETA_RL.limit({ key: user.id });
-      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-    } catch {
-      // binding ausente: não bloqueia
-    }
+  // rotas alimentam o mesmo fluxo (endereço → coordenada → rota) — e, agora,
+  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver /eta acima).
+  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
+  if (!deixaPassar(estadoLimite, { sensivel: true })) {
+    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
   }
 
   const raw = parseJsonBody(corpo.raw);
@@ -619,78 +597,9 @@ async function handleGeocode(request, env) {
 }
 
 // ─── VOZ → ITENS ─────────────────────────────────────────────
-// Contexto do OFÍCIO por vertical (personalização — a IA fala a língua do segmento).
-// DEFAULT = ar-condicionado/refrigeração: cliente antigo que NÃO manda `vertical` mantém
-// EXATAMENTE o comportamento atual (backward-compat). Ver src/services/verticais.ts.
-function rotuloVertical(vertical) {
-  switch (vertical) {
-    case 'eletrica': return 'instalações elétricas (NR-10, NBR 5410, quadros, disjuntores, aterramento)';
-    case 'hidraulica': return 'hidráulica e encanamento (vazamentos, pressão, NBR 5626)';
-    case 'pintura': return 'pintura e acabamento (cálculo de tinta, superfícies, demãos)';
-    case 'dedetizacao': return 'controle de pragas / dedetização (RDC 622, produtos, responsável técnico)';
-    case 'jardinagem': return 'jardinagem e paisagismo (poda, irrigação, manutenção)';
-    case 'geral': return 'serviços de campo em geral';
-    case 'refrigeracao':
-    default: return 'ar-condicionado e refrigeração (split, multi-split, VRF)';
-  }
-}
-function vozSystem(vertical) {
-  return `Você é a OLLI, assistente de um prestador de serviços de ${rotuloVertical(vertical)} no Brasil. O técnico fala em voz alta o que vai fazer e você transforma isso em itens de orçamento. Use o catálogo quando o item casar. Responda SOMENTE com JSON válido em pt-BR.`;
-}
-
-// `linhaFala` permite trocar a 1ª linha do prompt: por padrão cita o
-// transcript em texto (rota /voz); /transcrever (modo orcamento) passa o
-// áudio como anexo em vez de transcript, então usa uma linha própria e exige
-// o campo extra "texto" (a transcrição) no JSON de saída.
-function vozPrompt(transcript, catalogo, { linhaFala, exigirTexto = false } = {}) {
-  const cat = Array.isArray(catalogo) && catalogo.length
-    ? `\nCatálogo do prestador (use o preço quando o item casar):\n${catalogo.map((c) => `- ${c.nome}${c.preco ? ` = R$ ${c.preco}` : ''}`).join('\n')}`
-    : '';
-  const fala = linhaFala || `Fala do técnico: "${transcript}"`;
-  const campoTexto = exigirTexto ? '\n  "texto": "transcrição fiel da fala do técnico em português do Brasil",' : '';
-  return `${fala}${cat}
-
-Monte os itens no JSON EXATO:
-{${campoTexto}
-  "titulo": "título curto do serviço (opcional)",
-  "clienteNome": "nome do cliente, se ele falou (opcional)",
-  "itens": [
-    { "descricao": "descrição do item", "quantidade": 1, "valorUnitario": 0, "tipo": "servico" }
-  ],
-  "observacao": "observação opcional"
-}
-Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use null em "valorUnitario". Quantidade é número.`;
-}
-
-// Limites de sanitização da rota /voz: sem isto, um transcript ou catálogo
-// gigante (dentro dos 20 req/min da IA_RL) queima cota do Gemini e vira vetor
-// de prompt injection direto no prompt.
-const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
-
-async function handleVoz(bodyText, env) {
-  const { transcript: rawTranscript, catalogo: rawCatalogo, vertical } = parseJsonBody(bodyText);
-  const transcript = cortar(rawTranscript, VOZ_MAX.transcript);
-  if (!transcript) return json({ ok: false, erro: 'sem_transcript' });
-  const catalogo = Array.isArray(rawCatalogo)
-    ? rawCatalogo.slice(0, VOZ_MAX.catalogoItens).map((c) => ({
-        nome: cortar(c && c.nome, VOZ_MAX.nome),
-        preco: c && typeof c.preco === 'number' ? c.preco : undefined,
-      }))
-    : undefined;
-  const text = await gemini(env, { system: vozSystem(vertical), user: vozPrompt(transcript, catalogo), wantJson: true, temperature: 0.3 });
-  const parsed = parseJsonLoose(text);
-  if (!parsed || !Array.isArray(parsed.itens)) {
-    console.error('[olli-voz] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
-    return json({ ok: false, erro: 'resposta_invalida' });
-  }
-  return json({
-    ok: true,
-    titulo: typeof parsed.titulo === 'string' ? parsed.titulo : undefined,
-    clienteNome: typeof parsed.clienteNome === 'string' ? parsed.clienteNome : undefined,
-    itens: parsed.itens,
-    observacao: typeof parsed.observacao === 'string' ? parsed.observacao : undefined,
-  });
-}
+// rotuloVertical/vozSystem/vozPrompt/VOZ_MAX/handleVoz agora vivem em ./voz.js
+// (import no topo) — junto do modo CONVERSA novo (handleVozConversa), mesmo
+// motivo de extração do gemini()/util.js: testável sem @sentry/cloudflare.
 
 // ─── TRANSCREVER (voz na nuvem) ─────────────────────────────
 // Recebe o áudio gravado no app (base64) e ou (a) só transcreve, ou (b) já
@@ -714,8 +623,10 @@ function transcreverPromptSimples() {
   return 'Transcreva fielmente o áudio em português do Brasil. Responda SOMENTE com JSON {"texto":"..."}';
 }
 
-async function handleTranscrever(bodyText, env) {
+export async function handleTranscrever(bodyText, env, user) {
   const raw = parseJsonBody(bodyText);
+  const confirmarCredito = raw && raw.confirmarCredito === true;
+  const creditoRef = raw && raw.creditoRef;
 
   const audioBase64 = typeof (raw && raw.audioBase64) === 'string' ? raw.audioBase64.trim() : '';
   if (!audioBase64 || !BASE64_RE.test(audioBase64)) return json({ ok: false, erro: 'sem_audio' });
@@ -770,6 +681,19 @@ async function handleTranscrever(bodyText, env) {
     console.error('[olli-transcrever] parse do Gemini falhou; texto recebido:', (text || '').slice(0, 300));
     return json({ ok: false, erro: 'resposta_invalida' });
   }
+
+  // Cobrança só no modo 'orcamento' (produz o resultado de fato faturável); o
+  // modo 'transcrever' acima é só transcrição e nunca passa por aqui.
+  // `conteudo` combina mimeType+áudio: o fallback de idempotência (sem
+  // `creditoRef`, que o app hoje não manda) quando um retry reenvia o MESMO
+  // áudio — ver o doc de cobrarCreditoVoz em creditos.js.
+  const cobranca = await cobrarCreditoVoz(env, user, {
+    confirmarCredito,
+    creditoRef,
+    conteudo: `${mimeType}|${audioBase64}`,
+  });
+  if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
+
   return json({
     ok: true,
     texto: parsed.texto,
@@ -825,17 +749,16 @@ const handler = {
       return handleStripe(request, env, url);
     }
 
-    // ── PAGAMENTOS PIX ABACATEPAY (créditos por Pix) ──
+    // ── PAGAMENTOS PIX MERCADO PAGO (créditos por Pix; planos por Pix) ──
+    // O PIX do OLLI é só aqui — decisão do dono: cartão na Stripe (acima), Pix no
+    // Mercado Pago. O AbacatePay, terceiro provedor de Pix que já roteou nesta
+    // posição, foi REMOVIDO: não tinha um único chamador no app nem no painel, e
+    // manter uma rota pública de dinheiro sem dono é superfície de ataque à toa.
+    // (Histórico do porquê em docs/ABACATEPAY.md; o ledger de créditos é
+    // append-only, então quem pagou por lá no passado não perde nada.)
+    //
     // Mesmo perfil do Stripe: fora do gate da IA; o webhook autentica por
-    // secret(query)+HMAC, as demais rotas validam o JWT do Supabase por conta
-    // própria. handleAbacate cuida do método e de OPTIONS/CORS por rota.
-    if (url.pathname.startsWith('/abacate/')) {
-      return handleAbacate(request, env, url);
-    }
-
-    // ── PAGAMENTOS MERCADO PAGO (gateway único: créditos Pix + planos) ──
-    // Mesmo perfil: fora do gate da IA; o webhook autentica por x-signature
-    // (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
+    // x-signature (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
     if (url.pathname.startsWith('/mp/')) {
       return handleMercadoPago(request, env, url);
     }
@@ -925,8 +848,38 @@ const handler = {
       return handleCnpj(url.pathname.slice('/cnpj/'.length), request, env);
     }
 
+    // Endereço a partir do CEP — GET /cep/<8 dígitos>, autenticado (ver brasil.js).
+    // Sai do aparelho e vem pro worker por UM motivo: o `src/services/cep.ts`
+    // atual devolve null tanto para "CEP não existe" quanto para "ViaCEP fora do
+    // ar", e essas duas coisas pedem ações opostas do prestador. Aqui são dois
+    // estados distintos, e `nao_encontrado` só sai com confirmação do ViaCEP —
+    // o 404 da BrasilAPI é ambíguo por contrato (docblock de brasil.js).
+    if (url.pathname.startsWith('/cep/') && request.method === 'GET') {
+      return handleCep(request, env, url.pathname.slice('/cep/'.length));
+    }
+
+    // Feriados nacionais do ano — GET /feriados/<ano>, autenticado e SEM REDE.
+    // Calculado aqui (datas fixas em lei + deslocamento da Páscoa), não é proxy:
+    // agenda de campo não pode depender de sinal pra saber que 7 de setembro é
+    // feriado. Também corrige o que a BrasilAPI erra pro nosso uso — Carnaval e
+    // Corpus Christi são ponto FACULTATIVO, não feriado nacional.
+    if (url.pathname.startsWith('/feriados/') && request.method === 'GET') {
+      return handleFeriados(request, env, url.pathname.slice('/feriados/'.length));
+    }
+
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEta(request, env);
+    }
+
+    // "A que horas eu preciso SAIR pra chegar às 15h" (docs/ENXAME/IDEIA_ETA_TRANSITO.md).
+    // Irmã do /eta acima, com duas diferenças que importam: manda `departureTime`
+    // (trânsito PREVISTO para a hora da saída — sem isso o cálculo da manhã usa o
+    // trânsito da manhã pra uma visita da tarde, e erra calado) e aceita endereço
+    // em TEXTO, com a origem vindo do cadastro em vez do GPS. Mesma chave secret,
+    // mesmo binding ETA_RL — mas fail-closed, porque cada chamada gasta dinheiro
+    // na Google. Ver o docblock de etaSaida.js.
+    if (url.pathname === '/eta/saida' && request.method === 'POST') {
+      return handleEtaSaida(request, env);
     }
 
     // Geocodificação (endereço → coordenada) — alimenta o /eta. Mesma proteção:
@@ -940,14 +893,44 @@ const handler = {
     if (request.method === 'GET' && url.pathname === '/') {
       return json({ ok: true, service: 'olli-diagnostico', ia: env.GEMINI_API_KEY ? 'on' : 'off' });
     }
-    if (request.method !== 'POST') return json({ ok: false, erro: 'metodo_nao_suportado' }, 405);
+    // EXISTÊNCIA primeiro, MÉTODO depois (achado A4 — ver METODOS_POR_ROTA).
+    // Path que não existe leva 404 e nenhum `Allow`; path que existe com o verbo
+    // errado leva 405 dizendo qual verbo serve. Só passa daqui uma requisição
+    // que casa com rota E método — e, como /eta, /eta/saida, /geocodificar e
+    // GET '/' já retornaram acima, o que sobra é exatamente POST em IA_ROUTES.
+    const metodosAceitos = metodosDaRota(url.pathname);
+    if (!metodosAceitos) return json({ ok: false, erro: 'nao_encontrado' }, 404);
+    if (!metodosAceitos.split(', ').includes(request.method)) {
+      return json({ ok: false, erro: 'metodo_nao_suportado' }, 405, { Allow: metodosAceitos });
+    }
 
-    // Rejeita payload grande ANTES de auth/rate-limit/parse — lê o corpo com o
-    // teto real (não confia em content-length; chunked escaparia, ver
-    // bodyMuitoGrande) e evita gastar 1 validação de token ou 1 dos 20 tokens/min
-    // do usuário com um body que nem vamos processar. Limite depende da rota:
-    // /transcrever aceita áudio em base64 (bem maior).
-    const corpoIa = await bodyMuitoGrande(request, url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES);
+    // RATE-LIMIT POR IP em /transcrever (B1/O2-18). Áudio é o maior corpo aceito
+    // (até 4MB) e o de maior custo (Gemini) por requisição — o teto de payload
+    // abaixo barra UM pedido gigante, mas não barra MUITOS pedidos médios vindos
+    // da MESMA origem em contas diferentes (o IA_RL logo abaixo é por usuário e
+    // não pega isso). Checado ANTES de ler o corpo, de propósito: sem isto, um IP
+    // abusivo ainda forçaria N bufferizações de até 4MB antes de qualquer outra
+    // barreira. Não é rota de dinheiro/convite (não é fail-closed, ver O2-18):
+    // se o binding sumir, segue — mesma política de IA_RL/LINK_RL logo abaixo.
+    if (url.pathname === '/transcrever') {
+      const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+      const estadoIp = await checarLimite(env.TRANSCREVER_RL, ip);
+      if (!deixaPassar(estadoIp, { sensivel: false })) {
+        return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+      }
+    }
+
+    // Rejeita payload grande ANTES de auth/rate-limit/parse. Limite depende da
+    // rota: /transcrever aceita áudio em base64 (bem maior). Duas camadas
+    // (B1/O2-18): `cabeNoTeto` rejeita pelo Content-Length SEM ler nada (rápido,
+    // mas confia num header que quem chama controla); `bodyMuitoGrande` confere o
+    // tamanho REAL depois — não confia em content-length, porque chunked não traz
+    // esse header (Number(null)=0) e escaparia da 1ª camada sozinha. Evita gastar
+    // 1 validação de token ou 1 dos 20 tokens/min do usuário com um body que nem
+    // vamos processar.
+    const maxBodyIa = url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
+    if (!cabeNoTeto(request, maxBodyIa).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
+    const corpoIa = await bodyMuitoGrande(request, maxBodyIa);
     if (corpoIa.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
@@ -977,8 +960,20 @@ const handler = {
 
     try {
       if (url.pathname === '/') return await handleDiag(corpoIa.raw, env);
-      if (url.pathname === '/voz') return await handleVoz(corpoIa.raw, env);
-      if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env);
+      if (url.pathname === '/voz') {
+        // Modo CONVERSA (Tier B): corpo com `conversa`/`historico` (array de
+        // {papel,texto}) em vez de `transcript` — mesmo path/rate-limit/teto
+        // de payload de sempre, só troca o handler. Ver o comentário no topo
+        // do arquivo.
+        const peek = parseJsonBody(corpoIa.raw);
+        return Array.isArray(peek.conversa) || Array.isArray(peek.historico)
+          ? await handleVozConversa(corpoIa.raw, env, user)
+          : await handleVoz(corpoIa.raw, env, user);
+      }
+      // Rota dedicada do modo CONVERSA (alias de `/voz` + conversa[]/historico[]
+      // acima) — mesmo handler, só pra quem prefere um path próprio.
+      if (url.pathname === '/voz/conversa') return await handleVozConversa(corpoIa.raw, env, user);
+      if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env, user);
       if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env);
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {

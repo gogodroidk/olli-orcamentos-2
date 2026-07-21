@@ -19,6 +19,7 @@
 import type { ProdutoItem } from "@dominio";
 import {
 	AlertTriangle,
+	Copy,
 	Inbox,
 	Lock,
 	MoreHorizontal,
@@ -33,6 +34,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
+import { BotaoAbrirLinha, linhaClicavel } from "@/olli/components/record-list-helpers";
 import { useOlliList } from "@/olli/data";
 import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -44,6 +46,7 @@ import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import FormItemCatalogo, {
 	abaixoDoCusto,
+	duplicarItem,
 	emReais,
 	type ItemCatalogo,
 	type LinhaCatalogo,
@@ -109,20 +112,22 @@ function CelulaMargem({ item }: { item: ItemCatalogo }) {
 	return <span className="font-medium tabular-nums text-success-dark dark:text-success">{m.pct}%</span>;
 }
 
-/** Editar / Excluir. Menu do Radix: abre no teclado (Enter/Espaço), navega nas setas. */
+/** Editar / Duplicar / Excluir. Menu do Radix: abre no teclado (Enter/Espaço), navega nas setas. */
 function MenuAcoes({
 	item,
 	aoEditar,
+	aoDuplicar,
 	aoExcluir,
 }: {
 	item: ItemCatalogo;
 	aoEditar: (item: ItemCatalogo) => void;
+	aoDuplicar: (item: ItemCatalogo) => void;
 	aoExcluir: (item: ItemCatalogo) => void;
 }) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" className="size-8" aria-label={`Ações de ${item.nome}`}>
+				<Button variant="ghost" size="icon" className="size-8 alvo-toque" aria-label={`Ações de ${item.nome}`}>
 					<MoreHorizontal className="size-4" />
 				</Button>
 			</DropdownMenuTrigger>
@@ -130,6 +135,10 @@ function MenuAcoes({
 				<DropdownMenuItem onSelect={() => aoEditar(item)}>
 					<Pencil className="mr-2 size-4" />
 					Editar
+				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => aoDuplicar(item)}>
+					<Copy className="mr-2 size-4" />
+					Duplicar
 				</DropdownMenuItem>
 				<DropdownMenuItem variant="destructive" onSelect={() => aoExcluir(item)}>
 					<Trash2 className="mr-2 size-4" />
@@ -156,8 +165,11 @@ export default function ListaCatalogo({ tipo }: Props) {
 	});
 
 	const [busca, setBusca] = useState("");
-	/** `undefined` = formulário fechado · `null` = novo · item = edição. */
+	/** `undefined` = formulário fechado · `null` = novo · item = edição (ou cópia, com `comoNovo`). */
 	const [emEdicao, setEmEdicao] = useState<ItemCatalogo | null | undefined>(undefined);
+	/** true = `emEdicao` é uma CÓPIA (ação "Duplicar"): o formulário trata como registro
+	 *  NOVO — título "Novo X" e gravação em INSERT, nunca por cima do item copiado. */
+	const [comoNovo, setComoNovo] = useState(false);
 	const [paraExcluir, setParaExcluir] = useState<ItemCatalogo | null>(null);
 
 	const excluir = useExcluir(tabela);
@@ -218,6 +230,28 @@ export default function ListaCatalogo({ tipo }: Props) {
 		setParaExcluir(item);
 	};
 
+	const abrirNovo = () => {
+		setComoNovo(false);
+		setEmEdicao(null);
+	};
+
+	const abrirEdicao = (item: ItemCatalogo) => {
+		setComoNovo(false);
+		setEmEdicao(item);
+	};
+
+	/** "Duplicar": mesmo padrão de `duplicarComoRascunho` em orçamentos — o original
+	 *  fica intacto, e o formulário abre com a cópia pré-preenchida como registro NOVO. */
+	const abrirDuplicar = (item: ItemCatalogo) => {
+		setComoNovo(true);
+		setEmEdicao(duplicarItem(tipo, item));
+	};
+
+	const fecharEditor = () => {
+		setEmEdicao(undefined);
+		setComoNovo(false);
+	};
+
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
 			{/* ───────────────────────────────  Cabeçalho  ─────────────────────────── */}
@@ -260,7 +294,7 @@ export default function ListaCatalogo({ tipo }: Props) {
 							className="h-10 shrink-0 gap-2"
 							disabled={!escritaLiberada}
 							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
-							onClick={() => setEmEdicao(null)}
+							onClick={abrirNovo}
 						>
 							<Plus className="size-4" />
 							<span className="hidden sm:inline">Novo {rotulo}</span>
@@ -339,7 +373,7 @@ export default function ListaCatalogo({ tipo }: Props) {
 							className="gap-2"
 							disabled={!escritaLiberada}
 							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
-							onClick={() => setEmEdicao(null)}
+							onClick={abrirNovo}
 						>
 							<Plus className="size-4" />
 							Cadastrar {rotulo}
@@ -380,25 +414,31 @@ export default function ListaCatalogo({ tipo }: Props) {
 							</thead>
 							<tbody>
 								{filtrados.map((item) => (
+									// A LINHA INTEIRA abre o item (queixa do dono: ter que acertar o nome).
+									// `linhaClicavel` protege o menu "…" — inclusive os itens dele, que portalam
+									// no DOM mas continuam borbulhando na árvore do React até esta <tr>.
 									<tr
 										key={item.id}
-										className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+										{...linhaClicavel(
+											() => abrirEdicao(item),
+											"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
+										)}
 									>
 										<td className="px-4 py-3.5 align-middle">
 											{/* O nome é o alvo de edição — e é um <button>: alcançável por Tab, não só por mouse. */}
-											<button
-												type="button"
-												onClick={() => setEmEdicao(item)}
-												className="flex max-w-md flex-col items-start rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+											<BotaoAbrirLinha
+												rotulo={`Abrir ${rotulo} ${item.nome || "(sem nome)"}`}
+												aoAbrir={() => abrirEdicao(item)}
+												className="flex max-w-md flex-col items-start"
 											>
-												<span className="flex items-center gap-2 font-medium text-text-primary hover:underline">
+												<span className="flex items-center gap-2 font-medium text-text-primary group-hover:underline">
 													<Icone aria-hidden="true" className="size-4 shrink-0 text-text-disabled" />
 													{item.nome || "(sem nome)"}
 												</span>
 												{item.descricao && (
 													<span className="mt-0.5 line-clamp-1 pl-6 text-xs text-text-secondary">{item.descricao}</span>
 												)}
-											</button>
+											</BotaoAbrirLinha>
 										</td>
 
 										{tipo === "produto" && (
@@ -422,7 +462,9 @@ export default function ListaCatalogo({ tipo }: Props) {
 										</td>
 
 										<td className="px-2 py-3.5 text-right align-middle">
-											{podeEditar && <MenuAcoes item={item} aoEditar={setEmEdicao} aoExcluir={pedirExclusao} />}
+											{podeEditar && (
+												<MenuAcoes item={item} aoEditar={abrirEdicao} aoDuplicar={abrirDuplicar} aoExcluir={pedirExclusao} />
+											)}
 										</td>
 									</tr>
 								))}
@@ -433,12 +475,12 @@ export default function ListaCatalogo({ tipo }: Props) {
 					{/* ────────────────────────────  MOBILE: cards  ─────────────────────── */}
 					<div className="divide-y divide-border/60 md:hidden">
 						{filtrados.map((item) => (
-							<div key={item.id} className="p-4">
+							<div key={item.id} {...linhaClicavel(() => abrirEdicao(item), "p-4 transition-colors")}>
 								<div className="flex items-start justify-between gap-2">
-									<button
-										type="button"
-										onClick={() => setEmEdicao(item)}
-										className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+									<BotaoAbrirLinha
+										rotulo={`Abrir ${rotulo} ${item.nome || "(sem nome)"}`}
+										aoAbrir={() => abrirEdicao(item)}
+										className="min-w-0 flex-1"
 									>
 										<span className="flex items-center gap-2 font-medium text-text-primary">
 											<Icone aria-hidden="true" className="size-4 shrink-0 text-text-disabled" />
@@ -449,8 +491,10 @@ export default function ListaCatalogo({ tipo }: Props) {
 												{marcaModelo(tipo, item)}
 											</span>
 										)}
-									</button>
-									{podeEditar && <MenuAcoes item={item} aoEditar={setEmEdicao} aoExcluir={pedirExclusao} />}
+									</BotaoAbrirLinha>
+									{podeEditar && (
+										<MenuAcoes item={item} aoEditar={abrirEdicao} aoDuplicar={abrirDuplicar} aoExcluir={pedirExclusao} />
+									)}
 								</div>
 
 								<dl className="mt-3 grid grid-cols-3 gap-x-4">
@@ -491,7 +535,8 @@ export default function ListaCatalogo({ tipo }: Props) {
 					aberto
 					tipo={tipo}
 					item={emEdicao}
-					aoFechar={() => setEmEdicao(undefined)}
+					comoNovo={comoNovo}
+					aoFechar={fecharEditor}
 					aoSalvar={aoSalvarItem}
 				/>
 			)}

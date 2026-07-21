@@ -31,7 +31,7 @@ function checar(nome: string, real: unknown, esperado: unknown): void {
   }
 }
 
-const env = { SUPABASE_URL: 'https://falso.supabase.co', SUPABASE_SERVICE_ROLE: 'service-role-falso' };
+const env = { SUPABASE_URL: 'https://falso.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso' };
 const EVENTO = { origem: 'stripe', eventId: 'evt_123', tipo: 'checkout.session.completed', payload: {} };
 
 /** Troca o fetch global: `insert` = resposta do POST; `status` = o que o GET acha. */

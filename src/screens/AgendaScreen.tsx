@@ -132,6 +132,10 @@ export default function AgendaScreen() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
+  // vira `true` se o load() de fato falhar — sem isso o período aparecia como
+  // "Nenhuma visita agendada" mesmo quando a leitura tinha caído.
+  const [carregandoErro, setCarregandoErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [googleSyncPill, setGoogleSyncPill] = useState(false);
@@ -144,13 +148,20 @@ export default function AgendaScreen() {
   const { inicio, fim } = useMemo(() => rangeFor(modo, ref), [modo, ref]);
 
   const load = useCallback(async () => {
-    const [data, cls] = await Promise.all([
-      getAgendamentosRange(inicio.toISOString(), endOfDay(fim).toISOString()),
-      getClientes(),
-    ]);
-    setItens(data);
-    setClientes(cls);
-    setCarregando(false);
+    setCarregandoErro(false);
+    try {
+      const [data, cls] = await Promise.all([
+        getAgendamentosRange(inicio.toISOString(), endOfDay(fim).toISOString()),
+        getClientes(),
+      ]);
+      setItens(data);
+      setClientes(cls);
+    } catch {
+      // erro de verdade (leitura falhou) — NUNCA vira "Nenhuma visita agendada" silencioso.
+      setCarregandoErro(true);
+    } finally {
+      setCarregando(false);
+    }
   }, [inicio.getTime(), fim.getTime()]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -522,7 +533,7 @@ export default function AgendaScreen() {
 
       {/* FILTROS (1.6) — tipo/status, client-side sobre a lista já carregada.
           Só aparece quando há algo pra filtrar (período com agendamentos). */}
-      {!carregando && !semAgendamentos && (
+      {!carregando && !carregandoErro && !semAgendamentos && (
         <View style={{ paddingHorizontal: Spacing.base }}>
           <ChipsFiltro<FiltroTipoAgenda> itens={chipsTipo} selecionado={filtroTipo} aoSelecionar={setFiltroTipo} />
           <ChipsFiltro<FiltroStatusAgenda> itens={chipsStatus} selecionado={filtroStatus} aoSelecionar={setFiltroStatus} />
@@ -547,6 +558,16 @@ export default function AgendaScreen() {
               </View>
             </AnimatedEntrance>
           ))}
+        </View>
+      ) : carregandoErro ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Não deu para carregar"
+            subtitle="Não conseguimos buscar seus agendamentos agora. Verifique a conexão e tente de novo."
+            actionLabel="Tentar de novo"
+            onAction={load}
+          />
         </View>
       ) : semAgendamentos ? (
         <View style={{ flex: 1 }}>
@@ -611,9 +632,10 @@ export default function AgendaScreen() {
         </ScrollView>
       )}
 
-      {/* FAB Agendar visita — oculto quando o período está vazio: o EmptyState
-          já mostra o mesmo CTA no centro, e os dois juntos ficam redundantes. */}
-      {itens.length > 0 && (
+      {/* FAB Agendar visita — oculto quando o período está vazio ou em erro: o
+          EmptyState já mostra o CTA (ou "Tentar de novo") no centro, e os dois
+          juntos ficam redundantes/incoerentes. */}
+      {itens.length > 0 && !carregandoErro && (
       // haptic={false}: abrirNovo() já dispara um impactAsync(Light) próprio —
       // deixar o OlliPressable vibrar de novo daria feedback dobrado.
       <OlliPressable style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} haptic={false} accessibilityLabel="Agendar visita">

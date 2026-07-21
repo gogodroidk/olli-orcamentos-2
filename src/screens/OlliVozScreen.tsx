@@ -9,20 +9,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { confirmar } from './desktop/dialogo';
 import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { SinalizarIA } from '../components/SinalizarIA';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { interpretarVoz, VozResultadoOk, VozItem } from '../services/olliAssistente';
+import { interpretarVoz, VozResultadoOk, VozItem, conversarVoz, ConversaTurno, ConversaResultado } from '../services/olliAssistente';
 import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/reconhecimentoVoz';
 import { useReducedMotion } from '../theme/motion';
 import { useGravadorNuvem } from '../services/vozNuvem';
 import {
-  getNextOrcamentoNumber, saveOrcamento, getServicos,
+  getNextOrcamentoNumber, saveOrcamento, getServicos, getEmpresa,
 } from '../database/database';
+import { getUltimasFormasPagamento, salvarUltimasFormasPagamento } from '../services/formasPagamentoPadrao';
 import { Orcamento, ItemOrcamento, FormaPagamento } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO, todayISO } from '../utils/date';
@@ -31,6 +35,7 @@ import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePlano } from '../hooks/usePlano';
 import { IA_USOS_GRATIS_MES } from '../services/planos';
+import { getMeuSaldo } from '../services/creditos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -42,6 +47,16 @@ const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 5;
 
 /** Gradiente do microfone durante a gravação em nuvem (pulso vermelho, gravando). */
 const GRADIENT_GRAVANDO = ['#FF6B6B', '#C0392B'] as const;
+
+/**
+ * Chave de AsyncStorage: já viu a saudação inicial da tela de voz (Tier A,
+ * item 5)? Mostrada uma única vez, dispensada no primeiro toque no microfone.
+ * Fica LOCAL a este arquivo (não em services/storageKeys.ts) por instrução de
+ * escopo desta mudança — é só uma "já vi essa dica" sem dado sensível, então
+ * sobreviver a um logout não é um risco (mesmo raciocínio de ONBOARDED_KEY em
+ * services/onboarding.ts, que também fica fora de APP_DATA_STORAGE_KEYS).
+ */
+const SAUDACAO_VOZ_VISTA_KEY = 'olli.voz.saudacaoVista';
 
 /** Reexportado para telas que já importavam este helper (ex.: HomeScreen). */
 export function isVozDisponivel(): boolean {
@@ -73,6 +88,13 @@ interface ItemEditavel {
   tipo: 'servico' | 'peca';
 }
 
+/** Uma bolha na tela do Modo Conversa (Tier B) — espelha `ConversaTurno` do serviço, com `id` local pra `key`/animação. */
+interface ConversaBolha {
+  id: string;
+  papel: 'user' | 'olli';
+  texto: string;
+}
+
 const defaultFormas: FormaPagamento = { credito: false, debito: false, dinheiro: false, pix: true };
 
 function vozItemParaEditavel(it: VozItem): ItemEditavel {
@@ -92,6 +114,7 @@ function montarOrcamento(
   clienteNome: string | undefined,
   itensEdit: ItemEditavel[],
   observacao: string | undefined,
+  formasPagamentoPadrao?: FormaPagamento,
 ): Orcamento {
   const itens: ItemOrcamento[] = itensEdit.map(e => {
     const preco = e.valorUnitario ?? 0;
@@ -133,7 +156,9 @@ function montarOrcamento(
     status: 'rascunho',
     dataEmissao: todayISO(),
     informacoesAdicionais: infoAdicional || undefined,
-    formasPagamento: defaultFormas,
+    // Smart default: mesma última combinação da empresa que o wizard manual usa
+    // (services/formasPagamentoPadrao) — cai no PIX-só estático sem padrão salvo.
+    formasPagamento: formasPagamentoPadrao ?? defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
     exibirAprovacao: true,
@@ -152,15 +177,60 @@ export default function OlliVozScreen() {
   const { usosIaRestantes, consumirUsoIa } = usePlano();
   const iaEsgotada = usosIaRestantes <= 0;
 
+  // ── Gate gracioso "usar 1 crédito?" (cota grátis de IA esgotada) ──
+  // `usarCredito` armado = usuário tocou explicitamente em "Usar 1 crédito" no
+  // teaser: a partir daí a tela se comporta como se não estivesse esgotada
+  // (mic/hero normais), só que o próximo envio leva `confirmarCredito:true`.
+  // NUNCA liga sozinho — só pelo toque em `usarUmCredito()` abaixo.
+  const [usarCredito, setUsarCredito] = useState(false);
+  // Chave de idempotência do toque em "Usar 1 crédito" — gerada uma vez por
+  // toque, reusada nos retries daquele MESMO toque (rede caiu, tentou de
+  // novo…) pra nunca cobrar 2 créditos por 1 confirmação só (ver
+  // `cobrarCreditoVoz` em worker/src/creditos.js).
+  const [creditoRefAtual, setCreditoRefAtual] = useState<string | null>(null);
+  // Saldo de Créditos OLLI para mostrar "você tem N" no botão. `undefined` =
+  // ainda não checou; `null` = indisponível (offline/erro — 3 estados, nunca
+  // vira 0 sozinho). Só busca quando a cota grátis já estourou (custo zero
+  // no caminho feliz de quem nunca esgota).
+  const [saldoCreditos, setSaldoCreditos] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!iaEsgotada) return;
+    let vivo = true;
+    getMeuSaldo().then(s => { if (vivo) setSaldoCreditos(s); });
+    return () => { vivo = false; };
+  }, [iaEsgotada]);
+
   const [fase, setFase] = useState<Fase>('inicial');
   const [transcript, setTranscript] = useState('');
   const [parcial, setParcial] = useState(''); // resultado interim do reconhecimento
   const [erro, setErro] = useState<string | null>(null);
+  // `true` só quando o ÚLTIMO erro foi especificamente falta de créditos (o
+  // worker recusou o `confirmarCredito:true`) — troca o botão de erro por
+  // "Ver planos" em vez de um "Tentar de novo" que ia falhar de novo igual.
+  const [semCreditosNoErro, setSemCreditosNoErro] = useState(false);
   const [permissaoNegadaPermanente, setPermissaoNegadaPermanente] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Saudação de 1ª vez (Tier A, item 5): começa escondida — só aparece se o
+  // AsyncStorage confirmar que este aparelho nunca dispensou. Evita "flash"
+  // da dica em quem já viu (padrão igual ao `carregado` do OlliChatScreen).
+  const [saudacaoVisivel, setSaudacaoVisivel] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    AsyncStorage.getItem(SAUDACAO_VOZ_VISTA_KEY)
+      .then(v => { if (vivo && !v) setSaudacaoVisivel(true); })
+      .catch(() => {
+        // sem storage não tem problema — só não mostra a dica desta vez
+      });
+    return () => { vivo = false; };
+  }, []);
+  const dispensarSaudacao = useCallback(() => {
+    setSaudacaoVisivel(false);
+    AsyncStorage.setItem(SAUDACAO_VOZ_VISTA_KEY, '1').catch(() => {});
+  }, []);
 
   // 'dispositivo' = reconhecimento de fala nativo (grátis, sem internet depois
   // de ouvir); 'nuvem' = grava o áudio com expo-audio e manda pro Worker
@@ -168,6 +238,26 @@ export default function OlliVozScreen() {
   // mesmo sem o serviço de voz do Google instalado/habilitado.
   const [modoVoz, setModoVoz] = useState<'dispositivo' | 'nuvem'>('dispositivo');
   const [catalogoVoz, setCatalogoVoz] = useState<{ nome: string; preco?: number }[] | undefined>(undefined);
+
+  // ── MODO CONVERSA (Tier B, cluster T3b) ──
+  // Alternativa opt-in ao "tiro único": em vez de mandar tudo de uma vez pro
+  // worker montar os itens, cada fala vira um TURNO — a Olli pode perguntar de
+  // volta ("pra quem é?", "qual o preço da recarga?") antes de fechar. Desligado
+  // por padrão — é a opção "menos intrusiva": quem nunca tocar no toggle usa
+  // exatamente o fluxo de sempre, sem risco de regressão nele. Uma vez ligado,
+  // o 2º toque no microfone (ou o envio do texto de fallback) manda aquela fala
+  // como um turno sozinho — sem esperar o botão grande, que no modo conversa
+  // vira só o envio do texto digitado.
+  const [modoConversa, setModoConversa] = useState(false);
+  const [conversaBolhas, setConversaBolhas] = useState<ConversaBolha[]>([]);
+  // Gerado 1x no primeiro turno de cada conversa (nunca no toggle) — é a chave
+  // de idempotência da cobrança de 1 crédito por CONVERSA (não por turno; ver
+  // conversarVoz/docs/ENXAME/OLLI_VOZ_CONVERSA.md). Fica em ref: só é lido
+  // dentro de chamadas assíncronas, nunca precisa disparar re-render.
+  const conversationIdRef = useRef<string | null>(null);
+  // Espelha o `fechar` do último turno enviado — usado só pelo "Tentar de
+  // novo" do card de erro, pra repetir a MESMA intenção (responder ou encerrar).
+  const ultimoFecharConversaRef = useRef(false);
 
   // revisão
   const [titulo, setTitulo] = useState('');
@@ -279,10 +369,15 @@ export default function OlliVozScreen() {
     onOrcamento: (ok) => {
       if (!ok.itens || ok.itens.length === 0) {
         setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setSemCreditosNoErro(false);
         setFase('erro');
         return;
       }
-      void consumirUsoIa();
+      // Pago com 1 crédito → não consome a cota grátis (ela já estava zerada;
+      // o contador local não precisa saber de créditos, isso é do worker).
+      if (!usarCredito) void consumirUsoIa();
+      setUsarCredito(false);
+      setCreditoRefAtual(null);
       setTitulo(ok.titulo ?? '');
       setClienteNome(ok.clienteNome ?? '');
       setItens(ok.itens.map(vozItemParaEditavel));
@@ -293,9 +388,22 @@ export default function OlliVozScreen() {
     onErro: (m, opts) => {
       setErro(m);
       setPermissaoNegadaPermanente(!!opts?.permissaoNegadaPermanente);
+      setSemCreditosNoErro(!!opts?.semCreditos);
+      if (opts?.semCreditos) {
+        setUsarCredito(false);
+        setCreditoRefAtual(null);
+        void getMeuSaldo().then(setSaldoCreditos);
+      }
       setFase('erro');
     },
   });
+
+  // Espelha `usarCredito` no gravador em nuvem: cobre inclusive o auto-stop de
+  // 2min, que envia direto sem passar pelo botão "Montar orçamento" (ver
+  // `enviarGravacaoPronta`/`definirConfirmarCredito` em services/vozNuvem.ts).
+  useEffect(() => {
+    nuvem.definirConfirmarCredito(usarCredito, creditoRefAtual ?? undefined);
+  }, [usarCredito, creditoRefAtual, nuvem.definirConfirmarCredito]);
 
   // limpa chamadas de IA pendentes ao sair da tela (a limpeza do
   // reconhecimento de voz e do gravador em nuvem já é feita internamente
@@ -306,6 +414,158 @@ export default function OlliVozScreen() {
       abortRef.current?.abort();
     };
   }, []);
+
+  // ── Modo conversa: processamento da resposta de cada turno ──
+  // Toda resposta do `/voz/conversa` cai aqui: ou é `{pergunta}` (mostra a
+  // bolha da Olli e volta pro microfone) ou é `{pronto:true, itens}` — que a
+  // partir daqui usa o MESMO epílogo do tiro único (cota/crédito, Revisão).
+  const processarRespostaConversa = useCallback((res: ConversaResultado) => {
+    if (!res.ok) {
+      setErro(res.erro);
+      setSemCreditosNoErro(!!res.semCreditos);
+      if (res.semCreditos) {
+        setUsarCredito(false);
+        setCreditoRefAtual(null);
+        void getMeuSaldo().then(setSaldoCreditos);
+      }
+      setFase('erro');
+      return;
+    }
+    if (!res.pronto) {
+      setConversaBolhas(prev => [...prev, { id: generateId(), papel: 'olli', texto: res.pergunta }]);
+      setFase('inicial');
+      Haptics.selectionAsync().catch(() => {});
+      return;
+    }
+    if (!res.itens || res.itens.length === 0) {
+      setErro('Não consegui identificar itens na conversa. Continue respondendo ou monte o orçamento na mão.');
+      setSemCreditosNoErro(false);
+      setFase('erro');
+      return;
+    }
+    // Fechou a conversa: mesmo desfecho do tiro único (cobra a cota grátis se
+    // não foi crédito, libera o gate) — e a PRÓXIMA conversa ("Refazer") ganha
+    // um conversationId NOVO, nunca reusa o de uma cobrança já fechada.
+    if (!usarCredito) void consumirUsoIa();
+    setUsarCredito(false);
+    setCreditoRefAtual(null);
+    conversationIdRef.current = null;
+    setTitulo(res.titulo ?? '');
+    setClienteNome(res.clienteNome ?? '');
+    setItens(res.itens.map(vozItemParaEditavel));
+    setObservacao(res.observacao ?? '');
+    setFase('revisao');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [usarCredito, consumirUsoIa]);
+
+  // Chamada de rede de um turno da conversa (histórico completo, turno mais
+  // recente já incluso). `fechar:true` = "montar com o que tem" — pede pra
+  // Olli fechar em vez de perguntar mais.
+  const chamarConversa = useCallback(async (historico: ConversaTurno[], fechar: boolean) => {
+    ultimoFecharConversaRef.current = fechar;
+    if (!conversationIdRef.current) conversationIdRef.current = generateId();
+    setFase('enviando');
+    setErro(null);
+    setSemCreditosNoErro(false);
+    setPodeCancelar(false);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+    cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+    try {
+      const res = await conversarVoz(historico, conversationIdRef.current, {
+        sinalCancelamento: controller.signal,
+        confirmarCredito: usarCredito,
+        creditoRef: conversationIdRef.current,
+        fechar,
+      });
+      processarRespostaConversa(res);
+    } finally {
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      setPodeCancelar(false);
+      abortRef.current = null;
+    }
+  }, [usarCredito, processarRespostaConversa]);
+
+  // Uma fala (dispositivo) ou uma gravação transcrita (nuvem) vira ESTE turno
+  // — chamado direto pelo 2º toque do microfone, sem esperar o botão grande.
+  const enviarTurnoConversa = useCallback((textoBruto: string) => {
+    const texto = textoBruto.trim();
+    if (!texto) return;
+    if (iaEsgotada && !usarCredito) {
+      track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz_conversa' });
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    const userBolha: ConversaBolha = { id: generateId(), papel: 'user', texto };
+    const novasBolhas = [...conversaBolhas, userBolha];
+    setConversaBolhas(novasBolhas);
+    void chamarConversa(novasBolhas.map(b => ({ papel: b.papel, texto: b.texto })), false);
+  }, [conversaBolhas, iaEsgotada, usarCredito, chamarConversa]);
+
+  // "Montar com o que tem" (item 4 do pedido) — o usuário pode encerrar a
+  // qualquer momento; a Olli fecha com o que já entendeu em vez de perguntar mais.
+  const encerrarConversa = useCallback(() => {
+    if (conversaBolhas.length === 0) return;
+    Haptics.selectionAsync().catch(() => {});
+    void chamarConversa(conversaBolhas.map(b => ({ papel: b.papel, texto: b.texto })), true);
+  }, [conversaBolhas, chamarConversa]);
+
+  // "Tentar de novo" no card de erro, dentro de uma conversa — repete a MESMA
+  // chamada (responder ou encerrar, conforme `ultimoFecharConversaRef`) com o
+  // histórico já acumulado, sem duplicar o turno que já está nas bolhas.
+  const tentarNovoConversa = useCallback(() => {
+    if (conversaBolhas.length === 0) return;
+    void chamarConversa(conversaBolhas.map(b => ({ papel: b.papel, texto: b.texto })), ultimoFecharConversaRef.current);
+  }, [conversaBolhas, chamarConversa]);
+
+  // Segunda instância do gravador em nuvem, só de TRANSCRIÇÃO (sem montar
+  // itens) — usada exclusivamente quando `modoConversa` está ligado: cada
+  // gravação vira só o TEXTO do turno, que `enviarTurnoConversa` manda pro
+  // `/voz/conversa` (quem decide perguntar mais ou fechar é aquele endpoint,
+  // não o /transcrever). Duas instâncias do hook (em vez de um `modo` mutável)
+  // porque `useGravadorNuvem` fixa o `modo` na criação — hooks são sempre
+  // chamados, incondicionalmente, todo render; só ESCOLHEMOS qual delas usar
+  // (ver `nuvemAtivo` abaixo), nunca pulamos a chamada.
+  const nuvemConversa = useGravadorNuvem({
+    modo: 'transcrever',
+    onTexto: (t) => enviarTurnoConversa(t),
+    onErro: (m, opts) => {
+      setErro(m);
+      setPermissaoNegadaPermanente(!!opts?.permissaoNegadaPermanente);
+      setSemCreditosNoErro(false);
+      setFase('erro');
+    },
+  });
+
+  // Instância de nuvem "ativa" pro modo atual — toda leitura de estado
+  // (gravando/enviando/segundos/prontoParaEnviar) e toda ação do microfone
+  // passam por aqui. As duas instâncias nunca gravam ao mesmo tempo: o
+  // usuário só mexe na que corresponde ao `modoConversa` atual.
+  const nuvemAtivo = modoConversa ? nuvemConversa : nuvem;
+
+  // Alterna Modo Conversa ⇄ Resposta única. Troca de modo sempre limpa o que
+  // estava em andamento (transcrição solta, bolhas, erro) — misturar rascunho
+  // de um modo com o outro confundiria mais do que ajudaria. Trocar de volta
+  // pro modo normal NÃO reaproveita nada do que a conversa já tinha juntado.
+  const alternarModoConversa = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    setModoConversa(prev => !prev);
+    setTranscript('');
+    setParcial('');
+    setErro(null);
+    setConversaBolhas([]);
+    conversationIdRef.current = null;
+  }, []);
+
+  // Trava a troca de modo enquanto há algo em voo (escutando/enviando/
+  // gravando) ou uma conversa já começou — evita perder uma resposta a meio
+  // caminho por um toque acidental no toggle.
+  const modoTravado = fase === 'ouvindo' || fase === 'enviando' || nuvemAtivo.gravando || nuvemAtivo.enviando || conversaBolhas.length > 0;
+  const escolherModo = useCallback((quer: boolean) => {
+    if (quer === modoConversa || modoTravado) return;
+    alternarModoConversa();
+  }, [modoConversa, modoTravado, alternarModoConversa]);
 
   const pararReconhecimento = useCallback(() => {
     voz.parar();
@@ -319,44 +579,57 @@ export default function OlliVozScreen() {
     if (voz.ouvindo) {
       voz.parar();
       setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
+      // Modo conversa: essa fala JÁ É o turno — manda pro worker assim que a
+      // escuta para, sem esperar o botão grande (que no modo conversa é só
+      // pro texto de fallback). `transcript`/`parcial` só têm esta rodada de
+      // escuta porque os dois foram zerados no início dela, logo abaixo.
+      if (modoConversa) {
+        const textoTurno = (transcript + (parcial ? (transcript ? ' ' : '') + parcial : '')).trim();
+        setTranscript('');
+        setParcial('');
+        if (textoTurno) enviarTurnoConversa(textoTurno);
+      }
     } else {
       setParcial('');
+      if (modoConversa) setTranscript('');
       voz.iniciar();
       setFase('ouvindo');
     }
-  }, [vozOk, voz]);
+  }, [vozOk, voz, modoConversa, transcript, parcial, enviarTurnoConversa]);
 
   // Modo nuvem: 1º toque inicia a gravação (pede a permissão do microfone
   // direto pelo expo-audio, sem depender do serviço de voz do Google); 2º
-  // toque para, envia o áudio pro Worker e já volta com o orçamento pronto
-  // (uma única requisição — não passa por `enviar()`/`interpretarVoz`).
+  // toque só PARA de ouvir — gesto unificado com o modo dispositivo (Tier A,
+  // item 4). Quem envia e monta o orçamento é o botão grande ("Montar
+  // orçamento com a OLLI", em `enviar()`), que no modo nuvem chama
+  // `nuvem.enviarGravacaoPronta()`. Isso é possível graças às duas primitivas
+  // novas em `services/vozNuvem.ts`: `pararGravacao()` (só stop, mantém o
+  // áudio pronto) e `enviarGravacaoPronta()` (só envia o que já está pronto).
   const onMicPressNuvem = useCallback(async () => {
     // Guarda contra segundo toque durante o upload (inclusive após o auto-stop
     // de 2min, quando a fase ainda pode estar 'ouvindo'): sem isso, um toque
     // iniciaria uma 2ª gravação concorrente com o envio em voo.
-    if (nuvem.enviando) return;
+    if (nuvemAtivo.enviando) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setErro(null);
     setPermissaoNegadaPermanente(false);
-    if (nuvem.gravando) {
-      setFase('enviando');
-      // Mostra o botão Cancelar após alguns segundos de upload (mesmo padrão do
-      // fluxo on-device em enviar()): o envio na nuvem pode levar até 60s.
-      setPodeCancelar(false);
-      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
-      cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
-      try {
-        await nuvem.pararEEnviar();
-      } finally {
-        if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
-        setPodeCancelar(false);
-      }
+    if (nuvemAtivo.gravando) {
+      // 2º toque: só para de ouvir. O áudio fica pronto (`prontoParaEnviar`)
+      // até o botão grande enviar — a UI reflete o estado real (mic para de
+      // pulsar, "OUVINDO…" some), nada continua gravando escondido.
+      await nuvemAtivo.pararGravacao();
+      setFase(prev => (prev === 'ouvindo' ? 'inicial' : prev));
+      // Modo conversa: envia sozinho assim que a gravação para — o botão
+      // grande do modo conversa é só pro texto de fallback (ver o bloco de
+      // ações no rodapé). `enviarGravacaoPronta` chama `onTexto` (ligado a
+      // `enviarTurnoConversa` em `nuvemConversa`) antes de resolver.
+      if (modoConversa) await nuvemAtivo.enviarGravacaoPronta();
     } else {
       setTranscript('');
       setFase('ouvindo');
-      await nuvem.iniciarGravacao();
+      await nuvemAtivo.iniciarGravacao();
     }
-  }, [nuvem]);
+  }, [nuvemAtivo, modoConversa]);
 
   // IA grátis esgotada (3 usos/mês): bloqueia o microfone ANTES de gastar
   // bateria/permissão — mostra o teaser caloroso em vez de deixar tocar.
@@ -367,18 +640,64 @@ export default function OlliVozScreen() {
   }, [nav]);
 
   const onMicPress = useCallback(() => {
-    if (iaEsgotada) {
+    if (iaEsgotada && !usarCredito) {
       track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
+    if (saudacaoVisivel) dispensarSaudacao();
     return modoVoz === 'nuvem' ? onMicPressNuvem() : onMicPressDispositivo();
-  }, [iaEsgotada, modoVoz, onMicPressNuvem, onMicPressDispositivo]);
+  }, [iaEsgotada, usarCredito, modoVoz, onMicPressNuvem, onMicPressDispositivo, saudacaoVisivel, dispensarSaudacao]);
+
+  // ── Gate gracioso: as 3 opções quando a cota grátis acabou ──
+  const usarUmCredito = useCallback(() => {
+    if (saldoCreditos === 0) return; // defesa em profundidade — o botão já fica desabilitado nesse caso
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateCreditoUsado, { recurso: 'ia_ilimitada', origem: 'olli_voz' });
+    setErro(null);
+    setSemCreditosNoErro(false);
+    setCreditoRefAtual(generateId());
+    setUsarCredito(true);
+  }, [saldoCreditos]);
+
+  const montarNaMao = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    track(Eventos.gateMontarNaMao, { recurso: 'ia_ilimitada', origem: 'olli_voz' });
+    nav.navigate('NovoOrcamento', {});
+  }, [nav]);
 
   const enviar = useCallback(async () => {
+    // Modo nuvem: não há texto local pra validar (a transcrição só existe
+    // DEPOIS do envio) — o gate é ter uma gravação parada e pronta
+    // (`nuvem.prontoParaEnviar`, setada por `pararGravacao()` no 2º toque do
+    // mic). `nuvem.enviarGravacaoPronta()` já dispara `onOrcamento`/`onErro`
+    // (ligados lá em cima), que levam pra Revisão ou pro card de erro — igual
+    // ao fluxo antigo de `pararEEnviar()`.
+    if (modoVoz === 'nuvem') {
+      if (!nuvem.prontoParaEnviar) return;
+      if (iaEsgotada && !usarCredito) {
+        track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
+        return;
+      }
+      Haptics.selectionAsync().catch(() => {});
+      setFase('enviando');
+      setErro(null);
+      setSemCreditosNoErro(false);
+      setPodeCancelar(false);
+      if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
+      try {
+        await nuvem.enviarGravacaoPronta(usarCredito, creditoRefAtual ?? undefined);
+      } finally {
+        if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+        setPodeCancelar(false);
+      }
+      return;
+    }
+
     const texto = transcript.trim();
     if (!texto) return;
-    if (iaEsgotada) {
+    if (iaEsgotada && !usarCredito) {
       track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
       return;
     }
@@ -386,6 +705,7 @@ export default function OlliVozScreen() {
     Haptics.selectionAsync().catch(() => {});
     setFase('enviando');
     setErro(null);
+    setSemCreditosNoErro(false);
     setPodeCancelar(false);
 
     const controller = new AbortController();
@@ -393,19 +713,39 @@ export default function OlliVozScreen() {
     cancelarTimerRef.current = setTimeout(() => setPodeCancelar(true), SEGUNDOS_PARA_MOSTRAR_CANCELAR * 1000);
 
     try {
-      const res = await interpretarVoz(texto, controller.signal);
+      // DECISÃO DECLARADA (denúncia de conteúdo de IA): a saída daqui também
+      // sai de um modelo e mesmo assim NÃO tem botão "Sinalizar" — diferente do
+      // modo conversa, logo abaixo, onde tem. O que muda: isto é extração
+      // estruturada (título, cliente, itens, preços) que cai na tela de Revisão
+      // e o prestador edita campo a campo antes de virar orçamento; o que a Olli
+      // "disse" nunca é apresentado a ele como resposta. Se um item vier errado
+      // ele conserta na hora, e o caminho de reclamar já existe (o feedback
+      // comum). O canal de denúncia é para texto livre gerado que o usuário LÊ
+      // como resposta — chat, diagnóstico e as falas do modo conversa.
+      // Se um dia esta saída for mostrada como texto pronto (um resumo falado,
+      // uma "proposta" em prosa), ela entra na regra e ganha o botão.
+      const res = await interpretarVoz(texto, controller.signal, usarCredito, creditoRefAtual ?? undefined);
       if (!res.ok) {
         setErro(res.erro);
+        setSemCreditosNoErro(!!res.semCreditos);
+        if (res.semCreditos) {
+          setUsarCredito(false);
+          setCreditoRefAtual(null);
+          void getMeuSaldo().then(setSaldoCreditos);
+        }
         setFase('erro');
         return;
       }
       const ok = res as VozResultadoOk;
       if (!ok.itens || ok.itens.length === 0) {
         setErro('Não consegui identificar itens no que você falou. Tente detalhar os serviços e peças — ou monte o orçamento na mão.');
+        setSemCreditosNoErro(false);
         setFase('erro');
         return;
       }
-      void consumirUsoIa();
+      if (!usarCredito) void consumirUsoIa();
+      setUsarCredito(false);
+      setCreditoRefAtual(null);
       setTitulo(ok.titulo ?? '');
       setClienteNome(ok.clienteNome ?? '');
       setItens(ok.itens.map(vozItemParaEditavel));
@@ -417,13 +757,14 @@ export default function OlliVozScreen() {
       setPodeCancelar(false);
       abortRef.current = null;
     }
-  }, [transcript, pararReconhecimento, iaEsgotada, consumirUsoIa]);
+  }, [modoVoz, nuvem, transcript, pararReconhecimento, iaEsgotada, usarCredito, creditoRefAtual, consumirUsoIa]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     abortRef.current?.abort();
     nuvem.cancelar();
-  }, [nuvem]);
+    nuvemConversa.cancelar();
+  }, [nuvem, nuvemConversa]);
 
   const refazer = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -431,20 +772,43 @@ export default function OlliVozScreen() {
     setTranscript('');
     setParcial('');
     setErro(null);
+    setSemCreditosNoErro(false);
     setPermissaoNegadaPermanente(false);
     setItens([]);
     setTitulo('');
     setClienteNome('');
     setObservacao('');
+    setConversaBolhas([]);
+    conversationIdRef.current = null;
+    // Cada uso volta a exigir confirmação explícita — nunca fica "ligado" sozinho.
+    setUsarCredito(false);
+    setCreditoRefAtual(null);
   }, []);
 
   const criarOrcamento = useCallback(async () => {
     if (itens.length === 0) return;
+    // BUG P0: preço "não sei" (valorUnitario null) virava R$ 0,00 calado no
+    // orçamento do cliente — `montarOrcamento` faz `valorUnitario ?? 0` e o
+    // único bloqueio aqui era `itens.length === 0`. Não bloqueamos de vez (o
+    // usuário pode legitimamente preencher o preço depois, no wizard) — só
+    // forçamos essa confirmação explícita antes de qualquer número entrar sem
+    // o humano ver.
+    const semPreco = itens.filter(i => i.valorUnitario == null).length;
+    if (semPreco > 0) {
+      const seguirComZero = await confirmar(
+        semPreco === 1 ? '1 item ainda sem preço' : `${semPreco} itens ainda sem preço`,
+        `${semPreco === 1 ? 'Ele vai' : 'Eles vão'} como R$ 0,00 no orçamento. Toque em Confirmar pra seguir assim, ou Cancelar pra voltar e preencher agora.`
+      );
+      if (!seguirComZero) return; // "Preencher agora": fica na Revisão, não cria nada
+    }
     setSalvando(true);
     try {
       const numero = await getNextOrcamentoNumber();
-      const orc = montarOrcamento(numero, titulo, clienteNome, itens, observacao);
+      const emp = await getEmpresa();
+      const formasPagamentoPadrao = await getUltimasFormasPagamento(emp?.id);
+      const orc = montarOrcamento(numero, titulo, clienteNome, itens, observacao, formasPagamentoPadrao ?? undefined);
       await saveOrcamento(orc);
+      void salvarUltimasFormasPagamento(emp?.id, orc.formasPagamento);
       track(Eventos.quoteCreated, { origem: 'voz', itens: itens.length });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       // abre a MESMA tela de edição do app para o usuário finalizar (cliente, preços, enviar)
@@ -471,12 +835,21 @@ export default function OlliVozScreen() {
   }
 
   const enviando = fase === 'enviando';
-  const podeEnviar = transcript.trim().length > 0 && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro');
+  // Modo nuvem: o botão libera quando há uma gravação parada e pronta pra
+  // enviar (não existe "texto" local nesse modo até a transcrição voltar do
+  // Worker). Modo dispositivo: continua exigindo texto transcrito, como antes.
+  // No Modo Conversa o botão grande não envia mais transcrição/áudio (isso é
+  // automático no 2º toque do mic) — ele vira só o envio do texto digitado,
+  // calculado em `podeEnviarConversaTexto` (ver mais abaixo, perto do rodapé).
+  const podeEnviar = !modoConversa && (modoVoz === 'nuvem'
+    ? nuvem.prontoParaEnviar && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro')
+    : transcript.trim().length > 0 && (fase === 'inicial' || fase === 'ouvindo' || fase === 'erro'));
 
-  const gravandoNuvem = modoVoz === 'nuvem' && nuvem.gravando;
-  const enviandoNuvem = modoVoz === 'nuvem' && nuvem.enviando;
-  const minutos = String(Math.floor(nuvem.segundos / 60)).padStart(2, '0');
-  const segs = String(nuvem.segundos % 60).padStart(2, '0');
+  const gravandoNuvem = modoVoz === 'nuvem' && nuvemAtivo.gravando;
+  const enviandoNuvem = modoVoz === 'nuvem' && nuvemAtivo.enviando;
+  const minutos = String(Math.floor(nuvemAtivo.segundos / 60)).padStart(2, '0');
+  const segs = String(nuvemAtivo.segundos % 60).padStart(2, '0');
+  const podeEnviarConversaTexto = modoConversa && transcript.trim().length > 0 && (fase === 'inicial' || fase === 'erro');
 
   const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
   const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] });
@@ -518,24 +891,48 @@ export default function OlliVozScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* IA GRÁTIS ESGOTADA — mensagem calorosa, nunca erro seco */}
-          {iaEsgotada && fase === 'inicial' ? (
+          {/* IA GRÁTIS ESGOTADA — gate gracioso: 3 opções claras, nunca bloqueio seco */}
+          {iaEsgotada && !usarCredito && fase === 'inicial' ? (
             <AnimatedEntrance index={0}>
               <View style={styles.limiteCard}>
                 <OlliMascot size={48} onDark />
-                <Text style={styles.limiteTitle}>Você usou seus {IA_USOS_GRATIS_MES} orçamentos por voz este mês</Text>
+                <Text style={styles.limiteTitle}>Seus {IA_USOS_GRATIS_MES} orçamentos por voz do mês acabaram</Text>
                 <Text style={styles.limiteSub}>
-                  Sem problema — você pode continuar montando orçamentos na mão a qualquer hora.
-                  Para falar sem limite com a OLLI, dá uma olhada no plano Pro.
+                  Sem problema — você pode usar 1 crédito pra continuar agora, dar uma olhada nos
+                  planos, ou montar o orçamento na mão.
                 </Text>
                 <OlliButton
-                  label="Ver planos"
+                  label={
+                    saldoCreditos != null && saldoCreditos > 0
+                      ? `Usar 1 crédito (você tem ${saldoCreditos})`
+                      : 'Usar 1 crédito'
+                  }
                   variant="gradient"
                   size="md"
-                  onPress={() => irParaPlanos('voz_limite')}
-                  icon={<MaterialCommunityIcons name="crown-outline" size={18} color="#fff" />}
-                  style={{ marginTop: 14 }}
+                  onPress={usarUmCredito}
+                  disabled={saldoCreditos === 0}
+                  icon={<MaterialCommunityIcons name="lightning-bolt-outline" size={18} color="#fff" />}
+                  style={{ marginTop: 14, alignSelf: 'stretch' }}
                 />
+                <OlliButton
+                  label="Ver planos"
+                  variant="outline"
+                  size="md"
+                  onPress={() => irParaPlanos('voz_limite')}
+                  icon={<MaterialCommunityIcons name="crown-outline" size={18} color={cores.accentLight} />}
+                  style={{ marginTop: 10, alignSelf: 'stretch' }}
+                />
+                <OlliButton
+                  label="Montar na mão"
+                  variant="ghost"
+                  size="md"
+                  onPress={montarNaMao}
+                  icon={<MaterialCommunityIcons name="pencil-outline" size={18} color={cores.onSurfaceVariant} />}
+                  style={{ marginTop: 4, alignSelf: 'stretch' }}
+                />
+                {saldoCreditos === 0 && (
+                  <Text style={styles.limiteSemCreditos}>Você ainda não tem créditos — dá uma olhada nos planos.</Text>
+                )}
               </View>
             </AnimatedEntrance>
           ) : (
@@ -548,13 +945,50 @@ export default function OlliVozScreen() {
           ) : (
           <AnimatedEntrance index={0}>
             <View style={styles.hero}>
+              {/* MODO CONVERSA — toggle "menos intrusivo": desligado por padrão, o
+                  fluxo de sempre (tiro único) continua sendo o comportamento base. */}
+              <View style={styles.modoToggleWrap}>
+                <TouchableOpacity
+                  style={[styles.modoToggleBtn, !modoConversa && styles.modoToggleBtnAtivo]}
+                  onPress={() => escolherModo(false)}
+                  disabled={modoTravado}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Resposta única"
+                >
+                  <MaterialCommunityIcons name="flash-outline" size={14} color={!modoConversa ? cores.onPrimary : cores.onSurfaceVariant} />
+                  <Text style={[styles.modoToggleText, !modoConversa && styles.modoToggleTextAtivo]}>Resposta única</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modoToggleBtn, modoConversa && styles.modoToggleBtnAtivo]}
+                  onPress={() => escolherModo(true)}
+                  disabled={modoTravado}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Conversar com a Olli"
+                >
+                  <MaterialCommunityIcons name="chat-processing-outline" size={14} color={modoConversa ? cores.onPrimary : cores.onSurfaceVariant} />
+                  <Text style={[styles.modoToggleText, modoConversa && styles.modoToggleTextAtivo]}>Conversar</Text>
+                </TouchableOpacity>
+              </View>
+
+              {fase === 'inicial' && saudacaoVisivel && (
+                <View style={styles.saudacaoCard}>
+                  <OlliMascot size={30} onDark float={false} />
+                  <Text style={styles.saudacaoText}>
+                    Oi! Pode me contar pra quem é, o que você vai fazer, os itens e o preço de cada um. Fala numa tacada só ou por partes — eu vou juntando.
+                  </Text>
+                </View>
+              )}
               <Text style={styles.heroKicker}>
                 {enviandoNuvem
-                  ? 'A OLLI ESTÁ OUVINDO…'
+                  ? (modoConversa ? 'TRANSCREVENDO…' : 'A OLLI ESTÁ OUVINDO…')
                   : fase === 'ouvindo'
                   ? 'OUVINDO…'
                   : fase === 'enviando'
-                  ? 'MONTANDO…'
+                  ? (modoConversa ? 'A OLLI ESTÁ PENSANDO…' : 'MONTANDO…')
+                  : modoConversa
+                  ? 'TOQUE E RESPONDA'
                   : 'TOQUE E FALE'}
               </Text>
 
@@ -562,6 +996,13 @@ export default function OlliVozScreen() {
                 <View style={styles.usoPill}>
                   <MaterialCommunityIcons name="creation" size={12} color={cores.plan} />
                   <Text style={styles.usoPillText}>{usosIaRestantes} de {IA_USOS_GRATIS_MES} usos grátis este mês</Text>
+                </View>
+              )}
+
+              {usarCredito && fase === 'inicial' && (
+                <View style={styles.usoPill}>
+                  <MaterialCommunityIcons name="lightning-bolt-outline" size={12} color={cores.plan} />
+                  <Text style={styles.usoPillText}>Usando 1 crédito desta vez</Text>
                 </View>
               )}
 
@@ -622,13 +1063,17 @@ export default function OlliVozScreen() {
 
               <Text style={styles.heroHint}>
                 {enviandoNuvem
-                  ? 'A OLLI está ouvindo e montando seu orçamento…'
+                  ? (modoConversa ? 'Transcrevendo sua resposta…' : 'A OLLI está ouvindo e montando seu orçamento…')
                   : fase === 'enviando'
-                  ? 'OLLI está montando seu orçamento…'
-                  : gravandoNuvem
-                  ? 'Pode falar por partes — toque de novo quando terminar.'
-                  : fase === 'ouvindo'
-                  ? 'Pode falar por partes — toque de novo quando terminar.'
+                  ? (modoConversa ? 'A OLLI está pensando na próxima pergunta…' : 'OLLI está montando seu orçamento…')
+                  : gravandoNuvem || fase === 'ouvindo'
+                  ? (modoConversa ? 'Toque de novo quando terminar de falar essa resposta.' : 'Pode falar por partes — toque de novo quando terminar.')
+                  : modoConversa
+                  ? (conversaBolhas.length > 0
+                      ? 'Toque no microfone pra responder — ou escreva abaixo.'
+                      : 'Toque no microfone e me conte o que precisa. Eu vou perguntando o que faltar.')
+                  : modoVoz === 'nuvem' && nuvem.prontoParaEnviar
+                  ? 'Áudio pronto! Toque em "Montar orçamento com a OLLI" para continuar, ou grave de novo.'
                   : 'Toque no microfone e descreva o serviço. Ex.: "Limpeza de dois splits e recarga de gás para a Dona Helena".'}
               </Text>
 
@@ -654,8 +1099,31 @@ export default function OlliVozScreen() {
           </>
           )}
 
-          {/* TRANSCRIÇÃO AO VIVO / EM EDIÇÃO */}
-          {fase === 'enviando' ? (
+          {/* MODO CONVERSA — histórico de perguntas da Olli e respostas do
+              prestador (mesmo padrão visual de bolhas do OlliChatScreen). */}
+          {modoConversa && conversaBolhas.length > 0 && (
+            <View style={{ marginTop: Spacing.sm }}>
+              {conversaBolhas.map((b, idx) => (
+                <AnimatedEntrance key={b.id} index={idx} from="bottom">
+                  <ConversaBalao papel={b.papel} texto={b.texto} pedido={pedidoAntesDe(conversaBolhas, idx)} />
+                </AnimatedEntrance>
+              ))}
+              {/* "pensando" da Olli — cobre tanto a próxima pergunta quanto o
+                  fechamento ("Montar com o que tem"); a transcrição do áudio
+                  (nuvem) já tem seu próprio indicador no hero (enviandoNuvem). */}
+              {fase === 'enviando' && !enviandoNuvem && (
+                <AnimatedEntrance from="bottom">
+                  <ConversaDigitando />
+                </AnimatedEntrance>
+              )}
+            </View>
+          )}
+
+          {/* TRANSCRIÇÃO AO VIVO / EM EDIÇÃO — no Modo Conversa o "skeleton" de
+              montagem não se aplica aqui (esse feedback é a bolha "pensando"
+              acima); a transcrição ao vivo desta fala continua igual nos dois
+              modos, enquanto o microfone está ouvindo. */}
+          {fase === 'enviando' && !modoConversa ? (
             <AnimatedEntrance index={1}>
               <View style={styles.transcriptCard}>
                 <Text style={styles.transcriptLabel}>O que eu entendi</Text>
@@ -681,7 +1149,19 @@ export default function OlliVozScreen() {
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.erroText}>{erro}</Text>
-                  {permissaoNegadaPermanente ? (
+                  {semCreditosNoErro ? (
+                    // Sem créditos: "Tentar de novo" ia falhar de novo igual — a
+                    // saída honesta aqui é "Ver planos" (cai na opção b do gate).
+                    <OlliButton
+                      label="Ver planos"
+                      variant="gradient"
+                      size="sm"
+                      onPress={() => irParaPlanos('voz_sem_creditos')}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="crown-outline" size={15} color="#fff" />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  ) : permissaoNegadaPermanente ? (
                     <OlliButton
                       label="Abrir configurações"
                       variant="outline"
@@ -691,7 +1171,20 @@ export default function OlliVozScreen() {
                       icon={<MaterialCommunityIcons name="cog-outline" size={15} color={cores.accentLight} />}
                       style={{ marginTop: 10, alignSelf: 'flex-start' }}
                     />
-                  ) : transcript.trim().length > 0 ? (
+                  ) : modoConversa && conversaBolhas.length > 0 ? (
+                    // Modo conversa: repete a MESMA chamada (responder ou
+                    // encerrar) com o histórico já acumulado — o turno que
+                    // falhou já está nas bolhas, não duplica.
+                    <OlliButton
+                      label="Tentar de novo"
+                      variant="outline"
+                      size="sm"
+                      onPress={tentarNovoConversa}
+                      haptic={false}
+                      icon={<MaterialCommunityIcons name="refresh" size={15} color={cores.accentLight} />}
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    />
+                  ) : !modoConversa && transcript.trim().length > 0 ? (
                     <OlliButton
                       label="Tentar de novo"
                       variant="outline"
@@ -720,12 +1213,14 @@ export default function OlliVozScreen() {
           {/* FALLBACK DE TEXTO — sempre presente, em todas as plataformas */}
           <AnimatedEntrance index={2}>
             <View style={styles.escreverCard}>
-              <Text style={styles.escreverLabel}>ou escreva o que precisa</Text>
+              <Text style={styles.escreverLabel}>{modoConversa ? 'ou digite sua resposta' : 'ou escreva o que precisa'}</Text>
               <TextInput
                 style={styles.escreverInput}
                 value={transcript}
                 onChangeText={t => { setTranscript(t); if (fase === 'erro') setErro(null); }}
-                placeholder='Ex.: "Manutenção de 1 split 12.000 BTUs, recarga de gás e troca do capacitor para o João"'
+                placeholder={modoConversa
+                  ? 'Digite aqui em vez de falar…'
+                  : 'Ex.: "Manutenção de 1 split 12.000 BTUs, recarga de gás e troca do capacitor para o João"'}
                 placeholderTextColor={cores.onSurfaceMuted}
                 multiline
                 editable={fase !== 'enviando'}
@@ -736,34 +1231,150 @@ export default function OlliVozScreen() {
 
           <View style={{ height: 12 }} />
 
-          <OlliButton
-            label={
-              iaEsgotada
-                ? 'Limite grátis atingido — ver planos'
-                : fase === 'enviando' ? 'Montando seu orçamento…' : 'Montar orçamento com a OLLI'
-            }
-            variant="gradient"
-            size="lg"
-            fullWidth
-            onPress={iaEsgotada ? () => irParaPlanos('voz_botao_enviar') : enviar}
-            disabled={iaEsgotada ? false : (!podeEnviar || enviando)}
-            loading={enviando}
-            icon={
-              iaEsgotada
-                ? <MaterialCommunityIcons name="crown-outline" size={20} color="#fff" />
-                : enviando ? undefined : <MaterialCommunityIcons name="robot-happy-outline" size={20} color="#fff" />
-            }
-          />
+          {modoConversa ? (
+            <>
+              <OlliButton
+                label={
+                  iaEsgotada && !usarCredito
+                    ? 'Limite grátis atingido — ver planos'
+                    : enviando ? 'Enviando…' : 'Enviar resposta'
+                }
+                variant="gradient"
+                size="lg"
+                fullWidth
+                onPress={
+                  iaEsgotada && !usarCredito
+                    ? () => irParaPlanos('voz_botao_enviar')
+                    : () => { const t = transcript; setTranscript(''); enviarTurnoConversa(t); }
+                }
+                disabled={iaEsgotada && !usarCredito ? false : (!podeEnviarConversaTexto || enviando)}
+                loading={enviando}
+                icon={
+                  iaEsgotada && !usarCredito
+                    ? <MaterialCommunityIcons name="crown-outline" size={20} color="#fff" />
+                    : enviando ? undefined : <MaterialCommunityIcons name="send" size={19} color="#fff" />
+                }
+              />
 
-          {transcript.length > 0 && fase !== 'enviando' && (
-            <TouchableOpacity style={styles.limparBtn} onPress={refazer} activeOpacity={0.7}>
-              <MaterialCommunityIcons name="close" size={16} color={cores.onSurfaceVariant} />
-              <Text style={styles.limparText}>Limpar</Text>
-            </TouchableOpacity>
+              {/* item 4 do pedido: "montar com o que tem" — encerra a qualquer
+                  momento, a Olli fecha com o que já entendeu. */}
+              {conversaBolhas.length > 0 && fase !== 'enviando' && fase !== 'ouvindo' && (
+                <OlliButton
+                  label="Montar com o que tem"
+                  variant="outline"
+                  size="md"
+                  onPress={encerrarConversa}
+                  haptic={false}
+                  icon={<MaterialCommunityIcons name="check-circle-outline" size={17} color={cores.accentLight} />}
+                  style={{ marginTop: 10 }}
+                />
+              )}
+
+              {(transcript.length > 0 || conversaBolhas.length > 0) && fase !== 'enviando' && (
+                <TouchableOpacity style={styles.limparBtn} onPress={refazer} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="close" size={16} color={cores.onSurfaceVariant} />
+                  <Text style={styles.limparText}>Recomeçar conversa</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <OlliButton
+                label={
+                  iaEsgotada && !usarCredito
+                    ? 'Limite grátis atingido — ver planos'
+                    : fase === 'enviando' ? 'Montando seu orçamento…' : 'Montar orçamento com a OLLI'
+                }
+                variant="gradient"
+                size="lg"
+                fullWidth
+                onPress={iaEsgotada && !usarCredito ? () => irParaPlanos('voz_botao_enviar') : enviar}
+                disabled={iaEsgotada && !usarCredito ? false : (!podeEnviar || enviando)}
+                loading={enviando}
+                icon={
+                  iaEsgotada && !usarCredito
+                    ? <MaterialCommunityIcons name="crown-outline" size={20} color="#fff" />
+                    : enviando ? undefined : <MaterialCommunityIcons name="robot-happy-outline" size={20} color="#fff" />
+                }
+              />
+
+              {transcript.length > 0 && fase !== 'enviando' && (
+                <TouchableOpacity style={styles.limparBtn} onPress={refazer} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="close" size={16} color={cores.onSurfaceVariant} />
+                  <Text style={styles.limparText}>Limpar</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </ScrollView>
       )}
     </KeyboardAvoidingView>
+  );
+}
+
+/* ─── MODO CONVERSA — bolhas (Tier B) ────────────────────── */
+/**
+ * O pedido que gerou a bolha `idx`: a última fala do prestador ANTES dela. Vai
+ * junto da denúncia — sem ela, quem modera recebe uma pergunta da Olli solta,
+ * sem o que a provocou, e a conversa não é persistida em lugar nenhum.
+ */
+function pedidoAntesDe(bolhas: ConversaBolha[], idx: number): string {
+  for (let i = idx - 1; i >= 0; i--) {
+    if (bolhas[i].papel === 'user') return bolhas[i].texto;
+  }
+  return '';
+}
+
+/** Mesmo padrão visual de bolhas do OlliChatScreen (avatar + balão), só que
+ *  local a esta tela — evita acoplar OlliVozScreen a OlliChatScreen por um
+ *  componente que nenhuma das duas reexporta hoje. */
+function ConversaBalao({ papel, texto, pedido }: { papel: 'user' | 'olli'; texto: string; pedido?: string }) {
+  const styles = useEstilos(criarEstilos);
+  if (papel === 'user') {
+    return (
+      <View style={styles.convRowUser}>
+        <View style={[styles.convBubble, styles.convBubbleUser]}>
+          <Text style={styles.convBubbleUserText}>{texto}</Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.convBlocoOlli}>
+      {/* O avatar precisa encostar no rodapé da BOLHA. Enquanto o "Sinalizar"
+          morava dentro da mesma coluna da bolha, a linha crescia com ele e o
+          `alignItems:'flex-end'` alinhava o avatar pelo rodapé do BOTÃO — o
+          bastante para mudar TODA bolha do modo conversa. Por isso a linha
+          avatar+bolha é só avatar+bolha, e o botão desce para fora dela. */}
+      <View style={[styles.convRowOlli, styles.convRowOlliSemMargem]}>
+        <View style={styles.convAvatar}>
+          <OlliMascot size={22} onDark float={false} blink={false} />
+        </View>
+        <View style={[styles.convBubble, styles.convBubbleOlli]}>
+          <Text style={styles.convBubbleOlliText}>{texto}</Text>
+        </View>
+      </View>
+      {/* Só o que a Olli gerou pode ser sinalizado — a fala do próprio
+          prestador não é conteúdo de IA. Fica abaixo da bolha, discreto:
+          a ação principal aqui é continuar a conversa. */}
+      <SinalizarIA tela="OlliVozScreen" resposta={texto} pedido={pedido ?? ''} style={styles.convSinalizar} />
+    </View>
+  );
+}
+
+/** "Olli está pensando" — cobre tanto a próxima pergunta quanto o fechamento da conversa. */
+function ConversaDigitando() {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  return (
+    <View style={styles.convRowOlli}>
+      <View style={styles.convAvatar}>
+        <OlliMascot size={22} onDark float={false} blink={false} />
+      </View>
+      <View style={[styles.convBubble, styles.convBubbleOlli, styles.convBubbleTyping]}>
+        <ActivityIndicator size="small" color={cores.accentLight} />
+      </View>
+    </View>
   );
 }
 
@@ -797,8 +1408,19 @@ function Revisao(props: {
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.revTitle}>Confira o que eu montei</Text>
             <Text style={styles.revSub}>Ajuste o que precisar. Depois você finaliza cliente, preços e envio.</Text>
+            <Text style={styles.revConfirm}>
+              Entendi: {props.itens.length} {props.itens.length === 1 ? 'item' : 'itens'} pra {props.clienteNome?.trim() || 'cliente a definir'} — total {formatCurrency(total)}.
+            </Text>
           </View>
         </View>
+
+        {/* AVISO — falta o nome do cliente (não bloqueia, só empurra) */}
+        {props.clienteNome.trim().length === 0 && (
+          <View style={styles.avisoClienteCard}>
+            <MaterialCommunityIcons name="account-alert-outline" size={16} color={cores.warning} />
+            <Text style={styles.avisoClienteText}>Só falta o nome do cliente — fala de novo ou digita aqui.</Text>
+          </View>
+        )}
 
         {/* TÍTULO + CLIENTE sugeridos */}
         <View style={styles.fieldCard}>
@@ -948,6 +1570,20 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
 
   hero: { alignItems: 'center', paddingVertical: Spacing.lg },
+  // Saudação de 1ª vez (Tier A, item 5) — mesmo tom caloroso do heroHint/
+  // EstadoIA, num card discreto que some para sempre no 1º toque no mic.
+  saudacaoCard: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'stretch', backgroundColor: comAlfa(c.accent, 0.08), borderWidth: 1, borderColor: comAlfa(c.accent, 0.24), borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.lg },
+  saudacaoText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 19 },
+
+  // MODO CONVERSA — toggle "Resposta única" / "Conversar" (Tier B). Mesma
+  // ideia visual dos `tipoChip` da Revisão: pílula com o segmento ativo em
+  // c.primary (contraste calculado via onPrimary, nunca branco fixo).
+  modoToggleWrap: { flexDirection: 'row', alignSelf: 'stretch', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, padding: 3, marginBottom: Spacing.lg },
+  modoToggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: BorderRadius.full, paddingVertical: 8 },
+  modoToggleBtnAtivo: { backgroundColor: c.primary, ...sombrasDe(c).sm },
+  modoToggleText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
+  modoToggleTextAtivo: { color: c.onPrimary },
+
   heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: c.accentLight, marginBottom: Spacing.lg },
   // rgba(124,58,237,x) era o roxo fixo do "plan" — vira c.plan (ajustado por contraste).
   usoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: Spacing.md, backgroundColor: comAlfa(c.plan, 0.12), borderWidth: 1, borderColor: comAlfa(c.plan, 0.32), borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
@@ -958,6 +1594,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // sobre o tint claro do card; vira onSurface (continua branco no escuro).
   limiteTitle: { fontSize: 17, fontWeight: '800', color: c.onSurface, textAlign: 'center', marginTop: 14 },
   limiteSub: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: 8 },
+  limiteSemCreditos: { fontSize: 12, color: c.onSurfaceMuted, textAlign: 'center', marginTop: 10 },
   micWrap: { width: 168, height: 168, justifyContent: 'center', alignItems: 'center' },
   micPulse: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: c.accent },
   micPulseOuter: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: c.accent },
@@ -981,6 +1618,27 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   transcriptText: { fontSize: 15.5, color: c.onSurface, lineHeight: 22 },
   transcriptInterim: { color: c.onSurfaceMuted, fontStyle: 'italic' },
 
+  // MODO CONVERSA — bolhas (Tier B). Mesmo padrão visual do OlliChatScreen
+  // (rowUser/rowOlli/bubble…), prefixado `conv` pra não colidir com nomes já
+  // usados nesta tela (ex.: já existe um `escreverLabel` sem relação).
+  convRowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
+  convRowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 10 },
+  // Bloco [linha avatar+bolha] + ["Sinalizar"]: o espaçamento entre bolhas sai
+  // daqui e a linha de dentro fica sem margem, senão o botão herdaria um vão de
+  // 10px que a bolha nunca teve.
+  convBlocoOlli: { marginBottom: 10 },
+  convRowOlliSemMargem: { marginBottom: 0 },
+  // 37 = avatar (30) + o marginRight dele (7): alinha o botão pela BORDA
+  // ESQUERDA da bolha, não pela do avatar.
+  convSinalizar: { marginLeft: 37 },
+  convAvatar: { width: 30, height: 30, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 7 },
+  convBubble: { maxWidth: '80%', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 10 },
+  convBubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },
+  convBubbleUserText: { fontSize: 14, color: '#fff', lineHeight: 19 },
+  convBubbleOlli: { backgroundColor: c.surfaceElevated, borderWidth: 1, borderColor: c.outline, borderBottomLeftRadius: 5 },
+  convBubbleOlliText: { fontSize: 14, color: c.onSurface, lineHeight: 19 },
+  convBubbleTyping: { paddingVertical: 12, paddingHorizontal: 16 },
+
   // rgba(247,178,59,x) era o warning estático — vira o warning do tema.
   erroCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: c.warningLight, borderWidth: 1, borderColor: comAlfa(c.warning, 0.35), borderRadius: BorderRadius.lg, padding: Spacing.base, marginTop: Spacing.base },
   erroText: { flex: 1, fontSize: 13.5, color: c.onSurface, lineHeight: 20 },
@@ -997,6 +1655,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Era '#fff' fixo sobre o fundo da tela (c.background) — ilegível no claro.
   revTitle: { fontSize: 18, fontWeight: '800', color: c.onSurface },
   revSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
+  // Leitura-de-volta (Tier A, item 2) — confirma em uma linha calorosa o que
+  // a OLLI entendeu, com os números que o usuário vai ver de qualquer forma.
+  revConfirm: { fontSize: 12.5, fontWeight: '700', color: c.accentLight, marginTop: 6, lineHeight: 18 },
+
+  // Banner "falta o cliente" (Tier A, item 3) — mesmo par de cores warning/
+  // warningLight já usado no erroCard desta tela, só que não-bloqueante.
+  avisoClienteCard: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: comAlfa(c.warning, 0.35), borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: Spacing.base },
+  avisoClienteText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 18 },
 
   fieldCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginBottom: Spacing.base, ...sombrasDe(c).sm },
   fieldLabel: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },

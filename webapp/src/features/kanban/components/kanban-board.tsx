@@ -24,18 +24,75 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
-import { AlertTriangle, Inbox, RotateCw, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import type { Empresa, Orcamento } from "@dominio";
+import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, RotateCw, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useMinhaEmpresa } from "@/olli/data";
+import FormOrcamento, { duplicarComoRascunho } from "@/pages/olli/orcamentos/FormOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
+import { cn } from "@/utils";
+import { useDicaDeArraste } from "../hooks/useDicaDeArraste";
+import { useOverflowLateral } from "../hooks/useOverflowLateral";
 import { useQuadro } from "../hooks/useQuadro";
-import { COLUNAS } from "../utils/colunas";
+import { blobDoCartao, type Cartao, COLUNAS } from "../utils/colunas";
 import { createRestrictToContainer } from "../utils/restrict-to-container";
 import BoardColumn from "./board-column";
+import DicaDeArraste from "./dica-arrastar";
 import { CartaoFantasma } from "./task-card";
 
 const ESQUELETO_CARDS = ["e1", "e2", "e3"];
+
+/**
+ * O SINAL DE "TEM MAIS COLUNA AQUI". Só existe quando existe coluna escondida daquele
+ * lado (ver `useOverflowLateral`) — sombra permanente num quadro que cabe inteiro seria
+ * uma seta apontando para o nada.
+ *
+ * É um BOTÃO, e não só a sombra do `TableOverflowHint`: mouse comum não tem rolagem
+ * horizontal, e sem ele a única saída seria arrastar a barra de rolagem lá embaixo.
+ * A sombra não recebe clique (`pointer-events-none`); só o botão recebe.
+ *
+ * MONTA E DESMONTA em vez de aparecer por `opacity` + `transition`: a versão com fade
+ * ficou PRESA em `opacity: 0` num navegador que congela transições (medido aqui — a
+ * classe já era `opacity-100` e o computado seguia 0). Um controle funcional não pode
+ * depender de uma animação terminar para existir; quando ele não é necessário, ele
+ * simplesmente não está na tela — e nem no caminho do Tab.
+ */
+function SetaDeRolagem({ lado, onClick }: { lado: "esquerda" | "direita"; onClick: () => void }) {
+	const ehEsquerda = lado === "esquerda";
+	const rotulo = ehEsquerda ? "Ver colunas à esquerda" : "Ver colunas à direita";
+	return (
+		<div
+			className={cn(
+				"pointer-events-none absolute inset-y-0 z-20 flex w-10 items-center pb-4",
+				ehEsquerda ? "left-0 justify-start bg-gradient-to-r" : "right-0 justify-end bg-gradient-to-l",
+				"from-background to-transparent",
+			)}
+		>
+			<button
+				type="button"
+				onClick={onClick}
+				aria-label={rotulo}
+				title={rotulo}
+				className={cn(
+					"pointer-events-auto relative flex size-9 items-center justify-center rounded-full",
+					"border border-border bg-card text-text-secondary shadow-md",
+					// Desenho de 36px, alvo de toque de 44px — sem tapar mais card do que precisa.
+					"after:absolute after:-inset-1 after:content-['']",
+					"transition-colors hover:text-text-primary",
+					"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+				)}
+			>
+				{ehEsquerda ? (
+					<ChevronLeft className="size-5" aria-hidden />
+				) : (
+					<ChevronRight className="size-5" aria-hidden />
+				)}
+			</button>
+		</div>
+	);
+}
 
 /** Instruções e anúncios do drag em pt-BR: o dnd-kit fala inglês por padrão, e o
  *  leitor de tela é o único jeito de saber o que o arraste fez para quem não vê o quadro. */
@@ -48,12 +105,45 @@ const INSTRUCOES_LEITOR_DE_TELA: ScreenReaderInstructions = {
 
 export default function KanbanBoard() {
 	const { colunas, total, isLoading, isError, error, refetch, mover, emVoo, erro, limparErro } = useQuadro();
+	const { data: empresaLinha } = useMinhaEmpresa();
+	// A `empresa` também é uma tabela de BLOB: o objeto de domínio vive em `dados`.
+	const empresa = (empresaLinha?.dados as Empresa | undefined) ?? null;
+
+	/** O editor aberto sobre um card do quadro — o MESMO FormOrcamento da lista de
+	 *  Orçamentos, para não haver dois formulários com regras diferentes. */
+	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean } | null>(null);
+
+	/** Clique no corpo do card: só abre se houver blob (ver `blobDoCartao`) — sem
+	 *  documento não há o que editar. */
+	const abrirEditor = (cartao: Cartao) => {
+		const blob = blobDoCartao(cartao);
+		if (!blob) return;
+		setEditor({ orc: blob, ehNovo: false });
+	};
+
+	/** Oferecido pelo FormOrcamento quando a edição está bloqueada (já enviado/aprovado):
+	 *  duplica como rascunho novo, no lugar do editor atual. */
+	const duplicar = (o: Orcamento) =>
+		setEditor({ orc: duplicarComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
 
 	const [arrastando, setArrastando] = useState<string | null>(null);
-	const containerRef = useRef<HTMLDivElement>(null);
+
+	/** O quadro rola na horizontal quando as colunas não cabem — e isso precisa APARECER. */
+	const { ref: refDoQuadro, obterElemento, antes, depois, rolar } = useOverflowLateral<HTMLDivElement>(colunas.length);
 
 	/** Prende o card arrastado dentro da área do quadro. Estável: lê o container por ref. */
-	const restringirAoQuadro = useMemo(() => createRestrictToContainer(() => containerRef.current), []);
+	const restringirAoQuadro = useMemo(() => createRestrictToContainer(obterElemento), [obterElemento]);
+
+	/** A aula de arrastar: uma vez por navegador, e só quando há card para arrastar. */
+	const dica = useDicaDeArraste(!isLoading && !isError && total > 0);
+
+	/** Enquanto a dica está na tela, a alça do PRIMEIRO card pisca — a frase "pegue pela
+	 *  alça" só ensina se o olho achar a alça de que ela fala. Uma só: piscar o quadro
+	 *  inteiro seria ruído, não indicação. */
+	const destaqueId = useMemo(() => {
+		if (!dica.visivel || dica.saindo) return null;
+		return colunas.find((c) => c.cartoes.length > 0)?.cartoes[0]?.id ?? null;
+	}, [dica.visivel, dica.saindo, colunas]);
 
 	const sensores = useSensors(
 		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -109,12 +199,15 @@ export default function KanbanBoard() {
 
 	if (isLoading) {
 		return (
-			<div className="flex w-full flex-col gap-4 md:flex-row">
+			<div className="flex w-full flex-col gap-4 md:flex-row md:gap-2">
 				{COLUNAS.map((c) => (
-					<div key={c.id} className="flex w-full flex-col md:w-[290px]">
-						<div className="mb-3 flex items-center gap-2">
-							<Skeleton className="size-2 rounded-full" />
-							<Skeleton className="h-3.5 w-24" />
+					<div key={c.id} className="flex w-full flex-col md:w-auto md:min-w-[180px] md:flex-1 md:shrink">
+						<div className="mb-2 px-0.5">
+							<div className="flex items-center gap-1.5">
+								<Skeleton className="size-2 rounded-full" />
+								<Skeleton className="h-3.5 w-24" />
+							</div>
+							<Skeleton className="mt-1 h-3 w-16" />
 						</div>
 						<div className="flex flex-col gap-2 rounded-xl bg-muted/40 p-2">
 							{ESQUELETO_CARDS.map((k) => (
@@ -183,28 +276,59 @@ export default function KanbanBoard() {
 				</output>
 			)}
 
+			{dica.visivel && <DicaDeArraste saindo={dica.saindo} aoFechar={dica.fechar} />}
+
 			<DndContext
 				sensors={sensores}
 				collisionDetection={closestCorners}
 				modifiers={[restringirAoQuadro]}
 				accessibility={{ announcements: anuncios, screenReaderInstructions: INSTRUCOES_LEITOR_DE_TELA }}
-				onDragStart={(e: DragStartEvent) => setArrastando(String(e.active.id))}
+				onDragStart={(e: DragStartEvent) => {
+					// Arrastou: aprendeu na prática. A aula não precisa mais aparecer.
+					if (dica.visivel) dica.fechar();
+					setArrastando(String(e.active.id));
+				}}
 				onDragEnd={aoSoltar}
 				onDragCancel={() => setArrastando(null)}
 			>
-				<div
-					ref={containerRef}
-					className="flex w-full flex-col items-stretch gap-4 overflow-x-auto pb-4 md:flex-row md:items-start"
-				>
-					{colunas.map((m) => (
-						<BoardColumn key={m.coluna.id} montada={m} emVoo={emVoo} onMover={mover} />
-					))}
+				{/* O `relative` é do WRAPPER, nunca do scroller: sinal preso na borda tem de
+				    ficar parado enquanto o conteúdo passa por baixo — mesma regra do
+				    `TableOverflowHint` das listas. */}
+				<div className="relative">
+					<div
+						ref={refDoQuadro}
+						className="flex w-full flex-col items-stretch gap-4 overflow-x-auto pb-4 md:flex-row md:items-start md:gap-2"
+					>
+						{colunas.map((m) => (
+							<BoardColumn
+								key={m.coluna.id}
+								montada={m}
+								emVoo={emVoo}
+								destaqueId={destaqueId}
+								onMover={mover}
+								onAbrir={abrirEditor}
+							/>
+						))}
+					</div>
+
+					{antes && <SetaDeRolagem lado="esquerda" onClick={() => rolar(-1)} />}
+					{depois && <SetaDeRolagem lado="direita" onClick={() => rolar(1)} />}
 				</div>
 
 				<DragOverlay>
 					{emArraste ? <CartaoFantasma cartao={emArraste.cartao} coluna={emArraste.coluna} /> : null}
 				</DragOverlay>
 			</DndContext>
+
+			{editor && (
+				<FormOrcamento
+					aberto
+					aoFechar={() => setEditor(null)}
+					inicial={editor.orc}
+					ehNovo={editor.ehNovo}
+					aoDuplicar={duplicar}
+				/>
+			)}
 		</div>
 	);
 }

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import LocalePicker from "@/components/locale-picker";
 import { useSettings } from "@/store/settingStore";
 import { cn } from "@/utils";
 import AccountDropdown from "../components/account-dropdown";
@@ -31,7 +30,6 @@ export default function Header({ leftSlot }: HeaderProps) {
 
 			<div className="flex items-center gap-1">
 				<SearchBar />
-				<LocalePicker />
 				<SettingButton />
 				<AccountDropdown />
 			</div>

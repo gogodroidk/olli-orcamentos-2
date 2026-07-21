@@ -8,7 +8,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
-import { isMoneyKey, isNameKey, isStatusKey, NameCell, StatusBadge } from "./record-list-helpers";
+import {
+	BotaoAbrirLinha,
+	isMoneyKey,
+	isNameKey,
+	isStatusKey,
+	linhaClicavel,
+	NameCell,
+	StatusBadge,
+} from "./record-list-helpers";
+import { TableOverflowHint } from "./TableOverflowHint";
 
 /** Colunas internas que não interessam ao usuário. */
 const HIDDEN = new Set([
@@ -185,19 +194,20 @@ export default function RecordListPage({
 	/**
 	 * A coluna principal vira um BOTÃO de verdade quando dá para abrir o registro.
 	 * É ele — não o `onClick` da `<tr>` — que dá o caminho de teclado (Tab + Enter).
+	 * `group-hover:underline`: a linha inteira agora abre no clique, então o sublinhado
+	 * tem que responder ao hover da LINHA, não só ao do texto.
 	 */
 	const celulaPrincipal = (col: string, row: Linha) => {
 		const conteudo = renderCell(col, row);
 		if (!aoAbrirLinha) return conteudo;
 		return (
-			<button
-				type="button"
-				onClick={() => aoAbrirLinha(row)}
-				aria-label={`Abrir ${nomeDaLinha(row)}`}
-				className="-mx-1 rounded-md px-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+			<BotaoAbrirLinha
+				rotulo={`Abrir ${nomeDaLinha(row)}`}
+				aoAbrir={() => aoAbrirLinha(row)}
+				className="group-hover:underline"
 			>
 				{conteudo}
-			</button>
+			</BotaoAbrirLinha>
 		);
 	};
 
@@ -207,7 +217,12 @@ export default function RecordListPage({
 				<Button
 					variant="ghost"
 					size="icon"
-					className="size-8 text-text-secondary"
+					// `alvo-toque`: medido a 375px, este "…" era o único menu de linha do
+					// painel com 32 × 32 px de alvo — catálogo, equipamentos, orçamentos e
+					// recibos já usavam o utilitário. E aqui errar o alvo é pior do que
+					// parece: o card inteiro abre o registro, então o dedo que passa perto
+					// do "…" abre o formulário em vez do menu.
+					className="size-8 alvo-toque text-text-secondary"
 					aria-label={`Ações de ${nomeDaLinha(row)}`}
 					// A linha inteira é clicável no mouse; o clique no menu não pode
 					// abrir o registro por baixo.
@@ -260,6 +275,8 @@ export default function RecordListPage({
 							value={q}
 							onChange={(e) => setQ(e.target.value)}
 							placeholder="Buscar…"
+							aria-label={`Buscar em ${title}`}
+							type="search"
 							className="h-10 rounded-full pl-10"
 						/>
 					</div>
@@ -329,59 +346,72 @@ export default function RecordListPage({
 			) : (
 				<Card className="overflow-hidden p-0">
 					{/* DESKTOP: tabela premium */}
-					<div className="hidden overflow-x-auto md:block">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-									{cols.map((c) => (
-										<th
-											key={c}
-											className={cn("whitespace-nowrap px-4 py-3 font-semibold", isMoneyKey(c) && "text-right")}
-										>
-											{prettify(c)}
-										</th>
-									))}
-									{temMenu && <th className="w-12 px-4 py-3 font-semibold sr-only">Ações</th>}
-								</tr>
-							</thead>
-							<tbody>
-								{rows.map((r, i) => {
-									const row = r as Record<string, unknown>;
-									return (
-										// O `onClick` da <tr> é conveniência de MOUSE, e só. Quem usa teclado
-										// tem 2 caminhos equivalentes e focáveis: o botão da coluna principal
-										// (Tab + Enter) e o item "Editar" do menu "…". Pôr tabIndex/role na
-										// própria <tr> quebraria a semântica da tabela e criaria uma parada de
-										// foco duplicada por linha.
-										<tr
-											key={(r as { id?: string }).id ?? i}
-											onClick={aoAbrirLinha ? () => aoAbrirLinha(row) : undefined}
-											className={cn(
-												"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
-												aoAbrirLinha && "cursor-pointer",
-											)}
-										>
-											{cols.map((c) => (
-												<td
-													key={c}
-													className={cn(
-														"px-4 py-3.5 align-middle",
-														isMoneyKey(c)
-															? "whitespace-nowrap text-right font-medium tabular-nums text-text-primary"
-															: c === primaryCol
-																? "font-medium text-text-primary"
-																: "whitespace-nowrap text-text-secondary",
-													)}
-												>
-													{c === primaryCol ? celulaPrincipal(c, row) : renderCell(c, row)}
-												</td>
-											))}
-											{temMenu && <td className="px-2 py-3.5 text-right align-middle">{menuDaLinha(row)}</td>}
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
+					<div className="relative hidden md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full text-sm">
+								<thead>
+									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
+										{cols.map((c) => (
+											<th
+												key={c}
+												scope="col"
+												className={cn("whitespace-nowrap px-4 py-3 font-semibold", isMoneyKey(c) && "text-right")}
+											>
+												{prettify(c)}
+											</th>
+										))}
+										{/* `sr-only` no <span> DENTRO da célula, nunca na própria <th>: medido no
+										    navegador, a classe na <th> a deixava `position:absolute; display:block`
+										    — ou seja, ela parava de ser célula de tabela. O cabeçalho ficava com 4
+										    células reais para 5 do corpo, então a coluna do menu "…" não tinha
+										    cabeçalho associado (e o `w-12` também não valia, porque o `w-px` do
+										    sr-only ganhava). Assim a célula continua célula e só o texto some. */}
+										{temMenu && (
+											<th scope="col" className="w-12 px-4 py-3 font-semibold">
+												<span className="sr-only">Ações</span>
+											</th>
+										)}
+									</tr>
+								</thead>
+								<tbody>
+									{rows.map((r, i) => {
+										const row = r as Record<string, unknown>;
+										return (
+											// `linhaClicavel` (record-list-helpers) resolve os 3 detalhes de uma vez:
+											// clicar em qualquer lugar abre; clicar num controle da linha (o "…", o
+											// botão do nome, os itens do menu — que portalam mas borbulham) NÃO abre;
+											// e arrastar para selecionar texto também não. Teclado continua sendo o
+											// botão da célula principal, sem role/tabIndex postiço na <tr>.
+											<tr
+												key={(r as { id?: string }).id ?? i}
+												{...linhaClicavel(
+													aoAbrirLinha ? () => aoAbrirLinha(row) : null,
+													"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
+												)}
+											>
+												{cols.map((c) => (
+													<td
+														key={c}
+														className={cn(
+															"px-4 py-3.5 align-middle",
+															isMoneyKey(c)
+																? "whitespace-nowrap text-right font-medium tabular-nums text-text-primary"
+																: c === primaryCol
+																	? "font-medium text-text-primary"
+																	: "whitespace-nowrap text-text-secondary",
+														)}
+													>
+														{c === primaryCol ? celulaPrincipal(c, row) : renderCell(c, row)}
+													</td>
+												))}
+												{temMenu && <td className="px-2 py-3.5 text-right align-middle">{menuDaLinha(row)}</td>}
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+						<TableOverflowHint />
 					</div>
 
 					{/* MOBILE: cada linha vira um card com campos rotulados */}
@@ -391,7 +421,12 @@ export default function RecordListPage({
 							const statusCol = cols.find((c) => isStatusKey(c) && row[c] != null && row[c] !== "");
 							const restCols = cols.filter((c) => c !== primaryCol && c !== statusCol);
 							return (
-								<div key={(r as { id?: string }).id ?? i} className="p-4">
+								// Mesma regra do desktop: o card inteiro abre no toque (área bem maior
+								// que os 44px mínimos), menos onde já existe controle.
+								<div
+									key={(r as { id?: string }).id ?? i}
+									{...linhaClicavel(aoAbrirLinha ? () => aoAbrirLinha(row) : null, "p-4 transition-colors")}
+								>
 									<div className="flex items-start justify-between gap-3">
 										<div className="min-w-0 text-sm">
 											{primaryCol && aoAbrirLinha ? (

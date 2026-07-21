@@ -1,67 +1,81 @@
-import { Icon } from "@/components/icon";
+import {
+	Calculator,
+	Calendar,
+	ClipboardList,
+	Crown,
+	FileText,
+	Home,
+	Kanban,
+	Package,
+	Receipt,
+	Stethoscope,
+	Store,
+	Users,
+	UsersRound,
+	Wind,
+	Wrench,
+} from "lucide-react";
 import type { NavProps } from "@/components/nav";
 
 /**
  * Menu do painel OLLI (pt-BR). Os `title` são texto direto — o i18next
  * devolve a própria string quando não acha a chave, então não precisa de
  * tradução para renderizar em português.
+ *
+ * Ícones em lucide-react (linha fina) — mesma família usada no conteúdo das
+ * telas, pra não misturar com o Iconify "solar:*-bold-duotone" (preenchido)
+ * que ficava divergente do cabeçalho de cada página (ex.: Orçamentos usava
+ * um ícone de documento no menu e outro, `FileText`, no cabeçalho).
  */
 export const frontendNavData: NavProps["data"] = [
 	{
 		name: "Painel",
-		items: [{ title: "Início", path: "/inicio", icon: <Icon icon="solar:home-smile-bold-duotone" size="24" /> }],
+		items: [{ title: "Início", path: "/inicio", icon: <Home size={24} /> }],
 	},
 	{
 		name: "Comercial",
 		items: [
-			{ title: "Quadro", path: "/quadro", icon: <Icon icon="solar:checklist-minimalistic-bold-duotone" size="24" /> },
-			{ title: "Orçamentos", path: "/orcamentos", icon: <Icon icon="solar:document-text-bold-duotone" size="24" /> },
-			{ title: "Clientes", path: "/clientes", icon: <Icon icon="solar:users-group-rounded-bold-duotone" size="24" /> },
-			{ title: "Produtos", path: "/produtos", icon: <Icon icon="solar:box-bold-duotone" size="24" /> },
-			{
-				title: "Serviços",
-				path: "/servicos",
-				icon: <Icon icon="solar:settings-minimalistic-bold-duotone" size="24" />,
-			},
-			{ title: "Recibos", path: "/recibos", icon: <Icon icon="solar:bill-list-bold-duotone" size="24" /> },
+			{ title: "Quadro", path: "/quadro", icon: <Kanban size={24} /> },
+			{ title: "Orçamentos", path: "/orcamentos", icon: <FileText size={24} /> },
+			{ title: "Clientes", path: "/clientes", icon: <Users size={24} /> },
+			{ title: "Produtos", path: "/produtos", icon: <Package size={24} /> },
+			{ title: "Serviços", path: "/servicos", icon: <Wrench size={24} /> },
+			{ title: "Recibos", path: "/recibos", icon: <Receipt size={24} /> },
 		],
 	},
 	{
 		name: "Operação",
 		items: [
-			{
-				title: "Ordens de serviço",
-				path: "/ordens-servico",
-				icon: <Icon icon="solar:clipboard-list-bold-duotone" size="24" />,
-			},
-			{ title: "Agenda", path: "/agenda", icon: <Icon icon="solar:calendar-bold-duotone" size="24" /> },
-			{ title: "Equipe", path: "/equipe", icon: <Icon icon="solar:users-group-two-rounded-bold-duotone" size="24" /> },
-			// Era `solar:cpu-bolt-bold-duotone` — um CHIP DE PROCESSADOR, que não diz nada
-			// sobre equipamento de campo. Os campos da tabela são BTU, refrigerante e
-			// tensão: é ar-condicionado.
-			{ title: "Equipamentos", path: "/equipamentos", icon: <Icon icon="mdi:air-conditioner" size="24" /> },
+			{ title: "Ordens de serviço", path: "/ordens-servico", icon: <ClipboardList size={24} /> },
+			{ title: "Agenda", path: "/agenda", icon: <Calendar size={24} /> },
+			{ title: "Equipe", path: "/equipe", icon: <UsersRound size={24} /> },
+			// Era `mdi:air-conditioner` (Iconify) — antes disso, `solar:cpu-bolt-bold-duotone`,
+			// um CHIP DE PROCESSADOR que não dizia nada sobre equipamento de campo. Os
+			// campos da tabela são BTU, refrigerante e tensão: é ar-condicionado. `Wind`
+			// (fluxo de ar) é o equivalente em lucide-react.
+			{ title: "Equipamentos", path: "/equipamentos", icon: <Wind size={24} /> },
 		],
 	},
 	{
 		name: "Ferramentas",
 		items: [
+			{ title: "Ferramentas de ofício", path: "/ferramentas", icon: <Calculator size={24} /> },
 			{
-				title: "Ferramentas de ofício",
-				path: "/ferramentas",
-				icon: <Icon icon="solar:widget-5-bold-duotone" size="24" />,
-			},
-			{
+				// A base é 100% HVAC (climatização/refrigeração) — só aparece pra quem
+				// tem esse ofício, via o gate de `ITENS_SOMENTE_VERTICAL` em
+				// `nav-data/index.ts` (@/olli/verticais). Backward-compat: sem ofício
+				// definido, mostra normalmente.
 				title: "Diagnóstico IA",
 				path: "/diagnostico",
-				icon: <Icon icon="solar:magic-stick-3-bold-duotone" size="24" />,
+				icon: <Stethoscope size={24} />,
 			},
 		],
 	},
 	{
 		name: "Conta",
 		items: [
-			{ title: "Planos", path: "/planos", icon: <Icon icon="solar:crown-bold-duotone" size="24" /> },
-			{ title: "Meu negócio", path: "/meu-negocio", icon: <Icon icon="solar:shop-2-bold-duotone" size="24" /> },
+			{ title: "Planos", path: "/planos", icon: <Crown size={24} /> },
+			{ title: "Meu negócio", path: "/meu-negocio", icon: <Store size={24} /> },
 		],
 	},
 ];
