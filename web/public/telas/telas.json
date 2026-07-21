@@ -67,7 +67,7 @@
       "id": "lista-orcamentos",
       "titulo": "Todos os orçamentos",
       "legenda": "O que está em aberto, o que foi aprovado e o que virou dinheiro — numa tela só.",
-      "alt": "Lista de orçamentos do OLLI com três propostas em status diferentes: aprovado, enviado e rascunho.",
+      "alt": "Lista de orçamentos do OLLI com quatro propostas em status diferentes: em negociação, rascunho, enviado e aprovado.",
       "superficie": "celular",
       "destaque": false,
       "arquivos": [
@@ -97,7 +97,7 @@
       "id": "agenda",
       "titulo": "A semana no lugar",
       "legenda": "As visitas do dia com cliente, horário e endereço. O que ia ficar no papel do bolso.",
-      "alt": "Tela de agenda do OLLI mostrando as visitas marcadas do dia com nome do cliente e título do serviço.",
+      "alt": "Tela de agenda do OLLI mostrando quatro visitas do dia, cada uma com horário, nome do cliente, tipo do serviço e endereço, e um botão de traçar rota.",
       "superficie": "celular",
       "destaque": false,
       "arquivos": [
@@ -127,7 +127,7 @@
       "id": "clientes",
       "titulo": "A carteira de clientes",
       "legenda": "Quem já é cliente, o que já foi feito e como falar com ele. Sem depender da memória.",
-      "alt": "Lista de clientes cadastrados no OLLI com nome e telefone de cada um.",
+      "alt": "Lista de clientes cadastrados no OLLI com seis clientes em ordem alfabética, cada um com telefone e cidade.",
       "superficie": "celular",
       "destaque": false,
       "arquivos": [
@@ -157,7 +157,7 @@
       "id": "ordem-servico",
       "titulo": "Do orçamento à ordem de serviço",
       "legenda": "O sim do cliente vira ordem de serviço com um toque — mesmo cliente, mesmo valor, sem redigitar nada.",
-      "alt": "Tela de ordens de serviço do OLLI mostrando a OS nº 0001, aberta, gerada a partir do orçamento 00126 da Clínica Vida & Saúde.",
+      "alt": "Lista de ordens de serviço do OLLI com seis ordens em estados diferentes — aberta, agendada, em execução, pausada e concluída —, cada uma com o cliente e o andamento do checklist. No topo, a ordem gerada a partir do orçamento 00126 da Clínica Vida & Saúde.",
       "superficie": "celular",
       "destaque": false,
       "arquivos": [
