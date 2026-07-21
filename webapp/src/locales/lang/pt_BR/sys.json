@@ -76,6 +76,8 @@
 			}
 		},
 		"search": {
+			"title": "Paleta de comandos",
+			"description": "Busque uma página do painel e pressione Enter para abrir.",
 			"placeholder": "Digite um comando ou busque...",
 			"empty": "Nenhum resultado encontrado.",
 			"group": "Navegação",

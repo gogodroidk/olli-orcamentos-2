@@ -89,7 +89,7 @@ O problema do caderno nunca foi anotar — é **recuperar**. Nenhum caderno resp
 
 Já que o texto pede honestidade nas seis perguntas, aqui estão as respostas para a OLLI:
 
-- **Grátis é grátis:** o plano gratuito não tem prazo e não pede cartão. Pro custa R$ 39 por mês por usuário; Empresa custa R$ 99 por mês, com equipe.
+- **Grátis é grátis:** o plano gratuito não tem prazo e não pede cartão. Os planos pagos (Pro, por usuário; Empresa, com equipe) são mensais ou anuais com desconto — o preço, sempre atual, fica na [página de planos](/planos/).
 - **O ciclo não redigita:** orçamento vira ordem de serviço e vira recibo a partir do mesmo dado.
 - **O cliente aprova por link**, com registro.
 - **Documento de ofício:** PMOC e etiqueta QR de equipamento para climatização; certificado da ANVISA para dedetização. As ferramentas de cálculo de campo do seu ofício ficam dentro do orçamento — o resultado vira item, sem calculadora de terceiro.

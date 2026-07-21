@@ -4,6 +4,7 @@ import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
 import Icone from "../components/Icone.astro";
+import PlanosPrecos from "../components/PlanosPrecos.astro";
 import Layout from "../layouts/Layout.astro";
 import {
 	ICONE_POR_OFICIO,
@@ -12,6 +13,8 @@ import {
 	SLUG_POR_OFICIO,
 	TOTAL_CALCULADORAS,
 } from "../data/oficios";
+// Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
+import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -19,8 +22,6 @@ const APP_URL = "https://app.olliorcamentos.online";
 // ?modo=cadastro). Sem isto, "Criar meu primeiro orçamento" caía na tela de
 // LOGIN e o cadastro ficava escondido atrás de um link. "Entrar" continua no APP_URL.
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
-// WhatsApp oficial de vendas/suporte (mesmo número usado no app, ver src/config.ts).
-const WHATSAPP_URL = "https://wa.me/5511941727487";
 
 const recursos = [
 	{
@@ -105,64 +106,6 @@ const passos = [
 	},
 ];
 
-const planos = [
-	{
-		nome: "Grátis",
-		preco: "R$ 0",
-		periodo: "/mês",
-		destaque: false,
-		desc: "Pra sair do caderno e do grupo de WhatsApp.",
-		itens: [
-			"Orçamentos, recibos, clientes e agenda ilimitados",
-			"Diagnóstico HVAC por código de erro",
-			"Link do orçamento pro cliente aprovar",
-			"IA de diagnóstico: 3 usos/mês",
-		],
-		cta: "Começar grátis",
-		primary: true,
-		href: APP_CADASTRO_URL,
-	},
-	{
-		nome: "Pro",
-		preco: "R$ 39",
-		periodo: "/mês",
-		destaque: true,
-		desc: "Pra quem vive de campo e já não cabe no grátis.",
-		itens: [
-			"Tudo do Grátis",
-			"IA sem limite de uso",
-			"Tira a marca OLLI do PDF",
-			"Relatórios, metas e radar de clientes",
-			"Todos os modelos de documento",
-		],
-		cta: "Assinar o Pro",
-		primary: true,
-		href: APP_CADASTRO_URL,
-	},
-	{
-		nome: "Empresa",
-		preco: "R$ 99",
-		periodo: "/mês",
-		destaque: false,
-		desc: "Pra equipe que atende em campo todo dia.",
-		itens: [
-			"Tudo do Pro",
-			// Equipe NÃO é "(em breve)": a Onda 2 está CONCLUÍDA no EXECUTION_LOG
-			// (organizacoes + organizacao_membros com papéis owner/admin/gestor/tecnico
-			// + convites com token/expiração, RLS testada). Dizer "em breve" aqui era
-			// SUBvender a feature principal do plano de R$ 99.
-			"Equipe com papéis e permissões",
-			// Este "(em breve)" é VERDADE e fica: a captura de localização em background
-			// depende do prebuild com expo-location (Onda 8). Hoje só funciona na web.
-			"Equipe ao vivo no mapa (em breve)",
-			"Painel de gestão da empresa (em breve)",
-		],
-		cta: "Falar com a gente",
-		primary: false,
-		href: WHATSAPP_URL,
-	},
-];
-
 const faq = [
 	{
 		q: "Preciso pagar para testar?",
@@ -182,11 +125,11 @@ const faq = [
 	},
 	// ── Expansão 4 → 9 (LANDING_BRIEF, Fase 2). Escritas como a pessoa pergunta pra
 	// IA, resposta auto-suficiente nas 2 primeiras frases e com número concreto —
-	// os preços saem do array `planos` acima, que espelha o Stripe live (R$ 0/39/99);
+	// os preços saem de `data/planos.ts` (espelho do Stripe live), interpolados aqui;
 	// as contagens saem de `data/oficios.ts`, que lê o código do app.
 	{
 		q: "Quanto custa um app de orçamento?",
-		a: "Na OLLI: R$ 0 no plano Grátis, sem prazo pra acabar. O Pro custa R$ 39/mês e o Empresa R$ 99/mês — os dois abaixo do DAS do MEI. A maioria dos sistemas de campo no Brasil nem publica preço: você fala com um consultor e paga por técnico. Aqui o preço está nesta página, e o Grátis não é teste de 7 dias.",
+		a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês — os dois abaixo do DAS do MEI. A maioria dos sistemas de campo no Brasil nem publica preço: você fala com um consultor e paga por técnico. Aqui o preço está nesta página, e o Grátis não é teste de 7 dias.`,
 	},
 	{
 		q: "Existe app grátis de ordem de serviço?",
@@ -365,7 +308,7 @@ const schemaFaq = {
         TOTAL_CALCULADORAS saem de data/oficios.ts (o mesmo catálogo do app).
       */}
       {[
-        { k: 'R$ 0', v: 'grátis, sem prazo' },
+        { k: reais(0), v: 'grátis, sem prazo' },
         { k: String(OFICIOS.length), v: 'ofícios atendidos' },
         { k: String(TOTAL_CALCULADORAS), v: 'calculadoras de campo' },
         { k: '698', v: 'códigos de erro (climatização)' },
@@ -574,56 +517,24 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ PLANOS ══════════ -->
+  <!-- ══════════ PLANOS ══════════
+       Os cartões, o alternador mensal/anual e o 12× honesto moram em
+       PlanosPrecos.astro — a MESMA marcação que a página /planos usa, para o preço
+       nunca divergir entre as duas. Preço vem de data/planos.ts (Stripe live) e as
+       features de entitlements.ts via data/recursos.ts: nenhum literal aqui. -->
   <section id="planos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
       <div class="olli-revela mx-auto max-w-2xl text-center">
         <span class="eyebrow">Planos</span>
         <h2 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">Comece de graça. Pague quando crescer.</h2>
-        <p class="mt-4 text-slate">O grátis é sério e sem prazo. O Pro ainda sai em até 12×.</p>
+        <p class="mt-4 text-slate">O grátis é sério e sem prazo. No mensal, ou no anual com {DESCONTO_ANUAL_ROTULO} de desconto.</p>
       </div>
-      {/* A classe de revelação vai NO CARTÃO, sem wrapper, e isso foi verificado
-          no CSS compilado — não deduzido. O Tailwind 4 compila `-translate-y-3`
-          para a propriedade `translate:` (independente), não para `transform:`.
-          Como a revelação anima `transform`, as duas COMPÕEM em vez de brigar:
-          o destaque do Pro continua elevado depois que a animação termina.
-          Num Tailwind 3 (onde `-translate-y-3` vira `transform`) esta mesma
-          linha derrubaria o cartão para a fileira dos outros e apagaria o
-          destaque — se a versão mudar, é aqui que se confere de novo. */}
-      <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
-        {planos.map((p) => (
-          <div class={`olli-revela flex h-full flex-col rounded-cartao border bg-card p-8 ${p.destaque ? 'border-brand shadow-e3 lg:-translate-y-3' : 'border-line shadow-e1'}`}>
-            {/* ÂMBAR, e é aqui que o acento secundário ganha o salário dele.
-                O selo era `bg-tint text-brand` — o MESMO azul do botão que fica
-                20px abaixo dele, dentro do MESMO cartão. Duas coisas no mesmo tom
-                não se destacam: se anulam. Em âmbar o selo marca a recomendação
-                sem disputar o azul, que a partir daqui é só de AÇÃO.
-                Véu #FFF5CC + tinta #7A4100 = 7,43:1 (a receita do painel: no
-                claro o Badge usa "-darker" sobre "-lighter"). Âmbar de
-                PREENCHIMENTO com texto branco daria 4,00:1 e reprovaria — por
-                isso não existe em lugar nenhum desta página. */}
-            {p.destaque && <span class="mb-3 inline-block self-start rounded-full bg-ambar-veu px-3 py-1 text-xs font-bold text-ambar-tinta">Recomendado</span>}
-            <h3 class="text-lg font-bold text-ink">{p.nome}</h3>
-            <p class="mt-1 text-sm text-muted">{p.desc}</p>
-            <div class="mt-5 flex items-baseline gap-1">
-              <span class="text-4xl font-extrabold tracking-tight text-ink tnum">{p.preco}</span>
-              <span class="text-base font-medium text-muted">{p.periodo}</span>
-            </div>
-            <ul class="mt-6 flex-1 space-y-3 text-sm text-slate">
-              {p.itens.map((i) => (
-                <li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-check">✓</span><span>{i}</span></li>
-              ))}
-            </ul>
-            <a
-              href={p.href}
-              target={p.href === WHATSAPP_URL ? '_blank' : undefined}
-              rel={p.href === WHATSAPP_URL ? 'noopener' : undefined}
-              class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? 'bg-brand text-white hover:bg-brand-strong' : 'border border-line text-ink hover:border-brand hover:text-brand-fg'}`}
-            >{p.cta}</a>
-          </div>
-        ))}
+      <div class="mt-14">
+        <PlanosPrecos />
       </div>
-      <p class="mt-10 text-center text-sm text-muted">Sem cartão pra testar. Sem fidelidade. Cancela quando quiser.</p>
+      <p class="mt-8 text-center text-sm">
+        <a href="/planos/" class="font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 transition hover:decoration-brand">Comparar todos os recursos, lado a lado →</a>
+      </p>
     </div>
   </section>
 

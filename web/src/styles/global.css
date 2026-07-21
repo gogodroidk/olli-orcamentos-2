@@ -482,6 +482,59 @@ body {
 	flex: 0 0 auto;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALTERNADOR MENSAL / ANUAL DOS PLANOS — 0 KB de JS.
+
+   Mecanismo: dois <input type="radio" name="periodo"> dentro de `.planos-precos`,
+   e `:has()` no ancestral troca qual preço aparece. Sem ilha React, sem
+   hidratação — funciona no celular onde o hero nem hidrata (ver PlanosPrecos.astro).
+
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │ REGRA ESTRUTURAL (a mesma do movimento acima): o ESTADO BASE é o mensal, │
+   │ e o mensal é PREÇO VERDADEIRO. Num navegador sem `:has()` (muito antigo) │
+   │ o alternador não troca e a página fica no mensal — nada some, nada mente.│
+   │ "Erro nunca vira vazio" aplicado a preço.                                │
+   └────────────────────────────────────────────────────────────────────────┘
+
+   `:has()` — Chrome 105+, Safari 15.4+, Firefox 121+ (mais amplo que o
+   scroll-driven do resto da página). Nada aqui anima, então a regra cega de
+   reduced-motion não interfere: é troca de `display`, não de tempo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* Estado base = MENSAL visível, anual escondido. */
+.preco-mensal {
+	display: inline-flex;
+}
+.preco-anual {
+	display: none;
+}
+.nota-anual {
+	display: none;
+}
+.planos-precos:has(#periodo-anual:checked) .preco-mensal {
+	display: none;
+}
+.planos-precos:has(#periodo-anual:checked) .preco-anual {
+	display: inline-flex;
+}
+.planos-precos:has(#periodo-anual:checked) .nota-anual {
+	display: block;
+}
+
+/* Segmented control: o radio é sr-only (classe utilitária), o label é a pílula
+   clicável. `input:checked + label` pinta a opção ativa — cada input é seguido
+   IMEDIATAMENTE pelo próprio label, então o `+` casa certo. */
+.periodo-seg input:checked + label {
+	background: var(--color-brand);
+	color: #fff;
+	box-shadow: var(--shadow-e1);
+}
+/* Foco de teclado visível no label (o input está sr-only). Radios já navegam
+   por seta nativamente; isto só dá o anel de foco. */
+.periodo-seg input:focus-visible + label {
+	outline: 2px solid var(--color-brand-fg);
+	outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
 	@supports (animation-timeline: view()) {
 		/* Revelação padrão: sobe 16px e resolve a opacidade. */

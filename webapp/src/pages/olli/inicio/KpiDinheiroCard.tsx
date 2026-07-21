@@ -67,8 +67,16 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 	}
 
 	return (
-		<Link to={to} className="group block h-full focus:outline-none">
-			<Card className="relative h-full gap-0 overflow-hidden p-5 shadow-sm ring-1 ring-transparent transition-all duration-200 group-hover:-translate-y-1 group-hover:border-primary/30 group-hover:shadow-lg group-focus-visible:ring-primary/50">
+		<Link
+			to={to}
+			aria-busy={isLoading}
+			// Foco de teclado VISÍVEL: um contorno sólido primary com afastamento, no
+			// próprio <a> (fora do Card, que tem overflow-hidden e recortaria um anel
+			// interno). Antes o único indicador era `group-focus-visible:ring-primary/50`
+			// — 1px a 50% de opacidade, que a auditoria não conseguiu enxergar.
+			className="group block h-full rounded-xl outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+		>
+			<Card className="relative h-full gap-0 overflow-hidden p-5 shadow-sm ring-1 ring-transparent transition-all duration-200 group-hover:-translate-y-1 group-hover:border-primary/30 group-hover:shadow-lg group-focus-visible:border-primary group-focus-visible:ring-2 group-focus-visible:ring-primary motion-reduce:transition-none motion-reduce:group-hover:translate-y-0">
 				<div
 					className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full opacity-60 blur-2xl transition-opacity duration-200 group-hover:opacity-100"
 					style={{ backgroundColor: `${color}1F` }}

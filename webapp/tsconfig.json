@@ -39,7 +39,18 @@
 			// Importando daqui, divergir vira erro de compilação.
 			// É seguro: `src/types/index.ts` é TypeScript puro (só type-importa
 			// `services/verticais`, que não importa nada) — não arrasta React Native.
-			"@dominio": ["../src/types/index.ts"]
+			"@dominio": ["../src/types/index.ts"],
+
+			// FONTE DE PREÇO — o painel NÃO redigita valor de R$: importa a mesma
+			// `web/src/data/planos.ts` que a landing usa (conferida contra a Stripe
+			// live). Preço errado é a copy mais cara de errar (CDC art. 37), então
+			// mora num lugar só. É seguro: o arquivo é TypeScript puro, zero imports.
+			"@precos": ["../web/src/data/planos.ts"],
+
+			// FONTE DE ENTITLEMENTS — "que plano libera o quê" vem do MESMO mapa que o
+			// app e o worker leem (`src/services/entitlements.ts`), para o comparativo
+			// nunca prometer recurso que o produto não entrega. Módulo puro, zero imports.
+			"@entitlements": ["../src/services/entitlements.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

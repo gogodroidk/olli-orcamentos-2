@@ -22,6 +22,7 @@ import type { VerticalId } from '../services/verticais';
 import { haCalculoParaOficio } from '../services/calculosOficio';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
+import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
 import { navigationRef } from '../navigation/navigationRef';
@@ -836,7 +837,7 @@ export default function ContaScreen() {
                   <MaterialCommunityIcons name="crown-outline" size={16} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.proBadgeText}>OLLI PRO</Text>
                 </View>
-                <View style={styles.soonPill}><Text style={styles.soonPillText}>R$ 39/mês</Text></View>
+                <View style={styles.soonPill}><Text style={styles.soonPillText}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text></View>
               </View>
               <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
               <Text style={styles.proSub}>

@@ -14,6 +14,13 @@ const exportarDocStub = fileURLToPath(new URL("./src/shims/exportarDocumento.web
 const imagemDataUriStub = fileURLToPath(new URL("./src/shims/imagemDataUri.web.ts", import.meta.url));
 const clienteLinkStub = fileURLToPath(new URL("./src/shims/clienteLink.web.ts", import.meta.url));
 
+// FONTES DE VERDADE compartilhadas com a landing (preço) e o app (entitlements).
+// Diferente de `@dominio` (só tipos, apagados no build), estes são imports de VALOR
+// em runtime — então o alias precisa estar TAMBÉM aqui, no resolver do Vite, e não só
+// no tsconfig. Ambos os arquivos são TypeScript puro, sem imports, seguros de empacotar.
+const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.meta.url));
+const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
+
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
  * versões browser SÓ no build do painel. Ambos importam react-native e fazem require de
@@ -51,6 +58,10 @@ export default defineConfig(({ mode }) => {
 		},
 		resolve: {
 			alias: {
+				// Fontes de verdade compartilhadas (ver comentário na criação das consts):
+				// preço da landing e entitlements do app, empacotados como valor.
+				"@precos": precosFonte,
+				"@entitlements": entitlementsFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

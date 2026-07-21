@@ -31,6 +31,8 @@ import {
 	PROFISSAO_POR_OFICIO,
 	SLUG_POR_OFICIO,
 } from "../../data/oficios";
+// Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
+import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -121,7 +123,7 @@ const nomesCalc = calculos.map((c) => c.nome).join(", ");
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. O plano Grátis da OLLI faz orçamento, ordem de serviço e recibo sem limite para ${profissao}, sem prazo e sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no plano Pro (R$ 39/mês).`,
+		a: `Sim. O plano Grátis da OLLI faz orçamento, ordem de serviço e recibo sem limite para ${profissao}, sem prazo e sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no plano Pro (${reais(PRECO_PRO.mensalCentavos)}/mês).`,
 	},
 	...(calculos.length > 0
 		? [
@@ -133,7 +135,7 @@ const faqs = [
 		: []),
 	{
 		q: `A OLLI serve pra ${profissao} autônomo?`,
-		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Empresa (R$ 99/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
+		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
 	},
 	{
 		q: `Precisa instalar alguma coisa pra usar como ${profissao}?`,
@@ -188,7 +190,7 @@ const schemaFaq = {
 					>Criar meu primeiro orçamento — grátis</a
 				>
 				<a
-					href="/#planos"
+					href="/planos/"
 					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 					>Ver os planos</a
 				>

@@ -21,7 +21,7 @@
  * POR QUE ISTO EXISTE, e não é preferência estética: o Decreto nº 7.962/2013,
  * art. 2º, I e II, obriga site que oferta contrato de consumo a exibir nome
  * empresarial, CNPJ e endereço "em local de destaque e de fácil visualização".
- * A landing vende assinatura (R$ 39 e R$ 99/mês) com CTA em toda página.
+ * A landing vende assinatura (planos Pro e Empresa) com CTA em toda página.
  */
 
 /**

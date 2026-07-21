@@ -15,6 +15,7 @@ import { usePermissao } from '../../hooks/usePermissao';
 import { usePlano } from '../../hooks/usePlano';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../../services/onboarding';
+import { PRECO_PRO, reais } from '../../services/precosPlanos';
 import { cancelarTodosLembretes } from '../../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../../services/pmocLembretes';
 import { cancelarRitualDiario } from '../../services/ritualDiario';
@@ -618,7 +619,7 @@ export default function ContaDesktopScreen() {
                       <MaterialCommunityIcons name="crown-outline" size={15} color="#fff" />
                       <Text style={styles.upsellBadgeTexto}>OLLI PRO</Text>
                     </View>
-                    <Text style={styles.upsellPreco}>R$ 39/mês</Text>
+                    <Text style={styles.upsellPreco}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text>
                   </View>
                   <Text style={styles.upsellTitulo}>Leve o seu negócio ao próximo nível</Text>
                   <Text style={styles.upsellTexto}>Relatórios avançados, metas de vendas e suporte prioritário. Assine mensal ou anual com desconto.</Text>

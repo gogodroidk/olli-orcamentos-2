@@ -4,6 +4,7 @@ import {
 	emailContatoPublicavel,
 	identidadePublicavel,
 } from "../data/empresa";
+import { PRECO_EMPRESA, PRECO_PRO } from "../data/planos";
 import "../styles/global.css";
 
 interface Props {
@@ -41,8 +42,9 @@ const canonical = new URL(
  * inventar nota é penalidade do Google (e mentira). Entra quando houver avaliação —
  * é a mesma regra de "copy derivada da fonte", aplicada a schema.
  *
- * Os `offers` espelham o Stripe live (R$ 0 / 39 / 99). Quem mexer em preço tem de
- * mexer aqui também — por isso os três estão juntos e comentados.
+ * Os `offers` são DERIVADOS de `data/planos.ts` (o espelho do Stripe live) — o
+ * preço mensal de cada plano em reais, sem literal digitado aqui. Mexeu no preço na
+ * fonte, o schema acompanha sozinho.
  */
 const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
 
@@ -109,11 +111,12 @@ const schemaApp = {
 	operatingSystem: "Android, Web",
 	inLanguage: "pt-BR",
 	url: ORIGEM,
-	// Preços do Stripe live. SEM aggregateRating — ver o comentário acima.
+	// Preços DERIVADOS de data/planos.ts (Stripe live) — mensal em reais, sem
+	// literal. SEM aggregateRating — ver o comentário acima.
 	offers: [
 		{ "@type": "Offer", name: "Grátis", price: "0", priceCurrency: "BRL" },
-		{ "@type": "Offer", name: "Pro", price: "39", priceCurrency: "BRL" },
-		{ "@type": "Offer", name: "Empresa", price: "99", priceCurrency: "BRL" },
+		{ "@type": "Offer", name: "Pro", price: String(PRECO_PRO.mensalCentavos / 100), priceCurrency: "BRL" },
+		{ "@type": "Offer", name: "Empresa", price: String(PRECO_EMPRESA.mensalCentavos / 100), priceCurrency: "BRL" },
 	],
 };
 

@@ -125,7 +125,12 @@ const SearchBar = () => {
 				</div>
 			</Button>
 
-			<CommandDialog open={open} onOpenChange={setOpen}>
+			<CommandDialog
+				open={open}
+				onOpenChange={setOpen}
+				title={t("sys.search.title")}
+				description={t("sys.search.description")}
+			>
 				<CommandInput placeholder={t("sys.search.placeholder")} value={searchQuery} onValueChange={setSearchQuery} />
 				<ScrollArea className="h-[400px]">
 					<CommandEmpty>{t("sys.search.empty")}</CommandEmpty>
