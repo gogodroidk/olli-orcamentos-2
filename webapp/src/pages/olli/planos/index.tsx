@@ -20,6 +20,12 @@
  *
  * ═══ CHECKOUT DE VERDADE ═══
  * Pro e Empresa, mensal ou anual, abrem o Stripe Checkout pelo worker (`checkout.ts`).
+ * CARTÃO → STRIPE. PIX → MERCADO PAGO (e, hoje, Pix só existe para recarregar créditos,
+ * na tela de Créditos do app — o painel não vende Pix). Decisão do dono, textual: "deixe
+ * os pagamentos do CARTÃO no STRIPE, e os pagamentos PIX no MERCADO PAGO". O OLLI não
+ * vende assinatura por cartão no Mercado Pago (`/mp/plano/assinatura`): se aparecer um
+ * botão daqui apontando para `/mp/`, é regressão e o gate
+ * `scripts/teste-roteamento-pagamento.ts` reprova. Mapa: docs/ENXAME/PAGAMENTOS_ROTEAMENTO.md.
  * Qualquer falha vira um estado honesto com "Tentar de novo" e o WhatsApp como
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
@@ -162,9 +168,9 @@ export default function Planos() {
 
 			<p className="mt-6 text-xs text-text-secondary">
 				Pro e Empresa você assina agora, direto por aqui: escolha mensal ou anual (o anual sai {DESCONTO_ANUAL_ROTULO}{" "}
-				mais barato) e o pagamento abre em seguida — renova automaticamente e você cancela quando quiser. Prefere pelo
-				WhatsApp? A gente também resolve. O mapa e o painel da equipe ao vivo ainda estão em desenvolvimento (marcados
-				como “em breve”).
+				mais barato) e o pagamento <strong>no cartão</strong> abre em seguida, no ambiente seguro da Stripe — renova
+				automaticamente e você cancela quando quiser. Prefere pelo WhatsApp? A gente também resolve. O mapa e o painel da
+				equipe ao vivo ainda estão em desenvolvimento (marcados como “em breve”).
 			</p>
 		</div>
 	);

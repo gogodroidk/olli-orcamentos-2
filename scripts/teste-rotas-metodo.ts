@@ -17,8 +17,8 @@
  * é uma afirmação sobre um recurso EXISTENTE — respondê-lo a um path inventado
  * entrega a quem varre o serviço a informação de que ali existe alguma coisa.
  *
- * `mercadopago.js:744` e `abacate.js:270` já faziam certo (`ROUTES.has(p) ? 405
- * : 404`). O roteador de topo era o único que faltava.
+ * O despacho de `mercadopago.js` (e o do `stripe.js`) já fazia certo
+ * (`ROUTES.has(p) ? 405 : 404`). O roteador de topo era o único que faltava.
  *
  * ─── POR QUE TESTAR `metodosDaRota` E NÃO O ROTEADOR INTEIRO ───────────────
  * `worker/src/index.js` importa @sentry/cloudflare, que só existe em
@@ -113,7 +113,7 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // (`=== '/admin'` para a tela e `startsWith('/admin/')` para a API), e foi
   // isto que a primeira versão desta seção deixou passar.
   const DELEGADAS_EXATAS = ['/admin'];
-  const DELEGADAS = ['/admin/', '/stripe/', '/abacate/', '/mp/', '/equipe/', '/conta/', '/o/', '/q/'];
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/equipe/', '/conta/', '/o/', '/q/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(

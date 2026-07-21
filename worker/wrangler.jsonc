@@ -48,10 +48,10 @@
     // /cnpj por usuário: consulta a BrasilAPI (grátis, mas com fair-use) e evita
     // que usem o worker pra raspar CNPJ em massa. Baixo volume (cadastro), teto folgado.
     { "name": "CNPJ_RL", "namespace_id": "1006", "simple": { "limit": 20, "period": 60 } },
-    // Rotas Pix AbacatePay (criar cobrança/status) por usuário: barra criação em
-    // massa de cobranças. Não cobre o webhook (servidor-a-servidor da AbacatePay).
-    { "name": "ABACATE_RL", "namespace_id": "1007", "simple": { "limit": 12, "period": 60 } },
-    // Rotas Mercado Pago (criar cobrança Pix/assinatura/status) por usuário. Não
+    // (namespace_id 1007 era o ABACATE_RL, removido junto com o AbacatePay —
+    // provedor de Pix sem nenhum chamador. Não reaproveitar o id: manter o buraco
+    // deixa claro que o binding saiu de propósito.)
+    // Rotas Mercado Pago (criar cobrança Pix/status) por usuário. Não
     // cobre o webhook (servidor-a-servidor do MP, autenticado por x-signature).
     { "name": "MP_RL", "namespace_id": "1008", "simple": { "limit": 12, "period": 60 } },
     // /transcrever por IP (B1/O2-18): complementa o IA_RL (que é por usuário) —

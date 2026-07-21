@@ -30,6 +30,20 @@ import { aplicarSeo } from '../utils/seoWeb';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
+ * QUEM COBRA O QUÊ (decisão do dono, textual): "deixe os pagamentos do CARTÃO no
+ * STRIPE, e os pagamentos PIX no MERCADO PAGO."
+ *  - Plano (mensal, anual e 12x) → CARTÃO → `POST /stripe/checkout` (único destino
+ *    de pagamento desta tela). Conferido na Stripe live: as sessões criadas por
+ *    este caminho saem com `payment_method_types: ['card']`.
+ *  - Pix → MERCADO PAGO, e só para recarregar CRÉDITOS (CreditosScreen → /mp/*).
+ * Não há — e não pode voltar a haver — assinatura por cartão no Mercado Pago
+ * (a rota `/mp/plano/assinatura` do worker): cartão é Stripe, ponto. Se algum botão
+ * desta tela passar a apontar para `/mp/`, é regressão de roteamento e o gate
+ * `scripts/teste-roteamento-pagamento.ts` reprova. Mapa completo de quem cobra o quê:
+ * docs/ENXAME/PAGAMENTOS_ROTEAMENTO.md.
+ */
+
+/**
  * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para assinatura consumida
  * dentro do app e proíbe abrir o checkout num navegador externo (link-out) — e
  * proíbe também qualquer caminho que SUBSTITUA a compra, como um "fale conosco"
@@ -519,7 +533,7 @@ export default function PlanosScreen() {
             (assinatura que renova, 12x no cartão) que este aparelho não faz;
             mantido sem alteração no Android/web, onde a compra é real. */}
         {COMPRA_NO_APP && (
-        <Text style={styles.rodape}>Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. 💙</Text>
+        <Text style={styles.rodape}>Plano se paga no cartão, no ambiente seguro da Stripe. Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. (O Pix do OLLI é só para recarregar créditos, em Conta → Créditos.) 💙</Text>
         )}
         </>
         )}

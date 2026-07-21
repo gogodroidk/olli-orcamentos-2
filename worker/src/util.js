@@ -8,8 +8,8 @@
 
 /**
  * MÉTODOS ACEITOS POR ROTA — só das rotas resolvidas no roteador de topo
- * (index.js). As delegadas (/admin, /stripe/, /abacate/, /mp/, /equipe/,
- * /conta/, /o/, /q/) respondem o próprio 405 e nunca chegam a esta tabela.
+ * (index.js). As delegadas (/admin, /stripe/, /mp/, /equipe/, /conta/, /o/, /q/)
+ * respondem o próprio 405 e nunca chegam a esta tabela.
  *
  * POR QUE EXISTE. O roteador julgava o MÉTODO antes da EXISTÊNCIA: um único
  * `if (request.method !== 'POST') return 405` pegava tudo que não tivesse casado
@@ -24,8 +24,8 @@
  * que ele existe para algum outro verbo, que é exatamente o que uma varredura
  * quer descobrir. 404 não conta nada.
  *
- * Não é padrão novo: `mercadopago.js:744` e `abacate.js:270` já fazem isto
- * (`ROUTES.has(p) ? 405 : 404`) desde sempre. O roteador de topo era o único
+ * Não é padrão novo: o despacho de `mercadopago.js` (e o do `stripe.js`) já faz
+ * isto (`ROUTES.has(p) ? 405 : 404`) desde sempre. O roteador de topo era o único
  * lugar que tinha ficado de fora.
  *
  * Mora aqui, e não em index.js, pela mesma razão de `tresEstados`/`empresaAtiva`:

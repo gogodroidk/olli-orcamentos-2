@@ -4,10 +4,11 @@
  *     node scripts/teste-planos-ios.ts
  * Exit 0 = passou; 1 = falhou. O exit code é a prova.
  *
- * NÃO wireado em `npm test` porque a raiz do repo tem `package.json` na lista
- * de arquivos que esta sessão está proibida de tocar (ver AGENTS.md do
- * worktree). Rode manualmente até alguém com permissão religar este script na
- * cadeia — o padrão de wiring é idêntico ao dos outros `test:*` do package.json.
+ * JÁ ESTÁ wireado em `npm test` (via `test:planos-ios` no package.json) — o aviso
+ * anterior, de que o script rodava só à mão, ficou obsoleto quando alguém com
+ * permissão sobre a raiz religou a cadeia. O roteamento de PAGAMENTO (cartão →
+ * Stripe, Pix → Mercado Pago) é assunto de outro script:
+ * `scripts/teste-roteamento-pagamento.ts`.
  *
  * O QUE ESTÁ SENDO TRANCADO: a Guideline 3.1.1 da Apple proíbe, no iOS, tanto o
  * link-out de checkout quanto qualquer caminho que SUBSTITUA a compra (um

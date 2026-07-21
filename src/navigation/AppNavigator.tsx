@@ -122,7 +122,8 @@ export type RootStackParamList = {
   CertificadoAnvisa: undefined;
   // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
   FerramentasOficio: undefined;
-  // Saldo de créditos + recarga por Pix (AbacatePay).
+  // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
+  // do OLLI; ver src/services/pixCreditos.ts → /mp/*).
   Creditos: undefined;
   Planos: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.

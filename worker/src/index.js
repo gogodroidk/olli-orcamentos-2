@@ -44,7 +44,6 @@ import * as Sentry from '@sentry/cloudflare';
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
-import { handleAbacate } from './abacate.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
@@ -750,17 +749,16 @@ const handler = {
       return handleStripe(request, env, url);
     }
 
-    // ── PAGAMENTOS PIX ABACATEPAY (créditos por Pix) ──
+    // ── PAGAMENTOS PIX MERCADO PAGO (créditos por Pix; planos por Pix) ──
+    // O PIX do OLLI é só aqui — decisão do dono: cartão na Stripe (acima), Pix no
+    // Mercado Pago. O AbacatePay, terceiro provedor de Pix que já roteou nesta
+    // posição, foi REMOVIDO: não tinha um único chamador no app nem no painel, e
+    // manter uma rota pública de dinheiro sem dono é superfície de ataque à toa.
+    // (Histórico do porquê em docs/ABACATEPAY.md; o ledger de créditos é
+    // append-only, então quem pagou por lá no passado não perde nada.)
+    //
     // Mesmo perfil do Stripe: fora do gate da IA; o webhook autentica por
-    // secret(query)+HMAC, as demais rotas validam o JWT do Supabase por conta
-    // própria. handleAbacate cuida do método e de OPTIONS/CORS por rota.
-    if (url.pathname.startsWith('/abacate/')) {
-      return handleAbacate(request, env, url);
-    }
-
-    // ── PAGAMENTOS MERCADO PAGO (gateway único: créditos Pix + planos) ──
-    // Mesmo perfil: fora do gate da IA; o webhook autentica por x-signature
-    // (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
+    // x-signature (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
     if (url.pathname.startsWith('/mp/')) {
       return handleMercadoPago(request, env, url);
     }
