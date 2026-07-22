@@ -125,9 +125,16 @@ App Store Connect → Business. Detalhe em `docs/ENXAME/LOJA_IOS.md`.
    único JWT commitado é a chave `anon`, que é pública por desenho e protegida por
    RLS. Zero `sk_live`, zero token do Mercado Pago, zero `service_role`.
 
-3. **A landing promete "sincroniza quando a rede volta" e isso só é verdade se o app
-   for reaberto.** Não há fila de saída nem listener de estado do app. Ou a promessa
-   muda, ou a fila é construída (~200 linhas, sem dependência nova).
+3. ~~**A landing promete "sincroniza quando a rede volta" e isso só é verdade se o app
+   for reaberto.**~~ **CONSERTADO em 22/07** (`c718928`) — e o diagnóstico estava
+   errado nos dois detalhes. Não faltava fila de saída (o `pushAllLocal` já reenvia o
+   banco inteiro por `id`, com upsert idempotente) nem listener de `AppState` (existiam
+   dois). Faltava um **gatilho**: `syncOnLogin` só rodava em `SIGNED_IN` e
+   `INITIAL_SESSION`, que são eventos de boot frio — voltar o app do bolso para a frente
+   não emite nenhum dos dois. Agora `AppState 'active'` e o evento `online` do browser
+   religam o sync, com janela de 30 s para não queimar o 4G de quem está no interior.
+   Sobra um caso: app em primeiro plano o tempo todo com a rede voltando sozinha ainda
+   espera a próxima ida-e-volta ao segundo plano.
 
 E três que **não** valem a pena, com o motivo em `docs/ENXAME/OPORTUNIDADES.md`:
 trocar a engine de sincronização, emitir nota fiscal de verdade agora (R$ 548/mês
