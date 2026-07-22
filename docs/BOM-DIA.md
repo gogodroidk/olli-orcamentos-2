@@ -7,8 +7,11 @@
 
 ## Em uma linha
 
-O código está redondo e no ar. Sobraram **4 coisas que só você pode fazer** — todas
+O código está redondo e no ar. Sobraram **3 coisas que só você pode fazer** — todas
 de minutos, nenhuma de engenharia.
+
+O 4º item desta lista (o segredo do Mercado Pago) **saiu**: foi medido em 21/07 e não
+é bloqueio. Ver a seção 2.
 
 ---
 
@@ -25,22 +28,37 @@ Você não precisa ler o diff inteiro — leia a descrição e decida se faz o m
 você não vai saber qual dos 58 commits foi. Se preferir, mergeie e fique de olho
 por um dia; o rollback é `git revert` do merge.
 
-### 2. `MP_WEBHOOK_SECRET` (5 min) — é isto que libera o primeiro real
+### 2. Webhook do Mercado Pago — JÁ FUNCIONA (medido em 21/07)
 
-Sem este segredo, **o Pix inicia a cobrança e nunca confirma**. O cliente paga e o
-OLLI não fica sabendo.
+> **Correção.** Este item dizia "sem o `MP_WEBHOOK_SECRET` o Pix inicia a cobrança e
+> nunca confirma", e mandava cadastrar a URL no painel. **As duas coisas estavam
+> erradas**: o segredo não é requisito de funcionamento, e o cadastro já tinha sido
+> feito numa sessão anterior. Escrito de memória em vez de medido — o erro que a regra
+> "copy derivada da fonte" existe para matar.
 
-1. Painel do Mercado Pago → Suas integrações → sua aplicação → Webhooks
-2. Registre a URL: `https://diagnostico.olliorcamentos.online/mp/webhook`
-3. Copie a **chave secreta** que ele gera
-4. No terminal, dentro de `worker/`:
-   ```
-   npx wrangler secret put MP_WEBHOOK_SECRET
-   ```
-   (cole a chave quando pedir)
+**Medido em produção com dois pagamentos de R$ 0,01, criados e cancelados sem pagar:**
 
-**Como saber que funcionou:** faça uma compra-teste de crédito de R$ 24,90 por Pix.
-Se o saldo aparecer sozinho no app, o ciclo fechou.
+| | Pix normal (o que o app cria) | Controle, sem `notification_url` |
+|---|---|---|
+| entregas em `/mp/webhook` | 4 | 2 |
+| resposta do worker | `200` em todas | `200` em todas |
+
+O controle mostra quem faz o quê: as entregas continuam chegando mesmo **sem** o campo
+`notification_url`, ou seja, quem avisa é o **cadastro no painel** — que já existe. O
+campo que o worker manda em cada pagamento
+([mercadopago.js:232](../worker/src/mercadopago.js#L232)) acrescenta uma segunda
+entrega, no formato antigo. **Dois caminhos ativos, redundantes.** Não há nada a
+configurar.
+
+Sobre o segredo: sem ele o worker confirma cada notificação perguntando ao próprio MP
+(`GET /v1/payments/<id>`) — é essa consulta que autoriza o crédito, e ela não dá para
+forjar. Com ele, entra **antes** uma checagem de assinatura HMAC que barra tráfego
+estranho na borda. Segurança a mais, não funcionamento. O `x-signature` veio presente
+em todas as 6 entregas, então no dia que você colar o segredo a camada liga sozinha.
+
+**O que ainda não foi exercido:** um pagamento **aprovado** virando saldo. Exige
+dinheiro real trocando de mão — R$ 0,01 pago do seu celular fecha, ou o primeiro
+cliente. Todo o resto do caminho já rodou em produção.
 
 ### 3. Assinar o APK para a loja
 

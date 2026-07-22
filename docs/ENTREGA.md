@@ -223,9 +223,14 @@ ANTES desta operação. Enquanto não mesclar, tudo na seção 2 continua quebra
 graça, o backup do técnico segue levando sua base.
 *Se pular:* nada muda. Você continua com os bugs desta lista.
 
-**Passo 2 — `MP_WEBHOOK_SECRET` no cofre do worker + registrar o webhook no painel do Mercado Pago.**
-O `MP_ACCESS_TOKEN` já está lá (verificado em 16/07; não reverifiquei hoje).
-*Se pular:* **ninguém paga.** É o único item que liga Pix e cartão. O cliente paga e o crédito não entra.
+**Passo 2 — ~~`MP_WEBHOOK_SECRET` + registrar o webhook no painel~~ — CAIU (medido em 21/07).**
+O `MP_ACCESS_TOKEN` está no worker (reconferido em 21/07 por `wrangler secret list`) e **a URL do
+webhook já está cadastrada** — o cadastro foi feito numa sessão anterior; eu tinha esquecido e
+mandei você refazer. Dois Pix de R$ 0,01 (um deles um controle sem `notification_url`) provaram a
+entrega ao vivo: 6 notificações, todas `200`. O secret continua valendo como camada extra de
+segurança (HMAC na borda), mas não segura venda nenhuma. Prova em [MERCADOPAGO.md](MERCADOPAGO.md).
+*Se pular:* nada. O que ainda não foi exercido é um pagamento **aprovado** virando saldo — R$ 0,01
+pago do seu celular fecha essa última ponta.
 
 **Passo 3 — Subir o worker (`wrangler deploy`).**
 O token do `.env` é fraco e sabota o deploy, então tire-o do ambiente antes. **No seu PowerShell:**

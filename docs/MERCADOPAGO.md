@@ -48,10 +48,36 @@ Cliente: `src/services/pixCreditos.ts` + `CreditosScreen` já apontam para `/mp/
 ## 3. Passos para ir ao ar (HUMANO — só você faz)
 
 1. **[HUMANO] Pegar o Access Token de PRODUÇÃO.** MP → *Seu negócio → Configurações → Credenciais → Credenciais de produção* → copiar o **Access Token** (`APP_USR-...`). Guardar no cofre como `MP_ACCESS_TOKEN`.
-2. **[HUMANO] Configurar o webhook no painel do MP.** MP → *Suas integrações → (sua aplicação) → Webhooks/Notificações*:
+2. **[OPCIONAL — não é bloqueio] Configurar o webhook no painel do MP.** MP → *Suas integrações → (sua aplicação) → Webhooks/Notificações*:
    - **URL:** `https://diagnostico.olliorcamentos.online/mp/webhook`
    - **Eventos:** *Pagamentos* **e** *Assinaturas (planos e assinaturas)*.
    - Copiar a **"Assinatura secreta"** que o painel gera → cofre como `MP_WEBHOOK_SECRET`. (É o segredo do HMAC do `x-signature`.)
+
+   > **MEDIDO EM 21/07/2026 — a URL JÁ ESTÁ CADASTRADA e a entrega FUNCIONA.** Falta só o secret.
+   >
+   > Dois Pix de R$ 0,01 criados e cancelados via API (nunca pagos), com `wrangler tail` ligado:
+   >
+   > | | A: Pix normal (com `notification_url`) | B: controle, **sem** o campo |
+   > |---|---|---|
+   > | `MercadoPago WebHook v1.0` (`?data.id=…&type=payment`) | 2 | **2** |
+   > | `MercadoPago Feed v2.0` (`?id=…&topic=payment`) | 2 | **0** |
+   > | resposta do worker | `200` em todas | `200` em todas |
+   >
+   > O controle B é o que separa as causas: a entrega em `WebHook v1.0` **não depende** do
+   > `notification_url`, logo vem do cadastro de aplicação (feito em sessão anterior via MCP do MP).
+   > O `notification_url` que `criarPagamentoPix` manda (`mercadopago.js:232`) rende a entrega extra
+   > em `Feed v2.0`, o formato IPN antigo. **Dois caminhos ativos e redundantes** — e o worker trata
+   > os dois dialetos, o que este teste também confirmou (`type` **ou** `topic`, `data.id` **ou** `id`).
+   >
+   > O `x-signature` **veio presente nas 6 entregas**, então colar o `MP_WEBHOOK_SECRET` liga a
+   > camada HMAC de imediato, sem mexer em código. Ela é defesa de borda: quem autoriza o crédito é
+   > o `GET /v1/payments/{id}`, que já está ativo. Faça por segurança, não para vender.
+   >
+   > **Cuidado ao reconfigurar:** como o cadastro já existe, mexer nele pode DESLIGAR o que hoje
+   > funciona. Se for ao painel só para copiar o segredo, não altere a URL nem os tópicos.
+   >
+   > Não testado: `preapproval` (assinatura recorrente de cartão). Cartão foi roteado para o Stripe,
+   > então isso não bloqueia nada hoje.
 3. **[EU] Deploy do worker.** `cd worker && node reparar.mjs` — já restaura `MP_ACCESS_TOKEN` + `MP_WEBHOOK_SECRET` do cofre (junto dos outros secrets). Rodar **depois** de você preencher o cofre.
 4. **[EU/VOCÊ] Piloto em produção com valor baixo.** Comprar um pacote de crédito real (ou usar as **credenciais de teste** do MP primeiro) e confirmar: QR aparece, pagamento cai, webhook credita, saldo sobe. As credenciais de teste do MP simulam Pix aprovado sem dinheiro real. `[FATO]`
 
