@@ -7,7 +7,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from "@/ui/dialog"
 
@@ -41,16 +40,25 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      {/* O cabeçalho vive DENTRO do DialogContent: é assim que o Radix o conecta ao
-          diálogo (aria-labelledby/aria-describedby) e lhe dá um nome acessível. Antes
-          ficava FORA, como irmão do Content — então renderizava um "heading fantasma"
-          sempre presente no corpo da página (mesmo com o diálogo fechado) e o diálogo
-          aberto ficava SEM nome. `sr-only` mantém o texto só para o leitor de tela. */}
+      {/* Título e descrição vivem DENTRO do DialogContent: é assim que o Radix os
+          conecta ao diálogo (aria-labelledby/aria-describedby) e lhe dão um nome
+          acessível. Antes ficavam FORA, como irmãos do Content — então renderizavam um
+          "heading fantasma" sempre presente no corpo da página (mesmo com o diálogo
+          fechado) e o diálogo aberto ficava SEM nome. `sr-only` mantém o texto só para
+          o leitor de tela.
+
+          O `sr-only` vai em CADA UM, sem `DialogHeader` em volta. Aquele wrapper é só
+          layout (`flex flex-col gap-2 text-center sm:text-left`) e o `cn` NÃO cancela
+          essas classes — conferido rodando o tailwind-merge do próprio projeto:
+          `sr-only` e `flex` caem em grupos diferentes e sobrevivem lado a lado. Sobrava
+          uma div com flexbox e gap dentro de uma caixa de 1×1px recortada: CSS morto
+          que ainda sugeria, para quem lesse depois, que existe um cabeçalho visível
+          aqui. Não existe — e a div, sem papel ARIA, não acrescentava nada à árvore de
+          acessibilidade. O único elemento com semântica é o h2 do DialogTitle (é o que
+          o Radix renderiza), e ele é justamente o nome do diálogo. */}
       <DialogContent className="overflow-hidden p-0">
-        <DialogHeader className="sr-only">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+        <DialogTitle className="sr-only">{title}</DialogTitle>
+        <DialogDescription className="sr-only">{description}</DialogDescription>
         <Command className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
           {children}
         </Command>
