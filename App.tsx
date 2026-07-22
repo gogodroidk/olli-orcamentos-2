@@ -34,6 +34,7 @@ import { getDb, getEmpresa } from './src/database/database';
 import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { syncOnLogin } from './src/services/cloudSync';
+import { iniciarReligarSync } from './src/services/iniciarReligarSync';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
@@ -334,6 +335,13 @@ function AppConteudo() {
     });
     return () => data.subscription.unsubscribe();
   }, []);
+
+  // Religa o sync ao voltar do segundo plano (e, no web, quando o browser avisa
+  // que a rede voltou). O listener acima cobre só BOOT e login: `INITIAL_SESSION`
+  // não re-emite quando o app volta do bolso para a frente, então o que foi
+  // escrito offline ficava esperando o app ser morto e reaberto. Ver
+  // services/religarSync.ts para o limite que este gatilho NÃO cobre.
+  useEffect(() => iniciarReligarSync(syncOnLogin), []);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar
   if (fontsLoaded) applyFontPatch();
