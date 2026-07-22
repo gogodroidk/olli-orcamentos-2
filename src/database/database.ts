@@ -587,7 +587,19 @@ async function seedCodigosErro(database: SQLite.SQLiteDatabase) {
   if ((row?.c ?? 0) > 0 && versaoAtual >= SEED_CODIGOS_VERSAO) return;
   // Só AGORA (quando vamos de fato semear) o JSON grande é lido e parseado.
   const seed = require('../../assets/codigos_erro.json') as any[];
-  if (!Array.isArray(seed) || seed.length === 0) return;
+  if (!Array.isArray(seed) || seed.length === 0) {
+    // NÃO fique calado. Se o asset sumir ou vier vazio, o app segue com a tabela
+    // de códigos de erro zerada e a tela mostra "nada encontrado" — o usuário lê
+    // isso como "a marca dele não está no catálogo", não como "o app está
+    // quebrado". É o padrão "erro vira vazio" que esta casa proíbe. Um arquivo
+    // ausente estoura no require acima (alto, e é o certo); este ramo pega o caso
+    // mais traiçoeiro, o do arquivo que parseia mas não traz nada.
+    console.error(
+      '[olli-db] seed de códigos de erro vazio ou inválido — a busca por código vai parecer "sem resultado".',
+      { tipo: typeof seed, itens: Array.isArray(seed) ? seed.length : null },
+    );
+    return;
+  }
   await database.withTransactionAsync(async () => {
     await database.runAsync('DELETE FROM codigos_erro');
     for (const c of seed) {
