@@ -52,9 +52,10 @@ permissões do manifest, e declarar localização sem permissão de localizaçã
 > `LOCALIZACAO_DISPONIVEL = true`, este formulário precisa ser refeito **antes** do envio daquele
 > build.
 
-### ⚠️ 3. `READ_MEDIA_IMAGES` é passivo de política — e não é necessária
+### ✅ 3. `READ_MEDIA_IMAGES` foi removida e bloqueada no build Play
 
-`app.json` → `android.permissions` declara `READ_MEDIA_IMAGES`. Verificado no código nativo da
+`app.json` não declara mais `READ_MEDIA_IMAGES` e também a bloqueia em
+`android.blockedPermissions`, impedindo que uma dependência a reintroduza no manifest final. Verificado no código nativo da
 biblioteca instalada:
 
 - `node_modules/expo-image-picker/android/src/main/AndroidManifest.xml` declara **só** `CAMERA`,
@@ -64,15 +65,15 @@ biblioteca instalada:
 - `.../contracts/ImageLibraryContract.kt` usa `PickVisualMedia` / `PickVisualMediaRequest`, que é o
   **Android Photo Picker** — e o Photo Picker **não exige permissão nenhuma**.
 
-Ou seja: a permissão foi adicionada pelo projeto, **o app não precisa dela**, e ela sujeita o OLLI à
+Ou seja: a permissão tinha sido adicionada pelo projeto, **o app não precisa dela**, e ela sujeitava o OLLI à
 *Photo and Video Permissions policy*, que só libera acesso amplo para editor de foto, rede social e
 plataforma de conteúdo do usuário. Anexar foto a um orçamento é o caso "uso pontual/limitado" que a
 política manda resolver com o system picker — que é justamente o que a lib já faz. Manter significa
 preencher formulário de declaração e passar por revisão de acesso que o OLLI provavelmente não passa;
 a política está em vigor plena desde **28/05/2025**, com risco de **remoção do app**.
 
-**Ação: remover `READ_MEDIA_IMAGES` do `app.json` e testar em Android 13+ antes de enviar.**
-`app.json` não é arquivo desta frente — foi aberta uma tarefa separada com o passo a passo.
+**Resolvido no código:** `READ_MEDIA_IMAGES` foi removida e bloqueada. Ainda é obrigatório
+inspecionar o manifest do AAB final e testar o Photo Picker em Android 13+ antes de enviar.
 
 ---
 
@@ -165,7 +166,7 @@ questionário: **Utilitário, produtividade, comunicação ou outro** — não �
 | Conteúdo assustador / horror | **Não** | — |
 | O app permite que usuários **interajam ou troquem conteúdo** entre si? | **Não** | Não há chat entre usuários nem feed. O link de aprovação é 1-para-1, gerado pelo próprio usuário para o cliente dele, fora do app (WhatsApp). Equipe é dentro da mesma organização, com papéis — não é rede social |
 | O app compartilha a **localização** do usuário com outros usuários? | **Não** | Localização não é coletada no Android (Parte 0, divergência 2) |
-| O app permite **compra de bens/serviços digitais**? | **Sim** | Assinatura Pro/Empresa e créditos de IA |
+| O app permite **compra de bens/serviços digitais**? | **Não no build Android da Play** | A tela mostra plano, saldo e extrato, mas não oferece CTA, checkout, QR Pix ou link externo de compra. A web mantém a contratação fora do app Play |
 | O app tem **recursos de IA generativa**? | **Sim** | Três superfícies: chat, diagnóstico e voz em modo conversa |
 
 **Classificação esperada: Livre / Classificação Etária Livre (Everyone / 3+).**
@@ -197,7 +198,7 @@ público — o que mantém a classificação em Livre.
 | **Acesso ao app** | "Parte da funcionalidade é restrita" + **credenciais de teste** | ⚠️ **Obrigatório e frequentemente esquecido.** O app tem login; sem uma conta funcional o revisor trava na porta e reprova. Use a conta demo (`demo@grtech.com.br`, memória `olli-conta-demo-grtech`) ou crie uma dedicada ao revisor, com dados de exemplo já povoados |
 | **Público-alvo e conteúdo** | Somente faixas **18+** | O produto é ferramenta profissional. Marcar faixa infantil ativa a política Famílias, com exigências que o app não cumpre e não precisa cumprir |
 | **App de notícias** | Não | — |
-| **Recursos financeiros** | ⚠️ **[VERIFICAR com o dono]** | Vender a própria assinatura normalmente **não** é "recurso financeiro" (a seção mira empréstimo, investimento, cripto, carteira). Mas há cobrança por Pix/créditos — confirme o texto vigente da seção na Console em vez de chutar |
+| **Recursos financeiros** | **Não** para o build Android da Play | O app Play não inicia assinatura, Pix ou recarga. Ele apenas exibe status, saldo, extrato e recibos já existentes; não oferece empréstimo, investimento, cripto ou carteira |
 | **Segurança dos dados** | Parte 2 deste documento | — |
 | **Governo** | Não | — |
 

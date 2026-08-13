@@ -32,6 +32,10 @@ function SwitchRow({ label, hint, value, onValueChange }: {
       <Switch
         value={value}
         onValueChange={onValueChange}
+        accessibilityRole="switch"
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+        accessibilityState={{ checked: value }}
         trackColor={{ false: cores.outline, true: cores.primary + '80' }}
         thumbColor={value ? cores.primary : '#fff'}
       />
@@ -297,6 +301,9 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               style={[styles.modelCard, active && styles.modelCardActive]}
               onPress={() => escolherModelo(model)}
               activeOpacity={0.85}
+              accessibilityRole="radio"
+              accessibilityLabel={`${model.nome}. ${model.desc}`}
+              accessibilityState={{ checked: active }}
             >
               {renderMiniatura(model.id, model.color, styles)}
               <View style={styles.modelLabelRow}>
@@ -320,8 +327,9 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               style={[styles.capaCard, active && styles.capaCardActive]}
               onPress={() => escolherCapaEstilo(op.id)}
               activeOpacity={0.85}
-              accessibilityRole="button"
+              accessibilityRole="radio"
               accessibilityLabel={`Capa: ${op.nome}`}
+              accessibilityState={{ checked: active }}
             >
               <MaterialCommunityIcons
                 name={op.icon}
@@ -352,7 +360,8 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
                   onPress={() => usarComoCapa(uri)}
                   activeOpacity={0.85}
                   accessibilityRole="button"
-                  accessibilityLabel={selecionada ? 'Foto de capa selecionada' : 'Usar esta foto como capa'}
+                  accessibilityLabel={`Foto ${idx + 1} para a capa`}
+                  accessibilityState={{ selected: selecionada }}
                 >
                   <Image source={{ uri }} style={styles.fotoImg} />
                   {selecionada && (
@@ -369,6 +378,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               disabled={adicionandoCapa}
               accessibilityRole="button"
               accessibilityLabel="Adicionar foto de capa"
+              accessibilityState={{ disabled: adicionandoCapa, busy: adicionandoCapa }}
             >
               <MaterialCommunityIcons name="image-plus" size={26} color={cores.primary} />
               <Text style={styles.addFotoLabel}>{adicionandoCapa ? 'Aguarde...' : 'Adicionar'}</Text>
@@ -399,8 +409,9 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
               style={[styles.colorPick, active && styles.colorPickActive]}
               onPress={() => onChange({ corMarca: swatch.value })}
               activeOpacity={0.85}
-              accessibilityRole="button"
+              accessibilityRole="radio"
               accessibilityLabel={`Cor ${swatch.label}`}
+              accessibilityState={{ checked: active }}
             >
               <View style={[styles.colorDot, { backgroundColor: swatch.value }]} />
               <Text style={[styles.colorLabel, active && styles.colorLabelActive]}>{swatch.label}</Text>
@@ -415,7 +426,15 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
           const value = validadeEmDias(days);
           const active = orc.validadeOrcamento === value;
           return (
-            <TouchableOpacity key={days} style={[styles.validadeChip, active && styles.validadeChipActive]} onPress={() => onChange({ validadeOrcamento: value })} activeOpacity={0.85}>
+            <TouchableOpacity
+              key={days}
+              style={[styles.validadeChip, active && styles.validadeChipActive]}
+              onPress={() => onChange({ validadeOrcamento: value })}
+              activeOpacity={0.85}
+              accessibilityRole="radio"
+              accessibilityLabel={`Validade de ${days} dias`}
+              accessibilityState={{ checked: active }}
+            >
               <Text style={[styles.validadeText, active && styles.validadeTextActive]}>{days} dias</Text>
             </TouchableOpacity>
           );
@@ -456,13 +475,13 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
       <View style={styles.fotosGrid}>
         {(orc.fotosServico ?? []).map((uri, idx) => (
           <View key={idx} style={styles.fotoItem}>
-            <Image source={{ uri }} style={styles.fotoImg} />
-            <TouchableOpacity style={styles.fotoRemove} onPress={() => removeFoto(idx)}>
+            <Image source={{ uri }} style={styles.fotoImg} accessible={false} />
+            <TouchableOpacity style={styles.fotoRemove} onPress={() => removeFoto(idx)} accessibilityRole="button" accessibilityLabel={`Remover foto ${idx + 1}`}>
               <MaterialCommunityIcons name="close-circle" size={20} color={cores.danger} />
             </TouchableOpacity>
           </View>
         ))}
-        <TouchableOpacity style={styles.addFotoBtn} onPress={pickFoto}>
+        <TouchableOpacity style={styles.addFotoBtn} onPress={pickFoto} accessibilityRole="button" accessibilityLabel="Adicionar foto do serviço">
           <MaterialCommunityIcons name="camera-plus-outline" size={28} color={cores.primary} />
           <Text style={styles.addFotoLabel}>Adicionar</Text>
         </TouchableOpacity>
@@ -471,7 +490,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
       <View style={styles.previewNote}>
         <MaterialCommunityIcons name="information-outline" size={18} color={cores.primary} />
         <Text style={styles.previewNoteText}>
-          Toque em "Gerar Orçamento" para criar o PDF profissional com todas as informações preenchidas.
+          Toque em "Salvar e revisar". Na próxima tela, você poderá gerar o PDF, compartilhar ou enviar o link ao cliente.
         </Text>
       </View>
 

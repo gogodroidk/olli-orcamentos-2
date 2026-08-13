@@ -35,14 +35,16 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * cai pelo WEBHOOK (nunca otimista). O QR usa o PNG do gateway (brCodeBase64) —
  * sempre válido — com fallback pro gerador local do brCode.
  *
- * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para bem digital consumido
- * dentro do app, e proíbe nominalmente o QR code como mecanismo de venda alternativo.
- * Não há StoreKit implementado ainda, então no iOS a compra fica ESCONDIDA (sem QR,
- * sem código copia-e-cola, sem chamar criarCobrancaPix) — o saldo continua visível
- * (isso é permitido; o proibido é vender). `COMPRA_NO_APP` centraliza esse desvio
- * para não espalhar `if (Platform.OS === 'ios')` pela tela inteira.
+ * LOJAS NATIVAS: créditos são bens digitais consumidos no app. Não há StoreKit nem
+ * Google Play Billing implementado, então a compra fica ESCONDIDA no iOS e no build
+ * Android da Play (sem pacotes, QR, copia-e-cola ou chamada a criarCobrancaPix). O
+ * saldo e o extrato continuam visíveis; a web mantém a recarga existente.
  */
 const COMPRA_NO_APP = Platform.OS !== 'ios';
+/** Flag explícita desta branch: o build Android da Play é somente consumo/consulta
+ * e não oferece Pix ou qualquer outra compra externa de créditos digitais. */
+const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
+const COMPRA_EXTERNA_HABILITADA = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;
 
 /** "há 3 dias" / data curta a partir do ISO do lançamento. */
 function dataCurta(iso: string): string {
@@ -60,7 +62,7 @@ export default function CreditosScreen() {
   const [pacotes, setPacotes] = useState<PacotePix[]>([]);
   // No iOS não buscamos pacotes (não há onde exibi-los), então já nasce "não
   // carregando" — do contrário o spinner giraria pra sempre sem propósito.
-  const [carregandoPacotes, setCarregandoPacotes] = useState(COMPRA_NO_APP);
+  const [carregandoPacotes, setCarregandoPacotes] = useState(COMPRA_EXTERNA_HABILITADA);
   // 3 estados explícitos (nunca colapsar erro em vazio): `pacotesErro` só vira
   // true numa falha de rede real; lista vazia por resposta válida é "indisponível".
   const [pacotesErro, setPacotesErro] = useState(false);
@@ -103,7 +105,7 @@ export default function CreditosScreen() {
     recarregarSaldo();
     // No iOS a compra fica escondida (ver COMPRA_NO_APP acima) — não há motivo
     // para buscar o catálogo de pacotes que nunca vai aparecer na tela.
-    if (COMPRA_NO_APP) carregarPacotes();
+    if (COMPRA_EXTERNA_HABILITADA) carregarPacotes();
   }, [recarregarSaldo, carregarPacotes]);
 
   // Polling de UX enquanto a cobrança está aberta, não paga e não expirada. A
@@ -135,7 +137,7 @@ export default function CreditosScreen() {
   async function comprar(p: PacotePix) {
     // Defesa em profundidade: no iOS nenhum botão chama isto (ver render abaixo),
     // mas a guarda fica aqui também — Guideline 3.1.1 proíbe a venda no app.
-    if (!COMPRA_NO_APP) return;
+    if (!COMPRA_EXTERNA_HABILITADA) return;
     if (criando) return;
     setCriando(p.id);
     try {
@@ -259,7 +261,7 @@ export default function CreditosScreen() {
           )
         ) : (
           <>
-            {COMPRA_NO_APP ? (
+            {COMPRA_EXTERNA_HABILITADA ? (
               <>
                 {/* Pacotes */}
                 <Text style={styles.secaoTitulo}>Recarregar por Pix</Text>
@@ -308,13 +310,15 @@ export default function CreditosScreen() {
                 )}
               </>
             ) : (
-              // iOS (Guideline 3.1.1): sem botão de compra, sem QR, sem código
+              // Lojas nativas: sem botão de compra, sem QR, sem código
               // copia-e-cola — só o estado real (saldo já visível acima) e um texto
               // honesto, sem link nem CTA para fora do app (a Apple também proíbe
               // direcionar para compra externa).
               <OlliCard style={styles.card} padding={Spacing.lg}>
                 <Text style={styles.indisponivel}>
-                  A recarga de créditos ainda não está disponível no iPhone.
+                  {Platform.OS === 'android'
+                    ? 'Seu saldo e extrato continuam disponíveis. A recarga de créditos não está disponível neste aplicativo Android.'
+                    : 'A recarga de créditos ainda não está disponível no iPhone.'}
                 </Text>
               </OlliCard>
             )}

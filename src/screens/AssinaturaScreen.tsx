@@ -45,6 +45,9 @@ const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';
 /** Mesmo interruptor de PlanosScreen/ContaScreen — sem StoreKit, o card de
  * upsell do Grátis (abaixo) não pode oferecer assinar o Pro no iOS. */
 const COMPRA_NO_APP = Platform.OS !== 'ios';
+/** Flag explícita desta branch: no Android da Play não há portal externo capaz de
+ * trocar plano/cartão nem upsell de assinatura. Status e recibos seguem visíveis. */
+const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
 
 const PLANO_LABEL: Record<PlanoId, string> = { gratis: 'Grátis', pro: 'Pro', empresa: 'Empresa' };
 
@@ -183,6 +186,7 @@ export default function AssinaturaScreen() {
   }
 
   async function gerenciar() {
+    if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
     Haptics.selectionAsync().catch(() => {});
     setAbrindoPortal(true);
     try {
@@ -315,6 +319,15 @@ export default function AssinaturaScreen() {
                 </AnimatedEntrance>
 
                 <AnimatedEntrance index={2}>
+                  {BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
+                    <View style={styles.avisoCard}>
+                      <MaterialCommunityIcons name="information-outline" size={20} color={cores.accentLight} />
+                      <Text style={styles.avisoText}>
+                        O status da assinatura e os recibos continuam disponíveis. Este aplicativo Android não abre páginas externas para contratar ou alterar planos.
+                      </Text>
+                    </View>
+                  ) : (
+                  <>
                   <OlliButton
                     label="Gerenciar assinatura / Cancelar"
                     variant="gradient"
@@ -330,6 +343,8 @@ export default function AssinaturaScreen() {
                       ? 'Você é levado ao ambiente seguro da Stripe para trocar de plano, atualizar o cartão, baixar recibos ou cancelar quando quiser.'
                       : 'Você é levado ao ambiente seguro da Stripe para atualizar o cartão, baixar recibos ou cancelar quando quiser.'}
                   </Text>
+                  </>
+                  )}
                 </AnimatedEntrance>
               </>
             ) : (
@@ -351,7 +366,7 @@ export default function AssinaturaScreen() {
                   </View>
                   <Text style={styles.upsellTitle}>Você está no plano Grátis</Text>
                   <Text style={styles.upsellSub}>
-                    {COMPRA_NO_APP
+                    {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                       ? 'Assinando o Pro, seu escritório de bolso ganha músculo:'
                       : 'O plano Pro oferece:'}
                   </Text>
@@ -369,15 +384,19 @@ export default function AssinaturaScreen() {
                       </View>
                     ))}
                   </View>
-                  <OlliButton
-                    label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
-                    variant="gradient"
-                    size="lg"
-                    fullWidth
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
-                    icon={<MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />}
-                    style={{ marginTop: Spacing.base }}
-                  />
+                  {BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
+                    <Text style={[styles.gerenciarHint, { marginTop: Spacing.base }]}>Consulte a comparação de planos no app. A contratação não está disponível neste aplicativo Android.</Text>
+                  ) : (
+                    <OlliButton
+                      label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
+                      variant="gradient"
+                      size="lg"
+                      fullWidth
+                      onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
+                      icon={<MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />}
+                      style={{ marginTop: Spacing.base }}
+                    />
+                  )}
                 </View>
               </AnimatedEntrance>
             )}

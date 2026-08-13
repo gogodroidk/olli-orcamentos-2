@@ -16,11 +16,12 @@ interface Props {
   icon?: React.ReactNode;
   fullWidth?: boolean;
   haptic?: boolean;
+  accessibilityLabel?: string;
 }
 
 export function OlliButton({
   label, onPress, variant = 'primary', size = 'md',
-  loading, disabled, style, textStyle, icon, fullWidth, haptic = true,
+  loading, disabled, style, textStyle, icon, fullWidth, haptic = true, accessibilityLabel,
 }: Props) {
   const cores = useCores();
   const gradientes = useGradientes();
@@ -62,7 +63,7 @@ export function OlliButton({
     : icon;
 
   const content = loading ? (
-    <ActivityIndicator size="small" color={color} />
+    <ActivityIndicator size="small" color={color} accessible={false} importantForAccessibility="no" />
   ) : (
     <View style={styles.contentRow}>
       {iconColorizado}
@@ -78,6 +79,8 @@ export function OlliButton({
       <OlliPressable
         onPress={onPress}
         disabled={loading}
+        accessibilityLabel={loading ? `${accessibilityLabel ?? label}, carregando` : (accessibilityLabel ?? label)}
+        accessibilityState={{ busy: !!loading }}
         haptic={haptic ? 'light' : false}
         style={[fullWidth && styles.fullWidth, style]}
       >
@@ -99,6 +102,8 @@ export function OlliButton({
     <OlliPressable
       onPress={onPress}
       disabled={disabled || loading}
+      accessibilityLabel={loading ? `${accessibilityLabel ?? label}, carregando` : (accessibilityLabel ?? label)}
+      accessibilityState={{ busy: !!loading }}
       haptic={haptic ? 'light' : false}
       style={[
         styles.base,

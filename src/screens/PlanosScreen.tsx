@@ -44,6 +44,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  */
 
 /**
+ * LOJAS NATIVAS: a Apple exige In-App Purchase e a Google Play exige Play Billing
+ * (ou adesão e integração completas ao programa de faturamento alternativo) para
+ * assinatura consumida dentro do app. Este build não implementa StoreKit nem Play
+ * Billing. Por isso, toda compra externa fica escondida tanto no iOS quanto no
+ * Android: sem checkout, sem WhatsApp comercial, sem escolha de período e sem copy
+ * que direcione a contratação por fora. A web mantém o checkout existente.
+ *
  * iOS (Guideline 3.1.1): a Apple exige In-App Purchase para assinatura consumida
  * dentro do app e proíbe abrir o checkout num navegador externo (link-out) — e
  * proíbe também qualquer caminho que SUBSTITUA a compra, como um "fale conosco"
@@ -60,6 +67,10 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * Stripe nem código dele nesta tela.
  */
 const COMPRA_NO_APP = Platform.OS !== 'ios';
+/** Flag explícita e fail-closed desta branch de release: Android da Google Play
+ * não abre Stripe, Mercado Pago, WhatsApp comercial nem outro caminho externo de
+ * compra de bens digitais. Só a web mantém contratação; o Android apenas informa. */
+const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
 
 /** Período cobrado, escolhido na aba. O 12× NÃO é período — é uma forma de pagar
  *  o valor cheio do ano, tratada à parte (ver a linha honesta no card do Pro). */
@@ -357,6 +368,7 @@ export default function PlanosScreen() {
     // fica escondido em PlanoCard), mas a guarda fica aqui também — Guideline
     // 3.1.1 proíbe o link-out de checkout dentro do app.
     if (!COMPRA_NO_APP) return;
+    if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
     if (!supabase) {
       Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
       return;
@@ -388,6 +400,7 @@ export default function PlanosScreen() {
     // raciocínio do early-return em `assinarPlano` acima: este é justamente o
     // caminho que a Guideline 3.1.1 chama de "fale conosco" para fechar por fora.
     if (!COMPRA_NO_APP) return;
+    if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
     Haptics.selectionAsync().catch(() => {});
     if (!WHATSAPP_SUPORTE) {
       // Honesto: sem número configurado, não finge que vai abrir uma conversa.
@@ -441,9 +454,11 @@ export default function PlanosScreen() {
               <OlliMascot size={44} onDark />
               <Text style={styles.assinanteTitle}>Você já é assinante</Text>
               <Text style={styles.assinanteSub}>
-                Obrigado por apoiar o OLLI! Seu plano <Text style={styles.assinanteForte}>{nomePlanoAtual}</Text> está ativo. {COMPRA_NO_APP
+                Obrigado por apoiar o OLLI! Seu plano <Text style={styles.assinanteForte}>{nomePlanoAtual}</Text> está ativo. {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                   ? 'Faturas, cobrança, troca de plano/cartão e cancelamento ficam na sua página de assinatura.'
-                  : 'Faturas, cobrança, atualização de cartão e cancelamento ficam na sua página de assinatura.'}
+                  : BUILD_PLAY_SEM_COMPRA_EXTERNA
+                    ? 'O status da assinatura e os recibos ficam na sua página de assinatura.'
+                    : 'Faturas, cobrança, atualização de cartão e cancelamento ficam na sua página de assinatura.'}
               </Text>
             </View>
             <TouchableOpacity
@@ -466,9 +481,11 @@ export default function PlanosScreen() {
             <OlliMascot size={44} onDark />
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
             <Text style={styles.introSub}>
-              {COMPRA_NO_APP
+              {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                 ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.'
-                : 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.'}
+                : Platform.OS === 'android'
+                  ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.'
+                  : 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.'}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -478,6 +495,7 @@ export default function PlanosScreen() {
             uma compra que este aparelho não faz) — mas o preço anual continua
             visível como INFORMAÇÃO na linha "no anual…" dentro de cada card. */}
         {COMPRA_NO_APP && (
+        BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
         <AnimatedEntrance index={1}>
           <View style={styles.toggle} accessibilityRole="tablist">
             <TouchableOpacity
@@ -501,6 +519,7 @@ export default function PlanosScreen() {
             </TouchableOpacity>
           </View>
         </AnimatedEntrance>
+        )
         )}
 
         {/* CARTÕES — lado a lado no desktop, empilhados no mobile */}
@@ -532,7 +551,7 @@ export default function PlanosScreen() {
         {/* iOS (Guideline 3.1.1): rodapé escondido — descreve uma compra
             (assinatura que renova, 12x no cartão) que este aparelho não faz;
             mantido sem alteração no Android/web, onde a compra é real. */}
-        {COMPRA_NO_APP && (
+        {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
         <Text style={styles.rodape}>Plano se paga no cartão, no ambiente seguro da Stripe. Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. (O Pix do OLLI é só para recarregar créditos, em Conta → Créditos.) 💙</Text>
         )}
         </>
@@ -674,6 +693,10 @@ function PlanoCard({
         <View style={styles.ctaIndisponivel}>
           <Text style={styles.ctaIndisponivelText}>Assinatura ainda não disponível no iPhone</Text>
         </View>
+      ) : BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
+        <View style={styles.ctaIndisponivel}>
+          <Text style={styles.ctaIndisponivelText}>Contratação não disponível neste aplicativo Android</Text>
+        </View>
       ) : plano.destaque ? (
         <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano}>
           <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan]}>
@@ -703,7 +726,7 @@ function PlanoCard({
       {/* Pro: pagar em 12× no cartão. iOS: escondido (é compra). Fica DEPOIS do
           CTA principal e é claramente secundário — a verdade sobre o custo já
           está na linha acima, então aqui é só o caminho, não a promessa. */}
-      {COMPRA_NO_APP && !plano.atual && plano.id === 'pro' && linha12x ? (
+      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && !plano.atual && plano.id === 'pro' && linha12x ? (
         <TouchableOpacity style={styles.ctaSecundario} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao}>
           <MaterialCommunityIcons name="credit-card-outline" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Pagar em 12x no cartão</Text>
@@ -714,7 +737,7 @@ function PlanoCard({
           (Guideline 3.1.1): escondido — sem o botão de compra, este WhatsApp
           viraria o caminho de venda por fora do app, o link-out que a
           guideline proíbe. */}
-      {COMPRA_NO_APP && !plano.atual && plano.id === 'empresa' && (
+      {COMPRA_NO_APP && !plano.atual && plano.id === 'empresa' && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
         <TouchableOpacity style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
           <MaterialCommunityIcons name="whatsapp" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Falar com a gente</Text>

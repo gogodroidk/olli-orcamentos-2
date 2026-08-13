@@ -1,0 +1,86 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Layout from "../layouts/Layout.astro";
+
+const whatsapp = "5511941727487";
+const mensagem = encodeURIComponent(
+	"Olá, quero solicitar a exclusão da minha conta e dos dados associados no OLLI Orçamentos.",
+);
+const whatsappUrl = `https://wa.me/${whatsapp}?text=${mensagem}`;
+---
+
+<Layout
+  titulo="Excluir conta e dados — OLLI"
+  descricao="Como excluir sua conta do OLLI Orçamentos e solicitar a remoção dos dados associados."
+>
+  <Header>
+    <a href="/" class="text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
+  </Header>
+
+  <main class="mx-auto max-w-3xl px-6 py-14 sm:py-20">
+    <span class="eyebrow">Privacidade e conta</span>
+    <h1 class="mt-4 text-[clamp(2rem,4vw,2.8rem)] font-extrabold tracking-tight text-ink">
+      Excluir sua conta e seus dados
+    </h1>
+    <p class="mt-4 text-lg leading-relaxed text-slate">
+      Você pode apagar sua conta diretamente no aplicativo. Se não conseguir acessar o app,
+      também pode enviar uma solicitação pelo canal abaixo.
+    </p>
+
+    <section class="mt-10 rounded-cartao border border-line bg-white p-6 sm:p-8">
+      <h2 class="text-xl font-bold text-ink">Pelo aplicativo</h2>
+      <ol class="mt-5 space-y-3">
+        {[
+          "Abra a aba Conta.",
+          "Entre em Privacidade e dados.",
+          "Toque em Excluir minha conta.",
+          "Digite EXCLUIR e confirme a solicitação.",
+        ].map((passo, i) => (
+          <li class="flex gap-3 text-slate">
+            <span class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-tint text-sm font-bold text-brand-fg">
+              {i + 1}
+            </span>
+            <span class="pt-0.5 leading-relaxed">{passo}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <section class="mt-6 rounded-cartao border border-line bg-white p-6 sm:p-8">
+      <h2 class="text-xl font-bold text-ink">Sem acesso ao aplicativo</h2>
+      <p class="mt-3 leading-relaxed text-slate">
+        Envie a solicitação pelo WhatsApp do suporte. Para proteger sua conta, poderemos pedir
+        informações suficientes para confirmar que a solicitação é realmente sua.
+      </p>
+      <a
+        href={whatsappUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-6 inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-6 py-3 font-bold text-white transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        Solicitar exclusão pelo WhatsApp
+      </a>
+    </section>
+
+    <section class="mt-10 space-y-4">
+      <h2 class="text-xl font-bold text-ink">O que acontece com os dados</h2>
+      <p class="leading-relaxed text-slate">
+        A exclusão remove a conta e os dados associados usados pelo serviço, respeitadas as
+        retenções que sejam obrigatórias por lei, prevenção a fraude ou comprovação de transações.
+        Se alguma informação precisar ser mantida, ela ficará restrita à finalidade e ao prazo
+        aplicáveis.
+      </p>
+      <p class="leading-relaxed text-slate">
+        Dados que existem somente no aparelho são removidos quando você conclui a exclusão no app
+        ou apaga os dados do aplicativo no Android. Antes de excluir, exporte os documentos que
+        quiser guardar.
+      </p>
+      <p class="text-sm leading-relaxed text-muted">
+        Saiba mais na <a class="font-semibold text-brand-fg underline" href="/legal/privacidade/">Política de Privacidade</a>.
+      </p>
+    </section>
+  </main>
+
+  <Footer class="max-w-3xl" />
+</Layout>

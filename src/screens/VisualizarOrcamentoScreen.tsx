@@ -111,6 +111,7 @@ export default function VisualizarOrcamentoScreen() {
   const [criandoOS, setCriandoOS] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [erroCarregamento, setErroCarregamento] = useState(false);
   const [naoEncontrado, setNaoEncontrado] = useState(false);
   const [celebrando, setCelebrando] = useState(false);
   // ASSINATURA DO CLIENTE — três estados, nunca dois:
@@ -144,16 +145,17 @@ export default function VisualizarOrcamentoScreen() {
     trilhaDoLink(orcamentoId).then(setTrilha).catch(() => setTrilhaErro(true));
   }, [orcamentoId]);
 
-  useFocusEffect(useCallback(() => {
-    async function load() {
-      setCarregando(true);
+  const load = useCallback(async () => {
+    setCarregando(true);
+    setErroCarregamento(false);
+    setNaoEncontrado(false);
+    try {
       const [o, e, deps, vs] = await Promise.all([
         getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId),
       ]);
       if (!o) {
         setOrc(null);
         setNaoEncontrado(true);
-        setCarregando(false);
         return;
       }
       statusAnteriorRef.current = o.status;
@@ -161,11 +163,16 @@ export default function VisualizarOrcamentoScreen() {
       setEmpresa(e);
       setDepoimentos(deps);
       setVersoes(vs);
-      setNaoEncontrado(false);
-      setCarregando(false);
       loadTrilha();
+    } catch {
+      setErroCarregamento(true);
+    } finally {
+      setCarregando(false);
     }
-    load();
+  }, [orcamentoId, loadTrilha]);
+
+  useFocusEffect(useCallback(() => {
+    void load();
     // sincronizarStatusLinks() nunca lança — traz de volta o status que o
     // cliente deu pelo link público (visualizado/aprovado/recusado). Não é
     // aguardado: a tela abre instantaneamente com os dados locais, e só recarrega
@@ -178,7 +185,7 @@ export default function VisualizarOrcamentoScreen() {
     puxarVersoesNuvemParaOrcamento(orcamentoId).then(aplicadas => {
       if (aplicadas > 0) getVersoesOrcamento(orcamentoId).then(setVersoes).catch(() => {});
     }).catch(() => {});
-  }, [orcamentoId, loadTrilha]));
+  }, [orcamentoId, load]));
 
   async function handleShare() {
     if (!orc || !empresa) return;
@@ -448,7 +455,30 @@ export default function VisualizarOrcamentoScreen() {
     );
   }
 
-  if (!orc || carregando) return <View style={{ flex: 1, backgroundColor: cores.background, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={cores.primary} /></View>;
+  if (erroCarregamento || (!carregando && !orc)) {
+    return (
+      <View style={{ flex: 1, backgroundColor: cores.background }}>
+        <GradientHeader title="Orçamento" onBack={() => goBackOrHome(nav)} compact />
+        <EmptyState
+          icon="cloud-alert-outline"
+          title="Não foi possível carregar"
+          subtitle="Seus dados continuam seguros. Verifique a conexão e tente novamente."
+          actionLabel="Tentar novamente"
+          onAction={() => { void load(); }}
+        />
+      </View>
+    );
+  }
+
+  if (carregando) {
+    return (
+      <View style={{ flex: 1, backgroundColor: cores.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={cores.primary} accessibilityLabel="Carregando orçamento" />
+      </View>
+    );
+  }
+
+  if (!orc) return null;
 
   const Row = ({ label, value }: { label: string; value?: string }) =>
     value ? (

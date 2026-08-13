@@ -550,8 +550,8 @@ export async function pushRow(table: SyncTable, objLocal: unknown): Promise<void
  * nuvem AGORA tem um `atualizado_em` mais novo que esse carimbo, outro aparelho
  * escreveu depois do nosso último pull: pulamos o push (não sobrescrevemos uma
  * edição que nunca vimos) em vez de aplicar last-write-wins cego. Sem carimbo
- * local (aparelho nunca deu pull, ex.: só criou a empresa localmente) o push
- * sempre acontece — piso seguro igual ao resto do módulo.
+ * local (aparelho nunca deu pull, ex.: só criou a empresa localmente) o push só
+ * acontece depois de confirmar que a nuvem ainda não possui uma empresa.
  */
 // Contexto de escrita da EQUIPE (Onda 2): quando o usuário é um MEMBRO
 // não-dono de uma organização (técnico/gestor/admin), os orçamentos e
@@ -646,6 +646,79 @@ async function alvoEmpresa(): Promise<{ userId: string; souDono: boolean } | nul
 }
 
 /**
+ * Estado remoto do cadastro que pertence à sessão atual.
+ *
+ * `nao_sei` é deliberadamente diferente de `nao_tem`: falha de rede, RLS,
+ * sessão incompleta ou partição local indeterminada nunca autorizam abrir um
+ * cadastro novo nem mostrar uma Home vazia. Quando a linha existe, ela é
+ * aplicada ao SQLite antes de devolver `tem`, para a próxima tela já receber o
+ * cadastro real em vez de aguardar o sync de fundo.
+ */
+export type EstadoEmpresaDaSessao = 'tem' | 'nao_tem' | 'nao_sei';
+
+async function comPrazo<T>(operacao: PromiseLike<T>, limiteMs = 8_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(operacao),
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('tempo_esgotado')), limiteMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function resolverEstadoEmpresaDaSessao(): Promise<EstadoEmpresaDaSessao> {
+  if (!supabase) return 'nao_sei';
+
+  try {
+    const usuario = await getCurrentUser();
+    if (!usuario?.id) return 'nao_sei';
+
+    // Nunca leia/escreva empresa no banco que ficou aberto para outra conta.
+    await abrirParticaoDoUsuario(usuario.id);
+    if (!podeSincronizar(await donoDoBancoAberto(usuario.id))) return 'nao_sei';
+
+    // Duas tentativas curtas cobrem instabilidade transitória sem transformar o
+    // boot numa espera indefinida. Cada tentativa relê o contexto de equipe para
+    // não reutilizar o tenant cacheado da conta anterior.
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      try {
+        await comPrazo(atualizarContextoEquipe());
+        const alvo = await alvoEmpresa();
+        if (!alvo) throw new Error('contexto_empresa_indeterminado');
+
+        const { data, error } = await comPrazo(
+          supabase.from('empresa').select('*').eq('user_id', alvo.userId).maybeSingle(),
+        );
+        if (error) throw error;
+
+        if (data) {
+          const empresa = rowToEmpresa(data);
+          if (!empresa) return 'nao_sei';
+          await localUpsertEmpresa(empresa, (data as any)?.atualizado_em);
+          return 'tem';
+        }
+
+        // Um membro não pode criar a empresa do dono. Se a linha do dono não
+        // veio, bloquear é mais seguro do que transformá-lo em conta pessoal.
+        return alvo.souDono ? 'nao_tem' : 'nao_sei';
+      } catch {
+        if (tentativa === 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 600));
+        }
+      }
+    }
+  } catch {
+    // A decisão de navegação/escrita precisa do terceiro estado; nunca colapsar.
+  }
+
+  return 'nao_sei';
+}
+
+/**
  * Esquece quem somos. Chamado no logout/troca de conta (`abortarSyncEmAndamento`)
  * para que o contexto do usuário ANTERIOR nunca carimbe uma linha do próximo.
  */
@@ -668,11 +741,14 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       // tabelas de tenant — não saber de quem é a linha nunca autoriza gravá-la.
       const alvo = await alvoEmpresa();
       if (!alvo?.souDono) return;
-      if (await empresaNuvemMudouDesdeUltimoPull(alvo.userId)) {
+      const estadoRemoto = await estadoEmpresaAntesDoPush(alvo.userId);
+      if (estadoRemoto !== 'pode_escrever') {
         // Outro aparelho editou a empresa depois do nosso último pull: não
         // sobrescrever — e puxar a versão mais nova para o local convergir em vez
         // de ficar divergente em silêncio (a edição local perde, estado fica são).
-        void pullEmpresaMaisNova(alvo.userId).catch(() => {});
+        if (estadoRemoto === 'nuvem_mais_nova') {
+          void pullEmpresaMaisNova(alvo.userId).catch(() => {});
+        }
         return;
       }
     }
@@ -704,14 +780,15 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
 }
 
 /**
- * true se a linha `empresa` na nuvem for ESTRITAMENTE mais nova que o carimbo do
- * último pull conhecido por este aparelho (EMPRESA_STAMP_KEY) — ou seja, outro
- * aparelho escreveu depois da última vez que vimos a nuvem. Sem carimbo local
- * devolve false → o push acontece (piso seguro). NUNCA lança.
+ * Decide se o push de `empresa` pode seguir. O terceiro estado é obrigatório:
+ * erro ao consultar a nuvem não é prova de que a linha não existe e, portanto,
+ * adia a escrita em vez de sobrescrever um cadastro que este aparelho nunca viu.
  */
-async function empresaNuvemMudouDesdeUltimoPull(userId: string): Promise<boolean> {
+type EstadoEmpresaAntesDoPush = 'pode_escrever' | 'nuvem_mais_nova' | 'nao_sei';
+
+async function estadoEmpresaAntesDoPush(userId: string): Promise<EstadoEmpresaAntesDoPush> {
   try {
-    if (!supabase) return false;
+    if (!supabase) return 'nao_sei';
     const stampLocal = await AsyncStorage.getItem(EMPRESA_STAMP_KEY).catch(() => null);
     if (!stampLocal) {
       // Sem carimbo = este aparelho NUNCA puxou a empresa. Se a nuvem JÁ tem uma
@@ -724,18 +801,20 @@ async function empresaNuvemMudouDesdeUltimoPull(userId: string): Promise<boolean
       // `empresa_select` → donos_visiveis) a linha do DONO além da própria, e o
       // maybeSingle devolvia erro com 2 linhas — ou, pior, a resposta era sobre a
       // empresa de OUTRA pessoa. Só perguntamos sobre a linha do nosso tenant.
-      const { data } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
-      return !!data;
+      const { data, error } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
+      if (error) return 'nao_sei';
+      return data ? 'nuvem_mais_nova' : 'pode_escrever';
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('empresa')
       .select('atualizado_em')
       .eq('user_id', userId)
       .maybeSingle();
+    if (error) return 'nao_sei';
     const remoto = (data as any)?.atualizado_em as string | undefined;
-    return tsMaisNovo(remoto, stampLocal);
+    return tsMaisNovo(remoto, stampLocal) ? 'nuvem_mais_nova' : 'pode_escrever';
   } catch {
-    return false;
+    return 'nao_sei';
   }
 }
 
@@ -748,7 +827,7 @@ async function empresaNuvemMudouDesdeUltimoPull(userId: string): Promise<boolean
 async function pullEmpresaMaisNova(userId: string): Promise<void> {
   try {
     if (!supabase) return;
-    // Escopado ao tenant (ver empresaNuvemMudouDesdeUltimoPull): sem o filtro, a
+    // Escopado ao tenant (ver estadoEmpresaAntesDoPush): sem o filtro, a
     // "versão mais nova" podia ser a empresa de outro dono visível pela RLS.
     const { data } = await supabase.from('empresa').select('*').eq('user_id', userId).maybeSingle();
     const emp = rowToEmpresa(data);
@@ -763,7 +842,7 @@ async function marcarEmpresaVistaAgora(): Promise<void> {
   try {
     await AsyncStorage.setItem(EMPRESA_STAMP_KEY, new Date().toISOString());
   } catch {
-    // best-effort: sem carimbo, o próximo push cai no piso seguro (sempre escreve)
+    // Sem carimbo, o próximo push consulta a nuvem; se não conseguir, adia.
   }
 }
 

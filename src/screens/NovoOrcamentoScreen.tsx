@@ -522,13 +522,13 @@ export default function NovoOrcamentoScreen() {
             </>
           ) : (
             <OlliButton
-              label="Gerar orçamento"
+              label="Salvar e revisar"
               variant="gradient"
               size="md"
               onPress={() => handleSave()}
               loading={saving}
               disabled={!canAdvance()}
-              icon={<MaterialCommunityIcons name="check-circle" size={18} color="#fff" />}
+              icon={<MaterialCommunityIcons name="content-save-check-outline" size={18} color="#fff" />}
             />
           )}
         </View>

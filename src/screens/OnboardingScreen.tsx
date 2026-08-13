@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, sobreSecundario, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
@@ -29,13 +30,19 @@ import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId 
 import { VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
-import { ONBOARDED_KEY, marcarVisto } from '../services/onboarding';
+import { ONBOARDED_KEY } from '../services/onboarding';
+import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
 /** Reexportada por compat: EntrarScreen ainda importa daqui. Fonte real: services/onboarding.ts. */
 export { ONBOARDED_KEY };
+
+/** O estado de onboarding pertence à conta, não ao aparelho compartilhado. */
+export function onboardedKeyForUser(userId: string): string {
+  return `${ONBOARDED_KEY}.${userId}`;
+}
 
 /** Empresa em branco (mesma base de MeuNegocioScreen) para o 1º cadastro. */
 function empresaEmBranco(): Empresa {
@@ -97,6 +104,8 @@ export default function OnboardingScreen() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const scrollRef = useRef<ScrollView>(null);
+  const [acessoCadastro, setAcessoCadastro] = useState<'verificando' | 'liberado' | 'bloqueado'>('verificando');
+  const verificacaoRef = useRef(0);
 
   // dados da empresa (acumulados ao longo das etapas)
   const [emp, setEmp] = useState<Empresa>(empresaEmBranco());
@@ -119,6 +128,36 @@ export default function OnboardingScreen() {
   // último serviço (opcional)
   const [servNome, setServNome] = useState('');
   const [servPreco, setServPreco] = useState(0);
+
+  /**
+   * O formulário só existe depois que a ausência da empresa foi confirmada na
+   * conta certa. Em aparelho novo/offline, `nao_sei` mostra retry; nunca permite
+   * montar uma empresa em branco por cima de um cadastro remoto que ainda não
+   * conseguimos baixar.
+   */
+  async function verificarAcessoAoCadastro() {
+    const verificacao = ++verificacaoRef.current;
+    setAcessoCadastro('verificando');
+    const estado = await resolverEstadoEmpresaDaSessao();
+    if (verificacao !== verificacaoRef.current) return;
+
+    if (estado === 'tem') {
+      // A empresa real já foi aplicada ao SQLite pelo resolver. O flag é só de
+      // experiência; falhar ao gravá-lo não justifica esconder dados existentes.
+      try {
+        const usuario = await getCurrentUser();
+        if (usuario?.id) await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
+      } catch { /* tenta de novo no próximo boot */ }
+      irParaApp();
+      return;
+    }
+    setAcessoCadastro(estado === 'nao_tem' ? 'liberado' : 'bloqueado');
+  }
+
+  React.useEffect(() => {
+    void verificarAcessoAoCadastro();
+    return () => { verificacaoRef.current += 1; };
+  }, []);
 
   const setField = useCallback((field: keyof Empresa, value: string) => {
     setEmp(p => ({ ...p, [field]: value }));
@@ -238,9 +277,12 @@ export default function OnboardingScreen() {
     setCnpjLoading(false);
   }
 
-  // marca como concluído (idempotente) — usado tanto no "pular" quanto no "concluir"
+  // Marca como concluído e PROPAGA falha. O helper geral é best-effort para dicas,
+  // mas aqui a navegação depende da persistência ter funcionado de verdade.
   async function marcarConcluido() {
-    await marcarVisto();
+    const usuario = await getCurrentUser();
+    if (!usuario?.id) throw new Error('sessao_indeterminada');
+    await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
   }
 
   /**
@@ -303,13 +345,43 @@ export default function OnboardingScreen() {
     }
   }
 
-  // "Pular": grava o que já foi preenchido, marca o flag e abre o app.
+  /** Confirma novamente imediatamente antes da escrita (o wizard pode ficar aberto por minutos). */
+  async function confirmarAusenciaAntesDeSalvar(): Promise<boolean> {
+    const estado = await resolverEstadoEmpresaDaSessao();
+    if (estado === 'nao_tem') return true;
+    if (estado === 'tem') {
+      try {
+        const usuario = await getCurrentUser();
+        if (usuario?.id) await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
+      } catch { /* empresa local já está segura */ }
+      Alert.alert('Cadastro encontrado', 'Carregamos os dados que já existiam na sua conta. Nada foi substituído.');
+      irParaApp();
+      return false;
+    }
+    Alert.alert(
+      'Não foi possível confirmar sua conta',
+      'Nada foi salvo ou substituído. Conecte-se à internet e tente novamente para confirmarmos se já existe um cadastro.',
+    );
+    return false;
+  }
+
+  // "Pular": só marca concluído DEPOIS que os dados parciais foram persistidos.
+  // Se qualquer etapa falhar, permanece aqui e explica; nunca engole o erro.
   async function pular() {
+    if (saving) return;
     Haptics.selectionAsync().catch(() => {});
-    track(Eventos.onboardingSkipped, { step });
-    try { await salvarTudo(); } catch { /* best-effort: pular nunca trava */ }
-    await marcarConcluido();
-    irParaApp();
+    setSaving(true);
+    try {
+      if (!(await confirmarAusenciaAntesDeSalvar())) return;
+      await salvarTudo();
+      await marcarConcluido();
+      track(Eventos.onboardingSkipped, { step });
+      irParaApp();
+    } catch {
+      Alert.alert('Não foi possível pular agora', 'Seus dados não foram marcados como concluídos. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   /** Valida a etapa atual; preenche `errors` e retorna se pode avançar. */
@@ -354,6 +426,7 @@ export default function OnboardingScreen() {
     if (!emp.nome.trim()) { setStep(0); setErrors({ nome: 'Conte o nome do seu negócio.' }); return; }
     setSaving(true);
     try {
+      if (!(await confirmarAusenciaAntesDeSalvar())) return;
       await salvarTudo();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       track(Eventos.onboardingCompleted, { comServico: !!servNome.trim() });
@@ -379,6 +452,36 @@ export default function OnboardingScreen() {
       setEmp(p => ({ ...p, [field]: r.assets[0].uri }));
       Haptics.selectionAsync().catch(() => {});
     }
+  }
+
+  // Antes das boas-vindas, resolvemos o terceiro estado. Esta não é uma tela de
+  // onboarding: é um bloqueio honesto enquanto não sabemos se a conta já possui
+  // cadastro na nuvem.
+  if (acessoCadastro !== 'liberado') {
+    const verificando = acessoCadastro === 'verificando';
+    return (
+      <View style={[styles.verificationRoot, { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xl }]}>
+        <OlliMascot size={86} float={false} />
+        <View style={styles.verificationCard}>
+          {verificando ? (
+            <ActivityIndicator size="large" color={cores.primary} />
+          ) : (
+            <MaterialCommunityIcons name="cloud-alert-outline" size={42} color={cores.primary} />
+          )}
+          <Text style={styles.verificationTitle}>
+            {verificando ? 'Confirmando seus dados…' : 'Precisamos confirmar sua conta'}
+          </Text>
+          <Text style={styles.verificationText}>
+            {verificando
+              ? 'Estamos verificando se sua empresa já está cadastrada para não substituir nenhuma informação.'
+              : 'Não conseguimos consultar a nuvem agora. Seus dados neste aparelho continuam intactos; conecte-se à internet para verificarmos se já existe uma empresa antes de criar outra.'}
+          </Text>
+          {!verificando && (
+            <OlliButton label="Tentar novamente" variant="gradient" size="lg" fullWidth onPress={verificarAcessoAoCadastro} />
+          )}
+        </View>
+      </View>
+    );
   }
 
   // 1ª tela: boas-vindas calorosas da OLLI (protótipo 04). "Começar" abre o
@@ -408,8 +511,8 @@ export default function OnboardingScreen() {
               <Text style={[styles.brandSub, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={pular} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Pular configuração">
-            <Text style={[styles.skip, { color: gradientes.sobreHeader }]}>Pular</Text>
+          <TouchableOpacity disabled={saving} onPress={pular} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Pular configuração">
+            <Text style={[styles.skip, { color: gradientes.sobreHeader }]}>{saving ? 'Salvando…' : 'Pular'}</Text>
           </TouchableOpacity>
         </View>
         <StepIndicator steps={STEPS} current={step} />
@@ -482,7 +585,7 @@ export default function OnboardingScreen() {
               <OlliInput label="Slogan" value={emp.slogan} onChangeText={v => setField('slogan', v)} placeholder="Frase da sua marca" leftIcon="format-quote-close" containerStyle={{ marginBottom: 0 }} />
             </View>
 
-            <Assure icon="lock-outline" text="Seus dados ficam no seu aparelho. Quanto mais completo, mais profissional fica o seu PDF." />
+            <Assure icon="lock-outline" text="Os cadastros ficam neste aparelho e sincronizam com sua conta quando houver internet. Logo, assinatura e outras imagens podem continuar somente neste dispositivo." />
           </AnimatedEntrance>
         )}
 
@@ -673,12 +776,12 @@ function BoasVindas({ onStart, insets }: {
         <Text style={[styles.wcHi, { color: gradientes.sobrePrimary }]}>Olá! Eu sou a OLLI 👋</Text>
         {/* Subtítulo SECUNDÁRIO sobre gradientes.primary: sobreSecundario mantém 4.5:1 nas
             duas pontas. O 'rgba(255,255,255,0.82)' cravado media 3.90:1 na ponta clara (#0B6FCE). */}
-        <Text style={[styles.wcSub, { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) }]}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular, e você organiza a execução em campo até fechar com o recibo — tudo funciona mesmo sem internet.</Text>
+        <Text style={[styles.wcSub, { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) }]}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular e você organiza a execução em campo até fechar com o recibo.</Text>
         <View style={styles.wcFeatures}>
           <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
           <WcFeature icon="link-variant" text="O cliente aprova ou recusa pelo link, sem instalar nada" />
           <WcFeature icon="toolbox-outline" text="Ordens de serviço e equipe organizadas em campo" />
-          <WcFeature icon="wifi-off" text="Funciona sem internet — sincroniza sozinho quando ela voltar" />
+          <WcFeature icon="wifi-off" text="Cadastros já baixados funcionam offline; links, IA, pagamentos e sincronização precisam de internet" />
         </View>
       </View>
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>
@@ -713,6 +816,11 @@ function WcFeature({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.g
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+
+  verificationRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background, paddingHorizontal: Spacing.xl, gap: Spacing.lg },
+  verificationCard: { width: '100%', maxWidth: 440, alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.xl, ...sombrasDe(c).md },
+  verificationTitle: { color: c.onSurface, fontSize: 21, fontWeight: '800', textAlign: 'center', marginTop: Spacing.base },
+  verificationText: { color: c.onSurfaceVariant, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: Spacing.sm, marginBottom: Spacing.lg },
 
   // Boas-vindas (protótipo 04) — vive inteira sobre gradientes.primary
   // (sempre colorido, nos dois modos), por isso texto/glass ficam fixos aqui,

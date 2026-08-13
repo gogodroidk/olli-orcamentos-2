@@ -88,7 +88,8 @@ checar('o texto do upsell ("Assinando o Pro...") é condicionado a COMPRA_NO_APP
   const janela = assinaturaSrc.slice(Math.max(0, idx - 150), idx);
   return janela.includes('{COMPRA_NO_APP');
 })(), true);
-checar('o rótulo do botão do upsell é condicionado a COMPRA_NO_APP', assinaturaSrc.includes("label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}"), true);
+checar('o CTA de upsell não é renderizado no Android Play', assinaturaSrc.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA ? ('), true);
+checar('o rótulo de compra só existe fora do Android Play', assinaturaSrc.includes("label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}"), true);
 
 console.log('\n3) ContaScreen.tsx — mesmo interruptor, mesmo tratamento (regressão do achado 4 da rodada 1)');
 const contaSrc = ler('../src/screens/ContaScreen.tsx');
@@ -101,7 +102,7 @@ checar('"Assine direto no app" é condicionado a COMPRA_NO_APP', (() => {
   const janela = contaSrc.slice(Math.max(0, idx - 150), idx);
   return janela.includes('{COMPRA_NO_APP');
 })(), true);
-checar('o rótulo do botão de upsell é condicionado a COMPRA_NO_APP', contaSrc.includes("COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'"), true);
+checar('o rótulo do botão de upsell exige compra permitida e não-Android Play', contaSrc.includes("COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'"), true);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

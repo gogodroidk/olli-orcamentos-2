@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { View, Animated, StyleSheet, Easing, Platform } from 'react-native';
+import { View, Animated, StyleSheet, Easing, Platform, AccessibilityInfo } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Typography, useCores, useGradientes, useEstilos, sombrasDe, type Cores } from '../theme';
-import { Motion } from '../theme/motion';
+import { Motion, useReducedMotion } from '../theme/motion';
 
 interface Props {
   visible: boolean;
@@ -16,7 +16,7 @@ const useNativeAnimations = Platform.OS !== 'web';
 const N_PARTICULAS = 14;
 
 const TEXTOS: Record<Props['tipo'], string> = {
-  gerado: 'Orçamento pronto!',
+  gerado: 'Orçamento salvo!',
   aprovado: 'Negócio fechado!',
 };
 
@@ -45,6 +45,9 @@ export function Celebracao({ visible, tipo, onDone }: Props) {
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   const progress = useRef(new Animated.Value(0)).current;
+  const reduzirMovimento = useReducedMotion();
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
   // '#F7B23B' é um dourado de confete decorativo, sem chave semântica no tema
   // (não é `warning` — aquele é ajustado por contraste, este é só celebração).
   const coresParticula = useMemo(
@@ -53,27 +56,40 @@ export function Celebracao({ visible, tipo, onDone }: Props) {
   );
   const particulas = useMemo(() => gerarParticulas(coresParticula), [visible, coresParticula]);
 
+  // Feedback semântico e háptico acontece uma vez por celebração. Fica em um
+  // efeito separado porque a preferência de movimento é resolvida de forma
+  // assíncrona e pode mudar enquanto o overlay está visível.
+  useEffect(() => {
+    if (!visible) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    AccessibilityInfo.announceForAccessibility?.(TEXTOS[tipo]);
+  }, [visible, tipo]);
+
   useEffect(() => {
     if (!visible) {
       progress.setValue(0);
       return;
     }
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-
     progress.setValue(0);
-    Animated.timing(progress, {
+    if (reduzirMovimento) {
+      const id = setTimeout(() => onDoneRef.current?.(), 0);
+      return () => clearTimeout(id);
+    }
+
+    const animation = Animated.timing(progress, {
       toValue: 1,
       duration: Motion.dur.celebrate,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: useNativeAnimations,
-    }).start(() => {
-      onDone?.();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, tipo]);
+    animation.start(({ finished }) => {
+      if (finished) onDoneRef.current?.();
+    });
+    return () => animation.stop();
+  }, [visible, tipo, reduzirMovimento, progress]);
 
-  if (!visible) return null;
+  if (!visible || reduzirMovimento) return null;
 
   const checkScale = progress.interpolate({
     inputRange: [0, 0.35, 0.55, 1],

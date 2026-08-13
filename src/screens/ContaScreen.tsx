@@ -60,6 +60,7 @@ import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../services/stora
  * promessa de compra e sem mandar ninguém para o site.
  */
 const COMPRA_NO_APP = Platform.OS !== 'ios';
+const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
 
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
@@ -841,18 +842,20 @@ export default function ContaScreen() {
               </View>
               <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
               <Text style={styles.proSub}>
-                {COMPRA_NO_APP
+                {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                   ? 'Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.'
-                  : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
+                  : Platform.OS === 'android'
+                    ? 'Relatórios avançados, metas de vendas e suporte prioritário. Neste aplicativo Android você pode consultar os planos, mas não contratar por fora da Google Play.'
+                    : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
               </Text>
               <OlliPressable
                 style={styles.proBtn}
                 haptic={false}
                 scaleTo={0.97}
-                accessibilityLabel={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
+                accessibilityLabel={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}
                 onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
               >
-                <Text style={styles.proBtnText}>{COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
+                <Text style={styles.proBtnText}>{COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
               </OlliPressable>
             </View>

@@ -59,7 +59,8 @@ function applyMask(mask: MaskType, raw: string): string {
  */
 function OlliInputBase({
   label, value, onChangeText, mask = 'none', error, helper, required,
-  leftIcon, rightIcon, onRightIconPress, rightIconLabel, containerStyle, multiline, keyboardType, ...rest
+  leftIcon, rightIcon, onRightIconPress, rightIconLabel, containerStyle, multiline, keyboardType,
+  accessibilityLabel, accessibilityHint, onFocus, onBlur, ...rest
 }: OlliInputProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -78,11 +79,18 @@ function OlliInputBase({
     inputRange: [0, 1],
     outputRange: [error ? cores.danger : cores.outline, error ? cores.danger : cores.primary],
   });
+  const nomeAcessivelBase = accessibilityLabel ?? label;
+  const nomeAcessivel = nomeAcessivelBase
+    ? `${nomeAcessivelBase}${required ? ', obrigatório' : ''}`
+    : undefined;
+  const dicaAcessivel = [accessibilityHint ?? helper, error ? `Erro: ${error}` : null]
+    .filter(Boolean)
+    .join('. ') || undefined;
 
   return (
     <View style={[styles.container, containerStyle]}>
       {label ? (
-        <Text style={styles.label}>
+        <Text style={styles.label} accessible={false}>
           {label}{required ? <Text style={styles.req}> *</Text> : null}
         </Text>
       ) : null}
@@ -99,34 +107,40 @@ function OlliInputBase({
             size={20}
             color={focused ? cores.primary : cores.onSurfaceMuted}
             style={styles.icon}
+            accessible={false}
+            importantForAccessibility="no"
           />
         ) : null}
         <TextInput
           style={[styles.input, multiline && styles.inputMultiline]}
           value={value}
           onChangeText={handleChange}
-          onFocus={(e) => { setFocused(true); animateTo(1); rest.onFocus?.(e); }}
-          onBlur={(e) => { setFocused(false); animateTo(0); rest.onBlur?.(e); }}
+          onFocus={(e) => { setFocused(true); animateTo(1); onFocus?.(e); }}
+          onBlur={(e) => { setFocused(false); animateTo(0); onBlur?.(e); }}
           placeholderTextColor={cores.onSurfaceMuted}
           keyboardType={keyboardType ?? KEYBOARD_BY_MASK[mask]}
           multiline={multiline}
+          accessibilityLabel={nomeAcessivel}
+          accessibilityHint={dicaAcessivel}
+          aria-invalid={!!error}
+          aria-required={!!required}
           {...rest}
         />
         {rightIcon ? (
           onRightIconPress ? (
             <TouchableOpacity onPress={onRightIconPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={rightIconLabel}>
-              <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? cores.primary : cores.onSurfaceMuted} style={styles.rightIcon} />
+              <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? cores.primary : cores.onSurfaceMuted} style={styles.rightIcon} accessible={false} importantForAccessibility="no" />
             </TouchableOpacity>
           ) : (
-            <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? cores.primary : cores.onSurfaceMuted} style={styles.rightIcon} />
+            <MaterialCommunityIcons name={rightIcon} size={20} color={focused ? cores.primary : cores.onSurfaceMuted} style={styles.rightIcon} accessible={false} importantForAccessibility="no" />
           )
         ) : null}
       </Animated.View>
 
       {error ? (
-        <Text style={styles.error}>{error}</Text>
+        <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>
       ) : helper ? (
-        <Text style={styles.helper}>{helper}</Text>
+        <Text style={styles.helper} accessible={false}>{helper}</Text>
       ) : null}
     </View>
   );
@@ -145,10 +159,13 @@ interface OlliMoneyInputProps {
   helper?: string;
   placeholder?: string;
   containerStyle?: ViewStyle;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 function OlliMoneyInputBase({
   label, value, onChangeValue, required, error, helper, placeholder, containerStyle,
+  accessibilityLabel, accessibilityHint,
 }: OlliMoneyInputProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -170,11 +187,16 @@ function OlliMoneyInputBase({
   });
 
   const display = value ? currencyToMask(value) : '';
+  const nomeAcessivelBase = accessibilityLabel ?? label ?? 'Valor em reais';
+  const nomeAcessivel = `${nomeAcessivelBase}${required ? ', obrigatório' : ''}`;
+  const dicaAcessivel = [accessibilityHint ?? helper, error ? `Erro: ${error}` : null]
+    .filter(Boolean)
+    .join('. ') || undefined;
 
   return (
     <View style={[styles.container, containerStyle]}>
       {label ? (
-        <Text style={styles.label}>
+        <Text style={styles.label} accessible={false}>
           {label}{required ? <Text style={styles.req}> *</Text> : null}
         </Text>
       ) : null}
@@ -183,7 +205,7 @@ function OlliMoneyInputBase({
         { borderColor, backgroundColor: focused ? cores.surfaceElevated : cores.surfaceVariant },
         focused && styles.fieldFocused,
       ]}>
-        <Text style={[styles.currencyPrefix, focused && { color: cores.primary }]}>R$</Text>
+        <Text style={[styles.currencyPrefix, focused && { color: cores.primary }]} accessible={false}>R$</Text>
         <TextInput
           style={styles.input}
           value={display}
@@ -193,12 +215,16 @@ function OlliMoneyInputBase({
           placeholder={placeholder ?? '0,00'}
           placeholderTextColor={cores.onSurfaceMuted}
           keyboardType="numeric"
+          accessibilityLabel={nomeAcessivel}
+          accessibilityHint={dicaAcessivel}
+          aria-invalid={!!error}
+          aria-required={!!required}
         />
       </Animated.View>
       {error ? (
-        <Text style={styles.error}>{error}</Text>
+        <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>
       ) : helper ? (
-        <Text style={styles.helper}>{helper}</Text>
+        <Text style={styles.helper} accessible={false}>{helper}</Text>
       ) : null}
     </View>
   );

@@ -30,10 +30,10 @@ import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { instalarCapturaDeErro } from './src/services/errorReport';
-import { getDb, getEmpresa } from './src/database/database';
-import { ONBOARDED_KEY } from './src/screens/OnboardingScreen';
+import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/database';
+import { onboardedKeyForUser } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
-import { syncOnLogin } from './src/services/cloudSync';
+import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
@@ -251,20 +251,33 @@ function AppConteudo() {
     // Supabase é a ÚNICA porta do app:
     //   • sem nuvem configurada (build dev)  → Tabs (único caso sem sessão);
     //   • sem sessão                          → Landing (web) / Entrar (nativo);
-    //   • com sessão mas sem empresa/onboard  → Onboarding (pós-login);
+    //   • com sessão + ausência confirmada     → Onboarding (pós-login);
+    //   • estado remoto indeterminado          → tela de verificação do Onboarding;
     //   • com sessão e já configurado         → Tabs.
-    // Fail-closed: qualquer erro cai no default 'Entrar' (nunca dentro do app).
+    // A rota Onboarding tem um gate próprio: enquanto a nuvem estiver
+    // indeterminada, mostra retry e NÃO exibe o formulário nem grava empresa.
     (async () => {
+      let haviaSessao = false;
       try {
+        const session = await sessaoAtiva();
+        haviaSessao = !!session;
+
+        // A partição precisa ser escolhida ANTES de getDb/getEmpresa. Fazer a
+        // leitura no banco que ficou aberto para outra conta poderia liberar a
+        // Home com o cadastro de outra pessoa enquanto o sync ainda troca o DB.
+        if (supabase && session?.user?.id) {
+          await abrirParticaoDoUsuario(session.user.id);
+        }
         await getDb();
         // Expurgo automático da lixeira (itens soft-deletados há mais de 30 dias).
         // Fire-and-forget best-effort: depende só do DB já aberto acima, nunca
         // bloqueia o boot e nunca lança (dynamic import + catch silencioso).
         import('./src/services/lixeira').then(m => m.purgarLixeiraAntiga()).catch(() => {});
-        const [empresa, onboarded, session] = await Promise.all([
+        const [empresa, onboarded] = await Promise.all([
           getEmpresa(),
-          AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
-          sessaoAtiva(),
+          session?.user?.id
+            ? AsyncStorage.getItem(onboardedKeyForUser(session.user.id)).catch(() => null)
+            : Promise.resolve(null),
         ]);
         if (!supabase) {
           // Build dev sem nuvem: não há login possível, entra direto nas abas.
@@ -272,15 +285,28 @@ function AppConteudo() {
         } else if (!session) {
           // Deslogado: Landing (web) ou Entrar (nativo).
           setInitialRoute(ROTA_DESLOGADO);
-        } else if (empresa === null && onboarded !== '1') {
-          setInitialRoute('Onboarding');
-        } else {
+        } else if (empresa !== null) {
           setInitialRoute('Tabs');
+        } else {
+          // Local vazio pode ser conta nova OU aparelho novo de uma conta que já
+          // tem empresa. Só `nao_tem` autoriza o formulário. `nao_sei` segue para
+          // a tela de verificação bloqueada, nunca para Home ou cadastro editável.
+          const estadoRemoto = await resolverEstadoEmpresaDaSessao();
+          if (estadoRemoto === 'tem') {
+            setInitialRoute('Tabs');
+          } else if (estadoRemoto === 'nao_tem' && onboarded === '1') {
+            // O próprio usuário pulou o cadastro neste aparelho.
+            setInitialRoute('Tabs');
+          } else {
+            setInitialRoute('Onboarding');
+          }
         }
       } catch (e) {
         // Erro técnico só no console de desenvolvimento; em produção (APK) não
-        // vaza stack trace ao usuário. O default 'Entrar' (fail-closed) segura.
+        // vaza stack trace ao usuário. Com sessão, a tela de verificação é mais
+        // honesta que pedir login de novo; sem sessão, a porta continua fechada.
         if (__DEV__) console.error(e);
+        if (haviaSessao) setInitialRoute('Onboarding');
       } finally {
         setDbReady(true);
       }

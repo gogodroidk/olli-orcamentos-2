@@ -26,9 +26,9 @@ import {
   isSupabaseConfigured, signIn, signUp, signInWithGoogle, supabase,
   normalizarTelefoneBR, temDadosLocais, getCurrentUser,
 } from '../services/supabase';
-import { getEmpresa, saveEmpresa } from '../database/database';
-import { ONBOARDED_KEY } from './OnboardingScreen';
-import { marcarVisto } from '../services/onboarding';
+import { abrirParticaoDoUsuario, getEmpresa, saveEmpresa } from '../database/database';
+import { onboardedKeyForUser } from './OnboardingScreen';
+import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -121,63 +121,45 @@ export default function EntrarScreen() {
   }
 
   /**
-   * Decide o destino APÓS a sessão criada: 1ª vez (sem empresa e nunca
-   * onboardado) → Onboarding; caso contrário → Tabs. O sync dos dados locais
-   * (cloudSync per-row) já é disparado pelo listener global do App.tsx — não
-   * duplicamos aqui.
+   * Decide o destino APÓS a sessão criada. Primeiro abre a partição desta conta;
+   * depois distingue empresa remota existente, ausência confirmada e estado
+   * indeterminado. O último vai para a tela de verificação bloqueada — nunca para
+   * uma Home vazia nem para um formulário capaz de sobrescrever a nuvem.
    */
   async function entrarNoApp() {
-    let destino: keyof RootStackParamList = 'Tabs';
+    let destino: keyof RootStackParamList = 'Onboarding';
     try {
+      const usuario = await getCurrentUser();
+      if (!usuario?.id) throw new Error('sessao_indeterminada');
+      await abrirParticaoDoUsuario(usuario.id);
+
       const [empresa, onboarded] = await Promise.all([
         getEmpresa(),
-        AsyncStorage.getItem(ONBOARDED_KEY).catch(() => null),
+        AsyncStorage.getItem(onboardedKeyForUser(usuario.id)).catch(() => null),
       ]);
-      if (empresa === null && onboarded !== '1') {
+      if (empresa !== null) {
+        destino = 'Tabs';
+      } else {
         // Local vazio + nunca onboardado NESTE aparelho: pode ser usuário NOVO
         // OU EXISTENTE logando em aparelho/navegador novo — o SQLite local ainda
         // está vazio porque o sync da nuvem é ASSÍNCRONO (listener do App.tsx, não
         // concluiu quando decidimos aqui). O wizard "monte seu cadastro" GRAVA uma
         // empresa e a empurra pra nuvem; mandar um usuário existente pra lá
         // SOBRESCREVE a empresa real com dados em branco (bug P0 da auditoria).
-        // Por isso consultamos a nuvem com a REGRA DOS 3 ESTADOS
-        // (memória olli-gate-erro-vira-vazio) — "não sei" nunca vira "não tem":
+        // Por isso consultamos a nuvem com a REGRA DOS 3 ESTADOS — "não sei"
+        // nunca vira "não tem":
         //   'tem'     → usuário existente        → Tabs (marca onboardado).
         //   'nao_tem' → confirmado sem empresa   → Onboarding (usuário novo de fato).
-        //   'nao_sei' → erro de rede/Supabase    → Tabs, NUNCA Onboarding. O sync
-        //               assíncrono popula o local; se na próxima abertura ainda
-        //               faltar empresa, esta checagem roda de novo e se auto-cura.
-        let estado: 'tem' | 'nao_tem' | 'nao_sei' = 'nao_sei';
-        if (supabase) {
-          // `.eq('user_id', ...)`: sem o filtro, um membro de equipe enxerga (RLS
-          // empresa_select → donos_visiveis) a linha do DONO além da própria — o
-          // maybeSingle erra com 2 linhas, ou pior, a resposta seria sobre a
-          // empresa de outra pessoa (mesmo padrão do vazamento corrigido no
-          // cloudSync — ver empresaNuvemMudouDesdeUltimoPull). getCurrentUser() lê
-          // a sessão local (sem rede) — acabamos de logar, ela já existe.
-          const usuario = await getCurrentUser();
-          const userId = usuario?.id;
-          if (userId) {
-            // 2 tentativas com backoff curto reduzem o 'nao_sei' por instabilidade momentânea.
-            for (let tentativa = 0; tentativa < 2 && estado === 'nao_sei'; tentativa++) {
-              try {
-                const { data, error } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
-                if (!error) estado = data ? 'tem' : 'nao_tem';
-              } catch { /* rede instável: tenta de novo */ }
-              if (estado === 'nao_sei' && tentativa === 0) {
-                await new Promise<void>((resolve) => setTimeout(resolve, 600));
-              }
-            }
-          }
-          // sem userId (sessão ainda não persistiu): estado permanece 'nao_sei' —
-          // piso não-destrutivo, igual à instabilidade de rede.
-        }
-        if (estado === 'tem') await marcarVisto();
-        else if (estado === 'nao_tem') destino = 'Onboarding';
-        // 'nao_sei' → destino permanece 'Tabs' (piso NÃO-destrutivo).
+        //   'nao_sei' → verificação com retry, sem Home nem formulário editável.
+        const estado = await resolverEstadoEmpresaDaSessao();
+        if (estado === 'tem') destino = 'Tabs';
+        else if (estado === 'nao_tem' && onboarded === '1') destino = 'Tabs';
+        // `nao_tem` sem skip e `nao_sei` ficam em Onboarding; a tela só libera o
+        // formulário depois de confirmar novamente que não existe empresa remota.
       }
     } catch {
-      // fail-safe: em erro, cai nas Tabs (já está logado).
+      // Já está autenticado, então pedir senha de novo seria enganoso. A rota de
+      // verificação explica a falha e mantém toda escrita bloqueada.
     }
     nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: destino }] }));
   }
@@ -216,6 +198,7 @@ export default function EntrarScreen() {
         track(Eventos.signup);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         if (data.session) {
+          await abrirParticaoDoUsuario(data.session.user.id);
           await semearTelefoneEmpresa(telNormalizado);
           await entrarNoApp();
         } else {
@@ -312,7 +295,7 @@ export default function EntrarScreen() {
         <View style={styles.migrateCard}>
           <MaterialCommunityIcons name="shield-check" size={22} color={cores.accentLight} />
           <Text style={styles.migrateText}>
-            Crie sua conta para proteger seus dados — tudo que você já fez será vinculado a ela.
+            Crie sua conta para sincronizar seus cadastros quando houver internet. Fotos e arquivos locais podem continuar disponíveis somente neste aparelho.
           </Text>
         </View>
       )}
