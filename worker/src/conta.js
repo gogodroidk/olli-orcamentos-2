@@ -183,6 +183,45 @@ async function excluirUsuarioAuth(env, userId) {
   }
 }
 
+/**
+ * Apaga o texto livre enviado pelo usuário à caixa `feedback` ANTES de remover
+ * `auth.users`. Essa tabela usa `ON DELETE SET NULL`, portanto confiar só no
+ * cascade preservaria mensagens/contextos potencialmente pessoais e ainda
+ * perderia a chave que permite localizá-los depois.
+ *
+ * A confirmação por SELECT é intencional: HTTP 2xx no DELETE não prova que a
+ * coleção ficou vazia. Qualquer dúvida falha fechado e mantém a conta ativa para
+ * uma nova tentativa; uma limpeza já concluída é idempotente.
+ */
+export async function excluirFeedbackDoUsuario(env, userId) {
+  const filtro = `user_id=eq.${encodeURIComponent(userId)}`;
+  try {
+    const apagar = await fetch(`${env.SUPABASE_URL}/rest/v1/feedback?${filtro}`, {
+      method: 'DELETE',
+      headers: sbHeaders(env, { Prefer: 'return=minimal' }),
+    });
+    if (!apagar.ok) {
+      const txt = await apagar.text().catch(() => '');
+      console.error('[olli-conta] excluir feedback falhou:', apagar.status, txt.slice(0, 200));
+      return false;
+    }
+
+    const conferir = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/feedback?select=id&${filtro}&limit=1`,
+      { headers: sbHeaders(env) },
+    );
+    if (!conferir.ok) {
+      console.error('[olli-conta] confirmar exclusao de feedback falhou:', conferir.status);
+      return false;
+    }
+    const restantes = await conferir.json().catch(() => null);
+    return Array.isArray(restantes) && restantes.length === 0;
+  } catch (e) {
+    console.error('[olli-conta] excluir feedback erro:', e && (e.message || e));
+    return false;
+  }
+}
+
 // ─── SIGN IN WITH APPLE — revogação na exclusão de conta ─────
 /**
  * A Apple exige (App Store Review Guideline 5.1.1(v), em vigor desde 30/06/2022)
@@ -481,6 +520,12 @@ export async function handleContaExcluir(request, env) {
       );
     }
   }
+
+  // Dados associados sem CASCADE: `feedback.user_id` usa ON DELETE SET NULL.
+  // Limpa enquanto o vínculo ainda existe e só então apaga auth.users; se não
+  // conseguirmos confirmar, preservamos a conta para uma tentativa segura.
+  const feedbackExcluido = await excluirFeedbackDoUsuario(env, user.id);
+  if (!feedbackExcluido) return json({ ok: false, erro: 'falha_exclusao' }, 502);
 
   // Exclusão de verdade: apaga o usuário em auth.users (id vem do JWT validado).
   const ok = await excluirUsuarioAuth(env, user.id);

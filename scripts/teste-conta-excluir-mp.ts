@@ -63,6 +63,9 @@ let leituraFalha = false; // PostgREST fora ao ler mp_preapproval_id
 let mpCancelStatus = 200; // resposta do PUT /preapproval/{id}
 let mpStatusFinal = 'authorized'; // o que o GET de conferência diz depois
 let usuarioApagado = false;
+let feedbackFalha = false;
+let feedbackRestante = false;
+let ordemExclusao: string[] = [];
 // ── Apple (metade B) ─────────────────────────────────────────────────────
 let provedores: string[] | null = null; // app_metadata.providers do /auth/v1/user
 let appleTokenStatus = 200; // resposta de POST /auth/token
@@ -80,6 +83,8 @@ function reset(opts: {
   provedores?: string[] | null;
   appleTokenStatus?: number;
   appleRevokeStatus?: number;
+  feedbackFalha?: boolean;
+  feedbackRestante?: boolean;
 } = {}) {
   preapprovalGravado = opts.gravado ?? null;
   colunaExiste = opts.colunaExiste !== false;
@@ -93,6 +98,9 @@ function reset(opts: {
   appleRevokeStatus = opts.appleRevokeStatus ?? 200;
   appleChamadas = [];
   clientSecretVisto = '';
+  feedbackFalha = !!opts.feedbackFalha;
+  feedbackRestante = !!opts.feedbackRestante;
+  ordemExclusao = [];
 }
 
 (globalThis as any).fetch = async (url: string, init?: { method?: string; body?: string }) => {
@@ -119,6 +127,7 @@ function reset(opts: {
     } as unknown as Response;
   }
   if (u.includes('/auth/v1/admin/users/')) {
+    ordemExclusao.push('usuario');
     usuarioApagado = true;
     return { ok: true, status: 204 } as Response;
   }
@@ -141,6 +150,20 @@ function reset(opts: {
     }
     // getAssinatura do conta.js: sem Stripe neste teste (é o caminho do MP).
     return { ok: true, status: 200, json: async () => [{ stripe_subscription_id: null, stripe_customer_id: null }] } as unknown as Response;
+  }
+  if (u.includes('/rest/v1/feedback')) {
+    if (metodo === 'DELETE') {
+      ordemExclusao.push('feedback');
+      if (feedbackFalha) {
+        return { ok: false, status: 500, text: async () => 'erro simulado' } as unknown as Response;
+      }
+      return { ok: true, status: 204 } as unknown as Response;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => feedbackRestante ? [{ id: 'feedback-restante' }] : [],
+    } as unknown as Response;
   }
   if (u.includes('api.mercadopago.com/preapproval/')) {
     if (metodo === 'PUT') return { ok: mpCancelStatus < 300, status: mpCancelStatus, json: async () => ({}) } as unknown as Response;
@@ -221,6 +244,31 @@ reset({ gravado: null });
   const r = await excluir();
   checar('ok', r.body.ok, true);
   checar('usuário apagado', usuarioApagado, true);
+}
+
+console.log('\n9) feedback pessoal é apagado e confirmado ANTES de auth.users');
+reset({ provedores: ['email'] });
+{
+  const r = await excluir();
+  checar('ok', r.body.ok, true);
+  checar('ordem feedback → usuário', ordemExclusao, ['feedback', 'usuario']);
+}
+
+console.log('\n10) falha ao limpar feedback mantém a conta ativa (fail-closed)');
+reset({ provedores: ['email'], feedbackFalha: true });
+{
+  const r = await excluir();
+  checar('502 falha_exclusao', `${r.status}/${r.body.erro}`, '502/falha_exclusao');
+  checar('usuário não foi apagado', usuarioApagado, false);
+  checar('não tentou apagar auth.users', ordemExclusao, ['feedback']);
+}
+
+console.log('\n11) DELETE 2xx sem coleção vazia também bloqueia a conta');
+reset({ provedores: ['email'], feedbackRestante: true });
+{
+  const r = await excluir();
+  checar('502 falha_exclusao', `${r.status}/${r.body.erro}`, '502/falha_exclusao');
+  checar('usuário não foi apagado', usuarioApagado, false);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
