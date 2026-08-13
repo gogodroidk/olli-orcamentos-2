@@ -159,7 +159,7 @@ app não entrega é reprovação na revisão e nota 1 na loja:
 | --- | --- | --- |
 | Categoria do app | **Empresarial** (Business) | Concorrentes diretos de "orçamento/OS" estão em Empresarial ou Ferramentas. Empresarial descreve melhor o produto; a categoria pesa pouco na busca perto do título e da descrição. |
 | Tags | Orçamento · Gestão de negócios · Produtividade | Máx. 5 tags; escolher na Console, não é campo livre. |
-| E-mail de contato | **[DONO]** — precisa ser um e-mail que ele leia | Fica público na ficha. |
+| E-mail de contato | **contato@olliorcamentos.online** | Canal profissional verificado na conta da Play Console; fica público na ficha. |
 | Site | `https://olliorcamentos.online` | No ar. |
 | Política de privacidade | `https://olliorcamentos.online/legal/privacidade/` | Página existe (`web/src/pages/legal/privacidade.astro`) e o atalho `/privacidade` **já tem redirect 301** configurado em `web/astro.config.mjs`. ⚠️ **Abra as duas URLs no navegador antes de colar na Console** — não deu para confirmar daqui (as duas devolvem 403 a acesso automatizado, provável proteção antibot do Cloudflare), e a Play valida que a URL resolve. |
 

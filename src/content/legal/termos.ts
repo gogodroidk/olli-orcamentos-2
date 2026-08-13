@@ -13,11 +13,10 @@ import type { LegalDoc } from './privacidade';
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '9 de julho de 2026',
+  atualizadoEm: '13 de agosto de 2026',
   aviso:
-    'Este é um MODELO de termos de uso, gerado para o OLLI. Ele NÃO constitui ' +
-    'aconselhamento jurídico e deve ser revisado e adaptado por um(a) advogado(a) — ' +
-    'incluindo razão social, CNPJ, foro e valores — antes de ser publicado.',
+    'Documento vigente desde 13 de agosto de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
       'prestadores de serviço (orçamentos, recibos, clientes, ordens de serviço, ' +
@@ -25,6 +24,9 @@ export const TERMOS: LegalDoc = {
       'concorda com estes Termos e com a nossa Política de Privacidade.',
     'Se você usa o OLLI em nome de uma empresa, declara ter poderes para aceitar ' +
       'estes Termos em nome dela. Se não concordar com algum ponto, não utilize o app.',
+    'O OLLI é fornecido por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
+      '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
+      '(Cidade Líder), São Paulo/SP, CEP 03582-110.',
   ],
   secoes: [
     {
@@ -170,14 +172,15 @@ export const TERMOS: LegalDoc = {
       paragrafos: [
         'Estes Termos são regidos pelas leis da República Federativa do Brasil. Fica eleito o foro do ' +
           'domicílio do consumidor para dirimir controvérsias, quando aplicável a legislação consumerista, ' +
-          'ou o foro da comarca a ser definido pela empresa nos demais casos (a completar na revisão ' +
-          'jurídica).',
+        'ou o foro da Comarca de São Paulo/SP nos demais casos, sem prejuízo de outro foro ' +
+          'obrigatório previsto em lei.',
       ],
     },
     {
       titulo: '15. Fale com a gente',
       paragrafos: [
-        'Dúvidas sobre estes Termos? Fale com a gente pelo WhatsApp (11) 94172-7487.',
+        'Dúvidas sobre estes Termos? Escreva para contato@olliorcamentos.online ou fale ' +
+          'com a gente pelo WhatsApp (11) 94172-7487.',
       ],
     },
   ],

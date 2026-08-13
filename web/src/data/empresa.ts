@@ -59,24 +59,24 @@ export interface Empresa {
 }
 
 export const EMPRESA: Empresa = {
-	razaoSocial: PREENCHER, //          ← DONO: razão social exata do cartão CNPJ
+	razaoSocial: "OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA",
 	nomeFantasia: "OLLI",
-	cnpj: PREENCHER, //                 ← DONO: CNPJ formatado (00.000.000/0001-00)
+	cnpj: "65.361.266/0001-05",
 	endereco: {
-		logradouro: PREENCHER, //         ← DONO: rua e número
-		bairro: PREENCHER, //             ← DONO
-		cidade: PREENCHER, //             ← DONO
-		uf: PREENCHER, //                 ← DONO: sigla de 2 letras
-		cep: PREENCHER, //                ← DONO: 00000-000
+		logradouro: "Rua Henrique Perdigão, 350",
+		bairro: "Jardim Ipanema (Cidade Líder)",
+		cidade: "São Paulo",
+		uf: "SP",
+		cep: "03582-110",
 		pais: "BR",
 	},
-	emailContato: PREENCHER, //         ← DONO: criar a caixa antes de publicar
-	emailPrivacidade: PREENCHER, //     ← DONO: canal do Encarregado/DPO (LGPD)
+	emailContato: "contato@olliorcamentos.online",
+	emailPrivacidade: "contato@olliorcamentos.online",
 	// Este já existe e é real (index.astro:22 e src/config.ts do app).
 	whatsapp: "5511941727487",
 	whatsappLegivel: "(11) 94172-7487",
-	responsavel: PREENCHER, //          ← DONO: quem assina e responde
-	atendimento: PREENCHER, //          ← DONO: ex. "Segunda a sexta, 8h–18h"
+	responsavel: "Igor de Souza Aquino",
+	atendimento: "Atendimento em dias úteis pelos canais informados",
 };
 
 /** Um campo está preenchido quando não é o marcador nem string vazia. */

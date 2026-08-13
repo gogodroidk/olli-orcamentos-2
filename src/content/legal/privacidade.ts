@@ -48,12 +48,10 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '18 de julho de 2026',
+  atualizadoEm: '13 de agosto de 2026',
   aviso:
-    'Este é um MODELO de política de privacidade, gerado para o OLLI e alinhado ao ' +
-    'que o aplicativo realmente faz. Ele NÃO constitui aconselhamento jurídico e ' +
-    'deve ser revisado e adaptado por um(a) advogado(a) antes de ser publicado ou ' +
-    'usado com clientes reais.',
+    'Documento vigente desde 13 de agosto de 2026. Dúvidas sobre seus dados ou ' +
+    'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
       'recibos, clientes, ordens de serviço, equipamentos e a assistente OLLI. Esta ' +
@@ -68,12 +66,14 @@ export const PRIVACIDADE: LegalDoc = {
     {
       titulo: '1. Quem é o controlador dos dados',
       paragrafos: [
-        'O OLLI é operado pela equipe responsável pelo aplicativo OLLI ("OLLI", "nós"). ' +
-          'Somos o controlador dos dados necessários para criar e manter a sua conta, ' +
-          'processar a sua assinatura e operar o aplicativo.',
-        'Para dúvidas sobre privacidade, exercício de direitos ou para falar com o nosso ' +
-          'Encarregado (DPO), use o WhatsApp (11) 94172-7487. Antes de publicar, complete ' +
-          'aqui a razão social, o CNPJ, o endereço e um e-mail de privacidade da empresa.',
+        'O OLLI é operado por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
+          '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
+          '(Cidade Líder), São Paulo/SP, CEP 03582-110 ("OLLI", "nós"). Somos o ' +
+          'controlador dos dados necessários para criar e manter a sua conta, processar ' +
+          'a sua assinatura e operar o aplicativo.',
+        'Para dúvidas sobre privacidade, exercício de direitos ou para falar com o canal ' +
+          'responsável por privacidade, escreva para contato@olliorcamentos.online ou use ' +
+          'o WhatsApp (11) 94172-7487.',
       ],
     },
     {
@@ -256,7 +256,8 @@ export const PRIVACIDADE: LegalDoc = {
           'ele será apresentado nessa conta; alguns builds nativos mostram apenas o status e os recibos.',
         'Para exportar os seus dados, excluir a sua conta ou fazer qualquer outro pedido ' +
           'relacionado a privacidade, use a opção de exclusão/gestão de conta no app ou fale ' +
-          'com a gente pelo WhatsApp (11) 94172-7487. Respondemos aos pedidos nos prazos ' +
+          'com a gente pelo e-mail contato@olliorcamentos.online ou pelo WhatsApp (11) ' +
+          '94172-7487. Respondemos aos pedidos nos prazos ' +
           'previstos em lei e podemos pedir informações para confirmar a sua identidade.',
       ],
     },
@@ -288,8 +289,8 @@ export const PRIVACIDADE: LegalDoc = {
     {
       titulo: '15. Fale com a gente',
       paragrafos: [
-        'Dúvidas, pedidos ou reclamações sobre privacidade? Fale com o nosso Encarregado (DPO) ' +
-          'pelo WhatsApp (11) 94172-7487. Teremos prazer em ajudar.',
+        'Dúvidas, pedidos ou reclamações sobre privacidade? Escreva para ' +
+          'contato@olliorcamentos.online ou fale pelo WhatsApp (11) 94172-7487.',
       ],
     },
   ],
