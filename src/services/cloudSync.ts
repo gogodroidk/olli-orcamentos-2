@@ -16,7 +16,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
-import { classificarContextoEquipe, decidirEscritaEquipe, decidirEmpresaEquipe } from './contextoEquipe';
+import { classificarContextoEquipe, decidirEscritaEquipe, resolverAlvoEmpresa } from './contextoEquipe';
 import type { ContextoEquipe } from './contextoEquipe';
 import { abrirParticaoDoUsuario, donoDoBancoAberto, getDb } from '../database/database';
 import { podeSincronizar } from '../database/particao';
@@ -628,18 +628,8 @@ export async function garantirContextoEquipe(): Promise<ContextoEquipe> {
  */
 async function alvoEmpresa(): Promise<{ userId: string; souDono: boolean } | null> {
   try {
-    const d = decidirEmpresaEquipe(await garantirContextoEquipe());
-    if (!d.ler) return null;
-    // Roteia pelo DISCRIMINANTE (`escrever`), não pela truthiness de
-    // `ownerUserId`. São a mesma coisa só enquanto o banco garantir que todo
-    // membro tem um dono com id não-vazio (`organizacoes.owner_user_id not null`);
-    // no dia em que um `ownerUserId` chegar vazio, ramificar pela truthiness dele
-    // mandaria o MEMBRO para o ramo do dono — `getCurrentUser()` devolveria o id
-    // dele e `souDono: true` reabriria o vazamento inteiro. `escrever` é o campo
-    // que `decidirEmpresaEquipe` calcula justamente para responder a esta pergunta.
-    if (!d.escrever) return { userId: d.ownerUserId, souDono: false };
     const user = await getCurrentUser();
-    return user?.id ? { userId: user.id, souDono: true } : null;
+    return resolverAlvoEmpresa(await garantirContextoEquipe(), user?.id);
   } catch {
     return null; // não consegui decidir = não escrevo nem leio (fail-closed)
   }
@@ -686,8 +676,10 @@ export async function resolverEstadoEmpresaDaSessao(): Promise<EstadoEmpresaDaSe
     // não reutilizar o tenant cacheado da conta anterior.
     for (let tentativa = 0; tentativa < 2; tentativa++) {
       try {
-        await comPrazo(atualizarContextoEquipe());
-        const alvo = await alvoEmpresa();
+        const contexto = await comPrazo(atualizarContextoEquipe());
+        // Reutiliza a decisão resolvida sob timeout. `alvoEmpresa()` poderia
+        // disparar uma segunda consulta sem prazo quando o estado é desconhecido.
+        const alvo = resolverAlvoEmpresa(contexto, usuario.id);
         if (!alvo) throw new Error('contexto_empresa_indeterminado');
 
         const { data, error } = await comPrazo(

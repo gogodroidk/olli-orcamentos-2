@@ -136,11 +136,6 @@
           "url": "https://sentry.io/"
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "olli-orcamentos"
-      }
-    }
+    ]
   }
 }

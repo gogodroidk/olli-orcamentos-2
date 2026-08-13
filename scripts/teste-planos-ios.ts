@@ -47,16 +47,18 @@ checar('COMPRA_NO_APP está definido', planosSrc.includes("const COMPRA_NO_APP =
 checar('assinarPlano tem o early-return de defesa em profundidade', (() => {
   const inicio = planosSrc.indexOf('async function assinarPlano(');
   const corpo = planosSrc.slice(inicio, planosSrc.indexOf('\n  }', inicio));
-  return corpo.includes('if (!COMPRA_NO_APP) return;');
+  return corpo.includes('if (!COMPRA_NO_APP) return;') && corpo.includes('if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;');
 })(), true);
 checar('falarComSuporte tem o mesmo early-return (achado da rodada 2)', (() => {
   const inicio = planosSrc.indexOf('function falarComSuporte(');
   const corpo = planosSrc.slice(inicio, planosSrc.indexOf('\n  }', inicio));
-  return corpo.includes('if (!COMPRA_NO_APP) return;');
+  return corpo.includes('if (!COMPRA_NO_APP) return;') && corpo.includes('if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;');
 })(), true);
 checar('o CTA de compra do PlanoCard é condicionado a COMPRA_NO_APP', planosSrc.includes(') : !COMPRA_NO_APP ? ('), true);
 checar('o WhatsApp da Empresa é condicionado a COMPRA_NO_APP', planosSrc.includes("COMPRA_NO_APP && !plano.atual && plano.id === 'empresa'"), true);
 checar('o toggle de período é condicionado a COMPRA_NO_APP', planosSrc.includes('{COMPRA_NO_APP && (') , true);
+checar('a linha de 12x não aparece no Android Play', planosSrc.includes('{COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && linha12x ? ('), true);
+checar('o selo de desconto anual não aparece no Android Play', planosSrc.includes("periodo === 'anual' && preco && COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA"), true);
 // As frases de venda de OUTRAS telas não têm por que aparecer aqui — se
 // aparecerem, é copy vazada por copiar-colar sem trazer a guarda junto.
 for (const frase of ['Assinando o Pro', 'Assine direto no app']) {
@@ -76,11 +78,11 @@ console.log('\n2) AssinaturaScreen.tsx — portal tolerado, upsell de compra nov
 const assinaturaSrc = ler('../src/screens/AssinaturaScreen.tsx');
 checar('ANUNCIA_TROCA_PLANO está definido (hint do portal)', assinaturaSrc.includes("const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';"), true);
 checar('COMPRA_NO_APP está definido (upsell do Grátis)', assinaturaSrc.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
-checar('o botão "Gerenciar assinatura" NÃO tem guarda de plataforma (portal é tolerado no iOS)', (() => {
+checar('gerenciar assinatura é bloqueado em profundidade no Android Play', (() => {
   const inicio = assinaturaSrc.indexOf('async function gerenciar()');
   const corpo = assinaturaSrc.slice(inicio, assinaturaSrc.indexOf('\n  }', inicio));
-  return corpo.includes('Platform.OS');
-})(), false);
+  return corpo.includes('if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;');
+})(), true);
 checar('a dica do portal é condicionada a ANUNCIA_TROCA_PLANO', assinaturaSrc.includes('{ANUNCIA_TROCA_PLANO'), true);
 checar('o texto do upsell ("Assinando o Pro...") é condicionado a COMPRA_NO_APP', (() => {
   const idx = assinaturaSrc.indexOf('Assinando o Pro');
@@ -103,6 +105,16 @@ checar('"Assine direto no app" é condicionado a COMPRA_NO_APP', (() => {
   return janela.includes('{COMPRA_NO_APP');
 })(), true);
 checar('o rótulo do botão de upsell exige compra permitida e não-Android Play', contaSrc.includes("COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'"), true);
+
+console.log('\n4) CreditosScreen.tsx — Pix externo ausente nos builds nativos');
+const creditosSrc = ler('../src/screens/CreditosScreen.tsx');
+checar('compra externa exige não-iOS e não-Android Play', creditosSrc.includes('const COMPRA_EXTERNA_HABILITADA = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;'), true);
+checar('comprar tem early-return de defesa em profundidade', (() => {
+  const inicio = creditosSrc.indexOf('async function comprar(');
+  const corpo = creditosSrc.slice(inicio, creditosSrc.indexOf('\n  }', inicio));
+  return corpo.includes('if (!COMPRA_EXTERNA_HABILITADA) return;');
+})(), true);
+checar('pacotes Pix só renderizam quando compra externa está habilitada', creditosSrc.includes('{COMPRA_EXTERNA_HABILITADA ? ('), true);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

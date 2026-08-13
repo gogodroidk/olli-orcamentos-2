@@ -211,12 +211,15 @@ const syncSrc = ler('../src/services/cloudSync.ts');
 checar('cloudSync resolve o tenant da empresa antes de tocá-la', syncSrc.includes('alvoEmpresa'), true);
 // A seção 3 acima afirma `escrever === false` como PROVA de que o membro não
 // escreve `empresa`. Essa prova só vale se o código de produção ler `escrever`:
-// enquanto `alvoEmpresa` roteava por `if (d.ownerUserId)`, o campo era morto e o
-// teste atestava algo que ninguém consultava. Aqui exigimos o discriminante.
-const alvoInicio = syncSrc.indexOf('async function alvoEmpresa(');
-const alvoCorpo = syncSrc.slice(alvoInicio, syncSrc.indexOf('\n}', alvoInicio));
-checar('alvoEmpresa existe', alvoInicio >= 0, true);
-checar('alvoEmpresa roteia pelo discriminante `escrever`', alvoCorpo.includes('d.escrever'), true);
+// enquanto a resolução roteava por `if (d.ownerUserId)`, o campo era morto e o
+// teste atestava algo que ninguém consultava. A decisão pura mora em
+// `resolverAlvoEmpresa`; o cloudSync apenas reutiliza o resultado já resolvido.
+const contextoSrc = ler('../src/services/contextoEquipe.ts');
+const alvoInicio = contextoSrc.indexOf('export function resolverAlvoEmpresa(');
+const alvoCorpo = contextoSrc.slice(alvoInicio, contextoSrc.indexOf('\n}', alvoInicio));
+checar('resolverAlvoEmpresa existe', alvoInicio >= 0, true);
+checar('resolverAlvoEmpresa roteia pelo discriminante `escrever`', alvoCorpo.includes('d.escrever'), true);
+checar('cloudSync reutiliza a decisão pura', syncSrc.includes('resolverAlvoEmpresa(contexto, usuario.id)'), true);
 checar(
   'e NÃO pela truthiness de `ownerUserId` (que mandaria membro sem dono para o ramo do dono)',
   alvoCorpo.includes('if (d.ownerUserId)'),

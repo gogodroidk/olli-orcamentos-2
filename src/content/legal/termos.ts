@@ -60,18 +60,21 @@ export const TERMOS: LegalDoc = {
       titulo: '4. Planos, preços e cobrança',
       paragrafos: [
         'O OLLI oferece um plano gratuito e planos pagos (Pro e Empresa) com recursos adicionais. ' +
-          'Os planos pagos podem ser contratados nas modalidades mensal, anual ou em até 12 vezes, ' +
-          'com o pagamento processado pela Stripe.',
-        'Os valores vigentes, os recursos de cada plano e a forma de cobrança são exibidos na tela ' +
-          'de Planos do app no momento da contratação. As assinaturas mensais e anuais são renovadas ' +
+          'Nos canais em que o checkout estiver explicitamente disponível, os planos pagos podem ser ' +
+          'contratados nas modalidades mensal, anual ou em até 12 vezes, com pagamento processado pela Stripe.',
+        'A tela de Planos pode exibir valores e recursos apenas para consulta. As condições finais e a ' +
+          'forma de cobrança são apresentadas no canal de contratação antes da confirmação. As assinaturas mensais e anuais são renovadas ' +
           'automaticamente ao fim de cada ciclo, pelo valor então vigente, até que você cancele.',
+        'O aplicativo Android distribuído pela Google Play não oferece contratação ou alteração de ' +
+          'planos enquanto não houver um sistema de cobrança compatível com a loja.',
       ],
     },
     {
       titulo: '5. Renovação, cancelamento e reembolso',
       paragrafos: [
         'Você pode cancelar a renovação a qualquer momento pelo portal de assinatura do Stripe, ' +
-          'acessível pelo app. Ao cancelar, você continua com acesso ao plano pago até o fim do ' +
+          'quando esse portal estiver disponível na conta ou no canal em que a assinatura foi contratada. ' +
+          'Alguns builds nativos mostram apenas o status e os recibos. Ao cancelar, você continua com acesso ao plano pago até o fim do ' +
           'período já pago; depois disso, a conta volta ao plano gratuito. Não há cobrança de multa ' +
           'por cancelamento.',
         'Nas compras à distância, você tem direito de arrependimento em até 7 dias corridos a contar ' +

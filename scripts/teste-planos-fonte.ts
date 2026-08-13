@@ -99,11 +99,11 @@ checar('comparativo derivado de entitlements (temAcessoRecurso)', tela.includes(
 checar('comparativo varre os recursos gateados da fonte', tela.includes('RECURSOS_GATEADOS'), true);
 checar('linha do 12x nomeia a fonte da verdade (texto12xPro)', tela.includes('texto12xPro('), true);
 
-console.log('\n5) iOS (Guideline 3.1.1) — info completa, compra escondida');
+console.log('\n5) lojas nativas — info completa, compra externa escondida');
 checar('COMPRA_NO_APP definido', tela.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
 checar('CTA de compra condicionado a COMPRA_NO_APP', tela.includes(') : !COMPRA_NO_APP ? ('), true);
 checar('abas de período escondidas fora de compra', tela.includes('{COMPRA_NO_APP && ('), true);
-checar('linha 12x só onde há compra', tela.includes('COMPRA_NO_APP && linha12x'), true);
+checar('linha 12x só onde há compra e nunca no Android Play', tela.includes('COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && linha12x'), true);
 // O comparativo (info) NÃO é gateado por plataforma — fica completo no iOS.
 checar('comparativo renderiza sem guarda de plataforma', tela.includes('<ComparativoTabela planoAtualId={planoAtualId}'), true);
 

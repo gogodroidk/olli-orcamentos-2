@@ -175,3 +175,14 @@ export function decidirEmpresaEquipe(ctx: ContextoEquipe): DecisaoEmpresa {
       return { ler: true, escrever: false, ownerUserId: ctx.ownerUserId };
   }
 }
+
+/** Traduz o contexto já resolvido para o alvo da sessão, sem nova chamada de rede. */
+export function resolverAlvoEmpresa(
+  ctx: ContextoEquipe,
+  userId: string | null | undefined,
+): { userId: string; souDono: boolean } | null {
+  const d = decidirEmpresaEquipe(ctx);
+  if (!d.ler) return null;
+  if (!d.escrever) return { userId: d.ownerUserId, souDono: false };
+  return userId ? { userId, souDono: true } : null;
+}

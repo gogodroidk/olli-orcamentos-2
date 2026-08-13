@@ -643,7 +643,7 @@ function PlanoCard({
       <View style={styles.priceRow}>
         <Text style={[styles.price, plano.destaque && styles.priceDestaque]}>{exibido.valor}</Text>
         {exibido.sufixo ? <Text style={styles.pricePeriod}>{exibido.sufixo}</Text> : null}
-        {periodo === 'anual' && preco && COMPRA_NO_APP ? (
+        {periodo === 'anual' && preco && COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
           <View style={styles.priceSaveBadge}><Text style={styles.priceSaveBadgeText}>-{DESCONTO_ANUAL_ROTULO}</Text></View>
         ) : null}
       </View>
@@ -665,7 +665,7 @@ function PlanoCard({
 
       {/* 12× — a VERDADE, não um desconto. iOS (Guideline 3.1.1): escondido, pois
           descreve uma forma de pagamento que este aparelho não realiza. */}
-      {COMPRA_NO_APP && linha12x ? (
+      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && linha12x ? (
         <View style={styles.doze}>
           <MaterialCommunityIcons name="information-outline" size={15} color={cores.onSurfaceVariant} />
           <Text style={styles.dozeText}>{linha12x}</Text>

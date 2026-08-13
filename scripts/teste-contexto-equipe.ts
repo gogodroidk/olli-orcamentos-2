@@ -12,6 +12,7 @@
 import {
   classificarContextoEquipe,
   decidirEscritaEquipe,
+  resolverAlvoEmpresa,
   restaurePodeTocarNaNuvem,
   type ContextoEquipe,
 } from '../src/services/contextoEquipe.ts';
@@ -113,6 +114,17 @@ checar('conta pessoal propaga (os dados são dela)',
   restaurePodeTocarNaNuvem(classificarContextoEquipe(PESSOAL)), true);
 checar('desconhecido NÃO propaga (fail-closed)',
   restaurePodeTocarNaNuvem(classificarContextoEquipe(ERRO)), false);
+
+console.log('\n7) alvo da empresa reutiliza o contexto já resolvido, sem rede');
+checar('desconhecido => não consulta nem altera empresa',
+  resolverAlvoEmpresa({ status: 'desconhecido' }, 'user-1'), null);
+checar('conta pessoal autenticada => empresa do próprio usuário',
+  resolverAlvoEmpresa({ status: 'pessoal' }, 'user-1'), { userId: 'user-1', souDono: true });
+checar('conta pessoal sem sessão => fail-closed',
+  resolverAlvoEmpresa({ status: 'pessoal' }, null), null);
+checar('membro => empresa do dono, somente leitura',
+  resolverAlvoEmpresa({ status: 'membro', ownerUserId: DONO }, 'user-tecnico'),
+  { userId: DONO, souDono: false });
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

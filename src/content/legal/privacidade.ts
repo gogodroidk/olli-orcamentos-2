@@ -94,9 +94,10 @@ export const PRIVACIDADE: LegalDoc = {
       paragrafos: [
         'Coletamos apenas o necessário para o app funcionar. A tabela abaixo resume cada ' +
           'categoria de dado, a finalidade e a base legal correspondente na LGPD.',
-        'No iPhone (iOS), a recarga de créditos e a assinatura de planos pagos ainda não ' +
-          'podem ser feitas dentro do app — por isso, nesse sistema, os itens de pagamento ' +
-          'abaixo (Stripe e Mercado Pago) não se aplicam.',
+        'Nos aplicativos nativos, a recarga de créditos e a contratação ou alteração de planos ' +
+          'não ficam disponíveis quando o app não oferece o sistema de cobrança da respectiva loja. ' +
+          'Os itens de pagamento abaixo só se aplicam quando você inicia uma compra pela versão web ' +
+          'ou por outro canal em que o checkout esteja explicitamente disponível.',
       ],
       tabela: [
         {
@@ -174,11 +175,11 @@ export const PRIVACIDADE: LegalDoc = {
         'Supabase — banco de dados e autenticação na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
         'Cloudflare — hospedagem do nosso servidor de IA e da página pública da etiqueta QR.',
-        'Stripe — processamento de pagamentos e gestão de assinaturas dos planos pagos ' +
-          '(Android e web). O Stripe recebe os dados de cobrança; o OLLI não tem acesso ao ' +
+        'Stripe — processamento de pagamentos e gestão de assinaturas iniciadas nos canais ' +
+          'em que o checkout estiver disponível. O Stripe recebe os dados de cobrança; o OLLI não tem acesso ao ' +
           'número completo do cartão.',
         'Mercado Pago — processamento das cobranças Pix usadas para recarregar créditos ' +
-          '(Android e web). Recebe os dados necessários para gerar e confirmar o pagamento; ' +
+          'nos canais em que essa recarga estiver disponível. Recebe os dados necessários para gerar e confirmar o pagamento; ' +
           'o OLLI não tem acesso aos seus dados bancários.',
         'Google (Gemini) — modelo de inteligência artificial que processa os pedidos de IA.',
         'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
@@ -249,8 +250,10 @@ export const PRIVACIDADE: LegalDoc = {
       titulo: '11. Como exercer os seus direitos',
       paragrafos: [
         'Boa parte você resolve dentro do próprio app: edite o seu cadastro e o seu negócio a ' +
-          'qualquer momento, gerencie a assinatura pelo portal do Stripe, ative ou desative o ' +
+          'qualquer momento e ative ou desative o ' +
           'rastreio de localização e as permissões de câmera e microfone no seu aparelho.',
+        'Quando o gerenciamento de assinatura estiver disponível no canal em que você contratou, ' +
+          'ele será apresentado nessa conta; alguns builds nativos mostram apenas o status e os recibos.',
         'Para exportar os seus dados, excluir a sua conta ou fazer qualquer outro pedido ' +
           'relacionado a privacidade, use a opção de exclusão/gestão de conta no app ou fale ' +
           'com a gente pelo WhatsApp (11) 94172-7487. Respondemos aos pedidos nos prazos ' +
