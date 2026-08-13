@@ -47,7 +47,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # O painel importa tipos/serviços compartilhados da raiz. Node 22
+          # atende o type stripping usado pelo app e o Vite do painel.
+          node-version: '22'
+
+      - name: Instalar dependências compartilhadas do app
+        working-directory: .
+        run: npm ci
 
       # webapp/ declara "packageManager": "pnpm@10.8.0" e o pnpm-lock.yaml é
       # o lockfile mantido de fato (tem o commit mais recente, inclui o fix
@@ -79,7 +85,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Astro 7 exige Node >=22.12; Node 20 faz o check abortar antes
+          # mesmo de ler o projeto.
+          node-version: '22'
 
       - name: Instalar dependências (npm ci — package-lock.json em web/)
         run: npm ci
