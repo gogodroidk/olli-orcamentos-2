@@ -55,6 +55,12 @@ jobs:
         working-directory: .
         run: npm ci
 
+      # O painel importa web/src/data/planos.ts. Ao transformar esse arquivo, o
+      # Vite resolve também web/tsconfig.json, que estende astro/tsconfigs/strict.
+      - name: Instalar dependências compartilhadas da landing
+        working-directory: web
+        run: npm ci
+
       # webapp/ declara "packageManager": "pnpm@10.8.0" e o pnpm-lock.yaml é
       # o lockfile mantido de fato (tem o commit mais recente, inclui o fix
       # do Sentry). Existe também um webapp/package-lock.json nesta pasta,
@@ -88,6 +94,12 @@ jobs:
           # Astro 7 exige Node >=22.12; Node 20 faz o check abortar antes
           # mesmo de ler o projeto.
           node-version: '22'
+
+      # A configuração da landing alcança tipos compartilhados cuja tsconfig
+      # raiz estende expo/tsconfig.base.
+      - name: Instalar dependências compartilhadas do app
+        working-directory: .
+        run: npm ci
 
       - name: Instalar dependências (npm ci — package-lock.json em web/)
         run: npm ci
