@@ -111,7 +111,7 @@ export async function lancarCreditos(env, { userId, delta, origem, ref, descrica
       // Corpo ilegível (code '') também cai aqui de propósito: "não sei por que
       // deu 409" não pode virar "já estava lançado" — na dúvida, o lançamento
       // NÃO entrou e quem paga tem que poder reenviar.
-      console.error('[olli-creditos] 409 que NÃO é unique_violation (crédito não entrou):', code || '(sem code)', origem, ref);
+      console.error('[olli-creditos] 409 que NÃO é unique_violation (crédito não entrou):', code || '(sem code)');
       return { ok: false, duplicado: false };
     }
     return { ok: false, duplicado: false };
@@ -121,30 +121,79 @@ export async function lancarCreditos(env, { userId, delta, origem, ref, descrica
 }
 
 /**
- * Tenta CONSUMIR `custo` créditos de uma ação. Fluxo seguro: (1) lê o saldo;
- * (2) se insuficiente ou indeterminado, NÃO consome e devolve o motivo; (3) senão
- * lança o débito com `ref` de idempotência. Não é uma transação atômica (o ledger
- * é append-only e o saldo é derivado) — o `ref` único evita débito duplo, e um
- * saldo levemente negativo por corrida é aceitável e se autocorrige. Retorna
- * { ok, motivo?: 'sem_saldo'|'indisponivel'|'falha', saldo? }.
+ * Consome `custo` créditos pela RPC `consumir_creditos_atomico`. Saldo,
+ * idempotência e INSERT são decididos sob o MESMO lock/transação no Postgres;
+ * não existe mais a janela vulnerável `ler saldo -> outra chamada -> inserir`.
+ *
+ * Estados traduzidos:
+ *   consumido     -> { ok:true, duplicado:false, saldo }
+ *   ja_consumido  -> { ok:true, duplicado:true,  saldo }
+ *   sem_saldo     -> { ok:false, motivo:'sem_saldo', saldo }
+ *   erro/malformado -> { ok:false, motivo:'indisponivel' } (fail-closed)
+ *
+ * Idempotência é do CHAMADOR: `ref` identifica uma ação. Sem `ref`, gera UUID
+ * por tentativa; nunca deriva a chave do saldo ou de outro estado compartilhado.
  */
 export async function consumirCreditos(env, { userId, custo, acao, ref, descricao }) {
-  const saldo = await saldoCreditos(env, userId);
-  if (saldo === null) return { ok: false, motivo: 'indisponivel' }; // fail-closed
-  if (saldo < custo) return { ok: false, motivo: 'sem_saldo', saldo };
-  const res = await lancarCreditos(env, {
-    userId,
-    delta: -Math.abs(custo),
-    origem: 'consumo',
-    // Idempotência é do CHAMADOR: passe `ref` = id único da ação (ex.: id da mensagem/
-    // requisição) para que UMA ação não seja debitada 2x num retry. Sem `ref`, o default é
-    // um UUID POR TENTATIVA — NUNCA derivado do saldo (duas ações concorrentes leem o mesmo
-    // saldo e produziriam o MESMO ref, colidindo no índice único e "sumindo" um débito real).
-    ref: ref ?? `${acao}:${userId}:${crypto.randomUUID()}`,
-    descricao: descricao ?? acao ?? 'consumo',
-  });
-  if (!res.ok) return { ok: false, motivo: 'falha', saldo };
-  return { ok: true, saldo: saldo - custo };
+  const custoNormalizado = Number(custo);
+  const userNormalizado = typeof userId === 'string' ? userId.trim() : '';
+  const acaoNormalizada = typeof acao === 'string' && acao.trim() ? acao.trim() : 'consumo';
+  const refNormalizada = typeof ref === 'string' && ref.trim()
+    ? ref.trim()
+    : `${acaoNormalizada}:${userNormalizado}:${crypto.randomUUID()}`;
+  const descricaoNormalizada = typeof descricao === 'string' && descricao.trim()
+    ? descricao.trim()
+    : acaoNormalizada;
+
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) {
+    return { ok: false, motivo: 'indisponivel' };
+  }
+  if (!userNormalizado
+      || !Number.isInteger(custoNormalizado)
+      || custoNormalizado < 1
+      || custoNormalizado > 1_000_000
+      || refNormalizada.length > 512
+      || descricaoNormalizada.length > 500) {
+    return { ok: false, motivo: 'invalido' };
+  }
+
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/consumir_creditos_atomico`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json', Accept: 'application/json' }),
+      body: JSON.stringify({
+        p_user: userNormalizado,
+        p_custo: custoNormalizado,
+        p_ref: refNormalizada,
+        p_descricao: descricaoNormalizada,
+      }),
+    });
+    if (!r.ok) return { ok: false, motivo: 'indisponivel' };
+
+    const dados = await r.json().catch(() => null);
+    if (!Array.isArray(dados) || dados.length !== 1 || !dados[0] || typeof dados[0] !== 'object') {
+      return { ok: false, motivo: 'indisponivel' };
+    }
+
+    const estado = dados[0].estado;
+    const saldoBruto = dados[0].saldo;
+    const saldo = saldoBruto === null || saldoBruto === '' ? NaN : Number(saldoBruto);
+    if (!Number.isSafeInteger(saldo)) {
+      return { ok: false, motivo: 'indisponivel' };
+    }
+
+    // A RPC nunca cria saldo negativo. `sem_saldo`/`ja_consumido` ainda podem
+    // expor um saldo legado negativo deixado pela corrida antiga; ele é válido
+    // para diagnóstico e, no caso sem_saldo, precisa BLOQUEAR — não virar infra.
+    if (estado === 'consumido' && saldo >= 0) return { ok: true, duplicado: false, saldo };
+    if (estado === 'ja_consumido') return { ok: true, duplicado: true, saldo };
+    if (estado === 'sem_saldo' && saldo < custoNormalizado) {
+      return { ok: false, motivo: 'sem_saldo', saldo };
+    }
+    return { ok: false, motivo: 'indisponivel' };
+  } catch {
+    return { ok: false, motivo: 'indisponivel' };
+  }
 }
 
 /** SHA-256 em hex — usado só para derivar um `ref` idempotente do CONTEÚDO do
@@ -153,6 +202,23 @@ export async function consumirCreditos(env, { userId, custo, acao, ref, descrica
 async function hashHex(texto) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function refAcaoIa(userId, { creditoRef, conteudo } = {}) {
+  const acao = 'voz_ia';
+  const refExplicito = typeof creditoRef === 'string' ? creditoRef.trim().slice(0, 200) : '';
+  // A referência é entrada do cliente: nunca a coloque literalmente na chave
+  // consultada por prefixo. Além de poder conter PII ou caracteres de controle,
+  // uma referência construída de propósito poderia imitar o miolo de outra
+  // cobrança. Domínios diferentes impedem colisão entre ref e corpo.
+  const hashRef = refExplicito ? await hashHex(`ref\0${refExplicito}`) : '';
+  const hashConteudo = typeof conteudo === 'string' && conteudo
+    ? await hashHex(`body\0${conteudo}`)
+    : '';
+  if (hashRef && hashConteudo) return `${acao}:${userId}:r${hashRef}:h${hashConteudo}`;
+  if (hashRef) return `${acao}:${userId}:r${hashRef}`;
+  if (hashConteudo) return `${acao}:${userId}:${hashConteudo}`;
+  return undefined;
 }
 
 /**
@@ -219,12 +285,11 @@ async function refCobrancaRecente(env, userId, prefixo) {
  *     qual foi a chave da vez passada.
  *
  * `jaCobrada:true` (achou lançamento desta ação na janela) LIBERA sem passar pelo
- * ledger de novo, e isso conserta um jeito silencioso de cobrar duas vezes pelo
- * mesmo trabalho: `consumirCreditos` lê o saldo ANTES de tentar lançar, então
- * quem pagou o último crédito e deu retry ficava com saldo 0 e levava
- * 'sem_saldo' — "você não tem créditos" para um trabalho que ele JÁ PAGOU há um
- * minuto. Não é falta de saldo, é repetição; e confundir os dois é a mesma
- * família de erro que "não sei" virar "não tem".
+ * ledger de novo. A RPC atômica também confere idempotência ANTES do saldo, mas
+ * esta consulta continua necessária para a janela deslizante: ela recupera a
+ * chave exata gravada anteriormente quando o retry cruza um bucket alinhado.
+ * Assim, quem pagou o último crédito não recebe 'sem_saldo' num retry do trabalho
+ * já pago, e uma chave do cliente também não vale para sempre.
  *
  * `jaCobrada:false` cobre os dois casos honestos: não achou nada porque é ação
  * nova (cobra, certo) ou porque não deu para perguntar (a RPC não existe / erro
@@ -290,9 +355,15 @@ async function regimeIa(env, userId) {
         `&select=plano,status,current_period_end&limit=1`,
       { headers: sbHeaders(env) },
     );
-    if (!r.ok) return 'indeterminado';
+    if (!r.ok) {
+      console.error('[olli-creditos] preauth_assinatura_status', r.status);
+      return 'indeterminado';
+    }
     const arr = await r.json().catch(() => null);
-    if (!Array.isArray(arr)) return 'indeterminado';
+    if (!Array.isArray(arr)) {
+      console.error('[olli-creditos] preauth_assinatura_json_invalido');
+      return 'indeterminado';
+    }
     if (!arr.length) return 'cota'; // sem linha = nunca assinou = grátis (resposta confirmada)
     const row = arr[0];
     if (!row.status || !STATUS_PAGOS.has(row.status)) return 'cota';
@@ -302,8 +373,100 @@ async function regimeIa(env, userId) {
     }
     return PLANOS_IA_ILIMITADA.has(row.plano) ? 'ilimitada' : 'cota';
   } catch {
+    console.error('[olli-creditos] preauth_assinatura_rede');
     return 'indeterminado';
   }
+}
+
+/**
+ * Pré-autorização barata, executada ANTES de qualquer inferência. Ela não
+ * consome cota nem crédito: apenas evita chamar o provedor quando já sabemos
+ * que a conta não poderia receber o resultado. A cobrança/contagem definitiva
+ * continua em `cobrarCreditoVoz`, somente depois de uma resposta válida.
+ *
+ * Retorno:
+ *   { permitido:true } → plano pago, cota grátis disponível ou crédito
+ *                        confirmado e com saldo: pode chamar o provedor
+ *   { permitido:false, motivo:'confirmacao_credito_necessaria' }
+ *                      → cota grátis acabou e o usuário ainda não consentiu
+ *   { permitido:false, motivo:'sem_creditos' }
+ *                      → consentiu, mas o saldo confirmado é insuficiente
+ *   { permitido:false, motivo:'indisponivel' }
+ *                      → banco/assinatura ilegível; falha fechado antes da IA
+ */
+export async function preautorizarUsoIa(env, user, opts = {}) {
+  if (!user || !user.id) return { permitido: false, motivo: 'indisponivel' };
+  const confirmarCredito = opts?.confirmarCredito;
+
+  const regime = await regimeIa(env, user.id);
+  if (regime === 'ilimitada') return { permitido: true };
+  if (regime === 'indeterminado') {
+    return { permitido: false, motivo: 'indisponivel' };
+  }
+
+  // Plano grátis: se ainda há espaço na cota mensal, a chamada pode seguir.
+  // A contagem real será feita atomicamente pela RPC após a resposta válida.
+  const periodo = new Date().toISOString().slice(0, 7);
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/ia_uso_gratis` +
+        `?user_id=eq.${encodeURIComponent(user.id)}` +
+        `&periodo=eq.${encodeURIComponent(periodo)}` +
+        '&acao=eq.voz_ia&select=id&limit=1',
+      {
+        headers: sbHeaders(env, {
+          Prefer: 'count=exact',
+          Range: '0-0',
+        }),
+      },
+    );
+    if (!r.ok) {
+      console.error('[olli-creditos] preauth_cota_status', r.status);
+      return { permitido: false, motivo: 'indisponivel' };
+    }
+    const faixa = r.headers.get('content-range') || '';
+    const total = Number(faixa.split('/')[1]);
+    if (!Number.isFinite(total)) {
+      console.error('[olli-creditos] preauth_cota_sem_contagem');
+      return { permitido: false, motivo: 'indisponivel' };
+    }
+    if (total < IA_GRATIS_MES) return { permitido: true };
+  } catch {
+    console.error('[olli-creditos] preauth_cota_rede');
+    return { permitido: false, motivo: 'indisponivel' };
+  }
+
+  // Cota esgotada: saldo positivo NÃO é consentimento. Sem a confirmação
+  // explícita, nem consulta saldo e nem chama o provedor que produziria um
+  // resultado pago. A decisão continua no servidor; o cliente só manifesta a
+  // vontade de gastar.
+  if (confirmarCredito !== true) {
+    return { permitido: false, motivo: 'confirmacao_credito_necessaria' };
+  }
+
+  // Retry exato de uma ação já paga deve passar mesmo quando aquele era o
+  // último crédito. A chave combina ref do cliente + hash do corpo: reutilizar
+  // a mesma ref com conteúdo diferente não ganha autorização.
+  const refAcao = await refAcaoIa(user.id, {
+    creditoRef: opts?.creditoRef,
+    conteudo: opts?.conteudo,
+  });
+  if (refAcao) {
+    const recente = await refCobrancaRecente(env, user.id, `${refAcao}:j`);
+    if (typeof recente === 'string' && recente !== 'indisponivel') {
+      return { permitido: true, retryPago: true };
+    }
+    if (recente === 'indisponivel') {
+      return { permitido: false, motivo: 'indisponivel' };
+    }
+  }
+
+  // Com consentimento explícito, exige saldo antes de liberar a inferência.
+  const saldo = await saldoCreditos(env, user.id);
+  if (saldo === null) return { permitido: false, motivo: 'indisponivel' };
+  return saldo >= (CUSTO.voz_ia || 1)
+    ? { permitido: true }
+    : { permitido: false, motivo: 'sem_creditos' };
 }
 
 /**
@@ -353,9 +516,12 @@ async function debitarCreditoVoz(env, userId, ref) {
   });
   if (cobranca.ok) return { bloqueado: false };
   if (cobranca.motivo === 'sem_saldo') return { bloqueado: true };
+  // Entrada inválida é bug de contrato, não indisponibilidade transitória: não
+  // libera trabalho pago com custo/ref malformado.
+  if (cobranca.motivo === 'invalido') return { bloqueado: true };
   // 'indisponivel' (saldo ilegível) ou 'falha' (ledger não gravou): infra, não
   // saldo — fail-open, não pune quem já recebeu o resultado da IA.
-  console.error('[olli-creditos] falha ao debitar voz_ia (fail-open, não bloqueia):', cobranca.motivo, userId);
+  console.error('[olli-creditos] falha ao debitar voz_ia (fail-open, não bloqueia):', cobranca.motivo);
   return { bloqueado: false };
 }
 
@@ -368,18 +534,21 @@ async function debitarCreditoVoz(env, userId, ref) {
  * simplesmente NÃO mandasse esse campo usava o Gemini (conta do dono) de graça
  * e sem limite. A intenção do campo era boa (não debitar sem o usuário querer),
  * mas o mecanismo estava do lado errado: o cliente PEDE, o servidor CONCEDE.
- * `confirmarCredito` continua sendo aceito para não quebrar o app, e continua
- * sendo o que faz a tela pedir a confirmação ao usuário — só não autoriza mais
- * nada sozinho.
+ * `confirmarCredito` não decide plano/cota/saldo (isso continua no servidor),
+ * mas é o consentimento obrigatório para gastar crédito depois que a cota
+ * gratuita acaba. Saldo disponível nunca substitui esse consentimento.
  *
  * Ordem da decisão (a mesma promessa que a tela de planos faz):
  *  1. plano pago e vigente → IA ilimitada, não cobra nada;
  *  2. senão, cota grátis do mês (contada no servidor) → consome 1 uso;
- *  3. cota esgotada → 1 crédito;
- *  4. sem crédito → BLOQUEIA (`{ bloqueado:true }`), que os chamadores
+ *  3. cota esgotada sem confirmação → BLOQUEIA sem tocar no saldo/ledger;
+ *  4. cota esgotada + confirmação → tenta 1 crédito;
+ *  5. sem crédito → BLOQUEIA (`{ bloqueado:true }`), que os chamadores
  *     traduzem para `{ ok:false, erro:'sem_creditos' }` — o vocabulário que o
  *     app já entende hoje (respostaSemCreditos em src/services/creditos.ts leva
- *     o usuário para "Ver planos"). Nenhum código de erro novo foi inventado.
+ *     o usuário para "Ver planos"). Internamente, o motivo
+ *     `confirmacao_credito_necessaria` separa falta de consentimento de falta
+ *     de saldo; o handler pode traduzir isso sem confundir as duas situações.
  *
  * FAIL-OPEN é regra de segurança OPERACIONAL, não descuido: se a migration da
  * cota ainda não foi aplicada, se a assinatura não pôde ser lida, ou se o
@@ -425,7 +594,7 @@ export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef
   const regime = await regimeIa(env, user.id);
   if (regime === 'ilimitada') return { bloqueado: false };
   if (regime === 'indeterminado') {
-    console.error('[olli-creditos] assinatura ilegível — liberando IA sem cobrar (fail-open):', user.id);
+    console.error('[olli-creditos] assinatura ilegível — liberando IA sem cobrar (fail-open)');
     return { bloqueado: false };
   }
 
@@ -441,16 +610,7 @@ export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef
   // repete, que é exatamente o retry de rede que a idempotência existe para
   // absorver. Quem não manda conteúdo (/voz/conversa) fica na chave do cliente
   // por desenho: lá o teto já é 1 crédito por conversa.
-  const refExplicito = typeof creditoRef === 'string' ? creditoRef.trim().slice(0, 200) : '';
-  const hashConteudo = typeof conteudo === 'string' && conteudo ? await hashHex(conteudo) : '';
-  let refAcao;
-  if (refExplicito && hashConteudo) {
-    refAcao = `${acao}:${user.id}:cli:${refExplicito}:h${hashConteudo}`;
-  } else if (refExplicito) {
-    refAcao = `${acao}:${user.id}:cli:${refExplicito}`;
-  } else if (hashConteudo) {
-    refAcao = `${acao}:${user.id}:${hashConteudo}`;
-  }
+  const refAcao = await refAcaoIa(user.id, { creditoRef, conteudo });
 
   const cota = await consumirCotaGratis(env, { userId: user.id, ref: refAcao, acao });
   if (cota === 'consumida') return { bloqueado: false };
@@ -458,12 +618,18 @@ export async function cobrarCreditoVoz(env, user, { confirmarCredito, creditoRef
     // Migration não aplicada (ou banco fora): sem contagem confiável, não dá para
     // afirmar que a cota acabou. Volta ao comportamento de HOJE — só cobra se o
     // cliente pediu explicitamente — para que este deploy seja seguro sozinho.
-    console.error('[olli-creditos] cota de IA indisponível (migration 20260727 aplicada?) — fail-open:', user.id);
+    console.error('[olli-creditos] cota de IA indisponível (migration 20260727 aplicada?) — fail-open');
     if (confirmarCredito !== true) return { bloqueado: false };
     return cobrar(env, user.id, refAcao);
   }
 
-  // cota === 'esgotada': daqui em diante é crédito, tenha o cliente pedido ou não.
+  // cota === 'esgotada': débito exige consentimento explícito. Este retorno vem
+  // ANTES de chaveCobrancaVoz/saldo/ledger para que ausência de confirmação
+  // jamais provoque cobrança silenciosa, mesmo que haja saldo.
+  if (confirmarCredito !== true) {
+    return { bloqueado: true, motivo: 'confirmacao_credito_necessaria' };
+  }
+
   return cobrar(env, user.id, refAcao);
 }
 

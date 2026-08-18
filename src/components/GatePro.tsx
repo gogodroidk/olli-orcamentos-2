@@ -43,7 +43,7 @@ interface Props {
 
 /** Benefício padrão por recurso (1 linha, tom caloroso e concreto). */
 const COPY_RECURSO: Record<Recurso, string> = {
-  ia_ilimitada: 'IA sem limite: voz, chat e diagnóstico à vontade.',
+  ia_ilimitada: 'IA incluída: voz, chat e diagnóstico com uso justo diário.',
   relatorios: 'Veja quanto você faturou e sua taxa de aprovação.',
   metas: 'Defina metas de venda e acompanhe seu progresso.',
   radar_clientes: 'Descubra os clientes sumidos e traga eles de volta.',

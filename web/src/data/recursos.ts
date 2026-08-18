@@ -71,7 +71,7 @@ interface RotuloRecurso {
  * é "não tem", é "3 usos/mês" — um terceiro estado que ✓/✗ não expressa).
  */
 export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
-	ia_ilimitada: { titulo: "IA sem limite de uso" },
+	ia_ilimitada: { titulo: "IA incluída com uso justo diário" },
 	relatorios: { titulo: "Relatórios de faturamento e conversão" },
 	metas: { titulo: "Metas de vendas e acompanhamento" },
 	radar_clientes: { titulo: "Radar de clientes sumidos (lista completa)" },

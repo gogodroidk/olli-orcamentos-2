@@ -4,6 +4,7 @@ import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
 import { verticalParaIA } from '../hooks/useVerticais';
 import { respostaSemCreditos } from './creditos';
+import { mensagemLimiteIA } from './erroIA';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -83,6 +84,8 @@ const TIMEOUT_CHAT_MS = 30_000;
  */
 function mensagemErroIA(erro: unknown, fallback: string): string {
   const s = typeof erro === 'string' ? erro : '';
+  const limite = mensagemLimiteIA(s);
+  if (limite) return limite;
   if (/nao_autorizado|n[ãa]o_autorizado|401/i.test(s)) return PRECISA_LOGIN;
   if (/muitas_requisicoes|429/i.test(s)) return MUITAS_REQUISICOES;
   if (/503|overload|high demand|unavailable|sobrecarreg|exhausted|quota|rate/i.test(s)) {
@@ -93,7 +96,9 @@ function mensagemErroIA(erro: unknown, fallback: string): string {
 }
 
 /** Mapeia o status HTTP da resposta do Worker para uma mensagem amigável (alinhado com o que o worker de fato retorna: 429/503 = sobrecarga, 5xx = erro do servidor). */
-function mensagemPorStatus(status: number, fallback: string): string {
+function mensagemPorStatus(status: number, fallback: string, codigo?: unknown): string {
+  const limite = mensagemLimiteIA(codigo);
+  if (limite) return limite;
   if (status === 401) return PRECISA_LOGIN;
   if (status === 429) return MUITAS_REQUISICOES;
   if (status === 503) return SOBRECARGA;
@@ -173,7 +178,7 @@ export async function interpretarVoz(
     if (!r.ok) {
       const errData = await r.json().catch(() => null);
       if (respostaSemCreditos(r.status, errData)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
-      return { ok: false, erro: mensagemPorStatus(r.status, FALHOU) };
+      return { ok: false, erro: mensagemPorStatus(r.status, FALHOU, errData?.erro) };
     }
     const data: any = await r.json();
     if (data?.ok && Array.isArray(data.itens)) {
@@ -323,7 +328,7 @@ export async function conversarVoz(
     if (!r.ok) {
       const errData = await r.json().catch(() => null);
       if (respostaSemCreditos(r.status, errData)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
-      return { ok: false, erro: mensagemPorStatus(r.status, FALHOU) };
+      return { ok: false, erro: mensagemPorStatus(r.status, FALHOU, errData?.erro) };
     }
     const data: any = await r.json();
     if (respostaSemCreditos(r.status, data)) return { ok: false, erro: SEM_CREDITOS_VOZ, semCreditos: true };
@@ -404,12 +409,19 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
       body: JSON.stringify(corpo),
       signal: controller.signal,
     });
-    if (!r.ok) return { ok: false, resposta: mensagemPorStatus(r.status, CHAT_FALHOU) };
+    if (!r.ok) {
+      const errData = await r.json().catch(() => null);
+      if (respostaSemCreditos(r.status, errData)) {
+        return { ok: false, resposta: SEM_CREDITOS_VOZ };
+      }
+      return { ok: false, resposta: mensagemPorStatus(r.status, CHAT_FALHOU, errData?.erro) };
+    }
     const data: any = await r.json();
     if (data?.ok && typeof data.resposta === 'string') {
       track(Eventos.aiUsed, { fonte: 'chat' });
       return { ok: true, resposta: data.resposta };
     }
+    if (respostaSemCreditos(r.status, data)) return { ok: false, resposta: SEM_CREDITOS_VOZ };
     return { ok: false, resposta: mensagemErroIA(data?.erro, CHAT_SEM_IA) };
   } catch (e: any) {
     if (e?.name === 'AbortError') {

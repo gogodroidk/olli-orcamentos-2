@@ -14,12 +14,25 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
-  //   npx wrangler secret put GEMINI_API_KEY
+  //   npx wrangler secret put OPENROUTER_API_KEY
   //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)
   //   npx wrangler secret put STRIPE_WEBHOOK_SECRET   (whsec_..., do endpoint do webhook)
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpYWVwbHFpbm5ubm5peXZ3dGxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU5NzAsImV4cCI6MjA5NjY5MTk3MH0.P_EF248NN0y7XJ47FmUuqwW00N2gvjq_aNJBqan2COk",
+    "AI_PROVIDER": "openrouter",
+    "OPENROUTER_TEXT_MODELS": "google/gemma-4-26b-a4b-it:free,openai/gpt-oss-20b:free,google/gemma-4-31b-it:free,nvidia/nemotron-nano-9b-v2:free",
+    "OPENROUTER_SITE_URL": "https://olliorcamentos.online",
+    "OPENROUTER_APP_NAME": "OLLI Orcamentos",
+    // Reservas diárias pessimistas: uma tentativa enviada ao provedor conta
+    // mesmo se terminar em timeout/429. Há margem para outras automações.
+    "OPENROUTER_GLOBAL_DAILY_LIMIT": "40",
+    "OPENROUTER_USER_DAILY_LIMIT": "10",
+    // Whisper é contado em neurônios estimados, não em requests. 46,63/min;
+    // 8.000 ≈ 171 min/dia e 940 ≈ 20 min/dia por usuário.
+    "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
+    "WHISPER_USER_DAILY_LIMIT": "940",
+    // Mantido apenas para rollback deliberado com AI_PROVIDER=gemini.
     "GEMINI_MODEL": "gemini-2.5-flash",
     // Price IDs da Stripe (não-secretos — identificam produtos, não autenticam).
     // Pro = R$39/mês (lookup olli_pro_mensal); Empresa = R$99/mês (lookup
@@ -30,6 +43,9 @@
     "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
     "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn"
   },
+  // O áudio fica na Cloudflare; somente a transcrição textual segue ao
+  // OpenRouter quando o modo solicitado é orçamento.
+  "ai": { "binding": "AI" },
   // Rate limiting nativo da Cloudflare. Protege a cota paga da IA (por usuário) e
   // o link público contra abuso/brute-force (por IP). period: 10 ou 60 (segundos).
   "ratelimits": [

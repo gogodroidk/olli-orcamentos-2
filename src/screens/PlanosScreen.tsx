@@ -121,7 +121,7 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     cta: 'Assinar Pro',
     beneficios: [
       'Tudo do plano Grátis',
-      'IA sem limite mensal (voz, chat e diagnóstico)',
+      'IA incluída com uso justo diário (voz, chat e diagnóstico)',
       'Relatórios de faturamento e conversão',
       'Metas de vendas e acompanhamento por período',
       'PDF sem a marca OLLI e modelos premium',
@@ -169,7 +169,7 @@ const LINHAS_BASE: LinhaComparativo[] = [
 /** Rótulo humano de cada recurso gateado. Fiel às descrições em entitlements.ts —
  *  a leitura comercial do que o mapa RECURSOS_POR_PLANO já decide em código. */
 const RECURSO_LABEL: Record<Recurso, string> = {
-  ia_ilimitada: 'IA sem limite mensal (voz, chat e diagnóstico)',
+  ia_ilimitada: 'IA incluída com uso justo diário (voz, chat e diagnóstico)',
   relatorios: 'Relatórios de faturamento e conversão',
   metas: 'Metas de vendas e acompanhamento',
   radar_clientes: 'Radar de clientes sumidos (lista completa)',
@@ -262,7 +262,7 @@ export default function PlanosScreen() {
       descricao:
         `Comece grátis, com orçamentos e recibos ilimitados, catálogo, clientes e agenda. ` +
         `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual) ` +
-        `acrescenta IA sem limite, relatórios de faturamento e conversão, metas de vendas e suporte prioritário.`,
+        `acrescenta IA com uso justo diário, relatórios de faturamento e conversão, metas de vendas e suporte prioritário.`,
       caminho: '/planos',
     });
   }, []);

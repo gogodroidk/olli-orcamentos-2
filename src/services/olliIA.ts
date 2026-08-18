@@ -3,6 +3,7 @@ import { getCacheIA, setCacheIA, searchCodigosErro } from '../database/database'
 import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
 import { DiagnosticoInput, DiagnosticoIA, DiagnosticoResultado, CodigoErro } from '../types';
+import { tipoLimiteIA } from './erroIA';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -19,19 +20,25 @@ function norm(s?: string): string {
   return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// v2: bump proposital do prefixo (era 'diag:v1') — o aterramento com fontes
-// reais no diagnóstico muda o formato/qualidade da resposta da IA. Sem essa
-// virada de versão, técnicos com cache antigo (v1, sempre `fontes: []`)
-// ficariam presos a diagnósticos sem citação para sempre, já que `cache_ia`
-// não tem TTL/expiração — só uma chave nova força a IA a ser chamada de novo.
+// v3: invalida respostas antigas produzidas antes da troca Gemini → OpenRouter.
+// `cache_ia` não tem TTL; sem o bump, um diagnóstico v2 poderia continuar sendo
+// servido para sempre e atribuído ao provedor novo sem nunca ter passado nele.
 function chave(input: DiagnosticoInput): string {
-  return `diag:v2:${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
+  return `diag:v3:${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
 }
 
 /** Timeout do diagnóstico por IA: 30s (campo, conexão instável). */
 const TIMEOUT_DIAGNOSTICO_MS = 30_000;
 
-export type MotivoFalhaIA = 'timeout' | 'offline' | 'servidor' | 'cancelado' | 'auth' | null;
+export type MotivoFalhaIA =
+  | 'timeout'
+  | 'offline'
+  | 'servidor'
+  | 'cancelado'
+  | 'auth'
+  | 'limite_diario'
+  | 'limite_global'
+  | null;
 
 /** Último motivo de falha da chamada de IA (para a UI diferenciar timeout/offline/erro). */
 let ultimoMotivoFalha: MotivoFalhaIA = null;
@@ -42,7 +49,7 @@ export function motivoFalhaDiagnostico(): MotivoFalhaIA {
 /**
  * Etapa 2 — diagnóstico da OLLI Técnica. Camadas (protege a margem):
  *   1. cache local (SQLite) — instantâneo e offline;
- *   2. Edge Function `diagnostico` (chave Anthropic server-side + cache na nuvem);
+ *   2. Cloudflare Worker (OpenRouter server-side, com cota e privacidade);
  *   3. fallback: a base de 698 códigos, para nunca deixar o técnico na mão.
  *
  * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
@@ -64,7 +71,7 @@ export async function diagnosticarCaso(
     if (diag) return { fonte: 'cache', diagnostico: diag };
   }
 
-  // 2) IA via Cloudflare Worker (Gemini por padrão; Claude opcional) — só se
+  // 2) IA via Cloudflare Worker (OpenRouter em produção) — só se
   //    configurado E com sessão logada (o Worker exige JWT do Supabase).
   //    Sem token (deslogado) → pula direto para o fallback offline (698 códigos).
   //    forcarOffline (cota de IA do plano Grátis esgotada) também pula a nuvem.
@@ -92,10 +99,11 @@ export async function diagnosticarCaso(
           const data: any = await r.json();
           if (data?.ok && data.diagnostico) {
             await setCacheIA(key, JSON.stringify(data.diagnostico));
-            track(Eventos.aiUsed, { fonte: data.fonte, modelo: data.modelo });
+            const modelo = data.modelo ?? data.provedor;
+            track(Eventos.aiUsed, { fonte: data.fonte, modelo });
             return {
               fonte: data.fonte === 'cache' ? 'cache' : 'ia',
-              modelo: data.modelo,
+              modelo,
               diagnostico: data.diagnostico,
             };
           }
@@ -105,7 +113,10 @@ export async function diagnosticarCaso(
           // motivo VISÍVEL ('auth') — o worker respondeu 401 com um token que
           // deveria valer, então a sessão precisa ser renovada em Conta.
           ultimoMotivoFalha = 'auth';
-        } else if (r.status === 429 || r.status >= 500) {
+        } else if (r.status === 429) {
+          const erro = await r.json().catch(() => null);
+          ultimoMotivoFalha = tipoLimiteIA(erro?.erro) ?? 'servidor';
+        } else if (r.status >= 500) {
           // 429 (muitas_requisicoes) e 5xx (503 sobrecarregado, 502 falha_ia etc.) — o worker
           // realmente retorna esses códigos (ver worker/src/index.js) quando está sobrecarregado.
           ultimoMotivoFalha = 'servidor';
@@ -165,6 +176,10 @@ function avisoFallback(): string {
       return 'Sem conexão com a internet agora — mostrando o que a base de códigos tem.';
     case 'servidor':
       return 'A OLLI está muito requisitada agora — mostrando o que a base de códigos tem. Tente de novo em alguns instantes.';
+    case 'limite_diario':
+      return 'O limite diário da OLLI online foi atingido. Ele volta às 21h (horário de Brasília) — mostrando a base offline agora.';
+    case 'limite_global':
+      return 'A capacidade gratuita da OLLI online acabou por hoje. Ela volta às 21h (horário de Brasília) — mostrando a base offline agora.';
     case 'cancelado':
       return 'Análise cancelada — mostrando o que a base de códigos tem.';
     default:

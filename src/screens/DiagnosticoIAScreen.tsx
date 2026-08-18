@@ -162,9 +162,10 @@ export default function DiagnosticoIAScreen() {
       : res?.aviso
         ? 'desconhecido'
         : undefined;
+  const limiteDiarioFechado = motivoErro === 'limite_diario' || motivoErro === 'limite_global';
   const onAcaoErro = avisoCota
     ? () => nav.navigate('Planos')
-    : motivoErro
+    : motivoErro && !limiteDiarioFechado
       ? pedirDiagnostico
       : undefined;
   // Fora da taxonomia (timeout/offline/servidor/auth/cota) o único aviso restante é

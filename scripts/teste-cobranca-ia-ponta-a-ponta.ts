@@ -73,12 +73,13 @@ function checar(nome: string, real: unknown, esperado: unknown): void {
 const AQUI = dirname(fileURLToPath(import.meta.url));
 
 const env: any = {
+  AI_PROVIDER: 'gemini',
   SUPABASE_URL: 'https://falso.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso',
   GEMINI_API_KEY: 'gemini-falso',
   GEMINI_MODEL: 'gemini-2.5-flash',
 };
-const USER = { id: 'user-ponta-a-ponta' };
+const USER = { id: '123e4567-e89b-42d3-a456-426614174020' };
 
 // ── relógio controlado (a janela de idempotência é regra sobre TEMPO) ──────
 const DateNowReal = Date.now;
@@ -130,6 +131,19 @@ function respostaJson(valor: unknown) {
 
 (globalThis as any).fetch = async (url: string, init?: { method?: string; body?: string }) => {
   const u = String(url);
+
+  if (u.includes('/rest/v1/rpc/reservar_cota_ia_diaria')) {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    return respostaJson([{
+      estado: 'permitido',
+      dia: '2026-08-17',
+      usados_global: Number(body.p_unidades),
+      usados_usuario: Number(body.p_unidades),
+      limite_global: Number(body.p_limite_global),
+      limite_usuario: Number(body.p_limite_usuario),
+      unidades: Number(body.p_unidades),
+    }]);
+  }
 
   // ── Gemini ──
   if (u.includes('generativelanguage.googleapis.com')) {
@@ -183,6 +197,22 @@ function respostaJson(valor: unknown) {
   if (u.includes('/rest/v1/rpc/saldo_creditos')) {
     if (saldoIndisponivel) return { ok: false, status: 500 } as Response;
     return respostaJson(saldo);
+  }
+
+  // ── consumo atômico: idempotência -> saldo -> insert sob um lock ──
+  if (u.includes('/rest/v1/rpc/consumir_creditos_atomico')) {
+    ledgerChamadas++;
+    if (saldoIndisponivel) return { ok: false, status: 500 } as Response;
+    const body = init?.body ? JSON.parse(init.body) : {};
+    const ref = String(body.p_ref ?? '');
+    const custo = Number(body.p_custo);
+    if (ledgerLinhas.some((l) => l.ref === ref)) {
+      return respostaJson([{ estado: 'ja_consumido', saldo }]);
+    }
+    if (saldo < custo) return respostaJson([{ estado: 'sem_saldo', saldo }]);
+    ledgerLinhas.push({ ref, criadoEm: relogio });
+    saldo -= custo;
+    return respostaJson([{ estado: 'consumido', saldo }]);
   }
 
   // ── credit_ledger (INSERT): índice único (origem,ref) emulado ──
@@ -246,18 +276,17 @@ resetBanco(2); // 2 créditos comprados, cota do mês zerada em usos
   checar('e NÃO tocou no ledger (grátis é grátis)', ledgerChamadas, 0);
   checar('saldo de créditos intacto', saldo, 2);
 
-  // 4ª: a RPC responde 'esgotada' e daqui em diante é crédito — o cliente não
-  // precisou pedir nada (o servidor é quem decide; era este o buraco original).
-  const q = await falar('fala paga 1');
+  // 4ª: a RPC responde 'esgotada'; crédito só depois do toque explícito.
+  const q = await falar('fala paga 1', { confirmarCredito: true, creditoRef: 'paga-1' });
   checar('4ª chamada ainda entrega o resultado', q.body.ok, true);
   checar('mas cobrou 1 crédito', saldo, 1);
   checar('1 lançamento no ledger', ledgerLinhas.length, 1);
 
-  const c = await falar('fala paga 2');
+  const c = await falar('fala paga 2', { confirmarCredito: true, creditoRef: 'paga-2' });
   checar('5ª chamada entrega e cobra o último crédito', [c.body.ok, saldo], [true, 0]);
 
   // 6ª: cota esgotada E saldo 0. É AQUI que o app tem que ouvir 'sem_creditos'.
-  const bloqueada = await falar('fala paga 3');
+  const bloqueada = await falar('fala paga 3', { confirmarCredito: true, creditoRef: 'paga-3' });
   checar('6ª chamada BLOQUEIA com o vocabulário que o app entende', bloqueada.body, {
     ok: false,
     erro: 'sem_creditos',
@@ -272,11 +301,11 @@ console.log('\n2) retry DENTRO da janela do mesmo trabalho pago: entrega de novo
 // "você não tem créditos" por um trabalho que acabou de pagar.
 resetBanco(1, { usosJaFeitos: IA_GRATIS_MES });
 {
-  const primeira = await falar('mesma fala paga');
+  const primeira = await falar('mesma fala paga', { confirmarCredito: true, creditoRef: 'retry-pago' });
   checar('cobrou o único crédito', [primeira.body.ok, saldo], [true, 0]);
 
   avancar(60_000); // 1 min — o retry honesto do timeout de 60s do app
-  const retry = await falar('mesma fala paga');
+  const retry = await falar('mesma fala paga', { confirmarCredito: true, creditoRef: 'retry-pago' });
   checar('retry NÃO vira "sem_creditos"', retry.body.ok, true);
   checar('e não cobrou de novo', saldo, 0);
   checar('nenhum lançamento novo no ledger', ledgerLinhas.length, 1);
@@ -287,7 +316,7 @@ console.log('\n3) MESMA fala FORA da janela é trabalho NOVO — e sem saldo, bl
 // para sempre. Passada a janela, a chave repetida deixa de ser retry.
 {
   avancar(JANELA_IDEM_MS + 1000);
-  const depois = await falar('mesma fala paga');
+  const depois = await falar('mesma fala paga', { confirmarCredito: true, creditoRef: 'retry-pago' });
   checar('fora da janela, sem saldo: bloqueia', depois.body, { ok: false, erro: 'sem_creditos' });
 }
 
@@ -298,7 +327,7 @@ resetBanco(5, { usosJaFeitos: IA_GRATIS_MES });
   geminiQuebrado = true;
   let lancou = false;
   try {
-    await falar('fala que o Gemini derruba');
+    await falar('fala que o Gemini derruba', { confirmarCredito: true, creditoRef: 'falha-ia' });
   } catch {
     lancou = true; // gemini() lança; index.js traduz em 502/503 lá fora
   }
@@ -313,7 +342,7 @@ console.log('\n4b) resposta ILEGÍVEL do Gemini também não cobra');
 resetBanco(5, { usosJaFeitos: IA_GRATIS_MES });
 {
   respostaGeminiFake = 'isto não é json';
-  const { body } = await falar('fala com resposta quebrada');
+  const { body } = await falar('fala com resposta quebrada', { confirmarCredito: true, creditoRef: 'resposta-quebrada' });
   checar('erro de parse é reportado, não mascarado', body, { ok: false, erro: 'resposta_invalida' });
   checar('e não cobrou por resposta que o app não pode usar', saldo, 5);
   checar('sem consultar cota (o retorno é antes da cobrança)', cotaChamadas, 0);
@@ -342,9 +371,9 @@ console.log('\n5) ERRO DE INFRA NUNCA vira "sem_creditos" (P0: erro não vira va
 console.log('\n5b) saldo ILEGÍVEL na hora de debitar: a IA já entregou — libera');
 resetBanco(0, { usosJaFeitos: IA_GRATIS_MES, saldoIndisponivel: true });
 {
-  const { body } = await falar('fala com saldo ilegível');
+  const { body } = await falar('fala com saldo ilegível', { confirmarCredito: true, creditoRef: 'saldo-ilegivel' });
   checar('não bloqueia por erro de leitura do saldo', body.ok, true);
-  checar('e nem tentou lançar às cegas', ledgerChamadas, 0);
+  checar('a RPC atômica falhou sem gravar linha', [ledgerChamadas, ledgerLinhas.length], [1, 0]);
 }
 
 console.log('\n5c) a RPC da JANELA fora do ar (cota respondendo): cobra, mas não duas vezes');
@@ -352,9 +381,9 @@ console.log('\n5c) a RPC da JANELA fora do ar (cota respondendo): cobra, mas nã
 // consulta, a chave volta a ser a ESTÁVEL, e o índice único absorve o retry.
 resetBanco(3, { usosJaFeitos: IA_GRATIS_MES, lookupRpc: 'fora_do_ar' });
 {
-  await falar('fala com lookup fora');
+  await falar('fala com lookup fora', { confirmarCredito: true, creditoRef: 'lookup-fora' });
   checar('cobrou uma vez', saldo, 2);
-  await falar('fala com lookup fora');
+  await falar('fala com lookup fora', { confirmarCredito: true, creditoRef: 'lookup-fora' });
   checar('retry no estado degradado NÃO cobrou de novo', saldo, 2);
   checar('e o ledger tem 1 linha só', ledgerLinhas.length, 1);
 }

@@ -305,7 +305,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         tipo: 'passos',
         conteudo: [
           'Grátis (R$ 0) — tudo do essencial, mais 3 usos de IA por mês.',
-          'Pro (R$ 39/mês) — IA sem limite de uso, relatórios, metas, radar de clientes, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.',
+          'Pro (R$ 39/mês) — IA incluída com uso justo diário, relatórios, metas, radar de clientes, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.',
           'Empresa (R$ 99/mês) — tudo do Pro, mais equipe com papéis, mapa da equipe ao vivo e o painel de gestão da empresa.',
         ],
       },

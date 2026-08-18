@@ -19,9 +19,11 @@ const path = require('path');
 
 const FICHA = path.join(__dirname, 'FICHA.md');
 
-/** Blocos ``` na ordem em que aparecem no FICHA.md. */
+/** Blocos ``` na ordem em que aparecem no FICHA.md (LF ou CRLF). */
 function blocos(md) {
-  return [...md.matchAll(/```\n([\s\S]*?)```/g)].map((m) => m[1].replace(/\n$/, ''));
+  return [...md.matchAll(/```\r?\n([\s\S]*?)```/g)].map((m) =>
+    m[1].replace(/\r?\n$/, '').replace(/\r\n/g, '\n'),
+  );
 }
 
 /**

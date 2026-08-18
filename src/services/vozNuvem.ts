@@ -12,6 +12,7 @@ import { supabase } from './supabase';
 import { mensagemPermissaoNegada } from './reconhecimentoVoz';
 import { verticalParaIA } from '../hooks/useVerticais';
 import { respostaSemCreditos } from './creditos';
+import { mensagemLimiteIA } from './erroIA';
 import type { VozResultadoOk, VozItem } from './olliAssistente';
 
 /**
@@ -70,7 +71,9 @@ async function accessTokenAtual(): Promise<string | null> {
   }
 }
 
-function mensagemPorStatus(status: number, fallback: string): string {
+function mensagemPorStatus(status: number, fallback: string, codigo?: unknown): string {
+  const limite = mensagemLimiteIA(codigo);
+  if (limite) return limite;
   if (status === 401) return PRECISA_LOGIN;
   if (status === 429) return MUITAS_REQUISICOES;
   if (status === 503) return SOBRECARGA;
@@ -80,6 +83,8 @@ function mensagemPorStatus(status: number, fallback: string): string {
 
 function mensagemErroIA(erro: unknown, fallback: string): string {
   const s = typeof erro === 'string' ? erro : '';
+  const limite = mensagemLimiteIA(s);
+  if (limite) return limite;
   if (/nao_autorizado|n[ãa]o_autorizado|401/i.test(s)) return PRECISA_LOGIN;
   if (/muitas_requisicoes|429/i.test(s)) return MUITAS_REQUISICOES;
   if (/503|overload|high demand|unavailable|sobrecarreg|exhausted|quota|rate/i.test(s)) {
@@ -288,7 +293,7 @@ export function useGravadorNuvem(opts: UseGravadorNuvemOpts): UseGravadorNuvemRe
             onErroRef.current(SEM_CREDITOS, { semCreditos: true });
             return;
           }
-          onErroRef.current(mensagemPorStatus(r.status, FALHOU));
+          onErroRef.current(mensagemPorStatus(r.status, FALHOU, errData?.erro));
           return;
         }
 

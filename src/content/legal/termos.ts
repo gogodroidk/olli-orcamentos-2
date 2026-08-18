@@ -13,9 +13,9 @@ import type { LegalDoc } from './privacidade';
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '13 de agosto de 2026',
+  atualizadoEm: '17 de agosto de 2026',
   aviso:
-    'Documento vigente desde 13 de agosto de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    'Documento atualizado em 17 de agosto de 2026. Ao criar uma conta ou usar o OLLI, ' +
     'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
@@ -69,6 +69,9 @@ export const TERMOS: LegalDoc = {
           'automaticamente ao fim de cada ciclo, pelo valor então vigente, até que você cancele.',
         'O aplicativo Android distribuído pela Google Play não oferece contratação ou alteração de ' +
           'planos enquanto não houver um sistema de cobrança compatível com a loja.',
+        'Os recursos de inteligência artificial dos planos pagos são incluídos sob política de uso ' +
+          'justo diário, segurança e disponibilidade dos provedores. Os limites protegem a qualidade ' +
+          'para todos e podem ser ajustados; o app informa quando a capacidade diária estiver esgotada.',
       ],
     },
     {
@@ -116,6 +119,8 @@ export const TERMOS: LegalDoc = {
           'julgamento profissional, normas técnicas, manuais do fabricante nem inspeção presencial.',
         'A decisão técnica e a responsabilidade pelo serviço executado são sempre suas. Confirme sempre ' +
           'as informações antes de agir, especialmente em intervenções que envolvam segurança.',
+        'A IA depende de fornecedores externos e pode ficar temporariamente indisponível ou atingir ' +
+          'limites de uso. Nessas situações, as funções locais e o diagnóstico offline continuam disponíveis.',
       ],
     },
     {

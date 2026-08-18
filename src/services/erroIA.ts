@@ -13,6 +13,8 @@ export type TipoErroIA =
   | 'servidor'
   | 'auth'
   | 'cota'
+  | 'limite_diario'
+  | 'limite_global'
   | 'cancelado'
   | 'desconhecido';
 
@@ -21,6 +23,24 @@ export interface EstadoErroIA {
   mensagem: string;
   /** Rótulo do botão de recuperação — a tela decide a ação real (retry, ver planos…). */
   acao: string;
+}
+
+export type CodigoLimiteIA = 'cota_ia_diaria' | 'cota_ia_global';
+
+export function tipoLimiteIA(codigo: unknown): 'limite_diario' | 'limite_global' | null {
+  if (codigo === 'cota_ia_diaria') return 'limite_diario';
+  if (codigo === 'cota_ia_global') return 'limite_global';
+  return null;
+}
+
+export function mensagemLimiteIA(codigo: unknown): string | null {
+  if (codigo === 'cota_ia_diaria') {
+    return 'Você chegou ao limite diário da OLLI online. Ele é renovado todos os dias às 21h (horário de Brasília); o modo manual e a base offline continuam disponíveis.';
+  }
+  if (codigo === 'cota_ia_global') {
+    return 'A capacidade gratuita da OLLI online acabou por hoje. Ela é renovada às 21h (horário de Brasília); use o modo manual ou a base offline enquanto isso.';
+  }
+  return null;
 }
 
 /** Mapeia o motivo real da falha para {titulo, mensagem, ação} — texto único, sem duplicar tela a tela. */
@@ -53,8 +73,20 @@ export function mapearErroIA(tipo: TipoErroIA): EstadoErroIA {
     case 'cota':
       return {
         titulo: 'Seus usos grátis de IA deste mês acabaram',
-        mensagem: 'Volta mês que vem com usos novos, ou assine o Pro para IA ilimitada.',
+        mensagem: 'Volta mês que vem com usos novos, ou assine o Pro para IA incluída com uso justo diário.',
         acao: 'Ver planos',
+      };
+    case 'limite_diario':
+      return {
+        titulo: 'Limite diário da OLLI atingido',
+        mensagem: mensagemLimiteIA('cota_ia_diaria')!,
+        acao: 'Continuar no modo manual',
+      };
+    case 'limite_global':
+      return {
+        titulo: 'Capacidade gratuita do dia encerrada',
+        mensagem: mensagemLimiteIA('cota_ia_global')!,
+        acao: 'Continuar no modo manual',
       };
     case 'cancelado':
       return {

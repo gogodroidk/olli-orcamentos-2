@@ -57,6 +57,10 @@ const secrets = [
   ['SUPABASE_SERVICE_ROLE_KEY', serviceRole],
   ['STRIPE_SECRET_KEY', env.STRIPE_SECRET_KEY],
   ['STRIPE_WEBHOOK_SECRET', env.OLLI_STRIPE_WEBHOOK_SECRET],
+  // Chave EXCLUSIVA do OLLI. Não reutiliza OPENROUTER_API_KEY do cérebro/CCR:
+  // uma automação não deve ampliar o raio de impacto da outra.
+  ['OPENROUTER_API_KEY', env.OLLI_OPENROUTER_API_KEY],
+  // Mantida apenas para rollback deliberado com AI_PROVIDER=gemini.
   ['GEMINI_API_KEY', env.OLLI_GEMINI_API_KEY],
   // Fail-closed (mesma regra que admin.js aplica em runtime): se o cofre não tem
   // OLLI_ADMIN_EMAIL, NÃO restaura com um e-mail fixo — um fallback hardcoded aqui

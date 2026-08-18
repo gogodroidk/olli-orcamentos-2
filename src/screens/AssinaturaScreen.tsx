@@ -372,7 +372,7 @@ export default function AssinaturaScreen() {
                   </Text>
                   <View style={styles.beneficios}>
                     {[
-                      'IA sem limite (voz, chat e diagnóstico)',
+                      'IA incluída com uso justo diário (voz, chat e diagnóstico)',
                       'Relatórios de faturamento e conversão',
                       'Metas de vendas e acompanhamento',
                       'PDF sem a marca OLLI e modelos premium',

@@ -65,9 +65,9 @@ histórico de cada cliente e de cada equipamento.
 DITE EM VEZ DE DIGITAR
 Fale o que foi feito e a assistente Olli monta o orçamento estruturado, pronto para você revisar e
 enviar. Também dá para perguntar sobre um código de erro ou tirar uma dúvida técnica por texto.
-Os recursos com inteligência artificial têm 3 usos por mês no plano Grátis; os planos pagos liberam
-sem cota. Respostas geradas por IA podem conter erro — confira antes de enviar ao cliente, e use o
-botão de sinalizar quando algo sair errado.
+Os recursos com inteligência artificial têm 3 usos por mês no plano Grátis; nos planos pagos, seguem
+limites de uso justo diário e a disponibilidade dos modelos. Respostas geradas por IA podem conter
+erro — confira antes de enviar ao cliente, e use o botão de sinalizar quando algo sair errado.
 
 DIAGNÓSTICO QUE FUNCIONA SEM INTERNET
 Quase 700 códigos de erro de ar-condicionado e refrigeração, de 23 marcas, com causa provável e o
@@ -97,7 +97,7 @@ precisa ver.
 
 PLANOS
 O plano Grátis não expira e não limita quantidade: orçamento, recibo, ordem de serviço, clientes,
-agenda e diagnóstico offline são livres. Os planos Pro e Empresa acrescentam IA sem cota,
+agenda e diagnóstico offline são livres. Os planos Pro e Empresa acrescentam IA com uso justo diário,
 relatórios, metas, radar de clientes, modelos extras de PDF e a remoção da marca OLLI do documento.
 Os planos e os valores ficam na aba Conta, dentro do app.
 
@@ -106,7 +106,7 @@ Você pode apagar sua conta e seus dados pelo próprio app, na aba Conta.
 Feito para o autônomo e a pequena equipe que trabalham na rua, não atrás de uma mesa.
 ```
 
-**3.085/4.000 caracteres** — sobra 915. Medido por `node assets/loja/medir.js`, que relê este
+**3.149/4.000 caracteres** — sobra 851. Medido por `node assets/loja/medir.js`, que relê este
 próprio arquivo; **não confie neste número depois de editar o texto sem rodar o script de novo.**
 (Este número já mudou uma vez nesta entrega, quando os termos de busca foram costurados no texto —
 é exatamente por isso que a medição virou script em vez de ficar escrita à mão.)

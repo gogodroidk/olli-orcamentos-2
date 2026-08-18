@@ -3,7 +3,7 @@
  * no app (tema escuro) e na web (mesma tela).
  *
  * IMPORTANTE: este texto é um MODELO gerado para o produto. Ele reflete o que o
- * app realmente faz (Supabase, Cloudflare, Stripe, Google Gemini, etiqueta QR
+ * app realmente faz (Supabase, Cloudflare, Stripe, OpenRouter, etiqueta QR
  * pública, hash de IP nos scans, lixeira de 30 dias), mas DEVE ser revisado por
  * um advogado antes de publicar. Não é aconselhamento jurídico.
  *
@@ -48,9 +48,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '13 de agosto de 2026',
+  atualizadoEm: '17 de agosto de 2026',
   aviso:
-    'Documento vigente desde 13 de agosto de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 17 de agosto de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -155,10 +155,16 @@ export const PRIVACIDADE: LegalDoc = {
     {
       titulo: '4. Como a inteligência artificial trata os seus dados',
       paragrafos: [
-        'Os recursos de IA do OLLI (diagnóstico técnico, chat, voz e resumos) usam o modelo ' +
-          'Google Gemini, acessado através do nosso servidor intermediário na Cloudflare. ' +
-          'Enviamos ao modelo apenas o texto ou o áudio necessário para responder ao seu ' +
-          'pedido — por exemplo, a marca do equipamento e o sintoma descrito.',
+        'Os recursos de IA do OLLI (diagnóstico técnico, chat, voz e resumos) passam pelo ' +
+          'nosso servidor na Cloudflare. O raciocínio em texto é processado pelo OpenRouter, ' +
+          'que encaminha o pedido somente a modelos gratuitos explicitamente selecionados e ' +
+          'a provedores compatíveis com a regra de não usar o conteúdo para treinamento. ' +
+          'Enviamos apenas o trecho necessário — por exemplo, a marca do equipamento e o sintoma.',
+        'Quando você usa voz, o áudio é transcrito pelo serviço Workers AI da Cloudflare. ' +
+          'O áudio não é enviado ao OpenRouter; somente a transcrição em texto segue para o ' +
+          'modelo quando você pede que a OLLI monte um orçamento. A configuração gratuita atual ' +
+          'não garante retenção zero em todos os provedores, por isso evite nomes, telefones, ' +
+          'endereços, documentos ou outros dados pessoais que não sejam necessários.',
         'A chave de acesso ao modelo fica somente no nosso servidor, nunca no aplicativo. ' +
           'Evite digitar ou ditar dados pessoais sensíveis desnecessários nos campos de IA. ' +
           'As respostas da IA são um apoio e podem conter erros — a decisão técnica é sempre ' +
@@ -174,14 +180,17 @@ export const PRIVACIDADE: LegalDoc = {
       itens: [
         'Supabase — banco de dados e autenticação na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
-        'Cloudflare — hospedagem do nosso servidor de IA e da página pública da etiqueta QR.',
+        'Cloudflare — hospedagem do nosso servidor, da página pública da etiqueta QR e ' +
+          'transcrição de áudio pelo Workers AI.',
         'Stripe — processamento de pagamentos e gestão de assinaturas iniciadas nos canais ' +
           'em que o checkout estiver disponível. O Stripe recebe os dados de cobrança; o OLLI não tem acesso ao ' +
           'número completo do cartão.',
         'Mercado Pago — processamento das cobranças Pix usadas para recarregar créditos ' +
           'nos canais em que essa recarga estiver disponível. Recebe os dados necessários para gerar e confirmar o pagamento; ' +
           'o OLLI não tem acesso aos seus dados bancários.',
-        'Google (Gemini) — modelo de inteligência artificial que processa os pedidos de IA.',
+        'OpenRouter e provedores de inferência selecionados — roteamento e processamento dos ' +
+          'pedidos de IA em texto. Exigimos rotas que declarem não usar o conteúdo para treinamento; ' +
+          'o modelo e o provedor efetivamente disponíveis podem variar dentro da lista gratuita configurada.',
         'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
           'corrigir falhas técnicas. Recebe apenas dados técnicos do erro, sem o seu IP ou ' +
           'outros dados pessoais.',

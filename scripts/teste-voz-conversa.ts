@@ -34,12 +34,13 @@ function checar(nome: string, real: unknown, esperado: unknown): void {
 }
 
 const env: any = {
+  AI_PROVIDER: 'gemini',
   SUPABASE_URL: 'https://falso.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso',
   GEMINI_API_KEY: 'gemini-falso',
   GEMINI_MODEL: 'gemini-2.5-flash',
 };
-const USER = { id: 'user-teste-voz-conversa' };
+const USER = { id: '123e4567-e89b-42d3-a456-426614174010' };
 
 // ── "bancos" falsos: Gemini (texto controlado pelo teste) + créditos (saldo +
 // refs já lançados, idempotência real do índice único (origem,ref) do
@@ -49,6 +50,7 @@ let ledgerRefs = new Set<string>();
 let ledgerChamadas = 0;
 let chamadasGemini = 0;
 let respostaGeminiFake = '';
+let quotaEstado: 'permitido' | 'limite_global' | 'limite_usuario' | 'ja_reservado' = 'permitido';
 // Cota grátis de IA do mês, contada NO SERVIDOR (migration 20260727). O default é
 // 0 (esgotada) porque quase todo caso aqui exercita a COBRANÇA do fechamento; os
 // casos que testam o uso grátis passam o valor explicitamente.
@@ -62,11 +64,33 @@ function resetBanco(saldoInicial: number, cotaGratisRestante = 0) {
   chamadasGemini = 0;
   cotaRestante = cotaGratisRestante;
   cotaRefs = new Set();
+  quotaEstado = 'permitido';
 }
 
 function fingirFetch() {
   (globalThis as any).fetch = async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url);
+
+    if (u.includes('/rest/v1/rpc/reservar_cota_ia_diaria')) {
+      const body = init?.body ? JSON.parse(init.body) : {};
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{
+          estado: quotaEstado,
+          dia: '2026-08-17',
+          usados_global: quotaEstado === 'limite_global'
+            ? Number(body.p_limite_global)
+            : Number(body.p_unidades),
+          usados_usuario: quotaEstado === 'limite_usuario'
+            ? Number(body.p_limite_usuario)
+            : Number(body.p_unidades),
+          limite_global: Number(body.p_limite_global),
+          limite_usuario: Number(body.p_limite_usuario),
+          unidades: Number(body.p_unidades),
+        }],
+      } as unknown as Response;
+    }
 
     // gemini() → generateContent: devolve o texto que o teste armou.
     if (u.includes('generativelanguage.googleapis.com')) {
@@ -100,9 +124,35 @@ function fingirFetch() {
       return { ok: true, status: 200, json: async () => 'consumida' } as unknown as Response;
     }
 
-    // saldoCreditos (RPC).
+    // saldoCreditos (RPC, usado pela pré-autorização do roteador completo).
     if (u.includes('/rest/v1/rpc/saldo_creditos')) {
       return { ok: true, status: 200, json: async () => saldo } as unknown as Response;
+    }
+
+    // Consumo atômico: idempotência, saldo e débito na mesma decisão.
+    if (u.includes('/rest/v1/rpc/consumir_creditos_atomico')) {
+      ledgerChamadas++;
+      const body = init?.body ? JSON.parse(init.body) : {};
+      const ref = String(body.p_ref);
+      const custo = Number(body.p_custo);
+      if (ledgerRefs.has(ref)) {
+        return {
+          ok: true, status: 200,
+          json: async () => [{ estado: 'ja_consumido', saldo }],
+        } as unknown as Response;
+      }
+      if (saldo < custo) {
+        return {
+          ok: true, status: 200,
+          json: async () => [{ estado: 'sem_saldo', saldo }],
+        } as unknown as Response;
+      }
+      ledgerRefs.add(ref);
+      saldo -= custo;
+      return {
+        ok: true, status: 200,
+        json: async () => [{ estado: 'consumido', saldo }],
+      } as unknown as Response;
     }
 
     // lancarCreditos (INSERT no ledger): índice único (origem,ref) emulado, com o
@@ -249,7 +299,7 @@ for (let i = 1; i <= VOZ_CONVERSA_MAX.turnos - 1; i++) {
 // buraco. Qualquer conta com JWT válido que só omitisse o campo usava o Gemini
 // (conta do dono) ilimitado. Autorização é decisão do SERVIDOR — o cliente pede,
 // não concede. Ver cobrarCreditoVoz em worker/src/creditos.js.
-console.log('\n7) sem confirmarCredito NÃO é passe livre: cota esgotada = cobra do mesmo jeito');
+console.log('\n7) sem confirmarCredito nunca debita: cota esgotada bloqueia');
 resetBanco(10);
 respostaGeminiFake = JSON.stringify({
   pronto: true,
@@ -262,9 +312,9 @@ respostaGeminiFake = JSON.stringify({
     conversationId: 'conv-sem-confirmar',
     confirmarCredito: false,
   });
-  checar('pronto: true (a IA já entregou o resultado)', body.pronto, true);
-  checar('cobrou mesmo sem o cliente pedir', ledgerChamadas, 1);
-  checar('saldo debitado', saldo, 9);
+  checar('resultado não é entregue sem consentimento', body, { ok: false, erro: 'sem_creditos' });
+  checar('não chamou a RPC de débito', ledgerChamadas, 0);
+  checar('saldo intacto', saldo, 10);
 }
 
 console.log('\n7b) com cota grátis do mês disponível: fecha SEM gastar crédito');
@@ -330,6 +380,20 @@ respostaGeminiFake = JSON.stringify({ pergunta: 'ainda falta um dado' }); // Gem
   checar('fechar:true força pronto: true mesmo no turno 1', body.pronto, true);
   checar('sem pergunta na resposta forçada', body.pergunta, undefined);
   checar('cobrou (é o fechamento da conversa)', ledgerChamadas, 1);
+}
+
+console.log('\n11) cota diária é reservada ANTES do upstream e falha fechado');
+resetBanco(10);
+quotaEstado = 'limite_global';
+respostaGeminiFake = JSON.stringify({ pergunta: 'não pode chegar aqui' });
+{
+  const { status, body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'teste sintético de cota' }],
+    conversationId: 'conv-cota-global',
+  });
+  checar('limite global vira 429', status, 429);
+  checar('erro de cota sem conteúdo', body, { ok: false, erro: 'cota_ia_global' });
+  checar('upstream não foi chamado', chamadasGemini, 0);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);

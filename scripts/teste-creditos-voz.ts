@@ -1,9 +1,9 @@
 /**
  * Teste da AUTORIZAÇÃO da IA de voz paga (cluster V2a):
  * "quem decide se a IA roda é o SERVIDOR — plano pago passa livre, grátis gasta a
- * cota do mês contada no banco, cota esgotada gasta 1 crédito, e sem crédito
- * bloqueia; um retry não cobra 2x, mas a idempotência NÃO É ETERNA; e NENHUM erro
- * de infra vira 'sem saldo'."
+ * cota do mês contada no banco, cota esgotada só gasta crédito após consentimento,
+ * e sem crédito bloqueia; um retry não cobra 2x, mas a idempotência NÃO É ETERNA;
+ * e NENHUM erro de infra vira 'sem saldo'."
  *
  *     node scripts/teste-creditos-voz.ts
  * Exit 0 = passou; 1 = falhou.
@@ -17,7 +17,7 @@
  *
  * O que está em jogo, nos TRÊS sentidos:
  *  1. antes, QUALQUER conta com JWT válido que não mandasse `confirmarCredito`
- *     usava o Gemini (conta do dono) de graça e sem limite (seção A);
+ *     usava o provedor de IA (conta do dono) de graça e sem limite (seção A);
  *  2. depois disso, o passe livre mudou de campo: com idempotência eterna, um
  *     `creditoRef` FIXO no corpo fazia toda chamada seguinte cair em "já contada"
  *     / "já lançada" — mesma IA infinita, outro campo (seções D e E);
@@ -25,7 +25,15 @@
  *     para quem pagou (seção B).
  */
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
-import { cobrarCreditoVoz, lancarCreditos, CUSTO, IA_GRATIS_MES, JANELA_IDEM_MS } from '../worker/src/creditos.js';
+import {
+  cobrarCreditoVoz,
+  preautorizarUsoIa,
+  consumirCreditos,
+  lancarCreditos,
+  CUSTO,
+  IA_GRATIS_MES,
+  JANELA_IDEM_MS,
+} from '../worker/src/creditos.js';
 
 let falhas = 0;
 let passes = 0;
@@ -68,9 +76,13 @@ const DAQUI_UM_MES = new Date(AGORA_REAL + 30 * 864e5).toISOString();
 // `credit_ledger` (com o índice único (origem,ref)).
 let saldo = 0;
 let saldoIndisponivel = false;
+let saldoConsultas = 0;
 /** Linhas de `credit_ledger` do tipo consumo: o ref (chave única) e quando entrou. */
 let ledgerLinhas: { ref: string; criadoEm: number }[] = [];
 let ledgerChamadas = 0;
+let consumoRpcChamadas = 0;
+let consumoRpcModo: 'ok' | 'http_500' | 'malformado' = 'ok';
+let ultimoConsumoRpc: { url: string; body: Record<string, unknown>; headers: Record<string, string> } | null = null;
 /** false emula `ref_cobranca_ia_recente` inexistente (migration não aplicada). */
 let lookupExiste = true;
 let lookupChamadas = 0;
@@ -82,6 +94,7 @@ let cotaExiste = true;
 /** Uma linha de `ia_uso_gratis` por uso do mês — com o `criado_em` que a janela lê. */
 let cotaLinhas: { ref: string | null; criadoEm: number }[] = [];
 let cotaChamadas = 0;
+let cotaLeituras = 0;
 
 function resetBanco(
   saldoInicial: number,
@@ -95,8 +108,12 @@ function resetBanco(
 ) {
   saldo = saldoInicial;
   saldoIndisponivel = !!opts.indisponivel;
+  saldoConsultas = 0;
   ledgerLinhas = [];
   ledgerChamadas = 0;
+  consumoRpcChamadas = 0;
+  consumoRpcModo = 'ok';
+  ultimoConsumoRpc = null;
   // As duas RPCs moram na MESMA migration: "não aplicada" apaga as duas juntas.
   // `lookupExiste` só é setado à mão para emular a RPC caindo sozinha (E5).
   lookupExiste = opts.lookupExiste ?? opts.cotaExiste !== false;
@@ -105,6 +122,7 @@ function resetBanco(
   cotaExiste = opts.cotaExiste !== false;
   cotaLinhas = Array.from({ length: opts.usosJaFeitos ?? 0 }, (_, i) => ({ ref: `pre-${i}`, criadoEm: relogio }));
   cotaChamadas = 0;
+  cotaLeituras = 0;
 }
 
 function fingirFetch() {
@@ -115,6 +133,18 @@ function fingirFetch() {
     if (u.includes('/rest/v1/assinaturas')) {
       if (assinatura === 'erro') return { ok: false, status: 500 } as Response;
       return { ok: true, status: 200, json: async () => (assinatura ? [assinatura] : []) } as unknown as Response;
+    }
+
+    // preautorizarUsoIa: contagem barata da cota, sem consumir uma linha.
+    if (u.includes('/rest/v1/ia_uso_gratis')) {
+      cotaLeituras++;
+      if (!cotaExiste) return { ok: false, status: 404 } as Response;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (nome: string) => nome.toLowerCase() === 'content-range' ? `0-0/${cotaLinhas.length}` : null },
+        json: async () => cotaLinhas.slice(0, 1),
+      } as unknown as Response;
     }
 
     // consumirCotaGratis: a RPC do servidor (emula a função da migration 20260727,
@@ -154,8 +184,50 @@ function fingirFetch() {
       return { ok: true, status: 200, json: async () => achada?.ref ?? null } as unknown as Response;
     }
 
+    // consumirCreditos: emula a RPC atômica adicionada na migration 20260817.
+    // O mock segue a ordem do SQL: idempotência -> saldo -> insert.
+    if (u.includes('/rest/v1/rpc/consumir_creditos_atomico')) {
+      consumoRpcChamadas++;
+      ledgerChamadas++;
+      const body = init?.body ? JSON.parse(init.body) : {};
+      ultimoConsumoRpc = { url: u, body, headers: (init as any)?.headers ?? {} };
+      if (consumoRpcModo === 'http_500' || saldoIndisponivel) {
+        return { ok: false, status: 500 } as Response;
+      }
+      if (consumoRpcModo === 'malformado') {
+        return { ok: true, status: 200, json: async () => [{ estado: 'talvez', saldo: '???' }] } as unknown as Response;
+      }
+
+      const ref = String(body.p_ref ?? '');
+      const custo = Number(body.p_custo);
+      const existente = ledgerLinhas.find((l) => l.ref === ref);
+      if (existente) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ estado: 'ja_consumido', saldo }],
+        } as unknown as Response;
+      }
+      if (saldo < custo) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ estado: 'sem_saldo', saldo }],
+        } as unknown as Response;
+      }
+
+      ledgerLinhas.push({ ref, criadoEm: relogio });
+      saldo -= custo;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{ estado: 'consumido', saldo }],
+      } as unknown as Response;
+    }
+
     // saldoCreditos (RPC): banco fora derruba a LEITURA do saldo.
     if (u.includes('/rest/v1/rpc/saldo_creditos')) {
+      saldoConsultas++;
       if (saldoIndisponivel) return { ok: false, status: 500 } as Response;
       return { ok: true, status: 200, json: async () => saldo } as unknown as Response;
     }
@@ -189,8 +261,158 @@ checar('CUSTO.voz_ia === 1', CUSTO.voz_ia, 1);
 checar('IA_GRATIS_MES === 3 (espelha IA_USOS_GRATIS_MES do app)', IA_GRATIS_MES, 3);
 checar('JANELA_IDEM_MS === 10 min (espelha v_janela da migration 20260727)', JANELA_IDEM_MS, 10 * 60 * 1000);
 
-// ═══ A) O BURACO ORIGINAL — servidor decide, cliente só pede ═══════════════
-console.log('\nA1) SEM confirmarCredito (o buraco): agora consome COTA do servidor, não é grátis infinito');
+// ═══ Q) DÉBITO ATÔMICO — saldo e INSERT sob o mesmo lock ═════════════════
+console.log('\nQ1) consumirCreditos usa somente a RPC atômica e envia payload mínimo');
+resetBanco(5);
+const consumo1 = await consumirCreditos(env, {
+  userId: USER.id,
+  custo: 2,
+  acao: 'teste_atomico',
+  ref: 'acao-atomica-1',
+  descricao: 'Teste atomico',
+});
+checar('consumiu e devolveu saldo após', consumo1, { ok: true, duplicado: false, saldo: 3 });
+checar('endpoint atômico exato', ultimoConsumoRpc?.url,
+  'https://falso.supabase.co/rest/v1/rpc/consumir_creditos_atomico');
+checar('payload sem saldo/delta controlado pelo cliente', ultimoConsumoRpc?.body, {
+  p_user: USER.id,
+  p_custo: 2,
+  p_ref: 'acao-atomica-1',
+  p_descricao: 'Teste atomico',
+});
+checar('service_role enviado sem ser impresso',
+  ultimoConsumoRpc?.headers?.apikey === env.SUPABASE_SERVICE_ROLE_KEY, true);
+checar('uma RPC, uma linha no ledger', [consumoRpcChamadas, ledgerLinhas.length], [1, 1]);
+
+console.log('\nQ2) mesmo ref é idempotente antes de verificar saldo');
+const consumoRetry = await consumirCreditos(env, {
+  userId: USER.id,
+  custo: 2,
+  acao: 'teste_atomico',
+  ref: 'acao-atomica-1',
+  descricao: 'Teste atomico',
+});
+checar('retry reconhecido sem débito duplo', consumoRetry, { ok: true, duplicado: true, saldo: 3 });
+checar('saldo e número de linhas intactos', [saldo, ledgerLinhas.length], [3, 1]);
+
+console.log('\nQ3) saldo insuficiente não insere');
+resetBanco(1);
+const semSaldoAtomico = await consumirCreditos(env, {
+  userId: USER.id,
+  custo: 2,
+  acao: 'teste_atomico',
+  ref: 'acao-atomica-sem-saldo',
+  descricao: 'Teste sem saldo',
+});
+checar('estado sem_saldo traduzido', semSaldoAtomico, { ok: false, motivo: 'sem_saldo', saldo: 1 });
+checar('nenhuma linha e saldo intacto', [ledgerLinhas.length, saldo], [0, 1]);
+
+resetBanco(-1); // saldo legado possível antes da RPC atômica
+const saldoLegadoNegativo = await consumirCreditos(env, {
+  userId: USER.id,
+  custo: 1,
+  acao: 'teste_atomico',
+  ref: 'acao-atomica-saldo-legado',
+  descricao: 'Teste saldo legado',
+});
+checar('saldo legado negativo continua sem_saldo, não vira fail-open', saldoLegadoNegativo, {
+  ok: false,
+  motivo: 'sem_saldo',
+  saldo: -1,
+});
+checar('saldo legado não recebe novo débito', [ledgerLinhas.length, saldo], [0, -1]);
+
+console.log('\nQ4) HTTP/JSON inesperado falham fechado');
+resetBanco(5);
+consumoRpcModo = 'http_500';
+checar('HTTP 500 não vira sucesso', await consumirCreditos(env, {
+  userId: USER.id, custo: 1, acao: 'teste', ref: 'acao-http-500', descricao: 'x',
+}), { ok: false, motivo: 'indisponivel' });
+checar('HTTP 500 não alterou o ledger', [saldo, ledgerLinhas.length], [5, 0]);
+
+resetBanco(5);
+consumoRpcModo = 'malformado';
+checar('estado/resposta malformados não viram sucesso', await consumirCreditos(env, {
+  userId: USER.id, custo: 1, acao: 'teste', ref: 'acao-malformada', descricao: 'x',
+}), { ok: false, motivo: 'indisponivel' });
+checar('resposta malformada não alterou o ledger', [saldo, ledgerLinhas.length], [5, 0]);
+
+// ═══ P) PRÉ-AUTORIZAÇÃO — custo só nasce depois de consentimento ═════════
+console.log('\nP1) plano pago passa antes de cota/saldo');
+resetBanco(0, {
+  assinatura: { plano: 'pro', status: 'active', current_period_end: DAQUI_UM_MES },
+  usosJaFeitos: 3,
+});
+checar('plano pago permitido sem confirmar crédito', await preautorizarUsoIa(env, USER), { permitido: true });
+checar('não leu cota nem saldo', [cotaLeituras, saldoConsultas], [0, 0]);
+
+console.log('\nP2) conta grátis com cota mensal disponível passa sem crédito');
+resetBanco(0, { usosJaFeitos: 2 });
+checar('cota disponível permite', await preautorizarUsoIa(env, USER), { permitido: true });
+checar('leu cota, mas não saldo', [cotaLeituras, saldoConsultas], [1, 0]);
+
+console.log('\nP3) cota esgotada sem confirmação bloqueia, mesmo com saldo');
+resetBanco(10, { usosJaFeitos: 3 });
+checar('exige consentimento explícito', await preautorizarUsoIa(env, USER), {
+  permitido: false,
+  motivo: 'confirmacao_credito_necessaria',
+});
+checar('nem consultou saldo sem consentimento', saldoConsultas, 0);
+checar('pré-autorização nunca debita', [saldo, ledgerChamadas], [10, 0]);
+
+console.log('\nP4) cota esgotada + confirmação + saldo permite, mas ainda não debita');
+resetBanco(10, { usosJaFeitos: 3 });
+checar('consentimento e saldo permitem', await preautorizarUsoIa(env, USER, { confirmarCredito: true }), {
+  permitido: true,
+});
+checar('consultou saldo uma vez', saldoConsultas, 1);
+checar('saldo/ledger intactos antes da inferência', [saldo, ledgerChamadas], [10, 0]);
+
+console.log('\nP5) confirmação sem saldo bloqueia comercialmente');
+resetBanco(0, { usosJaFeitos: 3 });
+checar('sem saldo confirmado', await preautorizarUsoIa(env, USER, { confirmarCredito: true }), {
+  permitido: false,
+  motivo: 'sem_creditos',
+});
+
+console.log('\nP6) infraestrutura ilegível fecha a pré-autorização');
+resetBanco(10, { assinatura: 'erro', usosJaFeitos: 3 });
+checar('assinatura indisponível', await preautorizarUsoIa(env, USER, { confirmarCredito: true }), {
+  permitido: false,
+  motivo: 'indisponivel',
+});
+resetBanco(10, { cotaExiste: false });
+checar('cota indisponível', await preautorizarUsoIa(env, USER), {
+  permitido: false,
+  motivo: 'indisponivel',
+});
+resetBanco(10, { indisponivel: true, usosJaFeitos: 3 });
+checar('saldo indisponível', await preautorizarUsoIa(env, USER, { confirmarCredito: true }), {
+  permitido: false,
+  motivo: 'indisponivel',
+});
+
+console.log('\nP7) retry exato já pago passa com saldo zero; conteúdo diferente não pega carona');
+resetBanco(1, { usosJaFeitos: 3 });
+await cobrarCreditoVoz(env, USER, {
+  confirmarCredito: true,
+  creditoRef: 'pedido-pago-1',
+  conteudo: '{"acao":"diagnostico","texto":"mesmo trabalho"}',
+});
+checar('a primeira execução consumiu o último crédito', [saldo, ledgerLinhas.length], [0, 1]);
+checar('o retry exato é reconhecido antes de consultar saldo', await preautorizarUsoIa(env, USER, {
+  confirmarCredito: true,
+  creditoRef: 'pedido-pago-1',
+  conteudo: '{"acao":"diagnostico","texto":"mesmo trabalho"}',
+}), { permitido: true, retryPago: true });
+checar('mesma ref com outro corpo continua bloqueada sem saldo', await preautorizarUsoIa(env, USER, {
+  confirmarCredito: true,
+  creditoRef: 'pedido-pago-1',
+  conteudo: '{"acao":"diagnostico","texto":"trabalho diferente"}',
+}), { permitido: false, motivo: 'sem_creditos' });
+
+// ═══ A) CONSENTIMENTO — servidor decide, cliente confirma o gasto ═════════
+console.log('\nA1) sem confirmarCredito: usa cota, mas jamais debita saldo em silêncio');
 resetBanco(10);
 {
   const r1 = await cobrarCreditoVoz(env, USER, { conteudo: 'fala 1' });
@@ -204,19 +426,32 @@ resetBanco(10);
   checar('3 usos grátis no mês', cotaLinhas.length, 3);
   checar('ainda sem cobrar crédito', ledgerChamadas, 0);
 
-  // 4ª chamada: cota esgotada. ANTES isto era liberado de graça só por não mandar
-  // `confirmarCredito`; agora o servidor decide e debita o crédito.
+  // 4ª chamada: cota esgotada. Saldo positivo não é autorização para cobrar.
   const r4 = await cobrarCreditoVoz(env, USER, { conteudo: 'fala 4' });
-  checar('4ª chamada não bloqueia (tem crédito)', r4.bloqueado, false);
-  checar('mas COBROU, mesmo sem o cliente ter pedido', saldo, 9);
+  checar('4ª chamada bloqueia pedindo confirmação', r4, {
+    bloqueado: true,
+    motivo: 'confirmacao_credito_necessaria',
+  });
+  checar('saldo fica intacto', saldo, 10);
+  checar('ledger também fica intacto', ledgerChamadas, 0);
+
+  const confirmada = await cobrarCreditoVoz(env, USER, {
+    confirmarCredito: true,
+    conteudo: 'fala 4',
+  });
+  checar('a mesma chamada confirmada passa', confirmada.bloqueado, false);
+  checar('e só então debita 1 crédito', saldo, 9);
 }
 
 console.log('\nA2) cota esgotada E sem crédito: BLOQUEIA de verdade');
 resetBanco(0, { usosJaFeitos: 3 });
 {
   const r = await cobrarCreditoVoz(env, USER, { conteudo: 'fala paga' });
-  checar('bloqueia (o chamador traduz para erro:"sem_creditos")', r.bloqueado, true);
-  checar('nem tentou lançar no ledger (saldo insuficiente barra antes)', ledgerChamadas, 0);
+  checar('bloqueia antes de consultar saldo', r, {
+    bloqueado: true,
+    motivo: 'confirmacao_credito_necessaria',
+  });
+  checar('nem tentou lançar no ledger (consentimento barra antes)', ledgerChamadas, 0);
 }
 
 console.log('\nA3) idempotência da COTA: retry da mesma ação não queima 2 usos grátis');
@@ -285,7 +520,8 @@ resetBanco(0, { cotaExiste: false });
 {
   const r = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'sessao-B' });
   checar('bloqueia', r.bloqueado, true);
-  checar('nunca tentou o ledger', ledgerChamadas, 0);
+  checar('RPC atômica confirmou sem_saldo', consumoRpcChamadas, 1);
+  checar('não inseriu linha de consumo', ledgerLinhas.length, 0);
 }
 
 console.log('\nB4) assinatura ILEGÍVEL (PostgREST fora): FAIL-OPEN — não cobra de quem talvez pague');
@@ -300,27 +536,29 @@ resetBanco(10, { assinatura: 'erro', usosJaFeitos: 3 });
 console.log('\nB5) saldo ilegível na hora de debitar: FAIL-OPEN (a IA já entregou o resultado)');
 resetBanco(10, { indisponivel: true, usosJaFeitos: 3 });
 {
-  const r = await cobrarCreditoVoz(env, USER, { conteudo: 'fala com saldo ilegível' });
+  const r = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, conteudo: 'fala com saldo ilegível' });
   checar('não bloqueia mesmo com o banco fora (não pune por bug de billing)', r.bloqueado, false);
-  checar('nem chegou no ledger (a leitura de saldo já falhou)', ledgerChamadas, 0);
+  checar('a RPC atômica falhou fechada', consumoRpcChamadas, 1);
+  checar('não abriu linha nem alterou saldo', [ledgerLinhas.length, saldo], [0, 10]);
 }
 
-console.log('\nB6) escrita do ledger falhando (saldo lê OK): também FAIL-OPEN');
+console.log('\nB6) RPC atômica falhando: também FAIL-OPEN após a IA pronta');
 resetBanco(10, { usosJaFeitos: 3 });
 {
   const fetchOriginal = (globalThis as any).fetch;
   (globalThis as any).fetch = async (url: string, init?: any) => {
-    if (String(url).includes('/rest/v1/credit_ledger')) {
+    if (String(url).includes('/rest/v1/rpc/consumir_creditos_atomico')) {
+      consumoRpcChamadas++;
       ledgerChamadas++;
       return { ok: false, status: 500 } as Response;
     }
     return fetchOriginal(url, init);
   };
-  const r = await cobrarCreditoVoz(env, USER, { conteudo: 'fala com ledger fora' });
+  const r = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, conteudo: 'fala com ledger fora' });
   (globalThis as any).fetch = fetchOriginal;
   checar('não bloqueia', r.bloqueado, false);
-  checar('tentou escrever 1x e falhou', ledgerChamadas, 1);
-  checar('saldo não mudou (a escrita falhou de verdade)', saldo, 10);
+  checar('tentou a transação 1x e falhou', consumoRpcChamadas, 1);
+  checar('saldo e ledger não mudaram', [saldo, ledgerLinhas.length], [10, 0]);
 }
 
 // ═══ C) 409 do PostgREST: só 23505 é idempotência ═════════════════════════
@@ -401,11 +639,11 @@ resetBanco(0); // sem crédito nenhum: quando a cota acabar, tem que BLOQUEAR
 console.log('\nE1) cota esgotada + mesma creditoRef DENTRO da janela: cobra 1 crédito só');
 resetBanco(10, { usosJaFeitos: 3 });
 {
-  const r1 = await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  const r1 = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-1' });
   checar('não bloqueia', r1.bloqueado, false);
   checar('debitou 1', saldo, 9);
   avancar(JANELA_IDEM_MS - 60_000); // 9 min depois: retry do MESMO toque
-  const r2 = await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  const r2 = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-1' });
   checar('retry não bloqueia', r2.bloqueado, false);
   checar('NÃO cobrou 2x', saldo, 9);
   // Reconheceu a cobrança pela consulta e nem tentou lançar de novo. (Se a RPC
@@ -416,10 +654,10 @@ resetBanco(10, { usosJaFeitos: 3 });
 console.log('\nE2) cota esgotada + mesma creditoRef FORA da janela: é ação nova e COBRA');
 resetBanco(10, { usosJaFeitos: 3 });
 {
-  await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-1' });
   checar('debitou 1', saldo, 9);
   avancar(JANELA_IDEM_MS + 60_000); // 11 min depois
-  await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-1' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-1' });
   checar('debitou de novo — chave velha não compra IA de graça', saldo, 8);
   checar('e são 2 lançamentos distintos no ledger', ledgerChamadas, 2);
 }
@@ -427,49 +665,49 @@ resetBanco(10, { usosJaFeitos: 3 });
 console.log('\nE3) P0: 1 crédito NÃO compra IA infinita (cota esgotada + chave fixa para sempre)');
 resetBanco(1, { usosJaFeitos: 3 }); // exatamente 1 crédito no bolso
 {
-  const r1 = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  const r1 = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'passe-livre-pago' });
   checar('a 1ª passa, pagando o crédito', r1.bloqueado, false);
   checar('saldo zerou', saldo, 0);
 
-  // Com saldo 0, `consumirCreditos` responderia 'sem_saldo' antes mesmo de tentar
-  // o ledger — "você não tem créditos" para um trabalho JÁ PAGO há um minuto. É a
-  // consulta da janela que separa "repetição" de "acabou o saldo".
-  const rRetry = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  // A RPC atômica reconhece a mesma referência antes de conferir o saldo. A
+  // consulta da janela ainda evita chamar a RPC e repetir todo o fluxo para um
+  // trabalho recém-pago; fora da janela, uma nova cobrança exige saldo.
+  const rRetry = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'passe-livre-pago' });
   checar('retry dentro da janela ainda passa (é o mesmo trabalho, já pago)', rRetry.bloqueado, false);
   checar('sem debitar de novo', saldo, 0);
 
   avancar(JANELA_IDEM_MS + 1000);
-  const rDepois = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  const rDepois = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'passe-livre-pago' });
   checar('mas na janela seguinte a MESMA chave BLOQUEIA (acabou o crédito)', rDepois.bloqueado, true);
 
   avancar(JANELA_IDEM_MS + 1000);
-  const rMuitoDepois = await cobrarCreditoVoz(env, USER, { creditoRef: 'passe-livre-pago' });
+  const rMuitoDepois = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'passe-livre-pago' });
   checar('e continua bloqueando (o passe livre não volta com o tempo)', rMuitoDepois.bloqueado, true);
 }
 
 console.log('\nE4) o hash do conteúdo segue a MESMA regra (quem não manda creditoRef não fica de fora)');
 resetBanco(10, { usosJaFeitos: 3 });
 {
-  await cobrarCreditoVoz(env, USER, { conteudo: 'o mesmo áudio de sempre' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, conteudo: 'o mesmo áudio de sempre' });
   checar('debitou 1', saldo, 9);
   avancar(JANELA_IDEM_MS - 60_000);
-  await cobrarCreditoVoz(env, USER, { conteudo: 'o mesmo áudio de sempre' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, conteudo: 'o mesmo áudio de sempre' });
   checar('reenvio dentro da janela = retry, não cobra 2x', saldo, 9);
   avancar(JANELA_IDEM_MS + 60_000);
-  await cobrarCreditoVoz(env, USER, { conteudo: 'o mesmo áudio de sempre' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, conteudo: 'o mesmo áudio de sempre' });
   checar('reenvio fora da janela = trabalho novo, cobra', saldo, 8);
 }
 
 console.log('\nE5) RPC da janela fora do ar (cota respondendo): degrada para o bucket, NÃO para "de graça"');
 resetBanco(10, { usosJaFeitos: 3, lookupExiste: false });
 {
-  const r = await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-sem-rpc' });
+  const r = await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-sem-rpc' });
   checar('não bloqueia', r.bloqueado, false);
   checar('perguntou (e levou 404)', lookupChamadas, 1);
   checar('cobrou assim mesmo — "não sei se já cobrei" nunca vira "já cobrei"', saldo, 9);
 
   // Mesmo degradado, o retry imediato ainda cai na mesma chave de bucket.
-  await cobrarCreditoVoz(env, USER, { creditoRef: 'toque-sem-rpc' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'toque-sem-rpc' });
   checar('retry imediato segue absorvido pelo índice único', saldo, 9);
 }
 
@@ -493,7 +731,11 @@ console.log('\nF1) TETO: cota esgotada + creditoRef FIXO + conteúdo NOVO a cada
   resetBanco(1, { usosJaFeitos: 3 }); // exatamente 1 crédito no bolso
   let liberadas = 0;
   for (let i = 0; i < 200; i++) {
-    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'X', conteudo: `audio-${i}` })).bloqueado) liberadas++;
+    if (!(await cobrarCreditoVoz(env, USER, {
+      confirmarCredito: true,
+      creditoRef: 'X',
+      conteudo: `audio-${i}`,
+    })).bloqueado) liberadas++;
     avancar(1000);
   }
   checar('200 tentativas com conteúdo sempre novo: só 1 passa', liberadas, 1);
@@ -514,34 +756,38 @@ console.log('\nF2) TETO no caminho GRÁTIS: a cota do mês é o teto, e conteúd
   checar('nenhum crédito foi arrancado de graça', saldo, 0);
 }
 
-console.log('\nF3) TETO de /voz/conversa (creditoRef=convId, SEM conteúdo): 1 crédito por JANELA, não por conversa');
+console.log('\nF3) /voz/conversa usa convId + corpo: retry exato é idempotente, conteúdo novo não pega carona');
 {
-  // /voz/conversa não manda `conteudo` (worker/src/voz.js:258) — a chave é 100%
-  // do cliente por desenho. O doc diz "1 crédito por conversa"; o teto REAL é 1
-  // crédito por convId POR JANELA, e DENTRO da janela o número de chamadas ao
-  // Gemini é ilimitado pela cobrança — quem limita é o IA_RL (20/min/usuário,
-  // worker/src/index.js:875), o que dá 20 × 10 min = 200 chamadas por crédito.
-  // Está registrado aqui como NÚMERO para que mudar o desenho quebre o teste.
+  // Produção sempre envia o bodyText para compor a identidade. Repetir o mesmo
+  // corpo representa o mesmo trabalho; alterar qualquer conteúdo é uma ação
+  // nova e precisa de nova autorização/cota.
   posicionarRelogio(8_000_000, 0);
   resetBanco(1, { usosJaFeitos: 3 });
   let liberadas = 0;
   for (let i = 0; i < 100; i++) {
-    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'conv-1' })).bloqueado) liberadas++;
-    avancar(1000); // 100 fechamentos em 100s — tudo dentro da mesma janela
+    if (!(await cobrarCreditoVoz(env, USER, {
+      confirmarCredito: true,
+      creditoRef: 'conv-1',
+      conteudo: '{"conversationId":"conv-1","conversa":[{"texto":"mesmo fechamento"}]}',
+    })).bloqueado) liberadas++;
+    avancar(1000);
   }
-  checar('100 fechamentos "pronto:true" no mesmo convId dentro da janela: todos liberados', liberadas, 100);
-  checar('cobrando 1 crédito só', ledgerLinhas.length, 1);
+  checar('100 retries exatos do mesmo fechamento continuam liberados', liberadas, 100);
+  checar('e debitam um único crédito', ledgerLinhas.length, 1);
 
-  // E na janela seguinte volta a cobrar: o convId não é passe vitalício.
   posicionarRelogio(9_000_000, 0);
   resetBanco(1, { usosJaFeitos: 3 });
   let lib = 0;
-  for (let i = 0; i < 60; i++) {
-    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: 'conv-1' })).bloqueado) lib++;
-    avancar(60_000); // 1 por minuto durante 1h = 6 janelas, com 1 crédito só
+  for (let i = 0; i < 100; i++) {
+    if (!(await cobrarCreditoVoz(env, USER, {
+      confirmarCredito: true,
+      creditoRef: 'conv-1',
+      conteudo: `{"conversationId":"conv-1","conversa":[{"texto":"fechamento-${i}"}]}`,
+    })).bloqueado) lib++;
+    avancar(1000);
   }
-  checar('1 crédito cobre 10 chamadas (a 1ª janela) e depois BLOQUEIA', lib, 10);
-  checar('e cobrou 1 vez só (o saldo acabou na 1ª)', ledgerLinhas.length, 1);
+  checar('100 corpos diferentes com o mesmo convId: só o primeiro passa', lib, 1);
+  checar('e o crédito compra uma única execução nova', ledgerLinhas.length, 1);
 }
 
 // ═══ G) VARREDURA DE OFFSET — um ponto não prova uma janela ════════════════
@@ -626,38 +872,27 @@ console.log('\nG5) o dono APLICA a migration no meio de um retry em voo: não co
   checar('e não abriu um 2º lançamento', ledgerLinhas.length, 1);
 }
 
-// ═══ H) LIMITES CONHECIDOS, com número ═════════════════════════════════════
-// O que a chave AINDA permite. Registrado como assert (não como comentário) para
-// que uma mudança futura no formato da chave apareça como teste quebrado, e não
-// como um teto que ninguém percebeu que mudou.
+// ═══ H) ISOLAMENTO DE CHAVES E CAMADAS ═════════════════════════════════════
 
-console.log('\nH1) LIMITE CONHECIDO: a consulta casa por PREFIXO, e o prefixo carrega string do cliente');
+console.log('\nH1) referência do cliente é hasheada e não pode imitar prefixo já pago');
 {
-  // `ref_cobranca_ia_recente` usa `starts_with(l.ref, p_prefixo)` e o prefixo é
-  // `voz_ia:<uid>:cli:<creditoRef>:h<hash>:j`. Quem souber o hash do próprio
-  // conteúdo (sabe: é o áudio dele) pode montar um `creditoRef` que reproduz o
-  // MIOLO de uma cobrança que ele já pagou e, numa rota que não manda `conteudo`
-  // (/voz/conversa), pegar carona nela.
-  // NÃO muda o teto: dentro da janela o mesmo convId já era livre (F3), e a
-  // consulta é limitada pelos mesmos 10 min. É colisão de chave entre ações, não
-  // dinheiro novo — por isso está medido, não "consertado" às pressas: mexer no
-  // formato da chave hoje faria todo retry em voo no deploy virar cobrança nova.
   posicionarRelogio(3_000_000, 0);
   resetBanco(1, { usosJaFeitos: 3 });
-  await cobrarCreditoVoz(env, USER, { creditoRef: 'x', conteudo: 'audio-A' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'x', conteudo: 'audio-A' });
   checar('a chamada honesta pagou 1 crédito', saldo, 0);
   const refPago = ledgerLinhas[0].ref;
-  const miolo = refPago.slice(refPago.indexOf(':cli:') + 5, refPago.lastIndexOf(':j'));
   let carona = 0;
   for (let i = 0; i < 50; i++) {
-    if (!(await cobrarCreditoVoz(env, USER, { creditoRef: miolo })).bloqueado) carona++;
+    if (!(await cobrarCreditoVoz(env, USER, {
+      confirmarCredito: true,
+      creditoRef: refPago,
+      conteudo: `tentativa-forjada-${i}`,
+    })).bloqueado) carona++;
     avancar(1000);
   }
-  checar('50 chamadas com o ref forjado pegam carona DENTRO da janela', carona, 50);
-  checar('sem abrir lançamento novo (é a mesma cobrança sendo reusada)', ledgerLinhas.length, 1);
-  // E fora da janela o passe acaba — é o mesmo teto de sempre, não um bypass.
-  avancar(JANELA_IDEM_MS + 1000);
-  checar('fora da janela o ref forjado BLOQUEIA (saldo 0)', (await cobrarCreditoVoz(env, USER, { creditoRef: miolo })).bloqueado, true);
+  checar('50 referências forjadas não reutilizam a cobrança', carona, 0);
+  checar('nenhum lançamento adicional foi criado', ledgerLinhas.length, 1);
+  checar('a chave persistida não contém a referência crua do cliente', refPago.includes(':cli:x'), false);
 }
 
 console.log('\nH2) a MESMA ação pode consumir cota grátis E crédito — em janelas diferentes, e é por desenho');
@@ -674,9 +909,36 @@ console.log('\nH2) a MESMA ação pode consumir cota grátis E crédito — em j
   await cobrarCreditoVoz(env, USER, { creditoRef: 'r3', conteudo: 'c3' });
   checar('3 usos grátis gastos, nenhum crédito', [cotaLinhas.length, saldo], [3, 5]);
   avancar(JANELA_IDEM_MS + 1000); // fora da janela: 'r1/c1' volta a ser ação nova
-  await cobrarCreditoVoz(env, USER, { creditoRef: 'r1', conteudo: 'c1' });
+  await cobrarCreditoVoz(env, USER, { confirmarCredito: true, creditoRef: 'r1', conteudo: 'c1' });
   checar('a MESMA ação, fora da janela, agora custa 1 crédito (a cota do mês acabou)', saldo, 4);
   checar('e o ledger tem 1 lançamento (não dois pela mesma chamada)', ledgerLinhas.length, 1);
+}
+
+// ═══ I) CONTRATO SQL — prova estática da ordem e dos privilégios ═══════════
+console.log('\nI1) migration contém lock -> saldo -> insert e RPC service_role-only');
+const fs = await import('node:fs/promises');
+const migrationSql = await fs.readFile(
+  new URL('../supabase/migrations/20260817_openrouter_quota_diaria.sql', import.meta.url),
+  'utf8',
+);
+const inicioAtomico = migrationSql.lastIndexOf('-- P0: CONSUMO ATOMICO DE CREDITOS');
+const secaoAtomica = inicioAtomico >= 0 ? migrationSql.slice(inicioAtomico) : '';
+const posLock = secaoAtomica.indexOf('pg_advisory_xact_lock');
+const posSaldo = secaoAtomica.indexOf('pg_catalog.sum(l.delta)');
+const posInsert = secaoAtomica.indexOf('insert into public.credit_ledger');
+checar('seção atômica existe', inicioAtomico >= 0, true);
+checar('ordem lock -> saldo -> insert',
+  posLock >= 0 && posSaldo > posLock && posInsert > posSaldo, true);
+checar('SECURITY DEFINER com search_path fechado',
+  /security definer\s+set search_path = ''/i.test(secaoAtomica), true);
+checar('EXECUTE revogado de papéis públicos',
+  /revoke all on function public\.consumir_creditos_atomico[\s\S]*?from public, anon, authenticated, service_role;/i
+    .test(secaoAtomica), true);
+checar('somente service_role recebe EXECUTE',
+  /grant execute on function public\.consumir_creditos_atomico[\s\S]*?to service_role;/i
+    .test(secaoAtomica), true);
+for (const estado of ['consumido', 'ja_consumido', 'sem_saldo']) {
+  checar(`RPC declara estado ${estado}`, secaoAtomica.includes(`'${estado}'`), true);
 }
 
 Date.now = DateNowReal; // devolve o relógio de verdade ao processo
