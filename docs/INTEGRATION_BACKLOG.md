@@ -1,6 +1,9 @@
 # INTEGRATION_BACKLOG — integrações externas priorizadas
 
-> Fonte: pesquisa (`PESQUISA_APROFUNDADA_FERRAMENTAS_OLLI_V2_PMOC.md` §5, §9, §10)
+> Fontes: pesquisa de integrações
+> (`PESQUISA_APROFUNDADA_FERRAMENTAS_OLLI_V2_PMOC.md` §5, §9, §10) e decisão
+> de produto sobre migração/portabilidade
+> (`PESQUISA_IMPORTACAO_INTELIGENTE.md`).
 > **decidida contra a nossa stack real** — não é o radar cru, é o que serve pro
 > OLLI. Regra da casa: **UI → caso de uso → porta → adaptador → API externa**;
 > nenhuma tela chama API externa direto. As interfaces já existem, aditivas e
@@ -18,6 +21,13 @@
 Antes de ligar QUALQUER item novo, passar pela matriz de avaliação da pesquisa §11
 (mínimo 75/100) e registrar a decisão em `DECISIONS.md`. Proibido botão "em breve"
 e prometer integração que depende de credencial ausente (pesquisa §15).
+
+> **Trilha estratégica nova — Importação Inteligente:** CSV/XLSX, portabilidade,
+> staging, revisão, rollback, PDF e WhatsApp exportado formam uma capacidade de
+> produto, não uma integração externa isolada. A ordem, requisitos de segurança,
+> componentes candidatos e critérios de validação estão consolidados em
+> `PESQUISA_IMPORTACAO_INTELIGENTE.md`. Status: pesquisado e decidido; ainda não
+> implementado.
 
 ---
 
