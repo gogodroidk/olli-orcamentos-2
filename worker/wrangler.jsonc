@@ -19,7 +19,7 @@
   //   npx wrangler secret put STRIPE_WEBHOOK_SECRET   (whsec_..., do endpoint do webhook)
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
-    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpYWVwbHFpbm5ubm5peXZ3dGxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMTU5NzAsImV4cCI6MjA5NjY5MTk3MH0.P_EF248NN0y7XJ47FmUuqwW00N2gvjq_aNJBqan2COk",
+    "SUPABASE_ANON_KEY": "sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_", // gitleaks:allow — chave publicável, protegida por RLS
     "AI_PROVIDER": "openrouter",
     "OPENROUTER_TEXT_MODELS": "google/gemma-4-26b-a4b-it:free,openai/gpt-oss-20b:free,google/gemma-4-31b-it:free,nvidia/nemotron-nano-9b-v2:free",
     "OPENROUTER_SITE_URL": "https://olliorcamentos.online",

@@ -13,6 +13,7 @@ import {
   classificarContextoEquipe,
   decidirEscritaEquipe,
   resolverAlvoEmpresa,
+  resolverTenantEquipe,
   restaurePodeTocarNaNuvem,
   type ContextoEquipe,
 } from '../src/services/contextoEquipe.ts';
@@ -125,6 +126,16 @@ checar('conta pessoal sem sessão => fail-closed',
 checar('membro => empresa do dono, somente leitura',
   resolverAlvoEmpresa({ status: 'membro', ownerUserId: DONO }, 'user-tecnico'),
   { userId: DONO, souDono: false });
+
+console.log('\n8) tombstones e contadores usam tenant explícito da organização');
+checar('pessoal usa o usuário autenticado',
+  resolverTenantEquipe({ status: 'pessoal' }, 'user-dono'), 'user-dono');
+checar('membro usa ownerUserId, não o id do técnico',
+  resolverTenantEquipe({ status: 'membro', ownerUserId: DONO }, 'user-tecnico'), DONO);
+checar('desconhecido adia',
+  resolverTenantEquipe({ status: 'desconhecido' }, 'user-x'), null);
+checar('pessoal sem sessão adia',
+  resolverTenantEquipe({ status: 'pessoal' }, null), null);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

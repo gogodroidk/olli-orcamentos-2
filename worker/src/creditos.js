@@ -1,3 +1,5 @@
+import { derivarEntitlement } from './entitlement.js';
+
 // CRÉDITOS OLLI — primitivos do worker (F2 da estratégia). Falam com o ledger
 // imutável (public.credit_ledger, migration 20260720). REGRA: só o worker escreve
 // (service_role); nunca conceder crédito otimista — o chamador (webhook/ação) só
@@ -352,7 +354,7 @@ async function regimeIa(env, userId) {
   try {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(userId)}` +
-        `&select=plano,status,current_period_end&limit=1`,
+        `&select=plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate&limit=1`,
       { headers: sbHeaders(env) },
     );
     if (!r.ok) {
@@ -365,13 +367,8 @@ async function regimeIa(env, userId) {
       return 'indeterminado';
     }
     if (!arr.length) return 'cota'; // sem linha = nunca assinou = grátis (resposta confirmada)
-    const row = arr[0];
-    if (!row.status || !STATUS_PAGOS.has(row.status)) return 'cota';
-    if (row.current_period_end) {
-      const fim = Date.parse(row.current_period_end);
-      if (!Number.isNaN(fim) && fim < Date.now()) return 'cota'; // vencida
-    }
-    return PLANOS_IA_ILIMITADA.has(row.plano) ? 'ilimitada' : 'cota';
+    const efetivo = derivarEntitlement(arr[0]);
+    return PLANOS_IA_ILIMITADA.has(efetivo.plano) ? 'ilimitada' : 'cota';
   } catch {
     console.error('[olli-creditos] preauth_assinatura_rede');
     return 'indeterminado';

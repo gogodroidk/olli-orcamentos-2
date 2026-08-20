@@ -81,7 +81,7 @@ A Play Store não tem campo de keywords separado — a indexação usa o texto d
 a descrição longa (seção 3) já repete termos como "orçamento", "recibo", "ordem de serviço",
 "eletricista", "técnico" e "HVAC" naturalmente.
 
-## 5. O que há de novo (release notes desta versão — v1.1.0 / versionCode 9)
+## 5. O que há de novo (release notes desta versão — v1.1.2 / versionCode 11)
 
 ```
 - Cadastro de equipamentos do cliente com etiqueta QR para consulta rápida em campo (novo)

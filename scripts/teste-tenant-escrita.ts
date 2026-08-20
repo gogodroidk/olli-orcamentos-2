@@ -107,6 +107,7 @@ function bloco(src: string, inicio: string, fim: string): string {
 
 const equipe = semComentarios(ler('../src/services/equipe.ts'));
 const painel = semComentarios(ler('../webapp/src/olli/mutacoes.ts'));
+const cloudSync = semComentarios(ler('../src/services/cloudSync.ts'));
 
 /* ─── 1) A membresia é escolhida de forma DETERMINÍSTICA ─────────────────── */
 console.log('\n1) equipe.ts — a consulta que decide o tenant de escrita');
@@ -168,6 +169,16 @@ checar('o painel declara uma ordenação', ordPainel !== null, true);
 // Igualdade, não "ambos ordenam": duas ordens diferentes mandariam o mesmo
 // usuário para empresas diferentes conforme o aparelho.
 checar('app e painel usam a MESMA ordenação', ordApp, ordPainel);
+
+/* ─── 2b) Estruturas auxiliares usam o MESMO tenant do dono ─────────────── */
+console.log('\n2b) tombstones e contadores — tenant explícito');
+const tombstone = bloco(cloudSync, 'export async function pushTombstone', '\n}\n');
+const contadores = bloco(cloudSync, 'async function syncContadores', '\n}\n');
+checar('pushTombstone resolve tenant antes do upsert', tombstone.includes('tenantDaSessao()'), true);
+checar('tombstone envia user_id explícito', /user_id\s*:\s*userId/.test(tombstone), true);
+checar('syncContadores resolve tenant antes de ler', contadores.includes('tenantDaSessao()'), true);
+checar('contador filtra a leitura pelo tenant', /\.eq\(\s*'user_id'\s*,\s*userId\s*\)/.test(contadores), true);
+checar('contador envia user_id explícito no upsert', /upsert\(\s*\{\s*user_id\s*:\s*userId/.test(contadores), true);
 
 /* ─── 3) O 402 do paywall diz o que aconteceu ────────────────────────────── */
 console.log('\n3) plano_requer_empresa (402) — a cobrança está viva em produção');

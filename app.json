@@ -50,6 +50,10 @@
             ]
           }
         ]
+      },
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "O OLLI usa o reconhecimento de fala para montar orçamentos ditados.",
+        "NSMicrophoneUsageDescription": "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente."
       }
     },
     "android": {
@@ -61,8 +65,9 @@
       "package": "online.olliorcamentos.app",
       "versionCode": 11,
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
@@ -138,7 +143,8 @@
         {
           "android": {
             "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableMinifyInReleaseBuilds": true
           }
         }
       ],
@@ -151,6 +157,12 @@
         }
       ],
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "902ca362-ea1b-4912-8345-28b5c91ec475"
+      }
+    },
+    "owner": "igorsouza01s-team"
   }
 }

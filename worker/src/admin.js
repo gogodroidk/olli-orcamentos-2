@@ -11,11 +11,14 @@
  *   POST /admin/api/user/delete?id=<uid> → excluir (conta + dados via cascade)
  *   POST /admin/api/me/password          → trocar a própria senha (do admin)
  *
- * Segurança: toda rota /admin/api exige JWT do Supabase E e-mail == ADMIN_EMAIL.
- * Só DEPOIS disso o Worker usa o SERVICE_ROLE. A service key NUNCA vai ao browser.
+ * Segurança: toda rota /admin/api exige JWT validado pelo Supabase. O e-mail
+ * ADMIN_EMAIL é o owner de recuperação; administradores adicionais vivem em
+ * public.admin_memberships com RBAC. Ações críticas exigem AAL2/TOTP e deixam
+ * trilha append-only. Só depois disso o Worker usa SERVICE_ROLE, nunca o browser.
  */
 
 import { getAssinatura, cancelarAssinaturaStripe } from './conta.js';
+import { derivarEntitlement } from './entitlement.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -24,19 +27,25 @@ function json(obj, status = 200) {
   });
 }
 
-// Fail-closed: NUNCA hardcode um e-mail de admin aqui. Se a env ADMIN_EMAIL
-// não estiver configurada (ou vier vazia), retorna null — e requireAdmin()
-// abaixo nega acesso a QUALQUER usuário nesse caso. Um fallback fixo já foi
-// tentado antes e concedia o painel de TODOS os tenants a um e-mail hardcoded
-// sempre que a env faltasse; isso é o oposto de fail-closed.
+// NUNCA hardcode um e-mail de admin. A env é apenas o owner de recuperação;
+// memberships adicionais são consultadas no banco e falham fechado.
 function adminEmail(env) {
   const raw = (env.ADMIN_EMAIL || '').trim().toLowerCase();
   return raw || null;
 }
 
+function jwtPayload(token) {
+  try {
+    const parte = String(token || '').split('.')[1];
+    if (!parte) return null;
+    const base64 = parte.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(parte.length / 4) * 4, '=');
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
 async function requireAdmin(request, env) {
-  const admin = adminEmail(env);
-  if (!admin) return null; // ADMIN_EMAIL ausente/vazia → nega a todos, nunca concede a um e-mail fixo
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;
   try {
@@ -46,8 +55,27 @@ async function requireAdmin(request, env) {
     if (!r.ok) return null;
     const u = await r.json();
     if (!u || !u.id) return null;
-    if (String(u.email || '').trim().toLowerCase() !== admin) return null;
-    return u;
+    const payload = jwtPayload(token) || {};
+    const aal = payload.aal === 'aal2' ? 'aal2' : 'aal1';
+
+    // Recuperação do dono: a env continua sendo a raiz de confiança e permite
+    // entrar mesmo se a tabela de memberships estiver indisponível/corrompida.
+    const bootstrap = adminEmail(env);
+    if (bootstrap && String(u.email || '').trim().toLowerCase() === bootstrap) {
+      return { ...u, papel: 'owner', aal, bootstrap: true };
+    }
+
+    const mr = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/admin_memberships?user_id=eq.${encodeURIComponent(u.id)}` +
+        '&ativo=eq.true&select=papel&limit=1',
+      { headers: svc(env) },
+    );
+    if (!mr.ok) return null;
+    const membros = await mr.json().catch(() => null);
+    if (!Array.isArray(membros) || !membros.length) return null;
+    const papel = membros[0] && membros[0].papel;
+    if (!['owner', 'admin', 'financeiro', 'suporte', 'leitura'].includes(papel)) return null;
+    return { ...u, papel, aal, bootstrap: false };
   } catch {
     return null;
   }
@@ -66,6 +94,54 @@ async function rest(env, path) {
   } catch {
     return [];
   }
+}
+
+const PAPEIS = {
+  leitura: 1,
+  suporte: 2,
+  financeiro: 2,
+  admin: 3,
+  owner: 4,
+};
+
+function pode(user, permissao) {
+  if (!user || !user.papel) return false;
+  if (permissao === 'financeiro') return ['financeiro', 'admin', 'owner'].includes(user.papel);
+  if (permissao === 'suporte') return ['suporte', 'admin', 'owner'].includes(user.papel);
+  return (PAPEIS[user.papel] || 0) >= (PAPEIS[permissao] || 99);
+}
+
+function motivoValido(v) {
+  const texto = typeof v === 'string' ? v.trim() : '';
+  return texto.length >= 3 && texto.length <= 500 ? texto : null;
+}
+
+async function auditar(env, actor, { acao, targetUserId = null, motivo, antes = null, depois = null, requestId = null }) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/admin_audit_log`, {
+      method: 'POST',
+      headers: svc(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        actor_user_id: actor.id,
+        actor_role: actor.papel,
+        acao,
+        target_user_id: targetUserId,
+        motivo,
+        antes,
+        depois,
+        request_id: requestId || null,
+      }),
+    });
+    return r.ok || r.status === 409;
+  } catch {
+    return false;
+  }
+}
+
+function exigir(user, permissao, { aal2 = false } = {}) {
+  if (!pode(user, permissao)) return json({ ok: false, erro: 'sem_permissao' }, 403);
+  if (aal2 && user.aal !== 'aal2') return json({ ok: false, erro: 'mfa_necessario' }, 403);
+  return null;
 }
 
 // ─── caixa de feedback + erros (tabela public.feedback) ──────
@@ -136,15 +212,18 @@ async function metrics(env) {
 }
 
 async function users(env) {
-  const [auth, empresas, orcs] = await Promise.all([
+  const [auth, empresas, orcs, assinaturas] = await Promise.all([
     listAuthUsers(env),
     rest(env, 'empresa?select=user_id,dados'),
     rest(env, 'orcamentos?select=user_id,status,valor_total'),
+    rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate'),
   ]);
   const empByUser = new Map();
   for (const e of empresas) empByUser.set(e.user_id, (e.dados && e.dados.nome) || '');
   const cnt = new Map();
   const fat = new Map();
+  const plano = new Map();
+  for (const a of assinaturas) plano.set(a.user_id, derivarEntitlement(a));
   for (const o of orcs) {
     cnt.set(o.user_id, (cnt.get(o.user_id) || 0) + 1);
     if (o.status === 'aprovado') fat.set(o.user_id, (fat.get(o.user_id) || 0) + (Number(o.valor_total) || 0));
@@ -159,32 +238,95 @@ async function users(env) {
     bloqueado: !!(u.banned_until && new Date(u.banned_until) > new Date()),
     orcamentos: cnt.get(u.id) || 0,
     faturamento: fat.get(u.id) || 0,
+    plano: (plano.get(u.id) || {}).plano || 'gratis',
+    planoOrigem: (plano.get(u.id) || {}).origem || 'gratis',
   }));
   lista.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
   return json({ ok: true, users: lista });
 }
 
-async function userDetail(env, id) {
+async function userDetail(env, id, actor) {
   if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
   const enc = encodeURIComponent(id);
-  const [empresaArr, orcamentos, clientes, agenda, recibos] = await Promise.all([
+  const [empresaArr, orcamentos, clientes, agenda, recibos, assinaturaArr, creditos, usosIa, auditoria] = await Promise.all([
     rest(env, `empresa?user_id=eq.${enc}&select=dados`),
     rest(env, `orcamentos?user_id=eq.${enc}&select=numero,cliente_nome,valor_total,status,criado_em&order=criado_em.desc&limit=100`),
     rest(env, `clientes?user_id=eq.${enc}&select=id,nome,telefone`),
     rest(env, `agendamentos?user_id=eq.${enc}&select=id,titulo,inicio,status&order=inicio.desc&limit=50`),
     rest(env, `recibos?user_id=eq.${enc}&select=numero,valor_recebido,data_recebimento&order=criado_em.desc&limit=50`),
+    rest(env, `assinaturas?user_id=eq.${enc}&select=user_id,plano,status,stripe_customer_id,stripe_subscription_id,mp_preapproval_id,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate,admin_override_reason,admin_override_at&limit=1`),
+    rest(env, `credit_ledger?user_id=eq.${enc}&select=id,delta,origem,descricao,criado_em&order=criado_em.desc&limit=100`),
+    rest(env, `ia_uso_gratis?user_id=eq.${enc}&select=periodo,acao,criado_em&order=criado_em.desc&limit=100`),
+    rest(env, `admin_audit_log?target_user_id=eq.${enc}&select=id,actor_role,acao,motivo,criado_em&order=criado_em.desc&limit=100`),
   ]);
-  return json({ ok: true, empresa: empresaArr[0] ? empresaArr[0].dados : null, orcamentos, clientes, agenda, recibos });
+  const assinatura = assinaturaArr[0] || null;
+  const faturas = assinatura && assinatura.stripe_customer_id
+    ? await listarFaturasStripeAdmin(env, assinatura.stripe_customer_id)
+    : [];
+  const verSuporte = pode(actor, 'suporte');
+  const verFinanceiro = pode(actor, 'financeiro');
+  const verAuditoria = pode(actor, 'admin');
+  return json({
+    ok: true,
+    empresa: empresaArr[0] ? empresaArr[0].dados : null,
+    orcamentos,
+    clientes: verSuporte ? clientes : [],
+    agenda: verSuporte ? agenda : [],
+    recibos: verSuporte || verFinanceiro ? recibos : [],
+    assinatura: verFinanceiro ? assinatura : null,
+    entitlement: assinatura ? derivarEntitlement(assinatura) : { plano: 'gratis', origem: 'gratis' },
+    creditos: verFinanceiro ? creditos : [],
+    saldoCreditos: verFinanceiro ? creditos.reduce((s, x) => s + (Number(x.delta) || 0), 0) : null,
+    usosIa: verSuporte ? usosIa : [],
+    faturas: verFinanceiro ? faturas : [],
+    auditoria: verAuditoria ? auditoria : [],
+  });
 }
 
-async function setBan(env, id, ban) {
+async function listarFaturasStripeAdmin(env, customerId) {
+  if (!env.STRIPE_SECRET_KEY || !customerId) return [];
+  try {
+    const r = await fetch(
+      `https://api.stripe.com/v1/invoices?customer=${encodeURIComponent(customerId)}&limit=24`,
+      { headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } },
+    );
+    if (!r.ok) return [];
+    const body = await r.json().catch(() => null);
+    if (!body || !Array.isArray(body.data)) return [];
+    return body.data.map((inv) => ({
+      id: inv.id,
+      criadoEm: typeof inv.created === 'number' ? new Date(inv.created * 1000).toISOString() : null,
+      valorCentavos: typeof inv.amount_paid === 'number' && inv.amount_paid > 0
+        ? inv.amount_paid
+        : (typeof inv.total === 'number' ? inv.total : 0),
+      moeda: typeof inv.currency === 'string' ? inv.currency : 'brl',
+      status: inv.status || null,
+      pago: inv.status === 'paid',
+      recibo: inv.hosted_invoice_url || inv.invoice_pdf || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function setBan(env, id, ban, actor, body = {}) {
   if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
+  const motivo = motivoValido(body.motivo);
+  if (!motivo) return json({ ok: false, erro: 'motivo_invalido' }, 400);
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`, {
       method: 'PUT', headers: svc(env, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ban_duration: ban ? '876000h' : 'none' }),
     });
-    return json({ ok: r.ok });
+    if (!r.ok) return json({ ok: false, erro: 'falha_auth' }, 502);
+    const auditoria = await auditar(env, actor, {
+      acao: ban ? 'usuario_bloqueado' : 'usuario_desbloqueado',
+      targetUserId: id,
+      motivo,
+      depois: { bloqueado: ban },
+      requestId: body.requestId,
+    });
+    return json({ ok: true, auditoria });
   } catch { return json({ ok: false, erro: 'falha' }, 502); }
 }
 
@@ -199,8 +341,12 @@ async function setBan(env, id, ban) {
  * Três estados da leitura da assinatura importam: existe / não existe / NÃO SEI.
  * "Não sei" (rede fora) bloqueia — nunca destrói dado sob incerteza.
  */
-async function deleteUser(env, id) {
+async function deleteUser(env, id, actor, body = {}) {
   if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
+  const motivo = motivoValido(body.motivo);
+  if (!motivo || body.confirmacao !== 'EXCLUIR') {
+    return json({ ok: false, erro: 'confirmacao_invalida' }, 400);
+  }
 
   const assinatura = await getAssinatura(env, id);
   if (assinatura && assinatura.error) {
@@ -214,23 +360,35 @@ async function deleteUser(env, id) {
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', headers: svc(env) });
     // 404 = já não existe (idempotente). Falha real vira 502, não um 200 com ok:false.
-    if (r.ok || r.status === 404) return json({ ok: true });
+    if (r.ok || r.status === 404) {
+      const auditoria = await auditar(env, actor, {
+        acao: 'usuario_excluido', targetUserId: id, motivo,
+        depois: { excluido: true }, requestId: body.requestId,
+      });
+      return json({ ok: true, auditoria });
+    }
     return json({ ok: false, erro: 'falha_exclusao' }, 502);
   } catch { return json({ ok: false, erro: 'falha' }, 502); }
 }
 
-async function resetUserPassword(env, email) {
+async function resetUserPassword(env, email, actor, body = {}) {
   if (!email) return json({ ok: false, erro: 'sem_email' }, 400);
+  const motivo = motivoValido(body.motivo);
+  if (!motivo) return json({ ok: false, erro: 'motivo_invalido' }, 400);
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/recover`, {
       method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    return json({ ok: r.ok });
+    if (!r.ok) return json({ ok: false, erro: 'falha_reset' }, 502);
+    const auditoria = await auditar(env, actor, {
+      acao: 'reset_senha_enviado', motivo, depois: { email }, requestId: body.requestId,
+    });
+    return json({ ok: true, auditoria });
   } catch { return json({ ok: false, erro: 'falha' }, 502); }
 }
 
-async function changeOwnPassword(request, env, senha) {
+async function changeOwnPassword(request, env, senha, actor) {
   if (!senha || String(senha).length < 8) return json({ ok: false, erro: 'senha_curta' }, 400);
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
   try {
@@ -238,14 +396,123 @@ async function changeOwnPassword(request, env, senha) {
       method: 'PUT', headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: senha }),
     });
-    return json({ ok: r.ok });
+    if (!r.ok) return json({ ok: false, erro: 'falha_senha' }, 502);
+    const auditoria = await auditar(env, actor, {
+      acao: 'senha_admin_alterada', targetUserId: actor.id,
+      motivo: 'Alteração solicitada pelo próprio administrador',
+      depois: { senhaAlterada: true },
+    });
+    return json({ ok: true, auditoria });
   } catch { return json({ ok: false, erro: 'falha' }, 502); }
+}
+
+async function setPlanoManual(env, actor, id, body = {}) {
+  if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
+  const motivo = motivoValido(body.motivo);
+  const ativo = body.ativo !== false;
+  const plano = body.plano === 'empresa' ? 'empresa' : body.plano === 'pro' ? 'pro' : null;
+  if (!motivo || (ativo && !plano)) return json({ ok: false, erro: 'dados_invalidos' }, 400);
+
+  let ate = null;
+  if (ativo && body.ate) {
+    const t = Date.parse(body.ate);
+    const max = Date.now() + 10 * 366 * 24 * 60 * 60 * 1000;
+    if (!Number.isFinite(t) || t <= Date.now() || t > max) {
+      return json({ ok: false, erro: 'vigencia_invalida' }, 400);
+    }
+    ate = new Date(t).toISOString();
+  }
+  const requestId = typeof body.requestId === 'string' && body.requestId.length >= 16
+    ? body.requestId.slice(0, 128)
+    : crypto.randomUUID();
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/admin_set_plano_override`, {
+      method: 'POST',
+      headers: svc(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        p_actor: actor.id,
+        p_actor_role: actor.papel,
+        p_target: id,
+        p_plano: plano,
+        p_ativo: ativo,
+        p_ate: ate,
+        p_motivo: motivo,
+        p_request_id: requestId,
+      }),
+    });
+    if (!r.ok) return json({ ok: false, erro: 'falha_entitlement' }, 502);
+    const assinatura = await r.json().catch(() => null);
+    return json({ ok: true, assinatura, entitlement: assinatura ? derivarEntitlement(assinatura) : null });
+  } catch {
+    return json({ ok: false, erro: 'falha_entitlement' }, 502);
+  }
+}
+
+async function adminsList(env) {
+  const [memberships, auth] = await Promise.all([
+    rest(env, 'admin_memberships?select=user_id,papel,ativo,criado_em,atualizado_em&order=criado_em.asc'),
+    listAuthUsers(env),
+  ]);
+  const emails = new Map(auth.map((u) => [u.id, u.email || '']));
+  return json({
+    ok: true,
+    admins: memberships.map((m) => ({ ...m, email: emails.get(m.user_id) || '' })),
+    bootstrapEmail: adminEmail(env) || null,
+  });
+}
+
+async function setAdminMembership(env, actor, body = {}) {
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const papel = ['admin', 'financeiro', 'suporte', 'leitura'].includes(body.papel) ? body.papel : null;
+  const ativo = body.ativo !== false;
+  const motivo = motivoValido(body.motivo);
+  if (!email || !papel || !motivo) return json({ ok: false, erro: 'dados_invalidos' }, 400);
+  if (email === adminEmail(env)) return json({ ok: false, erro: 'owner_bootstrap_protegido' }, 409);
+
+  const auth = await listAuthUsers(env);
+  const alvo = auth.find((u) => String(u.email || '').trim().toLowerCase() === email);
+  if (!alvo) return json({ ok: false, erro: 'usuario_nao_encontrado' }, 404);
+
+  try {
+    const requestId = typeof body.requestId === 'string' && body.requestId.length >= 16
+      ? body.requestId.slice(0, 128)
+      : crypto.randomUUID();
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/admin_set_membership`, {
+      method: 'POST',
+      headers: svc(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        p_actor: actor.id,
+        p_actor_role: actor.papel,
+        p_target: alvo.id,
+        p_papel: papel,
+        p_ativo: ativo,
+        p_motivo: motivo,
+        p_request_id: requestId,
+      }),
+    });
+    if (!r.ok) return json({ ok: false, erro: 'falha_admin' }, 502);
+    const admin = await r.json().catch(() => null);
+    return json({ ok: true, admin });
+  } catch {
+    return json({ ok: false, erro: 'falha_admin' }, 502);
+  }
+}
+
+async function auditList(env) {
+  const rows = await rest(
+    env,
+    'admin_audit_log?select=id,actor_user_id,actor_role,acao,target_user_id,motivo,criado_em&order=criado_em.desc&limit=300',
+  );
+  return json({ ok: true, auditoria: rows });
 }
 
 // ─── roteador ────────────────────────────────────────────────
 export async function handleAdmin(request, env, url) {
   if (url.pathname === '/admin' || url.pathname === '/admin/') {
-    return new Response(adminHtml(env), {
+    const bytes = new Uint8Array(18);
+    crypto.getRandomValues(bytes);
+    const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return new Response(adminHtml(env, nonce), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
@@ -255,9 +522,10 @@ export async function handleAdmin(request, env, url) {
         // script/style inline (sem framework) + fetch same-origin para
         // /admin/api e para o Supabase Auth (login).
         'Content-Security-Policy':
-          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' " +
+          `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline' https://fonts.googleapis.com; ` +
+          "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' " +
           (env.SUPABASE_URL || '') +
-          "; base-uri 'none'; form-action 'none'",
+          "; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       },
     });
   }
@@ -266,32 +534,74 @@ export async function handleAdmin(request, env, url) {
     // força bruta/varredura de token contra este painel (é a única rota do
     // worker que dá acesso total a dados de TODOS os usuários). Roda antes de
     // requireAdmin para não gastar 1 chamada a /auth/v1/user por tentativa.
-    if (env.ADMIN_RL) {
-      try {
-        const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
-        const { success } = await env.ADMIN_RL.limit({ key: ip });
-        if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-      } catch {
-        // binding ausente em algum ambiente: não bloqueia
-      }
+    if (!env.ADMIN_RL) return json({ ok: false, erro: 'limite_admin_indisponivel' }, 503);
+    try {
+      const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+      const { success } = await env.ADMIN_RL.limit({ key: ip });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch {
+      return json({ ok: false, erro: 'limite_admin_indisponivel' }, 503);
     }
     const user = await requireAdmin(request, env);
     if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
     const id = url.searchParams.get('id');
     const p = url.pathname;
     const m = request.method;
+    const body = m === 'POST' ? await request.json().catch(() => ({})) : {};
+    let gate;
+    if (m === 'GET' && p === '/admin/api/me') {
+      return json({ ok: true, user: { id: user.id, email: user.email, papel: user.papel, aal: user.aal } });
+    }
     if (m === 'GET' && p === '/admin/api/metrics') return metrics(env);
     if (m === 'GET' && p === '/admin/api/users') return users(env);
-    if (m === 'GET' && p === '/admin/api/user') return userDetail(env, id);
-    if (m === 'POST' && p === '/admin/api/user/ban') return setBan(env, id, true);
-    if (m === 'POST' && p === '/admin/api/user/unban') return setBan(env, id, false);
-    if (m === 'POST' && p === '/admin/api/user/delete') return deleteUser(env, id);
-    if (m === 'POST' && p === '/admin/api/user/reset') return resetUserPassword(env, url.searchParams.get('email'));
-    if (m === 'GET' && p === '/admin/api/feedback') return feedbackList(env);
-    if (m === 'POST' && p === '/admin/api/feedback/resolve') return feedbackResolve(env, id, url.searchParams.get('resolvido') === '1');
+    if (m === 'GET' && p === '/admin/api/user') {
+      if (!['suporte', 'financeiro', 'admin', 'owner'].includes(user.papel)) {
+        return json({ ok: false, erro: 'sem_permissao' }, 403);
+      }
+      return userDetail(env, id, user);
+    }
+    if (m === 'POST' && p === '/admin/api/user/ban') {
+      if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
+      return setBan(env, id, true, user, body);
+    }
+    if (m === 'POST' && p === '/admin/api/user/unban') {
+      if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
+      return setBan(env, id, false, user, body);
+    }
+    if (m === 'POST' && p === '/admin/api/user/delete') {
+      if ((gate = exigir(user, 'owner', { aal2: true }))) return gate;
+      return deleteUser(env, id, user, body);
+    }
+    if (m === 'POST' && p === '/admin/api/user/reset') {
+      if ((gate = exigir(user, 'suporte'))) return gate;
+      return resetUserPassword(env, url.searchParams.get('email'), user, body);
+    }
+    if (m === 'POST' && p === '/admin/api/user/plan') {
+      if ((gate = exigir(user, 'financeiro', { aal2: true }))) return gate;
+      return setPlanoManual(env, user, id, body);
+    }
+    if (m === 'GET' && p === '/admin/api/feedback') {
+      if ((gate = exigir(user, 'suporte'))) return gate;
+      return feedbackList(env);
+    }
+    if (m === 'POST' && p === '/admin/api/feedback/resolve') {
+      if ((gate = exigir(user, 'suporte'))) return gate;
+      return feedbackResolve(env, id, url.searchParams.get('resolvido') === '1');
+    }
+    if (m === 'GET' && p === '/admin/api/admins') {
+      if ((gate = exigir(user, 'owner'))) return gate;
+      return adminsList(env);
+    }
+    if (m === 'POST' && p === '/admin/api/admins') {
+      if ((gate = exigir(user, 'owner', { aal2: true }))) return gate;
+      return setAdminMembership(env, user, body);
+    }
+    if (m === 'GET' && p === '/admin/api/audit') {
+      if ((gate = exigir(user, 'admin'))) return gate;
+      return auditList(env);
+    }
     if (m === 'POST' && p === '/admin/api/me/password') {
-      const body = await request.json().catch(() => ({}));
-      return changeOwnPassword(request, env, body && body.senha);
+      return changeOwnPassword(request, env, body && body.senha, user);
     }
     return json({ ok: false, erro: 'nao_encontrado' }, 404);
   }
@@ -301,7 +611,7 @@ export async function handleAdmin(request, env, url) {
 // ─── símbolo OLLI (mono, p/ reuso no HTML) ───────────────────
 const SYM = '<svg viewBox="0 0 64 64" width="100%" height="100%"><defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3FD8EA"/><stop offset="1" stop-color="#0B6FCE"/></linearGradient></defs><path d="M22 49 L12 59.5 L30 50 Z" fill="url(#og)"/><rect x="9" y="8" width="46" height="44" rx="14.5" fill="url(#og)"/><rect x="13" y="11.5" width="38" height="15" rx="9" fill="#fff" opacity="0.1"/><rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5"/><rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5"/><path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke="#EAFEFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-function adminHtml(env) {
+function adminHtml(env, nonce) {
   const SB = JSON.stringify(env.SUPABASE_URL);
   const ANON = JSON.stringify(env.SUPABASE_ANON_KEY);
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
@@ -337,7 +647,9 @@ function adminHtml(env) {
  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px;animation:fade .4s both}
  .top .brand{display:flex;align-items:center;gap:11px}.top .brand b{font-size:17px;font-weight:800;letter-spacing:2px}
  .top .brand span{font-size:11px;color:var(--mut2);display:block;letter-spacing:.5px;margin-top:-2px}
- .top .right{display:flex;align-items:center;gap:8px}.who{font-size:12.5px;color:var(--mut);margin-right:4px}
+ .top .right{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-width:0}.who{font-size:12.5px;color:var(--mut);margin-right:4px;overflow-wrap:anywhere}
+ .badge{display:inline-flex;align-items:center;min-height:28px;border:1px solid var(--line2);border-radius:999px;padding:4px 10px;color:var(--cyl);font-size:11px;font-weight:800}
+ select{width:100%;margin:6px 0 14px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:13px;color:#fff;font:inherit}
  /* CARDS */
  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:13px;margin-bottom:16px}
  .card{background:linear-gradient(160deg,var(--surf),var(--surf2));border:1px solid var(--line);border-radius:18px;padding:17px;animation:up .45s cubic-bezier(.22,1,.36,1) both;position:relative;overflow:hidden}
@@ -384,7 +696,7 @@ function adminHtml(env) {
  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surf);border:1px solid var(--line2);border-radius:13px;padding:12px 18px;font-size:13.5px;font-weight:600;opacity:0;transition:all .25s;z-index:40;box-shadow:0 14px 34px rgba(0,0,0,.4)}
  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
  .toast.ok{border-color:rgba(43,227,154,.5)}.toast.err{border-color:rgba(255,107,107,.5)}
- @media(max-width:620px){.search input{width:160px}th.hideSm,td.hideSm{display:none}}
+ @media(max-width:620px){.top{align-items:flex-start;flex-direction:column}.top .right{justify-content:flex-start;width:100%}.search input{width:160px}th.hideSm,td.hideSm{display:none}}
 </style></head>
 <body>
 <div class="wrap">
@@ -400,14 +712,14 @@ function adminHtml(env) {
  <div id="dashView" class="hidden">
   <div class="top">
    <div class="brand"><div class="sym">${SYM}</div><div><b>OLLI ADMIN</b><span>painel do dono</span></div></div>
-   <div class="right"><span class="who" id="who"></span><button class="btn soft sm" id="pwdBtn">Trocar senha</button><button class="btn ghost sm" id="refreshBtn">↻</button><button class="btn ghost sm" id="logoutBtn">Sair</button></div>
+   <div class="right"><span class="who" id="who"></span><span class="badge" id="mfaState">AAL1</span><button class="btn soft sm" id="mfaBtn">Segurança</button><button class="btn soft sm hidden" id="adminsBtn">Administradores</button><button class="btn soft sm hidden" id="auditBtn">Auditoria</button><button class="btn soft sm" id="pwdBtn">Trocar senha</button><button class="btn ghost sm" id="refreshBtn" aria-label="Atualizar">Atualizar</button><button class="btn ghost sm" id="logoutBtn">Sair</button></div>
   </div>
   <div class="cards" id="cards"></div>
   <div class="sec-head">
    <h2>Usuários <span class="muted" id="ucount"></span></h2>
    <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
   </div>
-  <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
+  <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Plano</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
   <div class="sec-head"><h2>Feedback & Erros <span class="muted" id="fcount"></span></h2></div>
   <div id="ffilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
   <div id="frows"></div>
@@ -417,9 +729,9 @@ function adminHtml(env) {
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 
-<script>
+<script nonce="${nonce}">
 const SB=${SB}, ANON=${ANON};
-let TOKEN=localStorage.getItem('olli_admin_tok')||'', ALLUSERS=[], MET=null;
+let TOKEN=sessionStorage.getItem('olli_admin_tok')||'', ALLUSERS=[], MET=null, ME=null;
 const $=id=>document.getElementById(id);
 function show(v){$('loginView').classList.toggle('hidden',v!=='login');$('dashView').classList.toggle('hidden',v!=='dash');}
 function el(t,p){const e=document.createElement(t);if(p)Object.assign(e,p);for(let i=2;i<arguments.length;i++){const k=arguments[i];if(k!=null)e.append(k.nodeType?k:document.createTextNode(k));}return e;}
@@ -428,7 +740,13 @@ function fmtBRL(n){return 'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFr
 function fmtNum(n){return (Number(n)||0).toLocaleString('pt-BR');}
 function fmtDate(s){if(!s)return '—';const d=new Date(s);return isNaN(d)?'—':d.toLocaleDateString('pt-BR');}
 function initials(s){return (s||'?').trim().charAt(0).toUpperCase();}
-async function api(path,opts){const r=await fetch('/admin/api/'+path,{...opts,headers:{Authorization:'Bearer '+TOKEN,'Content-Type':'application/json',...(opts&&opts.headers||{})}});if(r.status===401){logout();throw new Error('401');}return r.json();}
+async function api(path,opts){
+ const r=await fetch('/admin/api/'+path,{...opts,headers:{Authorization:'Bearer '+TOKEN,'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+ const j=await r.json().catch(()=>({ok:false,erro:'resposta_invalida'}));
+ if(r.status===401){logout();throw new Error('401');}
+ if(!r.ok||j.ok===false){const e=new Error(j.erro||('http_'+r.status));e.codigo=j.erro;e.status=r.status;throw e;}
+ return j;
+}
 
 async function login(){
  $('loginErr').textContent='';
@@ -442,12 +760,79 @@ async function login(){
   TOKEN=j.access_token;
   const m=await fetch('/admin/api/metrics',{headers:{Authorization:'Bearer '+TOKEN}});
   if(m.status===401){$('loginErr').textContent='Esta conta não é o super-admin.';TOKEN='';return;}
-  localStorage.setItem('olli_admin_tok',TOKEN);$('who').textContent=email;
-  await loadDash();
+  sessionStorage.setItem('olli_admin_tok',TOKEN);$('who').textContent=email;
+  await carregarIdentidade();
+  const fatores=await listarFatoresMfa();
+  if(ME&&ME.aal!=='aal2'&&fatores.length){await abrirDesafioMfa(fatores[0]);}
+  else await loadDash();
  }catch(e){$('loginErr').textContent='Falha ao entrar. Tente de novo.';}
  finally{$('loginBtn').textContent='Entrar';$('loginBtn').disabled=false;}
 }
-function logout(){TOKEN='';localStorage.removeItem('olli_admin_tok');show('login');}
+function logout(){TOKEN='';ME=null;sessionStorage.removeItem('olli_admin_tok');show('login');}
+
+async function carregarIdentidade(){
+ const j=await api('me');ME=j.user||null;
+ if(!ME)return;
+ $('who').textContent=(ME.email||'')+' · '+ME.papel;
+ $('mfaState').textContent=ME.aal==='aal2'?'MFA ativo':'MFA pendente';
+ $('mfaState').style.color=ME.aal==='aal2'?'var(--ok)':'var(--warn)';
+ $('adminsBtn').classList.toggle('hidden',ME.papel!=='owner');
+ $('auditBtn').classList.toggle('hidden',!['owner','admin'].includes(ME.papel));
+}
+
+async function authFetch(path,opts){
+ const r=await fetch(SB+'/auth/v1/'+path,{...opts,headers:{apikey:ANON,Authorization:'Bearer '+TOKEN,'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(j.msg||j.message||j.error_description||'Falha de autenticação');
+ return j;
+}
+
+async function listarFatoresMfa(){
+ try{
+  const j=await authFetch('factors');
+  const todos=Array.isArray(j)?j:[...(Array.isArray(j.totp)?j.totp:[]),...(Array.isArray(j.all)?j.all:[])];
+  return todos.filter((f,i,a)=>f&&f.factor_type==='totp'&&f.status==='verified'&&a.findIndex(x=>x.id===f.id)===i);
+ }catch(e){return [];}
+}
+
+function aplicarSessaoMfa(j){
+ const token=j&&j.access_token;
+ if(typeof token!=='string'||!token)throw new Error('A verificação não devolveu uma sessão válida.');
+ TOKEN=token;sessionStorage.setItem('olli_admin_tok',TOKEN);
+}
+
+async function verificarFator(factorId,code){
+ const ch=await authFetch('factors/'+encodeURIComponent(factorId)+'/challenge',{method:'POST',body:'{}'});
+ const v=await authFetch('factors/'+encodeURIComponent(factorId)+'/verify',{method:'POST',body:JSON.stringify({challenge_id:ch.id,code})});
+ aplicarSessaoMfa(v);
+ await carregarIdentidade();
+}
+
+async function abrirDesafioMfa(fator){
+ const d=$('modal');d.innerHTML='';
+ d.append(el('h3',{},'Confirme o segundo fator'),el('div',{className:'sub'},'Digite o código de 6 dígitos do seu aplicativo autenticador.'));
+ const code=el('input',{inputMode:'numeric',autoComplete:'one-time-code',maxLength:6,placeholder:'000000'});d.append(code);
+ const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Verificar');
+ save.onclick=async()=>{save.disabled=true;try{await verificarFator(fator.id,code.value.trim());modalClose();toast('MFA confirmado.','ok');await loadDash();}catch(e){toast(e.message||'Código inválido.','err');}finally{save.disabled=false;}};
+ acts.append(el('button',{className:'btn ghost sm',onclick:()=>{modalClose();loadDash();}},'Somente leitura'),save);d.append(acts);$('ov').classList.add('show');code.focus();
+}
+
+async function abrirSeguranca(){
+ const existentes=await listarFatoresMfa();
+ if(existentes.length){await abrirDesafioMfa(existentes[0]);return;}
+ const d=$('modal');d.innerHTML='';d.append(el('h3',{},'Ativar verificação em duas etapas'),el('div',{className:'sub'},'Use Google Authenticator, Authy, 1Password ou outro aplicativo TOTP. Cadastre também um segundo fator de reserva depois.'));
+ try{
+  const f=await authFetch('factors',{method:'POST',body:JSON.stringify({factor_type:'totp',friendly_name:'OLLI Admin'})});
+  const qr=f&&f.totp&&f.totp.qr_code;
+  if(qr){d.append(el('img',{src:qr,alt:'QR Code para cadastrar o OLLI Admin no autenticador',style:'display:block;width:220px;height:220px;margin:18px auto;background:#fff;padding:10px;border-radius:14px'}));}
+  if(f&&f.totp&&f.totp.secret)d.append(el('div',{className:'sub',style:'word-break:break-all'},'Chave manual: '+f.totp.secret));
+  const code=el('input',{inputMode:'numeric',autoComplete:'one-time-code',maxLength:6,placeholder:'Código de 6 dígitos'});d.append(code);
+  const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Ativar MFA');
+  save.onclick=async()=>{save.disabled=true;try{await verificarFator(f.id,code.value.trim());modalClose();toast('MFA ativado.','ok');}catch(e){toast(e.message||'Não consegui verificar.','err');}finally{save.disabled=false;}};
+  acts.append(el('button',{className:'btn ghost sm',onclick:modalClose},'Cancelar'),save);d.append(acts);
+ }catch(e){d.append(el('div',{className:'err'},e.message||'Não consegui iniciar o MFA.'));}
+ $('ov').classList.add('show');
+}
 
 function card(icon,val,label,delta,deltaCls,ok){
  const c=el('div',{className:'card'});c.append(el('div',{className:'ic'},icon),el('div',{className:'v'+(ok?' ok':'')},String(val)),el('div',{className:'l'},label));
@@ -473,13 +858,14 @@ function renderCards(m){
 }
 function renderUsers(list){
  const tb=$('urows');tb.innerHTML='';
- if(!list.length){tb.append(el('tr',{},el('td',{colSpan:6},el('div',{className:'empty'},'Nenhum usuário encontrado.'))));return;}
+ if(!list.length){tb.append(el('tr',{},el('td',{colSpan:7},el('div',{className:'empty'},'Nenhum usuário encontrado.'))));return;}
  for(const x of list){
   const tr=el('tr',{className:'row'});tr.onclick=()=>openUser(x);
   const u=el('div',{className:'u'});u.append(el('div',{className:'av'},initials(x.nome||x.email)),el('div',{},el('div',{className:'uem'},x.email||'—'),el('div',{className:'ues'},x.nome||'sem nome')));
   tr.append(
    el('td',{},u),
    el('td',{className:'hideSm '+(x.empresa?'':'muted')},x.empresa||'(sem empresa)'),
+   el('td',{},el('span',{className:'pill '+(x.plano==='gratis'?'off':'on')},x.plano+(x.planoOrigem==='admin'?' · manual':''))),
    el('td',{},String(x.orcamentos)),
    el('td',{className:'hideSm muted'},x.faturamento?fmtBRL(x.faturamento):'—'),
    el('td',{className:'hideSm muted'},fmtDate(x.criadoEm)),
@@ -558,15 +944,30 @@ async function openUser(x){
   d.append(el('div',{className:'sub'},'Cadastro '+fmtDate(x.criadoEm)+' · último acesso '+fmtDate(x.ultimoAcesso)+' · '+(x.bloqueado?'BLOQUEADO':'ativo')));
   const aprov=det.orcamentos.filter(o=>o.status==='aprovado');
   const fat=aprov.reduce((s,o)=>s+(Number(o.valor_total)||0),0);
+  const ent=det.entitlement||{plano:'gratis',origem:'gratis'};
   const mini=el('div',{className:'mini'});
-  [['Orçamentos',det.orcamentos.length],['Aprovados',aprov.length],['Faturamento',fmtBRL(fat)],['Clientes',det.clientes.length],['Agenda',det.agenda.length],['Recibos',det.recibos.length]].forEach(p=>{const c=el('div',{className:'mc'});c.append(el('div',{className:'v'},String(p[1])),el('div',{className:'l'},p[0]));mini.append(c);});
+  [['Plano',ent.plano+(ent.origem==='admin'?' · manual':'')],['Saldo',String(det.saldoCreditos||0)+' créditos'],['IA grátis',String((det.usosIa||[]).length)+' usos'],['Orçamentos',det.orcamentos.length],['Aprovados',aprov.length],['Faturamento',fmtBRL(fat)],['Clientes',det.clientes.length],['Agenda',det.agenda.length],['Recibos',det.recibos.length]].forEach(p=>{const c=el('div',{className:'mc'});c.append(el('div',{className:'v'},String(p[1])),el('div',{className:'l'},p[0]));mini.append(c);});
   d.append(mini);
   const mk=(title,rows)=>{const s=el('div',{className:'sec'});s.append(el('h4',{},title));if(!rows.length){s.append(el('div',{className:'muted',style:'font-size:13px'},'nenhum'));}else rows.forEach(r=>s.append(el('div',{className:'li'},el('span',{},r[0]),el('span',{className:'muted'},r[1]))));return s;};
   d.append(mk('Orçamentos recentes',det.orcamentos.slice(0,10).map(o=>['Nº'+o.numero+' · '+(o.cliente_nome||''),fmtBRL(o.valor_total)+' · '+o.status])));
+  const ass=det.assinatura;
+  d.append(mk('Assinatura e concessão',ass?[
+   ['Plano do gateway',(ass.plano||'—')+' · '+(ass.status||'—')],
+   ['Vigência',fmtDate(ass.current_period_end)],
+   ['Override manual',ass.admin_override_ativo?((ass.admin_plano_override||'—')+' até '+(ass.admin_override_ate?fmtDate(ass.admin_override_ate):'revogação')):'inativo'],
+   ['Mercado Pago',ass.mp_preapproval_id?'vinculado':'—'],
+   ['Stripe',ass.stripe_subscription_id?'vinculada':'—'],
+  ]:[['Estado','Sem assinatura; plano Grátis']]))
+  d.append(mk('Faturas Stripe',det.faturas.slice(0,12).map(f=>[fmtDate(f.criadoEm)+' · '+(f.status||'—'),fmtBRL((f.valorCentavos||0)/100)])));
+  d.append(mk('Créditos recentes',det.creditos.slice(0,12).map(c=>[(Number(c.delta)>0?'+':'')+c.delta+' · '+c.origem,fmtDate(c.criado_em)])));
+  d.append(mk('Auditoria administrativa',det.auditoria.slice(0,10).map(a=>[a.acao+' · '+a.motivo,fmtDate(a.criado_em)])));
   d.append(mk('Clientes',det.clientes.slice(0,10).map(c=>[c.nome||'—',c.telefone||''])));
   d.append(mk('Agenda',det.agenda.slice(0,8).map(a=>[a.titulo||'—',fmtDate(a.inicio)+' · '+a.status])));
   const acts=el('div',{className:'acts'});
   acts.append(el('button',{className:'btn soft sm',onclick:modalClose},'Fechar'));
+  acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,'pro',true)},'Conceder Pro'));
+  acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,'empresa',true)},'Conceder Empresa'));
+  if(ass&&ass.admin_override_ativo)acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,null,false)},'Revogar plano manual'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>act(x,'reset')},'Enviar reset de senha'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>act(x,x.bloqueado?'unban':'ban')},x.bloqueado?'Desbloquear':'Bloquear'));
   acts.append(el('button',{className:'btn danger sm',onclick:()=>act(x,'delete')},'Excluir conta'));
@@ -574,10 +975,54 @@ async function openUser(x){
  }catch(e){d.innerHTML='<p class="muted">Erro ao carregar.</p>';}
 }
 async function act(x,a){
- if(a==='reset'){try{await api('user/reset?email='+encodeURIComponent(x.email),{method:'POST'});toast('Reset enviado para '+x.email,'ok');}catch(e){toast('Falha ao enviar.','err');}return;}
+ const motivo=prompt('Informe o motivo desta ação (fica na auditoria):');if(!motivo||motivo.trim().length<3)return;
+ const requestId=crypto.randomUUID();
+ if(a==='reset'){try{await api('user/reset?email='+encodeURIComponent(x.email),{method:'POST',body:JSON.stringify({motivo,requestId})});toast('Reset enviado para '+x.email,'ok');}catch(e){toast(mensagemErro(e),'err');}return;}
  const msg={ban:'Bloquear '+x.email+'?',unban:'Desbloquear '+x.email+'?',delete:'EXCLUIR '+x.email+' e TODOS os dados? Não tem volta.'}[a];
  if(!confirm(msg))return;
- try{await api('user/'+a+'?id='+encodeURIComponent(x.id),{method:'POST'});modalClose();toast(a==='delete'?'Conta excluída':'Feito','ok');await loadDash();}catch(e){toast('Falha na ação.','err');}
+ const confirmacao=a==='delete'?prompt('Digite EXCLUIR para confirmar:'):undefined;
+ if(a==='delete'&&confirmacao!=='EXCLUIR')return;
+ try{await api('user/'+a+'?id='+encodeURIComponent(x.id),{method:'POST',body:JSON.stringify({motivo,requestId,confirmacao})});modalClose();toast(a==='delete'?'Conta excluída':'Feito','ok');await loadDash();}catch(e){toast(mensagemErro(e),'err');}
+}
+
+function mensagemErro(e){
+ if(e&&e.codigo==='mfa_necessario')return 'Confirme o MFA em Segurança antes desta ação.';
+ if(e&&e.codigo==='sem_permissao')return 'Seu papel não permite esta ação.';
+ return (e&&e.message&&e.message!=='falha_entitlement')?e.message:'Não consegui concluir a ação.';
+}
+
+function openPlanForm(x,plano,ativo){
+ const d=$('modal');d.innerHTML='';d.append(el('h3',{},ativo?('Conceder '+plano.toUpperCase()):'Revogar plano manual'),el('div',{className:'sub'},'A assinatura do gateway não será alterada. A mudança fica registrada na auditoria.'));
+ const motivo=el('input',{placeholder:'Motivo obrigatório (ex.: cortesia comercial)'});d.append(el('label',{},'Motivo'),motivo);
+ let dias=null;
+ if(ativo){dias=el('input',{type:'number',min:'1',max:'3650',placeholder:'Dias de vigência (vazio = até revogar)'});d.append(el('label',{},'Vigência'),dias);}
+ const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},ativo?'Conceder':'Revogar');
+ save.onclick=async()=>{const m=motivo.value.trim();if(m.length<3){toast('Informe um motivo.','err');return;}let ate=null;if(ativo&&dias.value){const n=Number(dias.value);if(!Number.isInteger(n)||n<1||n>3650){toast('Use entre 1 e 3650 dias.','err');return;}ate=new Date(Date.now()+n*86400000).toISOString();}save.disabled=true;try{await api('user/plan?id='+encodeURIComponent(x.id),{method:'POST',body:JSON.stringify({plano,ativo,ate,motivo:m,requestId:crypto.randomUUID()})});modalClose();toast('Plano atualizado.','ok');await loadDash();}catch(e){toast(mensagemErro(e),'err');}finally{save.disabled=false;}};
+ acts.append(el('button',{className:'btn ghost sm',onclick:()=>openUser(x)},'Cancelar'),save);d.append(acts);
+}
+
+async function openAdmins(){
+ const d=$('modal');d.innerHTML='<p class="muted">Carregando administradores…</p>';$('ov').classList.add('show');
+ try{
+  const j=await api('admins');d.innerHTML='';d.append(el('h3',{},'Administradores'),el('div',{className:'sub'},'O e-mail raiz continua protegido. Outros acessos têm papel explícito e podem ser revogados.'));
+  if(j.bootstrapEmail)d.append(el('div',{className:'li'},el('span',{},j.bootstrapEmail),el('span',{className:'pill on'},'owner · raiz')));
+  for(const a of j.admins){const row=el('div',{className:'li'}),left=el('span',{},(a.email||a.user_id)+' · '+a.papel),right=el('span',{});right.append(el('span',{className:'pill '+(a.ativo?'on':'off')},a.ativo?'ativo':'revogado'));if(a.ativo)right.append(' ',el('button',{className:'btn danger sm',onclick:()=>salvarAdmin(a.email,a.papel,false)},'Revogar'));row.append(left,right);d.append(row);}
+  d.append(el('h4',{style:'margin-top:20px'},'Adicionar ou atualizar'));
+  const email=el('input',{type:'email',placeholder:'e-mail de uma conta OLLI existente'}),papel=el('select');['admin','financeiro','suporte','leitura'].forEach(p=>papel.append(el('option',{value:p},p)));
+  const motivo=el('input',{placeholder:'Motivo obrigatório'});d.append(email,papel,motivo);
+  const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Salvar acesso');save.onclick=()=>salvarAdmin(email.value,papel.value,true,motivo.value);
+  acts.append(el('button',{className:'btn ghost sm',onclick:modalClose},'Fechar'),save);d.append(acts);
+ }catch(e){d.innerHTML='';d.append(el('p',{className:'err'},mensagemErro(e)),el('button',{className:'btn ghost sm',onclick:modalClose},'Fechar'));}
+}
+
+async function salvarAdmin(email,papel,ativo,motivoInformado){
+ const motivo=(motivoInformado||prompt('Informe o motivo desta alteração:')||'').trim();if(motivo.length<3)return;
+ try{await api('admins',{method:'POST',body:JSON.stringify({email:email.trim(),papel,ativo,motivo,requestId:crypto.randomUUID()})});toast(ativo?'Acesso administrativo salvo.':'Acesso revogado.','ok');await openAdmins();}catch(e){toast(mensagemErro(e),'err');}
+}
+
+async function openAudit(){
+ const d=$('modal');d.innerHTML='<p class="muted">Carregando auditoria…</p>';$('ov').classList.add('show');
+ try{const j=await api('audit');d.innerHTML='';d.append(el('h3',{},'Auditoria administrativa'),el('div',{className:'sub'},'Últimas 300 ações; registros não podem ser alterados ou apagados.'));for(const a of j.auditoria){d.append(el('div',{className:'li'},el('span',{},a.acao+' · '+a.motivo),el('span',{className:'muted'},a.actor_role+' · '+fmtDate(a.criado_em))));}d.append(el('button',{className:'btn ghost sm',onclick:modalClose,style:'margin-top:16px'},'Fechar'));}catch(e){d.innerHTML='';d.append(el('p',{className:'err'},mensagemErro(e)),el('button',{className:'btn ghost sm',onclick:modalClose,style:'margin-top:16px'},'Fechar'));}
 }
 
 function openPwd(){
@@ -603,10 +1048,13 @@ $('loginBtn').onclick=login;
 $('senha').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 $('logoutBtn').onclick=logout;
 $('refreshBtn').onclick=loadDash;
+$('mfaBtn').onclick=abrirSeguranca;
+$('adminsBtn').onclick=openAdmins;
+$('auditBtn').onclick=openAudit;
 $('pwdBtn').onclick=openPwd;
 $('usearch').addEventListener('input',applySearch);
 $('ov').onclick=e=>{if(e.target===$('ov'))modalClose();};
-if(TOKEN){fetch('/admin/api/metrics',{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>{if(r.ok){loadDash();}else{logout();}}).catch(()=>logout());}else{show('login');}
+if(TOKEN){(async()=>{try{await carregarIdentidade();const fatores=await listarFatoresMfa();if(ME&&ME.aal!=='aal2'&&fatores.length)await abrirDesafioMfa(fatores[0]);else await loadDash();}catch(e){logout();}})();}else{show('login');}
 </script>
 </body></html>`;
 }

@@ -254,14 +254,24 @@ function epochParaIso(epoch) {
 }
 
 /**
- * ISO de agora + N meses. setMonth transborda dias inexistentes para o mês
- * seguinte (31/jan +1 -> 3/mar); para +12 meses o desvio máximo é 1 dia
- * (29/fev -> 1/mar), aceitável para vigência de assinatura.
+ * Vigência determinística: data autoritativa do evento + N meses.
+ *
+ * Nunca usa `new Date()` sem argumento. A Stripe pode reenviar o mesmo event_id
+ * dias depois; calcular a partir do relógio da tentativa empurraria a vigência
+ * para frente a cada replay. Dias inexistentes são grampeados no último dia do
+ * mês-alvo (29/fev + 12 meses = 28/fev, não 1/mar).
  */
-function isoDaquiAMeses(meses) {
-  const d = new Date();
-  d.setMonth(d.getMonth() + meses);
-  return d.toISOString();
+export function isoMesesAposEpoch(epoch, meses) {
+  if (typeof epoch !== 'number' || !Number.isFinite(epoch) || epoch <= 0) return null;
+  if (!Number.isInteger(meses) || meses < 1 || meses > 120) return null;
+  const base = new Date(epoch * 1000);
+  if (!Number.isFinite(base.getTime())) return null;
+  const dia = base.getUTCDate();
+  base.setUTCDate(1);
+  base.setUTCMonth(base.getUTCMonth() + meses);
+  const ultimoDia = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  base.setUTCDate(Math.min(dia, ultimoDia));
+  return base.toISOString();
 }
 
 /** lookup_key do primeiro item da subscription → plano interno ('pro'/'empresa') ou null. */
@@ -658,7 +668,18 @@ async function processar12x(env, obj, evento) {
   }
   const mesesRaw = Number(obj.metadata && obj.metadata.meses_acesso);
   const meses = Number.isFinite(mesesRaw) && mesesRaw > 0 ? Math.floor(mesesRaw) : 12;
-  const novaVigencia = isoDaquiAMeses(meses);
+  // `created` é epoch em segundos tanto no objeto Checkout Session quanto no
+  // Event. A session tem precedência; o evento é fallback oficial. Sem nenhuma
+  // data não inventamos vigência pelo relógio do Worker: falha e deixa a Stripe
+  // reenviar, preservando a trilha de erro.
+  const criadoEpoch = Number.isFinite(Number(obj && obj.created))
+    ? Number(obj.created)
+    : Number(evento && evento.created);
+  const novaVigencia = isoMesesAposEpoch(criadoEpoch, meses);
+  if (!novaVigencia) {
+    console.error('[olli-stripe] 12x sem data autoritativa:', obj && obj.id);
+    return json({ erro: 'data_pagamento_ausente' }, 500);
+  }
 
   // GUARD DE NÍVEL (mesmo espírito de sincronizarSubscription): o 12x é boost ADITIVO,
   // nunca uma regressão. Um Empresa ATIVO que compra um Pro avulso não pode virar 'pro' nem

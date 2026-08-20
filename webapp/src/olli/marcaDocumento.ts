@@ -36,10 +36,10 @@ export const opcoesAssinatura = queryOptions({
 		const meuId = sessao.user?.id;
 		if (!meuId) throw new Error("Sessão não encontrada. Entre de novo para ver seu plano.");
 
-		// Só estas 3 colunas: são as que o app tem grant de SELECT (services/planos.ts).
+		// Assinatura real + override administrativo, sem misturar os dois no banco.
 		const { data, error } = await supabase
 			.from("assinaturas")
-			.select("plano, status, current_period_end")
+			.select("plano, status, current_period_end, admin_plano_override, admin_override_ativo, admin_override_ate")
 			.eq("user_id", meuId)
 			.maybeSingle();
 		// O erro SOBE (vira isError) de propósito: quem chama tem que distinguir

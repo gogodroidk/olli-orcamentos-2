@@ -16,6 +16,8 @@
  * não haver linha de assinatura (`data === null`) devolve "Grátis".
  */
 
+import { derivarPlanoEfetivo } from "@plano-efetivo";
+
 /** Cópia de `PlanoId` (src/services/planos.ts). */
 export type PlanoId = "gratis" | "pro" | "empresa";
 
@@ -23,15 +25,18 @@ export type PlanoId = "gratis" | "pro" | "empresa";
  * Status da assinatura que contam como PAGO — cópia de `STATUS_PAGOS`
  * (src/services/planos.ts e assinatura.ts). `past_due` está aqui de propósito: a
  * cobrança falhou, mas o acesso continua durante a retentativa (não se corta o
- * serviço de quem só teve um cartão recusado).
+ * serviço de quem só teve um cartão recusado). A implementação pura agora é
+ * compartilhada com o app por `@plano-efetivo`.
  */
-const STATUS_PAGOS = new Set(["active", "trialing", "past_due"]);
 
 /** A linha de `public.assinaturas` — só as 3 colunas que o app tem grant para ler. */
 export interface LinhaAssinatura {
 	plano: string | null;
 	status: string | null;
 	current_period_end: string | null;
+	admin_plano_override?: string | null;
+	admin_override_ativo?: boolean | null;
+	admin_override_ate?: string | null;
 }
 
 export interface ResumoAssinatura {
@@ -47,6 +52,7 @@ export interface ResumoAssinatura {
 	ativo: boolean;
 	/** Pago, porém a última cobrança FALHOU (past_due) — acesso mantido, mas tem que resolver. */
 	pagamentoFalhou: boolean;
+	origem?: "gratis" | "pagamento" | "admin";
 }
 
 function mapearPlano(v: unknown): PlanoId {
@@ -71,18 +77,15 @@ export function derivar(linha: LinhaAssinatura): ResumoAssinatura {
 	const proximaCobranca = typeof linha.current_period_end === "string" ? linha.current_period_end : undefined;
 	const planoContratado = mapearPlano(linha.plano);
 
-	let pago = !!status && STATUS_PAGOS.has(status);
-	if (pago && proximaCobranca) {
-		const fim = Date.parse(proximaCobranca);
-		if (!Number.isNaN(fim) && fim < Date.now()) pago = false;
-	}
+	const efetivo = derivarPlanoEfetivo(linha);
 
 	return {
-		planoEfetivo: pago ? planoContratado : "gratis",
+		planoEfetivo: efetivo.planoEfetivo,
 		planoContratado,
 		status,
 		proximaCobranca,
-		ativo: pago,
-		pagamentoFalhou: pago && status === "past_due",
+		ativo: efetivo.planoEfetivo !== "gratis",
+		pagamentoFalhou: efetivo.pagamentoAtivo && status === "past_due",
+		origem: efetivo.origem,
 	};
 }
