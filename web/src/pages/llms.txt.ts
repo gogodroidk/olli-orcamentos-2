@@ -23,7 +23,7 @@
  */
 import { calculosDoOficio } from "../../../src/services/calculosOficio";
 import { VERTICAIS } from "../../../src/services/verticais";
-import { enderecoEmLinha, identidadePublicavel } from "../data/empresa";
+import { identidadePublicavel } from "../data/empresa";
 import {
 	DOR_POR_OFICIO,
 	PROFISSAO_POR_OFICIO,
@@ -91,8 +91,7 @@ export async function GET() {
 	const quemSomos = empresa
 		? `\n## Quem opera a OLLI\n\n` +
 			`- Razão social: ${empresa.razaoSocial}\n` +
-			`- CNPJ: ${empresa.cnpj}\n` +
-			`- Endereço: ${enderecoEmLinha(empresa)}\n`
+			`- CNPJ: ${empresa.cnpj}\n`
 		: "";
 
 	const corpo = `# OLLI

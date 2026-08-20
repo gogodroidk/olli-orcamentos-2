@@ -50,7 +50,8 @@
 			// FONTE DE ENTITLEMENTS — "que plano libera o quê" vem do MESMO mapa que o
 			// app e o worker leem (`src/services/entitlements.ts`), para o comparativo
 			// nunca prometer recurso que o produto não entrega. Módulo puro, zero imports.
-			"@entitlements": ["../src/services/entitlements.ts"]
+			"@entitlements": ["../src/services/entitlements.ts"],
+			"@plano-efetivo": ["../src/services/planoEfetivo.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

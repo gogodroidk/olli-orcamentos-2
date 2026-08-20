@@ -23,6 +23,7 @@
  */
 import { rateOkSensivel } from './rateLimit.js';
 import { enviarConvite } from './email.js';
+import { derivarEntitlement } from './entitlement.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -155,10 +156,6 @@ async function getNomeOrg(env, orgId) {
   }
 }
 
-// Status de assinatura que significam "acabou" (espelha worker/src/stripe.js:564).
-// Empresa ATIVO = plano 'empresa' com status FORA deste conjunto.
-const PLANO_TERMINADO = new Set(['canceled', 'unpaid', 'incomplete_expired']);
-
 /** owner_user_id da org. Retorna string ('' se ausente) ou { error:true } em falha. */
 async function getOwnerDaOrg(env, orgId) {
   const org = await getOrg(env, orgId);
@@ -214,16 +211,16 @@ async function orgTemEmpresaAtivo(env, orgId) {
   if (!owner) return 'nao'; // org sem dono resolvível = sem plano Empresa comprovável
   try {
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(owner)}&select=plano,status&limit=1`,
+      `${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${encodeURIComponent(owner)}` +
+        `&select=plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate&limit=1`,
       { headers: sbHeaders(env) },
     );
     if (!r.ok) return 'erro';
     const arr = await r.json().catch(() => null);
     if (!Array.isArray(arr)) return 'erro';
     if (!arr.length) return 'nao'; // dono sem nenhuma assinatura = Grátis
-    const { plano, status } = arr[0];
-    const ativo = plano === 'empresa' && typeof status === 'string' && !PLANO_TERMINADO.has(status);
-    return ativo ? 'sim' : 'nao';
+    const efetivo = derivarEntitlement(arr[0]);
+    return efetivo.plano === 'empresa' ? 'sim' : 'nao';
   } catch {
     return 'erro';
   }

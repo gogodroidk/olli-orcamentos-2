@@ -1,0 +1,29 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const ADMIN_URL = "https://diagnostico.olliorcamentos.online/admin";
+---
+
+<Layout
+  titulo="Área administrativa · OLLI"
+  descricao="Acesso protegido ao painel administrativo da OLLI."
+  noindex={true}
+  redirectUrl={ADMIN_URL}
+>
+  <main class="min-h-screen bg-paper px-6 py-24 text-ink">
+    <section class="mx-auto max-w-xl rounded-3xl border border-line bg-white p-8 text-center shadow-sm">
+      <img src="/icon-192.png" alt="" width="64" height="64" class="mx-auto h-16 w-16" />
+      <h1 class="mt-5 text-2xl font-bold">Área administrativa</h1>
+      <p class="mt-3 text-slate">
+        Você será direcionado ao painel protegido da OLLI.
+      </p>
+      <a
+        href={ADMIN_URL}
+        rel="nofollow"
+        class="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-brand px-6 font-bold text-white transition hover:bg-brand-fg"
+      >
+        Abrir painel administrativo
+      </a>
+    </section>
+  </main>
+</Layout>

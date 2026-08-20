@@ -2,6 +2,7 @@ import { Linking } from 'react-native';
 import { supabase } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
 import type { PlanoId } from './planos';
+import { derivarPlanoEfetivo } from './planoEfetivo';
 
 /**
  * Serviço de ASSINATURA (Frente 2) — tudo que a AssinaturaScreen precisa para
@@ -62,10 +63,9 @@ export interface ResumoAssinatura {
   proximaCobranca?: string;
   /** true se a assinatura está paga e vigente agora. */
   ativo: boolean;
+  /** Origem do acesso efetivo, sem misturar concessão manual com pagamento. */
+  origem?: 'gratis' | 'pagamento' | 'admin';
 }
-
-/** Status da Stripe que contam como "pago" (mesma regra de services/planos.ts). */
-const STATUS_PAGOS = new Set(['active', 'trialing', 'past_due']);
 
 function mapearPlano(v: unknown): PlanoId {
   return v === 'empresa' ? 'empresa' : v === 'pro' ? 'pro' : 'gratis';
@@ -104,7 +104,7 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
 
     const { data, error } = await supabase
       .from('assinaturas')
-      .select('plano, status, current_period_end')
+      .select('plano, status, current_period_end, admin_plano_override, admin_override_ativo, admin_override_ate')
       .eq('user_id', user.id)
       .maybeSingle();
     // ERRO (rede/RLS/5xx) ≠ "não tem assinatura": preserva o último bom deste usuário.
@@ -114,20 +114,16 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
 
     const status = typeof data.status === 'string' ? data.status : undefined;
     const proximaCobranca = typeof data.current_period_end === 'string' ? data.current_period_end : undefined;
+    const efetivo = derivarPlanoEfetivo(data);
     const planoContratado = mapearPlano(data.plano);
 
-    let pago = !!status && STATUS_PAGOS.has(status);
-    if (pago && proximaCobranca) {
-      const fim = Date.parse(proximaCobranca);
-      if (!Number.isNaN(fim) && fim < Date.now()) pago = false;
-    }
-
     const resumo: ResumoAssinatura = {
-      planoEfetivo: pago ? planoContratado : 'gratis',
+      planoEfetivo: efetivo.planoEfetivo,
       planoContratado,
       status,
       proximaCobranca,
-      ativo: pago,
+      ativo: efetivo.planoEfetivo !== 'gratis',
+      origem: efetivo.origem,
     };
     cacheResumo = { userId, resumo };
     return resumo;

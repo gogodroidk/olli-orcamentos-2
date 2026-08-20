@@ -176,6 +176,30 @@ export function decidirEmpresaEquipe(ctx: ContextoEquipe): DecisaoEmpresa {
   }
 }
 
+/**
+ * Resolve o `user_id` efetivo de estruturas auxiliares compartilhadas pela
+ * equipe (tombstones, contadores e filas). Diferente de
+ * `decidirEscritaEquipe`, esta função sempre devolve um id explícito: isso evita
+ * depender de `default auth.uid()` nos upserts cuja chave composta inclui o
+ * tenant.
+ *
+ * `null` significa "adie": contexto desconhecido ou sessão pessoal sem usuário
+ * confirmado nunca pode cair no tenant errado.
+ */
+export function resolverTenantEquipe(
+  ctx: ContextoEquipe,
+  userId: string | null | undefined,
+): string | null {
+  switch (ctx.status) {
+    case 'desconhecido':
+      return null;
+    case 'pessoal':
+      return userId || null;
+    case 'membro':
+      return ctx.ownerUserId || null;
+  }
+}
+
 /** Traduz o contexto já resolvido para o alvo da sessão, sem nova chamada de rede. */
 export function resolverAlvoEmpresa(
   ctx: ContextoEquipe,

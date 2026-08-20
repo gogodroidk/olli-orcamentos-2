@@ -29,7 +29,6 @@
 import {
 	EMPRESA,
 	emailContatoPublicavel,
-	enderecoEmLinha,
 	identidadePublicavel,
 } from "../data/empresa";
 import { OFICIOS, SLUG_POR_OFICIO } from "../data/oficios";
@@ -77,6 +76,7 @@ const CLASSE_LEGAL = "text-slate";
           <a href="/excluir-conta/" class="transition hover:text-ink">Excluir conta</a>
           <a href="/legal/termos/" class="transition hover:text-ink">Termos</a>
           <a href="/ajuda/" class="transition hover:text-ink">Ajuda</a>
+          <a href="/admin/" class="transition hover:text-ink">Área administrativa</a>
           <a href={APP_URL} class="transition hover:text-ink">Entrar</a>
         </div>
         <p class="text-sm text-muted">© {ano} OLLI Orçamentos</p>
@@ -99,8 +99,6 @@ const CLASSE_LEGAL = "text-slate";
               Receita para conferir. Esse é justamente o ponto de existir aqui. */}
           <span class="font-semibold">{empresa.razaoSocial}</span>
           <span> · CNPJ {empresa.cnpj}</span>
-          <br />
-          <span>{enderecoEmLinha(empresa)}</span>
           <br />
           <a href={whatsappUrl} class="transition hover:text-brand-fg">WhatsApp {EMPRESA.whatsappLegivel}</a>
           {emailContato && (

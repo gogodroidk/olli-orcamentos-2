@@ -2,7 +2,10 @@
  * empresa.ts — IDENTIDADE JURÍDICA DA OLLI. Fonte única.
  *
  * Rodapé, JSON-LD (`Organization`), `llms.txt` e o adaptador dos documentos legais
- * (`legal-web.ts`) leem daqui. Não repita nenhum destes valores à mão em lugar
+ * (`legal-web.ts`) leem daqui. O endereço residencial não aparece na landing,
+ * no JSON-LD nem no llms.txt; fica centralizado aqui somente para as páginas
+ * legais enquanto não houver um endereço comercial substituto. Não repita
+ * nenhum destes valores à mão em lugar
  * nenhum: dado jurídico duplicado diverge na primeira atualização, e a regra desta
  * casa é copy derivada da fonte.
  *

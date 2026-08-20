@@ -13,18 +13,18 @@ import {
 /**
  * Estado do tema: modo (claro/escuro) e cor de marca escolhida pelo usuário.
  *
- * DECISÃO DO DONO: o app abre SEMPRE no claro. Não seguimos `useColorScheme()` do
- * sistema — se seguíssemos, "abrir sempre no claro" viraria mentira no primeiro
- * celular configurado em escuro. O usuário liga o escuro explicitamente, e a
- * escolha dele é a única fonte de verdade.
+ * DECISÃO DO PRODUTO: o app operacional abre no cockpit ESCURO. Não seguimos
+ * `useColorScheme()` do sistema: a identidade inicial precisa ser previsível, e a
+ * preferência escolhida pelo usuário continua sendo a única fonte de verdade
+ * depois do primeiro uso.
  *
  * Persistência LOCAL (AsyncStorage), não na nuvem: tema é preferência de
  * aparelho. O mesmo dono pode querer escuro no celular do campo e claro no
  * desktop, e sincronizar isso seria uma surpresa desagradável.
  *
  * A leitura do disco é assíncrona. Enquanto ela não volta, `carregando` é true e
- * o tema é o padrão (claro). Como o padrão É o valor mais provável, não piscamos:
- * quem tem escuro salvo vê no máximo um frame claro no cold start.
+ * o tema é o padrão (escuro). Assim a primeira experiência combina com a Home e
+ * com o painel do dono, sem o clarão azul-cinza observado no cold start.
  */
 
 const CHAVE = 'olli.tema.v1';
@@ -44,7 +44,7 @@ export interface TemaContexto {
   definirModo: (modo: ModoTema) => void;
   alternarModo: () => void;
   definirCorMarca: (hex: string) => void;
-  /** Volta ao padrão: claro + azul OLLI. */
+  /** Volta ao padrão: escuro + azul OLLI. */
   restaurarPadrao: () => void;
 }
 
@@ -56,7 +56,7 @@ function corValida(hex: unknown): hex is string {
 }
 
 export function TemaProvider({ children }: { children: React.ReactNode }) {
-  const [modo, setModo] = useState<ModoTema>('claro');
+  const [modo, setModo] = useState<ModoTema>('escuro');
   const [corMarca, setCorMarca] = useState<string>(COR_MARCA_PADRAO);
   const [carregando, setCarregando] = useState(true);
 
@@ -104,9 +104,9 @@ export function TemaProvider({ children }: { children: React.ReactNode }) {
   }, [persistir]);
 
   const restaurarPadrao = useCallback(() => {
-    setModo('claro');
+    setModo('escuro');
     setCorMarca(COR_MARCA_PADRAO);
-    persistir({ modo: 'claro', corMarca: COR_MARCA_PADRAO });
+    persistir({ modo: 'escuro', corMarca: COR_MARCA_PADRAO });
   }, [persistir]);
 
   // A paleta inteira é recalculada só quando modo ou cor mudam. Cada tela a

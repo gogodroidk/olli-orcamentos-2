@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
+import { derivarPlanoEfetivo, type LinhaAssinaturaEfetiva } from './planoEfetivo';
 
 /** Chave de cache do último plano conhecido (com carimbo de quando foi lido). */
 const CACHE_KEY = 'olli.plano.cache';
@@ -16,15 +17,13 @@ export interface PlanoAtual {
   plano: PlanoId;
   status?: string;
   validoAte?: string;
+  origem?: 'gratis' | 'pagamento' | 'admin';
 }
 
 interface PlanoCache extends PlanoAtual {
   /** epoch ms de quando este resultado foi obtido com sucesso da nuvem. */
   lidoEm: number;
 }
-
-/** Status que a assinatura no Stripe considera "pago" mesmo com alguma pendência. */
-const STATUS_PAGOS = new Set(['active', 'trialing', 'past_due']);
 
 async function lerCache(): Promise<PlanoCache | null> {
   try {
@@ -63,20 +62,14 @@ function cacheValido(cache: PlanoCache | null): cache is PlanoCache {
  * status desconhecido) não. Também verifica se `current_period_end` já
  * passou — assinatura vencida sem status atualizado ainda não conta como paga.
  */
-function derivarPlano(row: { plano: string; status: string | null; current_period_end: string | null }): PlanoAtual {
-  const status = row.status ?? undefined;
-  const pago = !!status && STATUS_PAGOS.has(status);
-  if (!pago) return { plano: 'gratis', status, validoAte: row.current_period_end ?? undefined };
-
-  if (row.current_period_end) {
-    const fim = Date.parse(row.current_period_end);
-    if (!Number.isNaN(fim) && fim < Date.now()) {
-      return { plano: 'gratis', status, validoAte: row.current_period_end };
-    }
-  }
-
-  const plano: PlanoId = row.plano === 'empresa' ? 'empresa' : row.plano === 'pro' ? 'pro' : 'gratis';
-  return { plano, status, validoAte: row.current_period_end ?? undefined };
+function derivarPlano(row: LinhaAssinaturaEfetiva): PlanoAtual {
+  const efetivo = derivarPlanoEfetivo(row);
+  return {
+    plano: efetivo.planoEfetivo,
+    status: row.status ?? undefined,
+    validoAte: efetivo.validoAte,
+    origem: efetivo.origem,
+  };
 }
 
 /**
@@ -97,7 +90,7 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
 
     const { data, error } = await supabase
       .from('assinaturas')
-      .select('plano, status, current_period_end')
+      .select('plano, status, current_period_end, admin_plano_override, admin_override_ativo, admin_override_ate')
       .eq('user_id', user.id)
       .maybeSingle();
 
@@ -111,7 +104,7 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
     // Falha de rede/consulta: usa o cache por até 7 dias de graça.
     const cache = await lerCache();
     if (cacheValido(cache)) {
-      return { plano: cache.plano, status: cache.status, validoAte: cache.validoAte };
+      return { plano: cache.plano, status: cache.status, validoAte: cache.validoAte, origem: cache.origem };
     }
     return { plano: 'gratis' };
   }

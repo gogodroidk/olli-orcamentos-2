@@ -4,7 +4,7 @@ App para eletricistas e técnicos autônomos criarem **orçamentos profissionais
 
 ## Stack
 
-- Expo SDK 56 / React Native 0.85 / React 19 / TypeScript strict
+- Expo SDK 57 / React Native 0.86 / React 19.2 / TypeScript strict
 - SQLite local via `expo-sqlite` (offline-first)
 - Supabase Auth + sincronização per-row com guarda de timestamp e tombstones
 - Cloudflare Workers: link público de aprovação do cliente (`worker/src/link.js`), painel admin (`worker/src/admin.js`) e diagnóstico por IA (`worker/src/index.js`)
@@ -32,18 +32,32 @@ EXPO_PUBLIC_WHATSAPP_SUPORTE=   # WhatsApp de vendas/planos (opcional)
 
 Esses valores são públicos no bundle mobile/web. Nunca use `service_role`, chaves secretas ou senhas em variáveis `EXPO_PUBLIC_*` — segredos de IA vivem como secrets do Worker.
 
-## Build Android (APK)
+## Build Android
+
+O artefato canônico de loja é um **AAB gerado pelo EAS** com credenciais
+remotas. A pasta `android/` é gerada e ignorada; um arquivo local dentro dela
+não prova que o commit é reproduzível.
 
 ```bash
-npx expo prebuild -p android
-cd android && gradlew assembleRelease
-# APK em android/app/build/outputs/apk/release/app-release.apk
+npx eas whoami
+npx eas build -p android --profile production
+# depois do canário interno validado:
+npx eas submit -p android --profile production --latest
+```
+
+Para instalar diretamente em aparelho durante QA, gere o perfil `preview`, que
+produz APK interno sem confundi-lo com o bundle de publicação:
+
+```bash
+npx eas build -p android --profile preview
 ```
 
 Notas de Windows (aprendidas na prática):
 
 - **Caminho curto obrigatório**: o CMake do `react-native-screens` estoura o limite de 250 caracteres em caminhos profundos. Clone/trabalhe em algo como `C:\olli`. Drive `subst` não resolve (o Node desfaz o disfarce via `realpath`) e a raiz do drive também não (o autolinking do Expo não encontra `package.json` na raiz).
-- **Memória do Gradle**: o template padrão (512 MB de Metaspace) derruba o lint das bibliotecas com `OutOfMemoryError`. O `android/gradle.properties` precisa de `org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1536m`, e o lint de release pode ficar desligado no `app/build.gradle` (`lint { checkReleaseBuilds false }`).
+- **Memória do Gradle local**: se for necessário diagnosticar um prebuild nativo,
+  use 4 GB de heap/1,5 GB de Metaspace. A configuração definitiva da loja deve
+  continuar derivada de `app.json`/config plugins, não de um `android/` solto.
 
 ## Build iOS
 
@@ -81,8 +95,14 @@ supabase/
   migrations/   Migrações SQL do projeto remoto
 docs/
   SUPABASE.md   Estado do backend, policies e checklist
+  ideias-futuras/  Cofre versionado; não é roadmap ativo
 ```
 
 ## Qualidade
 
-Rodada completa de revisão multi-agente em 2026-07-07 (tela por tela + sync + UX + marketing + prontidão de loja): typecheck limpo, `qa:web` passando em desktop e mobile, APK de release compilando. O `npm audit` ainda reporta avisos moderados herdados do toolchain Expo; o fix automático é incompatível com o SDK 56 e não foi aplicado.
+Revisão integrada atualizada em 2026-08-20: TypeScript, Expo Doctor 21/21,
+testes de tenant/cobrança/IA/admin e builds separados da landing e do painel.
+O `npm audit` ainda reporta avisos de alta severidade na cadeia de build
+Expo/Metro; o único “fix” automático sugerido rebaixa a stack e não deve ser
+aplicado com `--force`. O release só é aceito depois de preflight completo,
+build EAS ligado ao commit e teste físico do artefato exato.

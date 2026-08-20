@@ -21,12 +21,15 @@ interface Props {
 	 * Sem isso o buscador pode indexar uma página de erro como se fosse conteúdo.
 	 */
 	noindex?: boolean;
+	/** Redirecionamento HTML para portas estáticas, com link visível de fallback. */
+	redirectUrl?: string;
 }
 const {
 	schemas = [],
 	titulo = "OLLI — do orçamento ao recibo, sem planilha",
 	descricao = "O sistema de campo do prestador de serviço: orçamento, ordem de serviço, PMOC e recibo no celular e no computador — com IA que entende o defeito do equipamento, não só a nota. Grátis para começar.",
 	noindex = false,
+	redirectUrl,
 } = Astro.props;
 const canonical = new URL(
 	Astro.url.pathname,
@@ -83,14 +86,6 @@ const schemaOrganizacao = {
 		? {
 				legalName: empresa.razaoSocial,
 				taxID: empresa.cnpj,
-				address: {
-					"@type": "PostalAddress",
-					streetAddress: empresa.endereco.logradouro,
-					addressLocality: empresa.endereco.cidade,
-					addressRegion: empresa.endereco.uf,
-					postalCode: empresa.endereco.cep,
-					addressCountry: empresa.endereco.pais,
-				},
 			}
 		: {}),
 	...(emailContato ? { email: emailContato } : {}),
@@ -168,6 +163,7 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
     <link rel="canonical" href={canonical} />
     <meta name="theme-color" content="#0b6fce" />
     {noindex && <meta name="robots" content="noindex" />}
+    {redirectUrl && <meta http-equiv="refresh" content={`0;url=${redirectUrl}`} />}
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OLLI Orçamentos" />

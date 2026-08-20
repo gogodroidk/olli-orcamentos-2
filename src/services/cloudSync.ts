@@ -16,7 +16,12 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
-import { classificarContextoEquipe, decidirEscritaEquipe, resolverAlvoEmpresa } from './contextoEquipe';
+import {
+  classificarContextoEquipe,
+  decidirEscritaEquipe,
+  resolverAlvoEmpresa,
+  resolverTenantEquipe,
+} from './contextoEquipe';
 import type { ContextoEquipe } from './contextoEquipe';
 import { abrirParticaoDoUsuario, donoDoBancoAberto, getDb } from '../database/database';
 import { podeSincronizar } from '../database/particao';
@@ -618,6 +623,16 @@ export async function garantirContextoEquipe(): Promise<ContextoEquipe> {
   return atualizarContextoEquipe();
 }
 
+/** Tenant explícito para tabelas auxiliares cuja PK contém `user_id`. */
+async function tenantDaSessao(): Promise<string | null> {
+  try {
+    const user = await getCurrentUser();
+    return resolverTenantEquipe(await garantirContextoEquipe(), user?.id);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * De QUEM é a linha `empresa` que este aparelho deve ler, e se ele pode escrevê-la.
  * Resolve o contexto (sob demanda) e traduz pela decisão pura `decidirEmpresaEquipe`;
@@ -863,10 +878,12 @@ export async function pushTombstone(tabela: string, itemId: string, excluidoEm?:
   try {
     if (!tabela || !itemId) return;
     if (!(await hasSession()) || !supabase) return;
+    const userId = await tenantDaSessao();
+    if (!userId) return;
     await supabase
       .from('exclusoes')
       .upsert(
-        { tabela, item_id: itemId, excluido_em: excluidoEm || new Date().toISOString() },
+        { user_id: userId, tabela, item_id: itemId, excluido_em: excluidoEm || new Date().toISOString() },
         { onConflict: 'user_id,tabela,item_id', ignoreDuplicates: true },
       );
   } catch {
@@ -1352,6 +1369,8 @@ async function podarTombstonesAntigos(): Promise<void> {
 async function syncContadores(geracao?: number): Promise<void> {
   try {
     if (!supabase) return;
+    const userId = await tenantDaSessao();
+    if (!userId) return;
     const db = await getDb();
 
     const locais = await db.getAllAsync<{ chave: string; valor: number }>(
@@ -1363,7 +1382,10 @@ async function syncContadores(geracao?: number): Promise<void> {
       max.set(l.chave, Math.max(max.get(l.chave) ?? 0, Number(l.valor) || 0));
     }
 
-    const { data, error } = await supabase.from('contadores').select('chave, valor');
+    const { data, error } = await supabase
+      .from('contadores')
+      .select('chave, valor')
+      .eq('user_id', userId);
     if (!error && Array.isArray(data)) {
       for (const row of data) {
         const chave = (row as any)?.chave as string;
@@ -1383,7 +1405,9 @@ async function syncContadores(geracao?: number): Promise<void> {
         // best-effort local
       }
       try {
-        await supabase.from('contadores').upsert({ chave, valor }, { onConflict: 'user_id,chave' });
+        await supabase
+          .from('contadores')
+          .upsert({ user_id: userId, chave, valor }, { onConflict: 'user_id,chave' });
       } catch {
         // best-effort nuvem
       }
