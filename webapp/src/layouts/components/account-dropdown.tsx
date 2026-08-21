@@ -64,6 +64,9 @@ export default function AccountDropdown() {
 					<DropdownMenuItem asChild className="min-h-[44px]">
 						<NavLink to="/planos">Planos</NavLink>
 					</DropdownMenuItem>
+					<DropdownMenuItem asChild className="min-h-[44px]">
+						<NavLink to="/configuracoes">Configurações</NavLink>
+					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					{/* onSelect (não onClick) para o Radix fechar o menu antes; o diálogo
 					    vive FORA do DropdownMenu, senão ele desmontaria junto com o menu. */}

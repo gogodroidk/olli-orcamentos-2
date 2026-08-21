@@ -61,12 +61,9 @@ jobs:
         working-directory: web
         run: npm ci
 
-      # webapp/ declara "packageManager": "pnpm@10.8.0" e o pnpm-lock.yaml é
-      # o lockfile mantido de fato (tem o commit mais recente, inclui o fix
-      # do Sentry). Existe também um webapp/package-lock.json nesta pasta,
-      # mas está desatualizado — falta @sentry/react — e `npm ci` falharia
-      # de cara com "package.json and package-lock.json ... not in sync".
-      # Por isso este job usa pnpm, não npm, mesmo com os dois lockfiles presentes.
+      # webapp/ declara "packageManager": "pnpm@10.8.0" e mantém um único
+      # lockfile canônico: pnpm-lock.yaml. Isso evita árvores diferentes entre
+      # desenvolvimento, CI e o artefato publicado.
       - name: Enable Corepack
         run: corepack enable
 

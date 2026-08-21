@@ -56,6 +56,7 @@ import {
 } from "./precos";
 import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
+import { BotaoPortalStripe } from "./portal";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -136,7 +137,10 @@ export default function Planos() {
 			) : isError ? (
 				<CardErro mensagem={(error as Error)?.message} aoTentar={() => refetch()} tentando={isFetching} />
 			) : resumo ? (
-				<CardStatus resumo={resumo} />
+				<div className="space-y-3">
+					<CardStatus resumo={resumo} />
+					{resumo.planoContratado !== "gratis" && <BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />}
+				</div>
 			) : null}
 
 			{/* ─── 2. O CATÁLOGO ─── */}
@@ -169,8 +173,7 @@ export default function Planos() {
 			<p className="mt-6 text-xs text-text-secondary">
 				Pro e Empresa você assina agora, direto por aqui: escolha mensal ou anual (o anual sai {DESCONTO_ANUAL_ROTULO}{" "}
 				mais barato) e o pagamento <strong>no cartão</strong> abre em seguida, no ambiente seguro da Stripe — renova
-				automaticamente e você cancela quando quiser. Prefere pelo WhatsApp? A gente também resolve. O mapa e o painel da
-				equipe ao vivo ainda estão em desenvolvimento (marcados como “em breve”).
+				automaticamente e você cancela quando quiser pelo Portal da Stripe. Se precisar de ajuda, o WhatsApp continua disponível.
 			</p>
 		</div>
 	);
@@ -298,7 +301,7 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 		<Faixa
 			tom="neutro"
 			titulo="Você está no plano Grátis"
-			texto="Orçamentos, recibos, clientes e agenda são ilimitados aqui — sem prazo e sem cartão. O Pro entra quando você quiser relatórios, metas e IA sem limite."
+			texto="Orçamentos, recibos, clientes e agenda são ilimitados aqui — sem prazo e sem cartão. O Pro entra quando você quiser relatórios, metas e uma franquia maior de IA."
 			acao={{
 				rotulo: "Quero assinar o Pro",
 				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
@@ -562,9 +565,9 @@ function TabelaComparativo() {
 	const celulaClass = "px-4 py-2.5 text-center";
 
 	return (
-		<Card className="gap-0 overflow-hidden p-0">
-			<div className="overflow-x-auto">
-				<table className="w-full min-w-[560px] border-collapse">
+		<Card className="min-w-0 max-w-full gap-0 overflow-hidden p-0">
+			<div className="w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
+				<table className="w-[560px] max-w-none border-collapse">
 					<caption className="sr-only">Comparativo de recursos incluídos em cada plano</caption>
 					<thead>
 						<tr className="border-b border-border">

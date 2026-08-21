@@ -579,4 +579,8 @@ const schemaFaq = {
 
   <!-- ══════════ RODAPÉ ══════════ -->
   <Footer />
+
+  <!-- Script local processado pelo Astro. Ele lê somente um cookie booleano e
+       envia para `/entrada`, onde a sessão real é confirmada pelo Supabase. -->
+  <script src="../scripts/session-redirect.ts"></script>
 </Layout>

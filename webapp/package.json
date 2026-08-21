@@ -7,6 +7,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "tsc && vite build",
+		"test:importacao": "node src/olli/importacao/parser.test.ts",
 		"preview": "vite preview",
 		"preinstall": "lefthook install"
 	},
@@ -36,7 +37,7 @@
 		"@vitejs/plugin-react": "^4.3.3",
 		"antd": "^5.22.1",
 		"apexcharts": "^4.5.0",
-		"axios": "^1.7.7",
+		"axios": "^1.19.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",
@@ -60,9 +61,9 @@
 		"react-helmet-async": "^2.0.5",
 		"react-hook-form": "^7.56.1",
 		"react-i18next": "^13.5.0",
-		"react-quill": "^2.0.0",
-		"react-router": "^7.0.2",
+		"react-router": "^7.18.2",
 		"react-use": "^17.5.1",
+		"read-excel-file": "9.3.10",
 		"screenfull": "^6.0.2",
 		"sonner": "^1.7.0",
 		"styled-components": "^6.1.13",
@@ -90,13 +91,29 @@
 		"shiki": "^3.6.0",
 		"tailwindcss": "^4.1.3",
 		"typescript": "^5.6.3",
-		"vite": "^6.2.0",
+		"vite": "^6.4.3",
 		"vite-tsconfig-paths": "^5.1.2"
 	},
 	"engines": {
-		"node": "20.*"
+		"node": ">=22.12 <25"
 	},
 	"packageManager": "pnpm@10.8.0",
+	"overrides": {
+		"js-cookie": "3.0.8",
+		"nanoid": "3.3.18",
+		"picomatch": "4.0.5",
+		"postcss": "8.5.26",
+		"rollup": "4.62.5"
+	},
+	"pnpm": {
+		"overrides": {
+			"js-cookie": "3.0.8",
+			"nanoid": "3.3.18",
+			"picomatch": "4.0.5",
+			"postcss": "8.5.26",
+			"rollup": "4.62.5"
+		}
+	},
 	"msw": {
 		"workerDirectory": [
 			"public"

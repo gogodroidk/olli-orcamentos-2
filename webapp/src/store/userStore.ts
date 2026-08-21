@@ -6,6 +6,7 @@ import type { UserInfo, UserToken } from "#/entity";
 import { StorageEnum } from "#/enum";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
+import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
 import { resetBrandColor } from "@/olli/branding";
 import { queryClient } from "./queryClient";
 
@@ -116,6 +117,7 @@ export const useSignIn = () => {
 				username: user?.email ?? "",
 				avatar: user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
+			marcarIndicioDeSessao();
 		} catch (err: any) {
 			toast.error(mapAuthErrorMessage(err), {
 				position: "top-center",
@@ -134,6 +136,7 @@ export const useSignOut = () => {
 		try {
 			await supabase.auth.signOut();
 		} finally {
+			limparIndicioDeSessao();
 			clearUserInfoAndToken();
 		}
 	};
@@ -156,7 +159,10 @@ export function useAuthSync() {
 	useEffect(() => {
 		let active = true;
 		const hydrate = (session: { access_token: string; refresh_token: string; user: any } | null) => {
-			if (!session) return;
+			if (!session) {
+				limparIndicioDeSessao();
+				return;
+			}
 			setUserToken({ accessToken: session.access_token, refreshToken: session.refresh_token });
 			setUserInfo({
 				id: session.user?.id ?? "",
@@ -164,12 +170,14 @@ export function useAuthSync() {
 				username: session.user?.email ?? "",
 				avatar: session.user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
+			marcarIndicioDeSessao();
 		};
 		supabase.auth.getSession().then(({ data }) => {
 			if (active) hydrate(data.session);
 		});
 		const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
 			if (event === "SIGNED_OUT" || !session) {
+				limparIndicioDeSessao();
 				clearUserInfoAndToken();
 				// Volta a cor da marca pro padrão OLLI: sem isto, uma sessão que
 				// termina por expiração/token revogado (não pelo botão Sair) deixa

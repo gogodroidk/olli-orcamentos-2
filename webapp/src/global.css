@@ -21,9 +21,6 @@
 @import "@fontsource/spectral/600.css";
 @import "@fontsource/spectral/700.css";
 
-/* editor */
-@import "react-quill/dist/quill.snow.css";
-
 /* import tailwind */
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -33,6 +30,14 @@
 
 /* base layer */
 @layer base {
+	html,
+	body,
+	#root {
+		max-width: 100%;
+		overflow-x: hidden;
+		overflow-x: clip;
+	}
+
 	*,
 	::after,
 	::before,

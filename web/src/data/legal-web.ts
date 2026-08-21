@@ -41,7 +41,6 @@ import type { LegalDoc, LegalSection } from "../../../src/content/legal/privacid
 import {
 	EMPRESA,
 	emailPrivacidadePublicavel,
-	enderecoEmLinha,
 	identidadePublicavel,
 } from "./empresa";
 
@@ -106,10 +105,7 @@ function adaptarSecao(secao: LegalSection): LegalSection {
 		const limpo = p.replace(INSTRUCAO_INTERNA_SECAO_1, "").trim();
 		if (!empresa) return limpo;
 		const email = dpo ? ` E-mail de privacidade: ${dpo}.` : "";
-		return (
-			`${limpo} O controlador é ${empresa.razaoSocial}, CNPJ ${empresa.cnpj}, ` +
-			`com endereço em ${enderecoEmLinha(empresa)}.${email}`
-		);
+		return `${limpo} O controlador é ${empresa.razaoSocial}, CNPJ ${empresa.cnpj}.${email}`;
 	});
 
 	return { ...secao, paragrafos };

@@ -54,7 +54,10 @@ class APIClient {
 		return this.request<T>({ ...config, method: "DELETE" });
 	}
 	request<T = unknown>(config: AxiosRequestConfig): Promise<T> {
-		return axiosInstance.request<any, T>(config);
+		// O interceptor de resposta acima devolve somente `res.data.data` em tempo
+		// de execução. O Axios 1.19 tipa a Promise antes dessa transformação, então
+		// explicitamos aqui a fronteira entre o transporte e o contrato da aplicação.
+		return axiosInstance.request<Result<T>>(config).then((response) => response as unknown as T);
 	}
 }
 

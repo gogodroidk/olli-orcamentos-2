@@ -21,6 +21,7 @@ import {
   decidirEscritaEquipe,
   resolverAlvoEmpresa,
   resolverTenantEquipe,
+  resolverTenantTombstoneEquipe,
 } from './contextoEquipe';
 import type { ContextoEquipe } from './contextoEquipe';
 import { abrirParticaoDoUsuario, donoDoBancoAberto, getDb } from '../database/database';
@@ -633,6 +634,16 @@ async function tenantDaSessao(): Promise<string | null> {
   }
 }
 
+/** Tenant do tombstone, respeitando a mesma permissão de DELETE da entidade. */
+async function tenantDoTombstone(tabela: string): Promise<string | null> {
+  try {
+    const user = await getCurrentUser();
+    return resolverTenantTombstoneEquipe(await garantirContextoEquipe(), user?.id, tabela);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * De QUEM é a linha `empresa` que este aparelho deve ler, e se ele pode escrevê-la.
  * Resolve o contexto (sob demanda) e traduz pela decisão pura `decidirEmpresaEquipe`;
@@ -878,7 +889,7 @@ export async function pushTombstone(tabela: string, itemId: string, excluidoEm?:
   try {
     if (!tabela || !itemId) return;
     if (!(await hasSession()) || !supabase) return;
-    const userId = await tenantDaSessao();
+    const userId = await tenantDoTombstone(tabela);
     if (!userId) return;
     await supabase
       .from('exclusoes')

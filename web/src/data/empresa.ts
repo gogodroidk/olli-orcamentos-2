@@ -2,22 +2,19 @@
  * empresa.ts — IDENTIDADE JURÍDICA DA OLLI. Fonte única.
  *
  * Rodapé, JSON-LD (`Organization`), `llms.txt` e o adaptador dos documentos legais
- * (`legal-web.ts`) leem daqui. O endereço residencial não aparece na landing,
- * no JSON-LD nem no llms.txt; fica centralizado aqui somente para as páginas
- * legais enquanto não houver um endereço comercial substituto. Não repita
- * nenhum destes valores à mão em lugar
- * nenhum: dado jurídico duplicado diverge na primeira atualização, e a regra desta
- * casa é copy derivada da fonte.
+ * (`legal-web.ts`) leem daqui. Endereço residencial não é dado do produto: não fica
+ * armazenado neste repositório e não é renderizado no site. Quando existir um
+ * endereço comercial definido para publicação, ele deve passar por revisão jurídica
+ * antes de entrar nesta fonte única.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * COMO PREENCHER (é o único arquivo que precisa ser tocado)
  *
- * Troque cada `PREENCHER` pelo valor do cartão CNPJ. Enquanto QUALQUER campo
- * obrigatório continuar com o marcador, `identidadePublicavel()` devolve `null` e
- * NADA institucional é renderizado — nem no rodapé, nem no schema, nem no llms.txt.
- * Isto é código, não disciplina: nenhum dado falso pode ir ao ar por esquecimento.
+ * Razão social e CNPJ vêm do cartão CNPJ. Os campos de endereço permanecem com o
+ * marcador até existir endereço COMERCIAL aprovado para publicação; eles não
+ * participam do gate nem são enviados ao visitante.
  *
- * Procure por `PREENCHER` (e só por isso) para achar tudo o que falta:
+ * Procure por `PREENCHER` (e só por isso) para achar o endereço comercial pendente:
  *     grep -rn "PREENCHER" web/src/data/empresa.ts
  * ─────────────────────────────────────────────────────────────────────────────
  *
@@ -66,11 +63,11 @@ export const EMPRESA: Empresa = {
 	nomeFantasia: "OLLI",
 	cnpj: "65.361.266/0001-05",
 	endereco: {
-		logradouro: "Rua Henrique Perdigão, 350",
-		bairro: "Jardim Ipanema (Cidade Líder)",
-		cidade: "São Paulo",
-		uf: "SP",
-		cep: "03582-110",
+		logradouro: PREENCHER,
+		bairro: PREENCHER,
+		cidade: PREENCHER,
+		uf: PREENCHER,
+		cep: PREENCHER,
 		pais: "BR",
 	},
 	emailContato: "contato@olliorcamentos.online",
@@ -88,8 +85,8 @@ function preenchido(valor: string): boolean {
 }
 
 /**
- * O GATE. Devolve a identidade só quando os campos que a LEI exige estão todos
- * preenchidos — razão social, CNPJ e endereço completo (Decreto 7.962/2013, II).
+ * O GATE da identidade exibida no produto. Razão social e CNPJ precisam ser reais;
+ * o endereço comercial é tratado separadamente e nunca cai para o residencial.
  *
  * Devolve `null` — e não um objeto com buracos — de propósito: quem consome é
  * obrigado pelo TypeScript a tratar o caso "ainda não temos", em vez de renderizar
@@ -98,14 +95,7 @@ function preenchido(valor: string): boolean {
  */
 export function identidadePublicavel(): Empresa | null {
 	const e = EMPRESA;
-	const completo =
-		preenchido(e.razaoSocial) &&
-		preenchido(e.cnpj) &&
-		preenchido(e.endereco.logradouro) &&
-		preenchido(e.endereco.bairro) &&
-		preenchido(e.endereco.cidade) &&
-		preenchido(e.endereco.uf) &&
-		preenchido(e.endereco.cep);
+	const completo = preenchido(e.razaoSocial) && preenchido(e.cnpj);
 	return completo ? e : null;
 }
 
@@ -117,10 +107,4 @@ export function emailPrivacidadePublicavel(): string | null {
 /** E-mail de contato, se existir. */
 export function emailContatoPublicavel(): string | null {
 	return preenchido(EMPRESA.emailContato) ? EMPRESA.emailContato : null;
-}
-
-/** Endereço numa linha, para o rodapé. Só chame com uma identidade que passou no gate. */
-export function enderecoEmLinha(e: Empresa): string {
-	const { logradouro, bairro, cidade, uf, cep } = e.endereco;
-	return `${logradouro} · ${bairro} · ${cidade}/${uf} · CEP ${cep}`;
 }

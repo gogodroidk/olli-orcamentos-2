@@ -44,6 +44,8 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Clock,
+	Download,
+	ExternalLink,
 	Loader2,
 	MapPin,
 	MoreVertical,
@@ -88,6 +90,7 @@ import {
 	semHoraMarcada,
 } from "./dominio";
 import FormAgendamento from "./FormAgendamento";
+import { baixarIcsAgendamento, criarUrlGoogleAgenda } from "./googleAgenda";
 
 /* ───────────────────────────────  As visões  ───────────────────────────────── */
 
@@ -704,6 +707,11 @@ function MenuDoEvento({
 	if (!ag) return null;
 	const info = INFO_TIPO[ag.tipo];
 	const concluido = ag.status === "concluido";
+	const semHora = semHoraMarcada(ag);
+	const abrirNoGoogle = () => {
+		const url = criarUrlGoogleAgenda(ag, semHora);
+		if (url) window.open(url, "_blank", "noopener,noreferrer");
+	};
 
 	return (
 		<Dialog open={!!ag} onOpenChange={(v) => !v && aoFechar()}>
@@ -754,6 +762,19 @@ function MenuDoEvento({
 				)}
 
 				<div className="grid gap-2">
+					<Button variant="outline" onClick={abrirNoGoogle} className="justify-start gap-2" disabled={salvando}>
+						<ExternalLink className="size-4" aria-hidden="true" />
+						Adicionar no Google Agenda
+					</Button>
+					<Button
+						variant="outline"
+						onClick={() => baixarIcsAgendamento(ag, semHora)}
+						className="justify-start gap-2"
+						disabled={salvando}
+					>
+						<Download className="size-4" aria-hidden="true" />
+						Baixar evento (.ics)
+					</Button>
 					{/* REAGENDAR em destaque: é a ação que o arrasto faz — e a única que o
 					    teclado e o celular não conseguiriam fazer sem ela. */}
 					<Button onClick={() => aoReagendar(ag)} className="justify-start gap-2" disabled={salvando}>

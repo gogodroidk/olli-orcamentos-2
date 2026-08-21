@@ -14,6 +14,7 @@ import {
   decidirEscritaEquipe,
   resolverAlvoEmpresa,
   resolverTenantEquipe,
+  resolverTenantTombstoneEquipe,
   restaurePodeTocarNaNuvem,
   type ContextoEquipe,
 } from '../src/services/contextoEquipe.ts';
@@ -132,6 +133,12 @@ checar('pessoal usa o usuário autenticado',
   resolverTenantEquipe({ status: 'pessoal' }, 'user-dono'), 'user-dono');
 checar('membro usa ownerUserId, não o id do técnico',
   resolverTenantEquipe({ status: 'membro', ownerUserId: DONO }, 'user-tecnico'), DONO);
+checar('tombstone compartilhado usa o tenant do dono',
+  resolverTenantTombstoneEquipe({ status: 'membro', ownerUserId: DONO }, 'user-tecnico', 'orcamentos'), DONO);
+checar('tombstone reservado fica no tenant do próprio técnico',
+  resolverTenantTombstoneEquipe({ status: 'membro', ownerUserId: DONO }, 'user-tecnico', 'recibos'), 'user-tecnico');
+checar('tombstone sem contexto falha fechado',
+  resolverTenantTombstoneEquipe({ status: 'desconhecido' }, 'user-tecnico', 'orcamentos'), null);
 checar('desconhecido adia',
   resolverTenantEquipe({ status: 'desconhecido' }, 'user-x'), null);
 checar('pessoal sem sessão adia',

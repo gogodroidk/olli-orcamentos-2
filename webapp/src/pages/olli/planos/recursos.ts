@@ -30,7 +30,7 @@ export interface LinhaRecurso {
  * plano é resolvida em runtime por `temAcessoRecurso`, não fixada aqui.
  */
 export const LINHAS_RECURSOS: readonly LinhaRecurso[] = [
-	{ recurso: "ia_ilimitada", rotulo: "IA sem limite (voz, chat e diagnóstico)" },
+	{ recurso: "ia_ilimitada", rotulo: "IA ampliada (voz, chat e diagnóstico, sujeita a uso justo)" },
 	{ recurso: "relatorios", rotulo: "Relatórios de faturamento e conversão" },
 	{ recurso: "metas", rotulo: "Metas de vendas e acompanhamento" },
 	{ recurso: "radar_clientes", rotulo: "Radar de clientes que sumiram" },

@@ -117,11 +117,14 @@ const ALVOS: Alvo[] = [
     donosDoCartao: ['src/screens/PlanosScreen.tsx', 'src/services/assinatura.ts'],
   },
   {
-    rotulo: 'PAINEL (webapp/src/)',
-    dir: 'webapp/src',
-    esperadas: ['/stripe/checkout'],
-    donoDoPix: null,
-    donosDoCartao: ['webapp/src/pages/olli/planos/checkout.ts'],
+		rotulo: 'PAINEL (webapp/src/)',
+		dir: 'webapp/src',
+		esperadas: ['/stripe/checkout', '/stripe/faturas', '/stripe/metodo', '/stripe/portal'],
+		donoDoPix: null,
+		donosDoCartao: [
+			'webapp/src/pages/olli/planos/checkout.ts',
+			'webapp/src/pages/olli/planos/portal.tsx',
+		],
   },
 ];
 

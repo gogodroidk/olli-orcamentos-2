@@ -5,6 +5,7 @@ import AccountDropdown from "../components/account-dropdown";
 import BreadCrumb from "../components/bread-crumb";
 import SearchBar from "../components/search-bar";
 import SettingButton from "../components/setting-button";
+import AssistenteGlobal from "../components/assistente-global";
 
 interface HeaderProps {
 	leftSlot?: ReactNode;
@@ -30,6 +31,7 @@ export default function Header({ leftSlot }: HeaderProps) {
 
 			<div className="flex items-center gap-1">
 				<SearchBar />
+				<AssistenteGlobal />
 				<SettingButton />
 				<AccountDropdown />
 			</div>
