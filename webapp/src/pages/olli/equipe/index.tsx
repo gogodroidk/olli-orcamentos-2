@@ -11,13 +11,15 @@
  */
 import { AlertTriangle, RotateCw, UserPlus, Users } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import ConvidarDialog from "./ConvidarDialog";
-import { type MembroEquipe, PAPEL_LABEL, type Papel, useEquipe } from "./useEquipe";
+import { atualizarMembro, type MembroEquipe, PAPEL_LABEL, type Papel, useEquipe } from "./useEquipe";
 
 const SKELETON_CARDS = ["sk-1", "sk-2", "sk-3", "sk-4"];
 
@@ -55,12 +57,25 @@ function corDoAvatar(userId: string) {
 	return CORES_AVATAR[soma % CORES_AVATAR.length];
 }
 
-function CartaoMembro({ membro }: { membro: MembroEquipe }) {
+function CartaoMembro({
+	membro,
+	podeGerenciar,
+	atualizando,
+	aoAtualizar,
+}: {
+	membro: MembroEquipe;
+	podeGerenciar: boolean;
+	atualizando: boolean;
+	aoAtualizar: (membro: MembroEquipe, patch: { papel?: Exclude<Papel, "owner">; ativo?: boolean }) => void;
+}) {
 	const cor = corDoAvatar(membro.userId);
 	const nomeExibido = membro.nome || membro.email || `Membro ${membro.userId.slice(0, 8)}`;
+	// Owner e a própria conta não são administráveis nesta tela. A RLS repete a
+	// regra no banco; esta trava evita que a interface prometa uma ação proibida.
+	const podeEditarEsteMembro = podeGerenciar && !membro.souEu && membro.papel !== "owner";
 
 	return (
-		<Card className="flex-row items-center gap-4 p-4">
+		<Card className="flex-row flex-wrap items-center gap-4 p-4 sm:flex-nowrap">
 			<div
 				className={cn(
 					"flex size-12 shrink-0 items-center justify-center rounded-full text-sm font-bold",
@@ -79,9 +94,7 @@ function CartaoMembro({ membro }: { membro: MembroEquipe }) {
 						{membro.souEu && <span className="ml-1.5 font-normal text-text-secondary">(você)</span>}
 					</p>
 				</div>
-				{membro.email && membro.nome && (
-					<p className="truncate text-sm text-text-secondary">{membro.email}</p>
-				)}
+				{membro.email && membro.nome && <p className="truncate text-sm text-text-secondary">{membro.email}</p>}
 			</div>
 
 			<div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -96,6 +109,34 @@ function CartaoMembro({ membro }: { membro: MembroEquipe }) {
 					{membro.ativo ? "Ativo" : "Inativo"}
 				</Badge>
 			</div>
+
+			{podeEditarEsteMembro && (
+				<div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+					<Select
+						value={membro.papel}
+						onValueChange={(papel) => aoAtualizar(membro, { papel: papel as Exclude<Papel, "owner"> })}
+						disabled={atualizando}
+					>
+						<SelectTrigger aria-label={`Papel de ${nomeExibido}`} size="sm" className="min-w-31">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="admin">Administrador</SelectItem>
+							<SelectItem value="gestor">Gestor</SelectItem>
+							<SelectItem value="tecnico">Técnico</SelectItem>
+						</SelectContent>
+					</Select>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						disabled={atualizando}
+						onClick={() => aoAtualizar(membro, { ativo: !membro.ativo })}
+					>
+						{membro.ativo ? "Desativar" : "Reativar"}
+					</Button>
+				</div>
+			)}
 		</Card>
 	);
 }
@@ -106,6 +147,25 @@ export default function EquipePage() {
 
 	const membros = data?.membros ?? [];
 	const orgId = data?.orgId ?? null;
+	const meuPapel = membros.find((membro) => membro.souEu)?.papel;
+	const podeGerenciar = meuPapel === "owner" || meuPapel === "admin";
+	const [membroEmAtualizacao, setMembroEmAtualizacao] = useState<string | null>(null);
+
+	const atualizar = async (membro: MembroEquipe, patch: { papel?: Exclude<Papel, "owner">; ativo?: boolean }) => {
+		if (!orgId || !podeGerenciar || membro.souEu || membro.papel === "owner") return;
+		setMembroEmAtualizacao(membro.userId);
+		try {
+			await atualizarMembro(orgId, membro.userId, patch);
+			await refetch();
+			toast.success(
+				patch.ativo === undefined ? "Papel atualizado." : patch.ativo ? "Membro reativado." : "Membro desativado.",
+			);
+		} catch (causa) {
+			toast.error((causa as Error)?.message || "Não consegui atualizar este membro.");
+		} finally {
+			setMembroEmAtualizacao(null);
+		}
+	};
 
 	return (
 		<div className="mx-auto w-full max-w-5xl p-4 md:p-6">
@@ -121,15 +181,15 @@ export default function EquipePage() {
 						)}
 					</div>
 					<p className="mt-1 text-sm text-text-secondary">
-						{data?.orgNome
-							? `Quem tem acesso à conta de ${data.orgNome}.`
-							: "Quem tem acesso à sua conta OLLI."}
+						{data?.orgNome ? `Quem tem acesso à conta de ${data.orgNome}.` : "Quem tem acesso à sua conta OLLI."}
 					</p>
 				</div>
-				<Button type="button" onClick={() => setConvidarAberto(true)} className="gap-2 shrink-0">
-					<UserPlus className="size-4" />
-					Convidar
-				</Button>
+				{podeGerenciar && (
+					<Button type="button" onClick={() => setConvidarAberto(true)} className="gap-2 shrink-0">
+						<UserPlus className="size-4" />
+						Convidar
+					</Button>
+				)}
 			</div>
 
 			{/* 3 estados: carregando | erro | vazio | dados */}
@@ -181,15 +241,23 @@ export default function EquipePage() {
 								: "Convide alguém para trabalhar com você. Assim que a primeira pessoa aceitar, sua conta vira uma empresa com equipe."}
 						</p>
 					</div>
-					<Button type="button" onClick={() => setConvidarAberto(true)} className="gap-2">
-						<UserPlus className="size-4" />
-						Convidar
-					</Button>
+					{podeGerenciar && (
+						<Button type="button" onClick={() => setConvidarAberto(true)} className="gap-2">
+							<UserPlus className="size-4" />
+							Convidar
+						</Button>
+					)}
 				</Card>
 			) : (
 				<div className="space-y-3">
 					{membros.map((m) => (
-						<CartaoMembro key={m.userId} membro={m} />
+						<CartaoMembro
+							key={m.userId}
+							membro={m}
+							podeGerenciar={podeGerenciar}
+							atualizando={membroEmAtualizacao === m.userId}
+							aoAtualizar={atualizar}
+						/>
 					))}
 				</div>
 			)}

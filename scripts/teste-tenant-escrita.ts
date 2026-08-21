@@ -174,7 +174,7 @@ checar('app e painel usam a MESMA ordenação', ordApp, ordPainel);
 console.log('\n2b) tombstones e contadores — tenant explícito');
 const tombstone = bloco(cloudSync, 'export async function pushTombstone', '\n}\n');
 const contadores = bloco(cloudSync, 'async function syncContadores', '\n}\n');
-checar('pushTombstone resolve tenant antes do upsert', tombstone.includes('tenantDaSessao()'), true);
+checar('pushTombstone resolve tenant por tabela antes do upsert', tombstone.includes('tenantDoTombstone(tabela)'), true);
 checar('tombstone envia user_id explícito', /user_id\s*:\s*userId/.test(tombstone), true);
 checar('syncContadores resolve tenant antes de ler', contadores.includes('tenantDaSessao()'), true);
 checar('contador filtra a leitura pelo tenant', /\.eq\(\s*'user_id'\s*,\s*userId\s*\)/.test(contadores), true);

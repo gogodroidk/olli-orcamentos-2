@@ -46,10 +46,8 @@ const ano = new Date().getFullYear();
 /**
  * O GATE da identidade jurídica. `null` enquanto o dono não preencher
  * `web/src/data/empresa.ts` — e aí o bloco institucional simplesmente NÃO É
- * RENDERIZADO. Nada falso vai ao ar por esquecimento; isto é código, não
- * disciplina. (Decreto 7.962/2013, art. 2º, I e II: nome empresarial, CNPJ e
- * endereço em local de destaque. Enquanto o dado não existir, a obrigação segue
- * descumprida — mas inventar o número seria pior que a omissão.)
+ * RENDERIZADO. O bloco publica razão social, CNPJ e canais reais. Endereço
+ * residencial nunca entra; um endereço comercial futuro exige revisão própria.
  */
 const empresa = identidadePublicavel();
 const emailContato = emailContatoPublicavel();

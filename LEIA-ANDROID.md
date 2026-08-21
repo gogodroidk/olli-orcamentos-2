@@ -1,107 +1,76 @@
-# OLLI Orçamentos — App Android (Play Store)
+# OLLI Orçamentos — Android e Google Play
 
-App **Expo / React Native** (SDK 56). A pasta `android/` **NÃO está versionada** — ela é 100% gerada
-pelo Expo. Você precisa gerá-la com `npx expo prebuild -p android` antes de abrir no Android Studio
-(ver Opção A, passo 2). O R8/ProGuard + shrinkResources já vêm ligados via `expo-build-properties`
-no `app.json` (sobrevive ao prebuild).
+Fonte operacional atual para gerar e publicar o aplicativo Android.
 
-- **Nome:** OLLI Orçamentos
-- **Pacote (applicationId):** `online.olliorcamentos.app`
-- **Versão:** ver `app.json` (`version` + `android.versionCode`) — hoje 1.1.0 / versionCode 9
-- **Política de privacidade (a Play Store exige):** https://olliorcamentos.online/privacidade
-- **Site / app:** https://olliorcamentos.online · https://app.olliorcamentos.online
+## Estado atual
 
----
+- **Stack:** Expo SDK 57 / React Native 0.86 / React 19.2.
+- **Nome:** OLLI Orçamentos.
+- **Pacote:** `online.olliorcamentos.app`.
+- **Versão do app:** `1.1.2`.
+- **Version code local:** `11`, em `app.json`.
+- **Último build EAS validado:** code `14`; o próximo build remoto deve gerar code `15` ou superior.
+- **Target/compile SDK:** 36.
+- **Política de privacidade:** https://olliorcamentos.online/privacidade
+- **Relatório de release:** `docs/RELEASE_ANDROID_2026-08-20.md`.
 
-## ⚠️ Importante (leia antes)
-Este projeto **não é um app nativo puro** — ele é Expo/React Native. O Android Studio **consegue** compilar, mas só **depois** de instalar as dependências (`npm install`). Sem isso, o Gradle falha.
+O `versionCode` usado pela loja é administrado remotamente pelo EAS porque `eas.json` usa
+`appVersionSource: "remote"` e `autoIncrement: true`. Por isso o code local não precisa igualar o
+último code remoto.
 
-> **Jeito mais fácil (recomendado, SEM Android Studio):** veja a seção **"Opção B — EAS Build"** no fim. Gera o arquivo `.aab` pra Play Store com 1 comando, na nuvem. É bem mais simples que o Android Studio.
+## Caminho canônico: EAS Build
 
-### 🔑 O build de RELEASE exige `SENTRY_AUTH_TOKEN`
+A pasta `android/` é gerada e não está versionada. O build canônico de loja usa a configuração
+versionada (`app.json`, `eas.json` e plugins Expo), credencial remota e secret do Sentry:
 
-Desde que o Sentry entrou (2026-07-16), **`./gradlew assembleRelease` FALHA sem o token**:
-
-```
-error: Auth token is required for this request. Please run `sentry-cli login`
-Execution failed for task ':app:createBundleReleaseJsAndAssets_SentryUpload_...'
-```
-
-Não é bug: o plugin do Sentry sobe o source map do Hermes durante o build. **Sem esse upload,
-o stack trace do crash chega ilegível** (o bundle é minificado) — e aí o Sentry não serve pra nada.
-Por isso ele falha alto em vez de passar quieto.
-
-**Antes de buildar release, exporte o token** (está no cofre, `credenciais-locais.env`):
-
-```bash
-# Git Bash
-export SENTRY_AUTH_TOKEN=$(grep -oP '(?<=^SENTRY_AUTH_TOKEN=).*' "/c/Users/ADMIN/Desktop/CONFIG CLAUDE/credenciais-locais.env")
-cd android && ./gradlew assembleRelease
-```
 ```powershell
-# PowerShell
-$env:SENTRY_AUTH_TOKEN = (Select-String -Path "$HOME\Desktop\CONFIG CLAUDE\credenciais-locais.env" -Pattern '^SENTRY_AUTH_TOKEN=(.*)').Matches.Groups[1].Value
-cd android; .\gradlew assembleRelease
+npm ci
+npx eas-cli@latest whoami
+npx eas-cli@latest build -p android --profile production --non-interactive
 ```
 
-No **EAS Build**, cadastre `SENTRY_AUTH_TOKEN` como secret do projeto (visibilidade *sensitive*).
+O perfil `production` produz **AAB**, usa credenciais remotas e incrementa automaticamente o code.
+Antes do build, confirme que `SENTRY_AUTH_TOKEN` existe como secret sensível do ambiente production
+do EAS. Nunca salve a chave da Play, keystore, senhas ou token do Sentry no Git.
 
-**Escape de emergência** (build que NÃO precisa de Sentry — ex.: teste local rápido):
-`export SENTRY_DISABLE_AUTO_UPLOAD=true` pula o upload e o build passa. **Nunca use isso pra um
-APK que vai pra loja** — você estaria publicando um app cujo crash chega ilegível.
+Depois do build, valide o artefato exato com `bundletool`/`aapt`, assinatura e instalação em aparelho
+físico antes de enviá-lo ao track interno ou fechado.
 
-Build de `debug` (`assembleDebug` / `expo run:android`) não precisa de token.
+## Build local de conferência
 
----
+O script abaixo valida a identidade da chave oficial e exige o upload de source maps do Sentry:
 
-## Opção A — Compilar no Android Studio
-
-### 1. Pré-requisitos (instale uma vez)
-- **Node.js 20+** → https://nodejs.org
-- **Android Studio** (já vem com o Android SDK + JDK) → https://developer.android.com/studio
-
-### 2. Preparar o projeto
-Abra um terminal **nesta pasta** (`olli-orcamentos`) e rode:
+```powershell
+.\scripts\build-android-production.ps1
 ```
-npm install
-npx expo prebuild -p android    # GERA a pasta android/ (ela não vem no repo)
+
+Ele falha se `SENTRY_AUTH_TOKEN` estiver ausente e remove qualquer
+`SENTRY_DISABLE_AUTO_UPLOAD` herdado do terminal. Portanto, o resultado não pode passar
+silenciosamente sem observabilidade. Builds `debug` continuam independentes desse fluxo.
+
+## Envio para a Play
+
+O envio configurado em `eas.json` aponta para o track **internal**. A sequência segura é:
+
+1. gerar o novo AAB de produção;
+2. validar o APK derivado e o aparelho físico;
+3. enviar ao teste interno/fechado;
+4. acompanhar o relatório de pré-lançamento;
+5. promover somente depois dos gates da conta e da Play.
+
+A conta ainda está sujeita ao gate externo registrado em
+`docs/RELEASE_ANDROID_2026-08-20.md`: pelo menos **12 testadores aderidos continuamente por 14 dias**
+e, depois, aprovação do acesso à produção. O código e o EAS não conseguem contornar essa regra.
+Enquanto ela estiver ativa, a distribuição correta é pelos tracks interno/fechado.
+
+## Android Studio (alternativa local)
+
+Use apenas quando precisar depurar o projeto nativo:
+
+```powershell
+npm ci
+npx expo prebuild -p android --clean
 ```
-(baixa as dependências e cria a parte nativa — demora alguns minutos)
 
-### 3. Abrir no Android Studio
-- Android Studio → **Open** → selecione a subpasta **`android`** (agora ela existe; não a pasta de cima).
-- Espere o **Gradle Sync** terminar (pode baixar componentes na 1ª vez).
-
-### 4. Gerar o app assinado (.aab) pra Play Store
-- Menu **Build → Generate Signed App Bundle / APK… → Android App Bundle**.
-- Crie um **keystore** novo (guarde bem a senha — é a sua "chave de assinatura", você vai precisar dela sempre).
-- Escolha **release** → **Finish**. O `.aab` sai em `android/app/build/outputs/bundle/release/`.
-
-### 5. Publicar
-- Play Console (https://play.google.com/console, conta de dev ~US$ 25 única vez) → criar o app → enviar o **.aab** → preencher ficha, classificação, e **colar a política de privacidade**: `https://olliorcamentos.online/privacidade`.
-
----
-
-## Opção B — EAS Build (recomendado, mais fácil)
-Não precisa de Android Studio. No terminal, nesta pasta:
-```
-npm install
-npm install -g eas-cli
-eas login            # cria/usa uma conta Expo grátis
-eas build -p android --profile production
-```
-No fim ele te dá um link pra **baixar o `.aab`** (a Expo cuida da assinatura). Aí é só subir na Play Console (passo 5 acima).
-
-> Dica: dá pra rodar a Opção B do próprio navegador/celular depois — a build acontece na nuvem da Expo.
-
----
-
-## Atualizar versão (nas próximas publicações)
-No arquivo **`app.json`**, aumente `version` (ex.: 1.0.1) e `android.versionCode` (ex.: 3), depois recompile.
-
-## Observações técnicas
-- Os dados públicos do Supabase (URL + chave anônima) já vêm embutidos (`.env.local`). A chave da IA fica só no servidor (Worker), nunca no app.
-- O diagnóstico de 602 códigos funciona **offline**. Voz/Chat/IA pedem login (protege a cota).
-- Se mudar algo no código e quiser regerar a parte nativa: `npx expo prebuild -p android --clean`.
-
-Qualquer dúvida, me chama. 🚀
+Abra a subpasta `android/` no Android Studio. Para um artefato oficial de loja, prefira o EAS: ele
+preserva a credencial remota, o versionamento e a proveniência do build.

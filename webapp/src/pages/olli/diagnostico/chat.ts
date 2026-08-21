@@ -31,6 +31,8 @@ export type TipoErroIA =
 	| "offline"
 	| "servidor"
 	| "limite"
+	| "cotaDiaria"
+	| "creditos"
 	| "auth"
 	| "naoConfigurada"
 	| "desconhecido";
@@ -74,6 +76,20 @@ export function mapearFalhaIA(tipo: TipoErroIA): FalhaIA {
 				mensagem: "Espere alguns segundos antes de perguntar de novo.",
 				acao: "Tentar de novo",
 			};
+		case "cotaDiaria":
+			return {
+				tipo,
+				titulo: "Capacidade diária da IA atingida",
+				mensagem: "A capacidade diária dos provedores gratuitos acabou. Ela é renovada automaticamente no próximo dia.",
+				acao: "Ver planos e créditos",
+			};
+		case "creditos":
+			return {
+				tipo,
+				titulo: "Franquia gratuita do mês concluída",
+				mensagem: "Você pode continuar com 1 crédito por resposta, sempre com confirmação antes do débito, ou conferir seus planos.",
+				acao: "Continuar com crédito",
+			};
 		case "auth":
 			return {
 				tipo,
@@ -105,11 +121,22 @@ export interface MensagemChat {
 
 export type RespostaChat = { ok: true; resposta: string } | { ok: false; erro: FalhaIA };
 
+export interface OpcoesAssistente {
+	/** Ofício/vertical, quando a tela conhece. Vazio mantém o modo geral do Worker. */
+	vertical?: string;
+	/** Só telas com confirmação explícita de gasto devem enviar true. */
+	confirmarCredito?: boolean;
+	creditoRef?: string;
+}
+
 /**
  * Chama o Worker /chat com o histórico da conversa. Anexa o token da sessão.
  * Nunca lança: qualquer problema vira `{ ok:false, erro }` com o tipo certo.
  */
-export async function perguntarPorSintoma(mensagens: MensagemChat[]): Promise<RespostaChat> {
+export async function perguntarAoAssistente(
+	mensagens: MensagemChat[],
+	opcoes: OpcoesAssistente = {},
+): Promise<RespostaChat> {
 	let token: string | null = null;
 	try {
 		const { data } = await supabase.auth.getSession();
@@ -125,13 +152,14 @@ export async function perguntarPorSintoma(mensagens: MensagemChat[]): Promise<Re
 		const r = await fetch(`${WORKER_URL}/chat`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-			body: JSON.stringify({ mensagens, vertical: "refrigeracao" }),
+			body: JSON.stringify({
+				mensagens,
+				vertical: opcoes.vertical,
+				confirmarCredito: opcoes.confirmarCredito === true,
+				creditoRef: opcoes.creditoRef,
+			}),
 			signal: controller.signal,
 		});
-
-		if (r.status === 401) return { ok: false, erro: mapearFalhaIA("auth") };
-		if (r.status === 429) return { ok: false, erro: mapearFalhaIA("limite") };
-		if (r.status === 503 || r.status >= 500) return { ok: false, erro: mapearFalhaIA("servidor") };
 
 		const data: unknown = await r.json().catch(() => null);
 		const obj = (data ?? {}) as { ok?: boolean; resposta?: unknown; motivo?: string; erro?: string };
@@ -139,10 +167,19 @@ export async function perguntarPorSintoma(mensagens: MensagemChat[]): Promise<Re
 		if (obj.ok && typeof obj.resposta === "string" && obj.resposta.trim()) {
 			return { ok: true, resposta: obj.resposta.trim() };
 		}
+		// O motivo vem antes do status: 429 também representa cota DIÁRIA. Dizer
+		// "espere alguns segundos" nesse caso incentivaria retries inúteis.
+		if (obj.erro === "cota_ia_diaria" || obj.erro === "cota_ia_global") {
+			return { ok: false, erro: mapearFalhaIA("cotaDiaria") };
+		}
+		if (obj.erro === "sem_creditos") return { ok: false, erro: mapearFalhaIA("creditos") };
 		if (obj.motivo === "ia_nao_configurada") return { ok: false, erro: mapearFalhaIA("naoConfigurada") };
 		if (obj.motivo === "nao_autorizado") return { ok: false, erro: mapearFalhaIA("auth") };
 		if (obj.erro === "muitas_requisicoes") return { ok: false, erro: mapearFalhaIA("limite") };
 		if (obj.erro === "sobrecarregado") return { ok: false, erro: mapearFalhaIA("servidor") };
+		if (r.status === 401) return { ok: false, erro: mapearFalhaIA("auth") };
+		if (r.status === 429) return { ok: false, erro: mapearFalhaIA("limite") };
+		if (r.status === 503 || r.status >= 500) return { ok: false, erro: mapearFalhaIA("servidor") };
 		return { ok: false, erro: mapearFalhaIA("desconhecido") };
 	} catch (e) {
 		const abortado = e instanceof DOMException && e.name === "AbortError";
@@ -150,4 +187,9 @@ export async function perguntarPorSintoma(mensagens: MensagemChat[]): Promise<Re
 	} finally {
 		clearTimeout(timer);
 	}
+}
+
+/** Compatibilidade da ferramenta HVAC: mesma função, vertical explícita. */
+export function perguntarPorSintoma(mensagens: MensagemChat[]): Promise<RespostaChat> {
+	return perguntarAoAssistente(mensagens, { vertical: "refrigeracao" });
 }

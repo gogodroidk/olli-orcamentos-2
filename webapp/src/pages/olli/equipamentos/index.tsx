@@ -14,7 +14,7 @@
  */
 import type { Equipamento, SituacaoEquipamento } from "@dominio";
 import { STATUS_EQUIP_LABELS } from "@dominio";
-import { AlertTriangle, Inbox, Pencil, Plus, QrCode, RotateCw, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, Inbox, Layers3, Pencil, Plus, QrCode, RotateCw, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/icon";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
@@ -25,6 +25,7 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import {
@@ -42,6 +43,8 @@ import FormEquipamento from "./FormEquipamento";
 const ESQUELETO = ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6"];
 
 type LinhaCliente = { id: string; nome: string };
+type ModoLista = "lista" | "por_cliente";
+type GrupoCliente = { chave: string; nome: string; equipamentos: Equipamento[] };
 
 /** Como o nome do cliente aparece: resolvido, ainda carregando, ou irresolúvel. */
 type Vinculo =
@@ -118,6 +121,9 @@ export default function EquipamentosPage() {
 
 	const [busca, setBusca] = useState("");
 	const [filtroSituacao, setFiltroSituacao] = useState<SituacaoEquipamento | "todas">("todas");
+	const [filtroCliente, setFiltroCliente] = useState("todos");
+	const [filtroCategoria, setFiltroCategoria] = useState("todas");
+	const [modoLista, setModoLista] = useState<ModoLista>("lista");
 
 	const [formAberto, setFormAberto] = useState(false);
 	const [emEdicao, setEmEdicao] = useState<Equipamento | null>(null);
@@ -155,10 +161,30 @@ export default function EquipamentosPage() {
 		[contagem],
 	);
 
+	const clientesDisponiveis = useMemo(
+		() => [...(clientesQuery.data ?? [])].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+		[clientesQuery.data],
+	);
+
+	const categoriasPresentes = useMemo(
+		() =>
+			[
+				...new Set(
+					equipamentos
+						.map((equipamento) => equipamento.categoria)
+						.filter((categoria): categoria is string => !!categoria),
+				),
+			].sort((a, b) => rotuloCategoria(a).localeCompare(rotuloCategoria(b), "pt-BR")),
+		[equipamentos],
+	);
+
 	const linhas = useMemo(() => {
 		const termo = busca.trim().toLowerCase();
 		return equipamentos.filter((e) => {
 			if (filtroSituacao !== "todas" && e.situacao !== filtroSituacao) return false;
+			if (filtroCliente === "sem_cliente" && e.clienteId) return false;
+			if (filtroCliente !== "todos" && filtroCliente !== "sem_cliente" && e.clienteId !== filtroCliente) return false;
+			if (filtroCategoria !== "todas" && e.categoria !== filtroCategoria) return false;
 			if (!termo) return true;
 			const alvo = [
 				e.fabricante,
@@ -177,7 +203,23 @@ export default function EquipamentosPage() {
 				.toLowerCase();
 			return alvo.includes(termo);
 		});
-	}, [equipamentos, busca, filtroSituacao, nomesPorCliente]);
+	}, [equipamentos, busca, filtroSituacao, filtroCliente, filtroCategoria, nomesPorCliente]);
+
+	const gruposParaExibir = useMemo<GrupoCliente[]>(() => {
+		if (modoLista === "lista") return [{ chave: "lista", nome: "", equipamentos: linhas }];
+		const porCliente = new Map<string, GrupoCliente>();
+		for (const equipamento of linhas) {
+			const chave = equipamento.clienteId || "sem_cliente";
+			const nome = !equipamento.clienteId
+				? "Sem cliente vinculado"
+				: nomesPorCliente.get(equipamento.clienteId) ||
+					(clientesQuery.isLoading ? "Carregando cliente…" : "Cliente indisponível");
+			const grupo = porCliente.get(chave) || { chave, nome, equipamentos: [] };
+			grupo.equipamentos.push(equipamento);
+			porCliente.set(chave, grupo);
+		}
+		return [...porCliente.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+	}, [linhas, modoLista, nomesPorCliente, clientesQuery.isLoading]);
 
 	/* ── Ações ───────────────────────────────────────────────────────────────── */
 	const abrirNovo = () => {
@@ -199,7 +241,8 @@ export default function EquipamentosPage() {
 		}
 	};
 
-	const temFiltro = !!busca.trim() || filtroSituacao !== "todas";
+	const temFiltro =
+		!!busca.trim() || filtroSituacao !== "todas" || filtroCliente !== "todos" || filtroCategoria !== "todas";
 
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
@@ -264,6 +307,52 @@ export default function EquipamentosPage() {
 				</div>
 			)}
 
+			{/* Filtros de inventário: só trabalham sobre a lista local já carregada, sem
+			    novas consultas nem mudança de dados. */}
+			{!isLoading && !isError && equipamentos.length > 0 && (
+				<div className="mb-4 flex flex-wrap items-center gap-2">
+					<Select value={filtroCliente} onValueChange={setFiltroCliente}>
+						<SelectTrigger aria-label="Filtrar por cliente" className="w-full sm:w-56">
+							<SelectValue placeholder="Todos os clientes" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="todos">Todos os clientes</SelectItem>
+							<SelectItem value="sem_cliente">Sem cliente vinculado</SelectItem>
+							{clientesDisponiveis.map((cliente) => (
+								<SelectItem key={cliente.id} value={cliente.id}>
+									{cliente.nome}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+
+					<Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
+						<SelectTrigger aria-label="Filtrar por categoria" className="w-full sm:w-52">
+							<SelectValue placeholder="Todas as categorias" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="todas">Todas as categorias</SelectItem>
+							{categoriasPresentes.map((categoria) => (
+								<SelectItem key={categoria} value={categoria}>
+									{rotuloCategoria(categoria)}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+
+					<Button
+						type="button"
+						variant={modoLista === "por_cliente" ? "secondary" : "outline"}
+						onClick={() => setModoLista((atual) => (atual === "lista" ? "por_cliente" : "lista"))}
+						aria-pressed={modoLista === "por_cliente"}
+						className="gap-2"
+					>
+						<Layers3 className="size-4" />
+						{modoLista === "por_cliente" ? "Agrupado por cliente" : "Agrupar por cliente"}
+					</Button>
+				</div>
+			)}
+
 			{/* ── 3 estados ── */}
 			{isLoading ? (
 				<Card className="overflow-hidden p-0">
@@ -316,6 +405,8 @@ export default function EquipamentosPage() {
 							onClick={() => {
 								setBusca("");
 								setFiltroSituacao("todas");
+								setFiltroCliente("todos");
+								setFiltroCategoria("todas");
 							}}
 							className="gap-2 rounded-full"
 						>
@@ -345,50 +436,64 @@ export default function EquipamentosPage() {
 										<th className="px-4 py-3 text-right font-semibold">Ações</th>
 									</tr>
 								</thead>
-								<tbody>
-									{linhas.map((e) => (
-										<tr
-											key={e.id}
-											className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
-										>
-											<td className="px-4 py-3.5">
-												<div className="flex min-w-0 items-center gap-3">
-													<div
-														aria-hidden="true"
-														className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10"
-													>
-														<Icon icon="mdi:air-conditioner" size="18" className="text-primary" />
+								{gruposParaExibir.map((grupo) => (
+									<tbody key={grupo.chave}>
+										{modoLista === "por_cliente" && (
+											<tr className="border-y border-border bg-bg-neutral/55">
+												<td colSpan={6} className="px-4 py-2 text-xs font-semibold tracking-wide text-text-secondary">
+													{grupo.nome} <span className="font-normal tabular-nums">({grupo.equipamentos.length})</span>
+												</td>
+											</tr>
+										)}
+										{grupo.equipamentos.map((e) => (
+											<tr
+												key={e.id}
+												className="border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40"
+											>
+												<td className="px-4 py-3.5">
+													<div className="flex min-w-0 items-center gap-3">
+														<div
+															aria-hidden="true"
+															className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10"
+														>
+															<Icon icon="mdi:air-conditioner" size="18" className="text-primary" />
+														</div>
+														<div className="min-w-0">
+															<p className="truncate font-medium text-text-primary">{nomeEquipamento(e)}</p>
+															<p className="truncate text-xs text-text-secondary">
+																{subEquipamento(e) || e.numeroSerie || e.codigoInterno || "—"}
+															</p>
+														</div>
 													</div>
-													<div className="min-w-0">
-														<p className="truncate font-medium text-text-primary">{nomeEquipamento(e)}</p>
-														<p className="truncate text-xs text-text-secondary">
-															{subEquipamento(e) || e.numeroSerie || e.codigoInterno || "—"}
-														</p>
-													</div>
-												</div>
-											</td>
-											<td className="max-w-40 px-4 py-3.5">
-												<CelulaCliente vinculo={vinculoDe(e)} />
-											</td>
-											<td className="max-w-40 px-4 py-3.5">
-												{e.localizacao ? (
-													<span className="truncate text-text-secondary">{e.localizacao}</span>
-												) : (
-													<span className="text-text-disabled">—</span>
-												)}
-											</td>
-											<td className="whitespace-nowrap px-4 py-3.5">
-												<SituacaoBadge situacao={e.situacao} />
-											</td>
-											<td className="whitespace-nowrap px-4 py-3.5">
-												<BadgeQr e={e} />
-											</td>
-											<td className="whitespace-nowrap px-4 py-3.5 text-right">
-												<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
-											</td>
-										</tr>
-									))}
-								</tbody>
+												</td>
+												<td className="max-w-40 px-4 py-3.5">
+													<CelulaCliente vinculo={vinculoDe(e)} />
+												</td>
+												<td className="max-w-40 px-4 py-3.5">
+													{e.localizacao ? (
+														<span className="truncate text-text-secondary">{e.localizacao}</span>
+													) : (
+														<span className="text-text-disabled">—</span>
+													)}
+												</td>
+												<td className="whitespace-nowrap px-4 py-3.5">
+													<SituacaoBadge situacao={e.situacao} />
+												</td>
+												<td className="whitespace-nowrap px-4 py-3.5">
+													<BadgeQr e={e} />
+												</td>
+												<td className="whitespace-nowrap px-4 py-3.5 text-right">
+													<AcoesLinha
+														e={e}
+														aoEditar={abrirEdicao}
+														aoExcluir={setAExcluir}
+														aoVerEtiqueta={setEtiquetaDe}
+													/>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								))}
 							</table>
 						</div>
 						<TableOverflowHint />
@@ -396,41 +501,50 @@ export default function EquipamentosPage() {
 
 					{/* MOBILE */}
 					<div className="divide-y divide-border/60 md:hidden">
-						{linhas.map((e) => (
-							<div key={e.id} className="p-4">
-								<div className="flex items-start justify-between gap-3">
-									<div className="flex min-w-0 items-center gap-3">
-										<div
-											aria-hidden="true"
-											className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10"
-										>
-											<Icon icon="mdi:air-conditioner" size="18" className="text-primary" />
+						{gruposParaExibir.map((grupo) => (
+							<div key={grupo.chave}>
+								{modoLista === "por_cliente" && (
+									<div className="border-y border-border bg-bg-neutral/55 px-4 py-2 text-xs font-semibold tracking-wide text-text-secondary">
+										{grupo.nome} <span className="font-normal tabular-nums">({grupo.equipamentos.length})</span>
+									</div>
+								)}
+								{grupo.equipamentos.map((e) => (
+									<div key={e.id} className="border-b border-border/60 p-4 last:border-0">
+										<div className="flex items-start justify-between gap-3">
+											<div className="flex min-w-0 items-center gap-3">
+												<div
+													aria-hidden="true"
+													className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10"
+												>
+													<Icon icon="mdi:air-conditioner" size="18" className="text-primary" />
+												</div>
+												<div className="min-w-0">
+													<p className="truncate font-medium text-text-primary">{nomeEquipamento(e)}</p>
+													<p className="truncate text-xs text-text-secondary">{subEquipamento(e) || "—"}</p>
+												</div>
+											</div>
+											<SituacaoBadge situacao={e.situacao} className="shrink-0" />
 										</div>
-										<div className="min-w-0">
-											<p className="truncate font-medium text-text-primary">{nomeEquipamento(e)}</p>
-											<p className="truncate text-xs text-text-secondary">{subEquipamento(e) || "—"}</p>
+
+										<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+											<div className="min-w-0">
+												<dt className="text-[11px] uppercase tracking-wide text-text-disabled">Cliente</dt>
+												<dd className="mt-0.5 flex truncate text-sm">
+													<CelulaCliente vinculo={vinculoDe(e)} />
+												</dd>
+											</div>
+											<div className="min-w-0">
+												<dt className="text-[11px] uppercase tracking-wide text-text-disabled">Localização</dt>
+												<dd className="mt-0.5 truncate text-sm text-text-primary">{e.localizacao || "—"}</dd>
+											</div>
+										</dl>
+
+										<div className="mt-3 flex items-center justify-between gap-2">
+											<BadgeQr e={e} />
+											<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
 										</div>
 									</div>
-									<SituacaoBadge situacao={e.situacao} className="shrink-0" />
-								</div>
-
-								<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
-									<div className="min-w-0">
-										<dt className="text-[11px] uppercase tracking-wide text-text-disabled">Cliente</dt>
-										<dd className="mt-0.5 flex truncate text-sm">
-											<CelulaCliente vinculo={vinculoDe(e)} />
-										</dd>
-									</div>
-									<div className="min-w-0">
-										<dt className="text-[11px] uppercase tracking-wide text-text-disabled">Localização</dt>
-										<dd className="mt-0.5 truncate text-sm text-text-primary">{e.localizacao || "—"}</dd>
-									</div>
-								</dl>
-
-								<div className="mt-3 flex items-center justify-between gap-2">
-									<BadgeQr e={e} />
-									<AcoesLinha e={e} aoEditar={abrirEdicao} aoExcluir={setAExcluir} aoVerEtiqueta={setEtiquetaDe} />
-								</div>
+								))}
 							</div>
 						))}
 					</div>

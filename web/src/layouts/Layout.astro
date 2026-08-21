@@ -54,9 +54,9 @@ const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
 /**
  * IDENTIDADE JURÍDICA no schema — só entra quando EXISTE (ver data/empresa.ts).
  *
- * `identidadePublicavel()` devolve null enquanto o dono não preencher razão
- * social, CNPJ e endereço. Espalhar `taxID: "PREENCHER"` pelo JSON-LD seria pior
- * que não ter: o Google leria dado inválido e o cético leria mentira.
+ * `identidadePublicavel()` devolve null enquanto razão social e CNPJ não forem
+ * reais. Endereço residencial não entra no schema; a OLLI é descrita como SaaS
+ * nacional, e não como ponto físico de atendimento.
  */
 const empresa = identidadePublicavel();
 const emailContato = emailContatoPublicavel();

@@ -96,6 +96,7 @@ export function useEquipe() {
 				.select("org_id")
 				.eq("user_id", meuId)
 				.eq("ativo", true)
+				.order("criado_em", { ascending: true })
 				.limit(1);
 			if (error) throw error;
 
@@ -136,4 +137,19 @@ export function useEquipe() {
 		},
 		staleTime: 60_000,
 	});
+}
+
+/** Atualiza um membro da própria organização. A RLS é a autorização real. */
+export async function atualizarMembro(
+	orgId: string,
+	userId: string,
+	patch: { papel?: Exclude<Papel, "owner">; ativo?: boolean },
+): Promise<void> {
+	const { error } = await supabase
+		.from("organizacao_membros")
+		.update(patch)
+		.eq("org_id", orgId)
+		.eq("user_id", userId)
+		.neq("papel", "owner");
+	if (error) throw new Error("Não consegui atualizar este membro. Confirme sua permissão e tente de novo.");
 }

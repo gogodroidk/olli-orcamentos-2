@@ -29,7 +29,8 @@ $required = @(
   'OLLI_UPLOAD_KEYSTORE_PATH',
   'OLLI_UPLOAD_KEYSTORE_ALIAS',
   'OLLI_UPLOAD_KEYSTORE_PASSWORD',
-  'OLLI_UPLOAD_KEY_PASSWORD'
+  'OLLI_UPLOAD_KEY_PASSWORD',
+  'SENTRY_AUTH_TOKEN'
 )
 
 $missing = $required | Where-Object {
@@ -82,6 +83,14 @@ try {
 
 Write-Output 'Chave de producao validada: arquivo, alias e identidades conferem.'
 
+# Um AAB destinado a loja precisa enviar os source maps do bundle minificado.
+# Removemos qualquer bypass herdado do terminal para que este script falhe alto
+# caso o upload do Sentry nao esteja corretamente autenticado.
+[Environment]::SetEnvironmentVariable('SENTRY_DISABLE_AUTO_UPLOAD', $null, 'Process')
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('SENTRY_AUTH_TOKEN', 'Process'))) {
+  throw 'SENTRY_AUTH_TOKEN e obrigatorio para o AAB de producao.'
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $androidRoot = Join-Path $repoRoot 'android'
 $output = Join-Path $androidRoot 'app\build\outputs\bundle\release\app-release.aab'
@@ -91,7 +100,6 @@ if (Test-Path -LiteralPath $output) {
   Move-Item -LiteralPath $output -Destination $backup
 }
 
-[Environment]::SetEnvironmentVariable('SENTRY_DISABLE_AUTO_UPLOAD', 'true', 'Process')
 [Environment]::SetEnvironmentVariable('NODE_ENV', 'production', 'Process')
 
 Push-Location $androidRoot

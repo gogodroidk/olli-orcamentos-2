@@ -200,6 +200,30 @@ export function resolverTenantEquipe(
   }
 }
 
+/**
+ * Tombstones só podem apontar para o tenant do dono quando o papel do membro já
+ * permite excluir aquela mesma entidade. Isso mantém a exclusão compartilhada
+ * funcionando sem transformar `exclusoes` numa procuração para apagar catálogo,
+ * clientes ou recibos que continuam reservados ao dono pela RLS.
+ */
+const TABELAS_EXCLUSAO_COMPARTILHADA = new Set([
+  'orcamentos',
+  'agendamentos',
+  'ordens_servico',
+  'equipamentos',
+]);
+
+export function resolverTenantTombstoneEquipe(
+  ctx: ContextoEquipe,
+  userId: string | null | undefined,
+  tabela: string,
+): string | null {
+  if (ctx.status === 'desconhecido') return null;
+  if (ctx.status === 'pessoal') return userId || null;
+  if (!userId) return null;
+  return TABELAS_EXCLUSAO_COMPARTILHADA.has(tabela) ? ctx.ownerUserId || null : userId;
+}
+
 /** Traduz o contexto já resolvido para o alvo da sessão, sem nova chamada de rede. */
 export function resolverAlvoEmpresa(
   ctx: ContextoEquipe,
