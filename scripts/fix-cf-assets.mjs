@@ -6,6 +6,7 @@
 // para `dist/assets/nm` e reescreve as referências `assets/node_modules/` ->
 // `assets/nm/` nos bundles, pra o wasm ser servido normalmente.
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 const dist = path.resolve('dist');
@@ -87,3 +88,37 @@ if (await exists(redirects)) {
 }
 const assetsIgnoreAntigo = path.join(dist, '.assetsignore');
 if (await exists(assetsIgnoreAntigo)) await fs.rm(assetsIgnoreAntigo);
+
+// O service worker precisa mudar a cada export, mesmo quando o seu código-fonte
+// não mudou. O hash do HTML já incorpora os nomes content-addressed dos bundles;
+// usá-lo como build id torna a atualização determinística e elimina caches da
+// versão anterior sem timestamp ou estado externo.
+const swPath = path.join(dist, 'sw.js');
+const indexPath = path.join(dist, 'index.html');
+if (await exists(swPath) && await exists(indexPath)) {
+  const html = await fs.readFile(indexPath);
+  const buildId = createHash('sha256').update(html).digest('hex').slice(0, 16);
+  const sw = await fs.readFile(swPath, 'utf8');
+  if (!sw.includes('__OLLI_BUILD_ID__')) {
+    throw new Error('fix-cf-assets: placeholder __OLLI_BUILD_ID__ ausente em dist/sw.js');
+  }
+  if (!sw.includes('__OLLI_PRECACHE__')) {
+    throw new Error('fix-cf-assets: placeholder __OLLI_PRECACHE__ ausente em dist/sw.js');
+  }
+
+  // O primeiro carregamento acontece antes de o service worker controlar a
+  // página. Sem esta lista, o HTML abriria offline, mas o bundle do app não.
+  // Incluímos somente artefatos locais gerados pelo Expo; API, autenticação e
+  // respostas de negócio continuam expressamente fora do cache.
+  const artefatos = (await walk(dist))
+    .map((arquivo) => path.relative(dist, arquivo).split(path.sep).join('/'))
+    .filter((relativo) => relativo.startsWith('_expo/') || relativo.startsWith('assets/'))
+    .map((relativo) => `/${relativo}`)
+    .sort();
+
+  const swVersionado = sw
+    .split('__OLLI_BUILD_ID__').join(buildId)
+    .replace('__OLLI_PRECACHE__', JSON.stringify(artefatos));
+  await fs.writeFile(swPath, swVersionado);
+  console.log(`fix-cf-assets: service worker versionado com build ${buildId} e ${artefatos.length} artefatos locais.`);
+}

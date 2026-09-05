@@ -16,15 +16,18 @@ dispositivo real, coorte, parecer profissional ou autorização de publicação.
 | ID | Pacote | Estado | Definition of Done |
 | --- | --- | --- | --- |
 | C0 | Consolidar a árvore herdada | DONE_LOCAL | branch própria, temporários ignorados, ZIP conferido, zero segredo detectado, dependências alinhadas, auditoria sem vulnerabilidade conhecida, preflight de release verde e commit local |
-| C1 | PWA instalável e offline mínimo seguro | NEXT | manifest instalável, service worker controlado, fallback offline sem cachear sessão/dados privados, atualização previsível, testes e Lighthouse/DevTools locais |
-| C2 | Motor de precificação V1 | QUEUED | custo/hora, deslocamento, materiais, impostos, margem, preço mínimo/sugerido e memória de cálculo explicável, com testes |
-| C3 | Financeiro operacional V1 | QUEUED | contas a receber, baixas, despesas, fluxo de caixa e ligação rastreável a orçamento/OS, preservando offline e tenant |
-| C4 | Documentos, contratos e versões | QUEUED | modelos, versões imutáveis, recuperação do original, aceite simples claramente rotulado e trilha auditável |
-| C5 | HVAC/PMOC operacional | QUEUED | ativos, carteira, visita, checklist, evidências e pacote documental; alegações regulatórias continuam condicionadas ao gate profissional |
-| C6 | Portal, integrações e automações | QUEUED | portal mínimo, agenda, mensageria assistida e automações com consentimento, idempotência e alternativa manual |
-| C7 | IA madura e aprendizado próprio | QUEUED | tarefas tipadas, avaliação, proveniência, controles de privacidade, fallback manual e recomendações explicáveis com dados próprios |
-| C8 | Packs adjacentes | QUEUED | elétrica, hidráulica, pintura, dedetização e jardinagem usando núcleo comum e validação por ofício |
-| C9 | Hardening e release | BLOCKED_EXTERNAL | revisão independente, testes reais, observabilidade, restore, canário, publicação e aceite do dono |
+| C1 | PWA instalável e offline mínimo seguro | DONE_LOCAL | manifest instalável, service worker controlado, shell e artefatos locais disponíveis offline sem cachear sessão/dados privados, atualização previsível e QA automatizado em Chromium |
+| C1A | Reconciliar o pedido de 04/09 com o plano mestre | IN_PROGRESS | matriz requisito→estado→decisão→DoD cobrindo landing, segmentos, aquisição, planos/trial, onboarding, orçamentos, financeiro, equipe, configurações, IA, integrações e legibilidade por agentes |
+| C2 | Onboarding e perfil obrigatório | QUEUED | telefone e identidade mínima da empresa obrigatórios antes do uso operacional, fluxo segmentado e guiado no app e painel, retomável, acessível e com minimização LGPD |
+| C3 | Oferta, trial e limites comerciais | QUEUED | contrato único de planos, limite Grátis e trial Pro de 14 dias definidos como experimento, comunicação transparente, downgrade sem perda e billing real ainda separado por gate |
+| C4 | Landing, verticais e descoberta por humanos/agentes | QUEUED | home coerente com o produto inteiro, páginas úteis por segmento, telas reais mobile/web corretamente rotuladas, trust pages, JSON-LD, markdown e 404/redirect corretos, sem prometer integrações não aceitas |
+| C5 | Orçamentos, estados e financeiro operacional | QUEUED | editar/revisar/duplicar sem destruir histórico, estados aprovado/pago/finalizado, comprovantes, contas a receber, baixas, despesas e métricas explicáveis por tenant |
+| C6 | Configurações, identidade e equipe | QUEUED | perfil/auth completos, tema e marca descobríveis, equipe conectada com permissões granulares e trilha auditável |
+| C7 | Integrações e central do prestador | QUEUED | agenda, notificações, armazenamento, WhatsApp oficial e catálogo oficial fiscal/Sebrae/INSS com consentimento, idempotência, proveniência e alternativa manual |
+| C8 | IA operacional segura | QUEUED | ferramentas por intenção, tenant e RBAC derivados da sessão, preview/diff, confirmação, limites, auditoria e rollback; CRUD bruto, apagar tudo, cobrar e enviar sem confirmação permanecem proibidos |
+| C9 | Motor de precificação e packs de ofício | QUEUED | custo/hora, deslocamento, materiais, impostos, margem e packs elétrica/hidráulica/pintura/dedetização/jardinagem sobre o núcleo comum, com memória explicável e validação por ofício |
+| C10 | HVAC/PMOC e documentos avançados | QUEUED | ativos, visitas, checklist, evidências, contratos e versões imutáveis; alegações regulatórias condicionadas a parecer profissional |
+| C11 | Hardening e release | BLOCKED_EXTERNAL | revisão independente, testes reais, observabilidade, restore, canário, publicação e aceite do dono |
 
 ## Gates que não podem ser simulados
 
@@ -38,4 +41,3 @@ dispositivo real, coorte, parecer profissional ou autorização de publicação.
 
 Esses gates não cancelam os pacotes locais anteriores: cada pacote deve ser levado
 até `DONE_LOCAL` antes de a fila parar por dependência externa real.
-

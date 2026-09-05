@@ -496,7 +496,16 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Landing pública (web deslogado): capa full-bleed, sem wrap desktop e sem
           gesto de voltar. NÃO tem path no linking (a URL raiz '/' segue sendo '/'
           para preservar o canonical de SEO). */}
-      <Stack.Screen name="Landing" component={LandingScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
+      <Stack.Screen
+        name="Landing"
+        component={LandingScreen}
+        options={{
+          animation: 'fade',
+          animationDuration: 320,
+          gestureEnabled: false,
+          title: 'OLLI Orçamentos',
+        }}
+      />
       {/* As telas abaixo usam `comCentroDesktop`: mobile/APK intacto (pass-through);
           desktop centraliza a tela mobile-like sobre o shell. Referências estáveis
           criadas no módulo (ver topo do arquivo). */}
