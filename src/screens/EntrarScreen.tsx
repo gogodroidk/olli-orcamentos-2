@@ -12,7 +12,6 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
 import { BotaoApple } from '../components/BotaoApple';
 import { appleSignInDisponivel, signInWithApple } from '../services/appleAuth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sobreSecundario, type Cores } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
@@ -27,7 +26,6 @@ import {
   normalizarTelefoneBR, temDadosLocais, getCurrentUser,
 } from '../services/supabase';
 import { abrirParticaoDoUsuario, getEmpresa, saveEmpresa } from '../database/database';
-import { onboardedKeyForUser } from './OnboardingScreen';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
@@ -133,10 +131,7 @@ export default function EntrarScreen() {
       if (!usuario?.id) throw new Error('sessao_indeterminada');
       await abrirParticaoDoUsuario(usuario.id);
 
-      const [empresa, onboarded] = await Promise.all([
-        getEmpresa(),
-        AsyncStorage.getItem(onboardedKeyForUser(usuario.id)).catch(() => null),
-      ]);
+      const empresa = await getEmpresa();
       if (empresa !== null) {
         destino = 'Tabs';
       } else {
@@ -153,8 +148,7 @@ export default function EntrarScreen() {
         //   'nao_sei' → verificação com retry, sem Home nem formulário editável.
         const estado = await resolverEstadoEmpresaDaSessao();
         if (estado === 'tem') destino = 'Tabs';
-        else if (estado === 'nao_tem' && onboarded === '1') destino = 'Tabs';
-        // `nao_tem` sem skip e `nao_sei` ficam em Onboarding; a tela só libera o
+        // `nao_tem` e `nao_sei` ficam em Onboarding; a tela só libera o
         // formulário depois de confirmar novamente que não existe empresa remota.
       }
     } catch {

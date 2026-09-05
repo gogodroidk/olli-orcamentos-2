@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, type NavigatorScreenParams } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, type NavigatorScreenParams } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, comAlfa, sombrasDe, useCores, useEstilos, useGradientes, type Cores } from '../theme';
 import { useEhDesktop } from '../hooks/useEhDesktop';
@@ -56,6 +56,8 @@ import LegalScreen from '../screens/LegalScreen';
 import TecnicoHomeScreen from '../screens/TecnicoHomeScreen';
 import type { AjudaRouteParams } from '../screens/AjudaScreen';
 import { usePermissao } from '../hooks/usePermissao';
+import { getEmpresa } from '../database/database';
+import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
 // nativo/APK nada disto entra na árvore. Barril em src/screens/desktop.
@@ -212,6 +214,75 @@ const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
+
+/**
+ * Contas antigas podem ter uma linha `empresa` criada antes dos campos mínimos.
+ * Enquanto ela estiver incompleta, a porta das abas permanece fechada e aponta
+ * para a edição do cadastro. O dado é relido ao voltar da tela, sem confiar num
+ * flag local que poderia estar desatualizado.
+ */
+function TabsComPerfilGuard() {
+  const nav = useNavigation<any>();
+  const cores = useCores();
+  const insets = useSafeAreaInsets();
+  const [estado, setEstado] = React.useState<'verificando' | 'liberado' | 'incompleto'>('verificando');
+  const [pendentes, setPendentes] = React.useState<string[]>([]);
+
+  useFocusEffect(React.useCallback(() => {
+    let ativo = true;
+    setEstado('verificando');
+    getEmpresa()
+      .then((empresa) => {
+        if (!ativo) return;
+        // Instalação de desenvolvimento sem empresa segue compatível; contas
+        // autenticadas novas chegam aqui somente depois do Onboarding.
+        if (!empresa) {
+          setEstado('liberado');
+          return;
+        }
+        const faltantes = camposPendentesPerfil(empresa);
+        setPendentes(faltantes.map(campo => ROTULO_CAMPO_PERFIL[campo]));
+        setEstado(faltantes.length ? 'incompleto' : 'liberado');
+      })
+      .catch(() => {
+        if (ativo) setEstado('incompleto');
+      });
+    return () => { ativo = false; };
+  }, []));
+
+  if (estado === 'liberado') return <TabNavigator />;
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: cores.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }}>
+      <View style={{ width: '100%', maxWidth: 460, padding: 24, borderRadius: 20, backgroundColor: cores.surface, borderWidth: 1, borderColor: cores.outline, alignItems: 'center' }}>
+        {estado === 'verificando' ? (
+          <ActivityIndicator size="large" color={cores.primary} />
+        ) : (
+          <MaterialCommunityIcons name="store-cog-outline" size={44} color={cores.primary} />
+        )}
+        <Text style={{ marginTop: 16, color: cores.onSurface, fontWeight: '800', fontSize: 21, textAlign: 'center' }}>
+          {estado === 'verificando' ? 'Preparando seu espaço…' : 'Complete seu negócio para continuar'}
+        </Text>
+        <Text style={{ marginTop: 8, color: cores.onSurfaceVariant, fontSize: 14, lineHeight: 21, textAlign: 'center' }}>
+          {estado === 'verificando'
+            ? 'Conferindo os dados que identificam sua empresa nos orçamentos.'
+            : pendentes.length
+              ? `Falta preencher: ${pendentes.join(', ')}.`
+              : 'Não conseguimos confirmar o cadastro agora. Tente abrir os dados do negócio.'}
+        </Text>
+        {estado === 'incompleto' && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => nav.navigate('MeuNegocio')}
+            style={{ marginTop: 20, minHeight: 48, paddingHorizontal: 20, borderRadius: 14, backgroundColor: cores.primary, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 15 }}>Completar agora</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
 const ModelosDocumentoCentro = comCentroDesktop(ModelosDocumentoScreen);
 const DiagnosticoIACentro = comCentroDesktop(DiagnosticoIAScreen);
 const OlliVozCentro = comCentroDesktop(OlliVozScreen);
@@ -486,7 +557,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
         contentStyle: { backgroundColor: cores.background },
       }}
     >
-      <Stack.Screen name="Tabs" component={TabNavigator} />
+      <Stack.Screen name="Tabs" component={TabsComPerfilGuard} />
       {/* Onboarding é pós-login: entra com fade (não é uma "próxima página").
           NÃO recebe wrap desktop — é capa full-bleed (centraliza por conta própria). */}
       <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade', animationDuration: 320 }} />

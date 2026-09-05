@@ -20,7 +20,6 @@ import {
   Spectral_600SemiBold,
   Spectral_700Bold,
 } from '@expo-google-fonts/spectral';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { criarAppTheme, Colors, TemaProvider, useTema } from './src/theme';
 import { Fonts } from './src/theme/fonts';
 import { applyFontPatch } from './src/theme/aplicarFontPatch';
@@ -31,7 +30,6 @@ import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { instalarCapturaDeErro } from './src/services/errorReport';
 import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/database';
-import { onboardedKeyForUser } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
@@ -273,12 +271,7 @@ function AppConteudo() {
         // Fire-and-forget best-effort: depende só do DB já aberto acima, nunca
         // bloqueia o boot e nunca lança (dynamic import + catch silencioso).
         import('./src/services/lixeira').then(m => m.purgarLixeiraAntiga()).catch(() => {});
-        const [empresa, onboarded] = await Promise.all([
-          getEmpresa(),
-          session?.user?.id
-            ? AsyncStorage.getItem(onboardedKeyForUser(session.user.id)).catch(() => null)
-            : Promise.resolve(null),
-        ]);
+        const empresa = await getEmpresa();
         if (!supabase) {
           // Build dev sem nuvem: não há login possível, entra direto nas abas.
           setInitialRoute('Tabs');
@@ -293,9 +286,6 @@ function AppConteudo() {
           // a tela de verificação bloqueada, nunca para Home ou cadastro editável.
           const estadoRemoto = await resolverEstadoEmpresaDaSessao();
           if (estadoRemoto === 'tem') {
-            setInitialRoute('Tabs');
-          } else if (estadoRemoto === 'nao_tem' && onboarded === '1') {
-            // O próprio usuário pulou o cadastro neste aparelho.
             setInitialRoute('Tabs');
           } else {
             setInitialRoute('Onboarding');

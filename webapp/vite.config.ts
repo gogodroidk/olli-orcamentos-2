@@ -20,6 +20,8 @@ const clienteLinkStub = fileURLToPath(new URL("./src/shims/clienteLink.web.ts", 
 // no tsconfig. Ambos os arquivos são TypeScript puro, sem imports, seguros de empacotar.
 const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.meta.url));
 const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
+const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
+const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -62,6 +64,8 @@ export default defineConfig(({ mode }) => {
 				// preço da landing e entitlements do app, empacotados como valor.
 				"@precos": precosFonte,
 				"@entitlements": entitlementsFonte,
+				"@verticais": verticaisFonte,
+				"@vertical-segmento": verticalSegmentoFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

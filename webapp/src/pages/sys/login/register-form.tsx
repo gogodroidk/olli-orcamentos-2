@@ -14,6 +14,8 @@ import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
 
 interface RegisterFormValues {
+	name: string;
+	phone: string;
 	email: string;
 	password: string;
 	confirmPassword: string;
@@ -24,6 +26,12 @@ interface RegisterFormValues {
 // domínio) e abre em nova aba para não perder o cadastro em andamento.
 const LANDING_ORIGIN = "https://olliorcamentos.online";
 
+function telefoneE164Brasil(valor: string): string {
+	const digitos = valor.replace(/\D/g, "");
+	const nacional = digitos.startsWith("55") && digitos.length >= 12 ? digitos.slice(2) : digitos;
+	return `+55${nacional}`;
+}
+
 function RegisterForm() {
 	const { t } = useTranslation();
 	const { loginState, backToLogin } = useLoginStateContext();
@@ -31,6 +39,8 @@ function RegisterForm() {
 
 	const form = useForm<RegisterFormValues>({
 		defaultValues: {
+			name: "",
+			phone: "",
 			email: "",
 			password: "",
 			confirmPassword: "",
@@ -41,10 +51,18 @@ function RegisterForm() {
 		if (loading) return;
 		setLoading(true);
 		try {
+			const phone = telefoneE164Brasil(values.phone);
 			const { error } = await supabase.auth.signUp({
 				email: values.email.trim(),
 				password: values.password,
-				options: { emailRedirectTo: `${window.location.origin}/auth/login` },
+				options: {
+					emailRedirectTo: `${window.location.origin}/auth/login`,
+					data: {
+						full_name: values.name.trim(),
+						name: values.name.trim(),
+						phone,
+					},
+				},
 			});
 			if (error) throw error;
 			toast.success("Conta criada! Confira seu e-mail para confirmar o cadastro.", {
@@ -67,20 +85,61 @@ function RegisterForm() {
 					<h1 className="text-2xl font-bold">{t("sys.login.signUpFormTitle")}</h1>
 				</div>
 
-				{/*
-					OAuth ANTES do e-mail: signInWithOAuth cria a conta no 1º acesso, sem
-					confirmação de e-mail nem senha — é 1 clique contra os 7+ passos do
-					cadastro por e-mail. Quem chega da landing pra experimentar não quer
-					preencher formulário; quer estar dentro. O formulário de e-mail
-					continua abaixo pra quem preferir. (CC-01)
-				*/}
+				{/* OAuth reduz a entrada a um clique. Nome, telefone e dados do negócio
+				    são exigidos pelo onboarding no primeiro acesso social. */}
 				<OAuthButtons />
 
 				<div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
 					<span className="relative z-10 bg-background px-2 text-muted-foreground">
-						{t("sys.login.registerButton")}
+						ou crie com e-mail
 					</span>
 				</div>
+
+				<FormField
+					control={form.control}
+					name="name"
+					rules={{
+						required: "Informe seu nome.",
+						minLength: { value: 2, message: "Use pelo menos 2 caracteres." },
+					}}
+					render={({ field }) => (
+						<FormItem>
+							<FormControl>
+								<Input autoComplete="name" placeholder="Seu nome" {...field} />
+							</FormControl>
+							<FormMessage />
+						</FormItem>
+					)}
+				/>
+
+				<FormField
+					control={form.control}
+					name="phone"
+					rules={{
+						required: "Informe seu telefone com DDD.",
+						validate: (value) => {
+							const n = value.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+							return /^\d{10,11}$/.test(n) || "Use DDD + telefone, com 10 ou 11 dígitos.";
+						},
+					}}
+					render={({ field }) => (
+						<FormItem>
+							<FormControl>
+								<Input
+									type="tel"
+									inputMode="tel"
+									autoComplete="tel-national"
+									placeholder="Telefone com DDD"
+									{...field}
+								/>
+							</FormControl>
+							<FormMessage />
+							<p className="text-xs leading-relaxed text-muted-foreground">
+								Usado para sua conta e para preencher seu negócio. Mensagens de marketing exigem uma escolha separada.
+							</p>
+						</FormItem>
+					)}
+				/>
 
 				<FormField
 					control={form.control}

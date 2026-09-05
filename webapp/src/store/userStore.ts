@@ -115,6 +115,8 @@ export const useSignIn = () => {
 				id: user?.id ?? "",
 				email: user?.email ?? "",
 				username: user?.email ?? "",
+				name: user?.user_metadata?.full_name || user?.user_metadata?.name || undefined,
+				phone: user?.user_metadata?.phone || user?.phone || undefined,
 				avatar: user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
 			marcarIndicioDeSessao();
@@ -168,6 +170,8 @@ export function useAuthSync() {
 				id: session.user?.id ?? "",
 				email: session.user?.email ?? "",
 				username: session.user?.email ?? "",
+				name: session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || undefined,
+				phone: session.user?.user_metadata?.phone || session.user?.phone || undefined,
 				avatar: session.user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
 			marcarIndicioDeSessao();

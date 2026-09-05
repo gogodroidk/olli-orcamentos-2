@@ -29,6 +29,8 @@ import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
 import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
+import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
+import { isValidCNPJ } from '../utils/masks';
 
 /**
  * Empresa EM BRANCO para instalações novas (não há seed: getEmpresa() retorna
@@ -192,6 +194,18 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
 
   async function handleSave() {
     if (!empresa || salvando || imagemProcessando) return;
+    const pendentes = camposPendentesPerfil(empresa);
+    if (pendentes.length > 0) {
+      Alert.alert(
+        'Complete os dados essenciais',
+        `Antes de usar a plataforma, preencha: ${pendentes.map(campo => ROTULO_CAMPO_PERFIL[campo]).join(', ')}.`,
+      );
+      return;
+    }
+    if (empresa.cnpj.trim() && !isValidCNPJ(empresa.cnpj)) {
+      Alert.alert('CNPJ inválido', 'Confira os números antes de salvar.');
+      return;
+    }
     setSalvando(true);
     try {
       await saveEmpresa(empresa);
@@ -262,6 +276,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
         const enderecoEncontrado = [encontrada.logradouro, encontrada.bairro].filter(Boolean).join(', ');
         setEmpresa(atual => atual ? {
           ...atual,
+          tipoNegocio: 'empresa',
           nome: atual.nome.trim() || nomeEmpresa,
           especialidade: atual.especialidade.trim() || encontrada.cnaePrincipal.descricao,
           segmento: atual.segmento ?? VERTICAL_PARA_SEGMENTO[principal] ?? 'outro',
@@ -460,7 +475,31 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
         {/* DADOS */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Dados da empresa</Text>
-          <OlliInput label="Nome da empresa" value={empresa.nome} onChangeText={v => set('nome', v)} leftIcon="store" />
+          <Text style={styles.segLabel}>Como você trabalha? *</Text>
+          <Text style={styles.segHint}>Isso define se o CNPJ é necessário.</Text>
+          <View style={styles.segRow} accessibilityRole="radiogroup">
+            {([
+              { id: 'autonomo' as const, label: 'Autônomo / pessoa física', icon: 'account-hard-hat' },
+              { id: 'empresa' as const, label: 'Empresa com CNPJ', icon: 'domain' },
+            ]).map(opcao => {
+              const active = empresa.tipoNegocio === opcao.id;
+              return (
+                <TouchableOpacity
+                  key={opcao.id}
+                  style={[styles.segChip, active && styles.segChipActive]}
+                  onPress={() => set('tipoNegocio', opcao.id)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name={opcao.icon as any} size={16} color={active ? textoSobreAccent : cores.onSurfaceVariant} />
+                  <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{opcao.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <OlliInput label="Nome da empresa" required value={empresa.nome} onChangeText={v => set('nome', v)} leftIcon="store" />
 
           <Text style={styles.segLabel}>Segmento do negócio</Text>
           <Text style={styles.segHint}>O OLLI atende qualquer prestador. O segmento ajusta exemplos e a base técnica.</Text>
@@ -493,11 +532,11 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
           </TouchableOpacity>
 
-          <OlliInput label="Especialidade" value={empresa.especialidade} onChangeText={v => set('especialidade', v)} placeholder="Ex: Assistência técnica de ar condicionado" />
+          <OlliInput label="Especialidade" required value={empresa.especialidade} onChangeText={v => set('especialidade', v)} placeholder="Ex: Assistência técnica de ar condicionado" />
           <OlliInput label="Slogan" value={empresa.slogan} onChangeText={v => set('slogan', v)} placeholder="Frase da sua marca" />
-          <OlliInput label="Nome do prestador" value={empresa.nomePrestador} onChangeText={v => set('nomePrestador', v)} leftIcon="account" />
+          <OlliInput label="Nome do prestador" required value={empresa.nomePrestador} onChangeText={v => set('nomePrestador', v)} leftIcon="account" />
           <View style={styles.rowFields}>
-            <OlliInput label="CNPJ" mask="cnpj" value={empresa.cnpj} onChangeText={v => set('cnpj', v)} containerStyle={{ flex: 1, marginRight: 10 }} />
+            <OlliInput label="CNPJ" required={empresa.tipoNegocio === 'empresa'} mask="cnpj" value={empresa.cnpj} onChangeText={v => set('cnpj', v)} containerStyle={{ flex: 1, marginRight: 10 }} />
             <OlliInput label="CPF" mask="cpf" value={empresa.cpf} onChangeText={v => set('cpf', v)} containerStyle={{ flex: 1 }} />
           </View>
           <OlliButton
@@ -514,10 +553,10 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           {cnpjInfo ? <Text style={styles.lookupInfo}>{cnpjInfo}</Text> : null}
           <OlliInput label="Endereço" value={empresa.endereco} onChangeText={v => set('endereco', v)} leftIcon="map-marker" />
           <View style={styles.rowFields}>
-            <OlliInput label="Cidade" value={empresa.cidade} onChangeText={v => set('cidade', v)} containerStyle={{ flex: 2, marginRight: 10 }} />
-            <OlliInput label="UF" value={empresa.estado} onChangeText={v => set('estado', v.toUpperCase().slice(0, 2))} autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
+            <OlliInput label="Cidade" required value={empresa.cidade} onChangeText={v => set('cidade', v)} containerStyle={{ flex: 2, marginRight: 10 }} />
+            <OlliInput label="UF" required value={empresa.estado} onChangeText={v => set('estado', v.toUpperCase().slice(0, 2))} autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
           </View>
-          <OlliInput label="Telefone" mask="phone" value={empresa.telefone} onChangeText={v => set('telefone', v)} leftIcon="phone" />
+          <OlliInput label="Telefone" required mask="phone" value={empresa.telefone} onChangeText={v => set('telefone', v)} leftIcon="phone" />
           <OlliInput label="WhatsApp (só números)" mask="phone" value={empresa.whatsapp} onChangeText={v => set('whatsapp', v.replace(/\D/g, ''))} leftIcon="whatsapp" />
           <OlliInput label="Site" value={empresa.site} onChangeText={v => set('site', v)} placeholder="www.suaempresa.com.br" leftIcon="web" autoCapitalize="none" />
           <OlliInput

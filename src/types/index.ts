@@ -112,6 +112,8 @@ export interface ContratoPadrao {
 export interface Empresa {
   id: string;
   nome: string;
+  /** Forma de atuação declarada no onboarding; controla a exigência de CNPJ sem excluir autônomos. */
+  tipoNegocio?: 'autonomo' | 'empresa';
   segmento?: Segmento;
   especialidade: string;
   slogan: string;
