@@ -943,6 +943,30 @@ export async function getOrcamentosAgregadoPorStatus(
   return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
 }
 
+/**
+ * Mesmo agregado acima, limitado por `dataEmissao` (ou `criadoEm` em registros
+ * antigos). `fimExclusivoYmd` evita conta de horário/fuso: [início, fim).
+ */
+export async function getOrcamentosAgregadoPorStatusNoPeriodo(
+  statuses: readonly StatusOrcamento[],
+  inicioYmd: string,
+  fimExclusivoYmd: string,
+): Promise<{ contagem: number; valorTotal: number }> {
+  if (statuses.length === 0) return { contagem: 0, valorTotal: 0 };
+  const db = await getDb();
+  const placeholders = statuses.map(() => '?').join(',');
+  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
+    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma
+     FROM orcamentos
+     WHERE json_extract(data, '$.excluidoEm') IS NULL
+       AND json_extract(data, '$.status') IN (${placeholders})
+       AND substr(COALESCE(json_extract(data, '$.dataEmissao'), json_extract(data, '$.criadoEm')), 1, 10) >= ?
+       AND substr(COALESCE(json_extract(data, '$.dataEmissao'), json_extract(data, '$.criadoEm')), 1, 10) < ?`,
+    [...statuses, inicioYmd, fimExclusivoYmd],
+  );
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+}
+
 /** Total de orçamentos ATIVOS (qualquer status) — denominador de taxas (ex.: conversão). */
 export async function getOrcamentosTotalAtivos(): Promise<number> {
   const db = await getDb();
@@ -1253,7 +1277,7 @@ export function acordoAceito(status: StatusOrcamento): boolean {
  * documento em mãos. Gêmea de `edicaoBloqueada` em
  * `webapp/src/pages/olli/orcamentos/FormOrcamento.tsx`: o MESMO documento tinha
  * duas regras conforme o usuário abrisse no celular ou no painel. O caminho
- * honesto nos dois é DUPLICAR como novo rascunho — o original continua valendo.
+ * honesto nos dois é CRIAR REVISÃO como novo rascunho — o original continua valendo.
  *
  * Mora aqui, e não em `src/types` ao lado de `propostaJaEnviada`, que seria o
  * lugar natural — mover é uma unificação pendente, sem mudança de comportamento.
@@ -1268,52 +1292,35 @@ export function edicaoBloqueada(status: StatusOrcamento): boolean {
 /**
  * Recusa de gravação por regra comercial — NÃO é falha técnica. Tipada para que a
  * UI possa distinguir "tente de novo em instantes" (transitório) de "isto não vai
- * funcionar nunca, use Duplicar" (permanente).
+ * funcionar nunca, use Criar revisão" (permanente).
  *
- * COMO CONSUMIR: prefira `e?.codigo === 'ORCAMENTO_ACEITO'` a `instanceof` — o
+ * COMO CONSUMIR: prefira `e?.codigo === 'ORCAMENTO_PROTEGIDO'` a `instanceof` — o
  * campo `codigo` sobrevive ao serializar/reconstruir o erro através de camadas
  * (bridge, sync, re-throw), e não obriga a tela a importar esta classe. É o que
  * `NovoOrcamentoScreen.tsx` (handleSave/handleRascunho) faz: nesta recusa mostra
- * "duplique como novo rascunho" em vez de "tente novamente em instantes", porque
+ * "crie uma revisão" em vez de "tente novamente em instantes", porque
  * tentar de novo nunca vai funcionar. Tratar isto como falha transitória é
  * mandar o usuário repetir para sempre um caminho fechado, perdendo o que digitou.
  */
-export class OrcamentoAceitoError extends Error {
-  readonly codigo = 'ORCAMENTO_ACEITO' as const;
+export class OrcamentoProtegidoError extends Error {
+  readonly codigo = 'ORCAMENTO_PROTEGIDO' as const;
   constructor(public readonly status: StatusOrcamento) {
     super(
-      'Este orçamento já foi aceito pelo cliente. Para mudar valores ou itens, duplique como novo rascunho.',
+      'Este orçamento já foi enviado ou aceito pelo cliente. Para mudar valores ou itens, crie uma revisão.',
     );
-    this.name = 'OrcamentoAceitoError';
+    this.name = 'OrcamentoProtegidoError';
   }
 }
 
 /**
- * Salva o orçamento. Duas regras, ambas sobre o estado JÁ PERSISTIDO:
+ * Salva o orçamento preservando o estado JÁ PERSISTIDO:
  *
- * 1. ACEITO NÃO SE REESCREVE. Se o anterior está em `acordoAceito` (aprovado/
- *    convertido) e a impressão COMERCIAL muda, recusamos. Antes daqui, o app
- *    sobrescrevia calado um documento aprovado — e sem nem gerar versão, porque o
- *    versionamento abaixo só cobre `propostaJaEnviada`. O painel já recusava a
- *    mesma edição, então o mesmo orçamento tinha duas regras.
- * 2. PROPOSTA ENVIADA GERA VERSÃO (mestre 13.5). Enviado/visualizado/
- *    em_negociacao/aguardando_assinatura: a edição passa, mas congelamos o estado
- *    anterior como VERSÃO antes de sobrescrever — o que o cliente viu nunca some.
- *
- *    POR QUE A REGRA 2 QUASE NUNCA DISPARA, e ainda assim fica. As telas que
- *    levam ao editor (`OrcamentosScreen`, `VisualizarOrcamentoScreen` e a tabela
- *    de `desktop/OrcamentosDesktopScreen`) escondem "Editar" para todo status em
- *    `edicaoBloqueada` — que COBRE `propostaJaEnviada` inteiro —, e o próprio
- *    editor (`NovoOrcamentoScreen`) recusa abrir em modo edição nesses status,
- *    o que fecha também o deep link `orcamentos/:id/editar` (`linking.ts`), que
- *    não passa por tela nenhuma. Quem chega ao editor está em rascunho/recusado/
- *    expirado/cancelado: sem conteúdo protegido a versionar.
- *
- *    Manter a regra 2 NÃO é indecisão — é a rede para o caminho que ninguém
- *    previu. Um gate de UI é uma linha que some num refactor; esta é a única
- *    trava que fica entre um `saveOrcamento` qualquer e a sobrescrita do que o
- *    cliente já viu. `scripts/teste-numero-web.ts` guarda os gates acima para que
- *    sumir deles seja falha de teste, não descoberta em produção.
+ * ENVIADO OU ACEITO NÃO SE REESCREVE. Se o documento anterior está em qualquer
+ * status de `edicaoBloqueada` e a impressão COMERCIAL muda, recusamos. A interface
+ * cria outro orçamento como revisão ligada ao original; esta guarda cobre também
+ * caminhos internos, deep links ou futuros refactors que tentem chamar o save
+ * diretamente. Assim o ID/link que o cliente recebeu continua apontando para o
+ * conteúdo imutável que ele viu.
  *
  *    Fora do alcance destas duas regras, de propósito: o PULL da nuvem grava por
  *    `localUpsertOrcamento` (INSERT OR REPLACE cru), não por aqui. Mudança que
@@ -1323,7 +1330,7 @@ export class OrcamentoAceitoError extends Error {
  *    qualquer forma: ela lista também o que a nuvem/painel gerou
  *    (`clienteLink.ts`), não só o que este `saveOrcamento` congela.
  *
- * As duas comparam `impressaoComercial`, que ignora os campos voláteis: trocar SÓ
+ * A guarda compara `impressaoComercial`, que ignora os campos voláteis: trocar SÓ
  * o status (o link marcou "visualizado", o cliente aprovou, o dono converteu),
  * assinar ou mandar para a lixeira passa em qualquer status. É por isso que a
  * recusa não trava o funil nem o sync do link — só a edição de conteúdo.
@@ -1337,23 +1344,14 @@ export async function saveOrcamento(o: Orcamento): Promise<void> {
   // silêncio. Na prática só quebra com o SQLite quebrado, que derrubaria o INSERT
   // logo abaixo de qualquer jeito.
   const anterior = await getOrcamento(o.id);
-  // A comparação só importa nos status que travam ou versionam. Fora deles (o caso
+  // A comparação só importa nos status que travam. Fora deles (o caso
   // comum: rascunho sendo editado) nem serializamos — a impressão comercial percorre
   // o objeto INTEIRO, fotos inclusive, e não vale pagar isso a cada tecla salva.
   const mudouConteudoProtegido =
     !!anterior && edicaoBloqueada(anterior.status) && impressaoComercial(anterior) !== impressaoComercial(o);
 
-  if (anterior && mudouConteudoProtegido && acordoAceito(anterior.status)) {
-    throw new OrcamentoAceitoError(anterior.status);
-  }
-
-  // Snapshot da versão anterior, quando aplicável (best-effort: nunca impede o save).
-  try {
-    if (anterior && mudouConteudoProtegido && propostaJaEnviada(anterior.status)) {
-      await congelarVersaoOrcamento(anterior);
-    }
-  } catch {
-    // versionamento é aditivo: uma falha aqui jamais bloqueia salvar o orçamento
+  if (anterior && mudouConteudoProtegido) {
+    throw new OrcamentoProtegidoError(anterior.status);
   }
 
   await db.runAsync(
@@ -1616,12 +1614,11 @@ async function maiorSequenciaDocumento(tabela: TabelaNumerada): Promise<number> 
  * segue no 005 — divergência sem colisão, porque o contador só fica À FRENTE dos
  * documentos, nunca atrás.
  *
- * O QUE ISTO **NÃO** RESOLVE: dois aparelhos criando ao mesmo tempo, um deles sem
- * rede. Aí os dois leem o mesmo piso e emitem o mesmo número, e só o banco pode
- * arbitrar — ver `supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente`
- * (UNIQUE + renumeração no push), que é passo humano. A extensão `.pendente` é de
- * propósito: o índice NÃO pode entrar antes de `mirrorPush` tratar o 23505 (o
- * arquivo explica), e `.sql` puro seria aplicado por qualquer varredura.
+ * O QUE ISTO **NÃO** RESOLVE sozinho: dois aparelhos criando ao mesmo tempo, um
+ * deles offline. O handler de 23505 já vive em `cloudSync.ts`, mas quem arbitra
+ * é o índice de `20260727_numero_unico_por_tenant.sql.pendente`. Ele continua
+ * pendente até a auditoria humana de duplicatas em produção; renomear/aplicar é
+ * mudança de banco, não efeito automático de ter o cliente preparado.
  */
 async function proximoNaSequencia(chave: string, tabela: TabelaNumerada): Promise<number> {
   const db = await getDb();

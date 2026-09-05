@@ -15,7 +15,9 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EstadoIA } from '../components/EstadoIA';
+import { OlliButton } from '../components/OlliButton';
 import { enviarChat, ChatMensagem } from '../services/olliAssistente';
+import { formatarCreditos, getMeuSaldo } from '../services/creditos';
 import { SinalizarIA } from '../components/SinalizarIA';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -59,16 +61,20 @@ export default function OlliChatScreen() {
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   const { usosIaRestantes, consumirUsoIa } = usePlano();
-  const iaEsgotada = usosIaRestantes <= 0;
 
   const [bolhas, setBolhas] = useState<Bolha[]>([SAUDACAO]);
   const [texto, setTexto] = useState('');
   const [digitando, setDigitando] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const [carregado, setCarregado] = useState(false);
+  const [pendenciaCredito, setPendenciaCredito] = useState<Bolha[] | null>(null);
+  // undefined = consultando; null = saldo indisponível; number = saldo confirmado.
+  const [saldoCreditos, setSaldoCreditos] = useState<number | null | undefined>(undefined);
   const scrollRef = useRef<ScrollView>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reutilizada no retry de rede: o mesmo trabalho nunca pode cobrar duas vezes.
+  const creditoRefRef = useRef<string | null>(null);
 
   // aborta requisição pendente e limpa timers ao desmontar a tela
   useEffect(() => {
@@ -112,7 +118,10 @@ export default function OlliChatScreen() {
   useEffect(() => { scrollToEnd(); }, [bolhas, digitando, scrollToEnd]);
 
   /** Faz a chamada de IA de fato a partir de um histórico já pronto (não mexe nas bolhas de entrada). */
-  const chamarIA = useCallback(async (historicoBase: Bolha[]) => {
+  const chamarIA = useCallback(async (
+    historicoBase: Bolha[],
+    opcoesCredito?: { confirmarCredito: true; creditoRef: string },
+  ) => {
     setDigitando(true);
     setPodeCancelar(false);
 
@@ -127,11 +136,28 @@ export default function OlliChatScreen() {
       .map(b => ({ role: b.role, texto: b.texto }));
 
     try {
-      const res = await enviarChat(historico, controller.signal);
+      const res = await enviarChat(historico, controller.signal, opcoesCredito);
+      if (res.semCreditos) {
+        // O servidor — não o contador local — decidiu que a cota acabou ou que
+        // não há saldo. Não poluímos o histórico com uma falsa "falha de IA":
+        // mostramos consentimento explícito e caminhos sem cobrança.
+        setPendenciaCredito(historicoBase);
+        setSaldoCreditos(undefined);
+        void getMeuSaldo().then(setSaldoCreditos);
+        creditoRefRef.current = opcoesCredito?.creditoRef ?? null;
+        track(Eventos.gateVisto, {
+          recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_servidor', origem: 'olli_chat',
+        });
+        return;
+      }
+
       setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: res.resposta, falhou: !res.ok }]);
       if (res.ok) {
+        setPendenciaCredito(null);
+        setSaldoCreditos(undefined);
+        creditoRefRef.current = null;
         Haptics.selectionAsync().catch(() => {});
-        void consumirUsoIa();
+        await consumirUsoIa();
       }
     } finally {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
@@ -147,22 +173,35 @@ export default function OlliChatScreen() {
     nav.navigate('Planos');
   }, [nav]);
 
-  const enviar = useCallback(async (mensagem?: string) => {
-    const conteudo = (mensagem ?? texto).trim();
-    if (!conteudo || digitando) return;
-    if (iaEsgotada) {
-      track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_chat' });
-      irParaPlanos('chat_enviar');
+  const usarUmCredito = useCallback(async () => {
+    if (!pendenciaCredito || digitando) return;
+    if (saldoCreditos === 0) {
+      irParaPlanos('chat_sem_saldo');
       return;
     }
     Haptics.selectionAsync().catch(() => {});
+    const creditoRef = creditoRefRef.current ?? generateId();
+    creditoRefRef.current = creditoRef;
+    await chamarIA(pendenciaCredito, { confirmarCredito: true, creditoRef });
+  }, [pendenciaCredito, digitando, saldoCreditos, irParaPlanos, chamarIA]);
+
+  const enviar = useCallback(async (mensagem?: string) => {
+    const conteudo = (mensagem ?? texto).trim();
+    if (!conteudo || digitando) return;
+    Haptics.selectionAsync().catch(() => {});
+
+    // Nova pergunta = novo trabalho. Qualquer consentimento/referência anterior
+    // deixa de valer; se a cota estiver esgotada o servidor abrirá um novo gate.
+    setPendenciaCredito(null);
+    setSaldoCreditos(undefined);
+    creditoRefRef.current = null;
 
     const userBolha: Bolha = { id: generateId(), role: 'user', texto: conteudo };
     const proximas = [...bolhas, userBolha];
     setBolhas(proximas);
     setTexto('');
     await chamarIA(proximas);
-  }, [texto, bolhas, digitando, chamarIA, iaEsgotada, irParaPlanos]);
+  }, [texto, bolhas, digitando, chamarIA]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -171,7 +210,6 @@ export default function OlliChatScreen() {
 
   const tentarDeNovo = useCallback((bolhaErroId: string) => {
     if (digitando) return;
-    if (iaEsgotada) { irParaPlanos('chat_tentar_de_novo'); return; }
     // remove a bolha de erro e reenvia a IA com o histórico até a última msg do usuário
     const idx = bolhas.findIndex(b => b.id === bolhaErroId);
     if (idx <= 0) return;
@@ -179,12 +217,19 @@ export default function OlliChatScreen() {
     if (historicoBase[historicoBase.length - 1]?.role !== 'user') return;
     Haptics.selectionAsync().catch(() => {});
     setBolhas(historicoBase);
-    chamarIA(historicoBase);
-  }, [bolhas, digitando, chamarIA, iaEsgotada, irParaPlanos]);
+    const creditoRef = creditoRefRef.current;
+    chamarIA(
+      historicoBase,
+      creditoRef ? { confirmarCredito: true, creditoRef } : undefined,
+    );
+  }, [bolhas, digitando, chamarIA]);
 
   const limpar = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     setBolhas([SAUDACAO]);
+    setPendenciaCredito(null);
+    setSaldoCreditos(undefined);
+    creditoRefRef.current = null;
     AsyncStorage.removeItem(CHAT_KEY).catch(() => {});
   }, []);
 
@@ -201,11 +246,6 @@ export default function OlliChatScreen() {
   }, [nav]);
 
   const mostrarSugestoes = bolhas.length <= 1 && !digitando;
-
-  useEffect(() => {
-    if (iaEsgotada) track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_chat' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [iaEsgotada]);
 
   return (
     <KeyboardAvoidingView
@@ -249,7 +289,7 @@ export default function OlliChatScreen() {
 
         {digitando && <Digitando podeCancelar={podeCancelar} onCancelar={cancelarEnvio} />}
 
-        {mostrarSugestoes && !iaEsgotada && (
+        {mostrarSugestoes && (
           <View style={styles.sugestoesWrap}>
             <Text style={styles.sugestoesLabel}>Sugestões para começar</Text>
             {SUGESTOES.map(s => (
@@ -261,16 +301,53 @@ export default function OlliChatScreen() {
           </View>
         )}
 
-        {iaEsgotada && !digitando && (
+        {pendenciaCredito && !digitando && (
           <EstadoIA
             variante="erro"
             tipoErro="cota"
-            titulo={`Você usou seus ${IA_USOS_GRATIS_MES} papos grátis este mês`}
-            mensagem={`Volta mês que vem com ${IA_USOS_GRATIS_MES} novos, ou continue sem limite agora mesmo no plano Pro.`}
+            titulo={`Seus ${IA_USOS_GRATIS_MES} papos grátis deste mês acabaram`}
+            mensagem="Você escolhe: gastar 1 crédito nesta resposta, ver os planos ou montar o orçamento sem IA. Nada é cobrado sem seu toque."
             onDark
-            onAcao={() => irParaPlanos('chat_card')}
             style={{ marginTop: 8 }}
-          />
+          >
+            <View style={styles.creditoAcoes}>
+              <OlliButton
+                label={
+                  typeof saldoCreditos === 'number'
+                    ? `Usar 1 crédito (${formatarCreditos(saldoCreditos)})`
+                    : saldoCreditos === null
+                      ? 'Tentar usar 1 crédito'
+                      : 'Consultando seus créditos…'
+                }
+                variant="gradient"
+                size="sm"
+                onPress={usarUmCredito}
+                loading={saldoCreditos === undefined}
+                disabled={saldoCreditos === 0}
+                style={styles.creditoBotao}
+              />
+              <OlliButton
+                label="Ver planos"
+                variant="outline"
+                size="sm"
+                onPress={() => irParaPlanos('chat_card')}
+                style={styles.creditoBotao}
+              />
+              <OlliButton
+                label="Montar na mão"
+                variant="ghost"
+                size="sm"
+                onPress={() => nav.navigate('NovoOrcamento', {})}
+                style={styles.creditoBotao}
+              />
+              {saldoCreditos === 0 && (
+                <Text style={styles.creditoAviso}>Seu saldo confirmado está zerado; nenhum crédito será cobrado.</Text>
+              )}
+              {saldoCreditos === null && (
+                <Text style={styles.creditoAviso}>Não consegui mostrar o saldo. O servidor ainda confere antes de qualquer cobrança.</Text>
+              )}
+            </View>
+          </EstadoIA>
         )}
       </ScrollView>
 
@@ -281,7 +358,7 @@ export default function OlliChatScreen() {
             style={styles.input}
             value={texto}
             onChangeText={setTexto}
-            placeholder={iaEsgotada ? 'Limite grátis atingido este mês…' : 'Escreva sua mensagem…'}
+            placeholder="Escreva sua mensagem…"
             placeholderTextColor={cores.onSurfaceMuted}
             multiline
             onSubmitEditing={() => enviar()}
@@ -289,13 +366,13 @@ export default function OlliChatScreen() {
           />
         </View>
         <TouchableOpacity
-          style={[styles.sendBtn, (!texto.trim() || digitando) && !iaEsgotada && styles.sendBtnDisabled, iaEsgotada && styles.sendBtnPro]}
-          onPress={() => (iaEsgotada ? irParaPlanos('chat_input') : enviar())}
-          disabled={(!texto.trim() || digitando) && !iaEsgotada}
+          style={[styles.sendBtn, (!texto.trim() || digitando) && styles.sendBtnDisabled]}
+          onPress={() => enviar()}
+          disabled={!texto.trim() || digitando}
           activeOpacity={0.85}
-          accessibilityLabel={iaEsgotada ? 'Ver planos' : 'Enviar mensagem'}
+          accessibilityLabel="Enviar mensagem"
         >
-          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color={textoSobre(iaEsgotada ? cores.plan : cores.primary)} />
+          <MaterialCommunityIcons name="send" size={20} color={textoSobre(cores.primary)} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -447,10 +524,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: comAlfa(c.accent, 0.07), borderWidth: 1, borderColor: comAlfa(c.accent, 0.28), borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
   sugestaoText: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '600' },
 
+  creditoAcoes: { width: '100%', marginTop: 14, gap: 8 },
+  creditoBotao: { alignSelf: 'stretch', marginTop: 0 },
+  creditoAviso: { color: c.onSurfaceVariant, fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 2 },
+
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   inputWrap: { flex: 1, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },
   input: { fontSize: 15, color: c.onSurface, maxHeight: 100 },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).glowBlue },
   sendBtnDisabled: { backgroundColor: c.surfaceElevated, opacity: 0.6, shadowOpacity: 0 },
-  sendBtnPro: { backgroundColor: c.plan, shadowColor: c.plan },
 });

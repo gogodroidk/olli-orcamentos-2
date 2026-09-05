@@ -1,0 +1,8 @@
+{
+  "name": "olli-onda-1-janela-1-3-spikes",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/document.test.mjs tests/outbox.test.mjs tests/pricing-ai.test.mjs tests/e2e.test.mjs tests/security-boundaries.test.mjs"
+  }
+}

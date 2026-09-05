@@ -61,6 +61,7 @@ import {
 } from './iaQuota.js';
 import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
+import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import {
   rotuloVertical,
@@ -850,6 +851,13 @@ async function handleChat(bodyText, env, user) {
 }
 
 const handler = {
+  scheduled(controller, env, ctx) {
+    // O modo de dispatch é fail-closed. Nesta janela o config usa somente
+    // `simulator`, e o consumer ainda confere o destinatário exato antes da
+    // chamada externa. A Promise fica registrada no ciclo de vida do evento.
+    ctx.waitUntil(processarWelcomeOutbox(env));
+  },
+
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 

@@ -74,7 +74,7 @@ import { cn } from "@/utils";
  * é prestador em 4G ruim, onde chunk que não baixa é comum e viraria tela morta.
  */
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
-import FormOrcamento, { duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
+import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
 
 /**
  * A linha como ela vem do Supabase: colunas-espelho + o BLOB. Os nomes das colunas
@@ -478,6 +478,9 @@ export default function OrcamentosPage() {
 	const duplicar = (o: Orcamento) =>
 		setEditor({ orc: duplicarComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
 
+	const criarRevisao = (o: Orcamento) =>
+		setEditor({ orc: criarRevisaoComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
+
 	/** Abre a confirmação de exclusão (soft delete) sobre o blob — limpa o erro da
 	 *  exclusão ANTERIOR primeiro, senão o diálogo abriria vermelho por cima de um
 	 *  orçamento inocente. */
@@ -780,7 +783,7 @@ export default function OrcamentosPage() {
 					aoFechar={() => setEditor(null)}
 					inicial={editor.orc}
 					ehNovo={editor.ehNovo}
-					aoDuplicar={duplicar}
+					aoDuplicar={criarRevisao}
 				/>
 			)}
 

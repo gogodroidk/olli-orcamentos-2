@@ -124,7 +124,7 @@ export interface UsePlano {
   temAcesso: (recurso: PlanoRecurso) => boolean;
   /** Usos de IA restantes no mês. `Infinity` em planos com IA ilimitada. */
   usosIaRestantes: number;
-  /** Registra 1 uso de IA e atualiza a cota exibida. No-op em plano ilimitado. */
+  /** Atualiza a cota otimista e a reconcilia com o servidor. No-op no ilimitado. */
   consumirUsoIa: () => Promise<void>;
   /** Força uma releitura de plano + cota (invalida cache). Útil ao voltar do checkout. */
   recarregar: () => Promise<void>;
@@ -156,9 +156,12 @@ export function usePlano(): UsePlano {
   const consumirUsoIa = useCallback(async () => {
     // Plano com IA ilimitada não tem cota para consumir.
     if (temAcessoRecurso(estado.plano, 'ia_ilimitada')) return;
-    await consumirUsoIaStorage();
-    const usos = await getUsosIaRestantes(estado.plano);
-    definir({ usosIaRestantes: usos });
+    const usosLocais = await consumirUsoIaStorage();
+    // Atualização otimista: evita mostrar o mesmo número enquanto a linha que o
+    // Worker acabou de gravar chega à leitura. Em seguida a autoridade remota
+    // corrige qualquer divergência (outro aparelho, retry idempotente, crédito).
+    definir({ usosIaRestantes: Math.max(0, IA_USOS_GRATIS_MES - usosLocais) });
+    await revalidar();
   }, []);
 
   const recarregar = useCallback(() => revalidar(), []);

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:olli:schema:increment-a-command-result:v1",
+  "title": "OLLI Increment A Command Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["command_id", "idempotency_key", "organization_id", "aggregate_type", "aggregate_id", "state", "code", "canonical_version", "replayed"],
+  "properties": {
+    "command_id": { "type": "string" },
+    "idempotency_key": { "type": "string" },
+    "organization_id": { "type": "string" },
+    "aggregate_type": { "enum": ["client", "location"] },
+    "aggregate_id": { "type": "string" },
+    "state": { "enum": ["acked", "conflict", "rejected"] },
+    "code": { "enum": ["applied", "idempotent_replay", "idempotency_key_reused", "expected_version_mismatch", "authorization_denied", "authorization_revoked", "co_tenancy_violation", "validation_failed"] },
+    "canonical_version": { "type": ["integer", "null"], "minimum": 1 },
+    "replayed": { "type": "boolean" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "state": { "const": "acked" },
+        "code": { "const": "applied" },
+        "canonical_version": { "type": "integer", "minimum": 1 },
+        "replayed": { "const": false }
+      }
+    },
+    {
+      "properties": {
+        "state": { "const": "acked" },
+        "code": { "const": "idempotent_replay" },
+        "canonical_version": { "type": "integer", "minimum": 1 },
+        "replayed": { "const": true }
+      }
+    },
+    {
+      "properties": {
+        "state": { "const": "conflict" },
+        "code": { "const": "expected_version_mismatch" },
+        "canonical_version": { "type": "integer", "minimum": 1 },
+        "replayed": { "const": false }
+      }
+    },
+    {
+      "properties": {
+        "state": { "const": "rejected" },
+        "code": { "enum": ["idempotency_key_reused", "authorization_denied", "authorization_revoked", "co_tenancy_violation", "validation_failed"] },
+        "canonical_version": { "type": "null" },
+        "replayed": { "const": false }
+      }
+    }
+  ]
+}

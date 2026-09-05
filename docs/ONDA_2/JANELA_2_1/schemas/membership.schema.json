@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:olli:schema:membership:v1",
+  "title": "OLLI Organization Membership v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["organization_id", "user_id", "role", "status", "capabilities", "membership_version", "updated_at"],
+  "properties": {
+    "organization_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "user_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "role": { "enum": ["owner", "admin", "manager", "technician", "viewer"] },
+    "status": { "enum": ["active", "revoked"] },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["clients_locations.read", "clients_locations.write"] }
+    },
+    "membership_version": { "type": "integer", "minimum": 1 },
+    "updated_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }
+  }
+}

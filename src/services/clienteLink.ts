@@ -71,6 +71,7 @@ function base64url(bytes: Uint8Array): string {
 function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
   return {
     numero: orc.numero,
+    revisaoDeNumero: orc.revisaoDeNumero ?? '',
     clienteNome: orc.clienteNome,
     valorTotal: orc.valorTotal,
     subtotal: orc.subtotal,
@@ -102,6 +103,8 @@ function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
     })),
     validade: orc.validadeOrcamento ?? '',
     garantia: orc.garantia ?? '',
+    // Campo legado preservado no contrato de dados; na interface é exibido como
+    // condição comercial, não como meio de cobrança da OLLI.
     condicoesPagamento: orc.condicoesPagamento ?? '',
     // "Prazo" para o mini-card (agendamento / prestação do serviço, se houver).
     prazo: orc.agendamentoServico ?? orc.dataPrestacaoServico ?? '',

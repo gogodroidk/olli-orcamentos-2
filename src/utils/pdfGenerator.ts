@@ -25,7 +25,6 @@ export { abrirWhatsApp } from './exportarDocumento';
  *     Empresa) => sem esse rodapé (dados legais/PIX/validade PERMANECEM).
  */
 import { qrSvg } from './qrcode';
-import { gerarPixCopiaECola } from './pixBrCode';
 
 export type CapaEstilo = 'logo' | 'foto' | 'nenhuma';
 
@@ -184,46 +183,13 @@ function renderItensTabela(itens: ItemOrcamento[]): string {
 }
 
 /**
- * Texto das condições de pagamento a partir dos dados do orçamento.
- * Retorna HTML já seguro: o texto livre do usuário (condicoesPagamento) é
- * escapado aqui; o `<br/>` do ramo do sinal é marcação fixa controlada.
+ * Condições do documento. O OLLI não exibe forma de pagamento, chave Pix,
+ * sinal ou QR no orçamento: o pagamento é combinado diretamente entre cliente
+ * e empresa. `condicoesPagamento` continua sendo lido como texto comercial
+ * legado/compatível (ex.: parcelamento e marcos), sempre escapado.
  */
-function pagamentoTexto(o: Orcamento): string {
-  const partes: string[] = [];
-  // Sinal/entrada preenchido no wizard — antes NÃO aparecia no PDF entregue ao
-  // cliente (só o percentual, e só quando não havia condição em texto livre). O
-  // valor em R$ tem prioridade sobre o percentual; a data entra se houver.
-  if (o.sinalValor && o.sinalValor > 0) {
-    const dataTxt = o.sinalData ? ` até ${escapeHtml(dataSinalBR(o.sinalData))}` : '';
-    partes.push(`Entrada de ${formatCurrency(o.sinalValor)}${dataTxt}`);
-  } else if (o.sinalPercentual) {
-    partes.push(`Sinal de ${o.sinalPercentual}% na aprovação`);
-  }
-  if (o.condicoesPagamento) {
-    // Texto livre do usuário — escapado (pode ser adulterado via sync).
-    partes.push(escapeHtml(o.condicoesPagamento));
-  } else {
-    const formas: string[] = [];
-    if (o.formasPagamento?.pix) formas.push('Pix');
-    if (o.formasPagamento?.credito) formas.push('Crédito');
-    if (o.formasPagamento?.debito) formas.push('Débito');
-    if (o.formasPagamento?.dinheiro) formas.push('Dinheiro');
-    if (partes.length && formas.length) partes.push(`Restante na conclusão · ${formas.join(', ')}`);
-    else if (formas.length) partes.push(formas.join(' · '));
-  }
-  return partes.length ? partes.join('<br/>') : 'A combinar';
-}
-
-/** Data ISO (YYYY-MM-DD…) → DD/MM/YYYY; qualquer outro formato passa direto. */
-function dataSinalBR(d: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
-}
-
-/** 3 colunas de condições: Pagamento · Garantia · Prazo (omite vazias). */
 function renderCondicoes(o: Orcamento): string {
-  // `pagamento` já vem como HTML seguro de pagamentoTexto (texto livre escapado lá).
-  const pagamento = pagamentoTexto(o);
+  const comerciais = o.condicoesPagamento ? escapeHtml(o.condicoesPagamento) : '';
   const garantia = o.garantia ?? '';
   // Prazo é só data de agendamento/execução — informacoesAdicionais (observações)
   // ganha bloco próprio em renderObservacoes() e não deve ser "engolido" aqui
@@ -231,7 +197,7 @@ function renderCondicoes(o: Orcamento): string {
   const prazo = o.agendamentoServico || o.dataPrestacaoServico || '';
 
   const cols: string[] = [];
-  if (pagamento) cols.push(`<div class="cond-col"><div class="cond-label">Pagamento</div><div class="cond-val">${pagamento}</div></div>`);
+  if (comerciais) cols.push(`<div class="cond-col"><div class="cond-label">Condições comerciais</div><div class="cond-val">${comerciais}</div></div>`);
   if (garantia) cols.push(`<div class="cond-col"><div class="cond-label">Garantia</div><div class="cond-val">${escapeHtml(garantia)}</div></div>`);
   if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${escapeHtml(prazo)}</div></div>`);
   if (cols.length === 0) return '';
@@ -256,42 +222,6 @@ function renderLaudo(o: Orcamento): string {
     <div class="text-block">
       <div class="eyebrow">Laudo técnico</div>
       <div class="body">${escapeHtml(o.laudoTecnico)}</div>
-    </div>
-  `;
-}
-
-/**
- * Bloco de COBRANÇA Pix — copia-e-cola + QR com o VALOR já embutido (o sinal quando
- * há, senão o total). O cliente escaneia ou copia e paga na hora, direto na conta do
- * prestador. 100% offline (qrSvg local, sem API externa) e NÃO processa pagamento —
- * é só o "código do banco". Só aparece quando há chave Pix E o Pix está nas formas de
- * pagamento (o prestador controla ligando/desligando no orçamento).
- */
-function renderPixCobranca(o: Orcamento, empresa: Empresa): string {
-  const chave = (o.chavePix || empresa.chavePix || '').trim();
-  if (!chave || !o.formasPagamento?.pix) return '';
-  const temSinal = !!(o.sinalValor && o.sinalValor > 0);
-  // Clampa ao total (defesa em profundidade contra sinal stale) — nunca cobrar mais que o total.
-  const valor = temSinal ? Math.min(o.sinalValor!, o.valorTotal) : o.valorTotal;
-  if (!valor || valor <= 0) return '';
-  const brcode = gerarPixCopiaECola({
-    chave,
-    valor,
-    nome: empresa.nome,
-    cidade: empresa.cidade || '',
-    txid: o.numero,
-  });
-  if (!brcode) return '';
-  const rotulo = temSinal ? 'Pague o sinal por Pix' : 'Pague por Pix';
-  return `
-    <div class="pix-cobranca">
-      <div class="pix-cob-qr">${qrSvg(brcode)}</div>
-      <div class="pix-cob-info">
-        <div class="pix-cob-rotulo">${rotulo}</div>
-        <div class="pix-cob-valor">${formatCurrency(valor)}</div>
-        <div class="pix-cob-instr">Abra o app do banco → Pix → escaneie o QR, ou copie o código:</div>
-        <div class="pix-cob-code">${escapeHtml(brcode)}</div>
-      </div>
     </div>
   `;
 }
@@ -342,6 +272,9 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
   const emitidoEm = o.dataEmissao ? formatDateBR(o.dataEmissao) : formatDate(o.criadoEm);
   const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
   const logoSrc = img(empresa.logoUri);
+  const revisaoLinha = o.revisaoDeNumero
+    ? `<div class="cover-num">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>`
+    : '';
 
   if (plano.tipo === 'foto') {
     return `
@@ -354,6 +287,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
           : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         <div class="cover-kicker">ORÇAMENTO</div>
         <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        ${revisaoLinha}
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
       </div>
@@ -372,6 +306,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
         </div>
         <div class="cover-kicker">ORÇAMENTO</div>
         <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        ${revisaoLinha}
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
       </div>
@@ -606,7 +541,6 @@ export function gerarHtmlOrcamento(
   const approvalGuideHtml = renderApprovalGuide(o, opts?.linkPublico);
   const observacoesHtml = renderObservacoes(o);
   const laudoHtml = renderLaudo(o);
-  const pixCobrancaHtml = renderPixCobranca(o, empresa);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
   const accentSoft = mixWhite(accent, 0.09);   // fundo do TOTAL / pílula
@@ -626,12 +560,9 @@ export function gerarHtmlOrcamento(
   ].filter(Boolean).join(' · ');
   const contatoEmpresa = [empresa.telefone, empresa.email].filter(Boolean).join(' · ');
 
-  // Rodapé do prestador — contato + PIX (dado legal/comercial). Este bloco é
-  // SEMPRE renderizado; removerMarca só afeta a linha da marca OLLI, nunca isto.
-  const pixRodape = o.chavePix || empresa.chavePix || '';
-  const rodapeContato = [contatoEmpresa || empresa.nome, pixRodape ? `PIX ${pixRodape}` : '']
-    .filter(Boolean)
-    .join('  ·  ');
+  // Rodapé do prestador: contato apenas. Dados de cobrança não entram no
+  // orçamento; removerMarca só afeta a linha da marca OLLI.
+  const rodapeContato = contatoEmpresa || empresa.nome;
 
   // Marca OLLI discreta (apenas quando removerMarca é falsy). Texto fixo/controlado.
   const brandOlliHtml = removerMarca
@@ -737,14 +668,6 @@ export function gerarHtmlOrcamento(
   .cond-col { flex: 1; }
   .cond-label { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
   .cond-val { font-size: 12.5px; color: #3C4756; margin-top: 6px; line-height: 1.55; }
-  .pix-cobranca { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 20px; align-items: center; page-break-inside: avoid; }
-  .pix-cob-qr { flex: 0 0 auto; width: 108px; height: 108px; }
-  .pix-cob-qr svg { width: 108px; height: 108px; display: block; }
-  .pix-cob-info { flex: 1; min-width: 0; }
-  .pix-cob-rotulo { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
-  .pix-cob-valor { font-size: 20px; font-weight: 800; color: #0A2540; margin: 2px 0 6px; }
-  .pix-cob-instr { font-size: 11px; color: #6B7484; margin-bottom: 6px; }
-  .pix-cob-code { font-family: 'Courier New', monospace; font-size: 9px; color: #3C4756; word-break: break-all; line-height: 1.4; background: #FFFFFF; border: 1px solid #E7E9EE; border-radius: 8px; padding: 8px 10px; }
   .approval-guide { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 22px; align-items: flex-start; page-break-inside: avoid; }
   /* Variante com QR: empilha o texto sobre os dois cartões de ação. */
   .approval-guide-qr { display: block; }
@@ -820,6 +743,7 @@ ${renderCapa(o, empresa, planoCapa)}
       <div class="header-right">
         <div class="doc-title">Orçamento</div>
         <div class="doc-num">Nº ${escapeHtml(o.numero)}</div>
+        ${o.revisaoDeNumero ? `<div class="doc-date">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>` : ''}
         <div class="doc-date">Emitido em ${emitidoEm}</div>
         ${o.validadeOrcamento ? `<div class="pill">Válido até ${formatDateBR(o.validadeOrcamento)}</div>` : `<div class="pill">Válido por 15 dias</div>`}
       </div>
@@ -864,8 +788,6 @@ ${renderCapa(o, empresa, planoCapa)}
     <!-- CONDIÇÕES -->
     ${condicoesHtml}
 
-    <!-- COBRANÇA PIX (copia-e-cola + QR com o valor) -->
-    ${pixCobrancaHtml}
     ${approvalGuideHtml}
 
     <!-- CONDIÇÕES CONTRATUAIS (texto livre, opcional) -->
@@ -919,7 +841,7 @@ ${renderCapa(o, empresa, planoCapa)}
       </div>
     ` : ''}
 
-    <!-- FOOTER — dados do prestador (contato/PIX/validade) SEMPRE presentes -->
+    <!-- FOOTER — contato do prestador e validade SEMPRE presentes -->
     <div class="footer">
       <span class="footer-contact">${escapeHtml(rodapeContato)}</span>
       ${o.validadeOrcamento ? `<span class="footer-contact">Válido até ${formatDateBR(o.validadeOrcamento)}</span>` : ''}

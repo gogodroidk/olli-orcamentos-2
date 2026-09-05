@@ -368,6 +368,15 @@ export interface ChatMensagem {
 export interface ChatResultado {
   ok: boolean;
   resposta: string;
+  /** A cota grátis acabou e o servidor exige consentimento/saldo de crédito. */
+  semCreditos?: boolean;
+}
+
+export interface ChatOpcoesCredito {
+  /** Consentimento explícito do usuário para gastar 1 crédito nesta tentativa. */
+  confirmarCredito?: boolean;
+  /** Chave estável reaproveitada nos retries para a cobrança ser idempotente. */
+  creditoRef?: string;
 }
 
 const CHAT_SEM_IA =
@@ -384,10 +393,14 @@ const CHAT_CANCELADO =
  * `mensagens` deve conter a conversa inteira (a do usuário já incluída no fim).
  * Nunca lança: em erro devolve `{ ok:false, resposta }` com texto amigável.
  *
- * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
- * (botão "Cancelar" durante o loading).
+ * `sinalCancelamento` permite cancelamento manual. `opcoesCredito` só é enviado
+ * quando houve consentimento explícito; saldo positivo nunca é consentimento.
  */
-export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: AbortSignal): Promise<ChatResultado> {
+export async function enviarChat(
+  mensagens: ChatMensagem[],
+  sinalCancelamento?: AbortSignal,
+  opcoesCredito?: ChatOpcoesCredito,
+): Promise<ChatResultado> {
   if (!DIAGNOSTICO_URL) return { ok: false, resposta: CHAT_SEM_IA };
 
   // O Worker exige login (JWT do Supabase). Sem sessão → mensagem amigável.
@@ -403,6 +416,10 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
   try {
     const corpo: Record<string, unknown> = { mensagens };
     if (vertical) corpo.vertical = vertical;
+    if (opcoesCredito?.confirmarCredito === true) corpo.confirmarCredito = true;
+    if (opcoesCredito?.confirmarCredito === true && opcoesCredito.creditoRef?.trim()) {
+      corpo.creditoRef = opcoesCredito.creditoRef.trim();
+    }
     const r = await fetch(`${DIAGNOSTICO_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -412,7 +429,7 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
     if (!r.ok) {
       const errData = await r.json().catch(() => null);
       if (respostaSemCreditos(r.status, errData)) {
-        return { ok: false, resposta: SEM_CREDITOS_VOZ };
+        return { ok: false, resposta: SEM_CREDITOS_VOZ, semCreditos: true };
       }
       return { ok: false, resposta: mensagemPorStatus(r.status, CHAT_FALHOU, errData?.erro) };
     }
@@ -421,7 +438,9 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
       track(Eventos.aiUsed, { fonte: 'chat' });
       return { ok: true, resposta: data.resposta };
     }
-    if (respostaSemCreditos(r.status, data)) return { ok: false, resposta: SEM_CREDITOS_VOZ };
+    if (respostaSemCreditos(r.status, data)) {
+      return { ok: false, resposta: SEM_CREDITOS_VOZ, semCreditos: true };
+    }
     return { ok: false, resposta: mensagemErroIA(data?.erro, CHAT_SEM_IA) };
   } catch (e: any) {
     if (e?.name === 'AbortError') {

@@ -19,6 +19,14 @@
 
 import { getAssinatura, cancelarAssinaturaStripe } from './conta.js';
 import { derivarEntitlement } from './entitlement.js';
+import {
+  ADMIN_DATA_POLICY_VERSION,
+  camposAdmin,
+  podeLerDadosAdmin,
+  projetarEmpresa,
+  projetarLinhas,
+  selectAdminDataset,
+} from './adminDataPolicy.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -106,6 +114,7 @@ const PAPEIS = {
 
 function pode(user, permissao) {
   if (!user || !user.papel) return false;
+  if (permissao === 'detalhe') return ['suporte', 'financeiro', 'admin', 'owner'].includes(user.papel);
   if (permissao === 'financeiro') return ['financeiro', 'admin', 'owner'].includes(user.papel);
   if (permissao === 'suporte') return ['suporte', 'admin', 'owner'].includes(user.papel);
   return (PAPEIS[user.papel] || 0) >= (PAPEIS[permissao] || 99);
@@ -248,38 +257,63 @@ async function users(env) {
 async function userDetail(env, id, actor) {
   if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
   const enc = encodeURIComponent(id);
-  const [empresaArr, orcamentos, clientes, agenda, recibos, assinaturaArr, creditos, usosIa, auditoria] = await Promise.all([
-    rest(env, `empresa?user_id=eq.${enc}&select=dados`),
-    rest(env, `orcamentos?user_id=eq.${enc}&select=numero,cliente_nome,valor_total,status,criado_em&order=criado_em.desc&limit=100`),
-    rest(env, `clientes?user_id=eq.${enc}&select=id,nome,telefone`),
-    rest(env, `agendamentos?user_id=eq.${enc}&select=id,titulo,inicio,status&order=inicio.desc&limit=50`),
-    rest(env, `recibos?user_id=eq.${enc}&select=numero,valor_recebido,data_recebimento&order=criado_em.desc&limit=50`),
-    rest(env, `assinaturas?user_id=eq.${enc}&select=user_id,plano,status,stripe_customer_id,stripe_subscription_id,mp_preapproval_id,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate,admin_override_reason,admin_override_at&limit=1`),
-    rest(env, `credit_ledger?user_id=eq.${enc}&select=id,delta,origem,descricao,criado_em&order=criado_em.desc&limit=100`),
-    rest(env, `ia_uso_gratis?user_id=eq.${enc}&select=periodo,acao,criado_em&order=criado_em.desc&limit=100`),
-    rest(env, `admin_audit_log?target_user_id=eq.${enc}&select=id,actor_role,acao,motivo,criado_em&order=criado_em.desc&limit=100`),
+  const papel = actor && actor.papel;
+  const ler = (dataset) => podeLerDadosAdmin(papel, dataset);
+  const consultar = (dataset, base, sufixo = '') => {
+    const select = selectAdminDataset(papel, dataset);
+    if (!select) return Promise.resolve([]);
+    return rest(env, `${base}&select=${select}${sufixo}`);
+  };
+  const assinaturaSelect = camposAdmin(papel, 'assinatura');
+  const podeFaturas = ['financeiro', 'admin', 'owner'].includes(papel);
+  // O customer id é uma dependência interna para listar faturas autorizadas;
+  // ele nunca é devolvido pela projeção ao navegador.
+  if (assinaturaSelect.length && podeFaturas && !assinaturaSelect.includes('stripe_customer_id')) assinaturaSelect.push('stripe_customer_id');
+  const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta] = await Promise.all([
+    ler('empresa') ? rest(env, `empresa?user_id=eq.${enc}&select=dados`) : Promise.resolve([]),
+    consultar('orcamentos', `orcamentos?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
+    consultar('clientes', `clientes?user_id=eq.${enc}`),
+    consultar('agenda', `agendamentos?user_id=eq.${enc}`, '&order=inicio.desc&limit=50'),
+    consultar('recibos', `recibos?user_id=eq.${enc}`, '&order=criado_em.desc&limit=50'),
+    assinaturaSelect.length
+      ? rest(env, `assinaturas?user_id=eq.${enc}&select=${assinaturaSelect.join(',')}&limit=1`)
+      : Promise.resolve([]),
+    consultar('creditos', `credit_ledger?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
+    consultar('usosIa', `ia_uso_gratis?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
+    consultar('auditoria', `admin_audit_log?target_user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
   ]);
-  const assinatura = assinaturaArr[0] || null;
-  const faturas = assinatura && assinatura.stripe_customer_id
-    ? await listarFaturasStripeAdmin(env, assinatura.stripe_customer_id)
+  const assinaturaInterna = assinaturaArr[0] || null;
+  const faturas = podeFaturas && assinaturaInterna && assinaturaInterna.stripe_customer_id
+    ? await listarFaturasStripeAdmin(env, assinaturaInterna.stripe_customer_id)
     : [];
-  const verSuporte = pode(actor, 'suporte');
-  const verFinanceiro = pode(actor, 'financeiro');
-  const verAuditoria = pode(actor, 'admin');
+  const empresa = empresaArr[0] ? projetarEmpresa(papel, empresaArr[0]) : null;
+  const orcamentos = projetarLinhas(papel, 'orcamentos', orcamentosBrutos);
+  const clientes = projetarLinhas(papel, 'clientes', clientesBrutos);
+  const agenda = projetarLinhas(papel, 'agenda', agendaBruta);
+  const recibos = projetarLinhas(papel, 'recibos', recibosBrutos);
+  const creditos = projetarLinhas(papel, 'creditos', creditosBrutos);
+  const usosIa = projetarLinhas(papel, 'usosIa', usosIaBrutos);
+  const auditoria = projetarLinhas(papel, 'auditoria', auditoriaBruta);
+  const assinatura = projetarLinhas(papel, 'assinatura', assinaturaArr)[0] || null;
+  if (assinatura && assinaturaInterna) {
+    assinatura.stripeVinculado = !!assinaturaInterna.stripe_subscription_id;
+    assinatura.mercadoPagoVinculado = !!assinaturaInterna.mp_preapproval_id;
+  }
   return json({
     ok: true,
-    empresa: empresaArr[0] ? empresaArr[0].dados : null,
+    politicaDados: { versao: ADMIN_DATA_POLICY_VERSION, papel },
+    empresa,
     orcamentos,
-    clientes: verSuporte ? clientes : [],
-    agenda: verSuporte ? agenda : [],
-    recibos: verSuporte || verFinanceiro ? recibos : [],
-    assinatura: verFinanceiro ? assinatura : null,
-    entitlement: assinatura ? derivarEntitlement(assinatura) : { plano: 'gratis', origem: 'gratis' },
-    creditos: verFinanceiro ? creditos : [],
-    saldoCreditos: verFinanceiro ? creditos.reduce((s, x) => s + (Number(x.delta) || 0), 0) : null,
-    usosIa: verSuporte ? usosIa : [],
-    faturas: verFinanceiro ? faturas : [],
-    auditoria: verAuditoria ? auditoria : [],
+    clientes,
+    agenda,
+    recibos,
+    assinatura,
+    entitlement: assinaturaInterna ? derivarEntitlement(assinaturaInterna) : { plano: 'gratis', origem: 'gratis' },
+    creditos,
+    saldoCreditos: creditos.length ? creditos.reduce((s, x) => s + (Number(x.delta) || 0), 0) : null,
+    usosIa,
+    faturas,
+    auditoria,
   });
 }
 
@@ -552,12 +586,20 @@ export async function handleAdmin(request, env, url) {
     if (m === 'GET' && p === '/admin/api/me') {
       return json({ ok: true, user: { id: user.id, email: user.email, papel: user.papel, aal: user.aal } });
     }
-    if (m === 'GET' && p === '/admin/api/metrics') return metrics(env);
-    if (m === 'GET' && p === '/admin/api/users') return users(env);
+    // Métricas e lista de usuários são dados de governança, não uma permissão
+    // implícita de qualquer papel administrativo. O gate explícito evita que
+    // `leitura`/`suporte` recebam e-mail, PII ou faturamento agregado só porque
+    // conseguiram passar pelo requireAdmin.
+    if (m === 'GET' && p === '/admin/api/metrics') {
+      if ((gate = exigir(user, 'admin'))) return gate;
+      return metrics(env);
+    }
+    if (m === 'GET' && p === '/admin/api/users') {
+      if ((gate = exigir(user, 'admin'))) return gate;
+      return users(env);
+    }
     if (m === 'GET' && p === '/admin/api/user') {
-      if (!['suporte', 'financeiro', 'admin', 'owner'].includes(user.papel)) {
-        return json({ ok: false, erro: 'sem_permissao' }, 403);
-      }
+      if ((gate = exigir(user, 'detalhe', { aal2: true }))) return gate;
       return userDetail(env, id, user);
     }
     if (m === 'POST' && p === '/admin/api/user/ban') {
@@ -955,8 +997,8 @@ async function openUser(x){
    ['Plano do gateway',(ass.plano||'—')+' · '+(ass.status||'—')],
    ['Vigência',fmtDate(ass.current_period_end)],
    ['Override manual',ass.admin_override_ativo?((ass.admin_plano_override||'—')+' até '+(ass.admin_override_ate?fmtDate(ass.admin_override_ate):'revogação')):'inativo'],
-   ['Mercado Pago',ass.mp_preapproval_id?'vinculado':'—'],
-   ['Stripe',ass.stripe_subscription_id?'vinculada':'—'],
+   ['Mercado Pago',ass.mercadoPagoVinculado?'vinculado':'—'],
+   ['Stripe',ass.stripeVinculado?'vinculada':'—'],
   ]:[['Estado','Sem assinatura; plano Grátis']]))
   d.append(mk('Faturas Stripe',det.faturas.slice(0,12).map(f=>[fmtDate(f.criadoEm)+' · '+(f.status||'—'),fmtBRL((f.valorCentavos||0)/100)])));
   d.append(mk('Créditos recentes',det.creditos.slice(0,12).map(c=>[(Number(c.delta)>0?'+':'')+c.delta+' · '+c.origem,fmtDate(c.criado_em)])));

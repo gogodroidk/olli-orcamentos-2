@@ -1,8 +1,8 @@
 import type { PortaDisponivel, ResultadoPorta } from './comum';
 
 /**
- * StorageProvider — armazenamento de ARQUIVOS/BLOBS: logo do negócio, fotos de
- * serviço, PDFs gerados. É distinto do backup de DADOS (JSON do banco), que já
+ * StorageProvider — armazenamento de ARQUIVOS/BLOBS grandes: fotos de serviço,
+ * PDFs gerados e anexos. É distinto do backup de DADOS (JSON do banco), que já
  * tem seu próprio caminho em `src/services/backup.ts` — esta porta é para
  * binários que precisam de URL pública/assinada consistente em web + mobile +
  * e-mail.
@@ -11,14 +11,14 @@ import type { PortaDisponivel, ResultadoPorta } from './comum';
  * dono-a-dono, versões otimizadas + original preservado). Decisão D-13; chave de
  * entitlement `storage.limit_mb` já reservada. Ver backlog STORAGE.
  *
- * Impl de-facto HOJE: NÃO EXISTE upload de binário para a nuvem. A logo vive
- * como URI LOCAL (ver telas de personalização, ex.:
- * `src/steps/Step4Personalizacao.tsx`), o que quebra consistência web/mobile e
- * inviabiliza logo nos e-mails da Onda 6 — exatamente o problema que a D-13
- * resolve. Fotos de serviço hoje também são locais (`src/utils/fotosOrcamento.ts`).
+ * Impl de-facto HOJE: logo e assinatura pequenas são convertidas para `data:`
+ * URI limitada (máx. 512 px / 512 KiB) e vivem no blob RLS de `empresa.dados`.
+ * Isso já as torna portáteis entre app, painel e PDF sem URL pública. Esta porta
+ * continua necessária para fotos/anexos/PDFs grandes — colocar esses binários no
+ * JSON degradaria SQLite, PostgREST e sincronização.
  *
- * Onda de fiação: Onda 7 (PDF v2 + identidade) — logo → Storage com RLS é
- * pré-requisito do PDF v2 e da logo nos e-mails.
+ * Onda de fiação: fundação de dados/arquivos — bucket privado, RLS por tenant,
+ * URLs assinadas e política de retenção antes de migrar binários grandes.
  */
 export interface StorageProvider extends PortaDisponivel {
   /**

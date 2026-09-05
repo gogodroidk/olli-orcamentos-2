@@ -7,6 +7,9 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online"
+      },
       "android": {
         "buildType": "apk"
       },
@@ -16,6 +19,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online"
+      },
       "android": {
         "buildType": "apk"
       },
@@ -25,6 +31,9 @@
     },
     "production": {
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online"
+      },
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "remote"

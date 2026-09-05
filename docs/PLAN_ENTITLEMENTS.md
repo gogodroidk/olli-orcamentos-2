@@ -107,3 +107,26 @@ Regras de migração:
 | --- | --- | --- | --- |
 | Pro | R$ 39 | R$ 374 (−20%) | 12× R$ 39 (mode=payment, acesso 12 meses) |
 | Empresa | R$ 99 (confirmar com o dono antes do live) | R$ 950 (−20%) | — |
+
+## Decisão de conversão Pro — 2026-08-31
+
+A estratégia aprovada para teste está em
+[ESTRATEGIA_CONVERSAO_PRO_OLLI_2026-08-31.md](ENXAME/ESTRATEGIA_CONVERSAO_PRO_OLLI_2026-08-31.md).
+
+Resumo contratual:
+
+- o grátis continua ilimitado no fluxo central (orçamentos, recibos, clientes,
+  agenda, PDF/link e histórico);
+- o Pro converte por valor visível: marca própria, modelos completos, IA
+  ilimitada, relatórios, metas e radar;
+- não usar limite duro de orçamentos nem bloquear o primeiro valor;
+- testar CTA contextual e trial opt-in pós-ativação somente depois de checkout,
+  webhook, entitlement server-side, eventos idempotentes e downgrade validados;
+- manter R$ 0 / R$ 39 / R$ 99 durante a primeira coorte com caixa observável;
+- separar coorte Fundadores, não contar gratuidade como pagamento;
+- resolver a fonte única de plano da release antes de qualquer live: este arquivo
+  menciona Stripe como fonte do webhook, enquanto os bloqueios de negócio citam
+  Mercado Pago. Não operar dois caminhos concorrentes.
+
+Este registro é uma decisão de produto local. Não autoriza migrations, deploy,
+cobrança, envio de e-mail, publicação ou mudança de preço em produção.

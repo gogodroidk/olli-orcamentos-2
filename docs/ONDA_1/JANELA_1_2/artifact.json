@@ -1,0 +1,343 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "OLLI V2 — evidência para decidir a plataforma",
+    "description": "Pesquisa de mercado, jornada, documentos e regulação para a Onda 1, Janela 1.2.",
+    "generatedAt": "2026-08-26T21:56:55-03:00",
+    "cards": [],
+    "charts": [
+      {
+        "id": "document_priority_chart",
+        "title": "A biblioteca começa concentrada no núcleo P0",
+        "subtitle": "Contagem dos 20 modelos por prioridade de construção; é decisão de produto, não dado de prevalência de mercado.",
+        "type": "bar",
+        "dataset": "document_priority_counts",
+        "sourceId": "document_priority_sql",
+        "encodings": {
+          "x": { "field": "priority", "type": "ordinal", "label": "Prioridade" },
+          "y": { "field": "count", "type": "quantitative", "label": "Documentos" }
+        },
+        "yAxisTitle": "Quantidade de documentos",
+        "valueFormat": "number"
+      }
+    ],
+    "tables": [
+      {
+        "id": "journey_priority",
+        "title": "A jornada que a OLLI precisa preservar",
+        "subtitle": "Cada etapa deriva da anterior sem perder versão, evidência ou responsabilidade.",
+        "dataset": "journey",
+        "sourceId": "journey_sql",
+        "columns": [
+          { "field": "stage", "label": "Etapa", "type": "text" },
+          { "field": "pain", "label": "Falha provável", "type": "text" },
+          { "field": "opportunity", "label": "Oportunidade OLLI", "type": "text" }
+        ]
+      },
+      {
+        "id": "competitor_matrix",
+        "title": "Peças maduras existem; a integração brasileira ainda é a aposta",
+        "subtitle": "Evidência pública do próprio fornecedor; não localizado não significa inexistente.",
+        "dataset": "competitors",
+        "sourceId": "competitors_sql",
+        "columns": [
+          { "field": "product", "label": "Produto", "type": "text" },
+          { "field": "focus", "label": "Foco", "type": "text" },
+          { "field": "opportunity", "label": "Oportunidade/lacuna pública", "type": "text" }
+        ]
+      },
+      {
+        "id": "document_catalog",
+        "title": "Biblioteca inicial de 20 documentos",
+        "subtitle": "Templates próprios, versionados e separados por revisão e nível de assinatura.",
+        "dataset": "documents",
+        "sourceId": "documents_sql",
+        "columns": [
+          { "field": "id", "label": "#", "type": "number" },
+          { "field": "document", "label": "Documento", "type": "text" },
+          { "field": "priority", "label": "Prioridade", "type": "text" }
+        ]
+      },
+      {
+        "id": "regulatory_matrix",
+        "title": "Gates que mudam a arquitetura",
+        "subtitle": "O software organiza e evidencia; RT, CREA, órgão e jurídico mantêm suas competências.",
+        "dataset": "regulatory",
+        "sourceId": "regulatory_sql",
+        "columns": [
+          { "field": "theme", "label": "Tema", "type": "text" },
+          { "field": "verified", "label": "Estado confirmado", "type": "text" },
+          { "field": "product_gate", "label": "Gate de produto", "type": "text" }
+        ]
+      },
+      {
+        "id": "research_status",
+        "title": "O que foi concluído e o que ainda precisa de campo",
+        "subtitle": "Nenhuma entrevista, baseline ou licença foi simulada.",
+        "dataset": "research",
+        "sourceId": "research_status_sql",
+        "columns": [
+          { "field": "workstream", "label": "Frente", "type": "text" },
+          { "field": "status", "label": "Estado", "type": "text" },
+          { "field": "next", "label": "Próxima prova", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      { "id": "jtbd_synthesis", "label": "Síntese JTBD, jornada e dores", "path": "JTBD_JOURNEY_AND_PAIN_RANKING.md" },
+      { "id": "competitor_evidence", "label": "Matriz de concorrentes e fontes oficiais", "path": "COMPETITOR_JOURNEY_MATRIX.md" },
+      { "id": "document_architecture", "label": "Catálogo dos 20 documentos", "path": "DOCUMENT_CATALOG.md" },
+      { "id": "regulatory_evidence", "label": "Gates regulatórios e fontes oficiais", "path": "REGULATORY_GATES.md" },
+      { "id": "field_protocol", "label": "Protocolo de campo e baseline", "path": "FIELD_RESEARCH_PROTOCOL.md" },
+      { "id": "source_ledger", "label": "Ledger de 56 fontes/evidências", "path": "SOURCE_LEDGER.md" }
+      ,
+      { "id": "journey_sql", "label": "Consulta revisada da jornada", "path": "queries/journey.sql" },
+      { "id": "competitors_sql", "label": "Consulta revisada de concorrentes", "path": "queries/competitors.sql" },
+      { "id": "documents_sql", "label": "Consulta revisada dos 20 documentos", "path": "queries/documents.sql" },
+      { "id": "document_priority_sql", "label": "Contagem revisada de prioridades", "path": "queries/document_priority_counts.sql" },
+      { "id": "regulatory_sql", "label": "Consulta revisada dos gates", "path": "queries/regulatory.sql" },
+      { "id": "research_status_sql", "label": "Consulta revisada do status", "path": "queries/research_status.sql" }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# OLLI V2 — evidência para decidir a plataforma\n\n**Onda 1 · Janela 1.2 · corte em 26 de agosto de 2026**\n\nMercado, jornada, documentos, campo e regulação antes de criar a nova fatia."
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\nA recomendação é construir uma **plataforma HVAC-first**, não reescrever tudo genericamente. O núcleo deve manter uma única trilha entre chamado, diagnóstico, orçamento parametrizado, aprovação/contrato, agenda, OS offline por ativo, PMOC, evidências, cobrança e portal do cliente.\n\nA pesquisa pública confirma demanda e concorrência em quase todas as partes da jornada. A oportunidade da OLLI está na combinação para o pequeno prestador brasileiro: simplicidade, PMOC/ART, execução offline, preço explicável, equipe com permissões e IA governada. Isso ainda precisa ser validado em campo e em testes controlados dos produtos.\n\nQuatro limites são inegociáveis: **não copiar modelos protegidos**, **não tratar a RE 9/2003 como vigente**, **não substituir RT/ART/órgão por automação** e **não usar dados brutos entre empresas para precificação**."
+      },
+      {
+        "id": "bet",
+        "type": "markdown",
+        "body": "## A aposta recomendada\n\nO objeto que cria o fosso não é o PDF isolado; é a cadeia de evidência. Cada documento e evento deve nascer da versão anterior e continuar ligado a cliente, local, ativo, responsável e autorização. HVAC valida o kernel. Outros ofícios entram por pacotes especializados depois que o fluxo comum funcionar."
+      },
+      { "id": "journey", "type": "table", "tableId": "journey_priority" },
+      {
+        "id": "market_read",
+        "type": "markdown",
+        "body": "## O mercado valida as peças — não a nossa execução\n\nProduttivo, Auvo e Field Control cobrem boa parte do field service brasileiro; Relatório PMOC e Klimatta validam o vertical HVAC; Jobber e Housecall Pro mostram experiência SMB/cliente; ServiceTitan, Simpro e Infraspeak mostram profundidade enterprise. A OLLI só pode alegar diferenciação depois de provar a integração, o offline, as permissões e a qualidade dos documentos."
+      },
+      { "id": "competitors", "type": "table", "tableId": "competitor_matrix" },
+      {
+        "id": "docs_intro",
+        "type": "markdown",
+        "body": "## A biblioteca começa com 20 modelos próprios\n\nOs modelos abaixo não são PDFs baixados. São schemas versionados, com fonte, revisão, assinatura e regra de imutabilidade. O pacote inicial cobre o ciclo comercial-operacional; QAI e segurança entram condicionados a licença e especialista."
+      },
+      { "id": "document_priority", "type": "chart", "chartId": "document_priority_chart" },
+      { "id": "documents", "type": "table", "tableId": "document_catalog" },
+      {
+        "id": "reg_intro",
+        "type": "markdown",
+        "body": "## Regulação entra no kernel, não no rodapé\n\nA Lei 13.589/2018 continua vigente; a RE 9/2003 foi revogada pela RDC 886/2024, que não trouxe novos limites. Fontes oficiais atuais apontam a NBR 17037 como referência técnica, mas seu conteúdo é protegido e a aplicação concreta depende de versão, RT e jurisdição. Assinatura, LGPD e CDC também exigem fluxos verificáveis, não apenas texto de aviso."
+      },
+      { "id": "regulatory", "type": "table", "tableId": "regulatory_matrix" },
+      {
+        "id": "ai",
+        "type": "markdown",
+        "body": "## IA em tudo — como assistente responsabilizável\n\nA IA pode extrair dados, resumir histórico, gerar rascunho, sugerir checklist/preço e apontar lacunas. Toda sugestão deve mostrar premissas, fonte e incerteza; uma pessoa confirma. A IA não assina, não inventa visita/medição, não declara conformidade, não pune funcionário, não envia documento/cobrança sozinha e não consulta dados brutos de outro tenant.\n\nA inteligência coletiva de preços só nasce depois de dados estruturados e governança: opt-in ou base revisada, coortes comparáveis, limiar mínimo, agregação, anti-reidentificação, explicação e opt-out."
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## Próximos passos\n\n1. Executar a Janela 1.3 com spikes descartáveis de schema de documentos, offline/outbox, assinatura/evidência, abstração de IA e preço explicado — somente com fixtures.\n2. Realizar duas sessões contextuais do proprietário e, após autorização específica de contato, a amostra externa planejada.\n3. Adquirir/licenciar a edição aplicável da NBR 17037 e revisar com RT.\n4. Bloquear ou reescrever a tabela atribuída à NBR 17037 já encontrada no conteúdo do site antes de publicação.\n5. Levar evidências e resultados ao conselho da Janela 1.4 para go/no-go da Onda 2."
+      },
+      { "id": "status", "type": "table", "tableId": "research_status" },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## Perguntas ainda abertas\n\n- Qual é o tempo real entre visita e proposta, e quanto é redigitação?\n- Qual captura mínima o técnico completa offline sem abandonar?\n- Que nível de assinatura cada cliente/órgão aceita por documento?\n- Quais exigências municipais, setoriais e de CREA aparecem nos pilotos?\n- O prestador confia em sugestão de preço baseada apenas nos próprios custos? E em benchmark agregado?\n- Qual parte da jornada gera retorno semanal suficiente para retenção?\n- Quais campos comuns sobrevivem ao primeiro ofício não-HVAC sem diluir segurança?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Limites e premissas\n\nA pesquisa de dores usa relatos públicos exploratórios e não mede prevalência. Capacidades dos concorrentes foram observadas em páginas oficiais, sem trial completo. Preços são snapshots mutáveis. Nenhuma entrevista foi executada. Nenhum parâmetro de norma ABNT foi reproduzido. O material é arquitetura de produto e não parecer jurídico, sanitário, tributário ou de engenharia."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-26T21:56:55-03:00",
+    "status": "partial",
+    "datasets": {
+      "journey": [
+        { "stage": "Entrada", "job": "capturar pedido e urgência", "pain": "áudio/texto sem cadastro", "opportunity": "chamado assistido e revisável", "measure": "tempo e completude" },
+        { "stage": "Diagnóstico", "job": "entender ativo, causa e risco", "pain": "histórico/evidência dispersos", "opportunity": "QR, ativo e captura offline", "measure": "tempo e retornos" },
+        { "stage": "Preço", "job": "cobrir custo e defender valor", "pain": "preço por memória", "opportunity": "custos, margem e alternativas explicados", "measure": "tempo, margem e edição" },
+        { "stage": "Proposta", "job": "comunicar escopo e opções", "pain": "PDF genérico/inconsistente", "opportunity": "modelos por serviço e versões", "measure": "tempo e dúvidas" },
+        { "stage": "Aceite/contrato", "job": "congelar a decisão", "pain": "ok sem versão/prova", "opportunity": "link seguro, hash e cópia", "measure": "tempo e disputas" },
+        { "stage": "Agenda", "job": "alocar pessoa certa", "pain": "conflito/rota manual", "opportunity": "habilidade, SLA e notificação", "measure": "atraso/reagendamento" },
+        { "stage": "Execução", "job": "fazer e registrar uma vez", "pain": "sinal ruim/formulário longo", "opportunity": "OS offline e checklist adaptativo", "measure": "sync e retrabalho" },
+        { "stage": "Fechamento", "job": "provar e entregar", "pain": "aceite/anexo ausente", "opportunity": "documento imutável por papel", "measure": "tempo e contestação" },
+        { "stage": "Recebimento", "job": "faturar e conciliar", "pain": "cobrança tardia", "opportunity": "cobrança da versão aceita e NFS-e externa", "measure": "dias até receber" },
+        { "stage": "Recorrência", "job": "cumprir PMOC por ativo", "pain": "calendário/planilha manual", "opportunity": "plano versionado e OS idempotente", "measure": "preventivas no prazo" },
+        { "stage": "Inteligência", "job": "aprender sem vazar", "pain": "dashboard/IA opacos", "opportunity": "métricas próprias e agregado opt-in", "measure": "adoção e impacto" }
+      ],
+      "competitors": [
+        { "product": "Auvo", "focus": "field service BR", "offline": "não confirmado", "pmoc": "confirmado", "contract": "parcial", "finance": "confirmado", "opportunity": "offline e assinatura auditável" },
+        { "product": "Field Control", "focus": "field service BR", "offline": "confirmado", "pmoc": "confirmado", "contract": "parcial", "finance": "parcial", "opportunity": "contrato/cobrança/governança IA" },
+        { "product": "Produttivo", "focus": "field service/AVAC BR", "offline": "confirmado", "pmoc": "confirmado", "contract": "parcial", "finance": "confirmado", "opportunity": "aprovação e permissões" },
+        { "product": "Jobber", "focus": "SMB global", "offline": "divulgado", "pmoc": "não BR", "contract": "quote/portal", "finance": "confirmado", "opportunity": "localização PMOC/ART/Pix/NF" },
+        { "product": "Housecall Pro", "focus": "residencial global", "offline": "consulta; sem edição", "pmoc": "não", "contract": "service plans", "finance": "confirmado", "opportunity": "offline de escrita e HVAC BR" },
+        { "product": "ServiceTitan", "focus": "enterprise HVAC", "offline": "confirmado", "pmoc": "não BR", "contract": "forte/e-sign", "finance": "confirmado", "opportunity": "leve, SMB e regras BR" },
+        { "product": "Simpro", "focus": "enterprise trades", "offline": "confirmado", "pmoc": "ativos; não BR", "contract": "forte/e-sign", "finance": "confirmado", "opportunity": "simplicidade e conformidade BR" },
+        { "product": "Infraspeak", "focus": "CAFM/CMMS", "offline": "confirmado", "pmoc": "ativos; não detalhado", "contract": "fornecedor/parcial", "finance": "procurement", "opportunity": "comercial SMB" },
+        { "product": "Relatório PMOC", "focus": "HVAC BR", "offline": "divulgado", "pmoc": "central", "contract": "aprovação WhatsApp", "finance": "divulgado", "opportunity": "validar profundidade/RBAC" },
+        { "product": "Klimatta", "focus": "HVAC BR", "offline": "não confirmado", "pmoc": "central", "contract": "divulgado", "finance": "divulgado", "opportunity": "offline, e-sign e API" }
+      ],
+      "documents": [
+        { "id": 1, "document": "Intake/qualificação", "priority": "P0", "signature": "não; aceite separado", "gate": "LGPD e revisão humana" },
+        { "id": 2, "document": "Cadastro + aviso/base LGPD", "priority": "P0", "signature": "aceite quando consentimento", "gate": "jurídico/privacidade" },
+        { "id": 3, "document": "Ficha de ativo/equipamento", "priority": "P0", "signature": "confirmação auditável", "gate": "origem dos dados" },
+        { "id": 4, "document": "Visita/diagnóstico", "priority": "P0", "signature": "condicional", "gate": "segurança e offline" },
+        { "id": 5, "document": "Orçamento/proposta", "priority": "P0", "signature": "aceite/avançada", "gate": "custos e versão" },
+        { "id": 6, "document": "Aceite/autorização", "priority": "P0", "signature": "aceite/avançada", "gate": "link seguro e evidência" },
+        { "id": 7, "document": "Contrato de serviço/manutenção/PMOC", "priority": "P0", "signature": "avançada/qualificada", "gate": "jurídico; ART externa" },
+        { "id": 8, "document": "Ordem de serviço", "priority": "P0", "signature": "técnico + cliente", "gate": "outbox e conflitos" },
+        { "id": 9, "document": "Instalação/comissionamento", "priority": "P1", "signature": "condicional", "gate": "RT/norma licenciada" },
+        { "id": 10, "document": "PMOC mestre", "priority": "P0", "signature": "RT/qualificada quando exigida", "gate": "norma, versão e jurisdição" },
+        { "id": 11, "document": "Preventiva por equipamento", "priority": "P0", "signature": "técnico/cliente/RT", "gate": "execução real" },
+        { "id": 12, "document": "Laudo/relatório corretivo", "priority": "P1", "signature": "técnico/RT", "gate": "competência e ART" },
+        { "id": 13, "document": "Qualidade do ar interior", "priority": "P2", "signature": "RT/laboratório", "gate": "norma licenciada e método" },
+        { "id": 14, "document": "Registro/checklist ART/RT", "priority": "P1", "signature": "externa/CREA", "gate": "não emitir nem validar" },
+        { "id": 15, "document": "APR/PT/NR-35/energia", "priority": "P2", "signature": "responsáveis/equipe", "gate": "SST e versão da NR" },
+        { "id": 16, "document": "Entrega/aceite/evidências", "priority": "P0", "signature": "aceite/avançada", "gate": "imutabilidade e cópia" },
+        { "id": 17, "document": "Garantia/retorno", "priority": "P1", "signature": "aceite contratual", "gate": "CDC/jurídico" },
+        { "id": 18, "document": "NFS-e/recibo fiscal", "priority": "P1", "signature": "externa/oficial", "gate": "contador e município" },
+        { "id": 19, "document": "Fatura/cobrança/conciliação", "priority": "P1", "signature": "condições contratuais", "gate": "sandbox/webhook/idempotência" },
+        { "id": 20, "document": "Relatório mensal B2B/SLA/PMOC", "priority": "P1", "signature": "gestor/RT conforme contrato", "gate": "definições e fontes" }
+      ],
+      "document_priority_counts": [
+        { "priority": "P0", "count": 11 },
+        { "priority": "P1", "count": 7 },
+        { "priority": "P2", "count": 2 }
+      ],
+      "regulatory": [
+        { "theme": "PMOC", "verified": "Lei 13.589 vigente; 5 TR é gatilho de RT na Portaria, não dispensa geral", "product_gate": "classificar uso/capacidade e pedir confirmação", "owner": "RT/Vigilância" },
+        { "theme": "RE 9/RDC 886", "verified": "RE 9 revogada; RDC 886 não criou novos limites", "product_gate": "histórico + referência versionada", "owner": "RT/jurídico" },
+        { "theme": "ABNT", "verified": "referência atual apontada; conteúdo protegido", "product_gate": "licença antes de parâmetro/checklist", "owner": "produto/RT/jurídico" },
+        { "theme": "ART", "verified": "registro externo no CREA", "product_gate": "anexar/referenciar; nunca emitir", "owner": "RT/CREA" },
+        { "theme": "Assinatura", "verified": "nível depende de partes, risco e destinatário", "product_gate": "matriz e dossiê de evidência", "owner": "jurídico/órgão" },
+        { "theme": "LGPD", "verified": "cliente, equipe, localização, foto, voz, assinatura e IA podem conter dados pessoais", "product_gate": "RoPA, base, RBAC, retenção, direitos e fornecedores", "owner": "privacidade/segurança" },
+        { "theme": "IA", "verified": "leis existentes já se aplicam", "product_gate": "rascunho, explicação, revisão e contestação", "owner": "produto/jurídico/RT" }
+      ],
+      "research": [
+        { "workstream": "Regulação oficial", "target": "PMOC, RT, assinatura, LGPD, CDC", "completed": "sim", "status": "documental concluído", "next": "revalidar no release" },
+        { "workstream": "Concorrentes", "target": "10 jornadas", "completed": "10", "status": "público/oficial", "next": "trials controlados" },
+        { "workstream": "Documentos", "target": "20 modelos", "completed": "20", "status": "arquitetura", "next": "redação e revisão" },
+        { "workstream": "Dores públicas", "target": "sinais exploratórios", "completed": "8", "status": "não representativo", "next": "confirmar em campo" },
+        { "workstream": "Sessões do proprietário", "target": "2", "completed": "0", "status": "pendente", "next": "casos sanitizados" },
+        { "workstream": "Amostra externa", "target": "11–13", "completed": "0", "status": "aguarda autorização de contato", "next": "recrutar com consentimento" },
+        { "workstream": "ABNT NBR 17037", "target": "edição aplicável licenciada", "completed": "0", "status": "não acessada", "next": "adquirir/licenciar + RT" }
+      ]
+    },
+    "accessIssues": [
+      {
+        "id": "field_sessions_pending",
+        "dataset": "research",
+        "message": "As sessões de campo e o baseline real ainda não foram executados; conclusões de dor permanecem exploratórias."
+      },
+      {
+        "id": "abnt_license_pending",
+        "dataset": "regulatory",
+        "message": "A edição integral aplicável da ABNT NBR 17037 não foi adquirida/licenciada; parâmetros e checklists exatos permanecem fora do produto."
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "journey_sql",
+      "label": "Consulta revisada da jornada",
+      "path": "queries/journey.sql"
+    },
+    {
+      "id": "competitors_sql",
+      "label": "Consulta revisada de concorrentes",
+      "path": "queries/competitors.sql"
+    },
+    {
+      "id": "documents_sql",
+      "label": "Consulta revisada dos 20 documentos",
+      "path": "queries/documents.sql"
+    },
+    {
+      "id": "document_priority_sql",
+      "label": "Contagem revisada de prioridades",
+      "path": "queries/document_priority_counts.sql"
+    },
+    {
+      "id": "regulatory_sql",
+      "label": "Consulta revisada dos gates",
+      "path": "queries/regulatory.sql"
+    },
+    {
+      "id": "research_status_sql",
+      "label": "Consulta revisada do status",
+      "path": "queries/research_status.sql"
+    },
+    {
+      "id": "jtbd_synthesis",
+      "label": "Síntese JTBD, jornada e dores",
+      "path": "JTBD_JOURNEY_AND_PAIN_RANKING.md",
+      "query": {
+        "engine": "documentary-synthesis",
+        "description": "Síntese revisada de fontes oficiais, concorrentes e relatos exploratórios listados no ledger.",
+        "executed_at": "2026-08-26T21:56:55-03:00"
+      }
+    },
+    {
+      "id": "competitor_evidence",
+      "label": "Matriz de concorrentes e fontes oficiais",
+      "path": "COMPETITOR_JOURNEY_MATRIX.md",
+      "query": {
+        "engine": "official-public-pages",
+        "description": "Páginas oficiais e help centers de Auvo, Field Control, Produttivo, Jobber, Housecall Pro, ServiceTitan, Simpro, Infraspeak, Relatório PMOC e Klimatta.",
+        "executed_at": "2026-08-26T21:56:55-03:00"
+      }
+    },
+    {
+      "id": "document_architecture",
+      "label": "Catálogo dos 20 documentos",
+      "path": "DOCUMENT_CATALOG.md",
+      "query": {
+        "engine": "requirements-mapping",
+        "description": "Arquitetura original derivada das fontes R01–R25 e F01–F10 do ledger; nenhum modelo protegido foi copiado.",
+        "executed_at": "2026-08-26T21:56:55-03:00"
+      }
+    },
+    {
+      "id": "regulatory_evidence",
+      "label": "Gates regulatórios e fontes oficiais",
+      "path": "REGULATORY_GATES.md",
+      "query": {
+        "engine": "official-legal-research",
+        "description": "Planalto, Ministério da Saúde, Anvisa, Confea, ITI, ANPD e MTE; links e limites no ledger.",
+        "executed_at": "2026-08-26T21:56:55-03:00"
+      }
+    },
+    {
+      "id": "field_protocol",
+      "label": "Protocolo de campo e baseline",
+      "path": "FIELD_RESEARCH_PROTOCOL.md",
+      "query": {
+        "engine": "research-design",
+        "description": "Amostra, consentimento, tarefas e definições de métricas; nenhum dado de participante coletado.",
+        "executed_at": "2026-08-26T21:56:55-03:00"
+      }
+    },
+    {
+      "id": "source_ledger",
+      "label": "Ledger de 56 fontes/evidências",
+      "path": "SOURCE_LEDGER.md",
+      "query": {
+        "engine": "source-ledger",
+        "description": "Registro de origem, classe, verificação, licença, confiança e gate.",
+        "executed_at": "2026-08-26T21:56:55-03:00"
+      }
+    }
+  ]
+}

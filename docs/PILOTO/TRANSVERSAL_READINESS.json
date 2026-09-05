@@ -1,0 +1,871 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-04T19:50:26-03:00",
+  "brand": "OLLI Orçamentos",
+  "canonicalRepository": "C:\\OLLI_REL",
+  "evidenceBoundary": "MIXED_LIVE_SIMULATOR_DISPATCH_SYNTHETIC_CANARY",
+  "program100Percent": false,
+  "automation": {
+    "automationId": "piloto-olli-0-100-continuidade-controlada",
+    "desiredStatus": "PAUSED",
+    "pauseReason": "AUTONOMIA_ESGOTADA_ONLY_HUMAN_GATES",
+    "queueId": "transversal-organizacao-olli-v2",
+    "stateSource": "docs/PILOTO/RUN_STATE.json"
+  },
+  "workstreams": [
+    {
+      "id": "welcome_email",
+      "state": "simulator_dispatch_live_real_rollout_blocked",
+      "acceptedReal": false,
+      "localEvidence": [
+        "worker/src/welcomeEvent.js",
+        "worker/src/emailOutbox.js",
+        "worker/src/welcomeOutboxContract.js",
+        "worker/src/welcomeEmailTemplate.js",
+        "worker/src/onboardingReminderPolicy.js",
+        "worker/src/emailSuppressionPolicy.js",
+        "worker/src/emailSuppressionOutboxContract.js",
+        "worker/src/emailSuppressionPersistenceContract.js",
+        "worker/src/resendTransactionalAdapter.js",
+        "worker/src/resendOutboxOutcomeContract.js",
+        "worker/src/welcomePersistenceHook.js",
+        "scripts/teste-welcome-outbox-contract.ts",
+        "scripts/teste-welcome-email-template.ts",
+        "scripts/teste-onboarding-reminder-policy.ts",
+        "scripts/teste-email-suppression-policy.ts",
+        "scripts/teste-email-suppression-outbox-contract.ts",
+        "scripts/teste-email-suppression-persistence-contract.ts",
+        "scripts/teste-resend-transactional-adapter.ts",
+        "scripts/teste-resend-outbox-outcome-contract.ts",
+        "scripts/teste-welcome-persistence-hook.ts",
+        "scripts/teste-email-persistence-draft.ts",
+        "scripts/teste-email-dispatch-runtime.ts",
+        "worker/scripts/teste-welcome-outbox-consumer.js",
+        "worker/src/welcomeOutboxConsumer.js",
+        "supabase/migrations/20260904205858_email_welcome_outbox.sql",
+        "supabase/migrations/20260904211012_email_welcome_tenant_indexes.sql",
+        "supabase/migrations/20260904212747_email_welcome_dispatch_runtime.sql",
+        "docs/PILOTO/SUPABASE_BASELINE_20260904.md",
+        "docs/ONDA_3/JANELA_3_3_EMAIL_PERSISTENCIA/README.md"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": [
+        "email-provider-identity",
+        "email-real-cohort-rollout"
+      ],
+      "externalVerification": {
+        "status": "provider_canary_delivered",
+        "provider": "Resend",
+        "recipientClass": "provider_simulator",
+        "recipient": "delivered@resend.dev",
+        "workerTarget": "olli-diagnostico",
+        "permission": "sending_access",
+        "domainScope": "olliorcamentos.online",
+        "verifiedAt": "2026-09-04T11:52:52-03:00",
+        "acceptedReal": false,
+        "note": "Canário técnico entregue no simulador; não substitui o consumer da outbox nem aceite de usuários reais."
+      },
+      "persistenceVerification": {
+        "status": "live_persistence_and_simulator_dispatch_verified",
+        "projectRef": "yiaeplqinnnnniyvwtls",
+        "migrationVersions": [
+          "20260904210942",
+          "20260904211038",
+          "20260904213759"
+        ],
+        "verifiedAt": "2026-09-04T18:46:53-03:00",
+        "syntheticRowsRemaining": 0,
+        "acceptedReal": false,
+        "note": "Persistência, claim/settle e consumer agendado foram comprovados; o único envio do runtime foi aceito pelo simulador e usuários normais continuam em hold."
+      },
+      "dispatchVerification": {
+        "status": "simulator_api_accepted",
+        "workerVersion": "794daafb-bd92-4e10-8745-e28de6a6f4db",
+        "dispatchMode": "simulator",
+        "batchLimit": 1,
+        "cron": "one_minute",
+        "recipientClass": "provider_simulator",
+        "attempts": 1,
+        "providerIdRecorded": true,
+        "databaseStatus": "sent",
+        "verifiedAt": "2026-09-04T18:46:53-03:00",
+        "syntheticRowsRemaining": 0,
+        "acceptedReal": false,
+        "note": "O runtime registrou claimed=1, sent=1 e failed=0. A prova é de aceitação da API; entrega em caixa não foi alegada nesta janela."
+      }
+    },
+    {
+      "id": "organization_shadow",
+      "state": "local_contract_ready",
+      "acceptedReal": false,
+      "localEvidence": [
+        "docs/ONDA_3/JANELA_3_1/kernel/shadow-baseline.mjs",
+        "docs/ONDA_3/JANELA_3_1/tests/shadow-baseline.test.mjs",
+        "docs/ONDA_3/JANELA_3_1/README.md"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": []
+    },
+    {
+      "id": "notifications",
+      "state": "local_contract_ready",
+      "acceptedReal": false,
+      "localEvidence": [
+        "src/services/notificationPolicy.ts",
+        "src/services/notificationPermissionPromptPolicy.ts",
+        "worker/src/notificationInbox.js",
+        "worker/src/notificationInboxJournal.js",
+        "worker/src/pushDeviceRegistry.js",
+        "src/services/notificationDeliveryOrchestrator.ts",
+        "worker/src/notificationDeliveryJournal.js",
+        "docs/ONDA_3/JANELA_3_4_NOTIFICATION_PERSISTENCIA/20260904_notification_persistence.sql",
+        "docs/ONDA_3/JANELA_3_4_NOTIFICATION_PERSISTENCIA/README.md",
+        "scripts/teste-notification-inbox-journal.ts",
+        "scripts/teste-notification-permission-prompt-policy.ts",
+        "scripts/teste-push-device-registry.ts",
+        "scripts/teste-notification-delivery-orchestrator.ts",
+        "scripts/teste-notification-delivery-journal.ts",
+        "scripts/teste-notification-persistence-draft.ts"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": [
+        "notification-persistence",
+        "push-device-acceptance",
+        "web-push-identity"
+      ]
+    },
+    {
+      "id": "admin_data",
+      "state": "local_contract_ready",
+      "acceptedReal": false,
+      "localEvidence": [
+        "worker/src/adminDataPolicy.js",
+        "worker/src/adminAccessAudit.js",
+        "worker/src/adminAuditPolicyContract.js",
+        "worker/src/datasetPolicy.js",
+        "scripts/teste-admin-dados-policy.ts",
+        "scripts/teste-admin-access-audit.ts",
+        "scripts/teste-admin-audit-policy-contract.ts",
+        "scripts/teste-dataset-policy.ts",
+        "worker/src/admin.js",
+        "scripts/teste-admin-governanca.ts"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": [
+        "admin-runtime-data-access"
+      ]
+    },
+    {
+      "id": "monetization",
+      "state": "local_contract_ready",
+      "acceptedReal": false,
+      "localEvidence": [
+        "worker/src/monetizationEvents.js",
+        "worker/src/monetizationEntitlementReconciliation.js",
+        "worker/src/monetizationOfferExperiment.js",
+        "worker/src/monetizationExperimentJournal.js",
+        "scripts/teste-monetization-entitlement-reconciliation.ts",
+        "scripts/teste-monetization-offer-experiment.ts",
+        "scripts/teste-monetization-experiment-journal.ts",
+        "docs/ONDA_3/JANELA_3_6_BILLING_GATE/DECISAO_E_ROTEIRO.md"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": [
+        "billing-source-of-truth",
+        "billing-sandbox-lifecycle"
+      ]
+    },
+    {
+      "id": "pwa_apk",
+      "state": "local_partial",
+      "acceptedReal": false,
+      "localEvidence": [
+        "web/public/site.webmanifest",
+        "eas.json",
+        "scripts/teste-assets-app.ts",
+        "scripts/verificar-config-release.mjs",
+        "docs/ONDA_3/JANELA_3_5_RELEASE_READINESS/REPORT.md"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": [
+        "pwa-apk-release-distribution"
+      ]
+    },
+    {
+      "id": "automation_control",
+      "state": "operational_active",
+      "acceptedReal": false,
+      "localEvidence": [
+        "docs/PILOTO/AUTOMACAO_5H.md",
+        "docs/PILOTO/RUN_STATE.json",
+        "docs/PILOTO/NEXT_PROMPT.md",
+        "docs/PILOTO/LEDGER_3_ONDAS.md",
+        "docs/PILOTO/LEDGER_EVOLUCAO_AUTOMACAO.md"
+      ],
+      "autonomousNextItemIds": [],
+      "humanGateIds": []
+    }
+  ],
+  "humanGates": [
+    {
+      "gateId": "email-provider-identity",
+      "category": "external_configuration",
+      "state": "blocked_human",
+      "reason": "Domínio e remetente estão verificados; a credencial foi guardada no Worker canônico e o canário foi entregue somente ao simulador do provider. O gate permanece humano para aceite real e rollout controlado.",
+      "ownerAction": "Aceitar a identidade do remetente e definir a janela de rollout do welcome transacional após o canário técnico.",
+      "evidenceRequired": "SPF, DKIM, DMARC, remetente verificado, segredo protegido no Worker e entrega registrada em caixa de teste/simulador."
+    },
+    {
+      "gateId": "email-real-cohort-rollout",
+      "category": "publication",
+      "state": "blocked_human",
+      "reason": "Persistência, consumer e canário do simulador estão ativos e comprovados, mas qualquer destinatário real exige política operacional, supressão integrada e coorte explicitamente autorizada.",
+      "ownerAction": "Definir e autorizar uma coorte mínima de contas internas ou consentidas, critérios de parada e monitoramento antes de trocar qualquer linha para dispatch_scope=production.",
+      "evidenceRequired": "Consentimento ou relação transacional válida, supressão operacional, coorte nominal aprovada, métricas de bounce/complaint, rollback para hold e aceite humano registrado."
+    },
+    {
+      "gateId": "notification-persistence",
+      "category": "migration",
+      "state": "blocked_human",
+      "reason": "Inbox, registry e journal têm contratos locais e um draft SQL fail-closed de sete tabelas com fingerprints, CAS, replay e purge; o draft continua fora de migrations e ainda não possui adapters/RPCs aplicados.",
+      "ownerAction": "Aprovar armazenamento, migration e política de retenção.",
+      "evidenceRequired": "Isolamento tenant, revogação, purge e testes no ambiente aprovado."
+    },
+    {
+      "gateId": "push-device-acceptance",
+      "category": "device_acceptance",
+      "state": "blocked_human",
+      "reason": "Permissão do sistema, token real e entrega em aparelho não foram exercitados.",
+      "ownerAction": "Escolher aparelhos de teste e autorizar o roteiro de consentimento/revogação.",
+      "evidenceRequired": "Permissão negada/aceita, múltiplos aparelhos, revogação e token inválido."
+    },
+    {
+      "gateId": "web-push-identity",
+      "category": "credential",
+      "state": "blocked_human",
+      "reason": "VAPID, service worker de produção e inscrição real não estão configurados.",
+      "ownerAction": "Autorizar configuração da identidade Web Push e navegadores de aceite.",
+      "evidenceRequired": "VAPID protegido, inscrição revogável, fallback e teste em navegadores reais."
+    },
+    {
+      "gateId": "admin-runtime-data-access",
+      "category": "real_data",
+      "state": "blocked_human",
+      "reason": "Política e auditoria são locais; o detalhe agora exige AAL2 e usa RBAC explícito para suporte/financeiro/admin/owner com projeções mínimas, mas sessão AAL2 real, finalidade, auditoria persistida e coorte de dados ainda não foram aceitas.",
+      "ownerAction": "Definir finalidade, papéis, campos, retenção, base legal e coorte autorizada.",
+      "evidenceRequired": "AAL2, auditoria persistida, consultas allowlistadas e teste com dados aprovados."
+    },
+    {
+      "gateId": "billing-source-of-truth",
+      "category": "architecture_decision",
+      "state": "blocked_human",
+      "reason": "A reconciliação local comprovou que Stripe vende cartão, Mercado Pago vende Pix e preserva legado, e o iOS prevê Apple IAP; foi proposta uma única fonte autoritativa de entitlement servidor, mas D-03 e o runtime ainda divergem na formulação.",
+      "ownerAction": "Aprovar o snapshot servidor reconciliado como fonte única de entitlement, ou escolher Stripe como único provider de plano e autorizar a desativação compatível do Pix de período.",
+      "evidenceRequired": "Decisão aprovada com lifecycle, journal, rollback, ownership, compatibilidade do legado e responsabilidade por provider."
+    },
+    {
+      "gateId": "billing-sandbox-lifecycle",
+      "category": "sandbox_finance",
+      "state": "blocked_human",
+      "reason": "O roteiro de 12 passos e 230 asserções locais estão concluídos; checkout, webhook assinado, replay externo, downgrade e segundo ciclo ainda não foram exercitados em uma conta sandbox autorizada.",
+      "ownerAction": "Autorizar credenciais sandbox e roteiro sem cobrança real.",
+      "evidenceRequired": "Checkout teste, assinatura validada, replay idempotente, downgrade e renovação sandbox."
+    },
+    {
+      "gateId": "pwa-apk-release-distribution",
+      "category": "publication",
+      "state": "blocked_human",
+      "reason": "A configuração Expo/EAS e 16 assets passaram na auditoria local, mas o manifest usa display=browser e não há service worker; nenhum build assinado, hash, instalação física, upgrade, rollback ou publicação foi executado.",
+      "ownerAction": "Aprovar momento do build, assinatura, aparelhos e canal de distribuição.",
+      "evidenceRequired": "Build release, hash, instalação, atualização, rollback e página oficial aprovados."
+    }
+  ],
+  "autonomousBacklog": [
+    {
+      "itemId": "resend-transactional-adapter-contract",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Classificar uma entrega Resend sintética com configuração e transporte obrigatoriamente injetados, sem rede própria ou import no runtime.",
+      "allowedFiles": [
+        "worker/src/resendTransactionalAdapter.js",
+        "scripts/teste-resend-transactional-adapter.ts",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "resend-outbox-outcome-contract",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Compor o resultado sanitizado do adapter com marcarEnviado/marcarFalha da outbox, sem chamar provider, rede ou runtime.",
+      "allowedFiles": [
+        "worker/src/resendOutboxOutcomeContract.js",
+        "scripts/teste-resend-outbox-outcome-contract.ts",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "email-suppression-outbox-composition-contract",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Compor decisão de supressão com reserva da outbox sem chamar provider.",
+      "allowedFiles": [
+        "worker/src/emailSuppressionOutboxContract.js",
+        "scripts/teste-email-suppression-outbox-contract.ts",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "notification-cross-channel-orchestrator-contract",
+      "workstreamId": "notifications",
+      "status": "done_local_only",
+      "scope": "Produzir decisões deduplicadas por canal usando preferências e capability sintéticas.",
+      "allowedFiles": [
+        "src/services/notificationDeliveryOrchestrator.ts",
+        "scripts/teste-notification-delivery-orchestrator.ts",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "transversal-documentation-evidence-reconciliation",
+      "workstreamId": "automation_control",
+      "status": "done_local_only",
+      "scope": "Sincronizar planos, matriz e bloqueios com a evidência local comprovada, sem alegar aceite real.",
+      "allowedFiles": [
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md",
+        "docs/ENXAME/ESTRATEGIA_CONVERSAO_PRO_OLLI_2026-08-31.md",
+        "docs/FEATURE_MATRIX.md",
+        "docs/KNOWN_BLOCKERS.md",
+        "docs/PILOTO/**",
+        "package.json"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "notification-delivery-journal-contract",
+      "workstreamId": "notifications",
+      "status": "done_local_only",
+      "scope": "Registrar decisões e resultados por canal com revisão e idempotência, sem provider ou PII.",
+      "allowedFiles": [
+        "worker/src/notificationDeliveryJournal.js",
+        "scripts/teste-notification-delivery-journal.ts",
+        "package.json",
+        "docs/PILOTO/**",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "admin-audit-policy-composition-contract",
+      "workstreamId": "admin_data",
+      "status": "done_local_only",
+      "scope": "Compor autorização allowlistada e append obrigatório da auditoria antes de liberar um plano de consulta sintético.",
+      "allowedFiles": [
+        "worker/src/adminAuditPolicyContract.js",
+        "scripts/teste-admin-audit-policy-contract.ts",
+        "package.json",
+        "docs/PILOTO/**",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "welcome-email-template-contract",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Renderizar versões HTML e texto do welcome transacional com identidade OLLI, acessibilidade e URLs HTTPS sintéticas.",
+      "allowedFiles": [
+        "worker/src/welcomeEmailTemplate.js",
+        "scripts/teste-welcome-email-template.ts",
+        "package.json",
+        "docs/PILOTO/**",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "notification-permission-prompt-policy-contract",
+      "workstreamId": "notifications",
+      "status": "done_local_only",
+      "scope": "Decidir quando explicar benefício e oferecer o prompt nativo/web sem invocar APIs de permissão.",
+      "allowedFiles": [
+        "src/services/notificationPermissionPromptPolicy.ts",
+        "scripts/teste-notification-permission-prompt-policy.ts",
+        "package.json",
+        "docs/PILOTO/**",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "onboarding-reminder-cadence-contract",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Selecionar no máximo dois lembretes educativos após ativação, com opt-in, cooldown e parada após valor.",
+      "allowedFiles": [
+        "worker/src/onboardingReminderPolicy.js",
+        "scripts/teste-onboarding-reminder-policy.ts",
+        "package.json",
+        "docs/PILOTO/**",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "transversal-readiness-routing-invariant",
+      "workstreamId": "automation_control",
+      "status": "done_local_only",
+      "scope": "Impedir que o próximo item de uma frente resolva para backlog pertencente a outro workstream e reconciliar a evidência final.",
+      "allowedFiles": [
+        "scripts/teste-transversal-readiness.ts",
+        "docs/PILOTO/**",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md",
+        "docs/FEATURE_MATRIX.md",
+        "docs/ENXAME/ESTRATEGIA_CONVERSAO_PRO_OLLI_2026-08-31.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "heartbeat-prompt-compaction",
+      "workstreamId": "automation_control",
+      "status": "done_local_only",
+      "scope": "Reduzir a repetição do heartbeat mantendo protocolo, cota, lease, filas, anti-loop, gates, governança e contrato de notificação.",
+      "allowedFiles": [
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "automation-status-invariant",
+      "workstreamId": "automation_control",
+      "status": "done_local_only",
+      "scope": "Fazer o manifesto aceitar ACTIVE somente quando há trabalho executável e representar PAUSED quando a fila está esgotada, evitando o estado enganoso da vigia.",
+      "allowedFiles": [
+        "scripts/teste-transversal-readiness.ts",
+        "docs/PILOTO/TRANSVERSAL_READINESS.json",
+        "docs/PILOTO/RUN_STATE.json",
+        "docs/PILOTO/NEXT_PROMPT.md",
+        "docs/PILOTO/LEDGER_3_ONDAS.md",
+        "docs/PILOTO/LEDGER_EVOLUCAO_AUTOMACAO.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "central-unica-documentacao-nomenclatura",
+      "workstreamId": "automation_control",
+      "status": "done_local_only",
+      "scope": "Consolidar a fonte única do OLLI, catalogar todas as raízes, eliminar ambiguidade de nomenclatura, organizar plano e matriz de execução e validar o hub sem mover origens críticas.",
+      "allowedFiles": [
+        "README.md",
+        "docs/ORGANIZACAO/**",
+        "docs/PILOTO/**",
+        "C:\\Users\\ADMIN\\Desktop\\OLLI ORCAMENTOS\\00-LEIA-ME-ORGANIZACAO.md",
+        "C:\\Users\\ADMIN\\Desktop\\OLLI ORCAMENTOS V1/**",
+        "C:\\Users\\ADMIN\\Desktop\\2 PESSOAL\\OLLI ORCAMENTOS V1*",
+        "C:\\Users\\ADMIN\\Desktop\\_Arquivo OLLI\\HUB OLLI DUPLICADO ESTATICO 2026-08-30*"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication",
+        "delete_origin"
+      ]
+    },
+    {
+      "itemId": "organizacao-provas-finais",
+      "workstreamId": "automation_control",
+      "status": "done_local_only",
+      "scope": "Atualizar as provas textuais finais, fixar o ID canônico devolvido pelo app e repetir os validadores no estado normalizado.",
+      "allowedFiles": [
+        "docs/ORGANIZACAO/**",
+        "docs/PILOTO/**",
+        "scripts/teste-transversal-readiness.ts",
+        "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO\\00_ADMIN\\RESULTADO_VALIDACAO.txt"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication",
+        "delete_origin"
+      ]
+    },
+    {
+      "itemId": "email-persistence-migration-draft",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Preparar localmente o rascunho versionável da persistência transacional do welcome e da outbox, com idempotência, RLS fail-closed, RPC transacional e rollback não destrutivo; não aplicar DDL nem acessar dados reais.",
+      "allowedFiles": [
+        "docs/ONDA_3/JANELA_3_3_EMAIL_PERSISTENCIA/**",
+        "scripts/teste-email-persistence-draft.ts",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "welcome-persistence-hook-adapter",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Preparar localmente o adaptador puro que transforma a confirmação de e-mail em payload mínimo da RPC transacional, valida UUIDs e rejeita respostas divergentes; sem rede, segredo, dados reais ou migration.",
+      "allowedFiles": [
+        "worker/src/welcomePersistenceHook.js",
+        "scripts/teste-welcome-persistence-hook.ts",
+        "docs/ONDA_3/JANELA_3_3_EMAIL_PERSISTENCIA/**",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "supabase-live-schema-baseline-capture",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Registrar em documento local sanitizado o projeto Supabase confirmado, metadados de schema e hooks existentes, sem ler linhas de usuários nem aplicar DDL.",
+      "allowedFiles": [
+        "docs/PILOTO/SUPABASE_BASELINE_20260904.md"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication",
+        "delete_origin"
+      ]
+    },
+    {
+      "itemId": "email-suppression-persistence-contract",
+      "workstreamId": "welcome_email",
+      "status": "done_local_only",
+      "scope": "Definir localmente o comando puro e o rascunho SQL fail-closed para persistir estado/eventos de supressão por tenant e usuário, com CAS, replay e retenção; sem integrar o consumer, aplicar DDL ou chamar provider.",
+      "allowedFiles": [
+        "worker/src/emailSuppressionPersistenceContract.js",
+        "scripts/teste-email-suppression-persistence-contract.ts",
+        "docs/ONDA_3/JANELA_3_3_EMAIL_PERSISTENCIA/20260904_email_suppression.sql",
+        "docs/ONDA_3/JANELA_3_3_EMAIL_PERSISTENCIA/README.md",
+        "docs/FEATURE_MATRIX.md",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "j31-shadow-integrity-hardening",
+      "workstreamId": "organization_shadow",
+      "status": "done_local_only",
+      "scope": "Fechar os achados independentes J3.1 com unicidade de agregados, timestamp UTC canônico, cronologia válida e cobertura negativa, preservando o boundary sintético read-only.",
+      "allowedFiles": [
+        "docs/ONDA_3/JANELA_3_1/**",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "notification-persistence-migration-draft",
+      "workstreamId": "notifications",
+      "status": "done_local_only",
+      "scope": "Preparar localmente um draft SQL de persistência para inbox, registry de dispositivos e journal de entrega, com RLS fail-closed, CAS, replay, retenção e purge; sem aplicar migration, armazenar token bruto ou enviar notificação.",
+      "allowedFiles": [
+        "docs/ONDA_3/JANELA_3_4_NOTIFICATION_PERSISTENCIA/**",
+        "scripts/teste-notification-persistence-draft.ts",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md",
+        "docs/FEATURE_MATRIX.md",
+        "package.json",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "admin-detail-aal2-hardening",
+      "workstreamId": "admin_data",
+      "status": "done_local_only",
+      "scope": "Exigir AAL2 antes da leitura detalhada de usuário no dispatcher administrativo e adicionar regressão que prove negação antes de qualquer consulta service-role; sem acessar dados reais ou publicar o Worker.",
+      "allowedFiles": [
+        "worker/src/admin.js",
+        "scripts/teste-admin-governanca.ts",
+        "docs/PLANO_NOTIFICACOES_ONBOARDING_ADMIN_OLLI_2026-08-31.md",
+        "docs/FEATURE_MATRIX.md",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "pwa-apk-release-readiness-audit",
+      "workstreamId": "pwa_apk",
+      "status": "done_local_only",
+      "scope": "Auditar localmente configuração Expo/EAS/PWA, assets, identificadores, formatos de build, distribuição, hashes e rollback e produzir roteiro executável; sem consumir build pago, assinar ou publicar.",
+      "allowedFiles": [
+        "docs/ONDA_3/JANELA_3_5_RELEASE_READINESS/**",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "billing-decision-and-sandbox-runbook",
+      "workstreamId": "monetization",
+      "status": "done_local_only",
+      "scope": "Reconciliar localmente as decisões e rotas Stripe/Mercado Pago/Apple IAP, identificar a fonte de entitlement e preparar um roteiro de lifecycle sandbox sem abrir credenciais, criar checkout ou gerar cobrança.",
+      "allowedFiles": [
+        "docs/ONDA_3/JANELA_3_6_BILLING_GATE/**",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    },
+    {
+      "itemId": "admin-aal2-fixture-regression",
+      "workstreamId": "admin_data",
+      "status": "done_local_only",
+      "scope": "Alinhar o RBAC do detalhe administrativo à política de datasets: suporte e financeiro com projeções próprias, ambos sob AAL2, preservando negação a leitura/AAL1 e sem dados reais ou deploy.",
+      "allowedFiles": [
+        "worker/src/admin.js",
+        "scripts/teste-admin-dados-policy.ts",
+        "scripts/teste-admin-governanca.ts",
+        "docs/PILOTO/**"
+      ],
+      "requiresHumanGateIds": [],
+      "forbiddenActions": [
+        "secrets",
+        "real_data",
+        "migration",
+        "external_send",
+        "payment",
+        "production",
+        "deploy",
+        "publication"
+      ]
+    }
+  ]
+}

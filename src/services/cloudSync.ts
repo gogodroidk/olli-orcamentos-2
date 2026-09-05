@@ -49,6 +49,12 @@ import type {
   OrdemServico,
   Equipamento,
 } from '../types';
+import { dataBrParaIsoSeguro } from '../utils/date';
+import {
+  erroEhColisaoNumero,
+  numeroDocumentoAposColisao,
+  type TabelaDocumentoNumerado,
+} from '../utils/numeroDocumento';
 
 // ─── Tabelas sincronizadas ───────────────────────────────────────────────────
 export type SyncTable =
@@ -191,7 +197,10 @@ function reciboToRow(r: Recibo): Record<string, unknown> {
     cliente_nome: r.clienteNome ?? null,
     valor_recebido: r.valorRecebido ?? null,
     forma_pagamento: r.formaPagamento ?? null,
-    data_recebimento: r.dataRecebimento ?? null,
+    // A coluna remota é timestamptz; o domínio local guarda DD/MM/AAAA.
+    // Mandar a string BR crua é ambíguo e já fez 10/07 virar 07/10. O blob
+    // `dados` continua com a data civil original; só a coluna-espelho recebe ISO.
+    data_recebimento: dataBrParaIsoSeguro(r.dataRecebimento),
     dados: r,
     criado_em: r.criadoEm,
     // Coluna-espelho só p/ índice/painel; a verdade do soft-delete é o `excluidoEm`
@@ -744,6 +753,138 @@ function resetarContextoEquipe(): void {
   contextoEquipe = { status: 'desconhecido' };
 }
 
+function tabelaDocumentoNumerado(table: SyncTable): table is TabelaDocumentoNumerado {
+  return table === 'orcamentos' || table === 'recibos';
+}
+
+/**
+ * Resolve a corrida inevitável de dois aparelhos que emitiram o mesmo número
+ * offline. Só roda depois do índice por tenant devolver 23505. Consulta os pisos
+ * visíveis local/remoto, tenta até 3 números e, no sucesso, alinha o SQLite sem
+ * disparar outro mirrorPush. O blob guarda o número anterior e o carimbo da
+ * renumeração para a mudança comercial nunca ficar sem trilha.
+ */
+async function tentarRenumerarDocumento(
+  table: TabelaDocumentoNumerado,
+  objLocal: unknown,
+  rowOriginal: Record<string, unknown>,
+  erroInicial: unknown,
+): Promise<boolean> {
+  if (!supabase || !erroEhColisaoNumero(table, erroInicial)) return false;
+  const objeto = objLocal as Orcamento | Recibo;
+  if (!objeto?.id || !objeto.numero) return false;
+
+  try {
+    const tenant = typeof rowOriginal.user_id === 'string'
+      ? rowOriginal.user_id
+      : await tenantDaSessao();
+    if (!tenant) return false;
+
+    const db = await getDb();
+    const chaveContador = table === 'orcamentos' ? 'orcamento' : 'recibo';
+    let pisoTentativas = 0;
+
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      const [linhasLocais, contador, remoto] = await Promise.all([
+        db.getAllAsync<{ numero: string | null }>(
+          `SELECT numero FROM ${table} WHERE numero IS NOT NULL`,
+        ),
+        db.getFirstAsync<{ valor: number }>('SELECT valor FROM contadores WHERE chave = ?', [chaveContador]),
+        supabase
+          .from(remoteNome(table))
+          .select('numero')
+          .eq('user_id', tenant)
+          .order('criado_em', { ascending: false })
+          .limit(1000),
+      ]);
+      if (remoto.error || !Array.isArray(remoto.data)) return false;
+
+      const atualLocal = await db.getFirstAsync<{ data: string }>(
+        `SELECT data FROM ${table} WHERE id = ?`,
+        [objeto.id],
+      );
+      let base: Orcamento | Recibo = objeto;
+      try {
+        const parsed = atualLocal?.data ? JSON.parse(atualLocal.data) : null;
+        if (parsed?.id === objeto.id) base = parsed as Orcamento | Recibo;
+      } catch {
+        // Blob local ilegível: usa o objeto que originou o push, sem inventar vazio.
+      }
+
+      const proximo = numeroDocumentoAposColisao(
+        table,
+        [
+          ...linhasLocais.map((linha) => linha.numero),
+          ...remoto.data.map((linha: any) => linha?.numero),
+        ],
+        Math.max(Number(contador?.valor) || 0, pisoTentativas),
+      );
+      pisoTentativas = proximo.sequencia;
+      const renumeradoEm = new Date().toISOString();
+      const atualizado = {
+        ...base,
+        numero: proximo.numero,
+        numeroAnterior: base.numeroAnterior ?? objeto.numero,
+        renumeradoEm,
+        atualizadoEm: renumeradoEm,
+      } as Orcamento | Recibo;
+      const rowRetry = TO_ROW[table](atualizado);
+      rowRetry.user_id = tenant;
+
+      const { error } = await supabase
+        .from(remoteNome(table))
+        .upsert(rowRetry, { onConflict: ON_CONFLICT[table] });
+      if (error) {
+        if (!erroEhColisaoNumero(table, error)) return false;
+        continue;
+      }
+
+      // Releitura DENTRO da transação: se a UI editou outro campo enquanto a
+      // rede respondia, preservamos a versão mais nova e mudamos somente número
+      // + auditoria. Este caminho é silencioso e não recursa no mirrorPush.
+      await db.withTransactionAsync(async () => {
+        const vigente = await db.getFirstAsync<{ data: string }>(
+          `SELECT data FROM ${table} WHERE id = ?`,
+          [objeto.id],
+        );
+        let final = atualizado;
+        try {
+          const parsed = vigente?.data ? JSON.parse(vigente.data) : null;
+          if (parsed?.id === objeto.id) {
+            final = {
+              ...parsed,
+              numero: proximo.numero,
+              numeroAnterior: parsed.numeroAnterior ?? objeto.numero,
+              renumeradoEm,
+              atualizadoEm: renumeradoEm,
+            } as Orcamento | Recibo;
+          }
+        } catch {
+          // Mantém `atualizado`, que é completo e já foi aceito pela nuvem.
+        }
+        await db.runAsync(
+          `INSERT OR REPLACE INTO ${table} (id, numero, data) VALUES (?,?,?)`,
+          [final.id, final.numero, JSON.stringify(final)],
+        );
+        const pisoAtual = await db.getFirstAsync<{ valor: number }>(
+          'SELECT valor FROM contadores WHERE chave = ?',
+          [chaveContador],
+        );
+        if ((Number(pisoAtual?.valor) || 0) < proximo.sequencia) {
+          await db.runAsync(
+            'INSERT OR REPLACE INTO contadores (chave, valor) VALUES (?, ?)',
+            [chaveContador, proximo.sequencia],
+          );
+        }
+      });
+      return true;
+    }
+  } catch {
+    // Sync local-first: falha continua registrada no SQLite para novo retry.
+  }
+  return false;
+}
+
 async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<void> {
   try {
     if (!objLocal || !supabase) return;
@@ -790,7 +931,15 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
         (row as Record<string, unknown>).user_id = decisao.userIdOverride;
       }
     }
-    await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] });
+    const { error } = await supabase
+      .from(remoteNome(table))
+      .upsert(row, { onConflict: ON_CONFLICT[table] });
+    if (error) {
+      if (tabelaDocumentoNumerado(table)) {
+        await tentarRenumerarDocumento(table, objLocal, row, error);
+      }
+      return;
+    }
     if (table === 'empresa') await marcarEmpresaVistaAgora();
   } catch {
     // idem: silencioso

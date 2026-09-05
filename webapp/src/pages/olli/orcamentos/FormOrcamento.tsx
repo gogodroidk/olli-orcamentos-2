@@ -16,8 +16,8 @@
  *    em_negociação/aguardando_assinatura/aprovado, o cliente recebeu (e talvez
  *    aceitou) aquele documento. Editar por cima muda o papel debaixo do nariz dele —
  *    e, no caso do aprovado, mexe no que foi aceito (CDC art. 40). Nesta versão a
- *    edição desses status é BLOQUEADA, com aviso, e o caminho oferecido é DUPLICAR
- *    como novo rascunho. A trava mora AQUI (não na lista): nenhum chamador consegue
+ *    edição desses status é BLOQUEADA, com aviso, e o caminho oferecido é CRIAR UMA
+ *    REVISÃO como novo rascunho. A trava mora AQUI (não na lista): nenhum chamador consegue
  *    contorná-la.
  *
  * 3. CONFUNDIR 10% COM R$ 10. Quando `descontoTipo === 'percentual'`, o campo
@@ -45,7 +45,6 @@ import { agoraIso, brParaIso, emDiasBr, hojeYmd } from "@/olli/datas";
 import { proximoNumeroDocumento, useSalvar } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Checkbox } from "@/ui/checkbox";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Input } from "@/ui/input";
@@ -65,7 +64,7 @@ import { cn } from "@/utils";
  *     cliente contratou.
  *   • `convertido`: já virou recibo. Editar por cima descasaria o orçamento do
  *     recibo que registra o pagamento — dois documentos dizendo coisas diferentes.
- * O caminho honesto para os dois é DUPLICAR como novo rascunho.
+ * O caminho honesto para os dois é criar uma REVISÃO como novo rascunho.
  */
 export function edicaoBloqueada(status: Orcamento["status"]): boolean {
 	return propostaJaEnviada(status) || status === "aprovado" || status === "convertido";
@@ -103,6 +102,22 @@ export function duplicarComoRascunho(o: Orcamento, validadeDias = VALIDADE_DIAS_
 		criadoEm: agora,
 		atualizadoEm: agora,
 	});
+}
+
+/**
+ * Revisão rastreável de uma proposta que o cliente já recebeu. Diferente de uma
+ * duplicata comum, guarda a origem para a interface e o PDF explicarem qual
+ * documento foi corrigido — sem alterar o original.
+ */
+export function criarRevisaoComoRascunho(o: Orcamento, validadeDias = VALIDADE_DIAS_PADRAO): Orcamento {
+	const agora = agoraIso();
+	return {
+		...duplicarComoRascunho(o, validadeDias),
+		editadoEm: undefined,
+		revisaoDeId: o.revisaoDeId ?? o.id,
+		revisaoDeNumero: o.revisaoDeNumero ?? o.numero,
+		revisaoCriadaEm: agora,
+	};
 }
 
 /** O aviso que aparece no lugar do formulário quando a edição está bloqueada. */
@@ -160,8 +175,8 @@ export function AvisoOrcamentoEnviado({
 				</p>
 
 				<p className="text-sm text-text-secondary">
-					Faça uma <strong className="font-medium text-text-primary">cópia como novo rascunho</strong>: o original
-					continua valendo, e você negocia em cima da proposta nova.
+					Crie uma <strong className="font-medium text-text-primary">revisão</strong>: o original continua preservado,
+					e a proposta atualizada recebe outro número para você reenviar ao cliente.
 				</p>
 
 				<DialogFooter>
@@ -171,7 +186,7 @@ export function AvisoOrcamentoEnviado({
 					{aoDuplicar && (
 						<Button type="button" onClick={() => aoDuplicar(orcamento)}>
 							<Copy className="mr-2 size-4" />
-							Duplicar como novo rascunho
+							Criar revisão
 						</Button>
 					)}
 				</DialogFooter>
@@ -206,8 +221,8 @@ const normalizar = (s: string) =>
 // `qtdParaTexto` / `textoParaNumero` moram em `@/olli/numero`: é código de dinheiro
 // (vai pro PDF do cliente) e lá tem teste de regressão — ver `npm run test:numero-web`.
 
-/** Padrão do app quando o campo `formasPagamento` falta no blob (`defaultFormas`). */
-const FORMAS_PADRAO = { credito: false, debito: false, dinheiro: false, pix: true } as const;
+/** Campo legado: mantido para abrir blobs antigos, sem cobrança embutida em novos orçamentos. */
+const FORMAS_PADRAO = { credito: false, debito: false, dinheiro: false, pix: false } as const;
 
 /**
  * Defaults defensivos para blob LEGADO. Um orçamento antigo pode ter subido sem
@@ -509,7 +524,7 @@ function Editor({
 
 				if (statusFresco && edicaoBloqueada(statusFresco)) {
 					throw new Error(
-						"Este orçamento mudou de status em outro aparelho e não pode mais ser editado por aqui. Feche a janela e duplique-o como novo rascunho.",
+						"Este orçamento mudou de status em outro aparelho e não pode mais ser editado por aqui. Feche a janela e crie uma revisão.",
 					);
 				}
 
@@ -539,7 +554,12 @@ function Editor({
 			// `comTotais` recalcula subtotais/desconto/sinal como o app faz — o mesmo
 			// orçamento tem que fechar no mesmo centavo nos dois lugares. Roda sobre a base
 			// já mesclada: o sinal vindo do celular é reclampado ao novo total.
-			let final = comTotais({ ...base, atualizadoEm: agoraIso() });
+			const agora = agoraIso();
+			let final = comTotais({
+				...base,
+				atualizadoEm: agora,
+				...(!ehNovo ? { editadoEm: agora } : {}),
+			});
 
 			// O número nasce AQUI, não ao abrir o formulário (ver cabeçalho). Se um submit
 			// anterior já comprou um número mas falhou DEPOIS (ex.: rede caiu no upsert),
@@ -563,13 +583,6 @@ function Editor({
 
 	/* ────────────────────────────────  Render  ────────────────────────────────── */
 
-	const formas: { chave: keyof Orcamento["formasPagamento"]; rotulo: string }[] = [
-		{ chave: "pix", rotulo: "Pix" },
-		{ chave: "credito", rotulo: "Crédito" },
-		{ chave: "debito", rotulo: "Débito" },
-		{ chave: "dinheiro", rotulo: "Dinheiro" },
-	];
-
 	return (
 		<FormDialog
 			aberto={aberto}
@@ -590,6 +603,15 @@ function Editor({
 			rotuloSalvar={ehNovo ? "Criar orçamento" : "Salvar alterações"}
 		>
 			<form id={formId} onSubmit={enviar} className="space-y-6">
+				{orc.revisaoDeNumero && (
+					<div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2.5 text-sm text-text-secondary">
+						<RotateCw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
+						<p>
+							<strong className="font-medium text-text-primary">Revisão do orçamento {orc.revisaoDeNumero}.</strong>{" "}
+							O original está preservado. Salve e envie este novo documento ao cliente.
+						</p>
+					</div>
+				)}
 				{/* ─────────────  Cliente  ───────────── */}
 				<section className="space-y-4">
 					<Campo rotulo="Cliente" obrigatorio>
@@ -993,37 +1015,14 @@ function Editor({
 						</Campo>
 					</div>
 
-					<Campo rotulo="Condições de pagamento">
+					<Campo rotulo="Condições comerciais">
 						<Textarea
 							rows={2}
 							value={orc.condicoesPagamento ?? ""}
-							placeholder="Ex.: 50% na aprovação, 50% na entrega."
+							placeholder="Ex.: 50% na aprovação e restante na conclusão. O pagamento é combinado diretamente com a empresa."
 							onChange={(e) => patch({ condicoesPagamento: e.target.value.trim() ? e.target.value : undefined })}
 						/>
 					</Campo>
-
-					<fieldset className="space-y-2">
-						<legend className="text-sm font-medium text-text-primary">Formas de pagamento aceitas</legend>
-						<div className="flex flex-wrap gap-x-6 gap-y-2.5">
-							{formas.map(({ chave, rotulo }) => {
-								const id = `forma-${chave}`;
-								return (
-									<div key={chave} className="flex items-center gap-2">
-										<Checkbox
-											id={id}
-											checked={orc.formasPagamento[chave]}
-											onCheckedChange={(v) =>
-												patch({ formasPagamento: { ...orc.formasPagamento, [chave]: v === true } })
-											}
-										/>
-										<label htmlFor={id} className="cursor-pointer text-sm text-text-primary">
-											{rotulo}
-										</label>
-									</div>
-								);
-							})}
-						</div>
-					</fieldset>
 
 					<Campo rotulo="Informações adicionais">
 						<Textarea

@@ -8,12 +8,14 @@
     "test:ai": "node scripts/teste-ai-provider.ts",
     "test:audio": "node scripts/teste-audio-seguro.ts",
     "test:body": "node scripts/teste-body-limit.ts",
+    "test:email": "node scripts/teste-email.js",
+    "test:welcome-outbox-consumer": "node scripts/teste-welcome-outbox-consumer.js",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@sentry/cloudflare": "^10.66.0"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.126.0"
   }
 }

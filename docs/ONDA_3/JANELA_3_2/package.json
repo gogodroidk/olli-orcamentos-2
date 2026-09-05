@@ -1,0 +1,8 @@
+{
+  "name": "olli-j3-2-offline-outbox-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

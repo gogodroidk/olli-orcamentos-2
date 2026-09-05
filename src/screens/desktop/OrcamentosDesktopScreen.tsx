@@ -127,13 +127,12 @@ export default function OrcamentosDesktopScreen() {
       render: (o) => (
         <View style={styles.acoesLinha}>
           <AcaoIcone icone="eye-outline" rotulo="Ver" onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })} />
-          {/* Editar SOME depois que o cliente recebeu o documento — mesma regra do
-              app mobile (`OrcamentosScreen`) e do painel (`FormOrcamento`). O
-              `saveOrcamento` recusa a edição de um orçamento aceito, então este
-              lápis abria a tela inteira só para falhar no "Salvar", com o que o
-              usuário digitou indo junto. "Ver" ao lado leva à tela que tem
-              "Duplicar", que é o caminho que funciona. */}
-          {!edicaoBloqueada(o.status) && (
+          {/* Rascunho edita no lugar. Documento que o cliente já recebeu mantém o
+              original congelado e abre o detalhe, onde "Criar revisão" gera um
+              novo número ligado ao anterior. */}
+          {edicaoBloqueada(o.status) ? (
+            <AcaoIcone icone="file-document-edit-outline" rotulo="Revisar" onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })} />
+          ) : (
             <AcaoIcone icone="pencil-outline" rotulo="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })} />
           )}
           <AcaoIcone icone="receipt" rotulo="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })} />

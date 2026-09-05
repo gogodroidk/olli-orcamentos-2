@@ -54,9 +54,9 @@ export const STATUS_COLORS: Record<StatusOrcamento, string> = {
 /**
  * Status que representam uma PROPOSTA JÁ ENVIADA ao cliente (mestre 13.5). Editar
  * um orçamento nestes estados NÃO pode sobrescrever silenciosamente o que o
- * cliente já viu: o `saveOrcamento` grava uma VERSÃO (snapshot) antes. Fonte única
- * da verdade, usada pelo app e por qualquer tela de edição (dentro ou fora do
- * escopo desta frente) para não divergir a regra.
+ * cliente já viu: o `saveOrcamento` recusa mudança comercial e a interface cria
+ * uma REVISÃO com outro ID/número ligada ao original. Fonte única da verdade,
+ * usada pelo app e por qualquer tela de edição para não divergir a regra.
  */
 export const STATUS_PROPOSTA_ENVIADA: readonly StatusOrcamento[] = [
   'enviado',
@@ -137,9 +137,9 @@ export interface Empresa {
   verticais?: VerticalId[];
   ferramentasAtivas?: FerramentaId[];
 
-  // Personalização — padrões usados para pré-preencher novos orçamentos e
-  // documentos (o.corMarca segue prevalecendo por orçamento; aqui é só o
-  // valor inicial sugerido). Tudo opcional: schema-less no SQLite (id + data
+  // Personalização — padrões centrais usados para pré-preencher novos orçamentos
+  // e documentos. O orçamento guarda um snapshot da identidade aplicada para um
+  // documento já enviado não mudar retroativamente. Tudo opcional: schema-less no SQLite (id + data
   // JSON), então adicionar estes campos não exige nenhuma migração.
   corMarca?: string;
   validadeDiasPadrao?: number;
@@ -339,6 +339,26 @@ export interface Orcamento {
 
   criadoEm: string;
   atualizadoEm: string;
+  /**
+   * Última alteração deliberada feita pelo prestador no editor. É diferente de
+   * `atualizadoEm`, que também muda por sync/status/assinatura. Serve para a UI
+   * dizer honestamente "Editado em ..." sem confundir uma visualização do cliente
+   * com mudança no conteúdo.
+   */
+  editadoEm?: string;
+  /**
+   * Relação entre uma revisão e o orçamento original. Documentos já enviados ou
+   * aceitos não são sobrescritos: "Criar revisão" nasce como outro rascunho,
+   * preserva o original e registra de onde veio. Campos aditivos no blob JSON,
+   * portanto sem migration e compatíveis com backups antigos.
+   */
+  revisaoDeId?: string;
+  revisaoDeNumero?: string;
+  revisaoCriadaEm?: string;
+  /** Número original quando uma corrida entre aparelhos exigiu renumeração no sync. */
+  numeroAnterior?: string;
+  /** ISO da renumeração automática; mantém a trilha sem expor detalhes internos no PDF. */
+  renumeradoEm?: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. Vive no blob JSON. */
   excluidoEm?: string;
 }
@@ -395,6 +415,10 @@ export interface Recibo {
   /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Vive no blob JSON
    *  e é espelhado na coluna `atualizado_em` da nuvem. Ver `Cliente.atualizadoEm`. */
   atualizadoEm?: string;
+  /** Número original quando uma corrida entre aparelhos exigiu renumeração no sync. */
+  numeroAnterior?: string;
+  /** ISO da renumeração automática; trilha de auditoria no blob sincronizado. */
+  renumeradoEm?: string;
   // Ciclo comercial (Onda 3): true assim que o PDF do recibo é gerado/compartilhado
   // pelo menos uma vez. `false`/ausente = pagamento registrado mas o PDF do recibo
   // ainda não foi emitido para o cliente (registro rápido de "Registrar pagamento").

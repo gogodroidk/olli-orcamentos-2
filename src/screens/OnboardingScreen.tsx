@@ -33,6 +33,7 @@ import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY } from '../services/onboarding';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
@@ -82,7 +83,7 @@ function montarEndereco(e: EnderecoForm): string {
 }
 
 // Etapas do cadastro completo. Rótulos curtos para o StepIndicator.
-const STEPS = ['Empresa', 'Você', 'Endereço', 'PIX', 'Visual', 'Serviço'];
+const STEPS = ['Empresa', 'Você', 'Endereço', 'Visual', 'Serviço'];
 const ULTIMO = STEPS.length - 1;
 
 type Errors = Partial<Record<string, string>>;
@@ -102,6 +103,7 @@ export default function OnboardingScreen() {
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [imagemProcessando, setImagemProcessando] = useState<'logoUri' | 'assinaturaUri' | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const scrollRef = useRef<ScrollView>(null);
   const [acessoCadastro, setAcessoCadastro] = useState<'verificando' | 'liberado' | 'bloqueado'>('verificando');
@@ -292,7 +294,7 @@ export default function OnboardingScreen() {
    * em 1º ORÇAMENTO ENVIADO", com 5 minutos até o primeiro — e a ativação do produto é
    * definida como "orçamento real enviado em até 7 dias". Terminar o cadastro e largar
    * a pessoa na home das abas deixa justamente o passo que ATIVA por conta dela: ela
-   * acabou de dizer o nome do negócio, o PIX e até um serviço, e a recompensa disso é
+   * acabou de dizer o nome do negócio e até um serviço, e a recompensa disso é
    * uma tela de menu. O caminho mais curto entre "configurei" e "vi valor" é o
    * orçamento — então é nele que o onboarding desemboca.
    *
@@ -422,6 +424,7 @@ export default function OnboardingScreen() {
   }
 
   async function concluir() {
+    if (saving || imagemProcessando) return;
     // revalida tudo o que é obrigatório antes de gravar (segurança extra)
     if (!emp.nome.trim()) { setStep(0); setErrors({ nome: 'Conte o nome do seu negócio.' }); return; }
     setSaving(true);
@@ -444,13 +447,23 @@ export default function OnboardingScreen() {
   }
 
   async function pickImage(field: 'logoUri' | 'assinaturaUri') {
-    // mesmo padrão da MeuNegocioScreen (funciona no app e na web)
+    if (imagemProcessando) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permissão', 'Permita o acesso às fotos.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.9 });
     if (!r.canceled) {
-      setEmp(p => ({ ...p, [field]: r.assets[0].uri }));
-      Haptics.selectionAsync().catch(() => {});
+      setImagemProcessando(field);
+      try {
+        const resultado = await imagemEscolhidaParaDataUri(r.assets[0]);
+        if (!resultado.ok) {
+          Alert.alert('Imagem não adicionada', resultado.erro);
+          return;
+        }
+        setEmp(p => ({ ...p, [field]: resultado.dataUri }));
+        Haptics.selectionAsync().catch(() => {});
+      } finally {
+        setImagemProcessando(null);
+      }
     }
   }
 
@@ -643,23 +656,8 @@ export default function OnboardingScreen() {
           </AnimatedEntrance>
         )}
 
-        {/* ─── 4. RECEBIMENTO (PIX) ───────────────────────── */}
+        {/* ─── 4. IDENTIDADE VISUAL (logo + assinatura) ───── */}
         {step === 3 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Recebimento</Text>
-            <Text style={styles.hint}>Sua chave PIX aparece nos orçamentos e recibos para o cliente te pagar rápido.</Text>
-
-            <View style={styles.card}>
-              <OlliInput label="Chave PIX" value={emp.chavePix} onChangeText={v => setField('chavePix', v)}
-                placeholder="CPF/CNPJ, e-mail, telefone ou aleatória" leftIcon="key-variant" autoCapitalize="none" containerStyle={{ marginBottom: 0 }} />
-            </View>
-
-            <Assure icon="cash-fast" text="Sem pressa: dá para configurar depois em “Meu Negócio”." />
-          </AnimatedEntrance>
-        )}
-
-        {/* ─── 5. IDENTIDADE VISUAL (logo + assinatura) ───── */}
-        {step === 4 && (
           <AnimatedEntrance index={0}>
             <Text style={styles.title}>Identidade visual</Text>
             <Text style={styles.hint}>Sua logo e assinatura deixam cada documento com a sua cara.</Text>
@@ -667,16 +665,16 @@ export default function OnboardingScreen() {
             <View style={styles.card}>
               <View style={styles.brandPickRow}>
                 <View style={styles.brandItem}>
-                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} activeOpacity={0.8}>
-                    {emp.logoUri ? <Image source={{ uri: emp.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
+                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
+                    {imagemProcessando === 'logoUri' ? <ActivityIndicator color={cores.primary} /> : emp.logoUri ? <Image source={{ uri: emp.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
                       <><MaterialCommunityIcons name="image-plus" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Logo</Text></>
                     )}
                   </TouchableOpacity>
                   <Text style={styles.brandLabel}>Logotipo</Text>
                 </View>
                 <View style={styles.brandItem}>
-                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} activeOpacity={0.8}>
-                    {emp.assinaturaUri ? <Image source={{ uri: emp.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
+                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
+                    {imagemProcessando === 'assinaturaUri' ? <ActivityIndicator color={cores.primary} /> : emp.assinaturaUri ? <Image source={{ uri: emp.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
                       <><MaterialCommunityIcons name="draw" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Assinatura</Text></>
                     )}
                   </TouchableOpacity>
@@ -689,8 +687,8 @@ export default function OnboardingScreen() {
           </AnimatedEntrance>
         )}
 
-        {/* ─── 6. PRIMEIRO SERVIÇO (opcional) ─────────────── */}
-        {step === 5 && (
+        {/* ─── 5. PRIMEIRO SERVIÇO (opcional) ─────────────── */}
+        {step === 4 && (
           <AnimatedEntrance index={0}>
             <Text style={styles.title}>Primeiro serviço</Text>
             <Text style={styles.hint}>Com um serviço no catálogo, você monta orçamentos em segundos. (Opcional)</Text>
@@ -723,6 +721,7 @@ export default function OnboardingScreen() {
                   label={servNome.trim() ? 'Concluir e começar' : 'Concluir cadastro'}
                   variant="gradient" size="lg" fullWidth
                   loading={saving}
+                  disabled={saving || !!imagemProcessando}
                   onPress={concluir}
                   icon={<MaterialCommunityIcons name="check-circle" size={20} color={gradientes.sobreBrand} />}
                 />
@@ -731,6 +730,7 @@ export default function OnboardingScreen() {
                   label="Continuar"
                   variant="gradient" size="lg" fullWidth
                   onPress={avancar}
+                  disabled={!!imagemProcessando}
                   icon={<MaterialCommunityIcons name="arrow-right" size={20} color={gradientes.sobreBrand} />}
                 />
               )}
@@ -781,7 +781,7 @@ function BoasVindas({ onStart, insets }: {
           <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
           <WcFeature icon="link-variant" text="O cliente aprova ou recusa pelo link, sem instalar nada" />
           <WcFeature icon="toolbox-outline" text="Ordens de serviço e equipe organizadas em campo" />
-          <WcFeature icon="wifi-off" text="Cadastros já baixados funcionam offline; links, IA, pagamentos e sincronização precisam de internet" />
+          <WcFeature icon="wifi-off" text="Cadastros já baixados funcionam offline; links, IA e sincronização precisam de internet" />
         </View>
       </View>
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>

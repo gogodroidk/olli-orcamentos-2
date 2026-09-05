@@ -514,7 +514,7 @@ function pageOrcamento(row, preSelecao = '') {
   }).join('');
 
   const conds = [];
-  if (d.condicoesPagamento) conds.push(`<div class="cond"><div class="cond-l">Pagamento</div><div class="cond-v">${esc(d.condicoesPagamento)}</div></div>`);
+  if (d.condicoesPagamento) conds.push(`<div class="cond"><div class="cond-l">Condições comerciais</div><div class="cond-v">${esc(d.condicoesPagamento)}</div></div>`);
   if (d.garantia) conds.push(`<div class="cond"><div class="cond-l">Garantia</div><div class="cond-v">${esc(d.garantia)}</div></div>`);
   if (d.prazo) conds.push(`<div class="cond"><div class="cond-l">Prazo</div><div class="cond-v">${esc(d.prazo)}</div></div>`);
   const condsHtml = conds.length ? `<div class="conds">${conds.join('')}</div>` : '';
@@ -594,6 +594,7 @@ function pageOrcamento(row, preSelecao = '') {
       <div class="title">Você recebeu um orçamento de ${esc(nomePrestador)}</div>
       <div class="meta">
         ${numero ? `<span class="meta-txt">Nº ${esc(numero)}</span>` : ''}
+        ${d.revisaoDeNumero ? `<span class="pill">Revisão do nº ${esc(d.revisaoDeNumero)}</span>` : ''}
         ${emitido ? `<span class="meta-txt">· ${esc(emitido)}</span>` : ''}
         ${validadePill}
       </div>

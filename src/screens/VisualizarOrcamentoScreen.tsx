@@ -13,9 +13,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
-import { PixCobrancaModal } from '../components/PixCobrancaModal';
 import { AssinaturaClienteModal } from '../components/assinatura/AssinaturaClienteModal';
-import { gerarPixCopiaECola } from '../utils/pixBrCode';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
@@ -71,25 +69,6 @@ export default function VisualizarOrcamentoScreen() {
 
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
-  const [pixVisivel, setPixVisivel] = useState(false);
-  // Cobrança por Pix: valor = sinal (se houver) senão o total; BR Code memoizado.
-  // Sinal EFETIVO clampado ao total (defesa em profundidade: um orçamento antigo pode ter
-  // sinalValor stale salvo acima do total; nunca cobrar por Pix mais que o próprio total).
-  const pixValor = orc
-    ? (orc.sinalValor && orc.sinalValor > 0 ? Math.min(orc.sinalValor, orc.valorTotal) : orc.valorTotal)
-    : 0;
-  const pixBrCode = useMemo(() => {
-    if (!orc) return '';
-    const chave = (orc.chavePix || empresa?.chavePix || '').trim();
-    if (!chave) return '';
-    return gerarPixCopiaECola({
-      chave,
-      valor: orc.sinalValor && orc.sinalValor > 0 ? Math.min(orc.sinalValor, orc.valorTotal) : orc.valorTotal,
-      nome: empresa?.nome || '',
-      cidade: empresa?.cidade || '',
-      txid: orc.numero,
-    });
-  }, [orc, empresa]);
   // O bloco de assinaturas do PDF inteiro é ligado por `exibirAssinatura` (o
   // switch "Exibir assinatura" do Step 4). Desligado, o documento não tem onde a
   // assinatura pousar — e assinatura gravada que não sai no PDF é um "assinado"
@@ -383,6 +362,10 @@ export default function VisualizarOrcamentoScreen() {
         itens: orc.itens.map(i => ({ ...i, id: generateId() })),
         assinaturaClienteUri: undefined,
         dataAssinaturaCliente: undefined,
+        editadoEm: undefined,
+        revisaoDeId: undefined,
+        revisaoDeNumero: undefined,
+        revisaoCriadaEm: undefined,
         excluidoEm: undefined,
         criadoEm: agora,
         atualizadoEm: agora,
@@ -391,6 +374,45 @@ export default function VisualizarOrcamentoScreen() {
       nav.navigate('EditarOrcamento', { orcamentoId: duplicado.id });
     } catch (e: any) {
       Alert.alert('Erro', e?.message || 'Não foi possível duplicar o orçamento.');
+    } finally {
+      setDuplicando(false);
+    }
+  }
+
+  /**
+   * Documento já enviado/aceito não é sobrescrito. "Criar revisão" faz uma
+   * cópia rastreável como novo rascunho, apontando para o orçamento original.
+   * Assim o prestador consegue corrigir e enviar a versão nova sem apagar o que
+   * o cliente já recebeu ou aceitou.
+   */
+  async function handleCriarRevisao() {
+    if (!orc) return;
+    setDuplicando(true);
+    try {
+      const numero = await getNextOrcamentoNumber();
+      const agora = nowISO();
+      const revisao: Orcamento = {
+        ...orc,
+        id: generateId(),
+        numero,
+        status: 'rascunho',
+        dataEmissao: todayISO(),
+        itens: orc.itens.map(i => ({ ...i, id: generateId() })),
+        assinaturaClienteUri: undefined,
+        dataAssinaturaCliente: undefined,
+        assinaturaPrestadorUri: undefined,
+        excluidoEm: undefined,
+        editadoEm: undefined,
+        revisaoDeId: orc.revisaoDeId ?? orc.id,
+        revisaoDeNumero: orc.revisaoDeNumero ?? orc.numero,
+        revisaoCriadaEm: agora,
+        criadoEm: agora,
+        atualizadoEm: agora,
+      };
+      await saveOrcamento(revisao);
+      nav.navigate('EditarOrcamento', { orcamentoId: revisao.id });
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Não foi possível criar a revisão deste orçamento.');
     } finally {
       setDuplicando(false);
     }
@@ -492,7 +514,7 @@ export default function VisualizarOrcamentoScreen() {
     { label: 'Logo da empresa', ok: !!empresa?.logoUri },
     { label: 'Validade definida', ok: !!orc.validadeOrcamento },
     { label: 'Garantia clara', ok: !!orc.garantia },
-    { label: 'Pagamento explicado', ok: !!orc.condicoesPagamento },
+    { label: 'Itens e valores revisados', ok: orc.itens.length > 0 && orc.valorTotal > 0 },
     { label: 'Aprovação ativa', ok: orc.exibirAprovacao !== false || linkConfigurado() },
   ];
   const fechamentoOk = fechamentoChecks.filter(c => c.ok).length;
@@ -501,19 +523,14 @@ export default function VisualizarOrcamentoScreen() {
     <View style={{ flex: 1, backgroundColor: cores.background }}>
       <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
         <View style={styles.actionBar}>
-          {/* Editar só enquanto o documento é só nosso (rascunho/recusado/expirado/
-              cancelado). Depois que o cliente recebeu — e mais ainda depois que ele
-              aprovou — a alteração vira "Duplicar", logo ao lado: proposta nova, o
-              papel que ele tem em mãos continua valendo. Mesma regra do painel
-              (`edicaoBloqueada`), e o `saveOrcamento` recusa o caso aceito de todo
-              jeito, então o botão não pode existir prometendo o que não entrega. */}
-          {!edicaoBloqueada(orc.status) && (
+          {edicaoBloqueada(orc.status) ? (
+            <ActionBtn icon="file-document-edit-outline" label="Criar revisão" onPress={handleCriarRevisao} loading={duplicando} />
+          ) : (
             <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
           )}
           <ActionBtn icon="content-copy" label="Duplicar" onPress={handleDuplicar} loading={duplicando} />
           <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
-          <ActionBtn icon="qrcode" label="Pix" onPress={() => setPixVisivel(true)} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
           {orc.status === 'aprovado' && (
@@ -524,6 +541,20 @@ export default function VisualizarOrcamentoScreen() {
       </GradientHeader>
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }}>
+        {orc.revisaoDeNumero ? (
+          <View style={styles.revisaoAviso}>
+            <MaterialCommunityIcons name="file-document-edit-outline" size={21} color={cores.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.revisaoTitulo}>Revisão do orçamento nº {orc.revisaoDeNumero}</Text>
+              <Text style={styles.revisaoTexto}>
+                Este é o documento atualizado. O original continua preservado; envie este orçamento ao cliente.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {orc.editadoEm ? (
+          <Text style={styles.editadoEm}>Conteúdo editado em {formatDateTime(orc.editadoEm)}</Text>
+        ) : null}
         {/* STATUS */}
         <View style={styles.statusRow}>
           <View>
@@ -737,7 +768,7 @@ export default function VisualizarOrcamentoScreen() {
           {orc.validadeOrcamento && <Row label="Válido até" value={orc.validadeOrcamento} />}
           {orc.dataVisitaTecnica && <Row label="Visita técnica" value={orc.dataVisitaTecnica} />}
           {orc.agendamentoServico && <Row label="Agendamento" value={orc.agendamentoServico} />}
-          {orc.condicoesPagamento && <Row label="Pagamento" value={orc.condicoesPagamento} />}
+          {orc.condicoesPagamento && <Row label="Condições comerciais" value={orc.condicoesPagamento} />}
           {orc.garantia && <Row label="Garantia" value={orc.garantia} />}
           {orc.condicoesContratuais && (
             <View style={styles.textBlock}>
@@ -809,13 +840,6 @@ export default function VisualizarOrcamentoScreen() {
         )}
       </ScrollView>
 
-      <PixCobrancaModal
-        visivel={pixVisivel}
-        aoFechar={() => setPixVisivel(false)}
-        brcode={pixBrCode}
-        valor={pixValor}
-        referencia={`Orçamento nº ${orc.numero}`}
-      />
       <AssinaturaClienteModal
         visivel={assinaturaAberta}
         clienteNome={orc.clienteNome}
@@ -914,6 +938,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   numLabel: { fontSize: 18, fontWeight: '800', color: c.onSurface },
   dateLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+
+  revisaoAviso: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: comAlfa(c.primary, 0.08),
+    borderWidth: 1, borderColor: comAlfa(c.primary, 0.28),
+    borderRadius: BorderRadius.lg, padding: Spacing.md, marginBottom: 10,
+  },
+  revisaoTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
+  revisaoTexto: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
+  editadoEm: {
+    fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant,
+    textAlign: 'right', marginBottom: 8,
+  },
 
   menuTitle: { fontSize: 12, color: c.onSurfaceVariant, fontWeight: '600', padding: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, borderRadius: BorderRadius.md },

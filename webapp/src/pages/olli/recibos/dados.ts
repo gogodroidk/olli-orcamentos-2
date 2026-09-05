@@ -2,17 +2,15 @@
  * LEITURA DOS RECIBOS — e a coluna que não se pode ler.
  *
  * ═══════════════════════════════════════════════════════════════════════════════
- * ⚠️ `recibos.data_recebimento` ESTÁ CORROMPIDA NO BANCO. NÃO LEIA DELA.
+ * ⚠️ `recibos.data_recebimento` PODE ESTAR CORROMPIDA EM LINHAS HISTÓRICAS.
  * ═══════════════════════════════════════════════════════════════════════════════
- * O app do celular joga a string 'DD/MM/AAAA' do blob DIRETO nessa coluna, que é
- * `timestamptz`. O Postgres do projeto está em DateStyle=ISO,MDY, então "10/07/2026"
- * (10 de julho) foi gravado como 7 de OUTUBRO — dia e mês trocados. Toda linha antiga
- * está assim. Ler a coluna e mostrar na tela entregaria ao dono uma data errada num
- * documento financeiro, com cara de verdade.
+ * Versões antigas do app jogavam a string 'DD/MM/AAAA' do blob diretamente nessa
+ * coluna `timestamptz`. Em DateStyle=ISO,MDY, "10/07/2026" (10 de julho) podia ser
+ * gravado como 7 de outubro. O app atual já envia ISO, mas o acervo anterior ainda
+ * não passou por correção auditada; portanto a tela não usa a coluna como verdade.
  *
  * A VERDADE É O BLOB (`dados.dataRecebimento`, em DD/MM/AAAA). É de lá que a tela lê.
- * (Escrever é outra história: `contrato.ts` já converte para ISO ao gravar a coluna —
- * o que a gente grava daqui pra frente fica certo.)
+ * Tanto `contrato.ts` quanto o sync móvel atual convertem para ISO ao escrever.
  *
  * O blob também é a única fonte dos `itens` — as colunas nem os têm.
  */
@@ -35,7 +33,7 @@ export interface LinhaRecibo {
 	cliente_nome: string | null;
 	valor_recebido: number | null;
 	forma_pagamento: string | null;
-	/** ⚠️ CORROMPIDA. Nunca use. Existe para documentar o perigo. */
+	/** ⚠️ Pode estar corrompida no legado. Não use como fonte da data civil. */
 	data_recebimento: string | null;
 	dados: Recibo | null;
 	criado_em: string;
