@@ -39,9 +39,9 @@ const env: any = {
   SUPABASE_URL: 'https://falso.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso',
   MP_ACCESS_TOKEN: 'mp-token-falso',
-  // MP_WEBHOOK_SECRET ausente de propósito: sem ele a validação de assinatura é
-  // pulada e o GET-confirm (que este teste encena) é a barreira — que é
-  // exatamente o estado de produção hoje (ver o comentário do webhook).
+  MP_WEBHOOK_REQUIRE_SIGNATURE: 'false',
+  // Fixture legado explícita: permite exercitar o GET-confirm sem HMAC.
+  // O runtime real exige MP_WEBHOOK_SECRET por padrão.
 };
 
 const USER = 'user-mp-1';

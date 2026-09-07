@@ -104,7 +104,9 @@ export async function enviarEmail(env, { para, assunto, html, texto, idempotency
     });
     if (!r.ok) {
       // Sem `throw`: quem chama é fluxo de negócio e não pode cair por causa disto.
-      console.error('[olli-email] Resend recusou:', r.status, await r.text().catch(() => ''));
+      // O corpo do provider pode conter destinatário, IDs ou detalhes internos.
+      // Guardamos apenas a classe HTTP; a outbox mantém o código categorizado.
+      console.error('[olli-email] Resend recusou:', r.status);
       return { ok: false, motivo: 'falha' };
     }
     return { ok: true };

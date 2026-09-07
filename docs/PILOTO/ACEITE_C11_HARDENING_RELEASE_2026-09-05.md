@@ -99,6 +99,10 @@ observabilidade/restore e autorização de publicação.
   admin noindex 200. Isso não substitui smoke autenticado/RLS/Storage.
 - Gitleaks no diretório atual e Semgrep isolado via `uvx` retornaram zero
   achados; o launcher global do Semgrep tem conflito de OpenTelemetry.
+- Mercado Pago agora exige HMAC por padrão (`MP_WEBHOOK_SECRET`); o fallback
+  sem assinatura só existe em fixtures com opt-in explícito.
+- O lockfile do painel foi atualizado e `pnpm audit --prod`/OSV ficaram sem
+  vulnerabilidades reportadas; o build do painel passou com 3.272 módulos.
 
 As afirmações anteriores de ausência de staging/push e de migration somente
 local são históricas do aceite original; o checkpoint atual é

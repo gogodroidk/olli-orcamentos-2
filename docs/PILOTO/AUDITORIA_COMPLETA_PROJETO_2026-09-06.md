@@ -164,3 +164,9 @@ não de apagar documentos antigos.
 - Semgrep isolado via `uvx --from semgrep` examinou 8 arquivos de alto risco
   com 74 regras e **zero achados**; o launcher global quebrado não é usado como
   fonte de verdade.
+- Mercado Pago: webhook agora exige `MP_WEBHOOK_SECRET` por padrão e retorna
+  fail-closed quando ausente; o fallback sem HMAC só existe em fixtures locais
+  com `MP_WEBHOOK_REQUIRE_SIGNATURE=false`. Logs de provider foram redigidos.
+- Webapp: Browserslist, PostCSS, js-cookie e Faker foram atualizados no
+  lockfile; `pnpm audit --prod` e OSV não encontraram vulnerabilidades após a
+  correção, e o build Vite de 3.272 módulos passou.

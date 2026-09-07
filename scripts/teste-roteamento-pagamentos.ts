@@ -64,6 +64,7 @@ const env: any = {
   SUPABASE_ANON_KEY: 'anon-falso',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso',
   MP_ACCESS_TOKEN: 'mp-token-falso',
+  MP_WEBHOOK_REQUIRE_SIGNATURE: 'false', // fixture local; runtime real exige HMAC
   MP_RL: RL_LIVRE,
   STRIPE_SECRET_KEY: 'sk_test_falso',
   STRIPE_RL: RL_LIVRE,

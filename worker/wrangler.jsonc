@@ -71,7 +71,8 @@
     "STRIPE_PRICE_PRO_ANUAL": "price_1TqUVb4zjAI9pGd7fGSU4b4v",
     "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
     "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
-    "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn"
+    "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
+    "MP_WEBHOOK_REQUIRE_SIGNATURE": "true"
   },
   // Staging is a separate Worker with no production custom domains. It inherits
   // the bindings/rate-limit shape above but overrides all environment identity
@@ -106,7 +107,8 @@
         "STRIPE_PRICE_PRO_ANUAL": "price_1TqUVb4zjAI9pGd7fGSU4b4v",
         "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
         "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
-        "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn"
+        "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
+        "MP_WEBHOOK_REQUIRE_SIGNATURE": "true"
       },
       "ai": { "binding": "AI" },
       "ratelimits": [
