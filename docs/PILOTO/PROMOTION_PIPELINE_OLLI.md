@@ -17,7 +17,7 @@ O workflow versionado está em [`.github/workflows/promotion.yml`](../../.github
 | Ambiente | Supabase | Cloudflare | E-mail | Billing | Aceite |
 |---|---|---|---|---|---|
 | local | fixtures/contratos | dry-run/local | simulator | fixture | `false` |
-| staging | `sbpkutknpywezeagioon` | `olli-diagnostico-staging` | simulator, destinatário real proibido | test | `false` |
+| staging | `sbpkutknpywezeagioon` | `olli-diagnostico-staging` | off até secrets de teste; depois simulator, destinatário real proibido | test | `false` |
 | produção | `yiaeplqinnnnniyvwtls` | `olli-diagnostico` | hold/simulator até aprovação | live | `false` |
 
 O staging foi criado em **6 de setembro de 2026** na região `sa-east-1`. O

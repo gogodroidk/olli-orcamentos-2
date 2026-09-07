@@ -24,9 +24,10 @@
   reconciliation gate for a future versioned CLI/CI promotion; it is not being
   hidden as if the history were complete.
 - The staging Worker `olli-diagnostico-staging` was deployed without production
-  routes, with `WELCOME_DISPATCH_MODE=simulator`, and its public health endpoint
-  returned HTTP 200. No secret was entered and no real e-mail, payment or
-  customer data was used.
+  routes. Because the staging-only Supabase service-role and Resend test
+  secrets are not provisioned, `WELCOME_DISPATCH_MODE=off` is now explicit
+  (fail-closed); its public health endpoint returned HTTP 200. No secret was
+  entered and no real e-mail, payment or customer data was used.
 - Public smoke proof: `npm run staging:smoke` passed health `200`, CORS
   preflight `204`, method gates for Resend and IA actions (`405`) and the
   noindex admin shell (`200`). The smoke only uses the `workers.dev` URL and
@@ -34,6 +35,9 @@
 - GitHub promotion proof: draft PR **#42** is open from `codex/piloto-p0` to
   `main`; workflow run `34075474398` completed with `quality-and-builds` and
   `staging-promotion` successful, while `production-promotion` was skipped.
+- The previous simulator setting produced scheduled configuration errors while
+  secrets were absent; the off-mode redeploy removes that false-green state.
+  Enabling the simulator remains a staging secret gate, not a production gate.
 
 ## Safety decision
 

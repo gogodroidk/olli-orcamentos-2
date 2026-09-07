@@ -29,7 +29,7 @@
       "supabaseRegion": "sa-east-1",
       "cloudflareWorker": "olli-diagnostico-staging",
       "cloudflareRoutes": [],
-      "welcomeDispatchMode": "simulator",
+      "welcomeDispatchMode": "off_until_staging_secrets",
       "billingMode": "test",
       "realRecipientPolicy": "forbidden",
       "requiredSecretNames": [
@@ -53,7 +53,7 @@
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
           "versionId": "257076e9-8c71-4ad3-91e4-406de5ab82d3",
           "health": "HTTP_200",
-          "welcomeDispatchMode": "simulator",
+          "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
         },
         "githubPromotion": {
