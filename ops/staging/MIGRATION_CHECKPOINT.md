@@ -41,6 +41,8 @@
 - Current staging Worker version: `2bb04a5b-6b52-4bd4-91ec-8dae84af40b0`,
   deployed with `WELCOME_DISPATCH_MODE=off` and verified by the same public
   smoke contract.
+- O procedimento reproduzível para secrets de teste e canário está em
+  `ops/staging/SECRETS_AND_CANARY_RUNBOOK.md`; nenhum valor é armazenado nele.
 
 ## Safety decision
 
