@@ -38,7 +38,7 @@
 - The previous simulator setting produced scheduled configuration errors while
   secrets were absent; the off-mode redeploy removes that false-green state.
   Enabling the simulator remains a staging secret gate, not a production gate.
-- Current staging Worker version: `2bb04a5b-6b52-4bd4-91ec-8dae84af40b0`,
+- Current staging Worker version: `d53861a5-fda7-4e90-9430-3f8f7fef231e`,
   deployed with `WELCOME_DISPATCH_MODE=off` and verified by the same public
   smoke contract.
 - O procedimento reproduzível para secrets de teste e canário está em

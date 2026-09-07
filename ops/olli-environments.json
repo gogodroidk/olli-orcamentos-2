@@ -55,7 +55,7 @@
         "workerDeployment": {
           "name": "olli-diagnostico-staging",
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
-          "versionId": "2bb04a5b-6b52-4bd4-91ec-8dae84af40b0",
+          "versionId": "d53861a5-fda7-4e90-9430-3f8f7fef231e",
           "health": "HTTP_200",
           "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
