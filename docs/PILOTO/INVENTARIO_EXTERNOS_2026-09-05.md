@@ -99,6 +99,10 @@ deploy, DNS ou alteração de produção.
   existe no GitHub. Não houve commit, push ou criação de branch nesta revalidação.
 - Essa defasagem é o motivo para não clicar em `Connect` no Cloudflare: fazê-lo
   antes de publicar uma revisão coerente ligaria o auto-build a código antigo.
+- Em 7 de setembro de 2026, o branch `codex/piloto-p0` foi publicado no GitHub
+  e o PR draft #42 foi aberto para revisão. O workflow de promoção foi disparado
+  somente para `staging` e concluiu qualidade + smoke; produção permaneceu
+  `skipped`. O Cloudflare Git Build não foi conectado automaticamente.
 
 ## Resend
 

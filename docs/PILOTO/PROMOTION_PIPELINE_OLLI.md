@@ -43,6 +43,9 @@ CORS, gates de método e o shell noindex do admin sem tocar em dados.
 6. Falha de saúde interrompe a cadeia e aponta para o deployment anterior.
 7. O workflow nunca transforma simulador em aceite real automaticamente.
 
+A primeira execução manual do alvo `staging` foi comprovada no workflow
+`34075474398`: qualidade e smoke passaram; o job de produção permaneceu `skipped`.
+
 ## Agentes especialistas
 
 Os agentes permanentes ficam em `.claude/agents/`:

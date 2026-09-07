@@ -56,6 +56,14 @@
           "welcomeDispatchMode": "simulator",
           "routes": []
         },
+        "githubPromotion": {
+          "pullRequest": 42,
+          "pullRequestState": "draft",
+          "workflowRunId": 34075474398,
+          "workflowRunStatus": "success",
+          "target": "staging",
+          "productionJob": "skipped"
+        },
         "firstBlockedMigration": null,
         "blocker": "migration_history_reconciliation_and_external_secrets",
         "acceptedReal": false

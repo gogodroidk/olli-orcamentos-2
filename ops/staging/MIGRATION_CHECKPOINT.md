@@ -31,6 +31,9 @@
   preflight `204`, method gates for Resend and IA actions (`405`) and the
   noindex admin shell (`200`). The smoke only uses the `workers.dev` URL and
   has no side effects.
+- GitHub promotion proof: draft PR **#42** is open from `codex/piloto-p0` to
+  `main`; workflow run `34075474398` completed with `quality-and-builds` and
+  `staging-promotion` successful, while `production-promotion` was skipped.
 
 ## Safety decision
 
