@@ -290,7 +290,7 @@ try {
     checar('200 (reenviar não resolveria — não há o que processar)', r.status, 200);
     checar('marcado como NÃO processado, explicitamente', r.body.renovacao_nao_processada, true);
     checar('não inventou vigência', escritas.length, 0);
-    checar('e deixou ALARME no log (erro nunca vira vazio)', alarmes.some((a) => a.includes('ALARME') && a.includes('autpay-1')), true);
+    checar('e deixou ALARME no log sem vazar ID (erro nunca vira vazio)', alarmes.some((a) => a.includes('ALARME') && !a.includes('autpay-1')), true);
   }
 
   errOriginal('\n8) o mesmo evento chegando pelo tópico `payments` também alarma');
