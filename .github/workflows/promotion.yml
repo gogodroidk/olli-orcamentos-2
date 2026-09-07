@@ -34,6 +34,9 @@ jobs:
         run: npm ci
       - name: Root preflight
         run: npm run preflight
+      - name: Shared landing dependencies
+        working-directory: web
+        run: npm ci
       - name: Webapp dependencies and build
         working-directory: webapp
         run: |
