@@ -38,6 +38,9 @@
 - The previous simulator setting produced scheduled configuration errors while
   secrets were absent; the off-mode redeploy removes that false-green state.
   Enabling the simulator remains a staging secret gate, not a production gate.
+- Current staging Worker version: `2bb04a5b-6b52-4bd4-91ec-8dae84af40b0`,
+  deployed with `WELCOME_DISPATCH_MODE=off` and verified by the same public
+  smoke contract.
 
 ## Safety decision
 

@@ -43,7 +43,7 @@
       "baselineStatus": "runtime_schema_and_41_migrations_applied_manual_sql_editor",
       "baselineSource": "main_schema_metadata_only",
       "lastPromotionCheckpoint": {
-        "recordedAt": "2026-09-06T21:25:00-03:00",
+        "recordedAt": "2026-09-06T23:21:00-03:00",
         "baselineMigration": "staging_schema_baseline_20260906",
         "incrementalMigrationsApplied": 41,
         "migrationApplicationMode": "supabase_sql_editor_manual",
@@ -51,7 +51,7 @@
         "workerDeployment": {
           "name": "olli-diagnostico-staging",
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
-          "versionId": "257076e9-8c71-4ad3-91e4-406de5ab82d3",
+          "versionId": "2bb04a5b-6b52-4bd4-91ec-8dae84af40b0",
           "health": "HTTP_200",
           "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
