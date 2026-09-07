@@ -1,7 +1,7 @@
 # Self-prompt — OLLI 0→100
 
-Atualizado em: **2026-09-04T19:50:26-03:00**  
-Estado: **BLOQUEADO-HUMANO — 100% do backlog autônomo/local concluído; programa total ainda não aceito**
+Atualizado em: **2026-09-07T23:40:00-03:00**
+Estado: **CONTINUIDADE CONTROLADA — base local + staging público comprovados; gates externos ainda abertos**
 
 ## Estado canônico
 
@@ -9,7 +9,7 @@ Estado: **BLOQUEADO-HUMANO — 100% do backlog autônomo/local concluído; progr
 - `RUN_STATE.status=blocked`, nenhuma lease/tarefa/allowlist ativa.
 - `TRANSVERSAL_READINESS.program100Percent=false`.
 - Executor e vigia: `PAUSED`.
-- Todos os itens do backlog autônomo estão `done_local_only` ou operacionalmente encerrados.
+- Todos os itens do backlog autônomo estão `done_local_only` ou operacionalmente encerrados; staging foi criado e o Worker está fail-closed.
 - `acceptedReal=false` em todas as frentes transversais.
 - Não abrir uma nova tarefa só porque chegou outro pulso de continuidade; primeiro exigir mudança material em um gate.
 
@@ -24,9 +24,10 @@ Estado: **BLOQUEADO-HUMANO — 100% do backlog autônomo/local concluído; progr
 
 ## Estado operacional de e-mail já comprovado
 
-- Supabase `yiaeplqinnnnniyvwtls`: migrations de outbox/tenant/runtime aplicadas.
-- Worker `olli-diagnostico`: versão `794daafb-bd92-4e10-8745-e28de6a6f4db`, cron de um minuto.
-- `WELCOME_DISPATCH_MODE=simulator`, lote máximo 1; linhas normais permanecem `hold`.
+- Supabase `yiaeplqinnnnniyvwtls` e o canário live abaixo são históricos; não usar como prova do staging atual.
+- Supabase `OLLI-STAGING` (`sbpkutknpywezeagioon`) recebeu as 41 migrations de runtime manualmente.
+- Worker `olli-diagnostico-staging` está em `workers.dev`, versão `2bb04a5b-6b52-4bd4-91ec-8dae84af40b0`, cron configurado.
+- `WELCOME_DISPATCH_MODE=off` até secrets de teste existirem; linhas normais permanecem `hold`.
 - Único canário: `delivered@resend.dev`, `claimed=1`, `sent=1`, `failed=0`, uma tentativa, provider ID presente e zero resíduo sintético.
 - Isto prova aceitação técnica da API no simulador, não rollout nem entrega para usuário real.
 
@@ -69,3 +70,14 @@ Somente reabrir o executor quando houver pelo menos um destes insumos explícito
 - conta/canal/aparelhos e autorização de build/distribuição.
 
 Ao reabrir, gerar novos `run_id` e `handoff_id`, renovar a lease, registrar `INICIO`, usar allowlist mínima, executar preflight e parar no primeiro desvio. Credencial, pagamento, publicação, contato, dados reais ou ação destrutiva continuam gates separados; uma autorização não libera as outras.
+
+## Self-prompt da retomada atual
+
+Quando o proprietário autorizar um gate específico, retomar nesta ordem: (1)
+conectar o Cloudflare Git Build somente ao Worker staging e à branch
+`codex/piloto-p0`; (2) provisionar secrets de teste pelos fluxos oficiais sem
+imprimir valores; (3) reconciliar migration history/rollback; (4) executar
+smoke autenticado de RLS/Storage com fixtures sintéticas; (5) revisar com
+`security`/`reviewer`; (6) só então atualizar o próximo gate. Se não houver
+autorização nova, não inventar atividade externa: manter produção protegida e
+executar apenas validações read-only/autônomas.

@@ -33,13 +33,17 @@
       "billingMode": "test",
       "realRecipientPolicy": "forbidden",
       "requiredSecretNames": [
-        "SUPABASE_STAGING_DB_PASSWORD",
-        "OPENROUTER_API_KEY_STAGING",
-        "RESEND_API_KEY_STAGING",
-        "RESEND_WEBHOOK_SECRET_STAGING",
-        "STRIPE_SECRET_KEY_TEST",
-        "STRIPE_WEBHOOK_SECRET_TEST"
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "OPENROUTER_API_KEY",
+        "RESEND_API_KEY",
+        "RESEND_WEBHOOK_SECRET",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "MP_ACCESS_TOKEN",
+        "MP_WEBHOOK_SECRET",
+        "OLLI_ROUTES_API_KEY"
       ],
+      "secretScope": "staging-only-test-values",
       "baselineStatus": "runtime_schema_and_41_migrations_applied_manual_sql_editor",
       "baselineSource": "main_schema_metadata_only",
       "lastPromotionCheckpoint": {
@@ -87,7 +91,7 @@
     }
   },
   "gates": {
-    "stagingBaseline": "blocked_until_schema_only_baseline_is_reviewed",
+    "stagingBaseline": "runtime_applied_history_and_rollback_reconciliation_required",
     "stagingMigrations": "must_be_versioned_and_rollback_reviewed",
     "stagingSmoke": "must_prove_health_auth_rls_storage_worker_and_web",
     "security": "semgrep_gitleaks_rls_advisors_and_review",

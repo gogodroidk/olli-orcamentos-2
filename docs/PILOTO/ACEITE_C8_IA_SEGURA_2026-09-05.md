@@ -33,9 +33,18 @@ e o diff privado expira em até 30 dias. Prompt e conversa não são persistidos
   `20260906021103_ia_actions_safe_runtime.sql` mantém tabelas service-role only,
   RLS forçado, eventos append-only e purge explícito.
 
+## Revalidação de staging — 2026-09-07
+
+A migration `20260906021103_ia_actions_safe_runtime.sql` foi aplicada no
+`OLLI-STAGING` e o Worker staging está publicado. O código continua sem
+produção ativa e o canário autenticado depende dos secrets de teste, da
+reconciliação da migration history e do smoke RLS/Storage. As linhas históricas
+que diziam “migration ainda não aplicada” não representam mais o runtime de
+staging; elas continuam como registro do aceite local original.
+
 ## Próximo gate
 
-Aplicar a migration no projeto Supabase correto, publicar o Worker e executar um
-canário com dado sintético continuam bloqueios externos do C11. Até isso ocorrer,
-o código não está ativo em produção. Não há rota para excluir, cobrar, enviar ou
-alterar senha/documento pelo chat.
+Executar um canário autenticado com dado sintético, reconciliar a migration
+history e provisionar secrets de teste continuam bloqueios externos do C11. Até
+isso ocorrer, o código não está ativo em produção. Não há rota para excluir,
+cobrar, enviar ou alterar senha/documento pelo chat.

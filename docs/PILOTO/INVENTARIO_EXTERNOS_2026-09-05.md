@@ -104,6 +104,23 @@ deploy, DNS ou alteração de produção.
   somente para `staging` e concluiu qualidade + smoke; produção permaneceu
   `skipped`. O Cloudflare Git Build não foi conectado automaticamente.
 
+## Revalidação operacional — 2026-09-07
+
+Este bloco é a fonte atual e supersede as frases históricas acima quando houver
+contradição:
+
+- Supabase staging está criado, com baseline + 41 migrations aplicadas
+  manualmente; o bloqueio atual é reconciliar a migration history e rollback.
+- Worker staging está em `workers.dev`, sem rotas de produção, com
+  `WELCOME_DISPATCH_MODE=off` até os secrets de teste existirem. Health e smoke
+  público estão verdes; smoke autenticado/RLS/Storage ainda não foi executado.
+- O contrato de secrets foi corrigido para os nomes reais usados pelo Worker:
+  `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `RESEND_API_KEY`,
+  `RESEND_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+  `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e `OLLI_ROUTES_API_KEY`.
+- O branch e o PR draft estão no GitHub; a conexão persistente Cloudflare →
+  GitHub ainda aguarda autorização no botão `Connect` do Worker staging.
+
 ## Resend
 
 - O domínio raiz `olliorcamentos.online` está Verified, na região São Paulo.

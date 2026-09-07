@@ -7,6 +7,23 @@ Branch: `Codex/piloto-p0`
 Revalidação: **2026-09-06** — os comandos abaixo foram executados novamente após
 a entrada das ações IA seguras e do webhook Resend.
 
+## Addendum de revalidação — 2026-09-07
+
+- Branch `codex/piloto-p0` publicada no GitHub; PR draft #42 aberto.
+- CI e workflow manual de staging passaram; produção ficou `skipped`.
+- Staging Supabase isolado recebeu baseline + 41 migrations manualmente; Worker
+  staging está em `workers.dev`, sem rotas de produção, com dispatch `off`
+  enquanto secrets de teste não existirem.
+- Smoke público staging passou health 200, CORS 204, gates de método 405 e
+  admin noindex 200. Isso não substitui smoke autenticado/RLS/Storage.
+- Gitleaks no diretório atual não encontrou leaks; o histórico possui achados
+  antigos documentados. A instalação global do Semgrep apresentou conflito de
+  OpenTelemetry, então não é usada como prova independente nesta revalidação.
+
+As afirmações anteriores de ausência de staging/push e de “migration somente
+artefato” são históricas do aceite original; o checkpoint atual é
+`ops/staging/MIGRATION_CHECKPOINT.md`.
+
 ## Resultado
 
 `BLOCKED_EXTERNAL` — a base local está validada, mas release pública não é
@@ -70,6 +87,22 @@ observabilidade/restore e autorização de publicação.
 - O GitHub está autenticado, mas `main` remoto (21/08) não contém o checkout
   `Codex/piloto-p0` atual; por isso não houve push/commit nem conexão automática
   do Cloudflare ao Git, evitando deploy de código defasado.
+
+## Revalidação externa — 2026-09-07
+
+- Branch `codex/piloto-p0` publicada no GitHub e PR draft #42 aberto.
+- CI e workflow manual de staging passaram; produção permaneceu `skipped`.
+- Staging Supabase isolado recebeu baseline + 41 migrations manualmente; Worker
+  staging está em `workers.dev`, sem rotas de produção, com dispatch `off` até
+  secrets de teste existirem.
+- Smoke público staging passou health 200, CORS 204, gates de método 405 e
+  admin noindex 200. Isso não substitui smoke autenticado/RLS/Storage.
+- Gitleaks no diretório atual e Semgrep isolado via `uvx` retornaram zero
+  achados; o launcher global do Semgrep tem conflito de OpenTelemetry.
+
+As afirmações anteriores de ausência de staging/push e de migration somente
+local são históricas do aceite original; o checkpoint atual é
+`ops/staging/MIGRATION_CHECKPOINT.md`.
 
 ## Limites que não foram simulados
 

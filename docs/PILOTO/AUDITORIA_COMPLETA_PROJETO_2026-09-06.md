@@ -21,10 +21,12 @@ rollback. Eles não substituem a fila atual nem autorizam produção.
 **Estado local:** aprovado para desenvolvimento/revisão, com a base local
 validada e os pacotes C1–C6 e C8–C10 em `DONE_LOCAL`.
 
-**Estado de integração/release:** não aceito como produção. C7 e C11 permanecem
-`BLOCKED_EXTERNAL` porque ainda faltam staging isolado, migrations live,
-canário remoto, coorte/consentimento, dispositivos, observabilidade/restore,
-revisão independente e autorização de publicação.
+**Estado de integração/release:** não aceito como produção. O staging isolado,
+41 migrations de runtime, Worker e smoke público já foram comprovados; C7 e C11
+permanecem `BLOCKED_EXTERNAL` por faltarem reconciliação da migration history,
+secrets de teste, smoke autenticado/RLS/Storage, coorte/consentimento,
+dispositivos, observabilidade/restore, revisão independente e autorização de
+publicação.
 
 **Conclusão:** não encontrei uma falha local que justifique apagar código ou
 documentação histórica. O único artefato descartável criado durante esta
@@ -34,7 +36,7 @@ auditoria foi o `graphify-out/` temporário; ele foi removido depois da leitura.
 
 | Frente | Estado | Evidência atual | O que ainda não está provado |
 |---|---|---|---|
-| C0 — árvore, dependências e baseline | `DONE_LOCAL` | branch canônica, preflight, testes e inventário | commit/push/release externa |
+| C0 — árvore, dependências e baseline | `DONE_LOCAL` | branch canônica `codex/piloto-p0`, commit/push, preflight, testes e inventário | release externa |
 | C1 — PWA/offline seguro | `DONE_LOCAL` | `test:pwa`, assets, manifesto, QA PWA | instalação física, upgrade, rollback e distribuição |
 | C1A — reconciliação das ideias do proprietário | `DONE_LOCAL` | `docs/PROMPTS_E_IDEIAS_DO_USUARIO_OLLI_2026-09-06.md` e este relatório | aceite real de cada gate |
 | C2 — onboarding/perfil obrigatório | `DONE_LOCAL` | `ACEITE_C2_ONBOARDING_PERFIL_2026-09-05.md`, `test:perfil-operacional`, `test:cep-telas` | sessão real/coorte e envio de boas-vindas fora do simulador |
@@ -42,11 +44,11 @@ auditoria foi o `graphify-out/` temporário; ele foi removido depois da leitura.
 | C4 — landing, verticais e agentes | `DONE_LOCAL` | 25 páginas Astro, páginas por ofício, SEO/JSON-LD/`llms.txt`, `test:landing-c4` | deploy público atualizado, WAF/WebMCP e medição externa |
 | C5 — orçamentos/estados/financeiro | `DONE_LOCAL` | revisão sem sobrescrever histórico, quadro, recibo e radar, `test:c5-orcamentos-financeiro` | conciliação bancária e comprovante remoto |
 | C6 — conta, identidade e equipe | `DONE_LOCAL` | telefone/senha/empresa/tema/equipe, `test:c6-config-equipe` | convite/troca e dados reais em ambiente aceito |
-| C7 — integrações e central | `BLOCKED_EXTERNAL` | recursos oficiais, adapters, Storage privado e contratos locais | OAuth, Storage aplicado, Resend webhook real, WhatsApp/fiscal e agenda real |
-| C8 — IA operacional segura | `DONE_LOCAL` | allowlist, alvo único, RBAC, confirmação, diff, journal e retenção, `test:c8-ia-segura` | migration, deploy do Worker e canário remoto |
+| C7 — integrações e central | `BLOCKED_EXTERNAL` | recursos oficiais, adapters, Storage privado, 41 migrations em staging e Worker fail-closed | secrets/OAuth, smoke autenticado, Resend webhook real, WhatsApp/fiscal e agenda real |
+| C8 — IA operacional segura | `DONE_LOCAL` | allowlist, alvo único, RBAC, confirmação, diff, journal e retenção, `test:c8-ia-segura`; migration e Worker staging aplicados manualmente | secrets, canário autenticado e reconciliação da migration history |
 | C9 — precificação/packs | `DONE_LOCAL` | custo/hora, deslocamento, imposto, margem e packs, `test:c9-precificacao` | calibração com dados/coorte reais |
 | C10 — HVAC/PMOC | `DONE_LOCAL` | ativos, QR, evidências, versões e ordens, `test:c10-hvac-pmoc` | parecer profissional/regulatório e operação de campo |
-| C11 — hardening/release | `BLOCKED_EXTERNAL` | preflight, builds, dry-run Worker, Semgrep, Gitleaks, contraste e readiness | staging, migrations live, restore, canário, Git/Cloudflare e publicação |
+| C11 — hardening/release | `BLOCKED_EXTERNAL` | preflight/CI, builds, dry-run Worker, Semgrep isolado zero achados, Gitleaks atual zero, contraste, readiness e staging público | secrets, history/rollback, smoke autenticado, restore, Git/Cloudflare e publicação |
 
 ## Verificações executadas nesta auditoria
 
@@ -63,16 +65,17 @@ auditoria foi o `graphify-out/` temporário; ele foi removido depois da leitura.
   gzip), sem publicação.
 - `git diff --check`: sem erro material; somente avisos de normalização LF/CRLF
   do checkout Windows.
-- Semgrep nos arquivos alterados de segurança/integração: **zero achados**.
-- Gitleaks no histórico: **8 achados `jwt` históricos**, todos anon/publicáveis
-  em commits antigos de configuração Supabase; nenhum segredo novo foi
-  encontrado nesta rodada. `web/.env` não existe atualmente, e os arquivos
-  atuais usam variáveis de ambiente.
-- O grafo estrutural de código foi gerado uma vez para esta auditoria: 11.360
-  nós, 27.681 relações e 513 comunidades. A extração semântica de 313
+- Semgrep isolado via `uvx --from semgrep`: **zero achados** em 8 arquivos
+  high-risk; o launcher global continua quebrado por conflito de OpenTelemetry
+  e não foi usado como fonte de verdade.
+- Gitleaks no diretório atual: **zero achados** após excluir artefatos gerados;
+  o histórico ainda contém achados antigos anon/publicáveis e a chave pública
+  do staging foi marcada explicitamente como publicável.
+- O grafo estrutural de código foi revalidado em 2026-09-07: 9.616 nós e
+  29.652 relações no modo code-only. A extração semântica de documentos não
   documentos não foi executada porque não há chave LLM configurada; o grafo foi
   usado como mapa estrutural, não como prova semântica dos documentos. O output
-  temporário foi removido após a análise.
+  output foi gravado apenas em diretório temporário fora do checkout.
 
 ## Achados de arquitetura e manutenção
 
@@ -158,7 +161,6 @@ não de apagar documentos antigos.
   marcada como publicável e oito JWTs apenas no histórico antigo; não foi
   encontrado segredo novo no estado atual. A rotação/limpeza histórica é um
   gate separado e não foi feita destrutivamente.
-- Semgrep: a instalação local falhou antes da análise por incompatibilidade da
-  dependência OpenTelemetry (`std_to_otel` ausente); isso é limitação do
-  analisador, não evidência de código limpo. Os contratos/testes de segurança
-  locais continuam verdes.
+- Semgrep isolado via `uvx --from semgrep` examinou 8 arquivos de alto risco
+  com 74 regras e **zero achados**; o launcher global quebrado não é usado como
+  fonte de verdade.

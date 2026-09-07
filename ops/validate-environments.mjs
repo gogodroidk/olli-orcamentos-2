@@ -31,6 +31,9 @@ assert(manifest.environments.staging.acceptedReal === false, 'staging começa se
 assert(manifest.environments.production.acceptedReal === false, 'produção não pode ser aceita por configuração');
 assert(manifest.environments.staging.baselineStatus !== 'ready', 'baseline staging não pode ser promovido sem revisão');
 assert(manifest.environments.staging.requiredSecretNames.every((name) => /^[A-Z0-9_]+$/.test(name)), 'secret name inválido');
+for (const required of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENROUTER_API_KEY', 'RESEND_API_KEY', 'RESEND_WEBHOOK_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) {
+  assert(manifest.environments.staging.requiredSecretNames.includes(required), `secret de runtime ausente no contrato: ${required}`);
+}
 
 console.log('Environment manifest: OK');
 console.log(`Promotion stages: ${manifest.promotionOrder.join(' -> ')}`);

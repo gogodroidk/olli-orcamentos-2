@@ -26,17 +26,17 @@ runtime isolado. A migration de welcome precisou de um retry idempotente no SQL
 Editor depois de uma perda de escopo do conector; a prova consolidada está em
 `ops/staging/MIGRATION_CHECKPOINT.md`. O Worker `olli-diagnostico-staging` também
 está publicado em `workers.dev`, sem rotas de produção e com dispatch de e-mail
-em modo simulador. O smoke público (`npm run staging:smoke`) comprova health,
+em modo fail-closed (`off`) enquanto os secrets de teste não existirem. O smoke público (`npm run staging:smoke`) comprova health,
 CORS, gates de método e o shell noindex do admin sem tocar em dados.
 
 ## Regras de promoção
 
 1. Pull request e branch local executam qualidade, typecheck, testes, contraste,
    Doctor, builds e dry-run do Worker.
-2. A branch `staging` só promove quando o baseline do Supabase está marcado como
-   pronto no environment do GitHub e os secrets de staging existem.
-3. O smoke staging precisa provar saúde, autenticação, RLS, Storage, Worker,
-   landing e painel sem destinatários ou cobranças reais.
+2. O alvo `staging` só pode ser disparado manualmente quando o baseline do
+   Supabase está reconciliado e os secrets de staging existem.
+3. O smoke público é um gate inicial; o smoke autenticado/RLS/Storage, landing
+   e painel ainda exigem credenciais de teste e não são mascarados pelo job.
 4. O environment `production` exige aprovação humana do GitHub antes do job de
    deploy.
 5. A promoção carrega commit/artifact imutável, nunca “o estado atual” solto.

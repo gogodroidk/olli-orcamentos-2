@@ -30,3 +30,15 @@ manual; nenhum botão promete integração ausente.
 - `npm run test:storage-provider` — passou.
 - `npm run test:resend-webhook` — passou (Svix, replay, idempotência e remoção de PII).
 - `npm run typecheck` e build do painel — passaram.
+
+## Revalidação externa — 2026-09-07
+
+- O projeto isolado `OLLI-STAGING` foi criado e recebeu baseline + 41 migrations
+  no SQL Editor autenticado; metadata-only comprovou 3 buckets privados, 4
+  policies de Storage, RLS e triggers esperados.
+- O Worker staging está publicado em `workers.dev`, sem rotas de produção, com
+  `WELCOME_DISPATCH_MODE=off` até os secrets de teste existirem. O smoke público
+  passou; Storage/RLS autenticado, Resend, WhatsApp, fiscal, agenda e OAuth real
+  continuam pendentes.
+- As afirmações anteriores de “aguarda staging” são históricas; o bloqueio atual
+  é migration history/rollback, secrets e smoke autenticado.
