@@ -83,6 +83,21 @@ jobs:
             echo "Staging schema baseline is not approved; no migration or deploy is allowed."
             exit 1
           }
+      - name: Refuse incomplete staging secret contract
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
+          MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
+          OLLI_ROUTES_API_KEY: ${{ secrets.OLLI_ROUTES_API_KEY }}
+        run: |
+          for name in SUPABASE_SERVICE_ROLE_KEY OPENROUTER_API_KEY RESEND_API_KEY RESEND_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET MP_ACCESS_TOKEN MP_WEBHOOK_SECRET OLLI_ROUTES_API_KEY; do
+            test -n "${!name}" || { echo "Missing staging secret: $name"; exit 1; }
+          done
       - name: Staging gate handoff
         run: |
           echo "Quality passed for $GITHUB_SHA"
