@@ -1,6 +1,7 @@
 import type { FalhaIA, MensagemChat } from "@/pages/olli/diagnostico/chat";
-import { Bot, FilePlus2, Loader2, MessageSquareText, RotateCcw, Send, Sparkles } from "lucide-react";
+import { Bot, CheckCircle2, FilePlus2, Loader2, MessageSquareText, RotateCcw, Send, Sparkles, Undo2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import { perguntarAoAssistente } from "@/pages/olli/diagnostico/chat";
 import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
@@ -10,6 +11,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/ui/sheet";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
+import { avaliarPedidoIa, type ModoPedidoIa } from "@ia-segura";
+import {
+	cancelarAcaoIa,
+	confirmarAcaoIa,
+	reverterAcaoIa,
+	type RascunhoAcaoIaRemota,
+} from "@/olli/iaActions";
 
 const STORAGE_KEY = "olli-assistente-web-v1";
 const MAX_HISTORICO = 20;
@@ -80,6 +88,7 @@ function nomeDaTela(pathname: string): string {
 export function AssistenteConversa({ className }: { className?: string }) {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const queryClient = useQueryClient();
 	const [mensagens, setMensagens] = useState<MensagemLocal[]>(carregarHistorico);
 	const [texto, setTexto] = useState("");
 	const [enviando, setEnviando] = useState(false);
@@ -87,6 +96,9 @@ export function AssistenteConversa({ className }: { className?: string }) {
 	const [pendenteCredito, setPendenteCredito] = useState<PendenteCredito | null>(null);
 	const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
 	const [creditoSemSaldo, setCreditoSemSaldo] = useState(false);
+	const [rascunhoAcao, setRascunhoAcao] = useState<RascunhoAcaoIaRemota | null>(null);
+	const [processandoAcao, setProcessandoAcao] = useState(false);
+	const [mensagemAcao, setMensagemAcao] = useState<string | null>(null);
 	const fimRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -99,10 +111,10 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		[mensagens],
 	);
 
-	async function executar(historico: MensagemChat[], creditoRef: string, confirmarCredito = false) {
+	async function executar(historico: MensagemChat[], creditoRef: string, confirmarCredito = false, modo: Exclude<ModoPedidoIa, "bloqueado"> = "consulta") {
 		setFalha(null);
 		setEnviando(true);
-		const resposta = await perguntarAoAssistente(limitarHistorico(historico), { creditoRef, confirmarCredito });
+		const resposta = await perguntarAoAssistente(limitarHistorico(historico), { creditoRef, confirmarCredito, modo });
 		setEnviando(false);
 		if (!resposta.ok) {
 			setFalha(resposta.erro);
@@ -114,10 +126,16 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		}
 		setPendenteCredito(null);
 		setCreditoSemSaldo(false);
+		if (resposta.rascunho) {
+			setRascunhoAcao(resposta.rascunho);
+			setMensagemAcao(null);
+		}
 		const assistente: MensagemLocal = {
 			id: idMensagem(),
 			role: "assistant",
-			texto: resposta.resposta,
+			texto: resposta.rascunho
+				? `${resposta.resposta}\n\nPrévia segura criada. Confira o antes e depois abaixo; nenhuma alteração foi aplicada ainda.`
+				: resposta.resposta,
 		};
 		setMensagens((atuais) => [...atuais, assistente].slice(-MAX_HISTORICO));
 	}
@@ -125,6 +143,17 @@ export function AssistenteConversa({ className }: { className?: string }) {
 	async function enviar(valor = texto) {
 		const limpo = valor.trim().slice(0, MAX_TEXTO);
 		if (!limpo || enviando) return;
+		const avaliacao = avaliarPedidoIa(limpo);
+		if (avaliacao.modo === "bloqueado") {
+			setMensagens((atuais) => [
+				...atuais,
+				{ id: idMensagem(), role: "user" as const, texto: limpo },
+				{ id: idMensagem(), role: "assistant" as const, texto: avaliacao.motivo ?? "Não posso executar essa operação pelo chat." },
+			].slice(-MAX_HISTORICO));
+			setTexto("");
+			setFalha(null);
+			return;
+		}
 		const usuario: MensagemLocal = { id: idMensagem(), role: "user", texto: limpo };
 		const novoHistorico = [...historicoApi, { role: "user" as const, texto: limpo }].slice(-MAX_HISTORICO);
 		setMensagens((atuais) => [...atuais, usuario].slice(-MAX_HISTORICO));
@@ -132,13 +161,40 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		setFalha(null);
 		setPendenteCredito(null);
 		setCreditoSemSaldo(false);
-		await executar(novoHistorico, `web-chat:${crypto.randomUUID()}`);
+		await executar(novoHistorico, `web-chat:${crypto.randomUUID()}`, false, avaliacao.modo);
 	}
 
 	async function confirmarUsoDeCredito() {
 		if (!pendenteCredito || enviando) return;
 		setConfirmacaoAberta(false);
 		await executar(pendenteCredito.historico, pendenteCredito.ref, true);
+	}
+
+	async function decidirAcao(decisao: "confirmar" | "cancelar" | "reverter") {
+		if (!rascunhoAcao || processandoAcao) return;
+		setProcessandoAcao(true);
+		setMensagemAcao(null);
+		const resultado = decisao === "confirmar"
+			? await confirmarAcaoIa(rascunhoAcao)
+			: decisao === "cancelar"
+				? await cancelarAcaoIa(rascunhoAcao)
+				: await reverterAcaoIa(rascunhoAcao);
+		setProcessandoAcao(false);
+		if (!resultado.ok) {
+			setMensagemAcao(resultado.mensagem);
+			return;
+		}
+		setRascunhoAcao((atual) => atual ? { ...atual, status: resultado.status } : atual);
+		setMensagemAcao(
+			resultado.status === "aplicada"
+				? "Alteração aplicada e registrada. Você ainda pode desfazer enquanto o registro não receber outra edição."
+				: resultado.status === "revertida"
+					? "Alteração desfeita e registrada."
+					: "Prévia cancelada; nada foi alterado.",
+		);
+		if (resultado.status === "aplicada" || resultado.status === "revertida") {
+			await queryClient.invalidateQueries({ queryKey: ["olli"] });
+		}
 	}
 
 	function usarNoOrcamento(mensagem: MensagemLocal) {
@@ -156,6 +212,8 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		setFalha(null);
 		setPendenteCredito(null);
 		setCreditoSemSaldo(false);
+		setRascunhoAcao(null);
+		setMensagemAcao(null);
 		sessionStorage.removeItem(STORAGE_KEY);
 	}
 
@@ -207,6 +265,42 @@ export function AssistenteConversa({ className }: { className?: string }) {
 						<Loader2 className="size-4 animate-spin text-primary" />
 						A OLLI está pensando…
 					</div>
+				)}
+
+				{rascunhoAcao && (
+					<Card className="border-primary/25 bg-primary/5 p-4" role="region" aria-label="Prévia de alteração pela OLLI IA">
+						<div className="flex items-start gap-3">
+							<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+								{rascunhoAcao.status === "aplicada" ? <CheckCircle2 className="size-4" /> : rascunhoAcao.status === "revertida" || rascunhoAcao.status === "cancelada" ? <XCircle className="size-4" /> : <Sparkles className="size-4" />}
+							</span>
+							<div className="min-w-0 flex-1">
+								<p className="text-sm font-semibold text-text-primary">{rascunhoAcao.summary}</p>
+								<p className="mt-0.5 text-xs text-text-secondary">Alvo: {rascunhoAcao.targetLabel}</p>
+							</div>
+						</div>
+						<div className="mt-3 space-y-2">
+							{rascunhoAcao.changes.map((change) => (
+								<div key={change.field} className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
+									<p className="font-medium text-text-primary">{change.field}</p>
+									<p className="mt-1 break-words text-text-secondary"><span className="line-through">{String(change.before ?? "vazio")}</span> → <span className="font-medium text-text-primary">{String(change.after ?? "vazio")}</span></p>
+								</div>
+							))}
+						</div>
+						{mensagemAcao && <p className="mt-3 text-xs leading-relaxed text-text-secondary" aria-live="polite">{mensagemAcao}</p>}
+						<div className="mt-3 flex flex-wrap justify-end gap-2">
+							{rascunhoAcao.status === "aguardando_confirmacao" && (
+								<>
+									<Button type="button" size="sm" variant="outline" onClick={() => decidirAcao("cancelar")} disabled={processandoAcao}>Cancelar</Button>
+									<Button type="button" size="sm" onClick={() => decidirAcao("confirmar")} disabled={processandoAcao}>{processandoAcao ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}Confirmar alteração</Button>
+								</>
+							)}
+							{rascunhoAcao.status === "aplicada" && (
+								<Button type="button" size="sm" variant="outline" onClick={() => decidirAcao("reverter")} disabled={processandoAcao}>
+									<Undo2 className="mr-1.5 size-3.5" /> Desfazer
+								</Button>
+							)}
+						</div>
+					</Card>
 				)}
 
 				{falha && (

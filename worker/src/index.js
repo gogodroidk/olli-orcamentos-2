@@ -8,6 +8,7 @@
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
  *   GET  /            → health check
+ *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *
  * Segurança:
  *   - OPENROUTER_API_KEY é SECRET do Worker (nunca vai pro app/APK e nunca é
@@ -45,6 +46,8 @@ import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
+import { handleResendWebhook } from './resendWebhook.js';
+import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
@@ -825,9 +828,52 @@ function chatSystem(vertical) {
 // custo de inferência ilimitado por request.
 const CHAT_MAX = { mensagens: 40, texto: 4000 };
 
+const IA_ACTION_DRAFT_SCHEMA = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['resposta', 'pronto', 'escopo', 'alvo', 'resumo', 'mudancas'],
+  properties: {
+    resposta: { type: 'string', maxLength: 800 },
+    pronto: { type: 'boolean' },
+    escopo: {
+      type: 'string',
+      enum: ['nenhum', 'orcamento', 'cliente', 'produto', 'servico', 'agenda', 'empresa', 'equipe'],
+    },
+    alvo: { type: 'string', maxLength: 160 },
+    resumo: { type: 'string', maxLength: 240 },
+    mudancas: {
+      type: 'array',
+      maxItems: 6,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['campo', 'proposto'],
+        properties: {
+          campo: { type: 'string', maxLength: 80 },
+          proposto: { type: ['string', 'number', 'boolean', 'null'] },
+        },
+      },
+    },
+  },
+});
+
+function chatActionSystem(vertical) {
+  return `${chatSystem(vertical)}\n\nVocê está preparando uma alteração auditável no sistema. Nunca execute, apague, envie, cobre ou confirme nada. Retorne SOMENTE o JSON do schema. Se faltar um alvo único ou o valor novo, use pronto=false, escopo="nenhum", alvo="", mudancas=[] e faça uma pergunta curta em resposta. Escopos e campos permitidos: orcamento(status, validadeOrcamento, condicoesPagamento, garantia, informacoesAdicionais, laudoTecnico); cliente(nome, telefone, endereco, complemento, cidade, estado, cep); produto(nome, descricao, preco, custo, unidade, marca, modelo); servico(nome, descricao, preco, custo, unidade); agenda(titulo, inicio, fim, status, observacao, endereco); empresa(nome, telefone, whatsapp, email, endereco, cidade, estado, site, especialidade, slogan, corMarca); equipe(papel, ativo). O alvo deve ser o número do orçamento, o nome exato do registro, o e-mail exato do membro ou um UUID. Não proponha senha, exclusão, cobrança, envio, arquivo, logo ou campo fora dessa lista.`;
+}
+
+function actionFailureMessage(reason) {
+  if (reason === 'target_not_found') return 'Não encontrei esse registro na sua empresa. Diga o número ou o nome exato.';
+  if (reason === 'target_ambiguous') return 'Encontrei mais de um registro com esse nome. Informe um alvo mais específico.';
+  if (reason === 'role_not_allowed' || reason === 'owner_protected') return 'Seu papel atual não permite preparar essa alteração.';
+  if (reason === 'no_change') return 'O registro já está com esse valor; nenhuma alteração foi preparada.';
+  if (reason === 'field_not_allowed' || reason === 'value_invalid' || reason === 'proposal_invalid') return 'A mudança pedida não cabe nos campos seguros. Diga exatamente o campo e o novo valor.';
+  return 'Não consegui confirmar o registro e as permissões agora. Nada foi alterado; tente novamente em instantes.';
+}
+
 async function handleChat(bodyText, env, user) {
   const raw = parseJsonBody(bodyText);
   const { mensagens, vertical } = raw;
+  const actionMode = raw && raw.modo === 'rascunho_acao';
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
@@ -835,9 +881,11 @@ async function handleChat(bodyText, env, user) {
     .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
   const text = await gerarIA(env, {
-    system: chatSystem(vertical),
+    system: actionMode ? chatActionSystem(vertical) : chatSystem(vertical),
     user: contents,
-    temperature: 0.6,
+    wantJson: actionMode,
+    jsonSchema: actionMode ? IA_ACTION_DRAFT_SCHEMA : undefined,
+    temperature: actionMode ? 0.1 : 0.6,
     beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
   });
   if (!text) return json({ ok: false, erro: 'resposta_vazia' });
@@ -847,7 +895,23 @@ async function handleChat(bodyText, env, user) {
     conteudo: bodyText,
   });
   if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
-  return json({ ok: true, resposta: text });
+
+  if (!actionMode) return json({ ok: true, resposta: text });
+  const parsed = parseJsonLoose(text);
+  if (!parsed || typeof parsed.resposta !== 'string' || typeof parsed.pronto !== 'boolean') {
+    return json({ ok: false, erro: 'resposta_invalida' });
+  }
+  const answer = cortar(parsed.resposta, 800) || 'Preciso de mais detalhes para preparar a alteração.';
+  if (!parsed.pronto) return json({ ok: true, resposta: answer });
+
+  const persisted = await createPersistedAiActionDraft(env, user, {
+    escopo: parsed.escopo,
+    alvo: parsed.alvo,
+    resumo: parsed.resumo,
+    mudancas: parsed.mudancas,
+  });
+  if (!persisted.ok) return json({ ok: true, resposta: actionFailureMessage(persisted.reason) });
+  return json({ ok: true, resposta: answer, rascunho: persisted.draft });
 }
 
 const handler = {
@@ -875,6 +939,18 @@ const handler = {
     // handleStripe cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/stripe/')) {
       return handleStripe(request, env, url);
+    }
+
+    // ── AÇÕES DA IA (confirmar/cancelar/reverter; nunca por texto livre) ──
+    if (url.pathname.startsWith('/ia/acoes/')) {
+      return handleIaActions(request, env, url);
+    }
+
+    // ── EVENTOS RESEND (assinatura Svix + idempotência no Supabase) ──
+    // Endpoint servidor-a-servidor: não aceita JWT, corpo é validado pela
+    // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
+    if (url.pathname === '/resend/webhook') {
+      return handleResendWebhook(request, env);
     }
 
     // ── PAGAMENTOS PIX MERCADO PAGO (créditos por Pix; planos por Pix) ──

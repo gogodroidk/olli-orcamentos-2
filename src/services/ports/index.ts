@@ -23,7 +23,7 @@
  *   MapsProvider         → rotas.ts (deep-link) + localizacaoEquipe.ts → Onda 8/12
  *   RoutingProvider      → (nenhuma; só deep-link em rotas.ts)         → Onda 12 (B4)
  *   CalendarProvider     → googleAgenda.ts (atrás de flag)             → Onda 12 (B3)
- *   StorageProvider      → (nenhuma; URI local)                        → Onda 7
+ *   StorageProvider      → adapters/SupabaseStorageProvider            → Onda 7
  *   DocumentRenderer     → pdfGenerator.ts (PDF local/preview)         → Onda 7 (B9)
  *   SignatureProvider    → clienteLink.ts (aceite leve) / imagem       → Onda 11+
  *   FiscalProvider       → (nenhuma; proibido antes do financeiro)     → pós-Onda 9

@@ -3,7 +3,19 @@
 > Regra do loop: item humano → registra aqui e segue. Quando o dono voltar, esta é a lista dele.
 > Fonte: Onda 1 (2026-07-17). Marcar `[x]` quando o dono resolver.
 
-## ✅ DESTRAVADO EM 19/07 — não peça mais isso ao dono
+> **REVALIDAÇÃO 06/09/2026 — este arquivo contém histórico que não pode ser
+> tratado como estado live.** A leitura read-only do projeto Supabase
+> `yiaeplqinnnnniyvwtls` confirmou `ACTIVE_HEALTHY`, mas a lista de migrations
+> remotas termina em `email_welcome_dispatch_runtime`; as migrations locais de
+> cota comercial/trial, Storage privado, ações IA, helpers RLS privados e o índice
+> de quota ainda não foram promovidas. O Worker/landing não foram publicados por
+> esta execução. A tentativa de branch `olli-codex-staging-rls-20260906` foi
+> recusada porque o plano atual não oferece branching. Para o estado atual,
+> consulte `docs/PILOTO/FILA_0_A_100_CONTINUACAO.md` e
+> `docs/PILOTO/INVENTARIO_EXTERNOS_2026-09-05.md`; nenhum `[x]` histórico abaixo
+> substitui esses registros datados.
+
+## 📚 HISTÓRICO — destravado em 19/07 (não é revalidação atual)
 
 O dono autorizou execução total e estes itens **foram feitos**, com verificação
 depois de cada passo:
@@ -173,7 +185,7 @@ Os 44 testes passavam com o buraco aberto.
 ## Destrava RECEITA (sem isso, ninguém paga)
 - [ ] **MP_WEBHOOK_SECRET** ausente no cofre do worker (o `MP_ACCESS_TOKEN` já está lá). Único item que liga Pix/cartão. Registrar o webhook no painel Mercado Pago.
 - [ ] **3 migrations no Supabase de produção** (ordem importa, fora de ordem = 500/503): `20260724_webhook_events.sql` → `20260725_equipe_grandfathering.sql` → `20260726_credit_ledger_imutavel.sql`. O código já assume que existem.
-- [ ] **Stripe:** habilitar "Installments" (parcelamento BR) + criar 3 Prices (`olli_pro_12x`, `olli_empresa_mensal`, `olli_empresa_anual`) com lookup_keys.
+- [ ] **Stripe:** conta e modo teste foram confirmados, mas ainda falta reconciliar no live o webhook `/stripe/webhook`, installments e os Prices/lookup keys usados pelo Worker. Não criar cobrança durante o diagnóstico.
 - [x] **Cobrança de crédito da VOZ** — ✅ **APROVADO pelo dono (17/07): "ligar cobrança de crédito e voz, deixar tudo funcionando".** Decisão minha (dúvida→decido): manter os preços de pacote JÁ VIVOS no worker (R$0,25-0,498/cr — não mexer em preço live); consumo = **1 crédito por orçamento gerado por voz** (não por turno), 1ª conversa grátis, migrar os 3 usos grátis pro ledger (server-side, não burlável). **EM EXECUÇÃO** (Voz Fase 2).
 
 ## Google Play (trilha da loja — detalhe em LOJA.md)
@@ -195,7 +207,9 @@ Os 44 testes passavam com o buraco aberto.
       ⚠️ Quando esse build falha, o gradle **deixa o APK antigo na pasta** — conferir a data antes
       de publicar, senão sobe binário velho na loja.
 - [ ] **Chave PostHog** (projeto não criado) — feature codada e desligada até a chave existir.
-- [ ] **Chave Resend + verificar domínio** `mail.olliorcamentos.online` — sem isso o e-mail de convite falha calado (best-effort).
+- [x] **Resend + domínio** — conta possui chaves mascaradas e `olliorcamentos.online` está Verified; o Worker usa o domínio raiz em modo `simulator`.
+- [ ] **Resend operacional** — criar webhook assinado, publicar templates reais, revisar a chave Full access para menor privilégio e executar canário antes de promover destinatários reais.
+- [ ] **Ações OLLI IA** — aplicar `20260906021103_ia_actions_safe_runtime.sql` no projeto Supabase correto, publicar o Worker e executar canário sintético de prévia → confirmação → rollback. O código local está pronto; sem migration a rota permanece fail-closed.
 - [ ] **TOTP/MFA na conta ADMIN_EMAIL** (Supabase Auth) — enforcement aal2 é poucas linhas quando o fator existir.
 - [x] ~~Rotacionar senha da conta demo GR Tech~~ — **DECIDIDO NÃO FAZER** (dono, 17/07): ele exclui a conta depois. Não perguntar mais. Ver memória `olli-senha-demo-nao-rotacionar`.
 - [ ] **OAuth client Android** (precisa do SHA-1 do keystore de release) — login Google nativo + Google Agenda no APK.

@@ -263,6 +263,14 @@ body {
 	overflow-x: clip;
 }
 
+.site-header > div a {
+	display: inline-flex;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: center;
+}
+
 /* Números com aparência de dado (tabular). */
 .tnum {
 	font-variant-numeric: tabular-nums;

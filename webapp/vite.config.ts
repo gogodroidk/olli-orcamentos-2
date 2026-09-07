@@ -22,6 +22,10 @@ const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.me
 const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
 const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
+const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesComerciais.ts", import.meta.url));
+const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts", import.meta.url));
+const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
+const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -66,6 +70,10 @@ export default defineConfig(({ mode }) => {
 				"@entitlements": entitlementsFonte,
 				"@verticais": verticaisFonte,
 				"@vertical-segmento": verticalSegmentoFonte,
+				"@limites-comerciais": limitesComerciaisFonte,
+				"@ia-segura": iaSeguraFonte,
+				"@precificacao": precificacaoFonte,
+				"@auth-policy": authPolicyFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

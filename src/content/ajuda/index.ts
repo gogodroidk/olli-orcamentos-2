@@ -7,6 +7,8 @@
  * senão a Central de Ajuda começa a mentir pro usuário.
  */
 
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from '../../services/entitlements';
+
 /** Tipo de bloco do corpo de um artigo. */
 export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
 
@@ -299,7 +301,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          'Orçamentos, recibos, clientes, agenda, diagnóstico de código de erro offline e o link do cliente são ilimitados em QUALQUER plano — inclusive no Grátis. Os planos pagos liberam recursos extras:',
+          `No Grátis, rascunhos, recibos, clientes, agenda e histórico ficam sem limite; você pode enviar, compartilhar por link ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos distintos por mês. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática. Os planos pagos liberam recursos extras:`,
       },
       {
         tipo: 'passos',

@@ -12,6 +12,7 @@ const RX = {
   quickActions: /A\u00e7\u00f5es r\u00e1pidas|Acoes rapidas/i,
   newBudget: /Or\u00e7ar|Orcar|Novo or\u00e7amento|Novo orcamento/i,
   clientStep: /Cliente|Dados do Cliente|Passo 1 de 4/i,
+  authGate: /Entrar na sua conta|Ainda n\u00e3o tem conta|Ainda nao tem conta/i,
 };
 
 async function visible(locator, timeout = 800) {
@@ -39,6 +40,7 @@ async function reachHome(page) {
 
   while (Date.now() < deadline) {
     if (await visible(page.getByText(RX.quickActions), 1000)) return;
+    if (await visible(page.getByText(RX.authGate), 1000)) return 'auth_required';
     if (await clickIfVisible(page.getByText(RX.start), 1500)) {
       await page.waitForTimeout(800);
       continue;
@@ -79,12 +81,27 @@ async function runViewport(name, viewport) {
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForLoadState('networkidle', { timeout: 120000 }).catch(() => {});
-  await reachHome(page);
+  const accessState = await reachHome(page);
   await page.waitForTimeout(1200);
 
   const bodyText = await page.locator('body').innerText();
   const homeShot = resolve(outDir, `qa-${name}-home.png`);
   await page.screenshot({ path: homeShot, fullPage: false });
+
+  if (accessState === 'auth_required') {
+    await browser.close();
+    return {
+      name,
+      viewport,
+      homeShot,
+      flowShot: '',
+      authRequired: true,
+      homeHasQuickActions: false,
+      homeHasNewBudget: false,
+      flowReachedClientStep: false,
+      consoleIssues: logs,
+    };
+  }
 
   let flowText = '';
   let flowShot = '';
@@ -103,6 +120,7 @@ async function runViewport(name, viewport) {
     viewport,
     homeShot,
     flowShot,
+    authRequired: false,
     homeHasQuickActions: RX.quickActions.test(bodyText),
     homeHasNewBudget: RX.newBudget.test(bodyText) || opened,
     flowReachedClientStep: RX.clientStep.test(flowText),
@@ -117,6 +135,6 @@ const results = [
 
 console.log(JSON.stringify(results, null, 2));
 
-if (results.some((result) => !result.homeHasQuickActions || !result.homeHasNewBudget || !result.flowReachedClientStep)) {
+if (results.some((result) => result.consoleIssues.length > 0 || (!result.authRequired && (!result.homeHasQuickActions || !result.homeHasNewBudget || !result.flowReachedClientStep)))) {
   process.exitCode = 1;
 }

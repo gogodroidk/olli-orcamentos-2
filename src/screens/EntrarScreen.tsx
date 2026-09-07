@@ -31,6 +31,7 @@ import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
+import { SENHA_MINIMA } from '../services/authPolicy';
 
 // Fecha uma sessão de autenticação pendente (retorno do OAuth) caso o app
 // tenha sido reaberto no meio do fluxo. Idempotente e seguro na web e no nativo.
@@ -96,8 +97,9 @@ export default function EntrarScreen() {
 
   /**
    * Semeia o telefone do cadastro na empresa local (best-effort, silencioso).
-   * Se a empresa existe e está sem telefone/whatsapp, preenche os vazios; se não
-   * existe, cria uma empresa mínima com o telefone e o e-mail. Nunca lança.
+   * Se a empresa já existe e está sem telefone/WhatsApp, preenche os vazios.
+   * Nunca cria uma empresa aqui: a ausência precisa continuar passando pelo
+   * onboarding e pela confirmação remota em três estados. Nunca lança.
    */
   async function semearTelefoneEmpresa(telDigits: string) {
     if (!telDigits) return;
@@ -172,8 +174,8 @@ export default function EntrarScreen() {
       Alert.alert('Faltou o telefone', 'Informe um WhatsApp válido com DDD.');
       return;
     }
-    if (!email.trim() || senha.length < 8) {
-      Alert.alert('Atenção', 'Informe um e-mail válido e senha de pelo menos 8 caracteres.');
+    if (!email.trim() || senha.length < SENHA_MINIMA) {
+      Alert.alert('Atenção', `Informe um e-mail válido e senha de pelo menos ${SENHA_MINIMA} caracteres.`);
       return;
     }
     if (modo === 'signup' && senha !== confirmar) {

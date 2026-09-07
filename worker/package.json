@@ -5,12 +5,17 @@
   "description": "Worker de IA/pagamentos do OLLI. Deploy manual: wrangler deploy (NUNCA por Git — o build por Git apaga os secrets).",
   "scripts": {
     "check": "wrangler deploy --dry-run --outdir=.dry",
+    "types": "wrangler types",
+    "types:check": "wrangler types --check",
     "test:ai": "node scripts/teste-ai-provider.ts",
     "test:audio": "node scripts/teste-audio-seguro.ts",
     "test:body": "node scripts/teste-body-limit.ts",
     "test:email": "node scripts/teste-email.js",
+    "test:resend-webhook": "node scripts/teste-resend-webhook.js",
+    "test:ia-actions": "node scripts/teste-ia-actions.js",
     "test:welcome-outbox-consumer": "node scripts/teste-welcome-outbox-consumer.js",
-    "deploy": "wrangler deploy"
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:welcome-outbox-consumer",
+    "deploy": "npm run types:check && wrangler deploy"
   },
   "dependencies": {
     "@sentry/cloudflare": "^10.66.0"

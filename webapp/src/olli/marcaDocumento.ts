@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { derivar, type LinhaAssinatura, type ResumoAssinatura, SEM_ASSINATURA } from "@/pages/olli/planos/tipos";
 import { derivarMarca, type Marca } from "./marcaRegra";
 import { opcoesContextoDeEscrita } from "./mutacoes";
+import { obterEstadoOfertaComercial } from "./cota-envios";
 
 export { avisoDaMarca, type Marca, type MotivoIndeterminado } from "./marcaRegra";
 
@@ -46,7 +47,21 @@ export const opcoesAssinatura = queryOptions({
 		// "falhou" de "não tem assinatura". Engolir aqui recriaria o bug crônico.
 		if (error) throw error;
 
-		return data ? derivar(data as LinhaAssinatura) : SEM_ASSINATURA;
+		const resumo = data ? derivar(data as LinhaAssinatura) : SEM_ASSINATURA;
+		if (resumo.planoEfetivo !== "gratis") return resumo;
+		const oferta = await obterEstadoOfertaComercial();
+		if (oferta?.trialEstado === "active" && oferta.planoEfetivo === "pro" && oferta.trialTerminaEm) {
+			return {
+				planoEfetivo: "pro",
+				planoContratado: "gratis",
+				status: "trialing",
+				proximaCobranca: oferta.trialTerminaEm,
+				ativo: true,
+				pagamentoFalhou: false,
+				origem: "trial",
+			};
+		}
+		return resumo;
 	},
 	staleTime: 60_000,
 	retry: 1,

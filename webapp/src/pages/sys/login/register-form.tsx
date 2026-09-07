@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
+import { SENHA_MINIMA } from "@auth-policy";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
@@ -163,7 +164,7 @@ function RegisterForm() {
 					name="password"
 					rules={{
 						required: t("sys.login.passwordPlaceholder"),
-						minLength: { value: 6, message: "A senha precisa ter pelo menos 6 caracteres." },
+						minLength: { value: SENHA_MINIMA, message: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` },
 					}}
 					render={({ field }) => (
 						<FormItem>

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { normalizarRascunhoAcaoIa, type RascunhoAcaoIaRemota } from "@/olli/iaActions";
 
 /**
  * Diagnóstico por SINTOMA — conversa com a OLLI Técnica no Worker de IA
@@ -119,7 +120,7 @@ export interface MensagemChat {
 	texto: string;
 }
 
-export type RespostaChat = { ok: true; resposta: string } | { ok: false; erro: FalhaIA };
+export type RespostaChat = { ok: true; resposta: string; rascunho?: RascunhoAcaoIaRemota } | { ok: false; erro: FalhaIA };
 
 export interface OpcoesAssistente {
 	/** Ofício/vertical, quando a tela conhece. Vazio mantém o modo geral do Worker. */
@@ -127,6 +128,8 @@ export interface OpcoesAssistente {
 	/** Só telas com confirmação explícita de gasto devem enviar true. */
 	confirmarCredito?: boolean;
 	creditoRef?: string;
+	/** Solicita saída estruturada e persistida; nunca executa a mudança. */
+	modo?: "consulta" | "rascunho_acao";
 }
 
 /**
@@ -157,15 +160,17 @@ export async function perguntarAoAssistente(
 				vertical: opcoes.vertical,
 				confirmarCredito: opcoes.confirmarCredito === true,
 				creditoRef: opcoes.creditoRef,
+				modo: opcoes.modo,
 			}),
 			signal: controller.signal,
 		});
 
 		const data: unknown = await r.json().catch(() => null);
-		const obj = (data ?? {}) as { ok?: boolean; resposta?: unknown; motivo?: string; erro?: string };
+		const obj = (data ?? {}) as { ok?: boolean; resposta?: unknown; rascunho?: unknown; motivo?: string; erro?: string };
 
 		if (obj.ok && typeof obj.resposta === "string" && obj.resposta.trim()) {
-			return { ok: true, resposta: obj.resposta.trim() };
+			const rascunho = normalizarRascunhoAcaoIa(obj.rascunho);
+			return { ok: true, resposta: obj.resposta.trim(), ...(rascunho ? { rascunho } : {}) };
 		}
 		// O motivo vem antes do status: 429 também representa cota DIÁRIA. Dizer
 		// "espere alguns segundos" nesse caso incentivaria retries inúteis.

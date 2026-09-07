@@ -29,6 +29,16 @@ import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { track, Eventos } from '../services/analytics';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import {
+  cancelarReservaEnvioOrcamento,
+  confirmarEnvioOrcamento,
+  reservarEnvioOrcamento,
+} from '../services/cotaEnvios';
+import {
+  mensagemBloqueioEnvio,
+  type CanalEnvioOrcamento,
+  type ReservaEnvioOrcamento,
+} from '../services/limitesComerciais';
 
 // Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
 // 'remove_olli_brand' ao type Recurso; codificamos contra o NOME do contrato.
@@ -166,16 +176,46 @@ export default function VisualizarOrcamentoScreen() {
     }).catch(() => {});
   }, [orcamentoId, load]));
 
+  async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
+    if (!orc) return null;
+    const reserva = await reservarEnvioOrcamento(orc.id, canal);
+    if (reserva.permitido) return reserva;
+    const botoes = reserva.motivo === 'cota_esgotada'
+      ? [
+          { text: 'Agora não', style: 'cancel' as const },
+          { text: 'Ver planos', onPress: () => nav.navigate('Planos') },
+        ]
+      : [{ text: 'OK' }];
+    Alert.alert(
+      reserva.motivo === 'cota_esgotada' ? 'Cota mensal utilizada' : 'Não foi possível verificar a cota',
+      mensagemBloqueioEnvio(reserva),
+      botoes,
+    );
+    return null;
+  }
+
+  async function confirmarEntrega(reserva: ReservaEnvioOrcamento): Promise<void> {
+    if (!reserva.requerConfirmacao) return;
+    await confirmarEnvioOrcamento(orcamentoId, reserva.reservaToken);
+  }
+
   async function handleShare() {
     if (!orc || !empresa) return;
     setSharing(true);
     setOverlayInfo({ titulo: 'Gerando seu orçamento...', subtitulo: 'Deixando bonito para o cliente...' });
+    let reserva: ReservaEnvioOrcamento | null = null;
     try {
+      reserva = await autorizarEntrega('pdf');
+      if (!reserva) return;
       await compartilharPdfOrcamento(orc, empresa, depoimentos, orc.corMarca, {
         removerMarca: temAcesso(RECURSO_REMOVE_MARCA),
       });
+      await confirmarEntrega(reserva);
       if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e: any) {
+      if (reserva?.requerConfirmacao) {
+        await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
+      }
       // Quando o compartilhamento não está disponível no dispositivo, a
       // mensagem já vem específica (e diz onde o PDF foi salvo); nos demais
       // casos cai no texto genérico.
@@ -194,10 +234,17 @@ export default function VisualizarOrcamentoScreen() {
       return;
     }
     const msg = montarMensagemEnvioOrcamento(orc, empresa);
+    let reserva: ReservaEnvioOrcamento | null = null;
     try {
+      reserva = await autorizarEntrega('whatsapp');
+      if (!reserva) return;
       await abrirWhatsApp(orc.clienteTelefone, msg);
+      await confirmarEntrega(reserva);
       if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e) {
+      if (reserva?.requerConfirmacao) {
+        await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
+      }
       Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
     }
   }
@@ -213,13 +260,20 @@ export default function VisualizarOrcamentoScreen() {
     }
     setLinking(true);
     setOverlayInfo({ titulo: 'Gerando o link do cliente...', subtitulo: 'Preparando a página de aprovação...' });
+    let reserva: ReservaEnvioOrcamento | null = null;
     try {
+      reserva = await autorizarEntrega('link');
+      if (!reserva) return;
       const url = await gerarLinkOrcamento(orc, empresa);
-      if (orc.status === 'rascunho') await updateStatus('enviado');
       await Share.share({
         message: montarMensagemLinkOrcamento(orc, empresa, url),
       });
+      await confirmarEntrega(reserva);
+      if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e: any) {
+      if (reserva?.requerConfirmacao) {
+        await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
+      }
       Alert.alert('Não consegui gerar o link', e?.message ?? 'Tente novamente.');
     } finally {
       setLinking(false);

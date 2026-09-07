@@ -366,9 +366,30 @@ async function regimeIa(env, userId) {
       console.error('[olli-creditos] preauth_assinatura_json_invalido');
       return 'indeterminado';
     }
-    if (!arr.length) return 'cota'; // sem linha = nunca assinou = grátis (resposta confirmada)
-    const efetivo = derivarEntitlement(arr[0]);
-    return PLANOS_IA_ILIMITADA.has(efetivo.plano) ? 'ilimitada' : 'cota';
+    if (arr.length) {
+      const efetivo = derivarEntitlement(arr[0]);
+      if (PLANOS_IA_ILIMITADA.has(efetivo.plano)) return 'ilimitada';
+    }
+
+    // Assinatura paga não ativa: consulta o trial OLLI autoritativo. A RPC aceita
+    // user_id porque é executável SOMENTE por service_role; `userId` veio do JWT
+    // já verificado pelo Worker. Antes da migration existir, 404 volta para a cota
+    // normal — rollout aditivo, sem derrubar a IA atual.
+    try {
+      const trial = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/plano_comercial_para_usuario`, {
+        method: 'POST',
+        headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ p_user_id: userId }),
+      });
+      if (trial.ok) {
+        const planoTrial = await trial.json().catch(() => null);
+        if (PLANOS_IA_ILIMITADA.has(planoTrial)) return 'ilimitada';
+      }
+    } catch {
+      // RPC opcional durante rollout: assinatura já foi lida como não paga, então
+      // ausência/erro desta consulta mantém a cota atual em vez de virar acesso livre.
+    }
+    return 'cota';
   } catch {
     console.error('[olli-creditos] preauth_assinatura_rede');
     return 'indeterminado';

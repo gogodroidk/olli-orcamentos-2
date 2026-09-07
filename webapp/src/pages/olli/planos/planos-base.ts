@@ -16,6 +16,7 @@
  * comercial disso.
  */
 import type { PlanoId } from "./tipos";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "@limites-comerciais";
 
 export interface PlanoBase {
 	id: PlanoId;
@@ -31,7 +32,8 @@ export const PLANOS_BASE: readonly PlanoBase[] = [
 		nome: "Grátis",
 		tagline: "Tudo que você precisa pra começar a fechar negócio.",
 		beneficios: [
-			"Orçamentos e recibos ilimitados",
+			`Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
+			"Rascunhos, recibos, clientes e histórico sem limite",
 			"Catálogo de serviços e produtos",
 			"Clientes e agenda",
 			"Diagnóstico por código de erro (offline)",

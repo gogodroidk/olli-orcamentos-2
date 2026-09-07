@@ -16,8 +16,6 @@
  */
 
 import type { Orcamento, Recibo } from "@dominio";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
 import { useOlliList } from "@/olli/data";
 
 /**
@@ -74,28 +72,15 @@ export function useRecibos() {
 /**
  * Todos os orçamentos ativos — para o seletor "receber de um orçamento".
  *
- * NÃO usa `useOlliList` (que não tem `enabled`): o `FormRecibo` fica montado o tempo
- * todo (para a animação de fechar do diálogo funcionar), então sem `enabled` este
- * hook baixaria o blob inteiro de TODOS os orçamentos toda vez que a tela /recibos
- * abrisse — mesmo que o formulário nunca fosse aberto. `enabled: aberto` faz a busca
- * só acontecer quando o formulário está de fato na tela. A query replica exatamente
- * o que `useOlliList("orcamentos", …)` faria (mesma chave de cache, mesmo filtro de
- * lixeira, mesma ordenação) para não divergir do resto do painel.
+ * O `FormRecibo` fica montado o tempo todo (para a animação de fechar do diálogo
+ * funcionar), então `enabled: aberto` faz a busca só acontecer quando o formulário
+ * está de fato na tela. O hook compartilhado também pagina a resposta, evitando o
+ * cap silencioso de ~1000 linhas do PostgREST em contas com histórico grande.
  */
 export function useOrcamentos(opts?: { enabled?: boolean }) {
-	const orderOpts = { orderBy: "criado_em", ascending: false } as const;
-	return useQuery({
-		queryKey: ["olli", "orcamentos", orderOpts],
-		queryFn: async (): Promise<LinhaOrcamento[]> => {
-			const { data, error } = await supabase
-				.from("orcamentos")
-				.select("*")
-				.is("excluido_em", null)
-				.order("criado_em", { ascending: false });
-			if (error) throw error;
-			return (data ?? []) as LinhaOrcamento[];
-		},
-		staleTime: 30_000,
+	return useOlliList<LinhaOrcamento>("orcamentos", {
+		orderBy: "criado_em",
+		ascending: false,
 		enabled: opts?.enabled ?? true,
 	});
 }

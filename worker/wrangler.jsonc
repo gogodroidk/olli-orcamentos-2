@@ -36,6 +36,7 @@
   //   npx wrangler secret put OPENROUTER_API_KEY
   //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)
   //   npx wrangler secret put STRIPE_WEBHOOK_SECRET   (whsec_..., do endpoint do webhook)
+  //   npx wrangler secret put RESEND_WEBHOOK_SECRET   (whsec_..., do endpoint Svix do Resend)
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_", // gitleaks:allow — chave publicável, protegida por RLS
@@ -71,6 +72,56 @@
     "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
     "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
     "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn"
+  },
+  // Staging is a separate Worker with no production custom domains. It inherits
+  // the bindings/rate-limit shape above but overrides all environment identity
+  // and Supabase routing. Secrets are provisioned separately with
+  // `wrangler secret put --env staging`; no production secret is inherited.
+  "env": {
+    "staging": {
+      "name": "olli-diagnostico-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      "routes": [],
+      "vars": {
+        "SUPABASE_URL": "https://sbpkutknpywezeagioon.supabase.co",
+        "SUPABASE_ANON_KEY": "sb_publishable_4QaDViGbT45F72jQ5GINug_UN-4alDT",
+        "WELCOME_DISPATCH_MODE": "simulator",
+        "WELCOME_BATCH_LIMIT": "1",
+        "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
+        "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
+        "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",
+        "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
+        "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
+        "AI_PROVIDER": "openrouter",
+        "OPENROUTER_TEXT_MODELS": "nvidia/nemotron-3-super-120b-a12b:free,z-ai/glm-5.2:free,liquid/lfm-2.5-2.6b:free",
+        "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
+        "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",
+        "OPENROUTER_GLOBAL_DAILY_LIMIT": "40",
+        "OPENROUTER_USER_DAILY_LIMIT": "10",
+        "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
+        "WHISPER_USER_DAILY_LIMIT": "940",
+        "GEMINI_MODEL": "gemini-2.5-flash",
+        "STRIPE_PRICE_PRO": "price_1TqUOA4zjAI9pGd77ZyOCYcQ",
+        "STRIPE_PRICE_PRO_ANUAL": "price_1TqUVb4zjAI9pGd7fGSU4b4v",
+        "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
+        "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
+        "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn"
+      },
+      "ai": { "binding": "AI" },
+      "ratelimits": [
+        { "name": "IA_RL", "namespace_id": "2001", "simple": { "limit": 20, "period": 60 } },
+        { "name": "LINK_RL", "namespace_id": "2002", "simple": { "limit": 12, "period": 60 } },
+        { "name": "STRIPE_RL", "namespace_id": "2003", "simple": { "limit": 10, "period": 60 } },
+        { "name": "ADMIN_RL", "namespace_id": "2004", "simple": { "limit": 30, "period": 60 } },
+        { "name": "ETA_RL", "namespace_id": "2005", "simple": { "limit": 20, "period": 60 } },
+        { "name": "CNPJ_RL", "namespace_id": "2006", "simple": { "limit": 20, "period": 60 } },
+        { "name": "MP_RL", "namespace_id": "2008", "simple": { "limit": 12, "period": 60 } },
+        { "name": "TRANSCREVER_RL", "namespace_id": "2009", "simple": { "limit": 20, "period": 60 } },
+        { "name": "MPHOOK_RL", "namespace_id": "2010", "simple": { "limit": 120, "period": 60 } },
+        { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } }
+      ]
+    }
   },
   // O áudio fica na Cloudflare; somente a transcrição textual segue ao
   // OpenRouter quando o modo solicitado é orçamento.

@@ -16,7 +16,15 @@ import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
 import { supabase } from '../services/supabase';
 import { getPlanoAtual, getPlanoCacheado, PlanoId } from '../services/planos';
-import { temAcessoRecurso, IA_USOS_GRATIS_MES, type Recurso } from '../services/entitlements';
+import {
+  temAcessoRecurso,
+  IA_USOS_GRATIS_MES,
+  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  TRIAL_PRO_DIAS,
+  type Recurso,
+} from '../services/entitlements';
+import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
+import type { EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
   PRECO_PRO,
   PRECO_EMPRESA,
@@ -104,7 +112,8 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     icon: 'rocket-launch-outline',
     cta: 'Seu plano atual',
     beneficios: [
-      'Orçamentos e recibos ilimitados',
+      `Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
+      'Rascunhos, recibos, clientes e histórico sem limite',
       'Catálogo de serviços e produtos',
       'Clientes e agenda',
       'Diagnóstico por código de erro (offline)',
@@ -160,7 +169,8 @@ interface LinhaComparativo {
 
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
-  { rotulo: 'Orçamentos e recibos ilimitados', gratis: true, pro: true, empresa: true },
+  { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
+  { rotulo: 'Orçamentos enviados ou PDFs por mês', gratis: `${ORCAMENTOS_ENVIADOS_GRATIS_MES}/mês`, pro: 'Sem limite mensal', empresa: 'Sem limite mensal' },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },
   { rotulo: 'Link do orçamento para o cliente', gratis: true, pro: true, empresa: true },
@@ -260,7 +270,7 @@ export default function PlanosScreen() {
     aplicarSeo({
       titulo: 'Planos e preços — OLLI Orçamentos',
       descricao:
-        `Comece grátis, com orçamentos e recibos ilimitados, catálogo, clientes e agenda. ` +
+        `Comece grátis, com rascunhos, recibos, clientes e histórico sem limite e até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. ` +
         `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual) ` +
         `acrescenta IA com uso justo diário, relatórios de faturamento e conversão, metas de vendas e suporte prioritário.`,
       caminho: '/planos',
@@ -269,6 +279,9 @@ export default function PlanosScreen() {
 
   const [periodo, setPeriodo] = useState<Periodo>('mensal');
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
+  const [origemPlano, setOrigemPlano] = useState<'gratis' | 'pagamento' | 'admin' | 'trial' | undefined>('gratis');
+  const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
+  const [iniciandoTrial, setIniciandoTrial] = useState(false);
   const [carregandoPlano, setCarregandoPlano] = useState(true);
   // 3 estados explícitos (nunca colapsar erro em vazio): `planoErro` só vira
   // true numa falha de rede real; o plano exibido some do cache/última leitura.
@@ -290,6 +303,8 @@ export default function PlanosScreen() {
     try {
       const resultado = await getPlanoAtual();
       setPlanoAtualId(resultado.plano);
+      setOrigemPlano(resultado.origem);
+      setOferta(await obterEstadoOfertaComercial());
     } catch {
       setPlanoErro(true);
     } finally {
@@ -309,7 +324,8 @@ export default function PlanosScreen() {
   // Conta limpa (Frente 2): quem já paga não vê discurso de venda. Vê um card
   // discreto "Sua assinatura" que leva à AssinaturaScreen (faturas, cobrança,
   // trocar de plano/cartão e cancelar ficam lá, no portal seguro da Stripe).
-  const ehPagante = planoAtualId !== 'gratis';
+  const ehTrial = origemPlano === 'trial';
+  const ehPagante = planoAtualId !== 'gratis' && !ehTrial;
   const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
 
   async function abrirUrlPagamento(body?: object) {
@@ -432,6 +448,30 @@ export default function PlanosScreen() {
     assinarPlano(p, 'pro_12x');
   }
 
+  function pedirInicioTrial() {
+    Alert.alert(
+      `Experimentar o Pro por ${TRIAL_PRO_DIAS} dias`,
+      'Você não precisa informar cartão e não haverá cobrança automática. Ao terminar, sua conta volta ao Grátis e seus dados continuam salvos.',
+      [
+        { text: 'Agora não', style: 'cancel' },
+        { text: 'Começar teste', onPress: () => { void executarInicioTrial(); } },
+      ],
+    );
+  }
+
+  async function executarInicioTrial() {
+    setIniciandoTrial(true);
+    const inicio = await iniciarTrialPro();
+    if (!inicio) {
+      setIniciandoTrial(false);
+      Alert.alert('Não foi possível iniciar', 'Confirme sua conexão e tente novamente. O teste não foi consumido.');
+      return;
+    }
+    await carregarPlano();
+    setIniciandoTrial(false);
+    Alert.alert('Pro liberado', `Seu teste vai até ${new Date(inicio.terminaEm).toLocaleDateString('pt-BR')}. Não haverá cobrança automática.`);
+  }
+
   return (
     <View style={styles.container}>
       <GradientHeader title="Planos OLLI" subtitle="Escolha como crescer" onBack={() => goBackOrHome(nav)} />
@@ -444,6 +484,31 @@ export default function PlanosScreen() {
             <TouchableOpacity onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
               <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
             </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {ehTrial ? (
+          <View style={styles.trialCard}>
+            <MaterialCommunityIcons name="creation" size={22} color={cores.accentLight} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trialTitle}>Seu teste Pro está ativo</Text>
+              <Text style={styles.trialText}>
+                {oferta?.trialTerminaEm
+                  ? `Você tem os recursos Pro até ${new Date(oferta.trialTerminaEm).toLocaleDateString('pt-BR')}.`
+                  : `Você está usando o Pro por ${TRIAL_PRO_DIAS} dias.`} Sem cartão e sem cobrança automática; seus dados permanecem salvos depois.
+              </Text>
+            </View>
+          </View>
+        ) : oferta?.trialEstado === 'eligible' && planoAtualId === 'gratis' ? (
+          <View style={styles.trialCard}>
+            <MaterialCommunityIcons name="creation" size={22} color={cores.accentLight} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trialTitle}>Quer experimentar tudo do Pro?</Text>
+              <Text style={styles.trialText}>{TRIAL_PRO_DIAS} dias sem cartão, sem cobrança automática e sem apagar seus dados ao terminar.</Text>
+              <TouchableOpacity style={styles.trialButton} onPress={pedirInicioTrial} disabled={iniciandoTrial} accessibilityRole="button">
+                {iniciandoTrial ? <ActivityIndicator size="small" color={cores.onPrimary} /> : <Text style={styles.trialButtonText}>Começar teste grátis</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -482,10 +547,10 @@ export default function PlanosScreen() {
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
             <Text style={styles.introSub}>
               {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
-                ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.'
+                ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
                 : Platform.OS === 'android'
-                  ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.'
-                  : 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.'}
+                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.`
+                  : `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -857,6 +922,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
   // Alvo de toque de 44px no "Tentar de novo" (o texto sozinho é baixo demais).
   avisoAcaoHit: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+  trialCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.35), backgroundColor: comAlfa(c.accentLight, 0.08), borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
+  trialTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  trialText: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant, marginTop: 3 },
+  trialButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, marginTop: 10, borderRadius: BorderRadius.md, backgroundColor: c.primary },
+  trialButtonText: { color: c.onPrimary, fontSize: 13.5, fontWeight: '800' },
 
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
   // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.

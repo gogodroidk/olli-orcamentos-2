@@ -32,12 +32,13 @@
  */
 import {
 	IA_USOS_GRATIS_MES,
+	ORCAMENTOS_ENVIADOS_GRATIS_MES,
 	RECURSOS_POR_PLANO,
 	temAcessoRecurso,
 } from "../../../src/services/entitlements";
 import type { PlanoId, Recurso } from "../../../src/services/entitlements";
 
-export { IA_USOS_GRATIS_MES };
+export { IA_USOS_GRATIS_MES, ORCAMENTOS_ENVIADOS_GRATIS_MES };
 export type { PlanoId, Recurso };
 
 /** Ordem em que os planos aparecem nas colunas — do menor para o maior. */
@@ -90,7 +91,7 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
  * três colunas — o comparativo não pergunta o plano para eles.
  */
 export const RECURSOS_BASE: readonly string[] = [
-	"Orçamentos, recibos, clientes e agenda ilimitados",
+	"Rascunhos, recibos, clientes e histórico sem limite",
 	"Ordem de serviço com checklist, fotos e assinatura na tela",
 	"Link do orçamento para o cliente aprovar",
 	"Diagnóstico por código de erro (climatização)",
@@ -155,6 +156,14 @@ export function linhasComparativo(): LinhaComparativo[] {
 			empresa: { tipo: "texto", valor: "Ilimitada" },
 		},
 	};
+	const envios: LinhaComparativo = {
+		titulo: "Orçamentos enviados ou PDFs por mês",
+		celulas: {
+			gratis: { tipo: "texto", valor: `${ORCAMENTOS_ENVIADOS_GRATIS_MES}/mês` },
+			pro: { tipo: "texto", valor: "Sem limite mensal" },
+			empresa: { tipo: "texto", valor: "Sem limite mensal" },
+		},
+	};
 
 	const recursos = (Object.keys(ROTULO_RECURSO) as Recurso[])
 		.filter((r) => r !== "ia_ilimitada")
@@ -174,5 +183,5 @@ export function linhasComparativo(): LinhaComparativo[] {
 			};
 		});
 
-	return [...base, ia, ...recursos];
+	return [...base, envios, ia, ...recursos];
 }

@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
 import { resetBrandColor } from "@/olli/branding";
 import { queryClient } from "./queryClient";
+import { SENHA_MINIMA } from "@auth-policy";
 
 /**
  * Traduz os códigos de erro do Supabase Auth (AuthApiError.code) para pt-BR.
@@ -33,7 +34,7 @@ export function mapAuthErrorMessage(err: unknown): string {
 		case "identity_already_exists":
 			return "Já existe uma conta com este e-mail.";
 		case "weak_password":
-			return "Senha fraca. Use pelo menos 6 caracteres, com letras e números.";
+			return `Senha fraca. Use pelo menos ${SENHA_MINIMA} caracteres, com letras e números.`;
 		case "user_banned":
 			return "Esta conta está temporariamente bloqueada.";
 		case "email_address_invalid":

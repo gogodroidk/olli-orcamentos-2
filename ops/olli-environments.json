@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "product": "OLLI Orçamentos",
+  "canonicalRepository": "C:\\OLLI_REL",
+  "canonicalBranch": "Codex/piloto-p0",
+  "promotionOrder": [
+    "local-quality",
+    "staging-schema",
+    "staging-worker",
+    "staging-smoke",
+    "security-review",
+    "human-approval",
+    "production-worker",
+    "production-web",
+    "post-deploy-health"
+  ],
+  "environments": {
+    "local": {
+      "kind": "developer",
+      "mutable": true,
+      "acceptedReal": false,
+      "providerMode": "fixtures-and-dry-run"
+    },
+    "staging": {
+      "kind": "isolated-test",
+      "mutable": true,
+      "acceptedReal": false,
+      "supabaseProjectRef": "sbpkutknpywezeagioon",
+      "supabaseRegion": "sa-east-1",
+      "cloudflareWorker": "olli-diagnostico-staging",
+      "cloudflareRoutes": [],
+      "welcomeDispatchMode": "simulator",
+      "billingMode": "test",
+      "realRecipientPolicy": "forbidden",
+      "requiredSecretNames": [
+        "SUPABASE_STAGING_DB_PASSWORD",
+        "OPENROUTER_API_KEY_STAGING",
+        "RESEND_API_KEY_STAGING",
+        "RESEND_WEBHOOK_SECRET_STAGING",
+        "STRIPE_SECRET_KEY_TEST",
+        "STRIPE_WEBHOOK_SECRET_TEST"
+      ],
+      "baselineStatus": "runtime_schema_and_41_migrations_applied_manual_sql_editor",
+      "baselineSource": "main_schema_metadata_only",
+      "lastPromotionCheckpoint": {
+        "recordedAt": "2026-09-06T21:25:00-03:00",
+        "baselineMigration": "staging_schema_baseline_20260906",
+        "incrementalMigrationsApplied": 41,
+        "migrationApplicationMode": "supabase_sql_editor_manual",
+        "migrationHistoryStatus": "dashboard_history_stops_at_20260820165809_until_reconciled",
+        "workerDeployment": {
+          "name": "olli-diagnostico-staging",
+          "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
+          "versionId": "257076e9-8c71-4ad3-91e4-406de5ab82d3",
+          "health": "HTTP_200",
+          "welcomeDispatchMode": "simulator",
+          "routes": []
+        },
+        "firstBlockedMigration": null,
+        "blocker": "migration_history_reconciliation_and_external_secrets",
+        "acceptedReal": false
+      },
+      "promotionMode": "manual-workflow-approval"
+    },
+    "production": {
+      "kind": "live",
+      "mutable": true,
+      "acceptedReal": false,
+      "supabaseProjectRef": "yiaeplqinnnnniyvwtls",
+      "cloudflareWorker": "olli-diagnostico",
+      "cloudflareRoutes": [
+        "diagnostico.olliorcamentos.online",
+        "link.olliorcamentos.online"
+      ],
+      "welcomeDispatchMode": "simulator",
+      "billingMode": "live",
+      "realRecipientPolicy": "hold",
+      "promotionMode": "manual-workflow-approval"
+    }
+  },
+  "gates": {
+    "stagingBaseline": "blocked_until_schema_only_baseline_is_reviewed",
+    "stagingMigrations": "must_be_versioned_and_rollback_reviewed",
+    "stagingSmoke": "must_prove_health_auth_rls_storage_worker_and_web",
+    "security": "semgrep_gitleaks_rls_advisors_and_review",
+    "production": "github_environment_approval_required",
+    "rollback": "immutable_artifact_and_previous_deployment_required"
+  }
+}

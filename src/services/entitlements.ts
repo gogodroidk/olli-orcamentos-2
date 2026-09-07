@@ -41,9 +41,9 @@ export const RECURSO_REMOVE_MARCA: Recurso = 'remove_olli_brand';
 /**
  * RECURSOS_POR_PLANO — o que cada plano libera.
  *
- * gratis: orçamentos/recibos/clientes/agenda ilimitados, diagnóstico offline e
- *   link do cliente são livres (não passam pelo mapa: nunca se gateiam). IA tem
- *   3 usos/mês (cota, não plano). Nenhum recurso Pro/Empresa.
+ * gratis: rascunhos, recibos, clientes e agenda permanecem disponíveis; o envio
+ *   ou PDF de até 5 orçamentos distintos por mês passa por cota autoritativa.
+ *   IA tem 3 usos/mês (cota, não plano). Nenhum recurso Pro/Empresa.
  * pro: toda a IA sem cota, relatórios, metas, radar, relatório do dia falado,
  *   os modelos premium de PDF e a remoção da marca OLLI do documento (D-07).
  * empresa: tudo do Pro + equipe/papéis/mapa/dashboard da empresa.
@@ -97,3 +97,8 @@ export function temAcessoRecurso(plano: PlanoId, recurso: Recurso): boolean {
  * `getUsosIaRestantes`).
  */
 export const IA_USOS_GRATIS_MES = 3;
+
+export {
+  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  TRIAL_PRO_DIAS,
+} from './limitesComerciais.ts';

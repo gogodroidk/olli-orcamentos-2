@@ -275,6 +275,13 @@ verdadeiro('RPC revogada de PUBLIC/anon/authenticated',
   /revoke all on function public\.reservar_cota_ia_diaria[\s\S]*?from public, anon, authenticated, service_role;/i.test(sql));
 verdadeiro('somente service_role recebe EXECUTE',
   /grant execute on function public\.reservar_cota_ia_diaria[\s\S]*?to service_role;/i.test(sql));
+verdadeiro('FK de auth.users tem índice reverso por user_id',
+  /create index if not exists ia_cota_usuario_diaria_user_idx[\s\S]*?on public\.ia_cota_usuario_diaria \(user_id\)/i.test(sql));
+const indiceSql = await fs.readFile(
+  new URL('../supabase/migrations/20260906123000_ia_quota_user_fk_index.sql', import.meta.url), 'utf8');
+verdadeiro('migration aditiva do índice é idempotente e não destrutiva',
+  /create index if not exists ia_cota_usuario_diaria_user_idx[\s\S]*?on public\.ia_cota_usuario_diaria \(user_id\)/i.test(indiceSql) &&
+  !/drop table|truncate table|delete from/i.test(indiceSql));
 for (const estado of ['permitido', 'ja_reservado', 'limite_global', 'limite_usuario']) {
   verdadeiro(`migration contem estado ${estado}`, sql.includes(`'${estado}'`));
 }

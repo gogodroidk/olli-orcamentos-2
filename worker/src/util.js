@@ -42,6 +42,7 @@ const METODOS_POR_ROTA = new Map([
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
+  ['/resend/webhook', 'POST'],
 ]);
 
 /**
@@ -51,6 +52,7 @@ const METODOS_POR_ROTA = new Map([
  * certo no corpo; o roteador só decide se o VERBO cabe.
  */
 const METODOS_POR_PREFIXO = [
+  ['/ia/acoes/', 'POST'],
   ['/cep/', 'GET'],
   ['/cnpj/', 'GET'],
   ['/feriados/', 'GET'],

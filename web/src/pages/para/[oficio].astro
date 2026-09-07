@@ -23,16 +23,18 @@ import Footer from "../../components/Footer.astro";
 import Header from "../../components/Header.astro";
 import Icone from "../../components/Icone.astro";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
-import { VERTICAIS } from "../../../../src/services/verticais";
+import { VERTICAIS, VERTICAL_GERAL } from "../../../../src/services/verticais";
 import {
 	DOR_POR_OFICIO,
 	ICONE_POR_OFICIO,
 	OFICIOS,
+	OFICIO_GERAL,
 	PROFISSAO_POR_OFICIO,
 	SLUG_POR_OFICIO,
 } from "../../data/oficios";
 // Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
 import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../../data/recursos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -78,14 +80,14 @@ const ICONE_POR_MDI: Record<string, string> = {
 };
 
 export function getStaticPaths() {
-	return VERTICAIS.map((v) => ({
+	return [...VERTICAIS, VERTICAL_GERAL].map((v) => ({
 		params: { oficio: SLUG_POR_OFICIO[v.id] },
 		props: { id: v.id },
 	}));
 }
 
 const { id } = Astro.props;
-const oficio = OFICIOS.find((o) => o.id === id)!;
+const oficio = id === "geral" ? OFICIO_GERAL : OFICIOS.find((o) => o.id === id)!;
 const profissao = PROFISSAO_POR_OFICIO[id];
 const dor = DOR_POR_OFICIO[id];
 const calculos = calculosDoOficio(id);
@@ -123,7 +125,7 @@ const nomesCalc = calculos.map((c) => c.nome).join(", ");
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. O plano Grátis da OLLI faz orçamento, ordem de serviço e recibo sem limite para ${profissao}, sem prazo e sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no plano Pro (${reais(PRECO_PRO.mensalCentavos)}/mês).`,
+		a: `Sim. O plano Grátis da OLLI é permanente: rascunhos, ordem de serviço, recibos, clientes e histórico ficam sem limite, com até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês. Depois do primeiro envio, há 14 dias opcionais de Pro sem cartão e sem cobrança automática.`,
 	},
 	...(calculos.length > 0
 		? [
@@ -163,7 +165,7 @@ const schemaFaq = {
 	<Header>
 		<a
 			href={APP_CADASTRO_URL}
-			class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+			class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
 			>Começar grátis</a
 		>
 	</Header>
@@ -172,7 +174,7 @@ const schemaFaq = {
 		<!-- ══════════ HERO DO OFÍCIO ══════════ -->
 		<section class="mx-auto max-w-4xl px-6 pb-16 pt-14">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="hover:text-brand-fg">Início</a>
+				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
 				<span class="text-slate">{oficio.label}</span>
 			</nav>
@@ -295,7 +297,7 @@ const schemaFaq = {
 				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
 					<p class="text-lg font-semibold text-ink">Comece de graça, sem cartão.</p>
 					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
-						O plano Grátis faz orçamento, OS, cliente e agenda sem limite — e não tem prazo pra acabar.
+						O Grátis não tem prazo: rascunhos, OS, clientes e histórico ficam sem limite, com até {ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês.
 					</p>
 					<a
 						href={APP_CADASTRO_URL}
@@ -333,7 +335,7 @@ const schemaFaq = {
 					href={`${WHATSAPP_URL}?text=${waMsg}`}
 					target="_blank"
 					rel="noopener"
-					class="font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
+					class="inline-flex min-h-11 items-center font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
 					>Chama no WhatsApp</a
 				>.
 			</p>
@@ -343,11 +345,11 @@ const schemaFaq = {
 		<section class="mx-auto max-w-4xl px-6 py-16">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-muted">A OLLI também serve</h2>
 			<ul class="mt-4 flex flex-wrap gap-2">
-				{OFICIOS.filter((o) => o.id !== id).map((o) => (
+				{[...OFICIOS, OFICIO_GERAL].filter((o) => o.id !== id).map((o) => (
 					<li>
 						<a
 							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
+							class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
 						>
 							<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
 						</a>

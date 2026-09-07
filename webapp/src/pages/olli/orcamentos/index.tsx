@@ -67,6 +67,12 @@ import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+import {
+	cancelarReservaEnvioOrcamento,
+	confirmarEnvioOrcamento,
+	reservarEnvioOrcamento,
+} from "@/olli/cota-envios";
+import { mensagemBloqueioEnvio } from "@limites-comerciais";
 /**
  * Contrato carregado SOB DEMANDA: ele arrasta o gerador de PDF do contrato, e
  * quem só abre a lista de orçamentos (a maioria, o tempo todo) não deve pagar
@@ -423,11 +429,25 @@ export default function OrcamentosPage() {
 		 * prestador de imprimir. Quando não dá para confirmar, o selo fica — e o
 		 * toast de sucesso conta que ficou, em vez de deixá-lo descobrir no papel.
 		 */
-		const tarefa = resolverMarcaDoDocumento(qc)
-			.then(async (marca) => {
+		const tarefa = (async () => {
+			const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
+			if (!reserva.permitido) {
+				const erro = new Error(mensagemBloqueioEnvio(reserva));
+				(erro as Error & { cotaEsgotada?: boolean }).cotaEsgotada = reserva.motivo === "cota_esgotada";
+				throw erro;
+			}
+			try {
+				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });
+				await confirmarEnvioOrcamento(linha.id, reserva.reservaToken);
 				return marca;
-			})
+			} catch (erro) {
+				if (reserva.requerConfirmacao) {
+					await cancelarReservaEnvioOrcamento(linha.id, reserva.reservaToken);
+				}
+				throw erro;
+			}
+		})()
 			.finally(() => setPdfEmCurso(null));
 		toast.promise(tarefa, {
 			loading: "Preparando o PDF…",
@@ -437,7 +457,16 @@ export default function OrcamentosPage() {
 					? `Abri a janela de impressão. ${aviso}`
 					: "Abri a janela de impressão — escolha “Salvar como PDF”.";
 			},
-			error: "Não consegui gerar o PDF agora. Tente de novo.",
+			error: (erro) => {
+				const falha = erro as Error & { cotaEsgotada?: boolean };
+				if (falha.cotaEsgotada) {
+					setTimeout(() => toast("Quer continuar enviando?", {
+						description: "Veja o Pro e o teste de 14 dias, sem cartão e sem cobrança automática.",
+						action: { label: "Ver planos", onClick: () => window.location.assign("/olli/planos") },
+					}), 0);
+				}
+				return falha.message || "Não consegui gerar o PDF agora. Tente de novo.";
+			},
 		});
 	};
 

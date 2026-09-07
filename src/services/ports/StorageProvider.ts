@@ -40,6 +40,8 @@ export type CategoriaArquivo = 'logo' | 'foto_servico' | 'pdf' | 'anexo';
 
 export interface EnviarArquivoInput {
   categoria: CategoriaArquivo;
+  /** Owner do tenant. Ausente = usuário autenticado; equipe envia no owner visível. */
+  tenantId?: string;
   /** Conteúdo em base64 (sem o prefixo data:). */
   conteudoBase64: string;
   /** MIME (ex.: 'image/png', 'application/pdf'). */

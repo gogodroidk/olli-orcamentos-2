@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
 import { derivarPlanoEfetivo, type LinhaAssinaturaEfetiva } from './planoEfetivo';
+import { obterEstadoOfertaComercial } from './cotaEnvios';
 
 /** Chave de cache do último plano conhecido (com carimbo de quando foi lido). */
 const CACHE_KEY = 'olli.plano.cache';
@@ -9,7 +10,14 @@ const CACHE_KEY = 'olli.plano.cache';
 const GRACA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type { PlanoId, Recurso } from './entitlements';
-export { RECURSOS_POR_PLANO, RECURSO_REMOVE_MARCA, temAcessoRecurso, IA_USOS_GRATIS_MES } from './entitlements';
+export {
+  RECURSOS_POR_PLANO,
+  RECURSO_REMOVE_MARCA,
+  temAcessoRecurso,
+  IA_USOS_GRATIS_MES,
+  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  TRIAL_PRO_DIAS,
+} from './entitlements';
 import type { PlanoId, Recurso } from './entitlements';
 import { temAcessoRecurso, IA_USOS_GRATIS_MES } from './entitlements';
 
@@ -17,7 +25,7 @@ export interface PlanoAtual {
   plano: PlanoId;
   status?: string;
   validoAte?: string;
-  origem?: 'gratis' | 'pagamento' | 'admin';
+  origem?: 'gratis' | 'pagamento' | 'admin' | 'trial';
 }
 
 interface PlanoCache extends PlanoAtual {
@@ -51,6 +59,10 @@ async function salvarCache(resultado: PlanoAtual): Promise<void> {
 /** Cache ainda dentro da janela de graça (robusto a relógio/valor inválido). */
 function cacheValido(cache: PlanoCache | null): cache is PlanoCache {
   if (!cache) return false;
+  if (cache.origem === 'trial') {
+    const termina = cache.validoAte ? Date.parse(cache.validoAte) : Number.NaN;
+    if (!Number.isFinite(termina) || termina <= Date.now()) return false;
+  }
   const idade = Date.now() - cache.lidoEm;
   if (Number.isNaN(idade)) return false;
   return idade >= 0 && idade <= GRACA_MS;
@@ -97,7 +109,18 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
     if (error) throw error;
 
     // Sem linha na tabela = nunca assinou = grátis (resultado válido, não erro).
-    const resultado = data ? derivarPlano(data) : { plano: 'gratis' as PlanoId };
+    let resultado: PlanoAtual = data ? derivarPlano(data) : { plano: 'gratis' as PlanoId, origem: 'gratis' };
+    if (resultado.plano === 'gratis') {
+      const oferta = await obterEstadoOfertaComercial();
+      if (oferta?.trialEstado === 'active' && oferta.planoEfetivo === 'pro' && oferta.trialTerminaEm) {
+        resultado = {
+          plano: 'pro',
+          status: 'trialing',
+          validoAte: oferta.trialTerminaEm,
+          origem: 'trial',
+        };
+      }
+    }
     await salvarCache(resultado);
     return resultado;
   } catch {
@@ -118,7 +141,7 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
  */
 export async function getPlanoCacheado(): Promise<PlanoId | null> {
   const cache = await lerCache();
-  return cache?.plano ?? null;
+  return cacheValido(cache) ? cache.plano : null;
 }
 
 export function invalidarCachePlano(): void {
