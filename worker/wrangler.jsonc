@@ -85,7 +85,7 @@
       "routes": [],
       "vars": {
         "SUPABASE_URL": "https://sbpkutknpywezeagioon.supabase.co",
-        "SUPABASE_ANON_KEY": "sb_publishable_4QaDViGbT45F72jQ5GINug_UN-4alDT",
+        "SUPABASE_ANON_KEY": "sb_publishable_4QaDViGbT45F72jQ5GINug_UN-4alDT", // gitleaks:allow — chave publicável, protegida por RLS
         "WELCOME_DISPATCH_MODE": "off",
         "WELCOME_BATCH_LIMIT": "1",
         "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",

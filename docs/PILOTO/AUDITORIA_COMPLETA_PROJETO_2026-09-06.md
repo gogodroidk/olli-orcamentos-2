@@ -147,3 +147,18 @@ podem ser substituídos por green checks locais.
 Não há exclusão adicional segura a fazer sem destruir histórico, rollback ou
 proveniência. O próximo avanço real depende de uma autorização/ambiente externo,
 não de apagar documentos antigos.
+## Revalidação externa final — 2026-09-07
+
+- GitHub: branch `codex/piloto-p0` publicada, PR draft #42 aberto e workflow
+  manual de `staging` concluído com qualidade + smoke; o job de produção ficou
+  `skipped`.
+- Cloudflare: Worker staging redeployado sem rotas de produção, health e smoke
+  verdes; dispatch de welcome está `off` até existirem secrets de teste.
+- Gitleaks: os alertas atuais são a chave `sb_publishable_` explicitamente
+  marcada como publicável e oito JWTs apenas no histórico antigo; não foi
+  encontrado segredo novo no estado atual. A rotação/limpeza histórica é um
+  gate separado e não foi feita destrutivamente.
+- Semgrep: a instalação local falhou antes da análise por incompatibilidade da
+  dependência OpenTelemetry (`std_to_otel` ausente); isso é limitação do
+  analisador, não evidência de código limpo. Os contratos/testes de segurança
+  locais continuam verdes.
