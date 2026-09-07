@@ -120,6 +120,9 @@ contradição:
   `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e `OLLI_ROUTES_API_KEY`.
 - O branch e o PR draft estão no GitHub; a conexão persistente Cloudflare →
   GitHub ainda aguarda autorização no botão `Connect` do Worker staging.
+- O código agora exige HMAC para o webhook Mercado Pago por padrão e redige IDs
+  dos logs. O Worker live ainda não foi redeployado por permanecer protegido pelo
+  gate de produção; a correção só será ativada no live após revisão e rollback.
 
 ## Resend
 
