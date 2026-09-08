@@ -25,6 +25,10 @@
   publicado em staging: versão ativa observada `7add4339-840e-4bbd-a699-cc99bf73a19b`
   (deployment `0d938610-705b-442a-aa37-676490c201ff`), 100% no Worker isolado;
   o smoke foi repetido e permaneceu verde.
+- A tela `HojeScreen` deixou de baixar o histórico inteiro de orçamentos para
+  contar assinaturas pendentes e detectar movimento recente: agora usa um agregado
+  SQL de status e uma lista de datas. O contrato `test:hoje-agregado` passou com 4
+  verificações e `npm test` permaneceu verde.
 - O primeiro reteste no `SM-G780F` encontrou uma regressão de ordem de abertura
   da migration local: o índice de `espelho_pendente` era criado antes da coluna
   em bancos antigos. O índice foi movido para depois de `runMigrations`; o APK

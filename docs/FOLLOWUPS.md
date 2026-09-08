@@ -96,10 +96,11 @@ arquivos: **estes dois vencem**.
 **P2/P3 — perf, higiene, código morto:**
 - [x] `codigos_erro.json` fora do import estático do boot — **FEITO (2026-09-08)**: seed lazy
   via `require` só quando a tabela precisa ser povoada.
-- [ ] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) e KPIs de recibos →
-  dashboard-agregado em SQL. O painel desktop já usa os agregados e `useCallback`, mas
-  `HojeScreen` ainda chama `getOrcamentos()` para a lista operacional; falta separar essa
-  lista dos números antes de marcar o item concluído.
+- [x] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) — **FEITO (2026-09-08)** para
+  os sinais exibidos nesta tela: aguardando assinatura usa `getOrcamentosAgregadoPorStatus`
+  e movimento recente usa apenas `getOrcamentosDatasCriacao`; o blob inteiro não é mais
+  carregado para os KPIs. O painel desktop já usava os agregados. A lista detalhada de
+  follow-up continua sendo carregada pelo radar, como antes.
 - [ ] `useCallback` nas telas que usam `TabelaDados`; ícone android 990KB comprimido; cache de ETA com origem.
 - [ ] `code-splitting` web (landing não baixa o ERP); `_headers` com CSP; `ErrorBoundary` com "ir para o início".
 - [ ] Higiene: exports mortos do worker; `tsconfig noUnusedLocals`/linter mínimo; fotos `file://` (decisão: subir

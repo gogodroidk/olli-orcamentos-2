@@ -20,14 +20,14 @@ import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getAgendamentosDoDia } from '../services/agenda';
-import { getOrcamentos } from '../database/database';
+import { getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import {
-  Agendamento, Orcamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
+  Agendamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
@@ -300,7 +300,7 @@ export default function HojeScreen() {
   const relatorioLiberado = temAcesso('relatorio_dia');
 
   const [itens, setItens] = useState<Agendamento[]>([]);
-  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  const [orcamentosResumo, setOrcamentosResumo] = useState({ aguardandoAssinatura: 0, houveRecente: false });
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [novo, setNovo] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -339,13 +339,20 @@ export default function HojeScreen() {
   const load = useCallback(async () => {
     setCarregandoErro(false);
     try {
-      const [ag, orc, raw] = await Promise.all([
+      const [ag, assinatura, datasCriacao, raw] = await Promise.all([
         getAgendamentosDoDia(),
-        getOrcamentos(),
+        getOrcamentosAgregadoPorStatus(['aguardando_assinatura']),
+        getOrcamentosDatasCriacao(),
         AsyncStorage.getItem(CHECKLIST_KEY),
       ]);
       setItens(ag.filter(a => a.status !== 'cancelado').sort((a, b) => a.inicio.localeCompare(b.inicio)));
-      setOrcamentos(orc);
+      // A tela só precisa destes dois sinais; não carregue o blob inteiro de
+      // orçamentos (itens, fotos, assinaturas e formas de pagamento) para
+      // calcular um contador e um recorte de sete dias.
+      setOrcamentosResumo({
+        aguardandoAssinatura: assinatura.contagem,
+        houveRecente: datasCriacao.some(criadoEm => diasAtras(criadoEm) < 7),
+      });
       if (raw) {
         try {
           const parsed: ChecklistItem[] = JSON.parse(raw);
@@ -423,7 +430,7 @@ export default function HojeScreen() {
   // do que ele já devolve (valorTotal e diasParado) — nenhuma estimativa nova.
   const valorFollowUp = followUp.reduce((s, i) => s + i.orcamento.valorTotal, 0);
   const maisAntigoFollowUp = followUp.reduce((m, i) => Math.max(m, i.diasParado), 0);
-  const aguardandoAssinatura = orcamentos.filter(o => o.status === 'aguardando_assinatura');
+  const aguardandoAssinatura = orcamentosResumo.aguardandoAssinatura;
   // O mais parado de todos (a lista já vem ordenada por diasParado desc) — é
   // nele que o botão de um toque age.
   const maisUrgente = followUp[0] ?? null;
@@ -433,14 +440,14 @@ export default function HojeScreen() {
   // responderam de verdade. Com o radar em erro, `followUp` é [] — e sem este
   // `!followUpErro` a falha viraria a mensagem mais cara possível: dizer que não
   // há nada a cobrar quando não fazemos ideia.
-  const semNada = itens.length === 0 && followUp.length === 0 && aguardandoAssinatura.length === 0;
+  const semNada = itens.length === 0 && followUp.length === 0 && aguardandoAssinatura === 0;
 
   // Sinal SIMPLES de "semana com movimento" (sem consulta nova): agenda de hoje,
   // checklist com item concluído hoje, ou algum orçamento criado nos últimos 7
   // dias. O Pulso da semana só aparece quando há sinal de uso real — nunca numa
   // semana parada, onde a pergunta soaria deslocada.
   const houveMovimentoNaSemana =
-    itens.length > 0 || feitos > 0 || orcamentos.some(o => diasAtras(o.criadoEm) < 7);
+    itens.length > 0 || feitos > 0 || orcamentosResumo.houveRecente;
 
   // Gate do Pulso da semana: checa 1x por sessão (quando o carregamento inicial
   // termina) se já passaram 14 dias desde a última exibição — grava o carimbo NO
@@ -516,7 +523,7 @@ export default function HojeScreen() {
             O bloco também aparece quando o radar FALHOU: antes ele simplesmente
             sumia, e sumir é a mesma mentira de mostrar zero — o prestador lê a
             ausência como "não tenho nada parado". */}
-        {(followUpErro || followUp.length > 0 || aguardandoAssinatura.length > 0) && (
+        {(followUpErro || followUp.length > 0 || aguardandoAssinatura > 0) && (
           <AnimatedEntrance index={1}>
             <View style={styles.lembretes}>
               <View style={styles.lembretesHead}>
@@ -590,7 +597,7 @@ export default function HojeScreen() {
                 </>
               )}
 
-              {aguardandoAssinatura.length > 0 && (
+              {aguardandoAssinatura > 0 && (
                 <OlliPressable
                   style={styles.lembreteRow}
                   onPress={() => nav.navigate('Orcamentos')}
@@ -602,7 +609,7 @@ export default function HojeScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.lembreteText}>
-                      {aguardandoAssinatura.length} aguardando assinatura
+                      {aguardandoAssinatura} aguardando assinatura
                     </Text>
                     <Text style={styles.lembreteSub}>Toque para acompanhar.</Text>
                   </View>
