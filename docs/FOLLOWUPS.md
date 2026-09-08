@@ -29,10 +29,11 @@ arquivos: **estes dois vencem**.
 > DE DADOS na camada de identidade/conta — atacar antes do resto (o dono pediu "login perfeito").
 
 **P0 — integridade de dados (fazer primeiro):**
-- [ ] **Login não pode gravar empresa em branco.** `EntrarScreen.tsx:129-151`: distinguir 3 estados
-  (`tem`/`não tem`/`não sei`); `não sei` (erro de rede) → tela de retry, NUNCA Onboarding. E o Onboarding
-  (`salvarTudo`) faz MERGE, nunca overwrite de campo já preenchido remotamente. `empresaNuvemMudouDesdeUltimoPull`
-  deve falhar FECHADO (não empurrar) quando não há carimbo local e a origem foi o Onboarding pós-login.
+- [x] **Login não pode gravar empresa em branco — FEITO (2026-09-08).** `EntrarScreen.tsx` e
+  `OnboardingScreen.tsx` usam os três estados (`tem`/`nao_tem`/`nao_sei`), bloqueiam o
+  formulário em erro de rede e confirmam a ausência imediatamente antes da escrita.
+  `cloudSync.ts` também faz o push falhar fechado sem carimbo local ou quando a nuvem já
+  tem uma empresa; `test:contexto-equipe`, `test:particao` e `npm test` cobrem a regressão.
 - [x] **Logout "Sair e manter dados" não pode contaminar o próximo usuário.** **FEITO (2026-07-16, O0-2,
   commit `6f10eee`)** — resolvido por PARTIÇÃO (melhor que exigir "apagar dados": o usuário A mantém os
   dados dele, como o botão promete, e B nunca os vê). `src/database/particao.ts`: cada usuário abre o SEU

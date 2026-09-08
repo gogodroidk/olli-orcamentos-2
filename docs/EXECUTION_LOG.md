@@ -37,6 +37,10 @@
 - O badge financeiro também foi levado à lista mobile de orçamentos, atualizando os
   recibos ao voltar à tela, no sync e no pull-to-refresh. Desktop e mobile agora
   distinguem o mesmo trio de estados sem criar uma fonte de pagamento paralela.
+- O guard de onboarding/login que impede sobrescrever uma empresa remota foi
+  reconciliado como concluído: `EntrarScreen`, `OnboardingScreen` e `cloudSync`
+  mantêm `tem`/`nao_tem`/`nao_sei`, rechecagem antes da escrita e push fail-closed;
+  os testes de partição/equipe cobrem a decisão.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
