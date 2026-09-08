@@ -44,20 +44,35 @@
         "OLLI_ROUTES_API_KEY"
       ],
       "secretScope": "staging-only-test-values",
-      "baselineStatus": "runtime_schema_41_local_files_remote_history_34_manual_entries_reconciliation_required",
+      "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
       "baselineSource": "main_schema_metadata_only",
       "lastPromotionCheckpoint": {
-        "recordedAt": "2026-09-08T04:48:58-03:00",
+        "recordedAt": "2026-09-08T06:38:24-03:00",
         "baselineMigration": "staging_schema_baseline_20260906",
         "incrementalMigrationsApplied": 41,
-        "migrationApplicationMode": "supabase_sql_editor_manual",
-          "migrationHistoryStatus": "remote_history_34_manual_entries_20260906192145_to_20260906192430_local_files_41_until_reconciled",
-          "localMigrationFileCount": 41,
-          "remoteMigrationHistoryCount": 34,
+        "migrationApplicationMode": "supabase_sql_editor_manual_then_staging_history_repair",
+        "migrationHistoryStatus": "reconciled_baseline_plus_41_local_files",
+        "localMigrationFileCount": 41,
+        "remoteMigrationHistoryCount": 42,
+        "migrationHistoryRepair": {
+          "status": "applied",
+          "repairedVersions": [
+            "20260904205858",
+            "20260904211012",
+            "20260904212747",
+            "20260905053000",
+            "20260905140852",
+            "20260906021103",
+            "20260906120000",
+            "20260906123000"
+          ],
+          "executedAt": "2026-09-08T06:38:24-03:00",
+          "scope": "staging_only"
+        },
         "workerDeployment": {
           "name": "olli-diagnostico-staging",
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
-          "versionId": "85ddf947",
+          "versionId": "8b90528d-5613-414e-a7e4-368450d79cb4",
           "health": "HTTP_200",
           "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
@@ -70,9 +85,9 @@
           "buildCommand": "npm ci --prefix worker && npm run types --prefix worker",
           "deployCommand": "npx wrangler deploy --config worker/wrangler.jsonc --env staging",
           "latestBuildId": "81e53bff-2918-4581-a274-905dc91ee866",
-          "latestCommit": "9af14eddcac825e05b169941bcbbc289d8c6c8fe",
+          "latestCommit": "c91e3446bf5dc4e5c66077d1fdfbdc451ddf74f17",
           "latestBuildStatus": "success",
-          "latestActiveVersionLabel": "85ddf947"
+          "latestActiveVersionLabel": "8b90528d"
         },
         "githubPromotion": {
           "pullRequest": 42,
@@ -87,7 +102,7 @@
           "productionJob": "skipped"
         },
         "firstBlockedMigration": null,
-        "blocker": "migration_history_reconciliation_and_external_secrets",
+        "blocker": "external_secrets_authenticated_smoke_and_human_approval",
         "acceptedReal": false
       },
       "promotionMode": "manual-workflow-approval"
