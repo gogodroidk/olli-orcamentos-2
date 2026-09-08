@@ -245,9 +245,13 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       orcamento_id TEXT NOT NULL,
       numero_versao INTEGER NOT NULL,
       dados TEXT NOT NULL,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      -- Outbox local: 1 até o espelho do Supabase confirmar. A coluna é local;
+      -- nunca é enviada para public.orcamento_versoes.
+      espelho_pendente INTEGER NOT NULL DEFAULT 1
     );
     CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_orc ON orcamento_versoes (orcamento_id, numero_versao);
+    CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_pendente ON orcamento_versoes (espelho_pendente, criado_em);
 
     CREATE TABLE IF NOT EXISTS recibos (
       id TEXT PRIMARY KEY,
@@ -502,7 +506,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -559,6 +563,14 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
         `UPDATE ${tabela} SET atualizado_em = criado_em WHERE atualizado_em IS NULL`,
       );
     }
+  }
+
+  // v < 4 — OUTBOX DO HISTÓRICO: versões congeladas precisam sobreviver a uma
+  // falha transitória de rede/contexto. Bancos antigos entram como pendentes de
+  // propósito: o upsert remoto é idempotente por id e confirma o que já subiu;
+  // o que nunca subiu ganha a primeira tentativa no próximo sync.
+  if (v < 4) {
+    await addColumnIfMissing(database, 'orcamento_versoes', 'espelho_pendente', 'INTEGER NOT NULL DEFAULT 1');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -1446,7 +1458,8 @@ export async function proximoNumeroVersao(orcamentoId: string): Promise<number> 
 
 /**
  * Congela um SNAPSHOT do orçamento como uma versão nova (append-only). Grava local
- * e espelha na nuvem (fire-and-forget). Recebe o estado a preservar (normalmente o
+ * e agenda o espelho na outbox (o upload é background, mas a confirmação fica
+ * persistida). Recebe o estado a preservar (normalmente o
  * orçamento ANTES da edição). Idempotência prática: cada chamada cria uma versão
  * nova — quem decide QUANDO chamar é o `saveOrcamento` (só quando o conteúdo mudou).
  */
@@ -1461,7 +1474,7 @@ export async function congelarVersaoOrcamento(snapshot: Orcamento): Promise<Orca
     criadoEm: new Date().toISOString(),
   };
   await db.runAsync(
-    'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+    'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em, espelho_pendente) VALUES (?,?,?,?,?,1)',
     [versao.id, versao.orcamentoId, versao.numeroVersao, JSON.stringify(versao.dados), versao.criadoEm],
   );
   mirrorVersaoNuvem(versao);
@@ -1504,6 +1517,36 @@ export async function countVersoesOrcamento(orcamentoId: string): Promise<number
 }
 
 /**
+ * Lê o outbox local do histórico. A seleção é limitada para que uma conta com
+ * muitas versões antigas não congele o sync de login; a próxima retomada pega o
+ * restante. Os dados continuam na partição SQLite do usuário atual.
+ */
+export async function getVersoesPendentesEspelho(limite = 20): Promise<OrcamentoVersao[]> {
+  try {
+    const db = await getDb();
+    const n = Number.isInteger(limite) ? Math.max(1, Math.min(limite, 100)) : 20;
+    const rows = await db.getAllAsync<any>(
+      'SELECT * FROM orcamento_versoes WHERE espelho_pendente = 1 ORDER BY criado_em ASC LIMIT ?',
+      [n],
+    );
+    return rows.map(rowToVersao);
+  } catch {
+    return [];
+  }
+}
+
+/** Marca uma versão como confirmada no espelho remoto. Nunca lança. */
+export async function marcarVersaoEspelhoConcluido(id: string): Promise<void> {
+  try {
+    if (!id) return;
+    const db = await getDb();
+    await db.runAsync('UPDATE orcamento_versoes SET espelho_pendente = 0 WHERE id = ?', [id]);
+  } catch {
+    // Se a marca local falhar, a próxima tentativa repete o upsert idempotente.
+  }
+}
+
+/**
  * Upsert SILENCIOSO de uma versão vinda da nuvem no SQLite local (sem re-espelhar
  * para a nuvem — evita loop). Usado pelo pull downstream (clienteLink.puxarVersoes
  * NuvemParaOrcamento), para as versões criadas em OUTRO aparelho aparecerem aqui.
@@ -1517,7 +1560,7 @@ export async function upsertVersaoLocalSilencioso(versao: OrcamentoVersao): Prom
       ? (versao.dados as unknown as string)
       : JSON.stringify(versao.dados);
     await db.runAsync(
-      'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+      'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em, espelho_pendente) VALUES (?,?,?,?,?,0)',
       [versao.id, versao.orcamentoId, versao.numeroVersao, dadosStr, versao.criadoEm ?? new Date().toISOString()],
     );
   } catch {
@@ -1526,9 +1569,9 @@ export async function upsertVersaoLocalSilencioso(versao: OrcamentoVersao): Prom
 }
 
 /**
- * Espelha UMA versão na nuvem (public.orcamento_versoes). Fire-and-forget e
- * import DINÂMICO de clienteLink (evita aresta estática database↔services e
- * mantém o padrão do módulo). Nunca afeta o save local: offline/deslogado = no-op.
+ * Tenta UMA versão na nuvem (public.orcamento_versoes). É import DINÂMICO de
+ * clienteLink (evita aresta estática database↔services e mantém o padrão do
+ * módulo). Se falhar, a mesma linha pendente será encontrada no próximo sync.
  */
 function mirrorVersaoNuvem(versao: OrcamentoVersao): void {
   try {

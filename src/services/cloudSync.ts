@@ -2467,6 +2467,14 @@ export async function syncOnLogin(): Promise<void> {
     if (syncAbortado(geracao)) return;
     await pushAllLocal(geracao);
     if (syncAbortado(geracao)) return;
+    // Histórico de versões usa uma outbox SQLite própria (não é uma tabela de
+    // sync relacional porque é append-only). Só marca cada versão como concluída
+    // depois do upsert remoto; falhas de rede/contexto permanecem para a próxima
+    // retomada do app, sem perder o histórico do cliente.
+    await import('./clienteLink')
+      .then(m => m.espelharVersoesPendentes())
+      .catch(() => 0);
+    if (syncAbortado(geracao)) return;
     await podarTombstonesAntigos();
     if (syncAbortado(geracao)) return;
     // Extras chave-valor (checklist do Hoje, snooze do radar, relatórios diários)

@@ -291,14 +291,15 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     verdadeira). Restam ideias futuras: mais modelos, e um `modeloRecibo` por-recibo (hoje é só padrão
     global).
 
-29. **~~A mesma borda "erro → tenant errado" em `clienteLink.ts`~~ — METADE FEITA (2026-07-17).** O
+29. ~~**A mesma borda "erro → tenant errado" em `clienteLink.ts`** — **FEITO (2026-09-08).**~~ O
     `espelharVersaoNuvem` agora usa os 3 estados (`garantirContextoEquipe` + `decidirEscritaEquipe`):
     tenant desconhecido **não espelha**, em vez de gravar no tenant errado. É estritamente melhor que
     antes — o erro deixou de CRIAR linha errada (órfã, invisível ao dono, poluindo o tenant do
-    técnico); agora não cria nada e o SQLite local segue com a versão. **AINDA FALTA o retry**, que é
-    o motivo de o item continuar aberto (detalhe abaixo). `localizacaoEquipe.ts` segue intocado.
+    técnico); agora não cria nada e o SQLite local segue com a versão. A versão também fica marcada
+    em uma outbox SQLite (`espelho_pendente`) e é tentada novamente no `syncOnLogin`/retorno ao app;
+    só uma confirmação do Supabase limpa a marca. `localizacaoEquipe.ts` segue intocado.
 
-    ~~Texto original:~~
+    ~~Texto original (superado pela outbox de 2026-09-08):~~
     Achado ao fechar o O0-4 (que corrigiu só o `cloudSync.ts`, escopo do item na FILA).
     `espelharVersaoNuvem` (`clienteLink.ts:446`) resolve o dono com `getMinhaOrganizacao()`, que
     colapsa erro em `null` — e o comentário no código racionaliza: *"o pior caso de falha é gravar
@@ -308,8 +309,8 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     dono. Não foi corrigido junto porque o remédio do `cloudSync` (fail-closed: adiar o espelho)
     **não serve aqui**: `orcamento_versoes` NÃO é `SyncTable`, logo não há `pushAllLocal` que tente
     de novo — `espelharVersaoNuvem` é tiro único (`database.ts:1351`). Adiar ali = nunca espelhar.
-    O conserto certo exige primeiro dar retry à versão (entrar no pipeline de sync ou ganhar fila
-    própria) e só então aplicar `classificarContextoEquipe`. `localizacaoEquipe.ts:149,182` usa o
+    O conserto adotado foi uma fila própria local, limitada por fatia e isolada pela partição; o
+    teste `test:versoes-espelho` prova a marca, a migration e o dreno no sync. `localizacaoEquipe.ts:149,182` usa o
     mesmo `getMinhaOrganizacao()` para achar o `org_id` — avaliar se um erro de rede ali vira
     "sem equipe" em silêncio. A primitiva de 3 estados já existe e está testada:
     `src/services/contextoEquipe.ts` (+ `npm run test:contexto-equipe`).

@@ -5,6 +5,18 @@
 
 ## Validação de staging, build e aparelho — 2026-09-08
 
+- O painel administrativo passou a exigir **AAL2 antes de qualquer leitura
+  global**: métricas, usuários, feedback, administradores, auditoria e detalhe
+  de usuário são bloqueados em AAL1 antes da consulta service-role. O HTML do
+  painel não tenta mais usar `/metrics` como teste de login; exibe um gate claro
+  de MFA e só revela os dados após a confirmação. `npm run test:admin-governanca`
+  passou com 34 verificações.
+- O histórico de versões ganhou uma outbox local por partição: `orcamento_versoes`
+  usa `espelho_pendente`, a migration local v4 preserva bancos existentes,
+  uploads confirmados limpam a marca e o `syncOnLogin` drena até 20 pendências por
+  retomada. `npm run test:versoes-espelho` passou com 12 verificações; falhas de
+  rede/contexto não são mais um tiro único.
+
 - Cloudflare Git Build do `olli-diagnostico-staging` está conectado ao repositório
   `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, previews desligados e
   deploy restrito a `--env staging`. O primeiro build (`81e53bff-2918-4581-a274-905dc91ee866`)

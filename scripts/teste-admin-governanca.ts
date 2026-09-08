@@ -110,6 +110,21 @@ try {
   const detalheAal2 = await detalhe('aal2');
   checar('AAL2 owner pode consultar detalhe sintético', detalheAal2.status === 200 && consultasDetalhe > consultasAntes);
 
+  // Todas as leituras que enxergam mais de um tenant também exigem AAL2. Uma
+  // senha AAL1 não pode abrir métricas, lista global, feedback, administradores
+  // ou trilha de auditoria — nem mesmo para o owner de recuperação.
+  const leituraGlobal = async (path: string, aal: 'aal1' | 'aal2') => {
+    const url = new URL(`https://api.exemplo/admin/api/${path}`);
+    return handleAdmin(new Request(url, { headers: { Authorization: `Bearer ${token(aal)}` } }), baseEnv, url);
+  };
+  for (const path of ['metrics', 'users', 'feedback', 'audit', 'admins']) {
+    const aal1 = await leituraGlobal(path, 'aal1');
+    const body: any = await aal1.json();
+    checar(`${path} global exige AAL2`, aal1.status === 403 && body.erro === 'mfa_necessario');
+    const aal2 = await leituraGlobal(path, 'aal2');
+    checar(`${path} global libera com AAL2`, aal2.status === 200);
+  }
+
   const adminUrl = new URL('https://api.exemplo/admin/api/admins');
   const membro = await handleAdmin(new Request(adminUrl, {
     method: 'POST',

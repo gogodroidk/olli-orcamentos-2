@@ -586,16 +586,16 @@ export async function handleAdmin(request, env, url) {
     if (m === 'GET' && p === '/admin/api/me') {
       return json({ ok: true, user: { id: user.id, email: user.email, papel: user.papel, aal: user.aal } });
     }
-    // Métricas e lista de usuários são dados de governança, não uma permissão
-    // implícita de qualquer papel administrativo. O gate explícito evita que
-    // `leitura`/`suporte` recebam e-mail, PII ou faturamento agregado só porque
-    // conseguiram passar pelo requireAdmin.
+    // Métricas, listas globais, feedback, administradores e auditoria são dados
+    // de governança/PII. O gate explícito exige papel suficiente E AAL2 antes de
+    // qualquer consulta service-role; uma senha AAL1 nunca abre a visão de todos
+    // os tenants, mesmo para um owner de recuperação.
     if (m === 'GET' && p === '/admin/api/metrics') {
-      if ((gate = exigir(user, 'admin'))) return gate;
+      if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;
       return metrics(env);
     }
     if (m === 'GET' && p === '/admin/api/users') {
-      if ((gate = exigir(user, 'admin'))) return gate;
+      if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;
       return users(env);
     }
     if (m === 'GET' && p === '/admin/api/user') {
@@ -623,15 +623,15 @@ export async function handleAdmin(request, env, url) {
       return setPlanoManual(env, user, id, body);
     }
     if (m === 'GET' && p === '/admin/api/feedback') {
-      if ((gate = exigir(user, 'suporte'))) return gate;
+      if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
       return feedbackList(env);
     }
     if (m === 'POST' && p === '/admin/api/feedback/resolve') {
-      if ((gate = exigir(user, 'suporte'))) return gate;
+      if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
       return feedbackResolve(env, id, url.searchParams.get('resolvido') === '1');
     }
     if (m === 'GET' && p === '/admin/api/admins') {
-      if ((gate = exigir(user, 'owner'))) return gate;
+      if ((gate = exigir(user, 'owner', { aal2: true }))) return gate;
       return adminsList(env);
     }
     if (m === 'POST' && p === '/admin/api/admins') {
@@ -639,7 +639,7 @@ export async function handleAdmin(request, env, url) {
       return setAdminMembership(env, user, body);
     }
     if (m === 'GET' && p === '/admin/api/audit') {
-      if ((gate = exigir(user, 'admin'))) return gate;
+      if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;
       return auditList(env);
     }
     if (m === 'POST' && p === '/admin/api/me/password') {
@@ -733,6 +733,9 @@ function adminHtml(env, nonce) {
  .sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut2);margin:14px 0 6px}
  .li{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:7px 0;border-bottom:1px solid var(--line)}.li:last-child{border:none}
  .acts{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+ .mfaGate{margin:20px 0;padding:26px;border:1px solid var(--line2);border-radius:18px;background:linear-gradient(135deg,rgba(11,111,206,.16),rgba(52,198,217,.08));text-align:center}
+ .mfaGate h2{font-size:18px;margin-bottom:8px}.mfaGate p{max-width:560px;margin:0 auto;color:var(--mut);font-size:13px;line-height:1.55}
+ .mfaGate .btn{width:auto;margin-top:16px}
  .field{margin-top:6px}
  /* TOAST */
  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surf);border:1px solid var(--line2);border-radius:13px;padding:12px 18px;font-size:13.5px;font-weight:600;opacity:0;transition:all .25s;z-index:40;box-shadow:0 14px 34px rgba(0,0,0,.4)}
@@ -756,15 +759,22 @@ function adminHtml(env, nonce) {
    <div class="brand"><div class="sym">${SYM}</div><div><b>OLLI ADMIN</b><span>painel do dono</span></div></div>
    <div class="right"><span class="who" id="who"></span><span class="badge" id="mfaState">AAL1</span><button class="btn soft sm" id="mfaBtn">Segurança</button><button class="btn soft sm hidden" id="adminsBtn">Administradores</button><button class="btn soft sm hidden" id="auditBtn">Auditoria</button><button class="btn soft sm" id="pwdBtn">Trocar senha</button><button class="btn ghost sm" id="refreshBtn" aria-label="Atualizar">Atualizar</button><button class="btn ghost sm" id="logoutBtn">Sair</button></div>
   </div>
-  <div class="cards" id="cards"></div>
-  <div class="sec-head">
-   <h2>Usuários <span class="muted" id="ucount"></span></h2>
-   <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
+  <div id="mfaGate" class="mfaGate hidden" role="alert">
+   <h2>Confirme o segundo fator para abrir os dados</h2>
+   <p>Este painel reúne informações de todos os clientes. A senha sozinha não libera métricas, usuários, feedback ou auditoria. Ative ou confirme o MFA para continuar.</p>
+   <button class="btn" id="mfaGateBtn">Ativar ou confirmar MFA</button>
   </div>
-  <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Plano</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
-  <div class="sec-head"><h2>Feedback & Erros <span class="muted" id="fcount"></span></h2></div>
-  <div id="ffilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
-  <div id="frows"></div>
+  <div id="protectedContent" class="hidden">
+   <div class="cards" id="cards"></div>
+   <div class="sec-head">
+    <h2>Usuários <span class="muted" id="ucount"></span></h2>
+    <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
+   </div>
+   <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Plano</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
+   <div class="sec-head"><h2>Feedback & Erros <span class="muted" id="fcount"></span></h2></div>
+   <div id="ffilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+   <div id="frows"></div>
+  </div>
  </div>
 </div>
 
@@ -776,6 +786,8 @@ const SB=${SB}, ANON=${ANON};
 let TOKEN=sessionStorage.getItem('olli_admin_tok')||'', ALLUSERS=[], MET=null, ME=null;
 const $=id=>document.getElementById(id);
 function show(v){$('loginView').classList.toggle('hidden',v!=='login');$('dashView').classList.toggle('hidden',v!=='dash');}
+function mostrarGateMfa(){show('dash');$('mfaGate').classList.remove('hidden');$('protectedContent').classList.add('hidden');}
+function liberarDados(){ $('mfaGate').classList.add('hidden');$('protectedContent').classList.remove('hidden'); }
 function el(t,p){const e=document.createElement(t);if(p)Object.assign(e,p);for(let i=2;i<arguments.length;i++){const k=arguments[i];if(k!=null)e.append(k.nodeType?k:document.createTextNode(k));}return e;}
 function toast(msg,kind){const t=$('toast');t.textContent=msg;t.className='toast show '+(kind||'');setTimeout(()=>{t.className='toast '+(kind||'');},2600);}
 function fmtBRL(n){return 'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -800,13 +812,13 @@ async function login(){
   const j=await r.json();
   if(!j.access_token){$('loginErr').textContent='E-mail ou senha incorretos.';return;}
   TOKEN=j.access_token;
-  const m=await fetch('/admin/api/metrics',{headers:{Authorization:'Bearer '+TOKEN}});
-  if(m.status===401){$('loginErr').textContent='Esta conta não é o super-admin.';TOKEN='';return;}
   sessionStorage.setItem('olli_admin_tok',TOKEN);$('who').textContent=email;
   await carregarIdentidade();
   const fatores=await listarFatoresMfa();
-  if(ME&&ME.aal!=='aal2'&&fatores.length){await abrirDesafioMfa(fatores[0]);}
-  else await loadDash();
+  if(ME&&ME.aal!=='aal2'){
+   mostrarGateMfa();
+   if(fatores.length)await abrirDesafioMfa(fatores[0]);
+  }else await loadDash();
  }catch(e){$('loginErr').textContent='Falha ao entrar. Tente de novo.';}
  finally{$('loginBtn').textContent='Entrar';$('loginBtn').disabled=false;}
 }
@@ -820,6 +832,10 @@ async function carregarIdentidade(){
  $('mfaState').style.color=ME.aal==='aal2'?'var(--ok)':'var(--warn)';
  $('adminsBtn').classList.toggle('hidden',ME.papel!=='owner');
  $('auditBtn').classList.toggle('hidden',!['owner','admin'].includes(ME.papel));
+ if(ME.aal!=='aal2'){
+  $('adminsBtn').classList.add('hidden');
+  $('auditBtn').classList.add('hidden');
+ }
 }
 
 async function authFetch(path,opts){
@@ -856,7 +872,7 @@ async function abrirDesafioMfa(fator){
  const code=el('input',{inputMode:'numeric',autoComplete:'one-time-code',maxLength:6,placeholder:'000000'});d.append(code);
  const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Verificar');
  save.onclick=async()=>{save.disabled=true;try{await verificarFator(fator.id,code.value.trim());modalClose();toast('MFA confirmado.','ok');await loadDash();}catch(e){toast(e.message||'Código inválido.','err');}finally{save.disabled=false;}};
- acts.append(el('button',{className:'btn ghost sm',onclick:()=>{modalClose();loadDash();}},'Somente leitura'),save);d.append(acts);$('ov').classList.add('show');code.focus();
+ acts.append(el('button',{className:'btn ghost sm',onclick:()=>{modalClose();mostrarGateMfa();}},'Continuar sem dados'),save);d.append(acts);$('ov').classList.add('show');code.focus();
 }
 
 async function abrirSeguranca(){
@@ -870,7 +886,7 @@ async function abrirSeguranca(){
   if(f&&f.totp&&f.totp.secret)d.append(el('div',{className:'sub',style:'word-break:break-all'},'Chave manual: '+f.totp.secret));
   const code=el('input',{inputMode:'numeric',autoComplete:'one-time-code',maxLength:6,placeholder:'Código de 6 dígitos'});d.append(code);
   const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Ativar MFA');
-  save.onclick=async()=>{save.disabled=true;try{await verificarFator(f.id,code.value.trim());modalClose();toast('MFA ativado.','ok');}catch(e){toast(e.message||'Não consegui verificar.','err');}finally{save.disabled=false;}};
+  save.onclick=async()=>{save.disabled=true;try{await verificarFator(f.id,code.value.trim());modalClose();toast('MFA ativado.','ok');await loadDash();}catch(e){toast(e.message||'Não consegui verificar.','err');}finally{save.disabled=false;}};
   acts.append(el('button',{className:'btn ghost sm',onclick:modalClose},'Cancelar'),save);d.append(acts);
  }catch(e){d.append(el('div',{className:'err'},e.message||'Não consegui iniciar o MFA.'));}
  $('ov').classList.add('show');
@@ -965,6 +981,8 @@ async function fbResolve(f){
 }
 
 async function loadDash(){
+ if(!ME||ME.aal!=='aal2'){mostrarGateMfa();return;}
+ liberarDados();
  show('dash');$('cards').innerHTML='';$('urows').innerHTML='';
  for(let i=0;i<6;i++){const c=el('div',{className:'card'});c.append(el('div',{className:'skel',style:'width:60%;height:24px'}),el('div',{className:'skel',style:'width:40%;margin-top:10px'}));$('cards').append(c);}
  try{
@@ -1091,12 +1109,13 @@ $('senha').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 $('logoutBtn').onclick=logout;
 $('refreshBtn').onclick=loadDash;
 $('mfaBtn').onclick=abrirSeguranca;
+$('mfaGateBtn').onclick=abrirSeguranca;
 $('adminsBtn').onclick=openAdmins;
 $('auditBtn').onclick=openAudit;
 $('pwdBtn').onclick=openPwd;
 $('usearch').addEventListener('input',applySearch);
 $('ov').onclick=e=>{if(e.target===$('ov'))modalClose();};
-if(TOKEN){(async()=>{try{await carregarIdentidade();const fatores=await listarFatoresMfa();if(ME&&ME.aal!=='aal2'&&fatores.length)await abrirDesafioMfa(fatores[0]);else await loadDash();}catch(e){logout();}})();}else{show('login');}
+if(TOKEN){(async()=>{try{await carregarIdentidade();const fatores=await listarFatoresMfa();if(ME&&ME.aal!=='aal2'){mostrarGateMfa();if(fatores.length)await abrirDesafioMfa(fatores[0]);}else await loadDash();}catch(e){logout();}})();}else{show('login');}
 </script>
 </body></html>`;
 }
