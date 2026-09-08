@@ -63,11 +63,12 @@ arquivos: **estes dois vencem**.
   relatado: `atualizarContextoEquipe()` só rodava no `syncOnLogin`, mas `pushRow` dispara a CADA escrita local
   (`database.ts:21`) e o restore chama `pushAllLocal` fora dele — esses caminhos usavam o contexto que
   sobrasse. Resolvido com `garantirContextoEquipe()` (resolve sob demanda) + reset no logout.
-- [~] **Gate de papel na UI de clientes — parte visual FEITA (2026-09-08).** Técnicos
+- [x] **Gate de papel na UI de clientes e tombstones — FEITO (2026-09-08).** Técnicos
   continuam podendo consultar/criar clientes, mas editar/excluir e exclusão em lote
-  agora ficam desabilitados com explicação acessível; `gerenciar_clientes` entrou na
-  matriz de permissões e `test:c6-config-equipe` cobre o contrato. Ainda pendem o
-  tombstone `exclusoes` multi-tenant e a query de `OrdensDesktopScreen` fail-closed.
+  ficam desabilitados com explicação acessível; `gerenciar_clientes` entrou na matriz.
+  `cloudSync.ts` resolve o tenant do tombstone por papel/tabela, e `OrdensDesktopScreen`
+  mantém carregamento/ações fail-closed enquanto o papel resolve. `test:c6-config-equipe`,
+  `test:contexto-equipe` e `test:tenant-escrita` cobrem os contratos.
 - [x] **Sinal (R$ + data) e Laudo técnico no PDF — FEITO (2026-09-08).**
   `Step3Detalhes` já captura os campos; `pdfGenerator.ts` agora imprime laudo,
   entrada limitada ao total, percentual/data quando configurados e saldo restante,

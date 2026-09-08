@@ -47,8 +47,11 @@
   `npm test` passaram após a alteração.
 - A UI de clientes ganhou o gate de papel `gerenciar_clientes`: técnicos continuam
   com leitura/criação, enquanto edição, exclusão e lote ficam bloqueados com motivo
-  acessível. O tombstone multi-tenant e a proteção equivalente da tabela de OS ainda
-  permanecem como dívida separada.
+  acessível.
+- A auditoria final confirmou que o restante desse item já estava no código: o
+  `cloudSync` resolve o tenant dos tombstones por tabela/papel e `OrdensDesktopScreen`
+  já falha fechado durante a resolução; a documentação foi reconciliada com os testes
+  de contexto/tenant.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
