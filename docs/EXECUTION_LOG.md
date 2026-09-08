@@ -45,6 +45,10 @@
   percentual, data e saldo restante), limitado ao total e escapado; o laudo técnico
   já existente continua no mesmo documento. `test:contrato-prestacao`, C5 e
   `npm test` passaram após a alteração.
+- A UI de clientes ganhou o gate de papel `gerenciar_clientes`: técnicos continuam
+  com leitura/criação, enquanto edição, exclusão e lote ficam bloqueados com motivo
+  acessível. O tombstone multi-tenant e a proteção equivalente da tabela de OS ainda
+  permanecem como dívida separada.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
