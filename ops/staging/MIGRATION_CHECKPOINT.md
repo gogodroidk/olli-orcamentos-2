@@ -55,6 +55,11 @@
 - Current staging Worker version label: `8b90528d`, deployed by the Cloudflare Git
   Build from commit `c91e3446bf5dc4e5c66077d1fdfbdc451ddf74f17`. It remains staging-only,
   `WELCOME_DISPATCH_MODE=off`, and passed the same public smoke contract.
+- Revalidated after commit `0bda661f9000a348e9491f78d00848675aec7dd4`: Cloudflare
+  deployment `fa01b6e5-85ba-445f-afa9-815b36b1afbb` is 100% on version
+  `53697bb1-fc3f-405f-bdf6-55ee0b7b490e` (label `53697bb1`). The Worker remains
+  staging-only, `WELCOME_DISPATCH_MODE=off`, and `npm run staging:smoke` passed
+  health `200`, CORS `204`, method gates `405` and admin shell `200` with no side effects.
 - O procedimento reproduzível para secrets de teste e canário está em
   `ops/staging/SECRETS_AND_CANARY_RUNBOOK.md`; nenhum valor é armazenado nele.
 - Cloudflare Git Build está conectado ao repositório

@@ -16,6 +16,11 @@
   uploads confirmados limpam a marca e o `syncOnLogin` drena até 20 pendências por
   retomada. `npm run test:versoes-espelho` passou com 12 verificações; falhas de
   rede/contexto não são mais um tiro único.
+- O commit `0bda661f9000a348e9491f78d00848675aec7dd4` foi publicado no branch
+  `codex/piloto-p0` e o Cloudflare Git Build atualizou o Worker isolado para
+  `53697bb1-fc3f-405f-bdf6-55ee0b7b490e` (100% staging, deployment
+  `fa01b6e5-85ba-445f-afa9-815b36b1afbb`). O smoke público foi repetido com
+  sucesso; produção continua sem promoção.
 
 - Cloudflare Git Build do `olli-diagnostico-staging` está conectado ao repositório
   `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, previews desligados e
