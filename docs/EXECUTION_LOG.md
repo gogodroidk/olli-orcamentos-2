@@ -52,6 +52,9 @@
   `cloudSync` resolve o tenant dos tombstones por tabela/papel e `OrdensDesktopScreen`
   já falha fechado durante a resolução; a documentação foi reconciliada com os testes
   de contexto/tenant.
+- O paywall Empresa também foi reconciliado como implementado: convite no Worker
+  consulta entitlement do owner, diferencia `sim`/`nao`/`erro`, retorna `402` sem
+  Empresa e preserva grandfathering; mobile/desktop mantêm o gate visual.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 

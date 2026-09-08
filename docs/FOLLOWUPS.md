@@ -51,8 +51,11 @@ arquivos: **estes dois vencem**.
   nuvem, mas o arquivo de backup do técnico contém dados da empresa — decisão de produto pendente.)
 
 **P1 — dinheiro, segurança, entrega ao cliente:**
-- [ ] **Paywall do plano Empresa** (worker `handleConvite` checa plano do owner + `GatePro` nas rotas de Equipe).
-  Ver `olli-paywall-empresa-ausente`. **DEPENDE de decisão do dono.**
+- [x] **Paywall do plano Empresa — FEITO (2026-09-08).** `handleConvite` consulta
+  o entitlement do owner com estados `sim`/`nao`/`erro`, falha fechado em erro e
+  retorna `402` sem Empresa; mobile e desktop usam `GateEquipe`/`GatePro`, com
+  grandfathering explícito para organizações antigas. Cobertura em
+  `test:entitlement-equipe`, C7 e testes do worker.
 - [x] **XSS em `modeloPdf`** do orçamento — **FEITO (2026-09-08)**: `pdfGenerator.ts` aplica whitelist estrita de modelos antes de montar a classe HTML; `test:c5-orcamentos-financeiro` e `npm test` continuam verdes.
 - [ ] **`/stripe/webhook` e `/transcrever`**: teto de payload + rate-limit por IP ANTES de bufferizar o corpo;
   `/transcrever` deve validar plano/cota mensal (hoje só client-side).
