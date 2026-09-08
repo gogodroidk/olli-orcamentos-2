@@ -87,7 +87,9 @@ arquivos: **estes dois vencem**.
   OS/agenda/ritual recebem a área correta. Restam apenas parâmetros de detalhe por id.
   **Teto de lembretes PMOC** e **cancelamento no logout** seguem como itens separados de
   operação, não são declarados concluídos por este handler.
-- [ ] **Badges PMOC** via `corCategoriaEmChip` (contraste — 2 telas).
+- [x] **Badges PMOC — FEITO (2026-09-08).** Situação do equipamento no app e no
+  desktop agora deriva o texto por `corCategoriaEmChip`; o teste C10 prende os dois
+  clientes ao mesmo contrato de contraste.
 - [x] **Copy que mente — FEITO (2026-09-08).** `ComparadorLanding` agora fala de orçamento offline,
   aprovação/assinatura por link, IA para montar orçamento por voz e equipe com permissões no plano
   Empresa; removeu promessas de PMOC pronto para fiscalização, diagnóstico automático e mapa em tempo

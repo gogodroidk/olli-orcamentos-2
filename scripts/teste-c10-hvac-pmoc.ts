@@ -22,6 +22,8 @@ const ativos = ler('webapp/src/pages/olli/equipamentos/index.tsx');
 const formAtivo = ler('webapp/src/pages/olli/equipamentos/FormEquipamento.tsx');
 const formOs = ler('webapp/src/pages/olli/ordens-servico/FormOs.tsx');
 const artigo = ler('web/src/content/blog/pmoc-quem-e-obrigado-lei-13589.md');
+const equipamentoMobile = ler('src/screens/EquipamentoScreen.tsx');
+const equipamentoDesktop = ler('src/screens/desktop/EquipamentosDesktopScreen.tsx');
 
 checar('inventário HVAC tem identidade QR opaca e fotos preservadas',
   /qrToken:\s*string/.test(tipos) && /fotos:\s*string\[\]/.test(tipos) && /QR opaco/.test(tipos));
@@ -45,6 +47,8 @@ checar('ordem preserva checklist marcado e fotos anexadas em campo',
   /checklistMesclado/.test(formOs) && /fotos tiradas em campo/.test(formOs) && /continua(m)? intactas/.test(formOs));
 checar('conteúdo público não vende PMOC como laudo, certificado ou substituto técnico',
   /Não é um laudo, não é um certificado/i.test(artigo) && /não\*\*\s+substitui o responsável técnico habilitado/i.test(artigo));
+checar('badges de situação usam contraste derivado nos dois clientes',
+  /corCategoriaEmChip\(corBase, cores\.surface\)/.test(equipamentoMobile) && /corCategoriaEmChip\(corBase, cores\.surface\)/.test(equipamentoDesktop));
 checar('evidência C10 está registrada', existe('docs/PILOTO/ACEITE_C10_HVAC_PMOC_2026-09-05.md'));
 
 if (falhas) {
