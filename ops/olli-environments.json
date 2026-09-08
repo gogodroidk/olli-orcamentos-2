@@ -63,8 +63,12 @@
         "githubPromotion": {
           "pullRequest": 42,
           "pullRequestState": "draft",
-          "workflowRunId": 34075474398,
-          "workflowRunStatus": "success",
+          "latestCiRunId": 34091959004,
+          "latestCiStatus": "success",
+          "latestPromotionRunId": 34091958991,
+          "latestPromotionStatus": "success",
+          "lastManualStagingRunId": 34075474398,
+          "lastManualStagingStatus": "success",
           "target": "staging",
           "productionJob": "skipped"
         },

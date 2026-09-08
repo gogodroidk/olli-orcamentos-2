@@ -35,6 +35,9 @@
 - GitHub promotion proof: draft PR **#42** is open from `codex/piloto-p0` to
   `main`; workflow run `34075474398` completed with `quality-and-builds` and
   `staging-promotion` successful, while `production-promotion` was skipped.
+- Revalidation after the security/dependency fixes: CI `34091959004` and
+  promotion quality run `34091958991` both completed successfully; no
+  production job was executed.
 - The previous simulator setting produced scheduled configuration errors while
   secrets were absent; the off-mode redeploy removes that false-green state.
   Enabling the simulator remains a staging secret gate, not a production gate.
