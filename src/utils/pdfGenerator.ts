@@ -183,10 +183,9 @@ function renderItensTabela(itens: ItemOrcamento[]): string {
 }
 
 /**
- * Condições do documento. O OLLI não exibe forma de pagamento, chave Pix,
- * sinal ou QR no orçamento: o pagamento é combinado diretamente entre cliente
- * e empresa. `condicoesPagamento` continua sendo lido como texto comercial
- * legado/compatível (ex.: parcelamento e marcos), sempre escapado.
+ * Condições comerciais do documento. A forma de pagamento e a chave Pix não são
+ * impressas automaticamente; o sinal/entrada tem bloco próprio logo depois,
+ * porque é um marco comercial que o prestador explicitamente configurou.
  */
 function renderCondicoes(o: Orcamento): string {
   const comerciais = o.condicoesPagamento ? escapeHtml(o.condicoesPagamento) : '';
@@ -202,6 +201,34 @@ function renderCondicoes(o: Orcamento): string {
   if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${escapeHtml(prazo)}</div></div>`);
   if (cols.length === 0) return '';
   return `<div class="conditions">${cols.join('')}</div>`;
+}
+
+/** Entrada/sinal configurado no wizard — sempre limitado ao total da proposta. */
+function renderSinal(o: Orcamento): string {
+  const total = Math.max(0, o.valorTotal || 0);
+  let entrada = 0;
+  let percentual: number | undefined;
+
+  if (typeof o.sinalValor === 'number' && o.sinalValor > 0) {
+    entrada = Math.min(o.sinalValor, total);
+    percentual = total > 0 ? Math.round((entrada / total) * 100) : undefined;
+  } else if (typeof o.sinalPercentual === 'number' && o.sinalPercentual > 0 && total > 0) {
+    percentual = Math.min(100, Math.max(0, o.sinalPercentual));
+    entrada = Math.round(total * (percentual / 100) * 100) / 100;
+  }
+
+  if (entrada <= 0) return '';
+  const data = o.sinalData ? formatDateBR(o.sinalData) : '';
+  const dataTexto = data ? ` até ${escapeHtml(data)}` : '';
+  const saldo = Math.max(0, Math.round((total - entrada) * 100) / 100);
+  const percentualTexto = typeof percentual === 'number' ? ` (${formatNumber(percentual, 0)}%)` : '';
+
+  return `
+    <div class="text-block">
+      <div class="eyebrow">Entrada / sinal</div>
+      <div class="body">${formatCurrency(entrada)}${percentualTexto}${dataTexto}. Saldo restante: ${formatCurrency(saldo)}.</div>
+    </div>
+  `;
 }
 
 /** Bloco "Observações" (informacoesAdicionais) — sempre exibido quando preenchido. */
@@ -539,6 +566,7 @@ export function gerarHtmlOrcamento(
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
   const approvalGuideHtml = renderApprovalGuide(o, opts?.linkPublico);
+  const sinalHtml = renderSinal(o);
   const observacoesHtml = renderObservacoes(o);
   const laudoHtml = renderLaudo(o);
 
@@ -787,6 +815,7 @@ ${renderCapa(o, empresa, planoCapa)}
 
     <!-- CONDIÇÕES -->
     ${condicoesHtml}
+    ${sinalHtml}
 
     ${approvalGuideHtml}
 

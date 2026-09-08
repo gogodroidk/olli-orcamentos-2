@@ -42,5 +42,7 @@ assert.match(navigator, /recorteInicial\?: 'em_aberto' \| 'a_receber'/, 'o recor
 assert.match(tabelaDesktop, /recorteInicial === 'a_receber'/, 'a lista precisa aplicar o recorte a receber');
 assert.match(pdfGenerator, /MODELOS_PDF_VALIDOS/, 'modeloPdf precisa passar por whitelist antes de virar classe HTML');
 assert.match(pdfGenerator, /modeloPdfSeguro/, 'o PDF precisa usar o modelo sanitizado');
+assert.match(pdfGenerator, /function renderSinal/, 'o PDF precisa renderizar o sinal configurado');
+assert.match(pdfGenerator, /Saldo restante/, 'o PDF precisa informar o saldo após a entrada');
 
 console.log('OK — revisão/duplicação, quadro de estados e financeiro operacional validados.');

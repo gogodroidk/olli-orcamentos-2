@@ -65,7 +65,10 @@ arquivos: **estes dois vencem**.
   sobrasse. Resolvido com `garantirContextoEquipe()` (resolve sob demanda) + reset no logout.
 - [ ] **Gate de papel na UI de clientes** (edição/exclusão do técnico não pode falhar em silêncio) + **tombstone
   `exclusoes` multi-tenant** + **query de `OrdensDesktopScreen` fail-closed** enquanto o papel resolve.
-- [ ] **Sinal (R$ + data) e Laudo técnico no PDF** (`Step3Detalhes`/`pdfGenerator` — hoje somem na entrega).
+- [x] **Sinal (R$ + data) e Laudo técnico no PDF — FEITO (2026-09-08).**
+  `Step3Detalhes` já captura os campos; `pdfGenerator.ts` agora imprime laudo,
+  entrada limitada ao total, percentual/data quando configurados e saldo restante,
+  sempre escapados.
 - [ ] **`NovoOrcamentoScreen`**: trocar `window.alert/confirm` pelo `ConfirmDialog` temático.
 - [ ] **reduced-motion**: `OlliSkeleton` (shimmer), pulso do mic (`OlliVozScreen`), "digitando" (`OlliChatScreen`),
   container do wizard (`NovoOrcamentoScreen`).

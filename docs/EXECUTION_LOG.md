@@ -41,6 +41,10 @@
   reconciliado como concluído: `EntrarScreen`, `OnboardingScreen` e `cloudSync`
   mantêm `tem`/`nao_tem`/`nao_sei`, rechecagem antes da escrita e push fail-closed;
   os testes de partição/equipe cobrem a decisão.
+- O PDF de orçamento passou a exibir também a entrada/sinal configurado (valor ou
+  percentual, data e saldo restante), limitado ao total e escapado; o laudo técnico
+  já existente continua no mesmo documento. `test:contrato-prestacao`, C5 e
+  `npm test` passaram após a alteração.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
