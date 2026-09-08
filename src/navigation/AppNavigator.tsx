@@ -58,6 +58,7 @@ import type { AjudaRouteParams } from '../screens/AjudaScreen';
 import { usePermissao } from '../hooks/usePermissao';
 import { getEmpresa } from '../database/database';
 import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
+import type { StatusOrcamento } from '../types';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
 // nativo/APK nada disto entra na árvore. Barril em src/screens/desktop.
@@ -173,7 +174,12 @@ export type TabParamList = {
   // Registradas condicionalmente sob `ehDesktop`; no mobile/APK nunca montam.
   // Vivem DENTRO do shell (com a sidebar visível), em vez de cobrirem-na como
   // telas de stack. Opcionais no tipo porque não existem no modo mobile.
-  OrcamentosTab?: { clienteId?: string; clienteNome?: string } | undefined;
+  OrcamentosTab?: {
+    clienteId?: string;
+    clienteNome?: string;
+    /** Recorte contextual vindo de um KPI do dashboard, sem substituir os filtros manuais. */
+    recorteInicial?: 'em_aberto' | 'a_receber' | StatusOrcamento;
+  } | undefined;
   ClientesTab?: undefined;
   RelatoriosTab?: undefined;
   FerramentasTab?: undefined;

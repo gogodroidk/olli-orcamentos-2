@@ -104,12 +104,10 @@ arquivos: **estes dois vencem**.
      (migration aditiva + local + cloudSync como as demais colunas de OS), e filtrar por
      `noMesAtual(o.concluidoEm)`.
 
-4. **KPIs do dashboard abrem lista já filtrada**
-   - No `InicioDesktopScreen`, "Em aberto" e "Contas a receber" navegam para `OrcamentosTab`
-     SEM filtro → abrem a lista completa (enganoso). Estender o param de `OrcamentosTab`
-     (`AppNavigator` TabParamList) com um recorte inicial (ex.: `recorteInicial?: 'em_aberto'
-     | 'a_receber' | StatusOrcamento`) e `OrcamentosDesktopScreen` inicializar o filtro a
-     partir dele (recortes derivados via `propostaJaEnviada`/`getReciboDoOrcamento`).
+4. [x] **KPIs do dashboard abrem lista já filtrada — FEITO (2026-09-08)**
+   - `InicioDesktopScreen` envia `em_aberto`/`a_receber` tipado para `OrcamentosTab`;
+     `OrcamentosDesktopScreen` aplica o recorte antes dos filtros manuais e exibe um
+     chip removível para deixar o contexto visível.
 
 5. [x] **Role de checkbox no `OlliPressable` — FEITO (2026-09-08)**
    - `OlliPressable` já repassava `accessibilityRole`/`accessibilityState`; `CheckRow`

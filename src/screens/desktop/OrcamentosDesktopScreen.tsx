@@ -53,11 +53,13 @@ export default function OrcamentosDesktopScreen() {
   const styles = useEstilos(criarEstilos);
   const clienteId = route.params?.clienteId;
   const clienteNome = route.params?.clienteNome;
+  const recorteDaRota = route.params?.recorteInicial;
 
   const [todos, setTodos] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<StatusOrcamento | 'todos'>('todos');
+  const [recorteInicial, setRecorteInicial] = useState<typeof recorteDaRota>(recorteDaRota);
   const [carregando, setCarregando] = useState(true);
 
   const carregar = useCallback(async () => {
@@ -69,17 +71,25 @@ export default function OrcamentosDesktopScreen() {
 
   useFocusEffect(useCallback(() => { carregar(); }, [carregar]));
   useEffect(() => onSyncAplicado(carregar), [carregar]);
+  useEffect(() => setRecorteInicial(recorteDaRota), [recorteDaRota]);
 
   const filtrados = useMemo(() => {
     let r = todos;
     if (clienteId) r = r.filter((o) => o.clienteId === clienteId);
+    if (recorteInicial === 'em_aberto') {
+      r = r.filter((o) => ['enviado', 'visualizado', 'em_negociacao', 'aguardando_assinatura'].includes(o.status));
+    } else if (recorteInicial === 'a_receber') {
+      r = r.filter((o) => getStatusFinanceiro(o, recibos) === 'aguardando_pagamento');
+    } else if (recorteInicial) {
+      r = r.filter((o) => o.status === recorteInicial);
+    }
     if (statusFiltro !== 'todos') r = r.filter((o) => o.status === statusFiltro);
     if (busca.trim()) {
       const q = normalizarBusca(busca);
       r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q));
     }
     return r;
-  }, [todos, clienteId, statusFiltro, busca]);
+  }, [todos, clienteId, statusFiltro, busca, recorteInicial, recibos]);
 
   const colunas: Coluna<Orcamento>[] = useMemo(() => [
     {
@@ -176,6 +186,13 @@ export default function OrcamentosDesktopScreen() {
       }
     >
       <View style={styles.chips}>
+        {recorteInicial && (
+          <Chip
+            label={recorteInicial === 'em_aberto' ? 'Recorte: em aberto' : recorteInicial === 'a_receber' ? 'Recorte: a receber' : `Recorte: ${STATUS_LABELS[recorteInicial as StatusOrcamento]}`}
+            ativo
+            onPress={() => setRecorteInicial(undefined)}
+          />
+        )}
         {FILTROS_STATUS.map((f) => (
           <Chip
             key={f.chave}

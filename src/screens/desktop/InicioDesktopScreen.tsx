@@ -232,7 +232,10 @@ export default function InicioDesktopScreen() {
 
   // ── navegação (rotas existentes; cada KPI leva à lista que o explica) ──
   const irParaAgenda = () => (nav as any).navigate('Tabs', { screen: 'Agenda' });
-  const irParaOrcamentos = () => (nav as any).navigate('Tabs', { screen: 'OrcamentosTab' });
+  const irParaOrcamentos = (recorteInicial?: 'em_aberto' | 'a_receber') => (nav as any).navigate('Tabs', {
+    screen: 'OrcamentosTab',
+    params: recorteInicial ? { recorteInicial } : undefined,
+  });
   const irParaOrdens = () => nav.navigate('OrdemServico');
   const irParaRelatorios = () => (nav as any).navigate('Tabs', { screen: 'RelatoriosTab' });
 
@@ -451,7 +454,7 @@ export default function InicioDesktopScreen() {
           icone="clock-outline"
           corIcone={cores.warning}
           rodape={`${emAbertoResumo.contagem} orçamento${emAbertoResumo.contagem === 1 ? '' : 's'} enviado${emAbertoResumo.contagem === 1 ? '' : 's'}`}
-          onPress={irParaOrcamentos}
+          onPress={() => irParaOrcamentos('em_aberto')}
           style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
         <KpiCard
@@ -460,7 +463,7 @@ export default function InicioDesktopScreen() {
           icone="cash-clock"
           corIcone={cores.accentLight}
           rodape={contasAReceberResumo.contagem ? `${contasAReceberResumo.contagem} aprovado${contasAReceberResumo.contagem === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
-          onPress={irParaOrcamentos}
+          onPress={() => irParaOrcamentos('a_receber')}
           style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
         <KpiCard
@@ -717,7 +720,7 @@ export default function InicioDesktopScreen() {
       <View style={styles.secaoTabela}>
         <View style={styles.secaoTabelaHeader}>
           <Text style={styles.secaoTabelaTitulo}>Últimos orçamentos</Text>
-          <OlliPressable onPress={irParaOrcamentos} haptic={false}>
+          <OlliPressable onPress={() => irParaOrcamentos()} haptic={false}>
             <Text style={styles.verTodos}>ver todos</Text>
           </OlliPressable>
         </View>

@@ -31,6 +31,9 @@
 - O checklist da tela Hoje agora anuncia papel `checkbox` e estado marcado para
   leitores de tela; `test:acessibilidade-checklist` fecha a regressão sem adicionar
   animação nova ou alterar o fluxo de dados.
+- Os KPIs desktop `Em aberto` e `Contas a receber` agora abrem a lista de orçamentos
+  com recorte contextual tipado e chip removível; o usuário não cai mais na lista
+  completa sem explicação. O contrato C5 verifica as duas rotas.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 

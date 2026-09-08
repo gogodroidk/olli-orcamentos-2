@@ -11,6 +11,8 @@ const inicio = ler('../webapp/src/pages/olli/inicio/index.tsx');
 const radar = ler('../webapp/src/pages/olli/inicio/RadarDinheiroCard.tsx');
 const tabelaDesktop = ler('../src/screens/desktop/OrcamentosDesktopScreen.tsx');
 const badgeFinanceiro = ler('../src/components/FinanceiroBadge.tsx');
+const inicioDesktop = ler('../src/screens/desktop/InicioDesktopScreen.tsx');
+const navigator = ler('../src/navigation/AppNavigator.tsx');
 
 for (const status of ['aprovado', 'convertido', 'recusado', 'cancelado']) {
   assert.match(dominio, new RegExp(`\\| '${status}'`), `status ${status} precisa existir no domínio`);
@@ -30,5 +32,9 @@ assert.match(tabelaDesktop, /FinanceiroBadge/, 'a tabela desktop precisa exibir 
 assert.match(badgeFinanceiro, /getBadgeFinanceiro/, 'o badge financeiro precisa reutilizar o contrato de estados');
 assert.match(pagamentos, /Aguardando pagamento/, 'o contrato financeiro precisa explicar o estado pendente');
 assert.match(pagamentos, /Recibo emitido/, 'o contrato financeiro precisa distinguir recibo formal');
+assert.match(inicioDesktop, /irParaOrcamentos\('em_aberto'\)/, 'KPI em aberto precisa abrir seu recorte');
+assert.match(inicioDesktop, /irParaOrcamentos\('a_receber'\)/, 'KPI a receber precisa abrir seu recorte');
+assert.match(navigator, /recorteInicial\?: 'em_aberto' \| 'a_receber'/, 'o recorte inicial precisa ser tipado na aba desktop');
+assert.match(tabelaDesktop, /recorteInicial === 'a_receber'/, 'a lista precisa aplicar o recorte a receber');
 
 console.log('OK — revisão/duplicação, quadro de estados e financeiro operacional validados.');
