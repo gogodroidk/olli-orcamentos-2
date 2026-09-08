@@ -21,6 +21,13 @@
   `53697bb1-fc3f-405f-bdf6-55ee0b7b490e` (100% staging, deployment
   `fa01b6e5-85ba-445f-afa9-815b36b1afbb`). O smoke público foi repetido com
   sucesso; produção continua sem promoção.
+- O primeiro reteste no `SM-G780F` encontrou uma regressão de ordem de abertura
+  da migration local: o índice de `espelho_pendente` era criado antes da coluna
+  em bancos antigos. O índice foi movido para depois de `runMigrations`; o APK
+  foi recompilado (`assembleDebug`), reinstalado preservando o banco existente e
+  abriu sem `ERR_INTERNAL_SQLITE_ERROR`, `no such column`, `FATAL EXCEPTION`,
+  `AndroidRuntime` ou `ReactNativeJS`. A suíte completa e o contrato do outbox
+  (13 checks) passaram após a correção.
 
 - Cloudflare Git Build do `olli-diagnostico-staging` está conectado ao repositório
   `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, previews desligados e

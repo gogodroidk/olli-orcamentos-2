@@ -251,7 +251,6 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       espelho_pendente INTEGER NOT NULL DEFAULT 1
     );
     CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_orc ON orcamento_versoes (orcamento_id, numero_versao);
-    CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_pendente ON orcamento_versoes (espelho_pendente, criado_em);
 
     CREATE TABLE IF NOT EXISTS recibos (
       id TEXT PRIMARY KEY,
@@ -495,6 +494,12 @@ async function initDb(database: SQLite.SQLiteDatabase) {
   `);
 
   await runMigrations(database);
+  // Este índice depende da coluna adicionada na migration v4. Ele fica depois
+  // do migrador para que uma instalação antiga não falhe na abertura antes de
+  // `addColumnIfMissing` ter tido a chance de criar `espelho_pendente`.
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_pendente ON orcamento_versoes (espelho_pendente, criado_em)',
+  );
   await seedCodigosErro(database);
 
   // Sem dados-semente falsos: instalações novas começam SEM empresa e SEM

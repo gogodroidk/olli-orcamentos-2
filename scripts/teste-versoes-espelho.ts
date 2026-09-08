@@ -24,6 +24,7 @@ console.log('\nOutbox local — espelho do histórico de versões');
 checar('schema local subiu para v4', /const SCHEMA_VERSION = 4/.test(db));
 checar('tabela nova carrega a marca pendente', /espelho_pendente INTEGER NOT NULL DEFAULT 1/.test(db));
 checar('bancos existentes recebem migration aditiva', /if \(v < 4\)[\s\S]{0,260}addColumnIfMissing\(database, 'orcamento_versoes', 'espelho_pendente'/.test(db));
+checar('índice da outbox só nasce depois da migration', /await runMigrations\(database\);[\s\S]{0,400}idx_orcamento_versoes_pendente/.test(db) && !/idx_orcamento_versoes_pendente[\s\S]{0,80}await runMigrations/.test(db));
 checar('snapshot novo entra na outbox', /INSERT OR REPLACE INTO orcamento_versoes[\s\S]{0,220}espelho_pendente\) VALUES \(\?,\?,\?,\?,\?,1\)/.test(db));
 checar('há leitura limitada de pendências', /export async function getVersoesPendentesEspelho/.test(db) && /WHERE espelho_pendente = 1/.test(db));
 checar('confirmação local só ocorre por id', /export async function marcarVersaoEspelhoConcluido/.test(db) && /SET espelho_pendente = 0 WHERE id = \?/.test(db));
