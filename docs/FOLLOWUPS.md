@@ -76,11 +76,17 @@ arquivos: **estes dois vencem**.
   `Step3Detalhes` já captura os campos; `pdfGenerator.ts` agora imprime laudo,
   entrada limitada ao total, percentual/data quando configurados e saldo restante,
   sempre escapados.
-- [ ] **`NovoOrcamentoScreen`**: trocar `window.alert/confirm` pelo `ConfirmDialog` temático.
-- [ ] **reduced-motion**: `OlliSkeleton` (shimmer), pulso do mic (`OlliVozScreen`), "digitando" (`OlliChatScreen`),
-  container do wizard (`NovoOrcamentoScreen`).
-- [ ] **Handler de toque na notificação** (`addNotificationResponseReceivedListener` → navega pra OS/agenda) +
-  **teto de lembretes PMOC** + **cancelar lembretes no logout "manter dados"** (hoje vazam nome/endereço).
+- [x] **`NovoOrcamentoScreen` — FEITO (2026-09-08).** O wizard usa `avisar`/`confirmar` e
+  `DialogoDesktopHost` para o caminho web/desktop; não há `window.alert/confirm` na tela.
+- [x] **reduced-motion — FEITO (2026-09-08).** `OlliSkeleton`, pulso do mic, estado
+  "digitando" e container do wizard consultam `useReducedMotion`; o caminho reduzido é
+  estático ou sem transição.
+- [x] **Handler de toque na notificação — FEITO (2026-09-08).** `App.tsx` registra
+  `addNotificationResponseReceivedListener`, recupera o toque a frio com
+  `getLastNotificationResponseAsync` e segura o payload até a navegação estar pronta;
+  OS/agenda/ritual recebem a área correta. Restam apenas parâmetros de detalhe por id.
+  **Teto de lembretes PMOC** e **cancelamento no logout** seguem como itens separados de
+  operação, não são declarados concluídos por este handler.
 - [ ] **Badges PMOC** via `corCategoriaEmChip` (contraste — 2 telas).
 - [x] **Copy que mente — FEITO (2026-09-08).** `ComparadorLanding` agora fala de orçamento offline,
   aprovação/assinatura por link, IA para montar orçamento por voz e equipe com permissões no plano
@@ -88,8 +94,12 @@ arquivos: **estes dois vencem**.
   real. `test:landing-c4` cobre os textos proibidos e os benefícios reais.
 
 **P2/P3 — perf, higiene, código morto:**
-- [ ] `codigos_erro.json` (365KB) fora do import estático do boot (carregar sob demanda / só no seed).
-- [ ] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) e KPIs de recibos → dashboard-agregado em SQL.
+- [x] `codigos_erro.json` fora do import estático do boot — **FEITO (2026-09-08)**: seed lazy
+  via `require` só quando a tabela precisa ser povoada.
+- [ ] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) e KPIs de recibos →
+  dashboard-agregado em SQL. O painel desktop já usa os agregados e `useCallback`, mas
+  `HojeScreen` ainda chama `getOrcamentos()` para a lista operacional; falta separar essa
+  lista dos números antes de marcar o item concluído.
 - [ ] `useCallback` nas telas que usam `TabelaDados`; ícone android 990KB comprimido; cache de ETA com origem.
 - [ ] `code-splitting` web (landing não baixa o ERP); `_headers` com CSP; `ErrorBoundary` com "ir para o início".
 - [ ] Higiene: exports mortos do worker; `tsconfig noUnusedLocals`/linter mínimo; fotos `file://` (decisão: subir
