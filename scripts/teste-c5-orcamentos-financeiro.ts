@@ -10,6 +10,7 @@ const pagamentos = ler('../src/services/pagamentos.ts');
 const inicio = ler('../webapp/src/pages/olli/inicio/index.tsx');
 const radar = ler('../webapp/src/pages/olli/inicio/RadarDinheiroCard.tsx');
 const tabelaDesktop = ler('../src/screens/desktop/OrcamentosDesktopScreen.tsx');
+const telaMobile = ler('../src/screens/OrcamentosScreen.tsx');
 const badgeFinanceiro = ler('../src/components/FinanceiroBadge.tsx');
 const inicioDesktop = ler('../src/screens/desktop/InicioDesktopScreen.tsx');
 const navigator = ler('../src/navigation/AppNavigator.tsx');
@@ -30,6 +31,8 @@ assert.match(radar, /Não foi possível ler o dinheiro parado/, 'erro financeiro
 assert.match(inicio, /A RECEBER/, 'a tela inicial precisa expor contas a receber');
 assert.match(tabelaDesktop, /getRecibos/, 'a tabela desktop precisa carregar recibos para o estado financeiro');
 assert.match(tabelaDesktop, /FinanceiroBadge/, 'a tabela desktop precisa exibir o estado financeiro');
+assert.match(telaMobile, /FinanceiroBadge/, 'a lista mobile precisa exibir o estado financeiro');
+assert.match(telaMobile, /recarregarRecibos/, 'a lista mobile precisa atualizar recibos ao voltar para a tela');
 assert.match(badgeFinanceiro, /getBadgeFinanceiro/, 'o badge financeiro precisa reutilizar o contrato de estados');
 assert.match(pagamentos, /Aguardando pagamento/, 'o contrato financeiro precisa explicar o estado pendente');
 assert.match(pagamentos, /Recibo emitido/, 'o contrato financeiro precisa distinguir recibo formal');

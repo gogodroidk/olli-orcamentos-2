@@ -20,6 +20,7 @@ import { OlliButton } from '../components/OlliButton';
 import {
   deleteOrcamento, saveOrcamento, getNextOrcamentoNumber, edicaoBloqueada,
   getOrcamentosPagina, getOrcamentosResumoFiltro, getOrcamentosIdsFiltro,
+  getRecibos,
   type FiltroOrcamentos,
 } from '../database/database';
 import { sincronizarStatusLinks } from '../services/clienteLink';
@@ -29,8 +30,10 @@ import { formatCurrency } from '../utils/currency';
 import { formatDate, nowISO, todayISO } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
-import { Orcamento, StatusOrcamento, STATUS_LABELS } from '../types';
+import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../types';
 import { generateId } from '../utils/id';
+import { FinanceiroBadge } from '../components/FinanceiroBadge';
+import { getStatusFinanceiro } from '../services/pagamentos';
 
 // Perf: com listas longas, animar a entrada (fade+slide) de CADA linha monta um
 // Animated.Value + timing por item conforme a FlatList vai revelando novas
@@ -67,6 +70,7 @@ interface LinhaOrcamentoProps {
   onClonar: (item: Orcamento) => void;
   onRecibo: (item: Orcamento) => void;
   onExcluir: (item: Orcamento) => void;
+  recibos: Recibo[];
 }
 
 /**
@@ -85,6 +89,7 @@ function LinhaOrcamentoBase({
   onClonar,
   onRecibo,
   onExcluir,
+  recibos,
 }: LinhaOrcamentoProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -116,6 +121,7 @@ function LinhaOrcamentoBase({
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
           <StatusBadge status={o.status} size="sm" />
+          <FinanceiroBadge status={getStatusFinanceiro(o, recibos)} />
         </View>
       </View>
 
@@ -215,6 +221,7 @@ export default function OrcamentosScreen() {
   const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
   const clienteNome = route.params?.clienteNome;
   const [itens, setItens] = useState<Orcamento[]>([]);
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [resumo, setResumo] = useState<{ contagem: number; valorTotal: number }>({ contagem: 0, valorTotal: 0 });
   const [temMais, setTemMais] = useState(false);
   const [carregandoMais, setCarregandoMais] = useState(false);
@@ -282,6 +289,14 @@ export default function OrcamentosScreen() {
     return carregarPagina(montarFiltro(f.query, f.statusFilter, f.clienteId), { reset: true });
   }, [carregarPagina]);
 
+  const recarregarRecibos = useCallback(async () => {
+    try {
+      setRecibos(await getRecibos());
+    } catch {
+      // Falha de leitura não inventa pagamento nem apaga o estado já conhecido.
+    }
+  }, []);
+
   const carregarMais = useCallback(() => {
     const f = filtroRef.current;
     carregarPagina(montarFiltro(f.query, f.statusFilter, f.clienteId), { reset: false });
@@ -289,18 +304,23 @@ export default function OrcamentosScreen() {
 
   useFocusEffect(useCallback(() => {
     recarregar();
+    recarregarRecibos();
     // sincronizarStatusLinks() nunca lança — é seguro chamar sem try/catch.
     // Se algum orçamento mudou de status (cliente aprovou/recusou pelo link),
     // recarrega a lista para refletir o novo status.
     sincronizarStatusLinks().then(alterados => {
       if (alterados > 0) recarregar();
     });
-  }, [recarregar, clienteId]));
+  }, [recarregar, recarregarRecibos, clienteId]));
 
   // Recarrega a lista quando o sync em segundo plano (login/foreground) traz
   // dados novos da nuvem — sem isso, um aparelho recém-logado podia mostrar a
   // lista vazia até o usuário sair e voltar para a tela.
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); recarregar(); }), [recarregar]);
+  useEffect(() => onSyncAplicado(() => {
+    setSincronizando(true);
+    recarregar();
+    recarregarRecibos();
+  }), [recarregar, recarregarRecibos]);
 
   function limparFiltroCliente() {
     setClienteId(undefined);
@@ -466,7 +486,7 @@ export default function OrcamentosScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
-    await recarregar();
+    await Promise.all([recarregar(), recarregarRecibos()]);
     setRefreshing(false);
   };
 
@@ -509,9 +529,10 @@ export default function OrcamentosScreen() {
         onClonar={onClonarLinha}
         onRecibo={onReciboLinha}
         onExcluir={onExcluirLinha}
+        recibos={recibos}
       />
     );
-  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onClonarLinha, onReciboLinha, onExcluirLinha]);
+  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onClonarLinha, onReciboLinha, onExcluirLinha, recibos]);
 
   const keyExtractor = useCallback((o: Orcamento) => o.id, []);
 

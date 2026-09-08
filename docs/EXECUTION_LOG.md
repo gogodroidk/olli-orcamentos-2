@@ -34,6 +34,9 @@
 - Os KPIs desktop `Em aberto` e `Contas a receber` agora abrem a lista de orçamentos
   com recorte contextual tipado e chip removível; o usuário não cai mais na lista
   completa sem explicação. O contrato C5 verifica as duas rotas.
+- O badge financeiro também foi levado à lista mobile de orçamentos, atualizando os
+  recibos ao voltar à tela, no sync e no pull-to-refresh. Desktop e mobile agora
+  distinguem o mesmo trio de estados sem criar uma fonte de pagamento paralela.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
