@@ -13,6 +13,7 @@ const tabelaDesktop = ler('../src/screens/desktop/OrcamentosDesktopScreen.tsx');
 const badgeFinanceiro = ler('../src/components/FinanceiroBadge.tsx');
 const inicioDesktop = ler('../src/screens/desktop/InicioDesktopScreen.tsx');
 const navigator = ler('../src/navigation/AppNavigator.tsx');
+const pdfGenerator = ler('../src/utils/pdfGenerator.ts');
 
 for (const status of ['aprovado', 'convertido', 'recusado', 'cancelado']) {
   assert.match(dominio, new RegExp(`\\| '${status}'`), `status ${status} precisa existir no domínio`);
@@ -36,5 +37,7 @@ assert.match(inicioDesktop, /irParaOrcamentos\('em_aberto'\)/, 'KPI em aberto pr
 assert.match(inicioDesktop, /irParaOrcamentos\('a_receber'\)/, 'KPI a receber precisa abrir seu recorte');
 assert.match(navigator, /recorteInicial\?: 'em_aberto' \| 'a_receber'/, 'o recorte inicial precisa ser tipado na aba desktop');
 assert.match(tabelaDesktop, /recorteInicial === 'a_receber'/, 'a lista precisa aplicar o recorte a receber');
+assert.match(pdfGenerator, /MODELOS_PDF_VALIDOS/, 'modeloPdf precisa passar por whitelist antes de virar classe HTML');
+assert.match(pdfGenerator, /modeloPdfSeguro/, 'o PDF precisa usar o modelo sanitizado');
 
 console.log('OK — revisão/duplicação, quadro de estados e financeiro operacional validados.');
