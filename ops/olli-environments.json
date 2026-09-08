@@ -44,14 +44,16 @@
         "OLLI_ROUTES_API_KEY"
       ],
       "secretScope": "staging-only-test-values",
-      "baselineStatus": "runtime_schema_and_41_migrations_applied_manual_sql_editor",
+      "baselineStatus": "runtime_schema_41_local_files_remote_history_34_manual_entries_reconciliation_required",
       "baselineSource": "main_schema_metadata_only",
       "lastPromotionCheckpoint": {
         "recordedAt": "2026-09-08T04:48:58-03:00",
         "baselineMigration": "staging_schema_baseline_20260906",
         "incrementalMigrationsApplied": 41,
         "migrationApplicationMode": "supabase_sql_editor_manual",
-        "migrationHistoryStatus": "dashboard_history_stops_at_20260820165809_until_reconciled",
+          "migrationHistoryStatus": "remote_history_34_manual_entries_20260906192145_to_20260906192430_local_files_41_until_reconciled",
+          "localMigrationFileCount": 41,
+          "remoteMigrationHistoryCount": 34,
         "workerDeployment": {
           "name": "olli-diagnostico-staging",
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",

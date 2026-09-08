@@ -19,10 +19,13 @@
   staging-only SQL Editor session. The final metadata query proved all expected
   tables, functions, private RLS helpers, buckets, policies, RLS flags, indexes
   and welcome triggers; counts were zero for the two welcome tables.
-- These executions were manual SQL Editor statements, so the dashboard migration
-  history still ends at `20260820165809_admin_governanca_fk_indexes`. This is a
-  reconciliation gate for a future versioned CLI/CI promotion; it is not being
-  hidden as if the history were complete.
+- These executions were manual SQL Editor statements. A read-only Supabase CLI
+  check on 2026-09-08 found **41 local migration files** but **34 remote history
+  entries**, whose latest versions are generated timestamps from
+  `20260906192145` through `20260906192430`. The names do not map one-to-one to
+  the local files, so no `migration repair` was run blindly. This remains a
+  reconciliation gate for a future versioned CLI/CI promotion; it is not hidden
+  as if the history were complete.
 - The staging Worker `olli-diagnostico-staging` was deployed without production
   routes. Because the staging-only Supabase service-role and Resend test
   secrets are not provisioned, `WELCOME_DISPATCH_MODE=off` is now explicit
