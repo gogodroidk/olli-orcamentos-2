@@ -10,12 +10,14 @@ import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
 import { StatusBadge } from '../../components/StatusBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
-import { getOrcamentos, edicaoBloqueada } from '../../database/database';
+import { getOrcamentos, getRecibos, edicaoBloqueada } from '../../database/database';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator';
-import { Orcamento, StatusOrcamento, STATUS_LABELS } from '../../types';
+import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../../types';
+import { getStatusFinanceiro } from '../../services/pagamentos';
+import { FinanceiroBadge } from '../../components/FinanceiroBadge';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<TabParamList, 'OrcamentosTab'>;
@@ -53,13 +55,15 @@ export default function OrcamentosDesktopScreen() {
   const clienteNome = route.params?.clienteNome;
 
   const [todos, setTodos] = useState<Orcamento[]>([]);
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<StatusOrcamento | 'todos'>('todos');
   const [carregando, setCarregando] = useState(true);
 
   const carregar = useCallback(async () => {
-    const dados = await getOrcamentos();
+    const [dados, recibosAtuais] = await Promise.all([getOrcamentos(), getRecibos()]);
     setTodos(dados);
+    setRecibos(recibosAtuais);
     setCarregando(false);
   }, []);
 
@@ -113,6 +117,13 @@ export default function OrcamentosDesktopScreen() {
       render: (o) => <StatusBadge status={o.status} size="sm" />,
     },
     {
+      chave: 'financeiro',
+      titulo: 'Financeiro',
+      largura: 180,
+      valorOrdenacao: (o) => getStatusFinanceiro(o, recibos) ?? '',
+      render: (o) => <FinanceiroBadge status={getStatusFinanceiro(o, recibos)} />,
+    },
+    {
       chave: 'data',
       titulo: 'Data',
       largura: 120,
@@ -139,7 +150,7 @@ export default function OrcamentosDesktopScreen() {
         </View>
       ),
     },
-  ], [nav, styles]);
+  ], [nav, recibos, styles]);
 
   return (
     <LayoutDesktop

@@ -52,7 +52,7 @@ arquivos: **estes dois vencem**.
 **P1 — dinheiro, segurança, entrega ao cliente:**
 - [ ] **Paywall do plano Empresa** (worker `handleConvite` checa plano do owner + `GatePro` nas rotas de Equipe).
   Ver `olli-paywall-empresa-ausente`. **DEPENDE de decisão do dono.**
-- [ ] **XSS em `modeloPdf`** do orçamento (`pdfGenerator.ts`) — mesma blindagem `modeloSeguro()` do recibo.
+- [x] **XSS em `modeloPdf`** do orçamento — **FEITO (2026-09-08)**: `pdfGenerator.ts` aplica whitelist estrita de modelos antes de montar a classe HTML; `test:c5-orcamentos-financeiro` e `npm test` continuam verdes.
 - [ ] **`/stripe/webhook` e `/transcrever`**: teto de payload + rate-limit por IP ANTES de bufferizar o corpo;
   `/transcrever` deve validar plano/cota mensal (hoje só client-side).
 - [x] **`contextoEquipeOwner` com 3 estados** — **FEITO (2026-07-16, O0-4, commit `9d8e849`)**. Agora usa
@@ -83,12 +83,11 @@ arquivos: **estes dois vencem**.
 
 ## Pendentes (27)
 
-1. **Badge financeiro na tabela desktop de orçamentos**
-   - `src/screens/desktop/OrcamentosDesktopScreen.tsx` não recebeu o badge de estado
-     financeiro (Pago / Recibo emitido / Aguardando) nem o atalho "Registrar pagamento"
-     que o mobile (`OrcamentosScreen`) ganhou na Onda 3. Portar `getStatusFinanceiro` +
-     `BadgeFinanceiroPill` de `src/services/pagamentos.ts` (carregar `getRecibos` junto
-     de `getOrcamentos`). Paridade desktop, não elo quebrado.
+1. [x] **Badge financeiro na tabela desktop de orçamentos — FEITO (2026-09-08)**
+   - `OrcamentosDesktopScreen` agora carrega recibos junto dos orçamentos, deriva o
+     mesmo estado financeiro do domínio (`Aguardando pagamento`, `Pago`, `Recibo emitido`)
+     e renderiza `FinanceiroBadge` com acessibilidade. O atalho de recibo existente
+     permanece separado para não transformar uma leitura em cobrança.
 
 2. **Limpar versões órfãs de orçamento na nuvem ao excluir**
    - `src/database/database.ts` `deleteOrcamento` apaga versões locais + tombstone do

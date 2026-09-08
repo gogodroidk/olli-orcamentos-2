@@ -6,8 +6,11 @@ const dominio = ler('../src/types/index.ts');
 const lista = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
 const quadro = ler('../webapp/src/features/kanban/utils/colunas.ts');
 const financeiro = ler('../webapp/src/pages/olli/inicio/financeiro.ts');
+const pagamentos = ler('../src/services/pagamentos.ts');
 const inicio = ler('../webapp/src/pages/olli/inicio/index.tsx');
 const radar = ler('../webapp/src/pages/olli/inicio/RadarDinheiroCard.tsx');
+const tabelaDesktop = ler('../src/screens/desktop/OrcamentosDesktopScreen.tsx');
+const badgeFinanceiro = ler('../src/components/FinanceiroBadge.tsx');
 
 for (const status of ['aprovado', 'convertido', 'recusado', 'cancelado']) {
   assert.match(dominio, new RegExp(`\\| '${status}'`), `status ${status} precisa existir no domínio`);
@@ -22,5 +25,10 @@ assert.match(financeiro, /calcularTaxaAprovacao/, 'taxa de aprovação precisa t
 assert.match(financeiro, /listarDinheiroParado/, 'contas a receber precisam descontar recibos');
 assert.match(radar, /Não foi possível ler o dinheiro parado/, 'erro financeiro não pode virar saldo zero silencioso');
 assert.match(inicio, /A RECEBER/, 'a tela inicial precisa expor contas a receber');
+assert.match(tabelaDesktop, /getRecibos/, 'a tabela desktop precisa carregar recibos para o estado financeiro');
+assert.match(tabelaDesktop, /FinanceiroBadge/, 'a tabela desktop precisa exibir o estado financeiro');
+assert.match(badgeFinanceiro, /getBadgeFinanceiro/, 'o badge financeiro precisa reutilizar o contrato de estados');
+assert.match(pagamentos, /Aguardando pagamento/, 'o contrato financeiro precisa explicar o estado pendente');
+assert.match(pagamentos, /Recibo emitido/, 'o contrato financeiro precisa distinguir recibo formal');
 
 console.log('OK — revisão/duplicação, quadro de estados e financeiro operacional validados.');

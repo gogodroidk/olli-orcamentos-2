@@ -24,6 +24,10 @@
   limpa do Android reaplicou o guard, o `assembleDebug` passou e `assembleRelease`
   sem keystore falhou antes de produzir artefato. A árvore `android/` continua
   gerada/ignorada, mas não perde mais essa regra.
+- A tabela desktop de orçamentos ganhou paridade financeira: carrega recibos junto
+  da lista e mostra `Aguardando pagamento`, `Pago` ou `Recibo emitido` pelo mesmo
+  contrato de `src/services/pagamentos.ts`, com `FinanceiroBadge` acessível. O teste
+  C5 e a suíte completa permanecem verdes.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
