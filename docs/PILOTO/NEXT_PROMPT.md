@@ -1,6 +1,6 @@
 # Self-prompt — OLLI 0→100
 
-Atualizado em: **2026-09-07T23:40:00-03:00**
+Atualizado em: **2026-09-08T04:48:58-03:00**
 Estado: **CONTINUIDADE CONTROLADA — base local + staging público comprovados; gates externos ainda abertos**
 
 ## Estado canônico
@@ -19,14 +19,14 @@ Estado: **CONTINUIDADE CONTROLADA — base local + staging público comprovados;
 2. J3.1 shadow: IDs únicos, timestamp UTC canônico, cronologia, proteção contra Symbol e imutabilidade sem efeito lateral; `8/8`, kernel com 99,07% de linhas; revisão independente sem P0/P1.
 3. Persistência de notificações: draft fail-closed de sete tabelas, sem token bruto, RLS forçada, retenção de 90 dias e purge paginado; `25/25` e 40 statements parseados.
 4. Admin: `/admin/api/user` exige AAL2 antes da primeira consulta service-role e o RBAC de detalhe admite suporte/financeiro/admin/owner com datasets mínimos; governança `24/24`, dados `21/21` e dry-run do Worker aprovados.
-5. Release: configuração Expo/EAS, identidade, perfis e assets auditados; `16/16`, release config e Expo config aprovados. PWA ainda não instalável (`display=browser`, sem service worker); nenhum build/loja/aparelho executado.
+5. Release: configuração Expo/EAS, identidade, perfis e assets auditados; `16/16`, release config e Expo config aprovados. APK debug foi compilado, instalado e aberto no `SM-G780F` (Android 13/API 33) com Metro via USB reverse; assinatura de release continua fail-closed. PWA ainda não instalável (`display=browser`, sem service worker); loja/AAB assinado não foram publicados.
 6. Billing: mapa Stripe/Mercado Pago/Apple IAP, proposta de fonte autoritativa servidor e roteiro sandbox de 12 passos; `230/230` asserções locais.
 
 ## Estado operacional de e-mail já comprovado
 
 - Supabase `yiaeplqinnnnniyvwtls` e o canário live abaixo são históricos; não usar como prova do staging atual.
 - Supabase `OLLI-STAGING` (`sbpkutknpywezeagioon`) recebeu as 41 migrations de runtime manualmente.
-- Worker `olli-diagnostico-staging` está em `workers.dev`, versão `2bb04a5b-6b52-4bd4-91ec-8dae84af40b0`, cron configurado.
+- Worker `olli-diagnostico-staging` está em `workers.dev`, versão label `85ddf947`, cron configurado; o build automático `81e53bff-2918-4581-a274-905dc91ee866` terminou com sucesso.
 - `WELCOME_DISPATCH_MODE=off` até secrets de teste existirem; linhas normais permanecem `hold`.
 - Único canário: `delivered@resend.dev`, `claimed=1`, `sent=1`, `failed=0`, uma tentativa, provider ID presente e zero resíduo sintético.
 - Isto prova aceitação técnica da API no simulador, não rollout nem entrega para usuário real.
@@ -73,11 +73,9 @@ Ao reabrir, gerar novos `run_id` e `handoff_id`, renovar a lease, registrar `INI
 
 ## Self-prompt da retomada atual
 
-Quando o proprietário autorizar um gate específico, retomar nesta ordem: (1)
-conectar o Cloudflare Git Build somente ao Worker staging e à branch
-`codex/piloto-p0`; (2) provisionar secrets de teste pelos fluxos oficiais sem
-imprimir valores; (3) reconciliar migration history/rollback; (4) executar
-smoke autenticado de RLS/Storage com fixtures sintéticas; (5) revisar com
-`security`/`reviewer`; (6) só então atualizar o próximo gate. Se não houver
-autorização nova, não inventar atividade externa: manter produção protegida e
-executar apenas validações read-only/autônomas.
+Com o gate do Cloudflare concluído, retomar nesta ordem: (1) provisionar secrets
+de teste pelos fluxos oficiais sem imprimir valores; (2) reconciliar migration
+history/rollback; (3) executar smoke autenticado de RLS/Storage com fixtures
+sintéticas; (4) revisar com `security`/`reviewer`; (5) só então atualizar o
+próximo gate. Se não houver autorização nova, não inventar atividade externa:
+manter produção protegida e executar apenas validações read-only/autônomas.

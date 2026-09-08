@@ -41,15 +41,16 @@
 - The previous simulator setting produced scheduled configuration errors while
   secrets were absent; the off-mode redeploy removes that false-green state.
   Enabling the simulator remains a staging secret gate, not a production gate.
-- Current staging Worker version: `d53861a5-fda7-4e90-9430-3f8f7fef231e`,
-  deployed with `WELCOME_DISPATCH_MODE=off` and verified by the same public
-  smoke contract.
+- Current staging Worker version label: `85ddf947`, deployed by the first
+  Cloudflare Git Build (`81e53bff-2918-4581-a274-905dc91ee866`) from commit
+  `9af14eddcac825e05b169941bcbbc289d8c6c8fe`. It remains staging-only,
+  `WELCOME_DISPATCH_MODE=off`, and passed the same public smoke contract.
 - O procedimento reproduzível para secrets de teste e canário está em
   `ops/staging/SECRETS_AND_CANARY_RUNBOOK.md`; nenhum valor é armazenado nele.
-- Cloudflare Git Build agora está conectado ao repositório
+- Cloudflare Git Build está conectado ao repositório
   `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, com previews
   desligados e deploy restrito ao `--env staging`. O primeiro build automático
-  será comprovado pelo push deste checkpoint.
+  foi concluído com sucesso; não há promoção para produção.
 
 ## Safety decision
 

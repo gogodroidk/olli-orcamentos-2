@@ -1,7 +1,29 @@
 # EXECUTION_LOG — OLLI Orçamentos
 
 > O que já foi ENTREGUE, com evidência (commit ou arquivo). Atualizar ao fim de cada onda.
-> Última atualização: 2026-07-12.
+> Última atualização: 2026-09-08.
+
+## Validação de staging, build e aparelho — 2026-09-08
+
+- Cloudflare Git Build do `olli-diagnostico-staging` está conectado ao repositório
+  `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, previews desligados e
+  deploy restrito a `--env staging`. O primeiro build (`81e53bff-2918-4581-a274-905dc91ee866`)
+  terminou em **success**; a versão ativa apareceu como `85ddf947`.
+- `npm run staging:smoke` passou health `200`, CORS `204`, gates de método `405`,
+  shell admin `200`, sem efeitos colaterais. `npm run check:environments`, `npm test`,
+  `npm run typecheck`, build web (`pnpm build`), testes do Worker, `wrangler types`
+  e `wrangler types --check` também passaram; o dry-run do Worker foi executado sem deploy.
+- O APK debug foi compilado com `:app:assembleDebug`, instalado via ADB no
+  `SM-G780F` (`RX8NB033HXP`, Android 13/API 33), ligado ao Metro por
+  `adb reverse tcp:8081 tcp:8081` e aberto sem `FATAL EXCEPTION`, `AndroidRuntime`
+  ou `ReactNativeJS` após o bundle. A tela de login carregou e o e-mail de QA foi
+  preenchido; a senha não é lida nem armazenada pelo agente, portanto o login
+  autenticado continua um passo humano seguro.
+- O guard de assinatura agora é persistente no config plugin versionado
+  `plugins/withReleaseSigningGuard.js`, registrado em `app.json`: uma regeneração
+  limpa do Android reaplicou o guard, o `assembleDebug` passou e `assembleRelease`
+  sem keystore falhou antes de produzir artefato. A árvore `android/` continua
+  gerada/ignorada, mas não perde mais essa regra.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
