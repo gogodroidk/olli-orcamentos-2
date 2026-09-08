@@ -10,4 +10,3 @@ assert.match(row, /accessibilityState=\{\{ checked: item\.feito \}\}/, 'checklis
 assert.match(pressable, /accessibilityState=\{\{ disabled, \.\.\.accessibilityState \}\}/, 'OlliPressable precisa preservar o estado acessível');
 
 console.log('OK — checklist anuncia papel e estado acessível.');
-
