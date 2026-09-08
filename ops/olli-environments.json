@@ -60,6 +60,14 @@
           "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
         },
+        "cloudflareGitBuild": {
+          "status": "connected",
+          "repository": "gogodroidk/olli-orcamentos-2",
+          "branch": "codex/piloto-p0",
+          "previews": false,
+          "buildCommand": "npm ci --prefix worker && npm run types --prefix worker",
+          "deployCommand": "npx wrangler deploy --config worker/wrangler.jsonc --env staging"
+        },
         "githubPromotion": {
           "pullRequest": 42,
           "pullRequestState": "draft",

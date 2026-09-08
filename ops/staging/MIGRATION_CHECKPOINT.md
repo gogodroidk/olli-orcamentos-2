@@ -46,6 +46,10 @@
   smoke contract.
 - O procedimento reproduzível para secrets de teste e canário está em
   `ops/staging/SECRETS_AND_CANARY_RUNBOOK.md`; nenhum valor é armazenado nele.
+- Cloudflare Git Build agora está conectado ao repositório
+  `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, com previews
+  desligados e deploy restrito ao `--env staging`. O primeiro build automático
+  será comprovado pelo push deste checkpoint.
 
 ## Safety decision
 
