@@ -82,7 +82,10 @@ arquivos: **estes dois vencem**.
 - [ ] **Handler de toque na notificação** (`addNotificationResponseReceivedListener` → navega pra OS/agenda) +
   **teto de lembretes PMOC** + **cancelar lembretes no logout "manter dados"** (hoje vazam nome/endereço).
 - [ ] **Badges PMOC** via `corCategoriaEmChip` (contraste — 2 telas).
-- [ ] **Copy que mente**: `public/index.html` estático + `ComparadorLanding` ("assinatura", "equipe no mapa").
+- [x] **Copy que mente — FEITO (2026-09-08).** `ComparadorLanding` agora fala de orçamento offline,
+  aprovação/assinatura por link, IA para montar orçamento por voz e equipe com permissões no plano
+  Empresa; removeu promessas de PMOC pronto para fiscalização, diagnóstico automático e mapa em tempo
+  real. `test:landing-c4` cobre os textos proibidos e os benefícios reais.
 
 **P2/P3 — perf, higiene, código morto:**
 - [ ] `codigos_erro.json` (365KB) fora do import estático do boot (carregar sob demanda / só no seed).
