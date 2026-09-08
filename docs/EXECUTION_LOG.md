@@ -29,6 +29,10 @@
   contar assinaturas pendentes e detectar movimento recente: agora usa um agregado
   SQL de status e uma lista de datas. O contrato `test:hoje-agregado` passou com 4
   verificações e `npm test` permaneceu verde.
+- O webhook Stripe ganhou limitador por IP antes do primeiro byte do corpo,
+  reutilizando o binding sensível `STRIPE_RL`; `/transcrever` ficou documentado
+  como coberto por teto incremental, rate limit e quota server-side. O novo teste
+  `test:stripe-webhook-gate` prova que 429 não consome o stream.
 - O primeiro reteste no `SM-G780F` encontrou uma regressão de ordem de abertura
   da migration local: o índice de `espelho_pendente` era criado antes da coluna
   em bancos antigos. O índice foi movido para depois de `runMigrations`; o APK

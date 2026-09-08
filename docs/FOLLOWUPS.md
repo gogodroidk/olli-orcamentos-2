@@ -57,8 +57,11 @@ arquivos: **estes dois vencem**.
   grandfathering explícito para organizações antigas. Cobertura em
   `test:entitlement-equipe`, C7 e testes do worker.
 - [x] **XSS em `modeloPdf`** do orçamento — **FEITO (2026-09-08)**: `pdfGenerator.ts` aplica whitelist estrita de modelos antes de montar a classe HTML; `test:c5-orcamentos-financeiro` e `npm test` continuam verdes.
-- [ ] **`/stripe/webhook` e `/transcrever`**: teto de payload + rate-limit por IP ANTES de bufferizar o corpo;
-  `/transcrever` deve validar plano/cota mensal (hoje só client-side).
+- [x] **`/stripe/webhook` e `/transcrever` — FEITO (2026-09-08).** O webhook Stripe agora
+  aplica o `STRIPE_RL` por IP antes de ler o corpo, além do teto HMAC de 128 KiB; 429 faz a
+  Stripe reenviar sem consumir o stream. `/transcrever` já tinha teto incremental de 4 MiB,
+  `TRANSCREVER_RL` antes do buffer e reserva server-side de neurônios/créditos. Cobertura em
+  `test:stripe-webhook-gate`, `test:body-limit`, `test:creditos-voz` e Worker dry-run.
 - [x] **`contextoEquipeOwner` com 3 estados** — **FEITO (2026-07-16, O0-4, commit `9d8e849`)**. Agora usa
   `carregarMinhaOrganizacao` (3 estados); `erro` vira `desconhecido` e o push das 8 tabelas de tenant é ADIADO
   (fail-closed) — nada se perde, o SQLite local é a fonte da verdade e o próximo sync empurra. A decisão pura
