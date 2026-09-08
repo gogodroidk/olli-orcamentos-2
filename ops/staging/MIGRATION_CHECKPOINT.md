@@ -60,6 +60,10 @@
   `53697bb1-fc3f-405f-bdf6-55ee0b7b490e` (label `53697bb1`). The Worker remains
   staging-only, `WELCOME_DISPATCH_MODE=off`, and `npm run staging:smoke` passed
   health `200`, CORS `204`, method gates `405` and admin shell `200` with no side effects.
+- Revalidated again after commit `67b7dae9cee599b683516d9cdc5b5fb2459053c0`:
+  deployment `0d938610-705b-442a-aa37-676490c201ff` is 100% on version
+  `7add4339-840e-4bbd-a699-cc99bf73a19b` (label `7add4339`). This version contains
+  the SQLite migration-order fix; the same public smoke remains green with no side effects.
 - O procedimento reproduzível para secrets de teste e canário está em
   `ops/staging/SECRETS_AND_CANARY_RUNBOOK.md`; nenhum valor é armazenado nele.
 - Cloudflare Git Build está conectado ao repositório

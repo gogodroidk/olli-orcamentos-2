@@ -21,6 +21,10 @@
   `53697bb1-fc3f-405f-bdf6-55ee0b7b490e` (100% staging, deployment
   `fa01b6e5-85ba-445f-afa9-815b36b1afbb`). O smoke público foi repetido com
   sucesso; produção continua sem promoção.
+- O patch corretivo `67b7dae9cee599b683516d9cdc5b5fb2459053c0` também foi
+  publicado em staging: versão ativa observada `7add4339-840e-4bbd-a699-cc99bf73a19b`
+  (deployment `0d938610-705b-442a-aa37-676490c201ff`), 100% no Worker isolado;
+  o smoke foi repetido e permaneceu verde.
 - O primeiro reteste no `SM-G780F` encontrou uma regressão de ordem de abertura
   da migration local: o índice de `espelho_pendente` era criado antes da coluna
   em bancos antigos. O índice foi movido para depois de `runMigrations`; o APK
