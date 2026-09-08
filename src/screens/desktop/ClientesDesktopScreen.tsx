@@ -17,6 +17,7 @@ import { abrirWhatsApp } from '../../utils/pdfGenerator';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Cliente, Orcamento } from '../../types';
 import { avisar } from './dialogo';
+import { usePermissao } from '../../hooks/usePermissao';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,6 +32,8 @@ export default function ClientesDesktopScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const { pode, carregando: carregandoPermissao } = usePermissao();
+  const podeGerenciarClientes = !carregandoPermissao && pode('gerenciar_clientes');
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [busca, setBusca] = useState('');
@@ -81,6 +84,10 @@ export default function ClientesDesktopScreen() {
   }
 
   function abrirEdicao(c: Cliente) {
+    if (!podeGerenciarClientes) {
+      avisar('Acesso restrito', 'Só o gestor da conta pode editar o cadastro deste cliente.');
+      return;
+    }
     setClienteEditando(c);
     setPainelVisivel(true);
   }
@@ -161,11 +168,16 @@ export default function ClientesDesktopScreen() {
           <AcaoIcone icone="whatsapp" rotulo="WhatsApp" onPress={() => chamarWhatsApp(c)} />
           <AcaoIcone icone="file-document-outline" rotulo="Orçamentos" onPress={() => verOrcamentos(c)} />
           <AcaoIcone icone="calendar-plus" rotulo="Agendar visita" onPress={() => agendarVisita(c)} />
-          <AcaoIcone icone="pencil-outline" rotulo="Editar" onPress={() => abrirEdicao(c)} />
+          <AcaoIcone
+            icone="pencil-outline"
+            rotulo={podeGerenciarClientes ? 'Editar' : 'Editar (acesso restrito)'}
+            disabled={!podeGerenciarClientes}
+            onPress={() => abrirEdicao(c)}
+          />
         </View>
       ),
     },
-  ], [nav, styles]);
+  ], [nav, podeGerenciarClientes, styles]);
 
   return (
     <LayoutDesktop
@@ -190,7 +202,7 @@ export default function ClientesDesktopScreen() {
         colunas={colunas}
         dados={linhas}
         carregando={carregando}
-        aoClicarLinha={(c) => abrirEdicao(c)}
+         aoClicarLinha={(c) => abrirEdicao(c)}
         ordenacaoInicial={{ chave: 'nome', direcao: 'asc' }}
         vazio={
           <EmptyState
@@ -213,16 +225,18 @@ export default function ClientesDesktopScreen() {
   );
 }
 
-function AcaoIcone({ icone, rotulo, onPress }: { icone: keyof typeof MaterialCommunityIcons.glyphMap; rotulo: string; onPress: () => void }) {
+function AcaoIcone({ icone, rotulo, onPress, disabled = false }: { icone: keyof typeof MaterialCommunityIcons.glyphMap; rotulo: string; onPress: () => void; disabled?: boolean }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   return (
     <Pressable
       onPress={(e) => { e.stopPropagation(); onPress(); }}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={rotulo}
+      accessibilityState={{ disabled }}
       hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-      style={({ hovered, focused }: PressableWebState) => [styles.acaoIcone, hovered && styles.acaoIconeHover, focused && styles.focoVisivel]}
+      style={({ hovered, focused }: PressableWebState) => [styles.acaoIcone, disabled && { opacity: 0.45 }, !disabled && hovered && styles.acaoIconeHover, focused && styles.focoVisivel]}
     >
       <MaterialCommunityIcons name={icone} size={17} color={cores.onSurfaceVariant} />
     </Pressable>
