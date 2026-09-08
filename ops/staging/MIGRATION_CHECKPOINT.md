@@ -35,6 +35,14 @@
   preflight `204`, method gates for Resend and IA actions (`405`) and the
   noindex admin shell (`200`). The smoke only uses the `workers.dev` URL and
   has no side effects.
+- Supabase CLI advisors were rerun read-only on `2026-09-08T06:47:02-03:00`.
+  The security warnings are the seven intentional public business RPCs that
+  still need `SECURITY DEFINER` to perform invite/organization/trial/quota
+  transitions; the live definitions all use `search_path=''`, check `auth.uid()`
+  and grant execution to `authenticated` (never `anon`/`public`). The private RLS
+  helper migration is separate and keeps its public wrappers invoker-only. The
+  remaining advisor warnings about permissive policies/duplicate indexes stay
+  as review items; no blind DROP or policy rewrite was executed.
 - GitHub promotion proof: draft PR **#42** is open from `codex/piloto-p0` to
   `main`; workflow run `34075474398` completed with `quality-and-builds` and
   `staging-promotion` successful, while `production-promotion` was skipped.
