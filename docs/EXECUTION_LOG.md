@@ -28,6 +28,9 @@
   da lista e mostra `Aguardando pagamento`, `Pago` ou `Recibo emitido` pelo mesmo
   contrato de `src/services/pagamentos.ts`, com `FinanceiroBadge` acessível. O teste
   C5 e a suíte completa permanecem verdes.
+- O checklist da tela Hoje agora anuncia papel `checkbox` e estado marcado para
+  leitores de tela; `test:acessibilidade-checklist` fecha a regressão sem adicionar
+  animação nova ou alterar o fluxo de dados.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 

@@ -161,6 +161,8 @@ const CheckRow = React.memo(function CheckRow(
         onPress={() => onToggle(item.id)}
         haptic={false}
         accessibilityLabel={item.feito ? `Desmarcar ${item.texto}` : `Concluir ${item.texto}`}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: item.feito }}
       >
         <Animated.View style={{ transform: [{ scale }] }}>
           <MaterialCommunityIcons

@@ -111,12 +111,10 @@ arquivos: **estes dois vencem**.
      | 'a_receber' | StatusOrcamento`) e `OrcamentosDesktopScreen` inicializar o filtro a
      partir dele (recortes derivados via `propostaJaEnviada`/`getReciboDoOrcamento`).
 
-5. **Role de checkbox no `OlliPressable` (acessibilidade)**
-   - O toggle de checklist (`CheckRow` em `src/screens/HojeScreen.tsx`) usa `OlliPressable`,
-     que hardcoda `accessibilityRole="button"` e não expõe `accessibilityRole/State`. Para
-     leitor de tela soa como "botão", não "caixa marcada/desmarcada". Estender
-     `src/components/OlliPressable.tsx` para repassar `accessibilityRole`+`accessibilityState`
-     e usar `role="checkbox"` + `{checked: item.feito}` no CheckRow.
+5. [x] **Role de checkbox no `OlliPressable` — FEITO (2026-09-08)**
+   - `OlliPressable` já repassava `accessibilityRole`/`accessibilityState`; `CheckRow`
+     agora anuncia `checkbox` e `{checked: item.feito}`. `test:acessibilidade-checklist`
+     cobre o contrato.
 
 ---
 
