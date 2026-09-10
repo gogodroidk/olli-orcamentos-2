@@ -109,7 +109,7 @@ export function RegistrarPagamentoModal({ visivel, clienteNome, valorSugerido, a
             {erro ? <Text style={styles.erro} accessibilityRole="alert">{erro}</Text> : null}
 
             <OlliButton
-              label="Marcar como pago"
+              label="Registrar recebimento"
               variant="success"
               size="lg"
               fullWidth

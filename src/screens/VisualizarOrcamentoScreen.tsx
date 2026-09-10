@@ -445,7 +445,13 @@ export default function VisualizarOrcamentoScreen() {
     const atualizados = await getRecibos();
     setRecibos(atualizados);
     setPagamentoAberto(false);
-    Alert.alert('Pagamento registrado', 'O orçamento agora aparece como Pago. Se quiser, gere o recibo em seguida.');
+    const estado = getStatusFinanceiro(orc, atualizados);
+    Alert.alert(
+      estado === 'pago' || estado === 'recibo_emitido' ? 'Orçamento quitado' : 'Recebimento registrado',
+      estado === 'pago' || estado === 'recibo_emitido'
+        ? 'O saldo foi quitado. Se quiser, gere ou reenvie o recibo em seguida.'
+        : 'O saldo continua aberto e o próximo recebimento pode ser registrado depois.',
+    );
   }
 
   /**

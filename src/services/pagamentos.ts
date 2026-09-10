@@ -120,6 +120,20 @@ export interface RegistrarPagamentoInput {
  */
 export async function registrarPagamento(input: RegistrarPagamentoInput): Promise<Recibo> {
   const { orcamento, valorRecebido, formaPagamento, dataRecebimento } = input;
+  if (orcamento.status !== 'aprovado' && orcamento.status !== 'convertido') {
+    throw new Error('Só é possível registrar recebimento de um orçamento aprovado ou convertido.');
+  }
+  if (!Number.isFinite(valorRecebido) || valorRecebido <= 0) {
+    throw new Error('O valor recebido deve ser maior que zero.');
+  }
+  if (!formaPagamento?.trim() || !dataRecebimento?.trim()) {
+    throw new Error('Informe a forma e a data do recebimento.');
+  }
+  const recebimentos = await getRecibos();
+  const saldo = Math.max(0, (orcamento.valorTotal || 0) - totalRecebidoDoOrcamento(orcamento.id, recebimentos));
+  if (saldo <= 0 || valorRecebido > saldo + 0.005) {
+    throw new Error('O valor informado ultrapassa o saldo restante deste orçamento.');
+  }
   const numero = await getNextReciboNumber();
   const recibo: Recibo = {
     id: generateId(),
