@@ -180,7 +180,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          'Depois que o serviço foi pago, você emite um recibo numerado automaticamente (a numeração é sequencial e nunca se repete), com a forma de pagamento usada — crédito, débito, dinheiro ou PIX (com sua chave já preenchida a partir de Meu Negócio).',
+          'Depois que o serviço foi pago, você emite um recibo numerado automaticamente (a numeração é sequencial e nunca se repete), com a forma de pagamento usada — crédito, débito, dinheiro ou PIX (com sua chave já preenchida a partir de Meu Negócio). Se houver sinal ou parcelas, registre cada recebimento: o OLLI mostra Pagamento parcial até o saldo zerar.',
       },
       {
         tipo: 'passos',

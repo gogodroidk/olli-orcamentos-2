@@ -79,7 +79,7 @@ export default function OrcamentosDesktopScreen() {
     if (recorteInicial === 'em_aberto') {
       r = r.filter((o) => ['enviado', 'visualizado', 'em_negociacao', 'aguardando_assinatura'].includes(o.status));
     } else if (recorteInicial === 'a_receber') {
-      r = r.filter((o) => getStatusFinanceiro(o, recibos) === 'aguardando_pagamento');
+      r = r.filter((o) => ['aguardando_pagamento', 'parcial'].includes(getStatusFinanceiro(o, recibos) ?? ''));
     } else if (recorteInicial) {
       r = r.filter((o) => o.status === recorteInicial);
     }

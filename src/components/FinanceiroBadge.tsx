@@ -10,7 +10,7 @@ export function FinanceiroBadge({ status }: { status: StatusFinanceiro | null })
   if (!status) return null;
   const badge = getBadgeFinanceiro(status);
 
-  const tone = status === 'aguardando_pagamento'
+  const tone = status === 'aguardando_pagamento' || status === 'parcial'
     ? cores.warning
     : status === 'pago'
       ? cores.success

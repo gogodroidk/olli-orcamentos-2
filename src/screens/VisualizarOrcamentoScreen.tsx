@@ -24,7 +24,7 @@ import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
-import { getStatusFinanceiro, registrarPagamento } from '../services/pagamentos';
+import { getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { RegistrarPagamentoModal, type PagamentoForm } from '../components/RegistrarPagamentoModal';
 import { usePlano } from '../hooks/usePlano';
@@ -602,8 +602,8 @@ export default function VisualizarOrcamentoScreen() {
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
-          {getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' && (
-            <ActionBtn icon="cash-check" label="Marcar pago" onPress={() => setPagamentoAberto(true)} />
+          {(getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' || getStatusFinanceiro(orc, recibos) === 'parcial') && (
+            <ActionBtn icon="cash-check" label="Registrar pagamento" onPress={() => setPagamentoAberto(true)} />
           )}
           {orc.status === 'aprovado' && (
             <ActionBtn icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
@@ -831,6 +831,9 @@ export default function VisualizarOrcamentoScreen() {
           {getStatusFinanceiro(orc, recibos) === 'pago' && (
             <Text style={styles.financeiroNota}>Pagamento registrado. O recibo em PDF continua disponível no botão “Recibo”.</Text>
           )}
+          {getStatusFinanceiro(orc, recibos) === 'parcial' && (
+            <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
+          )}
           {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
           {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
           {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
@@ -935,7 +938,7 @@ export default function VisualizarOrcamentoScreen() {
       <RegistrarPagamentoModal
         visivel={pagamentoAberto}
         clienteNome={orc.clienteNome}
-        valorSugerido={orc.valorTotal}
+        valorSugerido={Math.max(0, orc.valorTotal - totalRecebidoDoOrcamento(orc.id, recibos))}
         aoFechar={() => setPagamentoAberto(false)}
         aoSalvar={salvarPagamento}
       />

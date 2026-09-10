@@ -33,13 +33,13 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { Colors } from '../theme';
 
-export type StatusFinanceiro = 'aguardando_pagamento' | 'pago' | 'recibo_emitido';
+export type StatusFinanceiro = 'aguardando_pagamento' | 'parcial' | 'pago' | 'recibo_emitido';
 
 export interface BadgeFinanceiro {
   status: StatusFinanceiro;
   label: string;
   color: string;
-  icon: 'clock-outline' | 'cash-check' | 'file-check-outline';
+  icon: 'clock-outline' | 'cash-check' | 'cash-multiple' | 'file-check-outline';
 }
 
 /** Recibo (se houver) vinculado a este orçamento — o mais recente primeiro. */
@@ -48,6 +48,13 @@ export function getReciboDoOrcamento(orcamentoId: string, recibos: Recibo[]): Re
   if (doOrc.length === 0) return null;
   // getRecibos() já vem ordenado por criadoEm desc; por segurança reordenamos aqui também.
   return [...doOrc].sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''))[0];
+}
+
+/** Soma todos os recebimentos vinculados ao orçamento (pagamento parcial incluso). */
+export function totalRecebidoDoOrcamento(orcamentoId: string, recibos: Recibo[]): number {
+  return recibos
+    .filter(r => r.orcamentoId === orcamentoId)
+    .reduce((total, r) => total + (Number.isFinite(r.valorRecebido) ? Math.max(0, r.valorRecebido) : 0), 0);
 }
 
 /**
@@ -59,12 +66,14 @@ export function getReciboDoOrcamento(orcamentoId: string, recibos: Recibo[]): Re
  */
 export function getStatusFinanceiro(orcamento: Orcamento, recibos: Recibo[]): StatusFinanceiro | null {
   if (orcamento.status !== 'aprovado' && orcamento.status !== 'convertido') return null;
-  const recibo = getReciboDoOrcamento(orcamento.id, recibos);
-  if (!recibo) return 'aguardando_pagamento';
+  const vinculados = recibos.filter(r => r.orcamentoId === orcamento.id);
+  const recebido = totalRecebidoDoOrcamento(orcamento.id, recibos);
+  if (recebido <= 0 || vinculados.length === 0) return 'aguardando_pagamento';
+  const total = Math.max(0, orcamento.valorTotal || 0);
+  if (total > 0 && recebido + 0.005 < total) return 'parcial';
   // pdfEmitido ausente = recibo LEGADO (criado antes deste campo existir),
-  // que já era o formal/final naquela época — trata como já emitido. Só
-  // volta 'pago' quando o campo existe e é explicitamente false.
-  return recibo.pdfEmitido === false ? 'pago' : 'recibo_emitido';
+  // que já era o formal/final naquela época — trata como já emitido.
+  return vinculados.some(r => r.pdfEmitido !== false) ? 'recibo_emitido' : 'pago';
 }
 
 export function getBadgeFinanceiro(status: StatusFinanceiro): BadgeFinanceiro {
@@ -73,6 +82,8 @@ export function getBadgeFinanceiro(status: StatusFinanceiro): BadgeFinanceiro {
       return { status, label: 'Recibo emitido', color: Colors.primary, icon: 'file-check-outline' };
     case 'pago':
       return { status, label: 'Pago', color: Colors.success, icon: 'cash-check' };
+    case 'parcial':
+      return { status, label: 'Pagamento parcial', color: Colors.warning, icon: 'cash-multiple' };
     case 'aguardando_pagamento':
     default:
       return { status: 'aguardando_pagamento', label: 'Aguardando pagamento', color: Colors.warning, icon: 'clock-outline' };
