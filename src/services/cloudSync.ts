@@ -1797,7 +1797,7 @@ async function localUpsertDocumento(d: DocumentoBibliotecaRegistro): Promise<voi
 async function localUpsertDocumentoVersao(v: DocumentoBibliotecaVersao): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    `INSERT OR REPLACE INTO documento_versoes
+    `INSERT OR IGNORE INTO documento_versoes
       (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
      VALUES (?,?,?,?,?,?,?,?)`,
     [v.id, v.documentoId, v.numeroVersao, JSON.stringify(v.dados ?? {}), v.arquivoUri ?? null,
