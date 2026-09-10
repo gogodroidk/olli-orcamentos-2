@@ -24,8 +24,6 @@ export { abrirWhatsApp } from './exportarDocumento';
  *     `false` => rodapé DISCRETO da OLLI em todo documento. `true` (Pro/
  *     Empresa) => sem esse rodapé (dados legais/PIX/validade PERMANECEM).
  */
-import { qrSvg } from './qrcode';
-
 export type CapaEstilo = 'logo' | 'foto' | 'nenhuma';
 
 interface CapaCampos {
@@ -39,8 +37,8 @@ export interface OpcoesPdf {
   removerMarca?: boolean;
   /**
    * URL pública do orçamento (`https://link.../o/<token>`). Quando presente, o PDF
-   * ganha os blocos de QR "Aprovar" e "Recusar". Ausente (offline, sem nuvem), o
-   * documento cai no texto de instrução de sempre — nunca mostra um QR morto.
+   * ganha botões/link de ação "Abrir e aprovar" e "Abrir e pedir ajuste". Ausente
+   * (offline, sem nuvem), o documento cai no texto de instrução de sempre.
    */
   linkPublico?: string;
 }
@@ -428,24 +426,14 @@ function cssModelos(accent: string): string {
   `;
 }
 
-/**
- * Bloco de QR para uma ação do cliente.
- *
- * O SVG vai INLINE, não como `<img src="data:image/svg+xml...">`: o motor de
- * impressão do iOS (UIMarkupTextPrintFormatter) costuma ignorar data-URI de SVG,
- * enquanto o do Android (Chromium) as renderiza. Um QR que aparece num celular e
- * some no outro entrega ao cliente um retângulo branco.
- *
- * A URL vai TAMBÉM por extenso: numa folha impressa, num PDF aberto no desktop, ou
- * num leitor que não abre a câmera, o texto é a única saída.
- */
-function renderQrAcao(url: string, rotulo: string, legenda: string, classe: string): string {
+/** Bloco de link clicável para uma ação do cliente. O URL também fica visível
+ * para cópia quando o visualizador não mantém links do PDF. */
+function renderLinkAcao(url: string, rotulo: string, legenda: string, classe: string): string {
   return `
-    <div class="qr-card ${classe}">
-      <div class="qr-rotulo">${escapeHtml(rotulo)}</div>
-      <div class="qr-img">${qrSvg(url)}</div>
-      <div class="qr-legenda">${escapeHtml(legenda)}</div>
-      <div class="qr-url">${escapeHtml(url)}</div>
+    <div class="link-card ${classe}">
+      <a class="link-button" href="${escapeHtml(url)}">${escapeHtml(rotulo)}</a>
+      <div class="link-legenda">${escapeHtml(legenda)}</div>
+      <div class="link-url">${escapeHtml(url)}</div>
     </div>
   `;
 }
@@ -460,10 +448,8 @@ function renderQrAcao(url: string, rotulo: string, legenda: string, classe: stri
  * no iOS descarta até hiperlinks comuns — o link funcionaria no Android e morreria
  * no iPhone.
  *
- * O QR funciona em todo lugar, inclusive numa folha impressa. Ele leva à página
- * pública, que tem botões de verdade e grava a decisão de forma atômica.
- *
- * O QR NUNCA aprova sozinho: `?acao=` só PRÉ-SELECIONA na página. `GET` não pode
+ * O link leva à página pública, que tem botões de verdade e grava a decisão de
+ * forma atômica. `?acao=` só PRÉ-SELECIONA na página. `GET` não pode
  * mudar estado — um pré-visualizador de link (WhatsApp, Slack) que buscasse a URL
  * aprovaria o orçamento sem o cliente tocar em nada.
  */
@@ -472,17 +458,17 @@ function renderApprovalGuide(o: Orcamento, linkPublico?: string): string {
   const podeRecusar = o.exibirRecusa !== false;
   if (!podeAprovar && !podeRecusar && !o.solicitarAssinaturaCliente) return '';
 
-  // Com link publicado: QR de ação. Sem link (offline / sem nuvem): texto de sempre.
-  const temQr = !!linkPublico && (podeAprovar || podeRecusar);
-  if (temQr) {
+  // Com link publicado: botões de ação. Sem link (offline / sem nuvem): texto de sempre.
+  const temLink = !!linkPublico && (podeAprovar || podeRecusar);
+  if (temLink) {
     const base = linkPublico as string;
     const sep = base.includes('?') ? '&' : '?';
     const cards = [
       podeAprovar
-        ? renderQrAcao(`${base}${sep}acao=aprovar`, 'Aprovar', 'Aponte a câmera do celular', 'qr-aprovar')
+        ? renderLinkAcao(`${base}${sep}acao=aprovar`, 'Abrir e aprovar', 'Abra a página e confirme com um toque', 'link-aprovar')
         : '',
       podeRecusar
-        ? renderQrAcao(`${base}${sep}acao=recusar`, 'Recusar ou pedir ajuste', 'Aponte a câmera do celular', 'qr-recusar')
+        ? renderLinkAcao(`${base}${sep}acao=recusar`, 'Abrir e pedir ajuste', 'Abra a página para revisar a proposta', 'link-recusar')
         : '',
     ].filter(Boolean).join('');
 
@@ -491,13 +477,13 @@ function renderApprovalGuide(o: Orcamento, linkPublico?: string): string {
       : 'A confirmação ainda pede um toque na página — o QR só abre a opção escolhida.';
 
     return `
-      <div class="approval-guide approval-guide-qr">
+      <div class="approval-guide approval-guide-link">
         <div class="approval-head">
           <div class="approval-kicker">Próximo passo</div>
           <div class="approval-title">Como fechar este orçamento</div>
           <div class="approval-copy">${escapeHtml(nota)}</div>
         </div>
-        <div class="qr-acoes">${cards}</div>
+        <div class="link-acoes">${cards}</div>
       </div>
     `;
   }
@@ -698,20 +684,16 @@ export function gerarHtmlOrcamento(
   .cond-val { font-size: 12.5px; color: #3C4756; margin-top: 6px; line-height: 1.55; }
   .approval-guide { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 22px; align-items: flex-start; page-break-inside: avoid; }
   /* Variante com QR: empilha o texto sobre os dois cartões de ação. */
-  .approval-guide-qr { display: block; }
+  .approval-guide-link { display: block; }
   .approval-head { margin-bottom: 14px; }
-  .qr-acoes { display: flex; gap: 14px; align-items: stretch; }
-  .qr-card { flex: 1; background: #FFFFFF; border: 1.5px solid ${accentBorder}; border-radius: 12px; padding: 12px 10px 10px; text-align: center; page-break-inside: avoid; }
-  /* Cor só na borda e no rótulo: o QR PRECISA de módulos escuros sobre branco puro
-     para a câmera ler. Fundo colorido atrás do código quebra a leitura. */
-  .qr-aprovar { border-color: ${accent}; }
-  .qr-recusar { border-color: #C6CEDA; }
-  .qr-rotulo { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 8px; color: #0A2540; }
-  .qr-aprovar .qr-rotulo { color: ${accent}; }
-  .qr-img { display: block; margin: 0 auto 8px; width: 128px; height: 128px; }
-  .qr-img svg { width: 100%; height: 100%; display: block; }
-  .qr-legenda { font-size: 9.5px; color: #5A6A7D; margin-bottom: 4px; }
-  .qr-url { font-size: 7.5px; color: #8A97A6; word-break: break-all; line-height: 1.25; }
+  .link-acoes { display: flex; gap: 14px; align-items: stretch; }
+  .link-card { flex: 1; background: #FFFFFF; border: 1.5px solid ${accentBorder}; border-radius: 12px; padding: 14px 12px 11px; text-align: center; page-break-inside: avoid; }
+  .link-aprovar { border-color: ${accent}; }
+  .link-recusar { border-color: #C6CEDA; }
+  .link-button { display: block; border-radius: 8px; padding: 10px 12px; background: ${accent}; color: #FFFFFF; font-size: 12px; font-weight: 800; text-decoration: none; }
+  .link-recusar .link-button { background: #EEF2F6; color: #243447; }
+  .link-legenda { font-size: 9.5px; color: #5A6A7D; margin-top: 9px; margin-bottom: 4px; }
+  .link-url { font-size: 7.5px; color: #8A97A6; word-break: break-all; line-height: 1.25; }
   .approval-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; color: ${accent}; text-transform: uppercase; white-space: nowrap; }
   .approval-title { font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 700; color: #16202E; margin-top: 2px; white-space: nowrap; }
   .approval-copy { flex: 1; font-size: 12.5px; color: #3C4756; line-height: 1.65; }

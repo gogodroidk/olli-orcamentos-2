@@ -15,8 +15,8 @@ import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
 import { AssinaturaClienteModal } from '../components/assinatura/AssinaturaClienteModal';
 import { OverlayProgresso } from '../components/OverlayProgresso';
-import { getOrcamento, getEmpresa, getDepoimentos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
-import { Orcamento, Empresa, Depoimento, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
+import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
+import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
 import { generateId } from '../utils/id';
@@ -24,6 +24,9 @@ import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
+import { getStatusFinanceiro, registrarPagamento } from '../services/pagamentos';
+import { FinanceiroBadge } from '../components/FinanceiroBadge';
+import { RegistrarPagamentoModal, type PagamentoForm } from '../components/RegistrarPagamentoModal';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { track, Eventos } from '../services/analytics';
@@ -86,6 +89,7 @@ export default function VisualizarOrcamentoScreen() {
   const podeColherAssinatura = orc?.exibirAssinatura !== false;
   const assinaturaDoCliente = orc?.assinaturaClienteUri;
   const [depoimentos, setDepoimentos] = useState<Depoimento[]>([]);
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [versoes, setVersoes] = useState<OrcamentoVersao[]>([]);
   const [trilha, setTrilha] = useState<EventoTrilhaCliente[]>([]);
   // 3 estados explícitos (nunca colapsar erro em vazio): `trilhaErro` só vira
@@ -98,6 +102,7 @@ export default function VisualizarOrcamentoScreen() {
   const [linking, setLinking] = useState(false);
   const [duplicando, setDuplicando] = useState(false);
   const [criandoOS, setCriandoOS] = useState(false);
+  const [pagamentoAberto, setPagamentoAberto] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState(false);
@@ -139,8 +144,8 @@ export default function VisualizarOrcamentoScreen() {
     setErroCarregamento(false);
     setNaoEncontrado(false);
     try {
-      const [o, e, deps, vs] = await Promise.all([
-        getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId),
+      const [o, e, deps, vs, recibosDoBanco] = await Promise.all([
+        getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId), getRecibos(),
       ]);
       if (!o) {
         setOrc(null);
@@ -152,6 +157,7 @@ export default function VisualizarOrcamentoScreen() {
       setEmpresa(e);
       setDepoimentos(deps);
       setVersoes(vs);
+      setRecibos(recibosDoBanco);
       loadTrilha();
     } catch {
       setErroCarregamento(true);
@@ -433,6 +439,15 @@ export default function VisualizarOrcamentoScreen() {
     }
   }
 
+  async function salvarPagamento(form: PagamentoForm) {
+    if (!orc) return;
+    await registrarPagamento({ orcamento: orc, ...form });
+    const atualizados = await getRecibos();
+    setRecibos(atualizados);
+    setPagamentoAberto(false);
+    Alert.alert('Pagamento registrado', 'O orçamento agora aparece como Pago. Se quiser, gere o recibo em seguida.');
+  }
+
   /**
    * Documento já enviado/aceito não é sobrescrito. "Criar revisão" faz uma
    * cópia rastreável como novo rascunho, apontando para o orçamento original.
@@ -587,6 +602,9 @@ export default function VisualizarOrcamentoScreen() {
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+          {getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' && (
+            <ActionBtn icon="cash-check" label="Marcar pago" onPress={() => setPagamentoAberto(true)} />
+          )}
           {orc.status === 'aprovado' && (
             <ActionBtn icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
           )}
@@ -806,6 +824,13 @@ export default function VisualizarOrcamentoScreen() {
         {/* TOTAIS */}
         <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
           <Text style={styles.cardTitle}>Resumo financeiro</Text>
+          <View style={styles.financeiroLinha}>
+            <Text style={styles.rowLabel}>Recebimento</Text>
+            <FinanceiroBadge status={getStatusFinanceiro(orc, recibos)} />
+          </View>
+          {getStatusFinanceiro(orc, recibos) === 'pago' && (
+            <Text style={styles.financeiroNota}>Pagamento registrado. O recibo em PDF continua disponível no botão “Recibo”.</Text>
+          )}
           {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
           {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
           {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
@@ -906,6 +931,13 @@ export default function VisualizarOrcamentoScreen() {
         visible={!!overlayInfo}
         titulo={overlayInfo?.titulo}
         subtitulo={overlayInfo?.subtitulo}
+      />
+      <RegistrarPagamentoModal
+        visivel={pagamentoAberto}
+        clienteNome={orc.clienteNome}
+        valorSugerido={orc.valorTotal}
+        aoFechar={() => setPagamentoAberto(false)}
+        aoSalvar={salvarPagamento}
       />
     </View>
   );
@@ -1094,6 +1126,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: c.outline },
   rowLabel: { fontSize: 13, color: c.onSurfaceVariant },
+  financeiroLinha: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.sm },
+  financeiroNota: { fontSize: 12, color: c.onSurfaceVariant, lineHeight: 18, marginBottom: Spacing.sm },
   rowValue: { fontSize: 13, fontWeight: '600', color: c.onSurface, maxWidth: '60%', textAlign: 'right' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8 },
   totalLabel: { fontSize: 15, fontWeight: '700', color: c.onSurface },

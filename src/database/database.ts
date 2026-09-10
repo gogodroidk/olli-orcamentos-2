@@ -380,6 +380,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       titulo TEXT NOT NULL,
       descricao TEXT,
       status TEXT NOT NULL DEFAULT 'aberta',
+      concluido_em TEXT,
       tecnico_id TEXT,
       tecnico_nome TEXT,
       data_agendada TEXT,
@@ -500,6 +501,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
   await database.execAsync(
     'CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_pendente ON orcamento_versoes (espelho_pendente, criado_em)',
   );
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_ordens_servico_concluido ON ordens_servico (concluido_em) WHERE status = \'concluida\' AND concluido_em IS NOT NULL',
+  );
   await seedCodigosErro(database);
 
   // Sem dados-semente falsos: instalações novas começam SEM empresa e SEM
@@ -511,7 +515,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -576,6 +580,13 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   // o que nunca subiu ganha a primeira tentativa no próximo sync.
   if (v < 4) {
     await addColumnIfMissing(database, 'orcamento_versoes', 'espelho_pendente', 'INTEGER NOT NULL DEFAULT 1');
+  }
+
+  // v < 5 — marco imutável da transição da OS para concluída. Sem backfill:
+  // instalações antigas não têm como distinguir conclusão de uma edição
+  // posterior, então o campo só passa a existir para novas transições.
+  if (v < 5) {
+    await addColumnIfMissing(database, 'ordens_servico', 'concluido_em', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -1724,6 +1735,7 @@ function rowToOrdemServico(r: any): OrdemServico {
     titulo: r.titulo,
     descricao: r.descricao ?? undefined,
     status: r.status as StatusOS,
+    concluidoEm: r.concluido_em ?? undefined,
     tecnicoId: r.tecnico_id ?? undefined,
     tecnicoNome: r.tecnico_nome ?? undefined,
     dataAgendada: r.data_agendada ?? undefined,
@@ -1757,12 +1769,12 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
-       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
         criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
-     os.titulo, os.descricao ?? null, os.status, os.tecnicoId ?? null, os.tecnicoNome ?? null,
+     os.titulo, os.descricao ?? null, os.status, os.concluidoEm ?? null, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
      os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null],
   );
@@ -2608,12 +2620,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       if (!os || !os.id) continue;
       await db.runAsync(
         `INSERT OR REPLACE INTO ordens_servico
-           (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+           (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
             tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
             criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [os.id, os.numero ?? '', os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome ?? '',
-         os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.tecnicoId ?? null,
+         os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.concluidoEm ?? null, os.tecnicoId ?? null,
          os.tecnicoNome ?? null, os.dataAgendada ?? null,
          JSON.stringify(Array.isArray(os.checklist) ? os.checklist : []),
          JSON.stringify(Array.isArray(os.fotos) ? os.fotos : []),

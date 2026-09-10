@@ -38,6 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/ui/textarea";
 import { carregarOsFresca } from "./linha";
 import { type Membro, PAPEL_ROTULO, useTecnicos } from "./useTecnicos";
+import { concluidoEmDaTransicao } from "../../../../../src/utils/ordemServicoStatus";
 
 /** Todos os status, na ordem lógica do fluxo (a do próprio tipo em `@dominio`). */
 const STATUS: [StatusOS, string][] = Object.entries(STATUS_OS_LABELS) as [StatusOS, string][];
@@ -253,13 +254,19 @@ export default function FormOs({ aberto, aoFechar, ordem }: Props) {
 						feito: painelTocouFeito || !fresco ? item.feito : fresco.feito,
 					};
 				});
-				os = { ...fresca, ...campos, checklist: checklistMesclado };
+				os = {
+					...fresca,
+					...campos,
+					checklist: checklistMesclado,
+					concluidoEm: concluidoEmDaTransicao(fresca, status, campos.atualizadoEm),
+				};
 			} else {
 				os = {
 					id: novoId(),
 					numero: await proximoNumeroOs(), // só agora: abrir e desistir não queima número
 					fotos: [],
 					criadoEm: agoraIso(),
+					concluidoEm: concluidoEmDaTransicao(undefined, status, campos.atualizadoEm),
 					...campos,
 				};
 			}

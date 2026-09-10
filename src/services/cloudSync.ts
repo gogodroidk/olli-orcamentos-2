@@ -269,6 +269,7 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
     titulo: o.titulo ?? null,
     descricao: o.descricao ?? null,
     status: o.status,
+    concluido_em: o.concluidoEm ?? null,
     tecnico_id: o.tecnicoId ?? null,
     tecnico_nome: o.tecnicoNome ?? null,
     data_agendada: o.dataAgendada ?? null,
@@ -506,6 +507,7 @@ function rowToOrdemServico(row: any): OrdemServico {
     titulo: row.titulo ?? '',
     descricao: row.descricao ?? undefined,
     status: row.status,
+    concluidoEm: row.concluido_em ?? undefined,
     tecnicoId: row.tecnico_id ?? undefined,
     tecnicoNome: row.tecnico_nome ?? undefined,
     dataAgendada: row.data_agendada ?? undefined,
@@ -1344,12 +1346,12 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
-       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
         criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [o.id, o.numero, o.orcamentoId ?? null, o.clienteId ?? null, o.clienteNome,
-     o.titulo, o.descricao ?? null, o.status, o.tecnicoId ?? null, o.tecnicoNome ?? null,
+     o.titulo, o.descricao ?? null, o.status, o.concluidoEm ?? null, o.tecnicoId ?? null, o.tecnicoNome ?? null,
      o.dataAgendada ?? null, JSON.stringify(o.checklist ?? []), JSON.stringify(o.fotos ?? []),
      o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null],
   );

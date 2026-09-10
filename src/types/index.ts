@@ -656,6 +656,8 @@ export interface OrdemServico {
   titulo: string;
   descricao?: string;
   status: StatusOS;
+  /** ISO da transição para concluída; edição posterior não altera este marco. */
+  concluidoEm?: string;
   /** Técnico atribuído (quem executa). Ausente enquanto ninguém foi designado. */
   tecnicoId?: string;
   tecnicoNome?: string;

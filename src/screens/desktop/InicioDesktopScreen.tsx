@@ -500,7 +500,7 @@ export default function InicioDesktopScreen() {
           />
           <KpiCard
             titulo="Concluídas no mês"
-            valor={carregando ? '—' : String(ordens.filter(o => o.status === 'concluida' && noMesAtual(o.atualizadoEm)).length)}
+            valor={carregando ? '—' : String(ordens.filter(o => o.status === 'concluida' && noMesAtual(o.concluidoEm)).length)}
             icone="check-decagram-outline"
             corIcone={cores.success}
             rodape="ordens finalizadas"

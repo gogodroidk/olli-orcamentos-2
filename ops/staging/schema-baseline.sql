@@ -484,6 +484,7 @@ create table if not exists public."ordens_servico" (
   "titulo" text,
   "descricao" text,
   "status" text default 'aberta'::text not null,
+  "concluido_em" timestamptz,
   "tecnico_id" uuid,
   "tecnico_nome" text,
   "data_agendada" timestamptz,

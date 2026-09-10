@@ -25,6 +25,7 @@ export interface LinhaOs {
 	titulo: string | null;
 	descricao: string | null;
 	status: string;
+	concluido_em: string | null;
 	tecnico_id: string | null;
 	tecnico_nome: string | null;
 	data_agendada: string | null;
@@ -93,6 +94,7 @@ export function linhaParaOs(r: LinhaOs): OrdemServico {
 		titulo: r.titulo ?? "",
 		descricao: r.descricao ?? undefined,
 		status: paraStatus(r.status),
+		concluidoEm: r.concluido_em ?? undefined,
 		tecnicoId: r.tecnico_id ?? undefined,
 		tecnicoNome: r.tecnico_nome ?? undefined,
 		dataAgendada: r.data_agendada ?? undefined,
