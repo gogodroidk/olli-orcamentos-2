@@ -85,6 +85,7 @@ export async function garantirDocumentoDerivadoDeOrcamento(input: {
   // Documento já enviado/assinado é um snapshot do que o cliente recebeu. Não
   // sobrescreva; a próxima edição deve virar revisão explícita.
   if (existente.status === 'enviado' || existente.status === 'assinado') return existente;
+  if (JSON.stringify(existente.dados) === JSON.stringify(input.dados) && existente.status === status) return existente;
   return criarVersaoDocumentoBiblioteca(existente.id, input.dados, { status });
 }
 
