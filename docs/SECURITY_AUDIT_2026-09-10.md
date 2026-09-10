@@ -4,7 +4,7 @@
 
 - OSV Scanner 2.4.0: **0 vulnerabilidades** nos locks do app (`package-lock.json`), Worker (`worker/package-lock.json`) e painel (`webapp/pnpm-lock.yaml`). Foram corrigidos `sharp` 0.35.2 → 0.35.4 e `js-yaml` 4.3.1 → 4.3.2.
 - Gitleaks 8.30.1: 9 achados históricos, todos classificados como chave pública Supabase anon/JWT ou fixture pública. Não apareceu service-role key, Stripe secret, Resend key, Cloudflare token ou credencial privada no escopo atual. O histórico não foi reescrito automaticamente.
-- Supabase staging: `db lint` ainda aponta quatro problemas preexistentes nas RPCs de cota/IA (`nullif(text, unknown)`, constraint `ia_cota_global_diaria_pk` ausente e variável não lida). Eles permanecem pendentes para uma migration própria; esta rodada não mascarou nem alterou produção.
+- Supabase staging: migration `20260910143000_fix_ia_quota_lint` corrigiu os casts das RPCs, a referência de conflito da cota diária e a variável morta; `db lint` agora retorna **No schema errors found**. Produção não foi tocada.
 - Worker staging: smoke remoto passou health, CORS, method gates, shell administrativo e `sideEffects: none`.
 
 ## Controles confirmados no código
@@ -15,7 +15,6 @@
 
 ## Ações futuras obrigatórias
 
-1. Abrir migration/issue para corrigir as quatro RPCs de cota/IA no staging e repetir advisors.
-2. Revisar a origem histórica das chaves anon/JWT e remover `.env` antigo do histórico somente com decisão explícita e plano de rotação.
-3. Reexecutar Gitleaks/OSV no gate de release e anexar os relatórios ao artefato da versão.
-4. Antes de produção, repetir RLS/tenant, IA, upload, rate/cost limit, backup/rollback e smoke pós-deploy.
+1. Revisar a origem histórica das chaves anon/JWT e remover `.env` antigo do histórico somente com decisão explícita e plano de rotação.
+2. Reexecutar Gitleaks/OSV no gate de release e anexar os relatórios ao artefato da versão.
+3. Antes de produção, repetir RLS/tenant, IA, upload, rate/cost limit, backup/rollback e smoke pós-deploy.

@@ -47,11 +47,11 @@
       "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
       "baselineSource": "main_schema_metadata_only",
       "latestStagingMigration": {
-        "version": "20260908112342",
+        "version": "20260910143000",
         "status": "applied",
-        "appliedAt": "2026-09-10T08:48:00-03:00",
+        "appliedAt": "2026-09-10T09:20:00-03:00",
         "scope": "staging_only",
-        "description": "ordens_servico.concluido_em + índice parcial"
+        "description": "corrige lint das RPCs de cota/IA sem alterar contrato"
       },
       "lastPromotionCheckpoint": {
         "recordedAt": "2026-09-08T06:38:24-03:00",
