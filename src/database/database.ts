@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada, DocumentoBibliotecaRegistro, DocumentoBibliotecaVersao } from '../types';
 // codigos_erro.json (~365 KB) é carregado SOB DEMANDA em seedCodigosErro (lazy
 // require), não como import estático — assim o boot não paga o parse quando o
 // seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
@@ -262,6 +262,44 @@ async function initDb(database: SQLite.SQLiteDatabase) {
     -- página de orçamentos (getRecibosPorOrcamentoIds), sem carregar tudo.
     CREATE INDEX IF NOT EXISTS idx_recibos_orcamento ON recibos (json_extract(data, '$.orcamentoId'));
     CREATE INDEX IF NOT EXISTS idx_recibos_excluido ON recibos (json_extract(data, '$.excluidoEm'));
+
+    -- Biblioteca versionada de documentos. dados guarda o snapshot atual;
+    -- documento_versoes é append-only e nunca é sobrescrito por uma edição.
+    CREATE TABLE IF NOT EXISTS documentos (
+      id TEXT PRIMARY KEY,
+      tipo TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'rascunho',
+      titulo TEXT NOT NULL,
+      cliente_id TEXT,
+      cliente_nome TEXT NOT NULL DEFAULT '',
+      origem_tipo TEXT NOT NULL,
+      origem_id TEXT,
+      origem_numero TEXT,
+      versao_atual INTEGER NOT NULL DEFAULT 1,
+      dados TEXT NOT NULL DEFAULT '{}',
+      arquivo_uri TEXT,
+      arquivo_hash TEXT,
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL,
+      enviado_em TEXT,
+      assinado_em TEXT,
+      excluido_em TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_documentos_atualizado ON documentos (atualizado_em DESC);
+    CREATE INDEX IF NOT EXISTS idx_documentos_origem ON documentos (origem_tipo, origem_id);
+    CREATE INDEX IF NOT EXISTS idx_documentos_cliente ON documentos (cliente_id, atualizado_em DESC);
+    CREATE TABLE IF NOT EXISTS documento_versoes (
+      id TEXT PRIMARY KEY,
+      documento_id TEXT NOT NULL,
+      numero_versao INTEGER NOT NULL,
+      dados TEXT NOT NULL DEFAULT '{}',
+      arquivo_uri TEXT,
+      arquivo_hash TEXT,
+      criado_em TEXT NOT NULL,
+      criado_por TEXT,
+      UNIQUE (documento_id, numero_versao)
+    );
+    CREATE INDEX IF NOT EXISTS idx_documento_versoes_documento ON documento_versoes (documento_id, numero_versao DESC);
 
     CREATE TABLE IF NOT EXISTS modelos (
       id TEXT PRIMARY KEY,
@@ -1984,6 +2022,117 @@ export async function getRecibosPagina(limite = 40, offset = 0): Promise<Recibo[
   return rows.map(r => JSON.parse(r.data));
 }
 
+// ─── BIBLIOTECA DE DOCUMENTOS (registro + versões) ─────────────────────────
+function rowToDocumentoBiblioteca(r: any): DocumentoBibliotecaRegistro {
+  let dados: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(r.dados ?? '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) dados = parsed;
+  } catch { /* snapshot ilegível não derruba a biblioteca */ }
+  return {
+    id: r.id,
+    tipo: r.tipo,
+    status: r.status,
+    titulo: r.titulo,
+    clienteId: r.cliente_id ?? undefined,
+    clienteNome: r.cliente_nome ?? '',
+    origemTipo: r.origem_tipo,
+    origemId: r.origem_id ?? undefined,
+    origemNumero: r.origem_numero ?? undefined,
+    versaoAtual: Number(r.versao_atual ?? 1),
+    dados,
+    arquivoUri: r.arquivo_uri ?? undefined,
+    arquivoHash: r.arquivo_hash ?? undefined,
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em,
+    enviadoEm: r.enviado_em ?? undefined,
+    assinadoEm: r.assinado_em ?? undefined,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
+}
+
+export async function getDocumentosBiblioteca(limite = 100, offset = 0): Promise<DocumentoBibliotecaRegistro[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(500, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM documentos WHERE excluido_em IS NULL ORDER BY atualizado_em DESC LIMIT ? OFFSET ?',
+    [n, o],
+  );
+  return rows.map(rowToDocumentoBiblioteca);
+}
+
+export async function getDocumentoBiblioteca(id: string): Promise<DocumentoBibliotecaRegistro | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM documentos WHERE id = ?', [id]);
+  return row ? rowToDocumentoBiblioteca(row) : null;
+}
+
+export async function getDocumentoBibliotecaPorOrigem(
+  tipo: DocumentoBibliotecaRegistro['tipo'],
+  origemTipo: DocumentoBibliotecaRegistro['origemTipo'],
+  origemId: string,
+): Promise<DocumentoBibliotecaRegistro | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>(
+    'SELECT * FROM documentos WHERE tipo = ? AND origem_tipo = ? AND origem_id = ? AND excluido_em IS NULL ORDER BY versao_atual DESC LIMIT 1',
+    [tipo, origemTipo, origemId],
+  );
+  return row ? rowToDocumentoBiblioteca(row) : null;
+}
+
+export async function saveDocumentoBiblioteca(documento: DocumentoBibliotecaRegistro): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO documentos
+      (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+       origem_numero, versao_atual, dados, arquivo_uri, arquivo_hash, criado_em,
+       atualizado_em, enviado_em, assinado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [documento.id, documento.tipo, documento.status, documento.titulo, documento.clienteId ?? null,
+     documento.clienteNome, documento.origemTipo, documento.origemId ?? null, documento.origemNumero ?? null,
+     documento.versaoAtual, JSON.stringify(documento.dados ?? {}), documento.arquivoUri ?? null,
+     documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm, documento.enviadoEm ?? null,
+     documento.assinadoEm ?? null, documento.excluidoEm ?? null],
+  );
+}
+
+export async function saveDocumentoBibliotecaVersao(versao: DocumentoBibliotecaVersao): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO documento_versoes
+      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [versao.id, versao.documentoId, versao.numeroVersao, JSON.stringify(versao.dados ?? {}),
+     versao.arquivoUri ?? null, versao.arquivoHash ?? null, versao.criadoEm, versao.criadoPor ?? null],
+  );
+}
+
+export async function getDocumentoBibliotecaVersoes(documentoId: string): Promise<DocumentoBibliotecaVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM documento_versoes WHERE documento_id = ? ORDER BY numero_versao DESC',
+    [documentoId],
+  );
+  return rows.map((r) => {
+    let dados: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(r.dados ?? '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) dados = parsed;
+    } catch { /* snapshot ilegível não derruba o histórico */ }
+    return {
+      id: r.id,
+      documentoId: r.documento_id,
+      numeroVersao: Number(r.numero_versao),
+      dados,
+      arquivoUri: r.arquivo_uri ?? undefined,
+      arquivoHash: r.arquivo_hash ?? undefined,
+      criadoEm: r.criado_em,
+      criadoPor: r.criado_por ?? undefined,
+    } satisfies DocumentoBibliotecaVersao;
+  });
+}
+
 // Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getRecibo(id: string): Promise<Recibo | null> {
   const db = await getDb();
@@ -2459,6 +2608,9 @@ export interface BackupSnapshot {
   ordensServico?: OrdemServico[];
   /** Equipamentos HVAC / inventário PMOC (opcional — snapshots antigos não têm). */
   equipamentos?: Equipamento[];
+  /** Biblioteca versionada de documentos (opcional — snapshots antigos não têm). */
+  documentos?: DocumentoBibliotecaRegistro[];
+  documentoVersoes?: DocumentoBibliotecaVersao[];
 }
 
 /** Lê todas as versões de orçamento (para o backup levar o histórico completo). */
@@ -2479,15 +2631,38 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
   return out;
 }
 
+async function getDocumentosForBackup(): Promise<DocumentoBibliotecaRegistro[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM documentos WHERE excluido_em IS NULL ORDER BY atualizado_em ASC');
+  return rows.map(rowToDocumentoBiblioteca);
+}
+
+async function getDocumentoVersoesForBackup(): Promise<DocumentoBibliotecaVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM documento_versoes ORDER BY documento_id ASC, numero_versao ASC');
+  return rows.map((r) => {
+    let dados: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(r.dados ?? '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) dados = parsed;
+    } catch { /* snapshot ilegível fica vazio, sem derrubar o backup */ }
+    return {
+      id: r.id, documentoId: r.documento_id, numeroVersao: Number(r.numero_versao), dados,
+      arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+      criadoEm: r.criado_em, criadoPor: r.criado_por ?? undefined,
+    } satisfies DocumentoBibliotecaVersao;
+  });
+}
+
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos, documentos, documentoVersoes] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
-    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(), getEquipamentosForBackup(),
+    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(), getEquipamentosForBackup(), getDocumentosForBackup(), getDocumentoVersoesForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos, documentos, documentoVersoes,
   };
 }
 
@@ -2514,6 +2689,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const orcamentoVersoes = asArray<OrcamentoVersao>(data.orcamentoVersoes);
   const ordensServico = asArray<OrdemServico>(data.ordensServico);
   const equipamentos = asArray<Equipamento>(data.equipamentos);
+  const documentos = asArray<DocumentoBibliotecaRegistro>(data.documentos);
+  const documentoVersoes = asArray<DocumentoBibliotecaVersao>(data.documentoVersoes);
 
   // GUARDA ANTI-PERDA: um backup corrompido/parcial que vira `{}` passa pela checagem
   // de objeto lá em cima e, SEM isto, apagaria todas as tabelas e inseriria nada
@@ -2522,7 +2699,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const totalItens =
     clientes.length + servicos.length + produtos.length + orcamentos.length +
     recibos.length + modelos.length + depoimentos.length + agendamentos.length +
-    relatoriosDiarios.length + orcamentoVersoes.length + ordensServico.length + equipamentos.length;
+    relatoriosDiarios.length + orcamentoVersoes.length + ordensServico.length + equipamentos.length + documentos.length + documentoVersoes.length;
   if (totalItens === 0 && !data.empresa) {
     throw new Error('Backup vazio ou inválido — nada para restaurar. Seus dados não foram alterados.');
   }
@@ -2540,6 +2717,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     ...agendamentos.map((a) => ({ tabela: 'agendamentos', itemId: a.id })),
     ...ordensServico.map((os) => ({ tabela: 'ordens_servico', itemId: os.id })),
     ...equipamentos.map((e) => ({ tabela: 'equipamentos', itemId: e.id })),
+    ...documentos.map((d) => ({ tabela: 'documentos', itemId: d.id })),
   ];
 
   // QUEM está restaurando (O0-3). Resolvido ANTES da transação: dentro dela uma
@@ -2561,6 +2739,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM orcamento_versoes; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
       DELETE FROM agendamentos; DELETE FROM ordens_servico; DELETE FROM equipamentos;
+      DELETE FROM documentos; DELETE FROM documento_versoes;
     `);
     if (data.empresa) {
       await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
@@ -2674,6 +2853,30 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          e.criadoEm ?? new Date().toISOString(), e.atualizadoEm ?? new Date().toISOString()],
       );
     }
+    for (const d of documentos) {
+      if (!d || !d.id) continue;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO documentos
+          (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+           origem_numero, versao_atual, dados, arquivo_uri, arquivo_hash, criado_em,
+           atualizado_em, enviado_em, assinado_em, excluido_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [d.id, d.tipo, d.status, d.titulo, d.clienteId ?? null, d.clienteNome ?? '', d.origemTipo,
+         d.origemId ?? null, d.origemNumero ?? null, d.versaoAtual ?? 1, JSON.stringify(d.dados ?? {}),
+         d.arquivoUri ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
+         d.enviadoEm ?? null, d.assinadoEm ?? null, d.excluidoEm ?? null],
+      );
+    }
+    for (const v of documentoVersoes) {
+      if (!v || !v.id || !v.documentoId) continue;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO documento_versoes
+          (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [v.id, v.documentoId, v.numeroVersao, JSON.stringify(v.dados ?? {}), v.arquivoUri ?? null,
+         v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
+      );
+    }
     // Relatórios diários: MERGE (não apaga o histórico local existente) — é um
     // diário pessoal do aparelho, diferente das tabelas relacionais acima que o
     // restore SUBSTITUI por completo. O snapshot só adiciona/atualiza os dias que trouxer.
@@ -2766,6 +2969,7 @@ const USER_DATA_TABLES = [
   // PMOC/HVAC — estavam de FORA e vazavam entre contas no aparelho compartilhado (equipamentos,
   // planos de manutenção e ordens geradas do usuário anterior sobreviviam ao logout).
   'equipamentos', 'pmoc_planos', 'pmoc_plano_versoes', 'pmoc_ordens_geradas',
+  'documentos', 'documento_versoes',
 ];
 
 /**

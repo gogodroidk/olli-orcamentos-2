@@ -48,6 +48,8 @@ import type {
   Agendamento,
   OrdemServico,
   Equipamento,
+  DocumentoBibliotecaRegistro,
+  DocumentoBibliotecaVersao,
 } from '../types';
 import { dataBrParaIsoSeguro } from '../utils/date';
 import {
@@ -71,7 +73,9 @@ export type SyncTable =
   | 'equipamentos'
   | 'pmoc_planos'
   | 'pmoc_plano_versoes'
-  | 'pmoc_ordens_geradas';
+  | 'pmoc_ordens_geradas'
+  | 'documentos'
+  | 'documento_versoes';
 
 /** Alvo de conflito do upsert por tabela. `empresa` é uma linha por usuário. */
 const ON_CONFLICT: Record<SyncTable, string> = {
@@ -89,6 +93,8 @@ const ON_CONFLICT: Record<SyncTable, string> = {
   pmoc_planos: 'id',
   pmoc_plano_versoes: 'id',
   pmoc_ordens_geradas: 'id',
+  documentos: 'id',
+  documento_versoes: 'id',
 };
 
 // Mapa SyncTable → nome da tabela na NUVEM quando diferem. Padrão: nome igual à
@@ -299,6 +305,8 @@ const TO_ROW: Record<SyncTable, (obj: any) => Record<string, unknown>> = {
   pmoc_planos: pmocPlanoToRow,
   pmoc_plano_versoes: pmocVersaoToRow,
   pmoc_ordens_geradas: pmocGeradaToRow,
+  documentos: documentoToRow,
+  documento_versoes: documentoVersaoToRow,
 };
 
 // ─── Mapeadores linha da nuvem → local (fromRow) ─────────────────────────────
@@ -605,6 +613,8 @@ const TABELAS_TENANT_EQUIPE: ReadonlySet<SyncTable> = new Set<SyncTable>([
   'pmoc_planos',
   'pmoc_plano_versoes',
   'pmoc_ordens_geradas',
+  'documentos',
+  'documento_versoes',
 ]);
 
 /**
@@ -1397,7 +1407,7 @@ async function localUpsertEquipamento(e: Equipamento): Promise<void> {
 // `id` que sincronizam). Restringe os deletes locais a nomes conhecidos (jamais
 // interpolamos um nome de tabela arbitrário vindo da nuvem em SQL).
 const DELETABLE_TABLES = new Set<string>([
-  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos', 'depoimentos', 'agendamentos', 'ordens_servico', 'equipamentos',
+  'clientes', 'servicos', 'produtos', 'orcamentos', 'recibos', 'modelos', 'depoimentos', 'agendamentos', 'ordens_servico', 'equipamentos', 'documentos',
 ]);
 
 /** Apaga uma linha local por id, só para tabelas conhecidas. NUNCA lança. */
@@ -1627,6 +1637,8 @@ export async function pullAll(geracao?: number): Promise<void> {
     await pullTable<PmocPlano>('pmoc_planos', rowToPmocPlano, localUpsertPmocPlano, geracao);
     await pullTable<PmocPlanoVersao>('pmoc_plano_versoes', rowToPmocVersao, localUpsertPmocVersao, geracao);
     await pullTable<PmocOrdemGerada>('pmoc_ordens_geradas', rowToPmocGerada, localUpsertPmocGerada, geracao);
+    await pullTable<DocumentoBibliotecaRegistro>('documentos', rowToDocumento, localUpsertDocumento, geracao);
+    await pullTable<DocumentoBibliotecaVersao>('documento_versoes', rowToDocumentoVersao, localUpsertDocumentoVersao, geracao);
     if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.
@@ -1677,6 +1689,42 @@ async function pullTable<T>(
 // trigger que congela versão já aprovada. O upsert por id é idempotente — reenviar
 // a mesma versão não muda nada, e alterar uma aprovada é recusado pelo banco.
 
+function documentoToRow(d: DocumentoBibliotecaRegistro): Record<string, unknown> {
+  return {
+    id: d.id,
+    tipo: d.tipo,
+    status: d.status,
+    titulo: d.titulo,
+    cliente_id: d.clienteId ?? null,
+    cliente_nome: d.clienteNome ?? '',
+    origem_tipo: d.origemTipo,
+    origem_id: d.origemId ?? null,
+    origem_numero: d.origemNumero ?? null,
+    versao_atual: d.versaoAtual,
+    dados: d.dados ?? {},
+    arquivo_uri: d.arquivoUri ?? null,
+    arquivo_hash: d.arquivoHash ?? null,
+    criado_em: d.criadoEm,
+    atualizado_em: d.atualizadoEm,
+    enviado_em: d.enviadoEm ?? null,
+    assinado_em: d.assinadoEm ?? null,
+    excluido_em: d.excluidoEm ?? null,
+  };
+}
+
+function documentoVersaoToRow(v: DocumentoBibliotecaVersao): Record<string, unknown> {
+  return {
+    id: v.id,
+    documento_id: v.documentoId,
+    numero_versao: v.numeroVersao,
+    dados: v.dados ?? {},
+    arquivo_uri: v.arquivoUri ?? null,
+    arquivo_hash: v.arquivoHash ?? null,
+    criado_em: v.criadoEm,
+    criado_por: v.criadoPor ?? null,
+  };
+}
+
 function pmocPlanoToRow(p: PmocPlano): Record<string, unknown> {
   return {
     id: p.id,
@@ -1690,6 +1738,71 @@ function pmocPlanoToRow(p: PmocPlano): Record<string, unknown> {
     excluido_em: p.excluidoEm ?? null,
     atualizado_em: p.atualizadoEm ?? p.criadoEm, // NOT NULL na nuvem
   };
+}
+
+function rowToDocumento(row: any): DocumentoBibliotecaRegistro | null {
+  if (!row?.id || !row?.tipo || !row?.status || !row?.titulo) return null;
+  return {
+    id: row.id,
+    tipo: row.tipo,
+    status: row.status,
+    titulo: row.titulo,
+    clienteId: row.cliente_id ?? undefined,
+    clienteNome: row.cliente_nome ?? '',
+    origemTipo: row.origem_tipo,
+    origemId: row.origem_id ?? undefined,
+    origemNumero: row.origem_numero ?? undefined,
+    versaoAtual: Number(row.versao_atual ?? 1),
+    dados: row.dados && typeof row.dados === 'object' ? row.dados : {},
+    arquivoUri: row.arquivo_uri ?? undefined,
+    arquivoHash: row.arquivo_hash ?? undefined,
+    criadoEm: row.criado_em ?? new Date().toISOString(),
+    atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
+    enviadoEm: row.enviado_em ?? undefined,
+    assinadoEm: row.assinado_em ?? undefined,
+    excluidoEm: row.excluido_em ?? undefined,
+  };
+}
+
+function rowToDocumentoVersao(row: any): DocumentoBibliotecaVersao | null {
+  if (!row?.id || !row?.documento_id) return null;
+  return {
+    id: row.id,
+    documentoId: row.documento_id,
+    numeroVersao: Number(row.numero_versao ?? 1),
+    dados: row.dados && typeof row.dados === 'object' ? row.dados : {},
+    arquivoUri: row.arquivo_uri ?? undefined,
+    arquivoHash: row.arquivo_hash ?? undefined,
+    criadoEm: row.criado_em ?? new Date().toISOString(),
+    criadoPor: row.criado_por ?? undefined,
+  };
+}
+
+async function localUpsertDocumento(d: DocumentoBibliotecaRegistro): Promise<void> {
+  if (await localMaisNovoColuna('documentos', d.id, d.atualizadoEm)) return;
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO documentos
+      (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+       origem_numero, versao_atual, dados, arquivo_uri, arquivo_hash, criado_em,
+       atualizado_em, enviado_em, assinado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [d.id, d.tipo, d.status, d.titulo, d.clienteId ?? null, d.clienteNome ?? '', d.origemTipo,
+     d.origemId ?? null, d.origemNumero ?? null, d.versaoAtual ?? 1, JSON.stringify(d.dados ?? {}),
+     d.arquivoUri ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
+     d.enviadoEm ?? null, d.assinadoEm ?? null, d.excluidoEm ?? null],
+  );
+}
+
+async function localUpsertDocumentoVersao(v: DocumentoBibliotecaVersao): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO documento_versoes
+      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [v.id, v.documentoId, v.numeroVersao, JSON.stringify(v.dados ?? {}), v.arquivoUri ?? null,
+     v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
+  );
 }
 
 function rowToPmocPlano(row: any): PmocPlano | null {
@@ -1831,6 +1944,31 @@ function rowToPmocPlanoLocal(r: any): PmocPlano {
     excluidoEm: r.excluido_em ?? undefined,
   };
 }
+
+function rowToDocumentoLocal(r: any): DocumentoBibliotecaRegistro {
+  let dados: Record<string, unknown> = {};
+  try { dados = JSON.parse(r.dados || '{}'); } catch { /* snapshot local inválido */ }
+  return {
+    id: r.id, tipo: r.tipo, status: r.status, titulo: r.titulo,
+    clienteId: r.cliente_id ?? undefined, clienteNome: r.cliente_nome ?? '',
+    origemTipo: r.origem_tipo, origemId: r.origem_id ?? undefined, origemNumero: r.origem_numero ?? undefined,
+    versaoAtual: Number(r.versao_atual ?? 1), dados,
+    arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+    criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
+    enviadoEm: r.enviado_em ?? undefined, assinadoEm: r.assinado_em ?? undefined,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
+}
+
+function rowToDocumentoVersaoLocal(r: any): DocumentoBibliotecaVersao {
+  let dados: Record<string, unknown> = {};
+  try { dados = JSON.parse(r.dados || '{}'); } catch { /* snapshot local inválido */ }
+  return {
+    id: r.id, documentoId: r.documento_id, numeroVersao: Number(r.numero_versao ?? 1), dados,
+    arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+    criadoEm: r.criado_em, criadoPor: r.criado_por ?? undefined,
+  };
+}
 function rowToPmocVersaoLocal(r: any): PmocPlanoVersao {
   const d = JSON.parse(r.dados || '{}');
   return {
@@ -1935,6 +2073,10 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
       undefined, geracao);
     await pushTable<PmocOrdemGerada>('pmoc_ordens_geradas', 'SELECT * FROM pmoc_ordens_geradas', rowToPmocGeradaLocal,
       (g) => remoteMaisNovoNoMapa(tsGeradas, g.id, g.atualizadoEm), geracao);
+    await pushTable<DocumentoBibliotecaRegistro>('documentos', 'SELECT * FROM documentos', rowToDocumentoLocal,
+      undefined, geracao);
+    await pushTable<DocumentoBibliotecaVersao>('documento_versoes', 'SELECT * FROM documento_versoes', rowToDocumentoVersaoLocal,
+      undefined, geracao);
     if (syncAbortado(geracao)) return;
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.

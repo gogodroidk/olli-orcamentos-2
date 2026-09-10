@@ -627,6 +627,46 @@ create table if not exists public."recibos" (
 );
 alter table public."recibos" enable row level security;
 
+create table if not exists public."documentos" (
+  "id" text not null,
+  "user_id" uuid default auth.uid() not null,
+  "criado_por" uuid default auth.uid(),
+  "tipo" text not null,
+  "status" text default 'rascunho'::text not null,
+  "titulo" text not null,
+  "cliente_id" text,
+  "cliente_nome" text default ''::text not null,
+  "origem_tipo" text not null,
+  "origem_id" text,
+  "origem_numero" text,
+  "versao_atual" integer default 1 not null,
+  "dados" jsonb default '{}'::jsonb not null,
+  "arquivo_uri" text,
+  "arquivo_hash" text,
+  "criado_em" timestamptz default now() not null,
+  "atualizado_em" timestamptz default now() not null,
+  "enviado_em" timestamptz,
+  "assinado_em" timestamptz,
+  "excluido_em" timestamptz,
+  primary key ("id")
+);
+alter table public."documentos" enable row level security;
+
+create table if not exists public."documento_versoes" (
+  "id" text not null,
+  "documento_id" text not null,
+  "user_id" uuid default auth.uid() not null,
+  "numero_versao" integer not null,
+  "dados" jsonb default '{}'::jsonb not null,
+  "arquivo_uri" text,
+  "arquivo_hash" text,
+  "criado_em" timestamptz default now() not null,
+  "criado_por" uuid default auth.uid(),
+  primary key ("id"),
+  unique ("documento_id", "numero_versao")
+);
+alter table public."documento_versoes" enable row level security;
+
 create table if not exists public."service_contract_versions" (
   "id" text not null,
   "user_id" uuid default auth.uid() not null,

@@ -86,8 +86,9 @@ ou ficam fora da IA.
 
 - Documentos existentes: contrato, termos, recibo, certificado, modelos e PMOC;
   os caminhos atuais continuam funcionando. A Central já projeta esses registros em
-  uma biblioteca pesquisável por origem/estado; a tabela versionada e o artefato
-  imutável ainda são a próxima etapa.
+  uma biblioteca pesquisável por origem/estado, e o registro persistente com versões
+  append-only já existe localmente e no staging; falta finalizar o armazenamento do
+  PDF/artefato e ligar todos os geradores a esse registro.
 - Revisão de orçamento: rascunho é editável; proposta enviada/aceita gera revisão.
 - Pagamento: `registrarPagamento` agora tem caminho de UI no detalhe mobile; o
   financeiro já deriva `aguardando_pagamento`, `pago` e `recibo_emitido`.

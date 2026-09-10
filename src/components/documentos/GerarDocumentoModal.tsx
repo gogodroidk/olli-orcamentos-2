@@ -21,6 +21,7 @@ import {
   montarHtmlTermoConclusao,
   montarHtmlTermoGarantia,
 } from '../../utils/termosPdf';
+import { garantirDocumentoDerivadoDeOrcamento } from '../../services/documentosBiblioteca';
 
 /**
  * GerarDocumentoModal — o caminho curto entre "tenho um orçamento" e "tenho o
@@ -146,6 +147,26 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
   }, [escolhido, empresa, tipo, temAcesso]);
 
   const assinado = !!escolhido?.assinaturaContratoUri;
+
+  async function abrirPreviaDocumento() {
+    if (!escolhido) return;
+    try {
+      await garantirDocumentoDerivadoDeOrcamento({
+        tipo,
+        titulo: TITULOS_DOCUMENTO[tipo],
+        orcamentoId: escolhido.id,
+        numero: escolhido.numero,
+        clienteId: escolhido.clienteId,
+        clienteNome: escolhido.clienteNome,
+        dados: { orcamento: escolhido, documento: tipo },
+        assinado,
+      });
+    } catch {
+      // A prévia continua disponível se a biblioteca local falhar; não fingimos
+      // que o registro foi salvo e o gerador de PDF permanece independente.
+    }
+    setPrevia(true);
+  }
 
   /**
    * O que a qualificação das partes vai imprimir EM BRANCO neste documento.
@@ -278,7 +299,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
               label="Ver e enviar documento"
               variant="gradient"
               fullWidth
-              onPress={() => setPrevia(true)}
+              onPress={() => { void abrirPreviaDocumento(); }}
               icon={<MaterialCommunityIcons name="file-document-outline" size={18} color="#fff" />}
             />
           </View>

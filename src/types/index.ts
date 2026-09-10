@@ -428,6 +428,47 @@ export interface Recibo {
   pdfEmitido?: boolean;
 }
 
+/** Registro de biblioteca de documentos. O arquivo/PDF é um artefato; o objeto
+ * e suas versões permanecem append-only para não sobrescrever o que o cliente
+ * recebeu. */
+export type TipoDocumentoBiblioteca =
+  | 'orcamento' | 'contrato' | 'garantia' | 'conclusao' | 'recibo'
+  | 'ordem_servico' | 'pmoc' | 'laudo' | 'checklist' | 'certificado';
+
+export type StatusDocumentoBiblioteca = 'rascunho' | 'pronto' | 'enviado' | 'assinado' | 'arquivado';
+
+export interface DocumentoBibliotecaRegistro {
+  id: string;
+  tipo: TipoDocumentoBiblioteca;
+  status: StatusDocumentoBiblioteca;
+  titulo: string;
+  clienteId?: string;
+  clienteNome: string;
+  origemTipo: 'orcamento' | 'recibo' | 'ordem_servico' | 'pmoc' | 'manual';
+  origemId?: string;
+  origemNumero?: string;
+  versaoAtual: number;
+  dados: Record<string, unknown>;
+  arquivoUri?: string;
+  arquivoHash?: string;
+  criadoEm: string;
+  atualizadoEm: string;
+  enviadoEm?: string;
+  assinadoEm?: string;
+  excluidoEm?: string;
+}
+
+export interface DocumentoBibliotecaVersao {
+  id: string;
+  documentoId: string;
+  numeroVersao: number;
+  dados: Record<string, unknown>;
+  arquivoUri?: string;
+  arquivoHash?: string;
+  criadoEm: string;
+  criadoPor?: string;
+}
+
 export interface ModeloOrcamento {
   id: string;
   nome: string;
