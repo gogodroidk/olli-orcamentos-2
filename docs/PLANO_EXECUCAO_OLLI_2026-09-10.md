@@ -95,7 +95,9 @@ ou ficam fora da IA.
 - OS: `concluido_em` sincronizado no app, web, SQLite e Supabase staging; KPIs usam
   o marco, não `atualizado_em`.
 - Segurança IA: allowlist, diff, confirmação, auditoria, tenant/RBAC e limites já
-  existentes; bulk import/PDF ainda é próxima fatia.
+  existentes; a prévia de importação em lote agora valida fonte HTTPS, data,
+  confiança, duplicidade e papel do executor, sem escrever no catálogo. Parser/PDF
+  real e tela de aprovação continuam como próxima fatia.
 - Staging: Worker `ee5e349c-e22a-4ddc-ba4a-2d69d52acd65`, deployment
   `bc556d42-1af6-4018-8d5b-97d838e3ea61`, smoke sem side effects.
 

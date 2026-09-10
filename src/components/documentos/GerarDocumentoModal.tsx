@@ -163,9 +163,10 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
         assinado,
       });
       setDocumentoBibliotecaId(registro.id);
-    } catch {
+    } catch (erro) {
       // A prévia continua disponível se a biblioteca local falhar; não fingimos
       // que o registro foi salvo e o gerador de PDF permanece independente.
+      void erro;
     }
     setPrevia(true);
   }
@@ -328,7 +329,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
         construirHtml={construirHtml}
         onExported={async (uri) => {
           if (!documentoBibliotecaId) return;
-          try { await registrarArtefatoDocumentoBiblioteca(documentoBibliotecaId, uri); } catch { /* PDF continua entregue; registro local é best-effort */ }
+          try { await registrarArtefatoDocumentoBiblioteca(documentoBibliotecaId, uri); } catch (erro) { void erro; /* PDF continua entregue; registro local é best-effort */ }
         }}
         nomeArquivo={escolhido ? `${tipo}-${escolhido.numero}` : undefined}
       />
