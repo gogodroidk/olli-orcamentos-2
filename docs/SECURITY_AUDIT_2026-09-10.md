@@ -11,6 +11,7 @@
 
 - IA operacional usa escopos/campos allowlisted, tenant resolvido no servidor, RBAC, diff, token de confirmação, auditoria e rollback.
 - A biblioteca de documentos usa versões append-only, FK composta de tenant/pai, triggers de ownership/congelamento e não expõe DELETE direto para clientes autenticados.
+- O bucket `olli-documentos` não aceita mais update/delete de usuários autenticados; o ciclo de artefato fica separado de logos/fotos.
 - Ações destrutivas em massa são recusadas pelo chat; upload e futura ingestão devem continuar isolados e limitados.
 - Produção continua `acceptedReal=false`; não há promoção automática, secrets de produção nem cobrança real nesta rodada.
 
