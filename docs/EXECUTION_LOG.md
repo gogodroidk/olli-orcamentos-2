@@ -530,6 +530,7 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 ## Execução controlada — documentos, pagamento e marco de OS (2026-09-10)
 
 - PDF de orçamento: removido o QR code de aprovação; o HTML agora usa botões/link `Abrir e aprovar` e `Abrir e pedir ajuste`, mantendo o URL visível para cópia e a confirmação atômica na página pública.
+- Central de documentos: nova entrada em Conta reúne modelos/contratos/termos, recibos, OS, PMOC e certificado, apontando para os geradores oficiais sem duplicar lógica de PDF.
 - App mobile: criado registro rápido de pagamento com valor, data e forma; o badge financeiro `Pago` permanece separado do status comercial do orçamento.
 - Ordem de serviço: adicionado `concluido_em` no tipo, SQLite v5, sync app↔Supabase, painel web e KPIs; transição repetida preserva o marco, reabertura limpa e reconclusão cria outro.
 - Staging Supabase: migration `20260908112342_ordens_servico_concluido_em` aplicada e reparada como `applied`; coluna e índice verificados. Produção não foi tocada.
