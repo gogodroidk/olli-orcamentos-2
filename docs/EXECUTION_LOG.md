@@ -538,7 +538,7 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 - Ordem de serviço: adicionado `concluido_em` no tipo, SQLite v5, sync app↔Supabase, painel web e KPIs; transição repetida preserva o marco, reabertura limpa e reconclusão cria outro.
 - Staging Supabase: migration `20260908112342_ordens_servico_concluido_em` aplicada e reparada como `applied`; coluna e índice verificados. Produção não foi tocada.
 - Worker staging: versão `ee5e349c-e22a-4ddc-ba4a-2d69d52acd65`, deployment `bc556d42-1af6-4018-8d5b-97d838e3ea61`, tráfego 100% no `workers.dev`; `npm run staging:smoke` passou com `sideEffects: none`.
-- Validação: `npm run typecheck`, build web, suíte automatizada completa (188 checks no meta-gate), APK debug instalado no SM-G780F/API 33; Home e Central de Documentos abriram no aparelho (`artifacts/device-sm-g780f-documentos-final.png`) sem fatal/erro SQLite. Permanecem warnings conhecidos de ciclos de import e debugger do Expo.
+- Validação: `npm run typecheck`, `npm test` (exit 0), build web, suíte automatizada completa (188 checks no meta-gate), APK debug instalado no SM-G780F/API 33; Home e Central de Documentos abriram no aparelho (`artifacts/device-sm-g780f-documentos-final.png`) sem fatal/erro SQLite. Permanecem warnings conhecidos de ciclos de import e debugger do Expo.
 - Pendência explícita: `supabase db lint` ainda acusa quatro problemas preexistentes nas RPCs de cota/IA; não foram mascarados nesta fatia.
 
 ## Bloqueios externos ativos
