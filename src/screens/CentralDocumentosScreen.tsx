@@ -1,6 +1,6 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -9,6 +9,15 @@ import { OlliCard } from '../components/OlliCard';
 import { OlliPressable } from '../components/OlliPressable';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { getOrcamentos, getRecibos, getOrdensServico, getPmocPlanos } from '../database/database';
+import {
+  buscarBibliotecaDocumentos,
+  construirBibliotecaDocumentos,
+  labelStatusDocumento,
+  labelTipoDocumento,
+  type DocumentoBiblioteca,
+  type DocumentoBibliotecaStatus,
+} from '../services/bibliotecaDocumentos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,6 +40,45 @@ export default function CentralDocumentosScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const [documentos, setDocumentos] = useState<DocumentoBiblioteca[]>([]);
+  const [busca, setBusca] = useState('');
+  const [statusFiltro, setStatusFiltro] = useState<DocumentoBibliotecaStatus | 'todos'>('todos');
+  const [carregandoDocumentos, setCarregandoDocumentos] = useState(true);
+  const [erroDocumentos, setErroDocumentos] = useState(false);
+
+  const carregarDocumentos = useCallback(async () => {
+    setCarregandoDocumentos(true);
+    setErroDocumentos(false);
+    try {
+      const [orcamentos, recibos, ordensServico, pmocPlanos] = await Promise.all([
+        getOrcamentos(), getRecibos(), getOrdensServico(), getPmocPlanos(),
+      ]);
+      setDocumentos(construirBibliotecaDocumentos({ orcamentos, recibos, ordensServico, pmocPlanos }));
+    } catch {
+      setErroDocumentos(true);
+    } finally {
+      setCarregandoDocumentos(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { void carregarDocumentos(); }, [carregarDocumentos]));
+
+  const documentosFiltrados = useMemo(
+    () => buscarBibliotecaDocumentos(documentos, busca, statusFiltro),
+    [documentos, busca, statusFiltro],
+  );
+
+  function abrirDocumento(doc: DocumentoBiblioteca) {
+    if (doc.tipo === 'orcamento' || doc.origemTipo === 'orcamento') {
+      nav.navigate('VisualizarOrcamento', { orcamentoId: doc.origemId });
+    } else if (doc.tipo === 'recibo') {
+      nav.navigate('EmitirRecibo', {});
+    } else if (doc.tipo === 'pmoc') {
+      nav.navigate('Pmoc');
+    } else {
+      nav.navigate('OrdemServico');
+    }
+  }
 
   const atalhos: Atalho[] = [
     { titulo: 'Modelos, contratos e termos', descricao: 'Escolha o visual e gere contrato, garantia ou termo de conclusão a partir do orçamento.', icone: 'file-document-edit-outline', cor: cores.primaryLight, destino: 'ModelosDocumento' },
@@ -60,6 +108,55 @@ export default function CentralDocumentosScreen() {
             </View>
           </View>
         </AnimatedEntrance>
+
+        <Text style={styles.secao}>Biblioteca atual ({documentosFiltrados.length})</Text>
+        <View style={styles.buscaWrap}>
+          <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceMuted} />
+          <TextInput
+            value={busca}
+            onChangeText={setBusca}
+            placeholder="Buscar por cliente, número ou documento"
+            placeholderTextColor={cores.onSurfaceMuted}
+            style={styles.busca}
+            accessibilityLabel="Buscar documentos"
+          />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtros}>
+          {(['todos', 'rascunho', 'pronto', 'enviado', 'assinado', 'arquivado'] as const).map((status) => (
+            <TouchableOpacity
+              key={status}
+              onPress={() => setStatusFiltro(status)}
+              style={[styles.filtro, statusFiltro === status && styles.filtroAtivo]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: statusFiltro === status }}
+            >
+              <Text style={[styles.filtroTexto, statusFiltro === status && styles.filtroTextoAtivo]}>{status === 'todos' ? 'Todos' : labelStatusDocumento(status)}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {carregandoDocumentos ? (
+          <View style={styles.estado}><ActivityIndicator color={cores.primary} /><Text style={styles.estadoTexto}>Carregando documentos…</Text></View>
+        ) : erroDocumentos ? (
+          <View style={styles.estado}><MaterialCommunityIcons name="alert-circle-outline" size={22} color={cores.warning} /><Text style={styles.estadoTexto}>Não foi possível ler a biblioteca agora.</Text><TouchableOpacity onPress={() => void carregarDocumentos()}><Text style={styles.tentar}>Tentar de novo</Text></TouchableOpacity></View>
+        ) : documentosFiltrados.length === 0 ? (
+          <View style={styles.estado}><MaterialCommunityIcons name="file-search-outline" size={25} color={cores.onSurfaceMuted} /><Text style={styles.estadoTexto}>Nenhum documento corresponde ao filtro.</Text></View>
+        ) : (
+          <View style={styles.listaDocumentos}>
+            {documentosFiltrados.slice(0, 30).map((doc, index) => (
+              <AnimatedEntrance key={doc.id} index={Math.min(index, 8)}>
+                <TouchableOpacity style={styles.documentoLinha} onPress={() => abrirDocumento(doc)} accessibilityRole="button" accessibilityLabel={`${doc.titulo}, ${labelStatusDocumento(doc.status)}`}>
+                  <View style={styles.documentoIcone}><MaterialCommunityIcons name={doc.tipo === 'recibo' ? 'receipt-text-outline' : doc.tipo === 'pmoc' ? 'calendar-sync-outline' : doc.tipo === 'ordem_servico' ? 'clipboard-text-outline' : 'file-document-outline'} size={20} color={cores.primaryLight} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.documentoTitulo} numberOfLines={1}>{doc.titulo}</Text>
+                    <Text style={styles.documentoMeta} numberOfLines={1}>{doc.clienteNome || 'Documento técnico'} · {labelTipoDocumento(doc.tipo)}</Text>
+                  </View>
+                  <View style={styles.documentoStatus}><Text style={styles.documentoStatusTexto}>{labelStatusDocumento(doc.status)}</Text></View>
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
+                </TouchableOpacity>
+              </AnimatedEntrance>
+            ))}
+          </View>
+        )}
 
         <Text style={styles.secao}>Criar ou revisar um documento</Text>
         {atalhos.map((item, index) => (
@@ -102,6 +199,23 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   introTitulo: { color: c.onSurface, fontSize: 16, fontWeight: '800', marginBottom: 4 },
   introTexto: { color: c.onSurfaceVariant, fontSize: 13, lineHeight: 19 },
   secao: { color: c.onSurfaceMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: Spacing.sm, marginTop: Spacing.sm },
+  buscaWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.md, minHeight: 48, marginBottom: Spacing.sm },
+  busca: { flex: 1, color: c.onSurface, fontSize: 13.5 },
+  filtros: { gap: Spacing.sm, paddingBottom: Spacing.md },
+  filtro: { borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: c.surface },
+  filtroAtivo: { borderColor: c.primary, backgroundColor: c.primary + '18' },
+  filtroTexto: { color: c.onSurfaceVariant, fontSize: 12, fontWeight: '700' },
+  filtroTextoAtivo: { color: c.primaryLight },
+  estado: { minHeight: 78, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: Spacing.md },
+  estadoTexto: { color: c.onSurfaceVariant, fontSize: 12.5, textAlign: 'center' },
+  tentar: { color: c.primaryLight, fontSize: 12.5, fontWeight: '800' },
+  listaDocumentos: { gap: 6, marginBottom: Spacing.md },
+  documentoLinha: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 60, paddingHorizontal: 10, paddingVertical: 9, borderRadius: BorderRadius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline },
+  documentoIcone: { width: 34, height: 34, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: c.primaryLight + '15' },
+  documentoTitulo: { color: c.onSurface, fontSize: 13, fontWeight: '800' },
+  documentoMeta: { color: c.onSurfaceMuted, fontSize: 11.5, marginTop: 2 },
+  documentoStatus: { borderRadius: BorderRadius.full, backgroundColor: c.surfaceVariant, paddingHorizontal: 7, paddingVertical: 4 },
+  documentoStatusTexto: { color: c.onSurfaceVariant, fontSize: 10, fontWeight: '800' },
   card: { padding: Spacing.base, marginBottom: Spacing.sm },
   cardLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   cardIcon: { width: 48, height: 48, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },

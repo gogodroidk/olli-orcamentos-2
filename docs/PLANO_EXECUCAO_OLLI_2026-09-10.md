@@ -85,7 +85,9 @@ ou ficam fora da IA.
 ## 3. Estado atual comprovado
 
 - Documentos existentes: contrato, termos, recibo, certificado, modelos e PMOC;
-  os caminhos atuais continuam funcionando.
+  os caminhos atuais continuam funcionando. A Central já projeta esses registros em
+  uma biblioteca pesquisável por origem/estado; a tabela versionada e o artefato
+  imutável ainda são a próxima etapa.
 - Revisão de orçamento: rascunho é editável; proposta enviada/aceita gera revisão.
 - Pagamento: `registrarPagamento` agora tem caminho de UI no detalhe mobile; o
   financeiro já deriva `aguardando_pagamento`, `pago` e `recibo_emitido`.
