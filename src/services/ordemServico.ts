@@ -166,7 +166,14 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
  * nunca pode travar a mudança de status.
  */
 export async function atualizarStatusOS(id: string, status: StatusOS): Promise<void> {
-  await patchOrdem(id, { status });
+  const atualizada = await patchOrdem(id, { status });
+  if (status === 'concluida') {
+    // Registro documental é best-effort: a conclusão da OS não pode falhar por
+    // uma indisponibilidade transitória da biblioteca local.
+    void import('./documentosBiblioteca').then(({ garantirDocumentoOrdemServico }) =>
+      garantirDocumentoOrdemServico(atualizada).catch(() => {}),
+    ).catch(() => {});
+  }
   if (status === 'concluida' || status === 'cancelada') {
     void cancelarLembretesPmoc(id).catch(() => {});
   }

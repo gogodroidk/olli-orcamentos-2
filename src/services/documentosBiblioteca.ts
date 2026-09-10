@@ -11,6 +11,9 @@ import type {
   DocumentoBibliotecaRegistro,
   DocumentoBibliotecaVersao,
   Recibo,
+  OrdemServico,
+  PmocPlano,
+  PmocPlanoVersao,
   StatusDocumentoBiblioteca,
   TipoDocumentoBiblioteca,
 } from '../types';
@@ -98,6 +101,26 @@ export async function garantirDocumentoRecibo(recibo: Recibo): Promise<Documento
     origemNumero: recibo.numero,
     dados: { reciboId: recibo.id, valorRecebido: recibo.valorRecebido, formaPagamento: recibo.formaPagamento },
     status: 'pronto',
+  });
+}
+
+export async function garantirDocumentoOrdemServico(os: OrdemServico): Promise<DocumentoBibliotecaRegistro> {
+  const existente = await getDocumentoBibliotecaPorOrigem('ordem_servico', 'ordem_servico', os.id);
+  if (existente) return existente;
+  return criarDocumentoBiblioteca({
+    tipo: 'ordem_servico', titulo: `Relatório da OS ${os.numero}`, clienteId: os.clienteId,
+    clienteNome: os.clienteNome, origemTipo: 'ordem_servico', origemId: os.id, origemNumero: os.numero,
+    dados: { ordemServico: os }, status: os.status === 'concluida' ? 'pronto' : 'rascunho',
+  });
+}
+
+export async function garantirDocumentoPmoc(plano: PmocPlano, versao: PmocPlanoVersao): Promise<DocumentoBibliotecaRegistro> {
+  const existente = await getDocumentoBibliotecaPorOrigem('pmoc', 'pmoc', plano.id);
+  if (existente) return existente;
+  return criarDocumentoBiblioteca({
+    tipo: 'pmoc', titulo: plano.numero ? `PMOC ${plano.numero} · ${plano.titulo}` : `PMOC · ${plano.titulo}`,
+    clienteId: plano.clienteId, clienteNome: '', origemTipo: 'pmoc', origemId: plano.id, origemNumero: plano.numero,
+    dados: { plano, versao }, status: 'pronto',
   });
 }
 
