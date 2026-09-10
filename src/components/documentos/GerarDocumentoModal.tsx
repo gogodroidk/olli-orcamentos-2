@@ -21,7 +21,7 @@ import {
   montarHtmlTermoConclusao,
   montarHtmlTermoGarantia,
 } from '../../utils/termosPdf';
-import { garantirDocumentoDerivadoDeOrcamento } from '../../services/documentosBiblioteca';
+import { garantirDocumentoDerivadoDeOrcamento, registrarArtefatoDocumentoBiblioteca } from '../../services/documentosBiblioteca';
 
 /**
  * GerarDocumentoModal — o caminho curto entre "tenho um orçamento" e "tenho o
@@ -66,6 +66,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
   const [escolhido, setEscolhido] = useState<Orcamento | null>(null);
   const [previa, setPrevia] = useState(false);
   const [assinando, setAssinando] = useState(false);
+  const [documentoBibliotecaId, setDocumentoBibliotecaId] = useState<string | null>(null);
   const [assinaturaFalhou, setAssinaturaFalhou] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -151,7 +152,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
   async function abrirPreviaDocumento() {
     if (!escolhido) return;
     try {
-      await garantirDocumentoDerivadoDeOrcamento({
+      const registro = await garantirDocumentoDerivadoDeOrcamento({
         tipo,
         titulo: TITULOS_DOCUMENTO[tipo],
         orcamentoId: escolhido.id,
@@ -161,6 +162,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
         dados: { orcamento: escolhido, documento: tipo },
         assinado,
       });
+      setDocumentoBibliotecaId(registro.id);
     } catch {
       // A prévia continua disponível se a biblioteca local falhar; não fingimos
       // que o registro foi salvo e o gerador de PDF permanece independente.
@@ -324,6 +326,10 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
         // acharia que a assinatura não entrou no documento.
         chave={`${tipo}:${escolhido?.id ?? ''}:${escolhido?.dataAssinaturaContrato ?? ''}`}
         construirHtml={construirHtml}
+        onExported={async (uri) => {
+          if (!documentoBibliotecaId) return;
+          try { await registrarArtefatoDocumentoBiblioteca(documentoBibliotecaId, uri); } catch { /* PDF continua entregue; registro local é best-effort */ }
+        }}
         nomeArquivo={escolhido ? `${tipo}-${escolhido.numero}` : undefined}
       />
     </Modal>

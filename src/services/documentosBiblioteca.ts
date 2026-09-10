@@ -133,3 +133,25 @@ export async function atualizarStatusDocumentoBiblioteca(
   await saveDocumentoBiblioteca(atualizado);
   return atualizado;
 }
+
+/** Marca que a exportação foi concluída. No web `arquivoUri` pode faltar porque
+ * o navegador controla o destino do print; o status ainda fica rastreável. */
+export async function registrarArtefatoDocumentoBiblioteca(
+  documentoId: string,
+  arquivoUri?: string,
+  arquivoHash?: string,
+): Promise<DocumentoBibliotecaRegistro> {
+  const atual = await getDocumentoBiblioteca(documentoId);
+  if (!atual) throw new Error('documento_nao_encontrado');
+  const agora = nowISO();
+  const atualizado: DocumentoBibliotecaRegistro = {
+    ...atual,
+    status: atual.status === 'assinado' ? 'assinado' : 'enviado',
+    arquivoUri: arquivoUri ?? atual.arquivoUri,
+    arquivoHash: arquivoHash ?? atual.arquivoHash,
+    enviadoEm: atual.enviadoEm ?? agora,
+    atualizadoEm: agora,
+  };
+  await saveDocumentoBiblioteca(atualizado);
+  return atualizado;
+}

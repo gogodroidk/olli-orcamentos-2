@@ -2095,6 +2095,7 @@ export async function saveDocumentoBiblioteca(documento: DocumentoBibliotecaRegi
      documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm, documento.enviadoEm ?? null,
      documento.assinadoEm ?? null, documento.excluidoEm ?? null],
   );
+  mirrorPush('documentos', documento);
 }
 
 export async function saveDocumentoBibliotecaVersao(versao: DocumentoBibliotecaVersao): Promise<void> {
@@ -2106,6 +2107,7 @@ export async function saveDocumentoBibliotecaVersao(versao: DocumentoBibliotecaV
     [versao.id, versao.documentoId, versao.numeroVersao, JSON.stringify(versao.dados ?? {}),
      versao.arquivoUri ?? null, versao.arquivoHash ?? null, versao.criadoEm, versao.criadoPor ?? null],
   );
+  mirrorPush('documento_versoes', versao);
 }
 
 export async function getDocumentoBibliotecaVersoes(documentoId: string): Promise<DocumentoBibliotecaVersao[]> {

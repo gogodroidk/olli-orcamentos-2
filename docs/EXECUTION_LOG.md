@@ -538,6 +538,7 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 - Performance: a biblioteca de documentos passou a carregar somente páginas recentes (40 itens por origem) em vez de baixar histórico completo no foco da tela; o histórico completo continua nas telas próprias.
 - Persistência da biblioteca: criadas as tabelas locais `documentos`/`documento_versoes`, backup/restore/logout seguro, migration Supabase `20260910160000_document_library` com RLS fail-closed e sync app↔nuvem para registro e versões.
 - A biblioteca visual mescla a projeção recente com registros persistidos; ao abrir a prévia de contrato/garantia/conclusão, o orçamento passa a ter um registro versionado local, sem sobrescrever documentos já enviados/assinados.
+- Exportação: o PDF nativo agora devolve a URI salva e a prévia marca o registro como enviado/assinado após a entrega; na web o status é rastreado mesmo quando o navegador escolhe o destino do print.
 - Segurança de dependências: OSV Scanner ficou sem vulnerabilidades nos locks do app, Worker e painel após `sharp` 0.35.4 e `js-yaml` 4.3.2. Gitleaks encontrou somente chaves públicas anon/JWT já presentes no histórico; não foi encontrado segredo de serviço no escopo desta rodada.
 - App mobile: criado registro rápido de pagamento com valor, data e forma; o badge financeiro `Pago` permanece separado do status comercial do orçamento.
 - Ordem de serviço: adicionado `concluido_em` no tipo, SQLite v5, sync app↔Supabase, painel web e KPIs; transição repetida preserva o marco, reabertura limpa e reconclusão cria outro.
