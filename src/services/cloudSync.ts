@@ -943,6 +943,18 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
         (row as Record<string, unknown>).user_id = decisao.userIdOverride;
       }
     }
+    if (table === 'documentos') {
+      // A escrita unitária acontece fora do lote e também precisa de LWW
+      // fail-closed; sem esta releitura um aparelho offline poderia reverter um
+      // documento já enviado/assinado em outro aparelho.
+      const id = (row as Record<string, unknown>).id;
+      if (typeof id === 'string') {
+        const remoto = await supabase.from(remoteNome(table)).select('atualizado_em').eq('id', id).maybeSingle();
+        if (remoto.error) return;
+        const tsRemoto = (remoto.data as any)?.atualizado_em as string | undefined;
+        if (tsMaisNovo(tsRemoto, (row as any).atualizado_em)) return;
+      }
+    }
     const { error } = await supabase
       .from(remoteNome(table))
       .upsert(row, { onConflict: ON_CONFLICT[table] });
@@ -2035,6 +2047,7 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
     const tsRecibos = await carregarTimestampsRemotos('recibos', 'atualizado_em');
     const tsModelos = await carregarTimestampsRemotos('modelos', 'atualizado_em');
     const tsDepoimentos = await carregarTimestampsRemotos('depoimentos', 'atualizado_em');
+    const tsDocumentos = await carregarTimestampsRemotos('documentos', 'atualizado_em');
 
     await pushTable('clientes', 'SELECT * FROM clientes', rowToClienteLocal,
       (c) => remoteMaisNovoNoMapa(tsClientes, c.id, c.atualizadoEm), geracao);
@@ -2074,7 +2087,7 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
     await pushTable<PmocOrdemGerada>('pmoc_ordens_geradas', 'SELECT * FROM pmoc_ordens_geradas', rowToPmocGeradaLocal,
       (g) => remoteMaisNovoNoMapa(tsGeradas, g.id, g.atualizadoEm), geracao);
     await pushTable<DocumentoBibliotecaRegistro>('documentos', 'SELECT * FROM documentos', rowToDocumentoLocal,
-      undefined, geracao);
+      (d) => remoteMaisNovoNoMapa(tsDocumentos, d.id, d.atualizadoEm), geracao);
     await pushTable<DocumentoBibliotecaVersao>('documento_versoes', 'SELECT * FROM documento_versoes', rowToDocumentoVersaoLocal,
       undefined, geracao);
     if (syncAbortado(geracao)) return;
