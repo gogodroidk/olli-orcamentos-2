@@ -10,6 +10,7 @@ import {
 import type {
   DocumentoBibliotecaRegistro,
   DocumentoBibliotecaVersao,
+  Recibo,
   StatusDocumentoBiblioteca,
   TipoDocumentoBiblioteca,
 } from '../types';
@@ -82,6 +83,22 @@ export async function garantirDocumentoDerivadoDeOrcamento(input: {
   // sobrescreva; a próxima edição deve virar revisão explícita.
   if (existente.status === 'enviado' || existente.status === 'assinado') return existente;
   return criarVersaoDocumentoBiblioteca(existente.id, input.dados, { status });
+}
+
+export async function garantirDocumentoRecibo(recibo: Recibo): Promise<DocumentoBibliotecaRegistro> {
+  const existente = await getDocumentoBibliotecaPorOrigem('recibo', 'recibo', recibo.id);
+  if (existente) return existente;
+  return criarDocumentoBiblioteca({
+    tipo: 'recibo',
+    titulo: `Recibo nº ${recibo.numero}`,
+    clienteId: recibo.clienteId,
+    clienteNome: recibo.clienteNome,
+    origemTipo: 'recibo',
+    origemId: recibo.id,
+    origemNumero: recibo.numero,
+    dados: { reciboId: recibo.id, valorRecebido: recibo.valorRecebido, formaPagamento: recibo.formaPagamento },
+    status: 'pronto',
+  });
 }
 
 /**

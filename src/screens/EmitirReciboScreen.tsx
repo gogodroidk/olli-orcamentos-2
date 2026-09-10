@@ -26,6 +26,7 @@ import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { montarMensagemPedidoAvaliacao, montarMensagemAgradecimento, montarMensagemPedidoIndicacao } from '../utils/mensagensOrcamento';
+import { garantirDocumentoRecibo, registrarArtefatoDocumentoBiblioteca } from '../services/documentosBiblioteca';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
@@ -225,6 +226,7 @@ function EmitirReciboConteudo() {
         // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
         // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
         await saveRecibo(recibo);
+        await garantirDocumentoRecibo(recibo);
         setReciboPendente(recibo);
       } catch {
         Alert.alert('Erro', 'Não foi possível salvar o recibo agora. Tente novamente.');
@@ -235,7 +237,11 @@ function EmitirReciboConteudo() {
       try {
         const html = await buildHtml(recibo);
         // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
-        await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
+        const uri = await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
+        try {
+          const registro = await garantirDocumentoRecibo(recibo);
+          await registrarArtefatoDocumentoBiblioteca(registro.id, uri);
+        } catch { /* o PDF já foi entregue; a biblioteca é best-effort */ }
         // PDF gerado/compartilhado com sucesso: limpa o "pendente" para o card
         // azul "Pagamento já registrado... gere o PDF" sumir — a ação que ele
         // pedia já foi concluída (sem isso o card ficava contradizendo a tela).
@@ -276,7 +282,11 @@ function EmitirReciboConteudo() {
     );
     try {
       const html = await buildHtml(r);
-      await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      const uri = await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      try {
+        const registro = await garantirDocumentoRecibo(r);
+        await registrarArtefatoDocumentoBiblioteca(registro.id, uri);
+      } catch { /* segunda via entregue; não bloquear por falha de índice local */ }
       // Pagamento registrado sem PDF ainda (ver "Registrar pagamento" na lista de
       // orçamentos): agora que o PDF foi gerado/compartilhado pela 1ª vez, marca
       // o recibo como emitido — vira o badge financeiro do orçamento de "Pago"
