@@ -542,6 +542,7 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 - Recibos: criação e segunda via agora registram o recibo na biblioteca; após exportar o PDF, o artefato é associado sem bloquear a entrega se o índice local falhar.
 - OS/PMOC: conclusão de uma OS e aprovação operacional de uma versão PMOC criam registros de biblioteca de forma best-effort, mantendo a distinção entre documento organizado e certificação legal.
 - Integridade: versões de documento passaram a ser `INSERT OR IGNORE` localmente e no pull, preservando o contrato append-only mesmo em retries ou sync duplicado.
+- RLS documental: migration `20260910170000_document_library_no_hard_delete` removeu o DELETE direto de documentos para clientes autenticados; o caminho de usuário fica em arquivamento/soft-delete com trilha.
 - QA web: Playwright passou em desktop (1280×720) e mobile (390×844), sem console/page errors; ambas as rotas pararam honestamente no login demo (`authRequired=true`) e não fingiram fluxo autenticado.
 - Segurança de dependências: OSV Scanner ficou sem vulnerabilidades nos locks do app, Worker e painel após `sharp` 0.35.4 e `js-yaml` 4.3.2. Gitleaks encontrou somente chaves públicas anon/JWT já presentes no histórico; não foi encontrado segredo de serviço no escopo desta rodada.
 - App mobile: criado registro rápido de pagamento com valor, data e forma; o badge financeiro `Pago` permanece separado do status comercial do orçamento.

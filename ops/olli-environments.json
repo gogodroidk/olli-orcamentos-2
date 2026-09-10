@@ -47,11 +47,11 @@
       "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
       "baselineSource": "main_schema_metadata_only",
       "latestStagingMigration": {
-        "version": "20260910160000",
+        "version": "20260910170000",
         "status": "applied",
-        "appliedAt": "2026-09-10T09:35:00-03:00",
+        "appliedAt": "2026-09-10T09:50:00-03:00",
         "scope": "staging_only",
-        "description": "biblioteca de documentos + versões append-only e RLS"
+        "description": "biblioteca de documentos sem hard delete para clientes"
       },
       "lastPromotionCheckpoint": {
         "recordedAt": "2026-09-08T06:38:24-03:00",
