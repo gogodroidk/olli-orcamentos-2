@@ -533,6 +533,7 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 - Central de documentos: nova entrada em Conta reúne modelos/contratos/termos, recibos, OS, PMOC e certificado, apontando para os geradores oficiais sem duplicar lógica de PDF.
 - Ajuda oficial: adicionados artigos versionáveis sobre NFS-e nacional, PMOC e assinatura gov.br/ITI, com links oficiais e limites claros (sem guardar credenciais ou fingir emissão).
 - Financeiro: recebimentos agora são somados por orçamento; lançamentos abaixo do total aparecem como `Pagamento parcial`, o botão usa o saldo restante e só a quitação completa pode virar `Pago`/`Recibo emitido`.
+- Segurança de dependências: OSV Scanner ficou sem vulnerabilidades nos locks do app, Worker e painel após `sharp` 0.35.4 e `js-yaml` 4.3.2. Gitleaks encontrou somente chaves públicas anon/JWT já presentes no histórico; não foi encontrado segredo de serviço no escopo desta rodada.
 - App mobile: criado registro rápido de pagamento com valor, data e forma; o badge financeiro `Pago` permanece separado do status comercial do orçamento.
 - Ordem de serviço: adicionado `concluido_em` no tipo, SQLite v5, sync app↔Supabase, painel web e KPIs; transição repetida preserva o marco, reabertura limpa e reconclusão cria outro.
 - Staging Supabase: migration `20260908112342_ordens_servico_concluido_em` aplicada e reparada como `applied`; coluna e índice verificados. Produção não foi tocada.
