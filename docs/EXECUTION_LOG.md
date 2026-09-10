@@ -535,6 +535,7 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 - Financeiro: recebimentos agora são somados por orçamento; lançamentos abaixo do total aparecem como `Pagamento parcial`, o botão usa o saldo restante e só a quitação completa pode virar `Pago`/`Recibo emitido`.
 - Biblioteca de documentos: a Central agora cruza orçamentos, contratos/termos derivados, recibos, OS e PMOC em uma lista pesquisável com filtros de estado e origem; a projeção é read-only e não inventa PDF ou assinatura.
 - IA de catálogo: criado contrato puro de prévia para lotes de serviços/produtos com fonte HTTPS, data, cidade, confiança, deduplicação, limite de 50 itens e confirmação restrita a conta pessoal/dono; nenhum caminho escreve no banco.
+- Performance: a biblioteca de documentos passou a carregar somente páginas recentes (40 itens por origem) em vez de baixar histórico completo no foco da tela; o histórico completo continua nas telas próprias.
 - Segurança de dependências: OSV Scanner ficou sem vulnerabilidades nos locks do app, Worker e painel após `sharp` 0.35.4 e `js-yaml` 4.3.2. Gitleaks encontrou somente chaves públicas anon/JWT já presentes no histórico; não foi encontrado segredo de serviço no escopo desta rodada.
 - App mobile: criado registro rápido de pagamento com valor, data e forma; o badge financeiro `Pago` permanece separado do status comercial do orçamento.
 - Ordem de serviço: adicionado `concluido_em` no tipo, SQLite v5, sync app↔Supabase, painel web e KPIs; transição repetida preserva o marco, reabertura limpa e reconclusão cria outro.

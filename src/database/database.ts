@@ -1758,6 +1758,18 @@ export async function getOrdensServico(): Promise<OrdemServico[]> {
   return rows.map(rowToOrdemServico);
 }
 
+/** Página recente para dashboards/bibliotecas; evita carregar toda a OS no boot. */
+export async function getOrdensServicoPagina(limite = 40, offset = 0): Promise<OrdemServico[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(100, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM ordens_servico WHERE excluido_em IS NULL ORDER BY atualizado_em DESC, numero DESC LIMIT ? OFFSET ?',
+    [n, o],
+  );
+  return rows.map(rowToOrdemServico);
+}
+
 // Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getOrdemServico(id: string): Promise<OrdemServico | null> {
   const db = await getDb();
@@ -1956,6 +1968,18 @@ export async function getRecibos(): Promise<Recibo[]> {
   // ordena por data de criação (mais novo primeiro), com fallback por `numero`.
   const rows = await db.getAllAsync<any>(
     "SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
+  );
+  return rows.map(r => JSON.parse(r.data));
+}
+
+/** Página recente para a biblioteca de documentos; o histórico completo fica na tela própria. */
+export async function getRecibosPagina(limite = 40, offset = 0): Promise<Recibo[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(100, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC LIMIT ? OFFSET ?",
+    [n, o],
   );
   return rows.map(r => JSON.parse(r.data));
 }
@@ -2848,6 +2872,18 @@ export async function getPmocPlanos(): Promise<PmocPlano[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM pmoc_planos WHERE excluido_em IS NULL ORDER BY criado_em DESC',
+  );
+  return rows.map(rowToPmocPlanoDb);
+}
+
+/** Página recente de planos PMOC para telas de entrada; não substitui a lista completa. */
+export async function getPmocPlanosPagina(limite = 40, offset = 0): Promise<PmocPlano[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(100, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_planos WHERE excluido_em IS NULL ORDER BY atualizado_em DESC, criado_em DESC LIMIT ? OFFSET ?',
+    [n, o],
   );
   return rows.map(rowToPmocPlanoDb);
 }

@@ -9,7 +9,7 @@ import { OlliCard } from '../components/OlliCard';
 import { OlliPressable } from '../components/OlliPressable';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { getOrcamentos, getRecibos, getOrdensServico, getPmocPlanos } from '../database/database';
+import { getOrcamentosPagina, getRecibosPagina, getOrdensServicoPagina, getPmocPlanosPagina } from '../database/database';
 import {
   buscarBibliotecaDocumentos,
   construirBibliotecaDocumentos,
@@ -51,7 +51,7 @@ export default function CentralDocumentosScreen() {
     setErroDocumentos(false);
     try {
       const [orcamentos, recibos, ordensServico, pmocPlanos] = await Promise.all([
-        getOrcamentos(), getRecibos(), getOrdensServico(), getPmocPlanos(),
+        getOrcamentosPagina({}, 40, 0), getRecibosPagina(40, 0), getOrdensServicoPagina(40, 0), getPmocPlanosPagina(40, 0),
       ]);
       setDocumentos(construirBibliotecaDocumentos({ orcamentos, recibos, ordensServico, pmocPlanos }));
     } catch {
