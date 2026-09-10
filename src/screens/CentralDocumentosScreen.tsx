@@ -80,7 +80,7 @@ export default function CentralDocumentosScreen() {
         ))}
 
         <Text style={styles.secao}>Orientação e fontes oficiais</Text>
-        <OlliPressable style={styles.ajuda} onPress={() => nav.navigate('Ajuda', { categoriaId: 'campo', origem: 'Central de documentos' })}>
+        <OlliPressable style={styles.ajuda} onPress={() => nav.navigate('Ajuda', { categoriaId: 'governo', origem: 'Central de documentos' })}>
           <MaterialCommunityIcons name="help-circle-outline" size={22} color={cores.primaryLight} />
           <View style={{ flex: 1 }}>
             <Text style={styles.ajudaTitulo}>Como usar cada documento</Text>
