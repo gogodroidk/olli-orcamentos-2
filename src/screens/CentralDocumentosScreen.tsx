@@ -9,7 +9,7 @@ import { OlliCard } from '../components/OlliCard';
 import { OlliPressable } from '../components/OlliPressable';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { getOrcamentosPagina, getRecibosPagina, getOrdensServicoPagina, getPmocPlanosPagina } from '../database/database';
+import { getOrcamentosPagina, getRecibosPagina, getOrdensServicoPagina, getPmocPlanosPagina, getDocumentosBiblioteca } from '../database/database';
 import {
   buscarBibliotecaDocumentos,
   construirBibliotecaDocumentos,
@@ -53,7 +53,18 @@ export default function CentralDocumentosScreen() {
       const [orcamentos, recibos, ordensServico, pmocPlanos] = await Promise.all([
         getOrcamentosPagina({}, 40, 0), getRecibosPagina(40, 0), getOrdensServicoPagina(40, 0), getPmocPlanosPagina(40, 0),
       ]);
-      setDocumentos(construirBibliotecaDocumentos({ orcamentos, recibos, ordensServico, pmocPlanos }));
+      const derivados = construirBibliotecaDocumentos({ orcamentos, recibos, ordensServico, pmocPlanos });
+      const persistidos = await getDocumentosBiblioteca(100, 0);
+      const mesclados = new Map<string, DocumentoBiblioteca>();
+      for (const d of derivados) mesclados.set(`${d.tipo}:${d.origemTipo}:${d.origemId}`, d);
+      for (const d of persistidos) {
+        mesclados.set(`${d.tipo}:${d.origemTipo}:${d.origemId ?? d.id}`, {
+          id: d.id, tipo: d.tipo as DocumentoBiblioteca['tipo'], status: d.status as DocumentoBiblioteca['status'],
+          titulo: d.titulo, clienteId: d.clienteId, clienteNome: d.clienteNome, origemTipo: d.origemTipo,
+          origemId: d.origemId ?? d.id, origemNumero: d.origemNumero, atualizadoEm: d.atualizadoEm,
+        });
+      }
+      setDocumentos([...mesclados.values()].sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm)));
     } catch {
       setErroDocumentos(true);
     } finally {

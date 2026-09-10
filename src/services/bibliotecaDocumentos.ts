@@ -18,7 +18,7 @@ export type DocumentoBiblioteca = {
   titulo: string;
   clienteId?: string;
   clienteNome: string;
-  origemTipo: 'orcamento' | 'recibo' | 'ordem_servico' | 'pmoc';
+  origemTipo: 'orcamento' | 'recibo' | 'ordem_servico' | 'pmoc' | 'manual';
   origemId: string;
   origemNumero?: string;
   atualizadoEm: string;
