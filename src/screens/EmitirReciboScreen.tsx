@@ -97,9 +97,14 @@ function EmitirReciboConteudo() {
           setClienteTelefone(o.clienteTelefone);
           setValorRecebido(o.valorTotal);
         }
+        if (!o) return;
         try {
           const recibos = await getRecibos();
           const pendente = getReciboDoOrcamento(orcamentoId, recibos);
+          const recebidoSemPendente = recibos
+            .filter((r) => r.orcamentoId === orcamentoId && r.id !== (pendente?.id ?? ''))
+            .reduce((total, r) => total + (Number.isFinite(r.valorRecebido) ? Math.max(0, r.valorRecebido) : 0), 0);
+          const saldoRestante = Math.max(0, Math.round((o.valorTotal - recebidoSemPendente) * 100) / 100);
           // Só reaproveita como "pendente" quando pdfEmitido é explicitamente
           // false. Ausente (recibo LEGADO, anterior a este campo) já foi
           // emitido na época — não deve ser retomado/renumerado aqui.
@@ -110,6 +115,11 @@ function EmitirReciboConteudo() {
             setValorRecebido(pendente.valorRecebido);
             setFormaPagamento(pendente.formaPagamento);
             setDataRecebimento(pendente.dataRecebimento);
+          } else {
+            // Depois de uma entrada parcial cujo PDF já foi emitido, a próxima
+            // emissão deve sugerir apenas o saldo — nunca o valor integral de
+            // novo. Saldo zero deixa o botão de emissão desabilitado.
+            setValorRecebido(saldoRestante);
           }
         } catch {
           // sem recibo pendente encontrado: segue o fluxo normal (cria um novo)
@@ -187,6 +197,23 @@ function EmitirReciboConteudo() {
     if (!clienteNome.trim() || !valorRecebido) {
       Alert.alert('Atenção', 'Preencha o nome do cliente e o valor.');
       return;
+    }
+    if (orc) {
+      // A validação vive também aqui, imediatamente antes do salvamento, para
+      // cobrir digitação manual, reabertura após pagamento parcial e qualquer
+      // alteração concorrente feita por outro dispositivo.
+      const recibosAtuais = await getRecibos();
+      const recebidoSemAtual = recibosAtuais
+        .filter((r) => r.orcamentoId === orc.id && r.id !== (reciboPendente?.id ?? ''))
+        .reduce((total, r) => total + (Number.isFinite(r.valorRecebido) ? Math.max(0, r.valorRecebido) : 0), 0);
+      const saldoRestante = Math.max(0, (orc.valorTotal || 0) - recebidoSemAtual);
+      if (saldoRestante <= 0 || valorRecebido > saldoRestante + 0.005) {
+        Alert.alert(
+          'Valor acima do saldo',
+          `Este orçamento tem ${formatCurrency(saldoRestante)} disponível para receber. Ajuste o valor antes de emitir o recibo.`,
+        );
+        return;
+      }
     }
     setSharing(true);
     try {

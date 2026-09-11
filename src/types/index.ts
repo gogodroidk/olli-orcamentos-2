@@ -450,6 +450,8 @@ export interface DocumentoBibliotecaRegistro {
   versaoAtual: number;
   dados: Record<string, unknown>;
   arquivoUri?: string;
+  /** Chave privada do Storage (bucket/caminho), estável entre aparelhos. */
+  arquivoChave?: string;
   arquivoHash?: string;
   criadoEm: string;
   atualizadoEm: string;
@@ -464,6 +466,8 @@ export interface DocumentoBibliotecaVersao {
   numeroVersao: number;
   dados: Record<string, unknown>;
   arquivoUri?: string;
+  /** Chave privada do Storage da versão, quando houver artefato remoto. */
+  arquivoChave?: string;
   arquivoHash?: string;
   criadoEm: string;
   criadoPor?: string;

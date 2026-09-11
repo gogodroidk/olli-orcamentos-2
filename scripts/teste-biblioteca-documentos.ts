@@ -1,4 +1,5 @@
 import { construirBibliotecaDocumentos, buscarBibliotecaDocumentos } from '../src/services/bibliotecaDocumentos.ts';
+import { readFileSync } from 'node:fs';
 
 const ok = (nome: string, condicao: boolean) => {
   if (!condicao) throw new Error(`FALHA: ${nome}`);
@@ -26,4 +27,12 @@ ok('PMOC vigente vira documento assinado', docs.find(d => d.id === 'pmoc:p1')?.s
 ok('busca por cliente cruza origens', buscarBibliotecaDocumentos(docs, 'ana souza').length >= 6);
 ok('filtro por rascunho é fechado', buscarBibliotecaDocumentos(docs, '', 'rascunho').every(d => d.status === 'rascunho'));
 ok('lista sai ordenada pelo último evento', docs[0].id === 'os:os1');
-console.log('PASSOU: 7 verificações');
+const webPage = readFileSync(new URL('../webapp/src/pages/olli/documentos/index.tsx', import.meta.url), 'utf8');
+const webRoutes = readFileSync(new URL('../webapp/src/routes/sections/dashboard/frontend.tsx', import.meta.url), 'utf8');
+const webNav = readFileSync(new URL('../webapp/src/layouts/dashboard/nav/nav-data/nav-data-frontend.tsx', import.meta.url), 'utf8');
+const banco = readFileSync(new URL('../src/database/database.ts', import.meta.url), 'utf8');
+ok('biblioteca web tem lista pesquisável', /useOlliList<LinhaDocumento>/.test(webPage) && /Buscar documentos/.test(webPage));
+ok('rota web de documentos está registrada', /pages\/olli\/documentos/.test(webRoutes));
+ok('menu web expõe Documentos', /title: "Documentos"/.test(webNav));
+ok('pai e versão usam transação local', /saveDocumentoBibliotecaComVersao/.test(banco) && /withTransactionAsync/.test(banco));
+console.log('PASSOU: 11 verificações');

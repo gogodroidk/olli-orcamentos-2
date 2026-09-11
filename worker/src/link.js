@@ -344,7 +344,7 @@ export async function responderLink(token, request, env) {
 // o evento 'visualizado' com ip_hash/user-agent; quando ausente, o evento ainda é
 // gravado (sem enriquecimento). Assim a trilha funciona independentemente disso.
 /**
- * `?acao=aprovar|recusar` vem dos QR codes do PDF. Ele SÓ PRÉ-SELECIONA a ação na
+ * `?acao=aprovar|recusar` vem dos botões/links do PDF. Ele SÓ PRÉ-SELECIONA a ação na
  * página: rola até os botões e, no caso de recusa, abre o campo de motivo. NUNCA
  * envia.
  *
@@ -657,7 +657,7 @@ function pageOrcamento(row, preSelecao = '') {
       alert('Não consegui registrar agora. Verifique a internet e tente de novo.');
     }
 
-    // Pré-seleção vinda do QR do PDF (?acao=). NÃO envia nada: rola até as ações e,
+    // Pré-seleção vinda do botão/link do PDF (?acao=). NÃO envia nada: rola até as ações e,
     // na recusa, abre o campo de motivo. O cliente ainda confirma com um toque.
     (function(){
       var acao = ${JSON.stringify(preSelecao)};

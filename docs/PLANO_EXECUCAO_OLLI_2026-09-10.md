@@ -87,8 +87,8 @@ ou ficam fora da IA.
 - Documentos existentes: contrato, termos, recibo, certificado, modelos e PMOC;
   os caminhos atuais continuam funcionando. A Central já projeta esses registros em
   uma biblioteca pesquisável por origem/estado, e o registro persistente com versões
-  append-only já existe localmente e no staging; falta finalizar o armazenamento do
-  PDF/artefato e ligar todos os geradores a esse registro.
+  append-only já existe localmente e no staging; PDFs nativos agora tentam Storage
+  privado com chave/hash e mantêm fallback local/web explícito.
 - Revisão de orçamento: rascunho é editável; proposta enviada/aceita gera revisão.
 - Pagamento: `registrarPagamento` agora tem caminho de UI no detalhe mobile; o
   financeiro já deriva `aguardando_pagamento`, `pago` e `recibo_emitido`.
@@ -100,16 +100,25 @@ ou ficam fora da IA.
   real e tela de aprovação continuam como próxima fatia.
 - Staging: Worker `ee5e349c-e22a-4ddc-ba4a-2d69d52acd65`, deployment
   `bc556d42-1af6-4018-8d5b-97d838e3ea61`, smoke sem side effects.
+- Integridade financeira staging: CHECKs de status/valor validados e trigger
+  transacional de saldo em `recibos`; a UI nativa/web bloqueia excedente e o
+  estado financeiro sobrevive a mudanças comerciais.
+- Artefatos: `arquivo_chave` estável, hash SHA-256 no PDF nativo, upload privado
+  best-effort com URL assinada regenerável e fallback local; Central de
+  Documentos também está disponível no painel web.
+- IA mobile: modo contextual de preparação com diff, confirmação, cancelamento
+  e reversão pelos endpoints allowlisted já existentes no Worker.
 
 ## 4. Próximas fatias, em ordem
 
-1. Central de Documentos: contrato de dados, tela biblioteca e criação a partir de
-   orçamento/OS; testes de tenant e imutabilidade.
-2. Pagamentos: comprovante anexado, pagamentos parciais, saldo e recibo ligado ao
-   evento; manter o estado comercial separado.
+1. Central de Documentos: editor de rascunho visual, abertura de todos os tipos
+   de origem e paginação por cursor; manter versões congeladas.
+2. Pagamentos: ledger append-only dedicado, comprovante com hash/retensão,
+   idempotency key e RPC transacional; recibo continua derivado do evento.
 3. Ajuda oficial: registro de fonte/versão, NFS-e e PMOC; links/deep links primeiro.
-4. IA de documentos: job isolado, parser aprovado, preview/diff, aprovação em lote
-   e auditoria; sem escrita direta pelo modelo.
+4. IA de documentos: job isolado para PDF/CSV/foto, parser aprovado, preview/diff,
+   aprovação em lote e auditoria; o modo de ação do chat já está conectado para
+   campos allowlisted, mas não executa documentos/importação.
 5. Performance: baseline frio/quente no SM-G780F, SQLite, bundle, listas, fontes e
    JS thread; só então lazy loading, agregados, virtualização e thumbnails.
 6. Landing/onboarding: páginas por vertical e copy de teste grátis baseada em dados,

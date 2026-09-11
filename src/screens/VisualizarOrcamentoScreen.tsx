@@ -28,6 +28,7 @@ import { getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } fro
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { RegistrarPagamentoModal, type PagamentoForm } from '../components/RegistrarPagamentoModal';
 import { usePlano } from '../hooks/usePlano';
+import { usePermissao } from '../hooks/usePermissao';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { track, Eventos } from '../services/analytics';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -79,6 +80,8 @@ export default function VisualizarOrcamentoScreen() {
   const textoSobreAccent = textoSobre(cores.accentLight);
   const { orcamentoId } = route.params;
   const { temAcesso } = usePlano();
+  const { pode: podePapel, carregando: carregandoPapel } = usePermissao();
+  const podeFinanceiro = !carregandoPapel && podePapel('ver_valores_agregados');
 
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -145,7 +148,7 @@ export default function VisualizarOrcamentoScreen() {
     setNaoEncontrado(false);
     try {
       const [o, e, deps, vs, recibosDoBanco] = await Promise.all([
-        getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId), getRecibos(),
+        getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId), podeFinanceiro ? getRecibos() : Promise.resolve<Recibo[]>([]),
       ]);
       if (!o) {
         setOrc(null);
@@ -164,7 +167,7 @@ export default function VisualizarOrcamentoScreen() {
     } finally {
       setCarregando(false);
     }
-  }, [orcamentoId, loadTrilha]);
+  }, [orcamentoId, loadTrilha, podeFinanceiro]);
 
   useFocusEffect(useCallback(() => {
     void load();
@@ -441,6 +444,10 @@ export default function VisualizarOrcamentoScreen() {
 
   async function salvarPagamento(form: PagamentoForm) {
     if (!orc) return;
+    if (!podeFinanceiro) {
+      Alert.alert('Acesso restrito', 'Somente o dono ou um papel financeiro autorizado pode registrar recebimentos.');
+      return;
+    }
     await registrarPagamento({ orcamento: orc, ...form });
     const atualizados = await getRecibos();
     setRecibos(atualizados);
@@ -607,8 +614,8 @@ export default function VisualizarOrcamentoScreen() {
           <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
           <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
-          <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
-          {(getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' || getStatusFinanceiro(orc, recibos) === 'parcial') && (
+          {podeFinanceiro && <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />}
+          {podeFinanceiro && (getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' || getStatusFinanceiro(orc, recibos) === 'parcial') && (
             <ActionBtn icon="cash-check" label="Registrar pagamento" onPress={() => setPagamentoAberto(true)} />
           )}
           {orc.status === 'aprovado' && (
@@ -828,7 +835,7 @@ export default function VisualizarOrcamentoScreen() {
         )}
 
         {/* TOTAIS */}
-        <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+        {podeFinanceiro && <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
           <Text style={styles.cardTitle}>Resumo financeiro</Text>
           <View style={styles.financeiroLinha}>
             <Text style={styles.rowLabel}>Recebimento</Text>
@@ -836,6 +843,9 @@ export default function VisualizarOrcamentoScreen() {
           </View>
           {getStatusFinanceiro(orc, recibos) === 'pago' && (
             <Text style={styles.financeiroNota}>Pagamento registrado. O recibo em PDF continua disponível no botão “Recibo”.</Text>
+          )}
+          {getStatusFinanceiro(orc, recibos) === 'recibo_emitido' && (
+            <Text style={styles.financeiroNota}>Pagamento quitado e recibo emitido. O status comercial continua separado deste registro.</Text>
           )}
           {getStatusFinanceiro(orc, recibos) === 'parcial' && (
             <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
@@ -847,7 +857,7 @@ export default function VisualizarOrcamentoScreen() {
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>{formatCurrency(orc.valorTotal)}</Text>
           </View>
-        </OlliCard>
+        </OlliCard>}
 
         {/* DETALHES */}
         <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
@@ -941,13 +951,13 @@ export default function VisualizarOrcamentoScreen() {
         titulo={overlayInfo?.titulo}
         subtitulo={overlayInfo?.subtitulo}
       />
-      <RegistrarPagamentoModal
-        visivel={pagamentoAberto}
-        clienteNome={orc.clienteNome}
-        valorSugerido={Math.max(0, orc.valorTotal - totalRecebidoDoOrcamento(orc.id, recibos))}
-        aoFechar={() => setPagamentoAberto(false)}
-        aoSalvar={salvarPagamento}
-      />
+      {podeFinanceiro && <RegistrarPagamentoModal
+          visivel={pagamentoAberto}
+          clienteNome={orc.clienteNome}
+          valorSugerido={Math.max(0, orc.valorTotal - totalRecebidoDoOrcamento(orc.id, recibos))}
+          aoFechar={() => setPagamentoAberto(false)}
+          aoSalvar={salvarPagamento}
+        />}
     </View>
   );
 }

@@ -278,6 +278,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       versao_atual INTEGER NOT NULL DEFAULT 1,
       dados TEXT NOT NULL DEFAULT '{}',
       arquivo_uri TEXT,
+      arquivo_chave TEXT,
       arquivo_hash TEXT,
       criado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL,
@@ -294,6 +295,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       numero_versao INTEGER NOT NULL,
       dados TEXT NOT NULL DEFAULT '{}',
       arquivo_uri TEXT,
+      arquivo_chave TEXT,
       arquivo_hash TEXT,
       criado_em TEXT NOT NULL,
       criado_por TEXT,
@@ -553,7 +555,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -625,6 +627,14 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   // posterior, então o campo só passa a existir para novas transições.
   if (v < 5) {
     await addColumnIfMissing(database, 'ordens_servico', 'concluido_em', 'TEXT');
+  }
+
+  // v < 6 — chave estável do Storage privado para artefatos de documento.
+  // A URI assinada expira; a chave permite que outro aparelho gere uma nova URL
+  // sem copiar PDF para o JSON ou depender do caminho local do dispositivo.
+  if (v < 6) {
+    await addColumnIfMissing(database, 'documentos', 'arquivo_chave', 'TEXT');
+    await addColumnIfMissing(database, 'documento_versoes', 'arquivo_chave', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -2042,6 +2052,7 @@ function rowToDocumentoBiblioteca(r: any): DocumentoBibliotecaRegistro {
     versaoAtual: Number(r.versao_atual ?? 1),
     dados,
     arquivoUri: r.arquivo_uri ?? undefined,
+    arquivoChave: r.arquivo_chave ?? undefined,
     arquivoHash: r.arquivo_hash ?? undefined,
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
@@ -2086,13 +2097,13 @@ export async function saveDocumentoBiblioteca(documento: DocumentoBibliotecaRegi
   await db.runAsync(
     `INSERT OR REPLACE INTO documentos
       (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
-       origem_numero, versao_atual, dados, arquivo_uri, arquivo_hash, criado_em,
+       origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
        atualizado_em, enviado_em, assinado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [documento.id, documento.tipo, documento.status, documento.titulo, documento.clienteId ?? null,
      documento.clienteNome, documento.origemTipo, documento.origemId ?? null, documento.origemNumero ?? null,
      documento.versaoAtual, JSON.stringify(documento.dados ?? {}), documento.arquivoUri ?? null,
-     documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm, documento.enviadoEm ?? null,
+     documento.arquivoChave ?? null, documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm, documento.enviadoEm ?? null,
      documento.assinadoEm ?? null, documento.excluidoEm ?? null],
   );
   mirrorPush('documentos', documento);
@@ -2102,11 +2113,47 @@ export async function saveDocumentoBibliotecaVersao(versao: DocumentoBibliotecaV
   const db = await getDb();
   await db.runAsync(
     `INSERT OR IGNORE INTO documento_versoes
-      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
-     VALUES (?,?,?,?,?,?,?,?)`,
+      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
     [versao.id, versao.documentoId, versao.numeroVersao, JSON.stringify(versao.dados ?? {}),
-     versao.arquivoUri ?? null, versao.arquivoHash ?? null, versao.criadoEm, versao.criadoPor ?? null],
+     versao.arquivoUri ?? null, versao.arquivoChave ?? null, versao.arquivoHash ?? null, versao.criadoEm, versao.criadoPor ?? null],
   );
+  mirrorPush('documento_versoes', versao);
+}
+
+/**
+ * Persiste pai + snapshot em uma única transação SQLite. A versão é inserida
+ * antes do espelho remoto somente depois do commit local; assim uma queda entre
+ * as duas escritas não deixa um documento sem sua versão correspondente.
+ */
+export async function saveDocumentoBibliotecaComVersao(
+  documento: DocumentoBibliotecaRegistro,
+  versao: DocumentoBibliotecaVersao,
+): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO documentos
+        (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+         origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
+         atualizado_em, enviado_em, assinado_em, excluido_em)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [documento.id, documento.tipo, documento.status, documento.titulo, documento.clienteId ?? null,
+       documento.clienteNome, documento.origemTipo, documento.origemId ?? null, documento.origemNumero ?? null,
+       documento.versaoAtual, JSON.stringify(documento.dados ?? {}), documento.arquivoUri ?? null,
+       documento.arquivoChave ?? null, documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm,
+       documento.enviadoEm ?? null, documento.assinadoEm ?? null, documento.excluidoEm ?? null],
+    );
+    await db.runAsync(
+      `INSERT OR IGNORE INTO documento_versoes
+        (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [versao.id, versao.documentoId, versao.numeroVersao, JSON.stringify(versao.dados ?? {}),
+       versao.arquivoUri ?? null, versao.arquivoChave ?? null, versao.arquivoHash ?? null,
+       versao.criadoEm, versao.criadoPor ?? null],
+    );
+  });
+  mirrorPush('documentos', documento);
   mirrorPush('documento_versoes', versao);
 }
 
@@ -2128,6 +2175,7 @@ export async function getDocumentoBibliotecaVersoes(documentoId: string): Promis
       numeroVersao: Number(r.numero_versao),
       dados,
       arquivoUri: r.arquivo_uri ?? undefined,
+      arquivoChave: r.arquivo_chave ?? undefined,
       arquivoHash: r.arquivo_hash ?? undefined,
       criadoEm: r.criado_em,
       criadoPor: r.criado_por ?? undefined,
@@ -2651,6 +2699,7 @@ async function getDocumentoVersoesForBackup(): Promise<DocumentoBibliotecaVersao
     return {
       id: r.id, documentoId: r.documento_id, numeroVersao: Number(r.numero_versao), dados,
       arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+      arquivoChave: r.arquivo_chave ?? undefined,
       criadoEm: r.criado_em, criadoPor: r.criado_por ?? undefined,
     } satisfies DocumentoBibliotecaVersao;
   });
@@ -2860,12 +2909,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       await db.runAsync(
         `INSERT OR REPLACE INTO documentos
           (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
-           origem_numero, versao_atual, dados, arquivo_uri, arquivo_hash, criado_em,
+           origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
            atualizado_em, enviado_em, assinado_em, excluido_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [d.id, d.tipo, d.status, d.titulo, d.clienteId ?? null, d.clienteNome ?? '', d.origemTipo,
          d.origemId ?? null, d.origemNumero ?? null, d.versaoAtual ?? 1, JSON.stringify(d.dados ?? {}),
-         d.arquivoUri ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
+         d.arquivoUri ?? null, d.arquivoChave ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
          d.enviadoEm ?? null, d.assinadoEm ?? null, d.excluidoEm ?? null],
       );
     }
@@ -2873,10 +2922,10 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       if (!v || !v.id || !v.documentoId) continue;
       await db.runAsync(
         `INSERT OR IGNORE INTO documento_versoes
-          (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
-         VALUES (?,?,?,?,?,?,?,?)`,
+          (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
         [v.id, v.documentoId, v.numeroVersao, JSON.stringify(v.dados ?? {}), v.arquivoUri ?? null,
-         v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
+         v.arquivoChave ?? null, v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
       );
     }
     // Relatórios diários: MERGE (não apaga o histórico local existente) — é um

@@ -214,7 +214,7 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 	const erroForma = !formaPagamento.trim() ? "Informe a forma de pagamento." : undefined;
 	const invalido = !!(erroCliente || erroValor || erroData || erroForma);
 
-	/** Aviso (não bloqueio): dono pode receber a mais de propósito (taxa, acréscimo). */
+	/** Excedente nunca é lançado no mesmo orçamento: evita saldo financeiro negativo. */
 	const ultrapassa = falta !== null && valorRecebido > falta && valorRecebido > 0;
 
 	async function aoEnviar(e: React.FormEvent) {
@@ -230,6 +230,12 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 			return;
 		}
 		if (invalido || !cliente) return;
+		if (ultrapassa) {
+			setErro(
+				`O valor informado (${reais(valorRecebido)}) ultrapassa o saldo restante deste orçamento (${reais(falta ?? 0)}). Registre apenas o que entrou ou crie um lançamento avulso para a diferença.`,
+			);
+			return;
+		}
 
 		setSalvando(true);
 		try {
@@ -416,17 +422,17 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 					</Campo>
 				</div>
 
-				{/* <output> tem role="status" implícito: o leitor de tela anuncia o aviso
-				    quando ele aparece, sem roubar o foco de quem está digitando o valor. */}
+				{/* <output> tem role="status" implícito: o leitor de tela anuncia o
+				    bloqueio sem roubar o foco de quem está digitando o valor. */}
 				{ultrapassa && falta !== null && (
-					<output className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-text-primary">
+					<output className="flex items-start gap-2 rounded-lg bg-error/10 px-3 py-2 text-sm text-text-primary">
 						<AlertTriangle
 							aria-hidden="true"
-							className="mt-0.5 size-4 shrink-0 text-warning-darker dark:text-warning"
+							className="mt-0.5 size-4 shrink-0 text-error-dark dark:text-error"
 						/>
 						<span>
-							Este valor passa do que falta receber deste orçamento (<strong>{reais(falta)}</strong>). Se for de
-							propósito (acréscimo, taxa), pode salvar — só confira antes.
+							Este valor passa do saldo restante deste orçamento (<strong>{reais(falta)}</strong>). Ajuste o valor ou
+							registre a diferença como recebimento avulso, sem vínculo com o orçamento.
 						</span>
 					</output>
 				)}

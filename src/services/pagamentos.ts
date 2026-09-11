@@ -59,14 +59,17 @@ export function totalRecebidoDoOrcamento(orcamentoId: string, recibos: Recibo[])
 
 /**
  * Deriva o estado financeiro de um orçamento a partir do(s) recibo(s) vinculados.
- * Só orçamentos APROVADOS (ou já CONVERTIDOS — status pós-aprovação que marca
- * serviço fechado/recibo emitido) entram no ciclo de cobrança — os demais
- * status (rascunho/enviado/visualizado/em_negociacao/recusado/expirado/
- * cancelado) não têm badge financeiro.
+ * Orçamentos APROVADOS (ou já CONVERTIDOS — status pós-aprovação que marca
+ * serviço fechado/recibo emitido) entram no ciclo de cobrança. Depois que um
+ * recebimento existe, porém, o histórico financeiro não pode desaparecer só
+ * porque alguém mudou o status comercial para recusado/cancelado/expirado:
+ * são máquinas independentes. Novos recebimentos continuam bloqueados pela
+ * validação de `registrarPagamento` enquanto o comercial não estiver aprovado.
  */
 export function getStatusFinanceiro(orcamento: Orcamento, recibos: Recibo[]): StatusFinanceiro | null {
-  if (orcamento.status !== 'aprovado' && orcamento.status !== 'convertido') return null;
   const vinculados = recibos.filter(r => r.orcamentoId === orcamento.id);
+  const comercialRecebivel = orcamento.status === 'aprovado' || orcamento.status === 'convertido';
+  if (!comercialRecebivel && vinculados.length === 0) return null;
   const recebido = totalRecebidoDoOrcamento(orcamento.id, recibos);
   if (recebido <= 0 || vinculados.length === 0) return 'aguardando_pagamento';
   const total = Math.max(0, orcamento.valorTotal || 0);

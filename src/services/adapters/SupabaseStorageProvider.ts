@@ -41,8 +41,27 @@ function falha<T>(motivo: MotivoFalhaPorta, mensagem?: string): ResultadoPorta<T
 
 function bytesDeBase64(valor: string): Uint8Array | null {
   try {
-    const binario = globalThis.atob(valor.replace(/\s/g, ''));
-    return Uint8Array.from(binario, (char) => char.charCodeAt(0));
+    // Hermes/RN não garante `atob` no global. Decodificar aqui, sem polyfill
+    // global, mantém o provider determinístico no Android, no iOS e na web.
+    const limpo = valor.replace(/\s/g, '');
+    if (!limpo || limpo.length % 4 === 1) return null;
+    const tabela = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const bytes: number[] = [];
+    let acumulado = 0;
+    let bits = 0;
+    for (let i = 0; i < limpo.length; i += 1) {
+      const caractere = limpo[i];
+      if (caractere === '=') break;
+      const valorCaractere = tabela.indexOf(caractere);
+      if (valorCaractere < 0) return null;
+      acumulado = (acumulado << 6) | valorCaractere;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((acumulado >> bits) & 0xff);
+      }
+    }
+    return bytes.length > 0 ? Uint8Array.from(bytes) : null;
   } catch {
     return null;
   }

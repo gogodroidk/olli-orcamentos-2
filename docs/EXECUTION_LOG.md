@@ -556,6 +556,38 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 - Validação: `npm run typecheck`, `npm test` (exit 0), build web, suíte automatizada completa (188 checks no meta-gate), APK debug instalado no SM-G780F/API 33; Home e Central de Documentos abriram no aparelho (`artifacts/device-sm-g780f-documentos-final.png`) sem fatal/erro SQLite. Permanecem warnings conhecidos de ciclos de import e debugger do Expo.
 - Supabase staging: a migration `20260910143000_fix_ia_quota_lint` corrigiu os casts de RPC, a referência de conflito da cota diária e a variável morta; `supabase db lint` agora retorna `No schema errors found`.
 
+## Revalidação e execução multiagente — 2026-09-11
+
+- Três auditorias independentes foram executadas em paralelo (documentos/IA,
+  financeiro/RLS e QA/release) sem editar o repositório. Os achados foram
+  incorporados somente após revisão central.
+- Corrigido o último erro de compilação da Central de Documentos (`OlliButton`)
+  e adicionado detalhe seguro, histórico, abertura de PDF, arquivamento com
+  confirmação e fallback de origem.
+- Aplicadas no Supabase staging as migrations `financial_integrity_guards`,
+  `validate_financial_constraints` e `document_storage_key`. CHECKs validados,
+  trigger de saldo ativo, colunas de chave de Storage presentes; produção não
+  foi tocada.
+- O Storage privado ganhou decoder base64 sem `atob` global (compatível com
+  Hermes), hash SHA-256 no PDF nativo e chave persistente para regenerar URL
+  assinada em outro aparelho. Pai + versão da biblioteca agora são gravados em
+  transação SQLite.
+- A Central de Documentos foi adicionada ao painel web com busca/filtros,
+  estados, origem, versão e indicação de arquivo privado.
+- O chat mobile ganhou o modo "Preparar alteração" com prévia persistida,
+  confirmação/cancelamento/reversão e mensagem explícita de que nada muda sem
+  confirmação; o Worker já tinha a allowlist/RBAC/CAS correspondente.
+- O formulário web e a emissão nativa de recibos passaram a bloquear valor acima
+  do saldo; o estado financeiro foi separado do status comercial e os controles
+  financeiros receberam gate de papel.
+- Evidências: `npm run typecheck`, `npm test`, `npm run test:c5-orcamentos-financeiro`,
+  `npm run test:c8-ia-segura`, `npm run test:storage-provider`,
+  `npm run test:biblioteca-documentos`, `npm run test:ia-importacao-segura`,
+  build `webapp` e `npm run staging:smoke` passaram. Debug APK recompilado e
+  instalado no SM-G780F/API 33; Home, Conta, Central de Documentos e modo
+  preparar do Chat abriram sem fatal/erro SQLite. O build release foi bloqueado
+  corretamente pelo guard de assinatura, que continua gate humano.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.

@@ -12,6 +12,12 @@ assert.match(adapter, /crypto\.randomUUID\(\)/);
 assert.match(adapter, /upsert: false/);
 assert.match(adapter, /MIME_PERMITIDO/);
 assert.match(adapter, /LIMITE_BYTES/);
+assert.match(adapter, /Hermes\/RN não garante `atob`/);
+assert.doesNotMatch(adapter, /globalThis\.atob/);
+const biblioteca = fs.readFileSync('src/services/documentosBiblioteca.ts', 'utf8');
+assert.match(biblioteca, /supabaseStorageProvider\.enviar/);
+assert.match(biblioteca, /arquivoChave/);
+assert.match(biblioteca, /Crypto\.digest/);
 assert.doesNotMatch(adapter, /getPublicUrl|service_role|SUPABASE_SERVICE/);
 
 for (const bucket of ['olli-logos', 'olli-fotos', 'olli-documentos']) {

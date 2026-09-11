@@ -36,6 +36,10 @@ assert.match(telaMobile, /recarregarRecibos/, 'a lista mobile precisa atualizar 
 assert.match(badgeFinanceiro, /getBadgeFinanceiro/, 'o badge financeiro precisa reutilizar o contrato de estados');
 assert.match(pagamentos, /Aguardando pagamento/, 'o contrato financeiro precisa explicar o estado pendente');
 assert.match(pagamentos, /Recibo emitido/, 'o contrato financeiro precisa distinguir recibo formal');
+assert.match(pagamentos, /comercialRecebivel/, 'o estado financeiro deve sobreviver a uma mudança comercial posterior');
+assert.match(telaMobile, /usePermissao/, 'ações financeiras mobile precisam de gate de papel');
+assert.match(telaMobile, /podeFinanceiro/, 'recibo e pagamento não podem aparecer para técnico sem permissão');
+assert.match(ler('../webapp/src/pages/olli/recibos/FormRecibo.tsx'), /ultrapassa\)/, 'painel web precisa bloquear recebimento acima do saldo');
 assert.match(inicioDesktop, /irParaOrcamentos\('em_aberto'\)/, 'KPI em aberto precisa abrir seu recorte');
 assert.match(inicioDesktop, /irParaOrcamentos\('a_receber'\)/, 'KPI a receber precisa abrir seu recorte');
 assert.match(navigator, /recorteInicial\?: 'em_aberto' \| 'a_receber'/, 'o recorte inicial precisa ser tipado na aba desktop');

@@ -34,6 +34,7 @@ import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../types';
 import { generateId } from '../utils/id';
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { getStatusFinanceiro } from '../services/pagamentos';
+import { usePermissao } from '../hooks/usePermissao';
 
 // Perf: com listas longas, animar a entrada (fade+slide) de CADA linha monta um
 // Animated.Value + timing por item conforme a FlatList vai revelando novas
@@ -71,6 +72,7 @@ interface LinhaOrcamentoProps {
   onRecibo: (item: Orcamento) => void;
   onExcluir: (item: Orcamento) => void;
   recibos: Recibo[];
+  podeFinanceiro: boolean;
 }
 
 /**
@@ -90,6 +92,7 @@ function LinhaOrcamentoBase({
   onRecibo,
   onExcluir,
   recibos,
+  podeFinanceiro,
 }: LinhaOrcamentoProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -121,7 +124,7 @@ function LinhaOrcamentoBase({
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
           <StatusBadge status={o.status} size="sm" />
-          <FinanceiroBadge status={getStatusFinanceiro(o, recibos)} />
+          {podeFinanceiro && <FinanceiroBadge status={getStatusFinanceiro(o, recibos)} />}
         </View>
       </View>
 
@@ -144,10 +147,10 @@ function LinhaOrcamentoBase({
             <MaterialCommunityIcons name="content-copy" size={16} color={cores.secondary} />
             <Text style={[styles.actionLabel, { color: cores.secondary }]}>Clonar</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onRecibo(o)}>
+          {podeFinanceiro && <TouchableOpacity style={styles.actionBtn} onPress={() => onRecibo(o)}>
             <MaterialCommunityIcons name="receipt" size={16} color={cores.success} />
             <Text style={[styles.actionLabel, { color: cores.success }]}>Recibo</Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
           <TouchableOpacity style={styles.actionBtn} onPress={() => onExcluir(o)}>
             <MaterialCommunityIcons name="trash-can-outline" size={16} color={cores.danger} />
             <Text style={[styles.actionLabel, { color: cores.danger }]}>Excluir</Text>
@@ -217,6 +220,8 @@ export default function OrcamentosScreen() {
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
+  const { pode: podePapel, carregando: carregandoPapel } = usePermissao();
+  const podeFinanceiro = !carregandoPapel && podePapel('ver_valores_agregados');
   // Filtro por cliente (CRM): quando aberto a partir de um cliente.
   const [clienteId, setClienteId] = useState<string | undefined>(route.params?.clienteId);
   const clienteNome = route.params?.clienteNome;
@@ -290,12 +295,16 @@ export default function OrcamentosScreen() {
   }, [carregarPagina]);
 
   const recarregarRecibos = useCallback(async () => {
+    if (!podeFinanceiro) {
+      setRecibos([]);
+      return;
+    }
     try {
       setRecibos(await getRecibos());
     } catch {
       // Falha de leitura não inventa pagamento nem apaga o estado já conhecido.
     }
-  }, []);
+  }, [podeFinanceiro]);
 
   const carregarMais = useCallback(() => {
     const f = filtroRef.current;
@@ -530,9 +539,10 @@ export default function OrcamentosScreen() {
         onRecibo={onReciboLinha}
         onExcluir={onExcluirLinha}
         recibos={recibos}
+        podeFinanceiro={podeFinanceiro}
       />
     );
-  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onClonarLinha, onReciboLinha, onExcluirLinha, recibos]);
+  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onClonarLinha, onReciboLinha, onExcluirLinha, recibos, podeFinanceiro]);
 
   const keyExtractor = useCallback((o: Orcamento) => o.id, []);
 

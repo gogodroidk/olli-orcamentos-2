@@ -474,7 +474,7 @@ function renderApprovalGuide(o: Orcamento, linkPublico?: string): string {
 
     const nota = o.solicitarAssinaturaCliente
       ? 'Se preferir, assine no campo abaixo e devolva este documento ao prestador.'
-      : 'A confirmação ainda pede um toque na página — o QR só abre a opção escolhida.';
+      : 'A confirmação ainda pede um toque na página — o botão abre a opção escolhida.';
 
     return `
       <div class="approval-guide approval-guide-link">
@@ -683,7 +683,7 @@ export function gerarHtmlOrcamento(
   .cond-label { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
   .cond-val { font-size: 12.5px; color: #3C4756; margin-top: 6px; line-height: 1.55; }
   .approval-guide { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 22px; align-items: flex-start; page-break-inside: avoid; }
-  /* Variante com QR: empilha o texto sobre os dois cartões de ação. */
+  /* Variante com links: empilha o texto sobre os dois cartões de ação. */
   .approval-guide-link { display: block; }
   .approval-head { margin-bottom: 14px; }
   .link-acoes { display: flex; gap: 14px; align-items: stretch; }
@@ -883,8 +883,8 @@ export async function montarHtmlOrcamentoCompleto(
 
 /**
  * Link público do orçamento, se der. NUNCA lança: sem nuvem, sem login ou sem
- * internet o PDF sai com o texto de instrução em vez do QR — melhor um documento
- * sem QR do que um QR que não resolve.
+ * internet o PDF sai com o texto de instrução em vez de um link — melhor um
+ * documento explícito do que uma ação que não resolve.
  *
  * `import` dinâmico de propósito: `clienteLink` puxa supabase e o banco, e o
  * pdfGenerator é usado em contextos (preview, teste) onde isso não deve carregar.

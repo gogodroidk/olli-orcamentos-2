@@ -1715,6 +1715,7 @@ function documentoToRow(d: DocumentoBibliotecaRegistro): Record<string, unknown>
     versao_atual: d.versaoAtual,
     dados: d.dados ?? {},
     arquivo_uri: d.arquivoUri ?? null,
+    arquivo_chave: d.arquivoChave ?? null,
     arquivo_hash: d.arquivoHash ?? null,
     criado_em: d.criadoEm,
     atualizado_em: d.atualizadoEm,
@@ -1731,6 +1732,7 @@ function documentoVersaoToRow(v: DocumentoBibliotecaVersao): Record<string, unkn
     numero_versao: v.numeroVersao,
     dados: v.dados ?? {},
     arquivo_uri: v.arquivoUri ?? null,
+    arquivo_chave: v.arquivoChave ?? null,
     arquivo_hash: v.arquivoHash ?? null,
     criado_em: v.criadoEm,
     criado_por: v.criadoPor ?? null,
@@ -1767,6 +1769,7 @@ function rowToDocumento(row: any): DocumentoBibliotecaRegistro | null {
     versaoAtual: Number(row.versao_atual ?? 1),
     dados: row.dados && typeof row.dados === 'object' ? row.dados : {},
     arquivoUri: row.arquivo_uri ?? undefined,
+    arquivoChave: row.arquivo_chave ?? undefined,
     arquivoHash: row.arquivo_hash ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
@@ -1784,6 +1787,7 @@ function rowToDocumentoVersao(row: any): DocumentoBibliotecaVersao | null {
     numeroVersao: Number(row.numero_versao ?? 1),
     dados: row.dados && typeof row.dados === 'object' ? row.dados : {},
     arquivoUri: row.arquivo_uri ?? undefined,
+    arquivoChave: row.arquivo_chave ?? undefined,
     arquivoHash: row.arquivo_hash ?? undefined,
     criadoEm: row.criado_em ?? new Date().toISOString(),
     criadoPor: row.criado_por ?? undefined,
@@ -1796,12 +1800,12 @@ async function localUpsertDocumento(d: DocumentoBibliotecaRegistro): Promise<voi
   await db.runAsync(
     `INSERT OR REPLACE INTO documentos
       (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
-       origem_numero, versao_atual, dados, arquivo_uri, arquivo_hash, criado_em,
+       origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
        atualizado_em, enviado_em, assinado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [d.id, d.tipo, d.status, d.titulo, d.clienteId ?? null, d.clienteNome ?? '', d.origemTipo,
      d.origemId ?? null, d.origemNumero ?? null, d.versaoAtual ?? 1, JSON.stringify(d.dados ?? {}),
-     d.arquivoUri ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
+     d.arquivoUri ?? null, d.arquivoChave ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
      d.enviadoEm ?? null, d.assinadoEm ?? null, d.excluidoEm ?? null],
   );
 }
@@ -1810,10 +1814,10 @@ async function localUpsertDocumentoVersao(v: DocumentoBibliotecaVersao): Promise
   const db = await getDb();
   await db.runAsync(
     `INSERT OR IGNORE INTO documento_versoes
-      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_hash, criado_em, criado_por)
-     VALUES (?,?,?,?,?,?,?,?)`,
+      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
     [v.id, v.documentoId, v.numeroVersao, JSON.stringify(v.dados ?? {}), v.arquivoUri ?? null,
-     v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
+     v.arquivoChave ?? null, v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
   );
 }
 
@@ -1966,6 +1970,7 @@ function rowToDocumentoLocal(r: any): DocumentoBibliotecaRegistro {
     origemTipo: r.origem_tipo, origemId: r.origem_id ?? undefined, origemNumero: r.origem_numero ?? undefined,
     versaoAtual: Number(r.versao_atual ?? 1), dados,
     arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+    arquivoChave: r.arquivo_chave ?? undefined,
     criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
     enviadoEm: r.enviado_em ?? undefined, assinadoEm: r.assinado_em ?? undefined,
     excluidoEm: r.excluido_em ?? undefined,
@@ -1978,6 +1983,7 @@ function rowToDocumentoVersaoLocal(r: any): DocumentoBibliotecaVersao {
   return {
     id: r.id, documentoId: r.documento_id, numeroVersao: Number(r.numero_versao ?? 1), dados,
     arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+    arquivoChave: r.arquivo_chave ?? undefined,
     criadoEm: r.criado_em, criadoPor: r.criado_por ?? undefined,
   };
 }

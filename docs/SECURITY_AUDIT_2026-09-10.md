@@ -2,6 +2,28 @@
 
 ## Resultado da rodada
 
+### Revalidação de 2026-09-11 (staging `sbpkutknpywezeagioon`)
+
+- As migrations `financial_integrity_guards`, `validate_financial_constraints`
+  e `document_storage_key` foram aplicadas somente no staging. Os CHECKs de
+  status/valor estão validados, as consultas de legado encontraram zero linha
+  incompatível e o trigger `recibos_validar_financeiro` está ativo.
+- O trigger valida valor positivo/forma informada e trava a linha do orçamento
+  antes de somar recebimentos, fechando a corrida de duas gravações concorrentes
+  na camada atual de recibos. O ledger dedicado e comprovante auditável seguem
+  como evolução posterior, não são fingidos por esta proteção.
+- `arquivo_chave` estável foi adicionado ao registro/versão local e remoto; o
+  PDF nativo calcula SHA-256, tenta upload privado e mantém `file://` como
+  fallback explícito. URL assinada é regenerada pela chave e não é tratada como
+  permanente.
+- O chat mobile agora tem modo **Preparar alteração**: o Worker retorna uma
+  prévia persistida e o app oferece confirmar/cancelar/desfazer por endpoints
+  separados. O token fica em memória; exclusão, pagamento, senha e permissões
+  continuam fora da allowlist.
+- O detalhe/lista mobile esconde recibo e dados financeiros de papéis sem
+  `ver_valores_agregados`; o estado financeiro permanece independente do status
+  comercial e não desaparece quando uma proposta quitada é encerrada.
+
 - OSV Scanner 2.4.0: **0 vulnerabilidades** nos locks do app (`package-lock.json`), Worker (`worker/package-lock.json`) e painel (`webapp/pnpm-lock.yaml`). Foram corrigidos `sharp` 0.35.2 → 0.35.4 e `js-yaml` 4.3.1 → 4.3.2.
 - Gitleaks 8.30.1: 9 achados históricos, todos classificados como chave pública Supabase anon/JWT ou fixture pública. Não apareceu service-role key, Stripe secret, Resend key, Cloudflare token ou credencial privada no escopo atual. O histórico não foi reescrito automaticamente.
 - Supabase staging: migration `20260910143000_fix_ia_quota_lint` corrigiu os casts das RPCs, a referência de conflito da cota diária e a variável morta; `db lint` agora retorna **No schema errors found**. Produção não foi tocada.

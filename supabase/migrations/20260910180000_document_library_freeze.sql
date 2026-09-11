@@ -50,6 +50,7 @@ begin
        or new.versao_atual is distinct from old.versao_atual
        or new.dados is distinct from old.dados
        or new.arquivo_uri is distinct from old.arquivo_uri
+       or new.arquivo_chave is distinct from old.arquivo_chave
        or new.arquivo_hash is distinct from old.arquivo_hash
        or new.enviado_em is distinct from old.enviado_em
        or new.assinado_em is distinct from old.assinado_em then

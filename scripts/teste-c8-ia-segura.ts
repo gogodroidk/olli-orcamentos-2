@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
 	anexarEventoAuditoriaIa,
 	autorizarRascunhoAcaoIa,
@@ -70,5 +71,13 @@ const journal = anexarEventoAuditoriaIa(criarJournalAuditoriaIa(), evento);
 assert.equal(journal.revisao, 1);
 assert.equal(anexarEventoAuditoriaIa(journal, evento), journal);
 assert.throws(() => anexarEventoAuditoriaIa(journal, { ...evento, motivo: 'divergente' }), /evento_auditoria_divergente/);
+
+const assistenteMobile = readFileSync(new URL('../src/services/olliAssistente.ts', import.meta.url), 'utf8');
+const telaChatMobile = readFileSync(new URL('../src/screens/OlliChatScreen.tsx', import.meta.url), 'utf8');
+assert.match(assistenteMobile, /modo === 'rascunho_acao'/, 'chat mobile precisa enviar modo de prévia ao Worker');
+assert.match(assistenteMobile, /confirmarAcaoChat/, 'chat mobile precisa usar endpoint de confirmação separado');
+assert.match(assistenteMobile, /reverterAcaoChat/, 'chat mobile precisa oferecer reversão segura');
+assert.match(telaChatMobile, /Prévia de alteração/, 'chat mobile precisa mostrar diff antes de alterar');
+assert.match(telaChatMobile, /Nada muda sem sua confirmação/, 'chat mobile precisa explicitar o gate humano');
 
 console.log('OK — pedidos destrutivos bloqueados e mudanças encaminhadas para rascunho.');
