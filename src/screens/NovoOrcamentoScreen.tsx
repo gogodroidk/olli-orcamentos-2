@@ -157,6 +157,9 @@ export default function NovoOrcamentoScreen() {
   const prefillItem = (route.params as any)?.prefillItem as
     | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }
     | undefined;
+  const prefillItems = (route.params as any)?.prefillItems as
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }[]
+    | undefined;
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -256,25 +259,19 @@ export default function NovoOrcamentoScreen() {
         if (cliente) base = { ...base, ...clienteParaOrc(cliente) };
       }
 
-      // Pré-carrega 1 item (descrição de diagnóstico/código) para o usuário só ajustar preço.
-      if (prefillItem?.nome?.trim()) {
-        const qtdPrefill =
-          typeof prefillItem.quantidade === 'number' && prefillItem.quantidade > 0
-            ? prefillItem.quantidade
-            : 1;
-        const item: ItemOrcamento = {
-          id: generateId(),
-          tipo: prefillItem.tipo,
-          catalogoId: '',
-          nome: prefillItem.nome.trim(),
-          descricao: prefillItem.descricao?.trim() || undefined,
-          preco: 0,
-          quantidade: qtdPrefill,
-          unidade: 'un',
-          subtotal: 0,
-        };
-        base = calcTotais({ ...base, itens: [item] });
-      }
+      // Pré-carrega itens de diagnóstico/Autopilot para o usuário só ajustar
+      // preço e quantidade. Preço não é inventado aqui: a origem pode trazer
+      // somente descrição e o editor continua sendo a autoridade.
+      const itensPrefill = [
+        ...(prefillItem ? [prefillItem] : []),
+        ...(Array.isArray(prefillItems) ? prefillItems : []),
+      ].filter((item) => item?.nome?.trim()).map((item): ItemOrcamento => ({
+        id: generateId(), tipo: item.tipo, catalogoId: '', nome: item.nome.trim(),
+        descricao: item.descricao?.trim() || undefined, preco: 0,
+        quantidade: typeof item.quantidade === 'number' && item.quantidade > 0 ? item.quantidade : 1,
+        unidade: 'un', subtotal: 0,
+      }));
+      if (itensPrefill.length) base = calcTotais({ ...base, itens: itensPrefill });
 
       setOrc(base);
     }

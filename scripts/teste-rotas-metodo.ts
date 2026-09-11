@@ -92,6 +92,7 @@ const vivas: [string, string][] = [
   ['/chat', 'POST'],
   ['/transcrever', 'POST'],
   ['/ia/importacao/preview', 'POST'],
+  ['/ia/autopilot/preview', 'POST'],
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],

@@ -95,6 +95,7 @@
         "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
         "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
         "AI_PROVIDER": "openrouter",
+        "AUTOPILOT_WORKERS_AI_ENABLED": "true",
         "OPENROUTER_TEXT_MODELS": "nvidia/nemotron-3-super-120b-a12b:free,z-ai/glm-5.2:free,liquid/lfm-2.5-2.6b:free",
         "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
         "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",

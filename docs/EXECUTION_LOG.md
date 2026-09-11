@@ -742,3 +742,47 @@ Ver `KNOWN_BLOCKERS.md`.
   `FATAL EXCEPTION`, `SQLiteException` ou erro de Metro. Avisos de desenvolvimento
   (ciclos de import e `LayoutAnimation` no New Architecture) permanecem não
   fatais e não foram tratados como sucesso silencioso.
+
+## Autopilot IA — primeira fatia multimodal (2026-09-11)
+
+- A pesquisa de repositórios e runtimes foi consolidada em
+  `docs/PLANO_AUTOPILOT_IA_2026-09-11.md`. A decisão é usar o
+  `env.AI.toMarkdown` do Cloudflare para arquivos pequenos e o normalizador
+  Structured Output existente; Docling/PaddleOCR ficam fora do Worker, em job
+  isolado, até haver corpus e limites de parser comprovados.
+- O Worker recebeu `POST /ia/autopilot/preview`. Ele aceita texto colado ou um
+  único PDF/PNG/JPG/WEBP/TXT/CSV/JSON de até 4 MiB, valida MIME/base64/magic
+  bytes, calcula SHA-256, converte PDF/imagem com `toMarkdown` quando disponível
+  e retorna clientes, produtos, serviços, itens de orçamento e documentos com
+  confiança/evidência. A prévia é sempre `aguardando_confirmacao`,
+  `requiresReview=true` e `persistida=false`.
+- O staging ganhou o flag explícito `AUTOPILOT_WORKERS_AI_ENABLED=true` para
+  usar o modelo open-weight `@cf/google/gemma-4-26b-a4b-it` quando o secret do
+  OpenRouter não estiver provisionado. A cota/rate-limit e a cobrança pós-
+  sucesso continuam passando pelo caminho comum; nenhum provider é escolhido
+  pelo arquivo ou pelo modelo.
+- O painel web passou a exibir o Autopilot na Central de Dados e no Assistente:
+  anexo, texto colado, intenção, referências privadas do catálogo, confiança,
+  evidência, avisos e prévia. O usuário pode abrir um orçamento rascunho com
+  vários itens ou confirmar somente inclusões novas de clientes/produtos/
+  serviços; duplicidades e preço zero são preservados, e falha de inclusão tenta
+  compensação reversa.
+- O app recebeu a tela `AutopilotScreen`, acessível pela Conta e por um atalho
+  no Chat. Ela usa DocumentPicker/ImagePicker, mostra a fonte e a revisão e
+  leva o primeiro item válido ao editor de orçamento sem salvar automaticamente.
+  A voz web ganhou push-to-talk com Web Speech API; não há escuta contínua nem
+  captura em segundo plano.
+- Testes novos: `test:ia-autopilot`, `test:ia-autopilot-web` e
+  `test:ia-autopilot-mobile`. Todos cobrem texto/PDF, Workers AI fallback,
+  magic bytes, limites, prompt injection, preview-only, navegação e ausência de
+  mutação automática. Typecheck web/mobile e build do painel passaram.
+- O Worker staging foi publicado com a rota nova e o flag `autopilot: on` no
+  health público: versão `6a6b5859-a5ff-4319-b8f6-c78d555b48b7`, deployment
+  `0cc0a0db-26f9-42f3-9011-8318b1a4e16e`, 100% isolado em `workers.dev`.
+  `GET /ia/autopilot/preview` responde 405 com o método correto e POST sem JWT
+  responde 401; nenhum arquivo ou dado foi gravado durante o smoke.
+- Após incluir `expo-document-picker`, `npx expo run:android --variant debug`
+  terminou `BUILD SUCCESSFUL`, instalou o APK `1.1.2` no `RX8NB033HXP` e o
+  `npm run qa:android` repetido com o Metro aquecido passou em 5,221 ms, sem
+  FATAL/SQLite/Metro error. A primeira tentativa fria (bundle de 17,667 ms)
+  ficou registrada como incompleta e não foi contada como aprovação.

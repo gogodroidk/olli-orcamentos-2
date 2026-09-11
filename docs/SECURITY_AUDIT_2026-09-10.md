@@ -64,6 +64,21 @@
   continuam sendo a autoridade de unicidade. O advisor de performance ainda
   lista policies permissivas múltiplas em tabelas legadas, sem novo alerta de
   segurança causado pelas mudanças desta rodada.
+- O Autopilot multimodal valida magic bytes e tamanho antes da IA, aceita somente
+  formatos explícitos, não busca URLs e mantém arquivo/conversa dentro de
+  delimitadores de dados não confiáveis. A resposta é schema fechado, com
+  `requiresReview=true`, hash, evidência e preço apenas como sugestão.
+- A UI web/mobile não executa cadastro, orçamento, documento, pagamento, envio,
+  exclusão ou alteração de conta por inferência. O catálogo só é confirmado
+  para inclusões novas, com deduplicação conservadora e compensação; o orçamento
+  abre como rascunho editável.
+- O flag `AUTOPILOT_WORKERS_AI_ENABLED` fica ligado somente no staging. O modelo
+  Workers AI é fixo/allowlisted, e a rota continua atrás de JWT, rate-limit e
+  cota. PDF/foto grandes, ZIP, macros, SVG e executáveis continuam rejeitados.
+- O smoke remoto do Worker confirmou health com `autopilot: on`, método errado
+  com 405 e POST sem JWT com 401. A execução autenticada de inferência permanece
+  aguardando secret de serviço/sessão de staging; isso não foi contornado com
+  credencial de produção.
 
 - OSV Scanner 2.4.0: **0 vulnerabilidades** nos locks do app (`package-lock.json`), Worker (`worker/package-lock.json`) e painel (`webapp/pnpm-lock.yaml`). Foram corrigidos `sharp` 0.35.2 → 0.35.4 e `js-yaml` 4.3.1 → 4.3.2.
 - Gitleaks 8.30.1: 9 achados históricos, todos classificados como chave pública Supabase anon/JWT ou fixture pública. Não apareceu service-role key, Stripe secret, Resend key, Cloudflare token ou credencial privada no escopo atual. O histórico não foi reescrito automaticamente.

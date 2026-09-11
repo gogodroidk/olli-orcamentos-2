@@ -9,6 +9,7 @@ const checks = [
   { name: 'resend-method-gate', method: 'GET', path: '/resend/webhook', status: 405 },
   { name: 'ia-actions-method-gate', method: 'GET', path: '/ia/acoes/', status: 405 },
   { name: 'ia-importacao-method-gate', method: 'GET', path: '/ia/importacao/preview', status: 405 },
+  { name: 'ia-autopilot-method-gate', method: 'GET', path: '/ia/autopilot/preview', status: 405 },
   { name: 'admin-login-shell', method: 'GET', path: '/admin', status: 200 },
 ];
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -22,6 +23,7 @@ for (const check of checks) {
     assert(payload.ok === true, 'health: payload sem ok=true');
     assert(payload.service === 'olli-diagnostico', 'health: serviço divergente');
     assert(payload.ia === 'off', 'health: staging não está com IA pública desligada');
+    assert(payload.autopilot === 'on', 'health: Autopilot staging não está habilitado');
   }
   if (check.name === 'admin-login-shell') assert(body.includes('noindex,nofollow'), 'admin: shell não está noindex');
   results.push({ name: check.name, status: response.status });

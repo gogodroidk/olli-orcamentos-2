@@ -1,10 +1,13 @@
 import type { FalhaIA, MensagemChat } from "@/pages/olli/diagnostico/chat";
-import { Bot, CheckCircle2, FilePlus2, Loader2, MessageSquareText, RotateCcw, Send, Sparkles, Undo2, XCircle } from "lucide-react";
+import { Bot, CheckCircle2, FilePlus2, Loader2, MessageSquareText, Mic, MicOff, RotateCcw, Send, Sparkles, Undo2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import { perguntarAoAssistente } from "@/pages/olli/diagnostico/chat";
 import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
+import { AutopilotPanel } from "@/olli/components/AutopilotPanel";
+import type { AutopilotPreview } from "@/olli/iaAutopilot";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
@@ -26,6 +29,25 @@ const MAX_CORPO_BYTES = 48 * 1024;
 
 type MensagemLocal = MensagemChat & { id: string };
 type PendenteCredito = { historico: MensagemChat[]; ref: string };
+
+type ReconhecimentoNavegador = {
+	lang: string;
+	continuous: boolean;
+	interimResults: boolean;
+	onresult: ((evento: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
+	onerror: ((evento: { error?: string }) => void) | null;
+	onend: (() => void) | null;
+	start: () => void;
+	stop: () => void;
+};
+type ReconhecimentoConstrutor = new () => ReconhecimentoNavegador;
+
+declare global {
+	interface Window {
+		SpeechRecognition?: ReconhecimentoConstrutor;
+		webkitSpeechRecognition?: ReconhecimentoConstrutor;
+	}
+}
 
 const SUGESTOES = [
 	"Organize os pontos que devo confirmar antes de enviar um orçamento",
@@ -99,12 +121,19 @@ export function AssistenteConversa({ className }: { className?: string }) {
 	const [rascunhoAcao, setRascunhoAcao] = useState<RascunhoAcaoIaRemota | null>(null);
 	const [processandoAcao, setProcessandoAcao] = useState(false);
 	const [mensagemAcao, setMensagemAcao] = useState<string | null>(null);
+	const [ouvindo, setOuvindo] = useState(false);
+	const reconhecimentoRef = useRef<ReconhecimentoNavegador | null>(null);
 	const fimRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		sessionStorage.setItem(STORAGE_KEY, JSON.stringify(mensagens.slice(-MAX_HISTORICO)));
 		fimRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
 	}, [mensagens]);
+
+	useEffect(() => () => {
+		reconhecimentoRef.current?.stop();
+		reconhecimentoRef.current = null;
+	}, []);
 
 	const historicoApi = useMemo<MensagemChat[]>(
 		() => mensagens.slice(-MAX_HISTORICO).map(({ role, texto: conteudo }) => ({ role, texto: conteudo })),
@@ -197,6 +226,44 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		}
 	}
 
+	function alternarVoz() {
+		if (ouvindo) {
+			reconhecimentoRef.current?.stop();
+			return;
+		}
+		const Construtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+		if (!Construtor) {
+			toast.error("Seu navegador não oferece voz ao vivo. Você pode colar a conversa ou anexar um arquivo no Autopilot.");
+			return;
+		}
+		const reconhecimento = new Construtor();
+		reconhecimento.lang = "pt-BR";
+		reconhecimento.continuous = false;
+		reconhecimento.interimResults = true;
+		let transcrito = "";
+		reconhecimento.onresult = (evento) => {
+			let parcial = "";
+			for (let indice = evento.resultIndex; indice < evento.results.length; indice += 1) {
+				const frase = evento.results[indice]?.[0]?.transcript?.trim() ?? "";
+				if (!frase) continue;
+				if (evento.results[indice]?.isFinal) transcrito = `${transcrito} ${frase}`.trim();
+				else parcial = `${parcial} ${frase}`.trim();
+			}
+			setTexto((atual) => `${atual.replace(/\s+$/, "")} ${transcrito || parcial}`.trim().slice(0, MAX_TEXTO));
+		};
+		reconhecimento.onerror = (evento) => {
+			setOuvindo(false);
+			if (evento.error !== "aborted" && evento.error !== "no-speech") toast.error("Não consegui ouvir agora. Você pode escrever a mensagem.");
+		};
+		reconhecimento.onend = () => {
+			setOuvindo(false);
+			reconhecimentoRef.current = null;
+		};
+		reconhecimentoRef.current = reconhecimento;
+		setOuvindo(true);
+		reconhecimento.start();
+	}
+
 	function usarNoOrcamento(mensagem: MensagemLocal) {
 		const primeiraLinha = mensagem.texto.split(/\r?\n/).find((linha) => linha.trim())?.trim() ?? "Serviço sugerido pela OLLI";
 		const prefillItem: PrefillItemOrcamento = {
@@ -205,6 +272,15 @@ export function AssistenteConversa({ className }: { className?: string }) {
 			descricao: mensagem.texto,
 		};
 		navigate("/orcamentos?novo=1", { state: { prefillItem } });
+	}
+
+	function usarAutopilotNoOrcamento(preview: AutopilotPreview) {
+		const itens = preview.candidatos.orcamento.itens.map((item) => ({
+			tipo: item.tipo, nome: item.nome, descricao: item.descricao, quantidade: item.quantidade,
+			unidade: item.unidade, precoSugerido: item.precoSugerido,
+		}));
+		if (!itens.length) return;
+		navigate("/orcamentos?novo=1", { state: { prefillItems: itens } });
 	}
 
 	function limpar() {
@@ -219,6 +295,9 @@ export function AssistenteConversa({ className }: { className?: string }) {
 
 	return (
 		<div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+			<div className="border-b border-border px-4 py-3">
+				<AutopilotPanel compact onUsarNoOrcamento={usarAutopilotNoOrcamento} />
+			</div>
 			<div className="border-b border-border px-4 py-2 text-xs text-text-secondary">
 				Contexto atual: <span className="font-medium text-text-primary">{nomeDaTela(location.pathname)}</span>. A OLLI não envia dados desta tela automaticamente.
 			</div>
@@ -330,15 +409,18 @@ export function AssistenteConversa({ className }: { className?: string }) {
 							}
 						}}
 						placeholder="Pergunte ou cole uma descrição do serviço…"
-						className="min-h-24 resize-none pr-12"
+						className="min-h-24 resize-none pr-24"
 						disabled={enviando}
 					/>
+					<Button type="button" size="icon" variant={ouvindo ? "destructive" : "outline"} className="absolute bottom-2 right-12 size-9" onClick={alternarVoz} disabled={enviando} aria-label={ouvindo ? "Parar voz ao vivo" : "Falar com a OLLI"} aria-pressed={ouvindo}>
+						{ouvindo ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+					</Button>
 					<Button type="button" size="icon" className="absolute bottom-2 right-2 size-9" onClick={() => enviar()} disabled={!texto.trim() || enviando} aria-label="Enviar mensagem">
 						<Send className="size-4" />
 					</Button>
 				</div>
 				<div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-text-disabled">
-					<span>Enter envia · Shift+Enter quebra a linha</span>
+					<span>{ouvindo ? "Ouvindo… toque no microfone para parar" : "Enter envia · Shift+Enter quebra a linha · microfone é push-to-talk"}</span>
 					{mensagens.length > 0 && (
 						<Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={limpar}>
 							<RotateCcw className="size-3" /> Nova conversa

@@ -298,6 +298,14 @@ export default function OlliChatScreen() {
         right={
           <View style={styles.headerActions}>
             <TouchableOpacity
+              onPress={() => nav.navigate('Autopilot')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir Autopilot para anexar arquivo"
+            >
+              <MaterialCommunityIcons name="paperclip" size={22} color={gradientes.sobreHeader} />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setModoChat((modo) => modo === 'consulta' ? 'rascunho_acao' : 'consulta')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityRole="button"

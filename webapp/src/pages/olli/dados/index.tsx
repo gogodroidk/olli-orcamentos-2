@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -32,6 +33,8 @@ import { useContextoDeEscrita, useExcluir, useSalvar } from "@/olli/mutacoes";
 import { type LinhaCatalogo, linhaParaItem } from "@/pages/olli/catalogo/FormItemCatalogo";
 import { type LinhaCliente, linhaParaCliente } from "@/pages/olli/clientes/FormCliente";
 import { type LinhaAsset } from "@/pages/olli/equipamentos/equipamento";
+import { AutopilotPanel } from "@/olli/components/AutopilotPanel";
+import type { AutopilotPreview } from "@/olli/iaAutopilot";
 
 type TipoImportacao = "clientes" | "produtos" | "servicos" | "orcamentos" | "fornecedor";
 type CampoImportacao = "nome" | "telefone" | "cpf" | "cnpj" | "endereco" | "cidade" | "estado" | "cep" | "descricao" | "marca" | "modelo" | "unidade" | "preco" | "custo";
@@ -126,6 +129,7 @@ function podeEditarCatalogo(papel?: string) {
 }
 
 export default function CentralDeDadosPage() {
+	const navigate = useNavigate();
 	const arquivoRef = useRef<HTMLInputElement>(null);
 	const [tipo, setTipo] = useState<TipoImportacao>("clientes");
 	const [linhasImportadas, setLinhasImportadas] = useState<LinhaBruta[]>([]);
@@ -243,6 +247,95 @@ export default function CentralDeDadosPage() {
 	const totais = useMemo(() => propostas.reduce<Record<AcaoPreview, number>>((acc, proposta) => ({ ...acc, [proposta.acao]: acc[proposta.acao] + 1 }), { inserir: 0, atualizar: 0, ignorar: 0, erro: 0, ambiguo: 0 }), [propostas]);
 	const aplicaveis = propostas.filter((p) => p.acao === "inserir" || p.acao === "atualizar");
 	const temImportacao = linhasImportadas.length > 0 || orcamentosImportados.length > 0;
+
+	function levarAutopilotAoOrcamento(preview: AutopilotPreview) {
+		const itens = preview.candidatos.orcamento.itens.map((item) => ({
+			tipo: item.tipo, nome: item.nome, descricao: item.descricao, quantidade: item.quantidade,
+			unidade: item.unidade, precoSugerido: item.precoSugerido,
+		}));
+		if (!itens.length) return;
+		navigate("/orcamentos?novo=1", { state: { prefillItems: itens } });
+	}
+
+	/** Confirma apenas inclusões novas; duplicidade e preço zero ficam para revisão manual. */
+	async function confirmarAutopilotCatalogo(preview: AutopilotPreview) {
+		if (!catalogoPermitido) throw new Error("Somente o dono ou a conta pessoal pode confirmar cadastros de catálogo.");
+		const agoraIso = agora();
+		const clientesAtuais = (clientes.data ?? []).map(linhaParaCliente);
+		const produtosAtuais = produtos.data ?? [];
+		const servicosAtuais = servicos.data ?? [];
+		const criados: Array<{ tabela: "clientes" | "produtos" | "servicos"; objeto: Cliente | ProdutoItem | ServicoItem }> = [];
+		let ignorados = 0;
+		try {
+			for (const candidato of preview.candidatos.clientes) {
+				const telefone = candidato.telefone.replace(/\D/g, "");
+				const documento = candidato.documento.replace(/\D/g, "");
+				const duplicado = clientesAtuais.some((atual) => {
+					const mesmoDocumento = documento && [atual.cpf, atual.cnpj].some((valor) => valor?.replace(/\D/g, "") === documento);
+					const mesmoTelefone = telefone && atual.telefone.replace(/\D/g, "") === telefone;
+					return Boolean(mesmoDocumento || (mesmoTelefone && normalizarChave(atual.nome) === normalizarChave(candidato.nome)));
+				});
+				if (duplicado) { ignorados += 1; continue; }
+				const objeto: Cliente = {
+					id: novoId(), nome: candidato.nome, telefone: candidato.telefone, criadoEm: agoraIso, atualizadoEm: agoraIso,
+					cpf: candidato.documento && candidato.documento.replace(/\D/g, "").length === 11 ? candidato.documento : undefined,
+					cnpj: candidato.documento && candidato.documento.replace(/\D/g, "").length === 14 ? candidato.documento : undefined,
+					endereco: candidato.endereco || undefined, cidade: candidato.cidade || undefined,
+					estado: candidato.estado || undefined, cep: candidato.cep || undefined,
+				};
+				await salvarCliente.mutateAsync(objeto);
+				criados.push({ tabela: "clientes", objeto });
+				clientesAtuais.push(objeto);
+			}
+
+			for (const [tipo, listaAtual, candidatos] of [
+				["produtos", produtosAtuais, preview.candidatos.produtos] as const,
+				["servicos", servicosAtuais, preview.candidatos.servicos] as const,
+			]) {
+				for (const candidato of candidatos) {
+					if (candidato.precoSugerido <= 0) { ignorados += 1; continue; }
+					const duplicado = listaAtual.some((atual) => tipo === "produtos"
+						? normalizarChave(atual.nome) === normalizarChave(candidato.nome)
+							&& normalizarChave((atual as LinhaCatalogo & { marca?: string }).marca ?? "") === normalizarChave(candidato.marca)
+							&& normalizarChave((atual as LinhaCatalogo & { modelo?: string }).modelo ?? "") === normalizarChave(candidato.modelo)
+						: normalizarChave(atual.nome) === normalizarChave(candidato.nome)
+							&& normalizarChave(atual.unidade ?? "un") === normalizarChave(candidato.unidade));
+					if (duplicado) { ignorados += 1; continue; }
+					const base = {
+						id: novoId(), nome: candidato.nome, descricao: candidato.descricao || undefined,
+						preco: candidato.precoSugerido, custo: candidato.custoSugerido > 0 ? candidato.custoSugerido : undefined,
+						unidade: candidato.unidade || "un", criadoEm: agoraIso, atualizadoEm: agoraIso,
+					};
+					const objeto = tipo === "produtos"
+						? { ...base, marca: candidato.marca || undefined, modelo: candidato.modelo || undefined } as ProdutoItem
+						: base as ServicoItem;
+					if (tipo === "produtos") await salvarProduto.mutateAsync(objeto as ProdutoItem);
+					else await salvarServico.mutateAsync(objeto as ServicoItem);
+					criados.push({ tabela: tipo, objeto });
+					listaAtual.push(objeto as unknown as LinhaCatalogo);
+				}
+			}
+			if (!criados.length) throw new Error("Nenhum item novo com preço positivo foi encontrado; nada foi alterado.");
+			if (ignorados) toast.info(`${ignorados} candidato(s) foram preservados sem duplicar registros ou publicar preço zero.`);
+		} catch (error) {
+			if (!criados.length) throw error;
+			let falhasRollback = 0;
+			for (const criado of [...criados].reverse()) {
+				try {
+					if (criado.tabela === "clientes") await excluirCliente.mutateAsync(criado.objeto as Cliente);
+					if (criado.tabela === "produtos") await excluirProduto.mutateAsync(criado.objeto as ProdutoItem);
+					if (criado.tabela === "servicos") await excluirServico.mutateAsync(criado.objeto as ServicoItem);
+				} catch { falhasRollback += 1; }
+			}
+			if (falhasRollback) throw new Error(`O cadastro falhou; ${falhasRollback} compensação(ões) ficaram pendentes. Confira a lixeira antes de repetir.`);
+			throw new Error(`O cadastro falhou e ${criados.length} inclusão(ões) foram compensadas. ${(error as Error).message || "Tente novamente."}`);
+		}
+	}
+
+	const referenciasAutopilot = useMemo(() => [
+		...(produtos.data ?? []).slice(0, 25).map((item) => ({ tipo: "produto" as const, nome: item.nome, descricao: item.descricao ?? undefined, unidade: item.unidade ?? undefined, preco: item.preco ?? undefined, custo: item.custo ?? undefined })),
+		...(servicos.data ?? []).slice(0, 25).map((item) => ({ tipo: "servico" as const, nome: item.nome, descricao: item.descricao ?? undefined, unidade: item.unidade ?? undefined, preco: item.preco ?? undefined, custo: item.custo ?? undefined })),
+	], [produtos.data, servicos.data]);
 
 	async function aoEscolherArquivo(evento: ChangeEvent<HTMLInputElement>) {
 		const arquivo = evento.target.files?.[0];
@@ -376,6 +469,7 @@ export default function CentralDeDadosPage() {
 
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+			<AutopilotPanel referencias={referenciasAutopilot} onUsarNoOrcamento={levarAutopilotAoOrcamento} onConfirmarCatalogo={confirmarAutopilotCatalogo} />
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 				<div><h1 className="text-2xl font-bold tracking-tight text-text-primary">Central de dados</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Leve seu cadastro com você. Importações passam por prévia e nunca apagam registros ou reprecificam orçamentos já emitidos.</p></div>
 				<Button variant="outline" onClick={exportarPacoteOperacional} disabled={!pronto || !exportacaoPermitida}><PackageOpen /> Baixar pacote operacional</Button>

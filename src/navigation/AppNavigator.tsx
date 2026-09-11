@@ -31,6 +31,7 @@ import AgendaScreen from '../screens/AgendaScreen';
 import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
+import AutopilotScreen from '../screens/AutopilotScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
@@ -103,7 +104,7 @@ export type RootStackParamList = {
   Entrar: undefined;
   // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
   // (origem: diagnóstico / código de erro). Tudo opcional — sem isto cai no fluxo normal.
-  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem };
+  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[] };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
@@ -121,6 +122,7 @@ export type RootStackParamList = {
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
   OlliChat: undefined;
+  Autopilot: undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Ferramenta ÚNICA do ofício de dedetização (gate `vertical: 'dedetizacao'`).
@@ -222,6 +224,7 @@ const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
+const AutopilotCentro = comCentroDesktop(AutopilotScreen);
 
 /**
  * Contas antigas podem ter uma linha `empresa` criada antes dos campos mínimos.
@@ -608,6 +611,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
+      <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />

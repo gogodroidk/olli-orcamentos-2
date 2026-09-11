@@ -156,6 +156,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'documentos', icon: 'file-document-multiple-outline', label: 'Central de documentos', desc: 'Contratos, recibos, OS e PMOC', color: c.primaryLight, route: 'CentralDocumentos' },
     { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: c.accentLight, route: 'OlliVoz' },
     { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: c.primaryLight, route: 'OlliChat' },
+    { key: 'autopilot', icon: 'robot-happy-outline', label: 'Autopilot IA', desc: 'Anexe conversa, foto ou PDF', color: c.accentLight, route: 'Autopilot' },
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },

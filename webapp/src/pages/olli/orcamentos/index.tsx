@@ -46,7 +46,7 @@ import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
-import { orcamentoComItemPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
+import { orcamentoComItensPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { BotaoAbrirLinha, getStatusVariant, linhaClicavel, NameCell } from "@/olli/components/record-list-helpers";
 import { clienteParaOrcamento } from "@/olli/components/SeletorCliente";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
@@ -373,7 +373,7 @@ export default function OrcamentosPage() {
 
 		if (querNovo) {
 			const estado = location.state as
-				| { clientePreSelecionado?: Cliente; prefillItem?: PrefillItemOrcamento }
+				| { clientePreSelecionado?: Cliente; prefillItem?: PrefillItemOrcamento; prefillItems?: PrefillItemOrcamento[] }
 				| null
 				| undefined;
 			let orc = novoOrcamentoVazio(empresa);
@@ -381,7 +381,10 @@ export default function OrcamentosPage() {
 				orc = { ...orc, ...clienteParaOrcamento(estado.clientePreSelecionado) };
 			}
 			if (estado?.prefillItem) {
-				orc = orcamentoComItemPrefill(orc, estado.prefillItem);
+				orc = orcamentoComItensPrefill(orc, [estado.prefillItem]);
+			}
+			if (estado?.prefillItems?.length) {
+				orc = orcamentoComItensPrefill(orc, estado.prefillItems);
 			}
 			setEditor({ orc, ehNovo: true });
 		}

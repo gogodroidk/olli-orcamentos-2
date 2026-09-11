@@ -79,8 +79,8 @@
         "workerDeployment": {
           "name": "olli-diagnostico-staging",
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
-          "deploymentId": "7b633269-83b0-47ee-9343-8ac855d7f609",
-          "versionId": "52ceba62-0bf1-4797-a272-a74907275ae4",
+          "deploymentId": "0cc0a0db-26f9-42f3-9011-8318b1a4e16e",
+          "versionId": "6a6b5859-a5ff-4319-b8f6-c78d555b48b7",
           "health": "HTTP_200",
           "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
@@ -95,7 +95,7 @@
           "latestBuildId": "81e53bff-2918-4581-a274-905dc91ee866",
           "latestCommit": "67b7dae9cee599b683516d9cdc5b5fb2459053c0",
           "latestBuildStatus": "success",
-          "latestActiveVersionLabel": "52ceba62"
+          "latestActiveVersionLabel": "6a6b5859"
         },
         "githubPromotion": {
           "pullRequest": 42,

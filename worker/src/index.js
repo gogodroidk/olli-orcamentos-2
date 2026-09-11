@@ -8,6 +8,7 @@
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
  *   POST /ia/importacao/preview → prévia estruturada de catálogo (sem escrita)
+ *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *
@@ -20,6 +21,9 @@
  *     toda rota autenticada usa Bearer token, nunca cookie.
  *   - Toda rota de IA valida content-length (413 se exceder) e trunca/sanitiza
  *     cada campo antes de montar o prompt (proteção de custo + prompt injection).
+ *   - Autopilot aceita somente um arquivo pequeno em base64, valida magic bytes
+ *     e usa `toMarkdown` sem persistir o conteúdo; jobs grandes ficam na fila
+ *     isolada planejada para a próxima fase.
  *
  * O diagnóstico (POST '/') é ATERRADO na base oficial HVAC (hvac_codigos +
  * hvac_chunks via full-text search no Supabase) antes de chamar a IA — ver
@@ -67,6 +71,7 @@ import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
+import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import {
   rotuloVertical,
@@ -104,6 +109,11 @@ const MAX_BODY_BYTES = 65536;
 // precisa de um teto bem maior que o das rotas de texto. 4MB cobre alguns
 // minutos de fala num codec compacto (aac/ogg) com folga.
 const MAX_AUDIO_BODY_BYTES = 4_194_304;
+
+// Autopilot recebe uma fonte codificada em base64 para a prévia pequena. O
+// arquivo decodificado continua limitado a 4 MiB pelo módulo; o teto de corpo
+// inclui a expansão base64 + JSON e impede bufferizações arbitrárias.
+const MAX_AUTOPILOT_BODY_BYTES = Math.ceil(IA_AUTOPILOT_MAX_BYTES / 3) * 4 + 32 * 1024;
 
 // /eta e /geocodificar recebem só coordenadas/endereço — corpo minúsculo por
 // natureza. Mesmo teto (4KB) das outras rotas de payload pequeno (equipe.js, link.js).
@@ -171,7 +181,13 @@ async function getUser(request, env) {
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview']);
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview', '/ia/autopilot/preview']);
+
+function autopilotWorkersAiConfigurada(env, pathname) {
+  return pathname === '/ia/autopilot/preview'
+    && env?.AUTOPILOT_WORKERS_AI_ENABLED === 'true'
+    && env?.AI && typeof env.AI.run === 'function';
+}
 
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
@@ -879,8 +895,18 @@ async function handleChat(bodyText, env, user) {
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
-    .filter((m) => m && typeof m.texto === 'string' && m.texto.trim())
-    .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.texto === 'string' && m.texto.trim())
+    // O histórico chega do cliente e não é assinado pelo servidor. Portanto,
+    // uma bolha que se declara `assistant` nunca pode ganhar o papel privilegiado
+    // de `model` no provider: ela entra como dado de usuário delimitado. Isso
+    // preserva contexto para consulta sem permitir que um cliente forje uma
+    // instrução anterior da OLLI, sobretudo no modo de ação.
+    .map((m) => ({
+      role: 'user',
+      parts: [{ text: m.role === 'assistant'
+        ? `<HISTORICO_ASSISTENTE_NAO_CONFIAVEL>${cortar(m.texto, CHAT_MAX.texto)}</HISTORICO_ASSISTENTE_NAO_CONFIAVEL>`
+        : cortar(m.texto, CHAT_MAX.texto) }],
+    }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
   const text = await gerarIA(env, {
     system: actionMode ? chatActionSystem(vertical) : chatSystem(vertical),
@@ -1101,6 +1127,7 @@ const handler = {
         ok: true,
         service: 'olli-diagnostico',
         ia: aiConfigurada(env) ? 'on' : 'off',
+        autopilot: autopilotWorkersAiConfigurada(env, '/ia/autopilot/preview') ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
       });
@@ -1140,13 +1167,19 @@ const handler = {
     // esse header (Number(null)=0) e escaparia da 1ª camada sozinha. Evita gastar
     // 1 validação de token ou 1 dos 20 tokens/min do usuário com um body que nem
     // vamos processar.
-    const maxBodyIa = url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
+    const maxBodyIa = url.pathname === '/transcrever'
+      ? MAX_AUDIO_BODY_BYTES
+      : url.pathname === '/ia/autopilot/preview'
+        ? MAX_AUTOPILOT_BODY_BYTES
+        : MAX_BODY_BYTES;
     if (!cabeNoTeto(request, maxBodyIa).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
     const corpoIa = await bodyMuitoGrande(request, maxBodyIa);
     if (corpoIa.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
-    if (!aiConfigurada(env)) return json({ ok: false, motivo: 'ia_nao_configurada' });
+    if (!aiConfigurada(env) && !autopilotWorkersAiConfigurada(env, url.pathname)) {
+      return json({ ok: false, motivo: 'ia_nao_configurada' });
+    }
 
     // Exige login (protege a cota da IA).
     const user = await getUser(request, env);
@@ -1213,6 +1246,25 @@ const handler = {
           parseJsonLoose,
         });
         if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaImportacaoIa(previa.erro) }, 422);
+        return json(previa);
+      }
+      if (url.pathname === '/ia/autopilot/preview') {
+        const previa = await prepararPreviaAutopilot(corpoIa.raw, env, user, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaAutopilot(previa.erro) }, 422);
+        // A pré-autorização acima só evita inferência quando a conta já está
+        // sem acesso. A contagem/cobrança definitiva acontece depois de uma
+        // prévia válida, como no chat e na voz, e usa a mesma janela de
+        // idempotência de IA para não cobrar retry duas vezes.
+        const cobranca = await cobrarCreditoVoz(env, user, {
+          confirmarCredito: corpoAutorizacao && corpoAutorizacao.confirmarCredito === true,
+          creditoRef: corpoAutorizacao && corpoAutorizacao.creditoRef,
+          conteudo: corpoIa.raw,
+        });
+        if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
         return json(previa);
       }
       return json({ ok: false, erro: 'nao_encontrado' }, 404);

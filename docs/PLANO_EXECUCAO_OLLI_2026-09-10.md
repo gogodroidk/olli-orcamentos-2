@@ -149,6 +149,13 @@ ou ficam fora da IA.
   removeu índices UNIQUE legados duplicados das cotas IA sem tocar nas constraints
   primárias. Os avisos restantes de policies permissivas múltiplas em tabelas
   legadas exigem revisão de contrato antes de qualquer consolidação.
+- Autopilot IA: a primeira fatia multimodal (`POST /ia/autopilot/preview`) aceita
+  texto e arquivos pequenos, retorna candidatos com evidência/confiança e usa
+  `toMarkdown` para PDF/imagem. A Central de Dados e o Assistente exibem a
+  prévia; cadastro de catálogo e orçamento só avançam por botão explícito.
+- O Worker staging está com `autopilot: on` no health e a rota autenticada
+  publicada em `workers.dev`; a conta ainda precisa de uma sessão de staging
+  e do secret de serviço para provar a chamada autenticada ponta a ponta.
 
 ## 4. Próximas fatias, em ordem
 
@@ -160,8 +167,9 @@ ou ficam fora da IA.
    web fica como melhoria posterior, sem bloquear o fluxo mobile homologado.
 3. Ajuda oficial: registro de fonte/versão, NFS-e e PMOC; links/deep links primeiro.
 4. IA de documentos: CSV/XLSX/JSON e o endpoint de texto já possuem
-   preview/diff/rollback seguro; PDF/foto continuam bloqueados até o job isolado,
-   parser aprovado e validação de saída estruturada (não entram no caminho crítico).
+  preview/diff/rollback seguro; a primeira prévia de PDF/foto pequena usa
+  `toMarkdown` com limites. O job de quarentena para arquivos grandes, OCR
+  pesado e parser alternativo continua fora do caminho crítico.
 5. Performance: QA web mede carregamento frio nos dois viewports e o smoke ADB
    mede o primeiro frame do SM-G780F; ainda falta separar um perfil release sem
    Metro para decidir lazy loading, virtualização e thumbnails.

@@ -2,7 +2,7 @@
 
 > Data da consolidação: 18/08/2026
 >
-> Status: **decisão de produto e arquitetura; ainda não implementado**
+> Status: **decisão de produto e arquitetura; primeira fatia de prévia multimodal implementada em 11/09/2026**
 >
 > Escopo: clientes, catálogo, orçamentos, conversas exportadas do WhatsApp,
 > documentos, deduplicação, exportação e IA assistiva.
@@ -31,6 +31,10 @@ Proposta de valor:
 
 > **Traga a bagunça. O OLLI organiza, explica e só grava quando você aprova.
 > Seus dados entram e saem fácil.**
+
+> Atualização: o Autopilot agora aceita texto e arquivos pequenos no checkout
+> canônico e no staging. A rota e a UI continuam preview-only; quarentena/fila
+> para arquivos grandes e commit RPC de lote permanecem como próximas fases.
 
 ## 2. O problema real que estamos resolvendo
 
