@@ -2,6 +2,14 @@
 
 App para eletricistas e técnicos autônomos criarem **orçamentos profissionais no celular**: catálogo de serviços/produtos, clientes, agenda com lembretes, PDF com a marca do prestador, link de aprovação para o cliente, recibos e sincronização em nuvem.
 
+## Fonte única e organização
+
+Este checkout, `C:\OLLI_REL`, é a única fonte editável do produto atual.
+O mapa de todas as pastas, materiais, clones, planos, agentes e próximos gates
+está em [docs/ORGANIZACAO/00-LEIA-ME.md](docs/ORGANIZACAO/00-LEIA-ME.md).
+Pastas históricas e a raiz sincronizada do Google Drive não substituem este
+repositório.
+
 ## Stack
 
 - Expo SDK 57 / React Native 0.86 / React 19.2 / TypeScript strict

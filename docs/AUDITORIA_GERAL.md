@@ -10,10 +10,35 @@
 
 # RE-AUDITORIA GERAL — OLLI (estado em 2026-07-12)
 
-**Quão perto do perfeito: ~85%** (a fundação é excelente; subiu de 80-85% em 07-11 porque os 4 P0 de código
+**Quão perto do perfeito: ~85% no recorte de 12/07** (a fundação é excelente; subiu de 80-85% em 07-11 porque os 4 P0 de código
 e ~12 P1 daquela auditoria foram confirmados CORRIGIDOS — mas a passada de completude revelou um cluster
 NOVO de bugs de **integridade de dados na camada de identidade/conta/backup** que não existia no relatório
 anterior e que precisa ser fechado antes de "perfeito", ainda mais porque o dono pediu *login perfeito*.)
+
+> **Nota de reconciliação — 06/09/2026.** Este arquivo preserva o recorte histórico
+> de julho para auditoria e rastreabilidade; ele não é a fila de execução atual.
+> A fonte de verdade do estado presente é
+> [`docs/PILOTO/FILA_0_A_100_CONTINUACAO.md`](PILOTO/FILA_0_A_100_CONTINUACAO.md)
+> e os aceites datados em `docs/PILOTO/`. A rodada de setembro implementou e
+> testou localmente as correções abaixo; nenhuma delas deve ser lida como aceite
+> de produção enquanto os gates externos permanecerem bloqueados.
+
+### Reconciliação das lacunas que já foram tratadas localmente
+
+| Achado deste recorte | Estado local atual | Evidência principal |
+|---|---|---|
+| P0-A — login/aparelho novo podia sobrescrever a empresa | **CORRIGIDO_LOCAL**: partição por usuário, consulta em três estados e onboarding bloqueado em caso indeterminado | `src/screens/EntrarScreen.tsx`, `src/screens/OnboardingScreen.tsx`, `scripts/teste-particao.ts`, `scripts/teste-contexto-equipe.ts` |
+| P0-B — troca de conta misturava SQLite | **CORRIGIDO_LOCAL**: `abrirParticaoDoUsuario` + sync fail-closed antes de qualquer leitura/escrita | `src/database/particao.ts`, `src/services/cloudSync.ts`, `scripts/teste-particao.ts` |
+| P0-C — restore de técnico ressuscitava dados do dono | **CORRIGIDO_LOCAL**: backup/restore e tombstones respeitam o contexto de equipe | `src/database/database.ts`, `src/services/backup.ts`, `scripts/teste-backup-equipe.ts` |
+| Paywall Empresa, cota de voz, payload do webhook e XSS do modelo PDF | **CORRIGIDO_LOCAL / PROMOÇÃO PENDENTE**: gates no Worker, migrations versionadas e escape/allowlist no gerador | `worker/src/creditos.js`, `worker/src/stripe.js`, `src/utils/pdfGenerator.ts`, aceites C3/C8/C11 |
+| P1 de UX: toque de notificação, reduced-motion e radares ausentes no painel | **CORRIGIDO_LOCAL**: listener global, limites de motion e radares de cobrança/reconquista no dashboard web | `App.tsx`, `src/services/agenda.ts`, `webapp/src/pages/olli/inicio/`, `scripts/teste-eta-saida-app.ts` |
+
+O que continua realmente aberto neste momento é externo ou requer decisão explícita:
+Workers Build/produção, MFA efetivamente habilitado na conta live, baseline schema-only,
+branch de staging, aplicação das migrations novas, consentimento OAuth, restore físico,
+canário remoto, distribuição/publicação e revisão/aceite independente. O recorte de
+julho abaixo continua útil como histórico, mas não deve reabrir bugs já comprovados
+como corrigidos localmente.
 
 ---
 

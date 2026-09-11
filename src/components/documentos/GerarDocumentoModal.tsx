@@ -21,6 +21,7 @@ import {
   montarHtmlTermoConclusao,
   montarHtmlTermoGarantia,
 } from '../../utils/termosPdf';
+import { garantirDocumentoDerivadoDeOrcamento, registrarArtefatoDocumentoBiblioteca } from '../../services/documentosBiblioteca';
 
 /**
  * GerarDocumentoModal — o caminho curto entre "tenho um orçamento" e "tenho o
@@ -65,6 +66,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
   const [escolhido, setEscolhido] = useState<Orcamento | null>(null);
   const [previa, setPrevia] = useState(false);
   const [assinando, setAssinando] = useState(false);
+  const [documentoBibliotecaId, setDocumentoBibliotecaId] = useState<string | null>(null);
   const [assinaturaFalhou, setAssinaturaFalhou] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -146,6 +148,28 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
   }, [escolhido, empresa, tipo, temAcesso]);
 
   const assinado = !!escolhido?.assinaturaContratoUri;
+
+  async function abrirPreviaDocumento() {
+    if (!escolhido) return;
+    try {
+      const registro = await garantirDocumentoDerivadoDeOrcamento({
+        tipo,
+        titulo: TITULOS_DOCUMENTO[tipo],
+        orcamentoId: escolhido.id,
+        numero: escolhido.numero,
+        clienteId: escolhido.clienteId,
+        clienteNome: escolhido.clienteNome,
+        dados: { orcamento: escolhido, documento: tipo },
+        assinado,
+      });
+      setDocumentoBibliotecaId(registro.id);
+    } catch (erro) {
+      // A prévia continua disponível se a biblioteca local falhar; não fingimos
+      // que o registro foi salvo e o gerador de PDF permanece independente.
+      void erro;
+    }
+    setPrevia(true);
+  }
 
   /**
    * O que a qualificação das partes vai imprimir EM BRANCO neste documento.
@@ -278,7 +302,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
               label="Ver e enviar documento"
               variant="gradient"
               fullWidth
-              onPress={() => setPrevia(true)}
+              onPress={() => { void abrirPreviaDocumento(); }}
               icon={<MaterialCommunityIcons name="file-document-outline" size={18} color="#fff" />}
             />
           </View>
@@ -303,6 +327,10 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
         // acharia que a assinatura não entrou no documento.
         chave={`${tipo}:${escolhido?.id ?? ''}:${escolhido?.dataAssinaturaContrato ?? ''}`}
         construirHtml={construirHtml}
+        onExported={async (uri) => {
+          if (!documentoBibliotecaId) return;
+          try { await registrarArtefatoDocumentoBiblioteca(documentoBibliotecaId, uri); } catch (erro) { void erro; /* PDF continua entregue; registro local é best-effort */ }
+        }}
         nomeArquivo={escolhido ? `${tipo}-${escolhido.numero}` : undefined}
       />
     </Modal>

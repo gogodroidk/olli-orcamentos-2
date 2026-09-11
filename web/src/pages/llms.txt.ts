@@ -26,6 +26,7 @@ import { VERTICAIS } from "../../../src/services/verticais";
 import { identidadePublicavel } from "../data/empresa";
 import {
 	DOR_POR_OFICIO,
+	OFICIO_GERAL,
 	PROFISSAO_POR_OFICIO,
 	SLUG_POR_OFICIO,
 } from "../data/oficios";
@@ -35,6 +36,7 @@ import {
 	PRECO_PRO,
 	reais,
 } from "../data/planos";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
 
 const ORIGEM = "https://olliorcamentos.online";
 
@@ -44,7 +46,7 @@ const ORIGEM = "https://olliorcamentos.online";
  * três lugares" foi paga: o número mora num lugar só e todo o resto importa dele.
  */
 const PLANOS_LLM = [
-	{ nome: "Grátis", preco: reais(0), nota: "sem prazo e sem cartão" },
+	{ nome: "Grátis", preco: reais(0), nota: `permanente, sem cartão, com ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês` },
 	{
 		nome: "Pro",
 		preco: `${reais(PRECO_PRO.mensalCentavos)}/mês`,
@@ -70,7 +72,7 @@ const NOTA_DOZE =
 		: "";
 
 export async function GET() {
-	const oficios = VERTICAIS.map((v) => {
+	const oficios = [...VERTICAIS, { ...OFICIO_GERAL, cnaes: [], ferramentas: [] }].map((v) => {
 		const slug = SLUG_POR_OFICIO[v.id];
 		const profissao = PROFISSAO_POR_OFICIO[v.id];
 		const n = calculosDoOficio(v.id).length;
@@ -96,7 +98,7 @@ export async function GET() {
 
 	const corpo = `# OLLI
 
-> Sistema de campo para prestador de serviço no Brasil: do orçamento à ordem de
+> Plataforma de orçamentos para qualquer negócio de serviço no Brasil: do orçamento à ordem de
 > serviço e ao recibo, no celular e no computador. Feito para quem atende em campo
 > — climatização, elétrica, hidráulica, pintura, dedetização e jardinagem.
 
@@ -112,7 +114,7 @@ ${quemSomos}
 
 ${planos}
 
-O plano anual sai mais barato que o mensal; o Grátis não é teste com prazo. ${NOTA_DOZE}
+O plano anual sai mais barato que o mensal. O Grátis é permanente; depois do primeiro envio, o dono pode ativar um teste Pro opcional de 14 dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
 Comparativo completo dos planos: ${ORIGEM}/planos/
 
 ## Páginas por ofício

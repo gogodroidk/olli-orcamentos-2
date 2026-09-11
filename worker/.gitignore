@@ -3,3 +3,5 @@
 .dry/
 .base/
 .wrangler/
+# Wrangler-generated binding declarations; regenerate in CI and before deploy.
+worker-configuration.d.ts

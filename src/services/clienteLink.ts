@@ -3,7 +3,14 @@ import { LINK_BASE_URL } from '../config';
 import { track, Eventos } from './analytics';
 import { Orcamento, Empresa, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente } from '../types';
 import { generateId } from '../utils/id';
-import { getOrcamento, saveOrcamento, upsertVersaoLocalSilencioso, proximoNumeroVersao } from '../database/database';
+import {
+  getOrcamento,
+  saveOrcamento,
+  upsertVersaoLocalSilencioso,
+  proximoNumeroVersao,
+  getVersoesPendentesEspelho,
+  marcarVersaoEspelhoConcluido,
+} from '../database/database';
 import { nowISO } from '../utils/date';
 
 const TABLE = 'orcamentos_publicos';
@@ -71,6 +78,7 @@ function base64url(bytes: Uint8Array): string {
 function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
   return {
     numero: orc.numero,
+    revisaoDeNumero: orc.revisaoDeNumero ?? '',
     clienteNome: orc.clienteNome,
     valorTotal: orc.valorTotal,
     subtotal: orc.subtotal,
@@ -102,6 +110,8 @@ function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
     })),
     validade: orc.validadeOrcamento ?? '',
     garantia: orc.garantia ?? '',
+    // Campo legado preservado no contrato de dados; na interface é exibido como
+    // condição comercial, não como meio de cobrança da OLLI.
     condicoesPagamento: orc.condicoesPagamento ?? '',
     // "Prazo" para o mini-card (agendamento / prestação do serviço, se houver).
     prazo: orc.agendamentoServico ?? orc.dataPrestacaoServico ?? '',
@@ -423,8 +433,9 @@ export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCli
  * ao subir, o segundo leva 23505 nessa constraint. Em vez de engolir (o snapshot
  * sumiria), RENUMERAMOS para o próximo número livre (MAX local + 1) e tentamos UMA
  * vez mais — e propagamos o novo número para o SQLite local (mesmo `id`), para os
- * dois aparelhos convergirem sem exibir "vN" duplicada. Fire-and-forget:
- * offline/deslogado/sem-nuvem = no-op silencioso. NUNCA lança.
+ * dois aparelhos convergirem sem exibir "vN" duplicada. O upload é disparado
+ * em background, mas a versão fica numa outbox SQLite até a confirmação; assim
+ * offline/deslogado/sem-nuvem não perde o trabalho. NUNCA lança.
  *
  * P1-4: membro não-dono (técnico) precisa gravar a versão no tenant do DONO —
  * senão o snapshot nasce com user_id dele (default da coluna) e o dono nunca o vê.
@@ -433,11 +444,11 @@ export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCli
  * membro não-dono — a RLS de INSERT de `orcamento_versoes` já aceita
  * `user_id in donos_visiveis()` (20260708_versoes.sql), só faltava o app mandar.
  */
-export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void> {
+export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<boolean> {
   try {
-    if (!supabase || !versao?.id) return;
+    if (!supabase || !versao?.id) return false;
     const user = await getCurrentUser();
-    if (!user) return;
+    if (!user) return false;
 
     // Import dinâmico (mesmo motivo do cloudSync): evita aresta estática entre
     // clienteLink e sync.
@@ -455,10 +466,6 @@ export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void
     // linha nenhuma — o dono continua sem ver, mas nada errado é gravado, e o SQLite
     // local segue com a versão.
     //
-    // ⚠️ O que AINDA falta (registrado em FOLLOWUPS #29): retry. `orcamento_versoes`
-    // não está no pipeline de sync (não é `SyncTable`, não tem pull nem push em lote),
-    // então "adiar" aqui é "não espelhar desta vez" e ninguém tenta de novo. Fechar
-    // isso exige dar retry à versão antes — não dá para simplesmente adiar e torcer.
     const decisao = await (async () => {
       try {
         const { garantirContextoEquipe } = await import('./cloudSync');
@@ -468,7 +475,7 @@ export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void
         return { adiar: true } as const;
       }
     })();
-    if (decisao.adiar) return; // não sabemos o tenant: não chuta
+    if (decisao.adiar) return false; // não sabemos o tenant: não chuta
     const ownerUserId = decisao.userIdOverride;
 
     const payload = (numeroVersao: number) => {
@@ -488,24 +495,49 @@ export async function espelharVersaoNuvem(versao: OrcamentoVersao): Promise<void
     const { error } = await supabase
       .from(TABLE_VERSOES)
       .upsert(payload(versao.numeroVersao), { onConflict: 'id' });
-    if (!error) return;
+    if (!error) {
+      await marcarVersaoEspelhoConcluido(versao.id);
+      return true;
+    }
 
     // 23505 = unique_violation. Como o upsert é por `id`, uma colisão aqui só pode
     // ser na UNIQUE(orcamento_id, numero_versao) — esse número já foi usado por
     // OUTRO aparelho. Renumera para o próximo livre e re-tenta UMA vez.
-    if ((error as any)?.code !== '23505') return;
+    if ((error as any)?.code !== '23505') return false;
     const novoNumero = await proximoNumeroVersao(versao.orcamentoId);
-    if (novoNumero === versao.numeroVersao) return; // nada a renumerar
+    if (novoNumero === versao.numeroVersao) return false; // nada a renumerar
     const { error: erroRetry } = await supabase
       .from(TABLE_VERSOES)
       .upsert(payload(novoNumero), { onConflict: 'id' });
-    if (erroRetry) return; // ainda colidiu (corrida rara) — desiste sem quebrar
+    if (erroRetry) return false; // ainda colidiu (corrida rara) — tenta no próximo sync
     // Sucesso na nuvem com o novo número: alinha o SQLite local (mesmo `id`) para
     // não ficar uma "vN" divergente entre local e nuvem.
     await upsertVersaoLocalSilencioso({ ...versao, numeroVersao: novoNumero });
+    await marcarVersaoEspelhoConcluido(versao.id);
+    return true;
   } catch {
     // espelho em background: nunca afeta o app local
+    return false;
   }
+}
+
+/**
+ * Drena uma fatia da outbox local. Só remove a marca pendente quando o upload
+ * confirmou; contexto de equipe desconhecido, logout ou rede fora deixam a
+ * linha para a próxima retomada. A partição SQLite já foi resolvida pelo
+ * `syncOnLogin`, então não há mistura entre contas.
+ */
+export async function espelharVersoesPendentes(limite = 20): Promise<number> {
+  let concluidas = 0;
+  try {
+    const pendentes = await getVersoesPendentesEspelho(limite);
+    for (const versao of pendentes) {
+      if (await espelharVersaoNuvem(versao)) concluidas++;
+    }
+  } catch {
+    // outbox é best-effort; a marca pendente preserva a tentativa futura.
+  }
+  return concluidas;
 }
 
 /**

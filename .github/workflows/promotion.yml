@@ -1,0 +1,123 @@
+name: OLLI Promotion Pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [staging, main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Ambiente de destino"
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: olli-promotion-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: quality-and-builds
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout immutable ref
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Root dependencies
+        run: npm ci
+      - name: Root preflight
+        run: npm run preflight
+      - name: Shared landing dependencies
+        working-directory: web
+        run: npm ci
+      - name: Webapp dependencies and build
+        working-directory: webapp
+        run: |
+          corepack enable
+          pnpm i --frozen-lockfile
+          pnpm run build
+      - name: Landing dependencies and build
+        working-directory: web
+        run: |
+          npm ci
+          npx astro check
+          npm run build
+      - name: Worker dry-run
+        working-directory: worker
+        run: |
+          npm ci
+          npm run types
+          npm run types:check
+          npm test
+          npm run check
+      - name: Validate permanent environment contract
+        run: npm run check:environments
+
+  staging:
+    name: staging-promotion
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.target == 'staging' || github.event.inputs.target == 'production')
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout immutable ref
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Refuse incomplete baseline
+        env:
+          BASELINE_READY: ${{ vars.OLLI_STAGING_BASELINE_READY }}
+        run: |
+          test "$BASELINE_READY" = "true" || {
+            echo "Staging schema baseline is not approved; no migration or deploy is allowed."
+            exit 1
+          }
+      - name: Refuse incomplete staging secret contract
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
+          MP_WEBHOOK_SECRET: ${{ secrets.MP_WEBHOOK_SECRET }}
+          OLLI_ROUTES_API_KEY: ${{ secrets.OLLI_ROUTES_API_KEY }}
+        run: |
+          for name in SUPABASE_SERVICE_ROLE_KEY OPENROUTER_API_KEY RESEND_API_KEY RESEND_WEBHOOK_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET MP_ACCESS_TOKEN MP_WEBHOOK_SECRET OLLI_ROUTES_API_KEY; do
+            test -n "${!name}" || { echo "Missing staging secret: $name"; exit 1; }
+          done
+      - name: Staging gate handoff
+        run: |
+          echo "Quality passed for $GITHUB_SHA"
+          npm run staging:smoke
+          echo "Supabase/Cloudflare staging smoke passed without writes."
+          echo "Real recipients and billing remain forbidden in staging."
+
+  production:
+    name: production-promotion
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.target == 'production'
+    needs: [quality, staging]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout immutable ref
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Production approval boundary
+        run: |
+          echo "GitHub production environment approval was granted for $GITHUB_SHA"
+          echo "The final deploy command remains intentionally owned by the release operator."
+          echo "Rollback target must be recorded before any production write."

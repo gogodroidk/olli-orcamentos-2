@@ -1,7 +1,11 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // Os testes rodam TS nativamente no Node 24 e exigem extensão explícita em
+    // imports ESM. O app usa noEmit/Metro, então permitir `.ts` mantém os dois
+    // runtimes alinhados sem gerar caminhos inválidos em JavaScript emitido.
+    "allowImportingTsExtensions": true
   },
   // Este projeto é SÓ o app Expo/RN (`src/`, `App.tsx`). Sem `exclude`, o tsc
   // varria a árvore inteira e compilava projetos vizinhos com o config errado —
@@ -19,7 +23,7 @@
     // limpo. Quem checa a landing é o toolchain do Astro.
     "web",
     // Ferramentas Node (.mjs + testes que rodam via type stripping do Node, que
-    // exige import com extensão `.ts` — proibido pelo config do app).
+    // exige import com extensão `.ts`; scripts têm o próprio runtime Node).
     "scripts",
     // Cópias inteiras do repo feitas por worktrees do Claude: não são fonte.
     ".claude",

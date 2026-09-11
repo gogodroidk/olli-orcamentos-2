@@ -10,11 +10,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import {
   format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-  addDays, addWeeks, addMonths, isSameDay, eachDayOfInterval, isToday,
+  addDays, addWeeks, addMonths, isSameDay, isSameMonth, eachDayOfInterval, isToday,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { TimePickerModal } from 'react-native-paper-dates';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, sobreSecundario, corCategoriaEmChip, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, corCategoriaEmChip, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
@@ -48,7 +48,7 @@ import { abrirRotaGoogleMaps } from '../services/rotas';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type AgendaRoute = RouteProp<TabParamList, 'Agenda'>;
-type Modo = 'dia' | 'semana' | 'mes';
+type Modo = 'semana' | 'mes';
 // FILTROS (1.6) — client-side, sobre a lista já carregada (ver `itensFiltrados`).
 type FiltroTipoAgenda = TipoAgendamento | 'todos';
 type FiltroStatusAgenda = StatusAgendamento | 'todos';
@@ -83,32 +83,24 @@ function SincronizandoPill({ onDone, texto = 'Sincronizando...', icon = 'cloud-s
   );
 }
 
-const MODOS: { id: Modo; label: string }[] = [
-  { id: 'dia', label: 'Dia' },
-  { id: 'semana', label: 'Semana' },
-  { id: 'mes', label: 'Mês' },
-];
-
 // Chave para lembrar se já explicamos ao usuário por que pedimos notificação
 // (mostra o aviso amigável só na primeira vez que ele salva um agendamento).
 
 // Limites do período visível, conforme o modo.
 function rangeFor(modo: Modo, ref: Date): { inicio: Date; fim: Date } {
-  if (modo === 'dia') return { inicio: startOfDay(ref), fim: endOfDay(ref) };
   if (modo === 'semana') {
     return {
-      inicio: startOfWeek(ref, { weekStartsOn: 0 }),
-      fim: endOfWeek(ref, { weekStartsOn: 0 }),
+      inicio: startOfWeek(ref, { weekStartsOn: 1 }),
+      fim: endOfWeek(ref, { weekStartsOn: 1 }),
     };
   }
   return { inicio: startOfMonth(ref), fim: endOfMonth(ref) };
 }
 
 function rotuloPeriodo(modo: Modo, ref: Date): string {
-  if (modo === 'dia') return capitalizeFirst(format(ref, "EEEE, d 'de' MMMM", { locale: ptBR }));
   if (modo === 'semana') {
-    const i = startOfWeek(ref, { weekStartsOn: 0 });
-    const f = endOfWeek(ref, { weekStartsOn: 0 });
+    const i = startOfWeek(ref, { weekStartsOn: 1 });
+    const f = endOfWeek(ref, { weekStartsOn: 1 });
     return `${format(i, "d MMM", { locale: ptBR })} – ${format(f, "d MMM", { locale: ptBR })}`;
   }
   return capitalizeFirst(format(ref, "MMMM 'de' yyyy", { locale: ptBR }));
@@ -125,7 +117,7 @@ export default function AgendaScreen() {
   const styles = useEstilos(criarEstilos);
   const reduzirMovimento = useReducedMotion();
 
-  const [modo, setModo] = useState<Modo>('dia');
+  const [modo, setModo] = useState<Modo>('semana');
   const [ref, setRef] = useState<Date>(new Date());
   const [itens, setItens] = useState<Agendamento[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -236,29 +228,59 @@ export default function AgendaScreen() {
     (filtroStatus === 'todos' || a.status === filtroStatus)
   ), [itens, filtroTipo, filtroStatus]);
 
-  // Dias do período que efetivamente têm agendamentos (para o modo semana/mês) —
-  // já considerando o filtro, senão apareceriam dias "vazios" pro filtro atual.
-  const dias = useMemo(() => {
-    if (modo === 'dia') return [startOfDay(ref)];
-    const todos = eachDayOfInterval({ start: inicio, end: fim });
-    return todos.filter(d => itensFiltrados.some(a => isSameDay(new Date(a.inicio), d)));
-  }, [modo, ref, inicio.getTime(), fim.getTime(), itensFiltrados]);
+  const diasSemana = useMemo(() => eachDayOfInterval({
+    start: startOfWeek(ref, { weekStartsOn: 1 }),
+    end: endOfWeek(ref, { weekStartsOn: 1 }),
+  }), [ref]);
+
+  // Grade mensal completa (sempre de segunda a domingo). Dias vizinhos ficam
+  // visíveis com menor ênfase para a navegação continuar previsível.
+  const diasMes = useMemo(() => eachDayOfInterval({
+    start: startOfWeek(startOfMonth(ref), { weekStartsOn: 1 }),
+    end: endOfWeek(endOfMonth(ref), { weekStartsOn: 1 }),
+  }), [ref]);
+
+  const contagemPorDia = useMemo(() => {
+    const mapa = new Map<string, number>();
+    itensFiltrados.forEach(a => {
+      const data = new Date(a.inicio);
+      if (isNaN(data.getTime())) return;
+      const chave = format(data, 'yyyy-MM-dd');
+      mapa.set(chave, (mapa.get(chave) ?? 0) + 1);
+    });
+    return mapa;
+  }, [itensFiltrados]);
+
+  const itensDoDiaSemFiltro = useMemo(() => itens
+    .filter(a => isSameDay(new Date(a.inicio), ref))
+    .sort((a, b) => a.inicio.localeCompare(b.inicio)), [itens, ref]);
+
+  const itensDoDia = useMemo(() => itensFiltrados
+    .filter(a => isSameDay(new Date(a.inicio), ref))
+    .sort((a, b) => a.inicio.localeCompare(b.inicio)), [itensFiltrados, ref]);
 
   function passo(delta: number) {
     Haptics.selectionAsync().catch(() => {});
     if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setRef(prev => modo === 'dia' ? addDays(prev, delta) : modo === 'semana' ? addWeeks(prev, delta) : addMonths(prev, delta));
+    setRef(prev => modo === 'semana' ? addWeeks(prev, delta) : addMonths(prev, delta));
   }
 
-  function trocarModo(m: Modo) {
+  function alternarVisao() {
     Haptics.selectionAsync().catch(() => {});
     if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setModo(m);
+    setModo(prev => prev === 'semana' ? 'mes' : 'semana');
+  }
+
+  function selecionarDia(dia: Date, voltarParaSemana = false) {
+    Haptics.selectionAsync().catch(() => {});
+    if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setRef(dia);
+    if (voltarParaSemana) setModo('semana');
   }
 
   function abrirNovo(prefill?: Partial<EditState>) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const base = modo === 'dia' ? ref : new Date();
+    const base = ref;
     const inicioPadrao = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 9, 0, 0, 0);
     setEditing({
       id: undefined,
@@ -420,16 +442,17 @@ export default function AgendaScreen() {
     }
   }
 
-  // Dois estados de "vazio" distintos: período sem NENHUM agendamento (mostra o
-  // CTA "Agendar visita") vs. período com itens mas o FILTRO escondeu todos
+  // Dois estados de "vazio" distintos: dia sem NENHUM agendamento (mostra o
+  // CTA "Agendar visita") vs. dia com itens mas o FILTRO escondeu todos
   // (mostra um jeito de limpar o filtro, não repete o CTA de criar).
-  const semAgendamentos = itens.length === 0;
-  const semResultadoDoFiltro = !semAgendamentos && itensFiltrados.length === 0;
+  const semAgendamentosNoPeriodo = itens.length === 0;
+  const semAgendamentosNoDia = itensDoDiaSemFiltro.length === 0;
+  const semResultadoDoFiltro = !semAgendamentosNoDia && itensDoDia.length === 0;
 
   // Identidade do período visível. Muda ao navegar (‹ ›) ou trocar de modo;
   // usada como parte da key dos itens para re-disparar a entrada animada,
   // sinalizando a troca de contexto sem re-renderizar a cada frame.
-  const periodoKey = `${modo}:${inicio.getTime()}`;
+  const periodoKey = `${modo}:${inicio.getTime()}:${startOfDay(ref).getTime()}`;
 
   return (
     <View style={styles.container}>
@@ -447,40 +470,13 @@ export default function AgendaScreen() {
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
-        subtitle={`${itensFiltrados.length} compromisso${itensFiltrados.length === 1 ? '' : 's'} no período`}
+        subtitle={`${itensDoDia.length} compromisso${itensDoDia.length === 1 ? '' : 's'} em ${format(ref, "d 'de' MMM", { locale: ptBR })}`}
         right={
-          <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); }} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); setModo('semana'); }} activeOpacity={0.85}>
             <Text style={[styles.todayBtnText, { color: gradientes.sobreHeader }]}>Hoje</Text>
           </TouchableOpacity>
         }
       >
-        {/* SEGMENTED Dia / Semana / Mês */}
-        <View style={styles.segment}>
-          {MODOS.map(m => {
-            const active = m.id === modo;
-            return (
-              <TouchableOpacity
-                key={m.id}
-                style={[styles.segmentItem, active && styles.segmentItemActive]}
-                onPress={() => trocarModo(m.id)}
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={[
-                    styles.segmentLabel,
-                    // Inativo: a cor do header a 75%. Ativo: o chip é pintado com
-                    // `c.accent`, então o rótulo é decidido pelo chip, não pelo header.
-                    { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) },
-                    active && styles.segmentLabelActive,
-                  ]}
-                >
-                  {m.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         {/* NAV ‹ período › — está DENTRO do GradientHeader, então a cor vem do
             gradiente, não da superfície. `accentLight` media 1.03:1 contra a marca
             no modo claro (o glifo sumia); `sobreHeader` dá 5.02:1 e 15.32:1 nas
@@ -494,7 +490,99 @@ export default function AgendaScreen() {
             <MaterialCommunityIcons name="chevron-right" size={24} color={gradientes.sobreHeader} />
           </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          style={styles.viewToggle}
+          onPress={alternarVisao}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={modo === 'semana' ? 'Abrir calendário mensal' : 'Voltar para a semana'}
+        >
+          <MaterialCommunityIcons
+            name={modo === 'semana' ? 'calendar-month-outline' : 'calendar-week-outline'}
+            size={18}
+            color={gradientes.sobreHeader}
+          />
+          <Text style={[styles.viewToggleText, { color: gradientes.sobreHeader }]}>
+            {modo === 'semana' ? 'Abrir calendário do mês' : 'Voltar para a semana'}
+          </Text>
+        </TouchableOpacity>
       </GradientHeader>
+
+      {/* SELETOR DE DATA — a semana é a navegação principal; o calendário mensal
+          é uma visão opcional. Tocar em um dia do mês volta para sua semana. */}
+      <View style={styles.calendarCard}>
+        {modo === 'semana' ? (
+          <View style={styles.weekStrip}>
+            {diasSemana.map(dia => {
+              const selecionado = isSameDay(dia, ref);
+              const quantidade = contagemPorDia.get(format(dia, 'yyyy-MM-dd')) ?? 0;
+              return (
+                <TouchableOpacity
+                  key={dia.toISOString()}
+                  style={[styles.weekDay, selecionado && styles.weekDaySelected]}
+                  onPress={() => selecionarDia(dia)}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selecionado }}
+                  accessibilityLabel={`${format(dia, "EEEE, d 'de' MMMM", { locale: ptBR })}${quantidade ? `, ${quantidade} compromisso${quantidade === 1 ? '' : 's'}` : ', sem compromissos'}`}
+                >
+                  <Text style={[styles.weekDayName, selecionado && styles.weekDayTextSelected]}>
+                    {format(dia, 'EEEEE', { locale: ptBR }).toUpperCase()}
+                  </Text>
+                  <Text style={[styles.weekDayNumber, isToday(dia) && styles.weekDayToday, selecionado && styles.weekDayTextSelected]}>
+                    {format(dia, 'd')}
+                  </Text>
+                  <View style={styles.dayMarkers}>
+                    {quantidade > 0 && (
+                      <View style={[styles.dayMarker, selecionado && styles.dayMarkerSelected]} />
+                    )}
+                    {quantidade > 1 && (
+                      <Text style={[styles.dayCount, selecionado && styles.weekDayTextSelected]}>{quantidade}</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <View>
+            <View style={styles.monthWeekNames}>
+              {['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'].map(nome => (
+                <Text key={nome} style={styles.monthWeekName}>{nome}</Text>
+              ))}
+            </View>
+            <View style={styles.monthGrid}>
+              {diasMes.map(dia => {
+                const selecionado = isSameDay(dia, ref);
+                const dentroDoMes = isSameMonth(dia, ref);
+                const quantidade = contagemPorDia.get(format(dia, 'yyyy-MM-dd')) ?? 0;
+                return (
+                  <View key={dia.toISOString()} style={styles.monthDayCell}>
+                    <TouchableOpacity
+                      style={[styles.monthDay, selecionado && styles.monthDaySelected]}
+                      onPress={() => selecionarDia(dia, true)}
+                      activeOpacity={0.82}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: selecionado }}
+                      accessibilityLabel={`${format(dia, "EEEE, d 'de' MMMM", { locale: ptBR })}${quantidade ? `, ${quantidade} compromisso${quantidade === 1 ? '' : 's'}` : ', sem compromissos'}`}
+                    >
+                      <Text style={[
+                        styles.monthDayText,
+                        !dentroDoMes && styles.monthDayOutside,
+                        isToday(dia) && styles.monthDayToday,
+                        selecionado && styles.monthDayTextSelected,
+                      ]}>
+                        {format(dia, 'd')}
+                      </Text>
+                      {quantidade > 0 && <View style={[styles.monthMarker, selecionado && styles.dayMarkerSelected]} />}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+      </View>
 
       {/* GOOGLE AGENDA — some por completo quando o recurso está desligado
           (client id não configurado); ver services/googleAgenda.ts */}
@@ -520,20 +608,19 @@ export default function AgendaScreen() {
         </View>
       )}
 
-      {/* DICA (1º uso) — como criar um compromisso. O FAB "Agendar visita" abre o
-          form (abrirNovo) e o segmented Dia/Semana/Mês troca o período (trocarModo). */}
+      {/* DICA (1º uso) — como criar um compromisso e escolher a data. */}
       {/* Sem padding vertical: ver ClientesScreen (wrapper vazio deixaria vao). */}
       <View style={{ paddingHorizontal: Spacing.base }}>
         <DicaContextual
           id="agenda.criar"
           icon="calendar-plus"
-          texto="Toque em Agendar visita para marcar seus serviços. Use Dia, Semana e Mês no topo para navegar pelo período."
+          texto="Escolha um dia na semana e toque em Agendar visita. Para procurar outra data, abra o calendário do mês."
         />
       </View>
 
       {/* FILTROS (1.6) — tipo/status, client-side sobre a lista já carregada.
           Só aparece quando há algo pra filtrar (período com agendamentos). */}
-      {!carregando && !carregandoErro && !semAgendamentos && (
+      {!carregando && !carregandoErro && !semAgendamentosNoPeriodo && (
         <View style={{ paddingHorizontal: Spacing.base }}>
           <ChipsFiltro<FiltroTipoAgenda> itens={chipsTipo} selecionado={filtroTipo} aoSelecionar={setFiltroTipo} />
           <ChipsFiltro<FiltroStatusAgenda> itens={chipsStatus} selecionado={filtroStatus} aoSelecionar={setFiltroStatus} />
@@ -569,12 +656,12 @@ export default function AgendaScreen() {
             onAction={load}
           />
         </View>
-      ) : semAgendamentos ? (
+      ) : semAgendamentosNoDia ? (
         <View style={{ flex: 1 }}>
           <EmptyState
             icon="calendar-blank-outline"
-            title="Nenhuma visita agendada"
-            subtitle="Agende suas visitas e serviços para organizar o seu dia."
+            title="Este dia está livre"
+            subtitle={`Não há compromissos em ${format(ref, "d 'de' MMMM", { locale: ptBR })}. Você pode agendar uma visita agora.`}
             actionLabel="Agendar visita"
             onAction={() => abrirNovo()}
           />
@@ -584,7 +671,7 @@ export default function AgendaScreen() {
           <EmptyState
             icon="filter-remove-outline"
             title="Nada com esse filtro"
-            subtitle="Ajuste os filtros acima para ver os compromissos deste período."
+            subtitle="Ajuste os filtros acima para ver os compromissos deste dia."
             actionLabel="Limpar filtros"
             onAction={() => { setFiltroTipo('todos'); setFiltroStatus('todos'); }}
           />
@@ -595,47 +682,28 @@ export default function AgendaScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
         >
-          {(() => {
-            // Contador corrido de itens VISÍVEIS entre os grupos de dia: garante
-            // um stagger monotônico e limpo (Motion.maxStagger já corta o delay
-            // dos itens fora da primeira dobra, evitando jank em listas longas).
-            let ordem = -1;
-            return dias.map((dia) => {
-              const doDia = itensFiltrados
-                .filter(a => isSameDay(new Date(a.inicio), dia))
-                .sort((a, b) => a.inicio.localeCompare(b.inicio));
-              if (doDia.length === 0) return null;
-              return (
-                <View key={dia.toISOString()} style={{ marginBottom: Spacing.lg }}>
-                  {modo !== 'dia' && (
-                    <AnimatedEntrance index={(ordem += 1)}>
-                      <View style={styles.dayHeader}>
-                        <Text style={[styles.dayHeaderTitle, isToday(dia) && { color: cores.accentLight }]}>
-                          {capitalizeFirst(format(dia, "EEE, d 'de' MMM", { locale: ptBR }))}
-                        </Text>
-                        {isToday(dia) && <View style={styles.todayDot} />}
-                      </View>
-                    </AnimatedEntrance>
-                  )}
-                  {doDia.map((a) => (
-                    // key = período + id: ao trocar de dia/semana o período muda,
-                    // a lista remonta e re-anima a entrada (o movimento EXPLICA a
-                    // troca de contexto, em vez de o conteúdo só "pular").
-                    <AnimatedEntrance key={`${periodoKey}:${a.id}`} index={(ordem += 1)}>
-                      <AgendaItem item={a} onPress={() => abrirEdicao(a)} />
-                    </AnimatedEntrance>
-                  ))}
-                </View>
-              );
-            });
-          })()}
+          <AnimatedEntrance index={0}>
+            <View style={styles.dayHeader}>
+              <Text style={[styles.dayHeaderTitle, isToday(ref) && { color: cores.accentLight }]}>
+                {capitalizeFirst(format(ref, "EEEE, d 'de' MMMM", { locale: ptBR }))}
+              </Text>
+              {isToday(ref) && <View style={styles.todayDot} />}
+            </View>
+          </AnimatedEntrance>
+          {itensDoDia.map((a, index) => (
+            // key inclui o dia selecionado: ao tocar na semana, a lista remonta e
+            // a transição deixa clara a mudança de contexto sem movimento excessivo.
+            <AnimatedEntrance key={`${periodoKey}:${a.id}`} index={index + 1}>
+              <AgendaItem item={a} onPress={() => abrirEdicao(a)} />
+            </AnimatedEntrance>
+          ))}
         </ScrollView>
       )}
 
       {/* FAB Agendar visita — oculto quando o período está vazio ou em erro: o
           EmptyState já mostra o CTA (ou "Tentar de novo") no centro, e os dois
           juntos ficam redundantes/incoerentes. */}
-      {itens.length > 0 && !carregandoErro && (
+      {itensDoDia.length > 0 && !carregandoErro && (
       // haptic={false}: abrirNovo() já dispara um impactAsync(Light) próprio —
       // deixar o OlliPressable vibrar de novo daria feedback dobrado.
       <OlliPressable style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => abrirNovo()} haptic={false} accessibilityLabel="Agendar visita">
@@ -1071,15 +1139,35 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // ponto de uso. A fábrica só conhece `Cores` (superfícies), não os gradientes.
   todayBtnText: { fontSize: 13, fontWeight: '800' },
 
-  segment: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: BorderRadius.md, padding: 4, marginTop: Spacing.base, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
-  segmentItem: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: BorderRadius.sm },
-  segmentItemActive: { backgroundColor: c.accent },
-  segmentLabel: { fontSize: 14, fontWeight: '700' },
-  segmentLabelActive: { color: textoSobre(c.accent) },
-
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.base },
   navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700' },
+  viewToggle: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, minHeight: 36, paddingHorizontal: 14, borderRadius: BorderRadius.full, backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
+  viewToggleText: { fontSize: 12.5, fontWeight: '800' },
+
+  calendarCard: { margin: Spacing.base, marginBottom: 0, padding: 10, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
+  weekStrip: { flexDirection: 'row', alignItems: 'stretch', gap: 4 },
+  weekDay: { flex: 1, minHeight: 70, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', paddingVertical: 7, borderWidth: 1, borderColor: 'transparent' },
+  weekDaySelected: { backgroundColor: c.accentLight, borderColor: c.accentLight },
+  weekDayName: { fontSize: 10, fontWeight: '800', color: c.onSurfaceMuted },
+  weekDayNumber: { fontSize: 17, lineHeight: 22, fontWeight: '800', color: c.onSurface, marginTop: 2 },
+  weekDayToday: { color: c.accentLight },
+  weekDayTextSelected: { color: textoSobre(c.accentLight) },
+  dayMarkers: { minHeight: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, marginTop: 2 },
+  dayMarker: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.accentLight },
+  dayMarkerSelected: { backgroundColor: textoSobre(c.accentLight) },
+  dayCount: { fontSize: 9, lineHeight: 11, fontWeight: '800', color: c.onSurfaceMuted },
+  monthWeekNames: { flexDirection: 'row', marginBottom: 4 },
+  monthWeekName: { width: '14.2857%', textAlign: 'center', fontSize: 9.5, fontWeight: '800', color: c.onSurfaceMuted },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  monthDayCell: { width: '14.2857%', alignItems: 'center', paddingVertical: 2 },
+  monthDay: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  monthDaySelected: { backgroundColor: c.accentLight },
+  monthDayText: { fontSize: 13, fontWeight: '700', color: c.onSurface },
+  monthDayOutside: { color: c.onSurfaceMuted, opacity: 0.55 },
+  monthDayToday: { color: c.accentLight, fontWeight: '900' },
+  monthDayTextSelected: { color: textoSobre(c.accentLight) },
+  monthMarker: { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2, backgroundColor: c.accentLight },
 
   googleCard: { margin: Spacing.base, marginBottom: 0, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   googleCardRow: { flexDirection: 'row', alignItems: 'center' },

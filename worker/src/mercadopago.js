@@ -150,7 +150,7 @@ async function mpPost(env, path, body, idemKey) {
   if (idemKey) headers['X-Idempotency-Key'] = idemKey;
   const r = await fetch(`${MP_API}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) console.error('[olli-mp] POST', path, r.status, data && (data.message || data.error));
+  if (!r.ok) console.error('[olli-mp] POST provider failed', r.status);
   return { ok: r.ok, status: r.status, data };
 }
 
@@ -159,7 +159,7 @@ async function mpGet(env, path) {
     headers: { Authorization: `Bearer ${env.MP_ACCESS_TOKEN}` },
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) console.error('[olli-mp] GET', path, r.status);
+  if (!r.ok) console.error('[olli-mp] GET provider failed', r.status);
   return { ok: r.ok, status: r.status, data };
 }
 
@@ -308,10 +308,10 @@ export async function cancelarPreapprovalMp(env, preapprovalId) {
     if (g.status === 404) return 'ok';
     if (g.ok && g.data && g.data.status === 'cancelled') return 'ok';
 
-    console.error('[olli-mp] cancelar preapproval falhou:', r.status, preapprovalId);
+    console.error('[olli-mp] cancelar preapproval falhou:', r.status);
     return 'erro';
   } catch (e) {
-    console.error('[olli-mp] cancelar preapproval erro:', e && (e.message || e));
+    console.error('[olli-mp] cancelar preapproval erro');
     return 'erro';
   }
 }
@@ -470,10 +470,10 @@ async function upsertAssinaturaComPreapproval(env, userId, patch, preapprovalId)
     const r = await upsertAssinaturaComStatus(env, userId, { ...patch, mp_preapproval_id: preapprovalId });
     if (r.ok) return true;
     if (r.status !== 400 && r.status !== 404) {
-      console.error('[olli-mp] upsert com mp_preapproval_id falhou (não é coluna ausente — não mascarando, webhook pede reenvio):', r.status, userId);
+      console.error('[olli-mp] upsert com mp_preapproval_id falhou (não é coluna ausente — webhook pede reenvio):', r.status);
       return false;
     }
-    console.error('[olli-mp] upsert com mp_preapproval_id falhou (coluna ausente, migration 20260728) — regravando sem o campo:', userId);
+    console.error('[olli-mp] upsert com mp_preapproval_id falhou (coluna ausente, migration 20260728) — regravando sem o campo');
   }
   return upsertAssinatura(env, userId, patch);
 }
@@ -541,7 +541,7 @@ async function encerrarPreapproval(env, { userId, preapprovalId, status }) {
   const gravado = await lerPreapprovalGravado(env, userId);
   if (gravado.error) return json({ erro: 'indisponivel' }, 503);
   if (gravado.ausente || !gravado.id || gravado.id !== preapprovalId) { // (b)
-    console.error('[olli-mp] cancelamento de preapproval sem vínculo provado com o plano vigente — não reduz:', preapprovalId, userId);
+    console.error('[olli-mp] cancelamento de preapproval sem vínculo provado com o plano vigente — não reduz');
     return json({ ok: true, sem_efeito: true });
   }
 
@@ -581,19 +581,21 @@ async function webhook(request, env, url) {
   const sig = request.headers.get('x-signature') || request.headers.get('X-Signature') || '';
 
   // Autenticidade em DUAS camadas:
-  //  (1) x-signature (HMAC): defesa de borda. Se MP_WEBHOOK_SECRET está configurado,
-  //      EXIGE assinatura válida (401 no que não bater); enquanto não está, seguimos.
-  //  (2) confirmação via GET /v1/payments|/preapproval (abaixo): a barreira AUTORITATIVA —
-  //      só concede se a própria API do MP confirmar 'approved'/'authorized'. Não dá para
-  //      forjar um pagamento aprovado no MP nem injetar um external_reference alheio, então
-  //      o crédito é seguro mesmo sem a camada 1. Configure o secret para ter as duas.
+  //  (1) x-signature (HMAC): obrigatória por padrão. O modo degradado só existe
+  //      em fixtures locais que declaram MP_WEBHOOK_REQUIRE_SIGNATURE=false.
+  //  (2) confirmação via GET /v1/payments|/preapproval (abaixo): segunda barreira
+  //      autoritativa; ela não substitui a assinatura no runtime implantado.
   let assinado = false;
+  const exigeAssinatura = env.MP_WEBHOOK_REQUIRE_SIGNATURE !== 'false';
   if (env.MP_WEBHOOK_SECRET) {
     const valido = await validarAssinatura(env, { sigHeader: sig, requestId, dataId });
     if (!valido) return json({ erro: 'assinatura_invalida' }, 401);
     assinado = true;
+  } else if (exigeAssinatura) {
+    console.error('[olli-mp] MP_WEBHOOK_SECRET ausente — webhook fail-closed.');
+    return json({ erro: 'webhook_nao_configurado' }, 503);
   } else {
-    console.error('[olli-mp] MP_WEBHOOK_SECRET ausente — validando so por GET-confirm (configure o secret p/ a camada de assinatura).');
+    console.error('[olli-mp] MP_WEBHOOK_SECRET ausente — fallback permitido somente em fixture local.');
   }
   if (!dataId) return json({ ok: true });
 
@@ -646,7 +648,7 @@ async function webhook(request, env, url) {
     if (kind === 'as') {
       console.error(
         '[olli-mp] ALARME: pagamento aprovado de assinatura por CARTÃO no Mercado Pago — caminho descontinuado (cartão é Stripe). '
-        + 'A vigência NÃO avança sozinha; reconciliar o cliente. payment=', String(data.id), 'user=', userId,
+        + 'A vigência NÃO avança sozinha; reconciliar o cliente.',
       );
       return json({ ok: true, renovacao_nao_processada: true });
     }
@@ -719,7 +721,7 @@ async function webhook(request, env, url) {
     console.error(
       '[olli-mp] ALARME: renovação de assinatura por CARTÃO no Mercado Pago — caminho descontinuado (cartão é Stripe). '
       + 'Existe preapproval VIVA cobrando o cliente e a vigência NÃO avança sozinha. '
-      + 'Reconciliar: authorized_payment=', dataId,
+      + 'Reconciliar no painel do provedor; nenhum identificador é gravado no log.',
     );
     return json({ ok: true, renovacao_nao_processada: true });
   }

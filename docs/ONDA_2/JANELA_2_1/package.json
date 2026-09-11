@@ -1,0 +1,8 @@
+{
+  "name": "olli-onda-2-janela-2-1-contracts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/contracts.test.mjs tests/security-boundaries.test.mjs"
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "product": "OLLI Orçamentos",
+  "canonicalRepository": "C:\\OLLI_REL",
+  "canonicalBranch": "Codex/piloto-p0",
+  "promotionOrder": [
+    "local-quality",
+    "staging-schema",
+    "staging-worker",
+    "staging-smoke",
+    "security-review",
+    "human-approval",
+    "production-worker",
+    "production-web",
+    "post-deploy-health"
+  ],
+  "environments": {
+    "local": {
+      "kind": "developer",
+      "mutable": true,
+      "acceptedReal": false,
+      "providerMode": "fixtures-and-dry-run"
+    },
+    "staging": {
+      "kind": "isolated-test",
+      "mutable": true,
+      "acceptedReal": false,
+      "supabaseProjectRef": "sbpkutknpywezeagioon",
+      "supabaseRegion": "sa-east-1",
+      "cloudflareWorker": "olli-diagnostico-staging",
+      "cloudflareRoutes": [],
+      "welcomeDispatchMode": "off_until_staging_secrets",
+      "billingMode": "test",
+      "realRecipientPolicy": "forbidden",
+      "requiredSecretNames": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "OPENROUTER_API_KEY",
+        "RESEND_API_KEY",
+        "RESEND_WEBHOOK_SECRET",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "MP_ACCESS_TOKEN",
+        "MP_WEBHOOK_SECRET",
+        "OLLI_ROUTES_API_KEY"
+      ],
+      "secretScope": "staging-only-test-values",
+      "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
+      "baselineSource": "main_schema_metadata_only",
+      "latestStagingMigration": {
+        "version": "20260911141612",
+        "status": "applied",
+        "appliedAt": "2026-09-11T11:16:12-03:00",
+        "scope": "staging_only",
+        "description": "financial ledger, controlled receipt linkage, append-only insert/estorno guards, document editor, least-privilege PMOC deletes, and duplicate IA quota index cleanup"
+      },
+      "lastPromotionCheckpoint": {
+        "recordedAt": "2026-09-11T10:22:01-03:00",
+        "baselineMigration": "staging_schema_baseline_20260906",
+        "incrementalMigrationsApplied": 41,
+        "migrationApplicationMode": "supabase_sql_editor_manual_then_staging_history_repair",
+        "migrationHistoryStatus": "reconciled_baseline_plus_41_local_files",
+        "localMigrationFileCount": 41,
+        "remoteMigrationHistoryCount": 42,
+        "migrationHistoryRepair": {
+          "status": "applied",
+          "repairedVersions": [
+            "20260904205858",
+            "20260904211012",
+            "20260904212747",
+            "20260905053000",
+            "20260905140852",
+            "20260906021103",
+            "20260906120000",
+            "20260906123000"
+          ],
+          "executedAt": "2026-09-08T06:38:24-03:00",
+          "scope": "staging_only"
+        },
+        "workerDeployment": {
+          "name": "olli-diagnostico-staging",
+          "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
+          "deploymentId": "0cc0a0db-26f9-42f3-9011-8318b1a4e16e",
+          "versionId": "6a6b5859-a5ff-4319-b8f6-c78d555b48b7",
+          "health": "HTTP_200",
+          "welcomeDispatchMode": "off_until_staging_secrets",
+          "routes": []
+        },
+        "cloudflareGitBuild": {
+          "status": "connected",
+          "repository": "gogodroidk/olli-orcamentos-2",
+          "branch": "codex/piloto-p0",
+          "previews": false,
+          "buildCommand": "npm ci --prefix worker && npm run types --prefix worker",
+          "deployCommand": "npx wrangler deploy --config worker/wrangler.jsonc --env staging",
+          "latestBuildId": "81e53bff-2918-4581-a274-905dc91ee866",
+          "latestCommit": "67b7dae9cee599b683516d9cdc5b5fb2459053c0",
+          "latestBuildStatus": "success",
+          "latestActiveVersionLabel": "6a6b5859"
+        },
+        "githubPromotion": {
+          "pullRequest": 42,
+          "pullRequestState": "draft",
+          "latestCiRunId": 34091959004,
+          "latestCiStatus": "success",
+          "latestPromotionRunId": 34091958991,
+          "latestPromotionStatus": "success",
+          "lastManualStagingRunId": 34075474398,
+          "lastManualStagingStatus": "success",
+          "target": "staging",
+          "productionJob": "skipped"
+        },
+        "firstBlockedMigration": null,
+        "blocker": "external_secrets_authenticated_smoke_and_human_approval",
+        "acceptedReal": false
+      },
+      "promotionMode": "manual-workflow-approval"
+    },
+    "production": {
+      "kind": "live",
+      "mutable": true,
+      "acceptedReal": false,
+      "supabaseProjectRef": "yiaeplqinnnnniyvwtls",
+      "cloudflareWorker": "olli-diagnostico",
+      "cloudflareRoutes": [
+        "diagnostico.olliorcamentos.online",
+        "link.olliorcamentos.online"
+      ],
+      "welcomeDispatchMode": "simulator",
+      "billingMode": "live",
+      "realRecipientPolicy": "hold",
+      "promotionMode": "manual-workflow-approval"
+    }
+  },
+  "gates": {
+    "stagingBaseline": "runtime_applied_history_and_rollback_reconciliation_required",
+    "stagingMigrations": "must_be_versioned_and_rollback_reviewed",
+    "stagingSmoke": "must_prove_health_auth_rls_storage_worker_and_web",
+    "security": "semgrep_gitleaks_rls_advisors_and_review",
+    "production": "github_environment_approval_required",
+    "rollback": "immutable_artifact_and_previous_deployment_required"
+  }
+}

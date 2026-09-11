@@ -30,7 +30,8 @@
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
 import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, RotateCw, Sparkles, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { paraBr } from "@/olli/datas";
 // A leitura da assinatura saiu daqui para `olli/marcaDocumento`: ela ganhou um
 // SEGUNDO leitor (o gerador de documentos, que decide se o selo OLLI sai) e duas
@@ -57,6 +58,8 @@ import {
 import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe } from "./portal";
+import { iniciarTrialPro, obterEstadoOfertaComercial } from "@/olli/cota-envios";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS, type EstadoOfertaComercial } from "@limites-comerciais";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -89,6 +92,16 @@ export default function Planos() {
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
 	const [periodo, setPeriodo] = useState<PeriodoCobranca>("mensal");
 	const [checkout, setCheckout] = useState<EstadoCheckout>({ plano: null, carregando: false, erro: null });
+	const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
+	const [iniciandoTrial, setIniciandoTrial] = useState(false);
+
+	async function carregarOferta() {
+		setOferta(await obterEstadoOfertaComercial());
+	}
+
+	useEffect(() => {
+		void carregarOferta();
+	}, []);
 
 	// A tabela `assinaturas` é lida pelo MEU user_id — mas quem é membro não-dono
 	// (técnico/gestor) não tem linha própria: a assinatura pertence ao DONO da
@@ -120,6 +133,19 @@ export default function Planos() {
 		setCheckout({ plano, carregando: false, erro: r.erro });
 	}
 
+	async function comecarTrial() {
+		setIniciandoTrial(true);
+		const inicio = await iniciarTrialPro();
+		if (!inicio) {
+			setIniciandoTrial(false);
+			toast.error("Não foi possível iniciar o teste. Confirme a conexão e tente novamente; o teste não foi consumido.");
+			return;
+		}
+		await Promise.all([refetch(), carregarOferta()]);
+		setIniciandoTrial(false);
+		toast.success(`Pro liberado até ${new Date(inicio.terminaEm).toLocaleDateString("pt-BR")}. Sem cobrança automática.`);
+	}
+
 	return (
 		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">
 			<header className="mb-5">
@@ -141,6 +167,28 @@ export default function Planos() {
 					<CardStatus resumo={resumo} />
 					{resumo.planoContratado !== "gratis" && <BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />}
 				</div>
+			) : null}
+
+			{!membroNaoDono && oferta?.trialEstado === "eligible" && resumo?.planoEfetivo === "gratis" ? (
+				<Card className="mt-4 gap-0 border-primary/35 bg-primary/5 p-5">
+					<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+						<div className="flex items-start gap-3">
+							<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+								<Sparkles className="size-5" aria-hidden />
+							</span>
+							<div>
+								<p className="font-semibold text-text-primary">Experimente tudo do Pro por {TRIAL_PRO_DIAS} dias</p>
+								<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">
+									Sem cartão e sem cobrança automática. Quando terminar, a conta volta ao Grátis e seus dados continuam salvos.
+								</p>
+							</div>
+						</div>
+						<Button onClick={() => void comecarTrial()} disabled={iniciandoTrial} className="min-h-[44px] shrink-0">
+							{iniciandoTrial ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Sparkles className="size-4" aria-hidden />}
+							Começar teste grátis
+						</Button>
+					</div>
+				</Card>
 			) : null}
 
 			{/* ─── 2. O CATÁLOGO ─── */}
@@ -227,8 +275,18 @@ function CardMembro() {
 }
 
 function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
-	const nome = nomeDoPlano(resumo.planoContratado);
+	const nome = resumo.origem === "trial" ? "Pro" : nomeDoPlano(resumo.planoContratado);
 	const quando = dataBr(resumo.proximaCobranca);
+
+	if (resumo.origem === "trial") {
+		return (
+			<Faixa
+				tom="success"
+				titulo="Seu teste Pro está ativo"
+				texto={`${quando ? `Você tem os recursos Pro até ${quando}. ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
+			/>
+		);
+	}
 
 	// PAGAMENTO FALHOU (past_due) — o acesso continua durante a retentativa, mas a
 	// pessoa PRECISA saber, e agora. Se a tela dissesse só "Pro ativo", ela descobriria
@@ -301,7 +359,7 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 		<Faixa
 			tom="neutro"
 			titulo="Você está no plano Grátis"
-			texto="Orçamentos, recibos, clientes e agenda são ilimitados aqui — sem prazo e sem cartão. O Pro entra quando você quiser relatórios, metas e uma franquia maior de IA."
+			texto={`Rascunhos, recibos, clientes e histórico ficam sem limite; você pode enviar ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos por mês. Sem prazo e sem cartão.`}
 			acao={{
 				rotulo: "Quero assinar o Pro",
 				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
@@ -319,7 +377,7 @@ function Faixa({
 	tom: "success" | "warning" | "neutro";
 	titulo: string;
 	texto: string;
-	acao: { rotulo: string; href: string; discreta?: boolean };
+	acao?: { rotulo: string; href: string; discreta?: boolean };
 }) {
 	const cores = {
 		success: { card: "border-success/30 bg-success/5", tile: "bg-success/10 text-success" },
@@ -339,12 +397,14 @@ function Faixa({
 						<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">{texto}</p>
 					</div>
 				</div>
-				<Button asChild variant={acao.discreta ? "outline" : "default"} className="shrink-0 self-start sm:self-auto">
-					<a href={acao.href} target="_blank" rel="noreferrer noopener">
-						<MessageCircle className="size-4" aria-hidden />
-						{acao.rotulo}
-					</a>
-				</Button>
+				{acao ? (
+					<Button asChild variant={acao.discreta ? "outline" : "default"} className="shrink-0 self-start sm:self-auto">
+						<a href={acao.href} target="_blank" rel="noreferrer noopener">
+							<MessageCircle className="size-4" aria-hidden />
+							{acao.rotulo}
+						</a>
+					</Button>
+				) : null}
 			</div>
 		</Card>
 	);

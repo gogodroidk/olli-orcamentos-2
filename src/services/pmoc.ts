@@ -630,6 +630,12 @@ export async function aprovarVersao(
       situacao: 'vigente', // estado OPERACIONAL do plano, jamais afirmação de conformidade
       atualizadoEm: new Date().toISOString(),
     });
+    // A aprovação operacional gera um registro de biblioteca, mas não é
+    // apresentada como certificado legal. O PDF/artefato continua dependendo
+    // de exportação explícita e revisão do responsável técnico.
+    void import('./documentosBiblioteca').then(({ garantirDocumentoPmoc }) =>
+      garantirDocumentoPmoc({ ...plano, versaoVigente: numeroVersao, situacao: 'vigente' }, aprovada).catch(() => {}),
+    ).catch(() => {});
   }
   return aprovada;
 }

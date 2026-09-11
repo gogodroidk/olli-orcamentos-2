@@ -28,7 +28,7 @@ import type { Empresa, Orcamento } from "@dominio";
 import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, RotateCw, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMinhaEmpresa } from "@/olli/data";
-import FormOrcamento, { duplicarComoRascunho } from "@/pages/olli/orcamentos/FormOrcamento";
+import FormOrcamento, { criarRevisaoComoRascunho } from "@/pages/olli/orcamentos/FormOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
@@ -122,9 +122,9 @@ export default function KanbanBoard() {
 	};
 
 	/** Oferecido pelo FormOrcamento quando a edição está bloqueada (já enviado/aprovado):
-	 *  duplica como rascunho novo, no lugar do editor atual. */
-	const duplicar = (o: Orcamento) =>
-		setEditor({ orc: duplicarComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
+	 *  cria uma revisão rastreável no lugar do editor atual. */
+	const criarRevisao = (o: Orcamento) =>
+		setEditor({ orc: criarRevisaoComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
 
 	const [arrastando, setArrastando] = useState<string | null>(null);
 
@@ -326,7 +326,7 @@ export default function KanbanBoard() {
 					aoFechar={() => setEditor(null)}
 					inicial={editor.orc}
 					ehNovo={editor.ehNovo}
-					aoDuplicar={duplicar}
+					aoDuplicar={criarRevisao}
 				/>
 			)}
 		</div>

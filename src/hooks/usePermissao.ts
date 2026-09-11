@@ -22,6 +22,7 @@ import type { Papel } from '../services/equipe';
 export type Acao =
   | 'criar_orcamento'      // criar/editar orçamentos
   | 'ver_clientes'         // acessar a base de clientes
+  | 'gerenciar_clientes'   // editar/excluir cadastros de clientes
   | 'ver_agenda_propria'   // a própria agenda
   | 'ver_agenda_equipe'    // a agenda de todos os técnicos
   | 'ver_relatorios'       // relatórios de faturamento/conversão
@@ -42,6 +43,7 @@ const PERMISSOES: Record<Papel, ReadonlySet<Acao>> = {
   owner: new Set<Acao>([
     'criar_orcamento',
     'ver_clientes',
+    'gerenciar_clientes',
     'ver_agenda_propria',
     'ver_agenda_equipe',
     'ver_relatorios',
@@ -56,6 +58,7 @@ const PERMISSOES: Record<Papel, ReadonlySet<Acao>> = {
   admin: new Set<Acao>([
     'criar_orcamento',
     'ver_clientes',
+    'gerenciar_clientes',
     'ver_agenda_propria',
     'ver_agenda_equipe',
     'ver_relatorios',
@@ -69,6 +72,7 @@ const PERMISSOES: Record<Papel, ReadonlySet<Acao>> = {
   gestor: new Set<Acao>([
     'criar_orcamento',
     'ver_clientes',
+    'gerenciar_clientes',
     'ver_agenda_propria',
     'ver_agenda_equipe',
     'ver_relatorios',
@@ -95,6 +99,7 @@ const PERMISSOES: Record<Papel, ReadonlySet<Acao>> = {
 const PERMISSOES_PESSOAL: ReadonlySet<Acao> = new Set<Acao>([
   'criar_orcamento',
   'ver_clientes',
+  'gerenciar_clientes',
   'ver_agenda_propria',
   'ver_agenda_equipe',
   'ver_relatorios',

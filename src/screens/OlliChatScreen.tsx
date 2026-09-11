@@ -15,7 +15,17 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EstadoIA } from '../components/EstadoIA';
-import { enviarChat, ChatMensagem } from '../services/olliAssistente';
+import { OlliButton } from '../components/OlliButton';
+import {
+  cancelarAcaoChat,
+  confirmarAcaoChat,
+  enviarChat,
+  reverterAcaoChat,
+  ChatMensagem,
+  ModoChat,
+  RascunhoAcaoChat,
+} from '../services/olliAssistente';
+import { formatarCreditos, getMeuSaldo } from '../services/creditos';
 import { SinalizarIA } from '../components/SinalizarIA';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -59,16 +69,23 @@ export default function OlliChatScreen() {
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   const { usosIaRestantes, consumirUsoIa } = usePlano();
-  const iaEsgotada = usosIaRestantes <= 0;
 
   const [bolhas, setBolhas] = useState<Bolha[]>([SAUDACAO]);
   const [texto, setTexto] = useState('');
   const [digitando, setDigitando] = useState(false);
   const [podeCancelar, setPodeCancelar] = useState(false);
   const [carregado, setCarregado] = useState(false);
+  const [pendenciaCredito, setPendenciaCredito] = useState<Bolha[] | null>(null);
+  // undefined = consultando; null = saldo indisponível; number = saldo confirmado.
+  const [saldoCreditos, setSaldoCreditos] = useState<number | null | undefined>(undefined);
+  const [modoChat, setModoChat] = useState<ModoChat>('consulta');
+  const [rascunhoAcao, setRascunhoAcao] = useState<RascunhoAcaoChat | null>(null);
+  const [processandoAcao, setProcessandoAcao] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reutilizada no retry de rede: o mesmo trabalho nunca pode cobrar duas vezes.
+  const creditoRefRef = useRef<string | null>(null);
 
   // aborta requisição pendente e limpa timers ao desmontar a tela
   useEffect(() => {
@@ -112,7 +129,11 @@ export default function OlliChatScreen() {
   useEffect(() => { scrollToEnd(); }, [bolhas, digitando, scrollToEnd]);
 
   /** Faz a chamada de IA de fato a partir de um histórico já pronto (não mexe nas bolhas de entrada). */
-  const chamarIA = useCallback(async (historicoBase: Bolha[]) => {
+  const chamarIA = useCallback(async (
+    historicoBase: Bolha[],
+    opcoesCredito?: { confirmarCredito: true; creditoRef: string },
+    modo: ModoChat = 'consulta',
+  ) => {
     setDigitando(true);
     setPodeCancelar(false);
 
@@ -127,11 +148,29 @@ export default function OlliChatScreen() {
       .map(b => ({ role: b.role, texto: b.texto }));
 
     try {
-      const res = await enviarChat(historico, controller.signal);
+      const res = await enviarChat(historico, controller.signal, { ...opcoesCredito, modo });
+      if (res.semCreditos) {
+        // O servidor — não o contador local — decidiu que a cota acabou ou que
+        // não há saldo. Não poluímos o histórico com uma falsa "falha de IA":
+        // mostramos consentimento explícito e caminhos sem cobrança.
+        setPendenciaCredito(historicoBase);
+        setSaldoCreditos(undefined);
+        void getMeuSaldo().then(setSaldoCreditos);
+        creditoRefRef.current = opcoesCredito?.creditoRef ?? null;
+        track(Eventos.gateVisto, {
+          recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_servidor', origem: 'olli_chat',
+        });
+        return;
+      }
+
       setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: res.resposta, falhou: !res.ok }]);
+      if (res.rascunho) setRascunhoAcao(res.rascunho);
       if (res.ok) {
+        setPendenciaCredito(null);
+        setSaldoCreditos(undefined);
+        creditoRefRef.current = null;
         Haptics.selectionAsync().catch(() => {});
-        void consumirUsoIa();
+        await consumirUsoIa();
       }
     } finally {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
@@ -147,22 +186,35 @@ export default function OlliChatScreen() {
     nav.navigate('Planos');
   }, [nav]);
 
-  const enviar = useCallback(async (mensagem?: string) => {
-    const conteudo = (mensagem ?? texto).trim();
-    if (!conteudo || digitando) return;
-    if (iaEsgotada) {
-      track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_chat' });
-      irParaPlanos('chat_enviar');
+  const usarUmCredito = useCallback(async () => {
+    if (!pendenciaCredito || digitando) return;
+    if (saldoCreditos === 0) {
+      irParaPlanos('chat_sem_saldo');
       return;
     }
     Haptics.selectionAsync().catch(() => {});
+    const creditoRef = creditoRefRef.current ?? generateId();
+    creditoRefRef.current = creditoRef;
+    await chamarIA(pendenciaCredito, { confirmarCredito: true, creditoRef }, modoChat);
+  }, [pendenciaCredito, digitando, saldoCreditos, irParaPlanos, chamarIA, modoChat]);
+
+  const enviar = useCallback(async (mensagem?: string) => {
+    const conteudo = (mensagem ?? texto).trim();
+    if (!conteudo || digitando) return;
+    Haptics.selectionAsync().catch(() => {});
+
+    // Nova pergunta = novo trabalho. Qualquer consentimento/referência anterior
+    // deixa de valer; se a cota estiver esgotada o servidor abrirá um novo gate.
+    setPendenciaCredito(null);
+    setSaldoCreditos(undefined);
+    creditoRefRef.current = null;
 
     const userBolha: Bolha = { id: generateId(), role: 'user', texto: conteudo };
     const proximas = [...bolhas, userBolha];
     setBolhas(proximas);
     setTexto('');
-    await chamarIA(proximas);
-  }, [texto, bolhas, digitando, chamarIA, iaEsgotada, irParaPlanos]);
+    await chamarIA(proximas, undefined, modoChat);
+  }, [texto, bolhas, digitando, chamarIA, modoChat]);
 
   const cancelarEnvio = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -171,7 +223,6 @@ export default function OlliChatScreen() {
 
   const tentarDeNovo = useCallback((bolhaErroId: string) => {
     if (digitando) return;
-    if (iaEsgotada) { irParaPlanos('chat_tentar_de_novo'); return; }
     // remove a bolha de erro e reenvia a IA com o histórico até a última msg do usuário
     const idx = bolhas.findIndex(b => b.id === bolhaErroId);
     if (idx <= 0) return;
@@ -179,14 +230,46 @@ export default function OlliChatScreen() {
     if (historicoBase[historicoBase.length - 1]?.role !== 'user') return;
     Haptics.selectionAsync().catch(() => {});
     setBolhas(historicoBase);
-    chamarIA(historicoBase);
-  }, [bolhas, digitando, chamarIA, iaEsgotada, irParaPlanos]);
+    const creditoRef = creditoRefRef.current;
+    chamarIA(
+      historicoBase,
+      creditoRef ? { confirmarCredito: true, creditoRef } : undefined,
+      modoChat,
+    );
+  }, [bolhas, digitando, chamarIA, modoChat]);
 
   const limpar = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     setBolhas([SAUDACAO]);
+    setPendenciaCredito(null);
+    setSaldoCreditos(undefined);
+    creditoRefRef.current = null;
+    setRascunhoAcao(null);
     AsyncStorage.removeItem(CHAT_KEY).catch(() => {});
   }, []);
+
+  const executarAcao = useCallback(async (operacao: 'confirmar' | 'cancelar' | 'reverter') => {
+    if (!rascunhoAcao || processandoAcao) return;
+    setProcessandoAcao(true);
+    const resultado = operacao === 'confirmar'
+      ? await confirmarAcaoChat(rascunhoAcao)
+      : operacao === 'cancelar'
+        ? await cancelarAcaoChat(rascunhoAcao)
+        : await reverterAcaoChat(rascunhoAcao);
+    if (resultado.ok) {
+      const textoResultado = resultado.status === 'aplicada'
+        ? 'Alteração aplicada com sucesso. A sincronização atualizará as outras telas.'
+        : resultado.status === 'cancelada'
+          ? 'Prévia cancelada. Nada foi alterado.'
+          : 'Alteração desfeita. O estado anterior foi restaurado.';
+      setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: textoResultado }]);
+      setRascunhoAcao(prev => prev ? { ...prev, status: resultado.status } : null);
+      if (resultado.status === 'cancelada' || resultado.status === 'revertida') setRascunhoAcao(null);
+    } else {
+      setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: resultado.mensagem, falhou: true }]);
+    }
+    setProcessandoAcao(false);
+  }, [rascunhoAcao, processandoAcao]);
 
   // Leva a última resposta da OLLI direto para um orçamento novo, já com um
   // item de serviço pré-preenchido — fecha o loop de "perguntei o preço" para
@@ -202,11 +285,6 @@ export default function OlliChatScreen() {
 
   const mostrarSugestoes = bolhas.length <= 1 && !digitando;
 
-  useEffect(() => {
-    if (iaEsgotada) track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_chat' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [iaEsgotada]);
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -218,10 +296,28 @@ export default function OlliChatScreen() {
         subtitle={Number.isFinite(usosIaRestantes) ? `${usosIaRestantes} de ${IA_USOS_GRATIS_MES} usos grátis este mês` : 'Sua assistente técnica'}
         onBack={() => goBackOrHome(nav)}
         right={
-          <TouchableOpacity onPress={limpar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Limpar conversa">
-            {/* dentro do LinearGradient de gradientes.header (via GradientHeader `right`): ícone decorativo -> sobreHeader */}
-            <MaterialCommunityIcons name="broom" size={22} color={gradientes.sobreHeader} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={() => nav.navigate('Autopilot')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir Autopilot para anexar arquivo"
+            >
+              <MaterialCommunityIcons name="paperclip" size={22} color={gradientes.sobreHeader} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setModoChat((modo) => modo === 'consulta' ? 'rascunho_acao' : 'consulta')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={modoChat === 'consulta' ? 'Ativar modo preparar alteração' : 'Voltar ao modo consulta'}
+              accessibilityState={{ selected: modoChat === 'rascunho_acao' }}
+            >
+              <MaterialCommunityIcons name={modoChat === 'consulta' ? 'magnify' : 'pencil-outline'} size={22} color={gradientes.sobreHeader} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={limpar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Limpar conversa">
+              <MaterialCommunityIcons name="broom" size={22} color={gradientes.sobreHeader} />
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -247,9 +343,19 @@ export default function OlliChatScreen() {
           </AnimatedEntrance>
         ))}
 
+        {rascunhoAcao && !digitando && (
+          <RascunhoAcaoCard
+            rascunho={rascunhoAcao}
+            processando={processandoAcao}
+            onConfirmar={() => { void executarAcao('confirmar'); }}
+            onCancelar={() => { void executarAcao('cancelar'); }}
+            onReverter={() => { void executarAcao('reverter'); }}
+          />
+        )}
+
         {digitando && <Digitando podeCancelar={podeCancelar} onCancelar={cancelarEnvio} />}
 
-        {mostrarSugestoes && !iaEsgotada && (
+        {mostrarSugestoes && (
           <View style={styles.sugestoesWrap}>
             <Text style={styles.sugestoesLabel}>Sugestões para começar</Text>
             {SUGESTOES.map(s => (
@@ -261,27 +367,70 @@ export default function OlliChatScreen() {
           </View>
         )}
 
-        {iaEsgotada && !digitando && (
+        {pendenciaCredito && !digitando && (
           <EstadoIA
             variante="erro"
             tipoErro="cota"
-            titulo={`Você usou seus ${IA_USOS_GRATIS_MES} papos grátis este mês`}
-            mensagem={`Volta mês que vem com ${IA_USOS_GRATIS_MES} novos, ou continue sem limite agora mesmo no plano Pro.`}
+            titulo={`Seus ${IA_USOS_GRATIS_MES} papos grátis deste mês acabaram`}
+            mensagem="Você escolhe: gastar 1 crédito nesta resposta, ver os planos ou montar o orçamento sem IA. Nada é cobrado sem seu toque."
             onDark
-            onAcao={() => irParaPlanos('chat_card')}
             style={{ marginTop: 8 }}
-          />
+          >
+            <View style={styles.creditoAcoes}>
+              <OlliButton
+                label={
+                  typeof saldoCreditos === 'number'
+                    ? `Usar 1 crédito (${formatarCreditos(saldoCreditos)})`
+                    : saldoCreditos === null
+                      ? 'Tentar usar 1 crédito'
+                      : 'Consultando seus créditos…'
+                }
+                variant="gradient"
+                size="sm"
+                onPress={usarUmCredito}
+                loading={saldoCreditos === undefined}
+                disabled={saldoCreditos === 0}
+                style={styles.creditoBotao}
+              />
+              <OlliButton
+                label="Ver planos"
+                variant="outline"
+                size="sm"
+                onPress={() => irParaPlanos('chat_card')}
+                style={styles.creditoBotao}
+              />
+              <OlliButton
+                label="Montar na mão"
+                variant="ghost"
+                size="sm"
+                onPress={() => nav.navigate('NovoOrcamento', {})}
+                style={styles.creditoBotao}
+              />
+              {saldoCreditos === 0 && (
+                <Text style={styles.creditoAviso}>Seu saldo confirmado está zerado; nenhum crédito será cobrado.</Text>
+              )}
+              {saldoCreditos === null && (
+                <Text style={styles.creditoAviso}>Não consegui mostrar o saldo. O servidor ainda confere antes de qualquer cobrança.</Text>
+              )}
+            </View>
+          </EstadoIA>
         )}
       </ScrollView>
 
       {/* INPUT */}
+      {modoChat === 'rascunho_acao' && (
+        <View style={styles.modoAviso}>
+          <MaterialCommunityIcons name="shield-check-outline" size={15} color={cores.accentLight} />
+          <Text style={styles.modoAvisoTexto}>Modo preparar: a OLLI só mostra a prévia. Nada muda sem sua confirmação.</Text>
+        </View>
+      )}
       <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <View style={styles.inputWrap}>
           <TextInput
             style={styles.input}
             value={texto}
             onChangeText={setTexto}
-            placeholder={iaEsgotada ? 'Limite grátis atingido este mês…' : 'Escreva sua mensagem…'}
+            placeholder="Escreva sua mensagem…"
             placeholderTextColor={cores.onSurfaceMuted}
             multiline
             onSubmitEditing={() => enviar()}
@@ -289,13 +438,13 @@ export default function OlliChatScreen() {
           />
         </View>
         <TouchableOpacity
-          style={[styles.sendBtn, (!texto.trim() || digitando) && !iaEsgotada && styles.sendBtnDisabled, iaEsgotada && styles.sendBtnPro]}
-          onPress={() => (iaEsgotada ? irParaPlanos('chat_input') : enviar())}
-          disabled={(!texto.trim() || digitando) && !iaEsgotada}
+          style={[styles.sendBtn, (!texto.trim() || digitando) && styles.sendBtnDisabled]}
+          onPress={() => enviar()}
+          disabled={!texto.trim() || digitando}
           activeOpacity={0.85}
-          accessibilityLabel={iaEsgotada ? 'Ver planos' : 'Enviar mensagem'}
+          accessibilityLabel="Enviar mensagem"
         >
-          <MaterialCommunityIcons name={iaEsgotada ? 'crown-outline' : 'send'} size={20} color={textoSobre(iaEsgotada ? cores.plan : cores.primary)} />
+          <MaterialCommunityIcons name="send" size={20} color={textoSobre(cores.primary)} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -361,6 +510,54 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento, 
   );
 }
 
+function RascunhoAcaoCard({
+  rascunho,
+  processando,
+  onConfirmar,
+  onCancelar,
+  onReverter,
+}: {
+  rascunho: RascunhoAcaoChat;
+  processando: boolean;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+  onReverter: () => void;
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const pendente = rascunho.status === 'aguardando_confirmacao';
+  const aplicada = rascunho.status === 'aplicada';
+  return (
+    <View style={styles.acaoCard} accessibilityLabel="Prévia de alteração da OLLI">
+      <View style={styles.acaoCabecalho}>
+        <View style={styles.acaoIcone}><MaterialCommunityIcons name={aplicada ? 'check-decagram' : 'shield-edit-outline'} size={20} color={aplicada ? cores.success : cores.accentLight} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.acaoTitulo}>{aplicada ? 'Alteração aplicada' : 'Prévia de alteração'}</Text>
+          <Text style={styles.acaoSub}>{rascunho.summary}</Text>
+        </View>
+      </View>
+      <Text style={styles.acaoAlvo}>Alvo: <Text style={styles.acaoAlvoDestaque}>{rascunho.targetLabel}</Text></Text>
+      <View style={styles.acaoMudancas}>
+        {rascunho.changes.map((change) => (
+          <View key={change.field} style={styles.acaoMudanca}>
+            <Text style={styles.acaoCampo}>{change.field}</Text>
+            <Text style={styles.acaoValor} numberOfLines={2}>{String(change.before ?? 'vazio')} → {String(change.after ?? 'vazio')}</Text>
+          </View>
+        ))}
+      </View>
+      {pendente ? (
+        <View style={styles.acaoBotoes}>
+          <OlliButton label="Confirmar alteração" variant="gradient" size="sm" loading={processando} disabled={processando} onPress={onConfirmar} style={{ flex: 1 }} />
+          <OlliButton label="Cancelar" variant="outline" size="sm" disabled={processando} onPress={onCancelar} style={{ flex: 1 }} />
+        </View>
+      ) : aplicada ? (
+        <OlliButton label="Desfazer alteração" variant="outline" size="sm" loading={processando} disabled={processando} onPress={onReverter} icon={<MaterialCommunityIcons name="undo-variant" size={16} color={cores.primary} />} />
+      ) : null}
+      <Text style={styles.acaoNota}>Ação limitada por papel, registro único e confirmação. Exclusões, pagamentos, senhas e permissões não são executados pelo chat.</Text>
+    </View>
+  );
+}
+
 function PontoPulsante({ delay }: { delay: number }) {
   const styles = useEstilos(criarEstilos);
   const reduzir = useReducedMotion();
@@ -416,6 +613,7 @@ function Digitando({ podeCancelar, onCancelar }: { podeCancelar: boolean; onCanc
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
 
   rowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
   rowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 12 },
@@ -447,10 +645,29 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: comAlfa(c.accent, 0.07), borderWidth: 1, borderColor: comAlfa(c.accent, 0.28), borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
   sugestaoText: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '600' },
 
+  creditoAcoes: { width: '100%', marginTop: 14, gap: 8 },
+  creditoBotao: { alignSelf: 'stretch', marginTop: 0 },
+  creditoAviso: { color: c.onSurfaceVariant, fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 2 },
+
+  modoAviso: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.base, paddingTop: 8, paddingBottom: 2, backgroundColor: c.surface },
+  modoAvisoTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 16 },
+  acaoCard: { marginBottom: 12, padding: Spacing.base, borderRadius: BorderRadius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.45), ...sombrasDe(c).sm },
+  acaoCabecalho: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  acaoIcone: { width: 36, height: 36, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: comAlfa(c.accentLight, 0.12) },
+  acaoTitulo: { color: c.onSurface, fontSize: 14, fontWeight: '800' },
+  acaoSub: { color: c.onSurfaceVariant, fontSize: 12, marginTop: 2 },
+  acaoAlvo: { color: c.onSurfaceVariant, fontSize: 12.5, marginTop: 12 },
+  acaoAlvoDestaque: { color: c.onSurface, fontWeight: '800' },
+  acaoMudancas: { marginTop: 8, borderTopWidth: 1, borderTopColor: c.outline },
+  acaoMudanca: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: c.outline },
+  acaoCampo: { width: 104, color: c.onSurfaceMuted, fontSize: 11.5, fontWeight: '700' },
+  acaoValor: { flex: 1, color: c.onSurface, fontSize: 12, lineHeight: 17 },
+  acaoBotoes: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  acaoNota: { color: c.onSurfaceMuted, fontSize: 10.5, lineHeight: 15, marginTop: 10 },
+
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   inputWrap: { flex: 1, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },
   input: { fontSize: 15, color: c.onSurface, maxHeight: 100 },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).glowBlue },
   sendBtnDisabled: { backgroundColor: c.surfaceElevated, opacity: 0.6, shadowOpacity: 0 },
-  sendBtnPro: { backgroundColor: c.plan, shadowColor: c.plan },
 });

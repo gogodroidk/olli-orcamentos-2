@@ -19,6 +19,8 @@ const MAX_PAGINAS = 100;
 export interface OpcoesLista {
 	orderBy?: string;
 	ascending?: boolean;
+	/** Executa a consulta somente quando habilitado (ex.: diálogos montados fechados). */
+	enabled?: boolean;
 	/** Teto EXPLÍCITO de linhas: quando presente, buscamos numa query só (sem paginar). */
 	limit?: number;
 	incluirExcluidos?: boolean;
@@ -84,6 +86,7 @@ export function useOlliList<T = Record<string, unknown>>(
 			return linhas;
 		},
 		staleTime: 30_000,
+		enabled: opts?.enabled ?? true,
 	});
 
 	// Propriedade ADITIVA: quem não usa `truncado` continua igual; as telas que

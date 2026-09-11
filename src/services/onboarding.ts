@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *
  * Três estados, todos em AsyncStorage:
  *  - `ajudaAtiva`     : liga/desliga a Central de Ajuda e as dicas contextuais.
- *  - `onboardingVisto`: se o cadastro guiado (OnboardingScreen) já foi concluído/pulado.
+ *  - `onboardingVisto`: se o cadastro guiado (OnboardingScreen) já foi concluído.
  *  - `dicasVistas`    : conjunto de ids de DicaContextual já dispensadas ("entendi").
  *
  * TODAS são preferências deste APARELHO, não dado da conta — mesmo raciocínio já
@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * (que pode aparecer várias vezes na mesma tela).
  */
 
-/** Chave canônica "onboarding concluído/pulado". Reexportada por OnboardingScreen.tsx. */
+/** Chave canônica "onboarding concluído". Reexportada por OnboardingScreen.tsx. */
 export const ONBOARDED_KEY = 'olli.onboarded';
 
 /** '0' desliga a Central de Ajuda/dicas; ausente ou '1' = ligada (default true). */
@@ -79,12 +79,12 @@ export async function marcarDicaVista(id: string): Promise<void> {
   try { await AsyncStorage.setItem(DICAS_VISTAS_KEY, JSON.stringify(Array.from(dicas))); } catch { /* best-effort */ }
 }
 
-/** `true` se o onboarding (cadastro guiado) já foi concluído ou pulado. */
+/** `true` se o onboarding (cadastro guiado) já foi concluído. */
 export async function onboardingFoiVisto(): Promise<boolean> {
   try { return (await AsyncStorage.getItem(ONBOARDED_KEY)) === '1'; } catch { return false; }
 }
 
-/** Marca o onboarding como concluído/pulado (idempotente). Usado pela OnboardingScreen. */
+/** Marca o onboarding como concluído (idempotente). Usado pela OnboardingScreen. */
 export async function marcarVisto(): Promise<void> {
   try { await AsyncStorage.setItem(ONBOARDED_KEY, '1'); } catch { /* best-effort */ }
 }

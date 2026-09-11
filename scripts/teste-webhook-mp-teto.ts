@@ -117,6 +117,7 @@ function envCom(estado: typeof limiteEstado, secret?: string): any {
     SUPABASE_URL: 'https://falso.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-falso',
     MP_ACCESS_TOKEN: 'mp-token-falso',
+    MP_WEBHOOK_REQUIRE_SIGNATURE: 'false',
   };
   if (secret) base.MP_WEBHOOK_SECRET = secret;
   // 'fora' = binding ausente (o que acontece antes do deploy com o namespace novo).
@@ -145,6 +146,15 @@ async function chamarWebhook(env: any, extraHeaders: Record<string, string> = {}
 }
 
 console.log('\nB) comportamento');
+
+// 0. O runtime real não declara fallback: sem HMAC o webhook fecha antes do
+// limiter/GET-confirm. Fixtures abaixo habilitam explicitamente o modo legado.
+const semContrato = envCom('permitido');
+delete semContrato.MP_WEBHOOK_REQUIRE_SIGNATURE;
+const failClosed = await chamarWebhook(semContrato);
+checar('sem secret e sem opt-in degradado → 503', failClosed.status, 503);
+checar('sem secret → ZERO chamadas ao MP', chamadasMp, 0);
+checar('sem secret → limiter não consultado', limiteConsultas, 0);
 
 // 1. limiter NEGA → 429 e nenhuma chamada ao MP.
 const negado = await chamarWebhook(envCom('negado'));

@@ -38,24 +38,24 @@ interface LinhaComparativo {
 
 const LINHAS: readonly LinhaComparativo[] = [
   {
-    rotulo: 'Funciona sem sinal',
+    rotulo: 'Orçamento no campo, mesmo sem sinal',
     olli: { tipo: 'icone', variante: 'sim' },
-    erp: { tipo: 'icone', variante: 'nao', legenda: 'trava sem internet' },
+    erp: { tipo: 'icone', variante: 'parcial', legenda: 'depende da solução' },
   },
   {
-    rotulo: 'PMOC pronto pra fiscalização',
+    rotulo: 'Cliente aprova e assina pelo link',
     olli: { tipo: 'icone', variante: 'sim' },
-    erp: { tipo: 'icone', variante: 'nao' },
+    erp: { tipo: 'icone', variante: 'parcial', legenda: 'varia por ferramenta' },
   },
   {
-    rotulo: 'IA que diagnostica o defeito',
+    rotulo: 'IA ajuda a montar o orçamento por voz',
     olli: { tipo: 'icone', variante: 'sim' },
-    erp: { tipo: 'icone', variante: 'nao', legenda: 'só nota fiscal' },
+    erp: { tipo: 'icone', variante: 'nao', legenda: 'fluxo manual' },
   },
   {
-    rotulo: 'Equipe no mapa em tempo real',
-    olli: { tipo: 'icone', variante: 'sim' },
-    erp: { tipo: 'icone', variante: 'parcial', legenda: 'às vezes' },
+    rotulo: 'Equipe com permissões por função',
+    olli: { tipo: 'icone', variante: 'parcial', legenda: 'Plano Empresa' },
+    erp: { tipo: 'icone', variante: 'parcial', legenda: 'varia por plano' },
   },
   {
     rotulo: 'Preço pra começar',

@@ -1,14 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
-import { Orcamento, FormaPagamento, Empresa } from '../types';
-import { formatCurrency } from '../utils/currency';
-import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
+import { Orcamento, Empresa } from '../types';
+import { OlliInput } from '../components/OlliInput';
 import { CampoComVoz } from '../components/CampoComVoz';
 import { OlliButton } from '../components/OlliButton';
-import { todayISO } from '../utils/date';
-import { isoToBR } from '../utils/masks';
 import {
   adicionarFotoCamera,
   adicionarFotoGaleria,
@@ -23,13 +20,6 @@ interface Props {
   empresa?: Empresa | null;
 }
 
-const PAYMENT_OPTIONS: Array<{ key: keyof FormaPagamento; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
-  { key: 'pix', label: 'PIX', icon: 'qrcode' },
-  { key: 'credito', label: 'Crédito', icon: 'credit-card' },
-  { key: 'debito', label: 'Débito', icon: 'credit-card-outline' },
-  { key: 'dinheiro', label: 'Dinheiro', icon: 'cash' },
-];
-
 function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; children: string }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -43,25 +33,9 @@ function SectionTitle({ icon, children }: { icon: keyof typeof MaterialCommunity
   );
 }
 
-export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
+export default function Step3Detalhes({ orc, onChange }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-
-  // Pré-preenche a chave PIX do orçamento com a chave PIX cadastrada em "Meu
-  // Negócio" quando o campo ainda estiver vazio — evita redigitar em todo
-  // orçamento novo, mas nunca sobrescreve um valor que o usuário já digitou.
-  useEffect(() => {
-    if (!orc.chavePix && empresa?.chavePix) {
-      onChange({ chavePix: empresa.chavePix });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [empresa?.chavePix]);
-
-  function togglePagamento(key: keyof FormaPagamento) {
-    onChange({ formasPagamento: { ...orc.formasPagamento, [key]: !orc.formasPagamento[key] } });
-  }
-
-  const restante = orc.sinalValor ? Math.max(0, orc.valorTotal - orc.sinalValor) : 0;
 
   // ─── FOTOS DO SERVIÇO ────────────────────────────────────────────
   const fotos = orc.fotosServico ?? [];
@@ -133,62 +107,16 @@ export default function Step3Detalhes({ orc, onChange, empresa }: Props) {
         <OlliInput label="Agendamento do serviço" mask="date" value={orc.agendamentoServico ?? ''} onChangeText={v => onChange({ agendamentoServico: v })} placeholder="DD/MM/AAAA" leftIcon="calendar-check" containerStyle={{ marginBottom: 0 }} />
       </View>
 
-      {/* PAGAMENTO */}
-      <View style={styles.card}>
-        <SectionTitle icon="wallet">Pagamento</SectionTitle>
-        <Text style={styles.fieldLabel}>Formas aceitas</Text>
-        <View style={styles.paymentGrid}>
-          {PAYMENT_OPTIONS.map(opt => {
-            const on = orc.formasPagamento[opt.key];
-            return (
-              <TouchableOpacity key={opt.key} style={[styles.paymentChip, on && styles.paymentChipActive]} onPress={() => togglePagamento(opt.key)} activeOpacity={0.8}>
-                <MaterialCommunityIcons name={opt.icon} size={18} color={on ? cores.onPrimary : cores.onSurfaceVariant} />
-                <Text style={[styles.paymentLabel, on && { color: cores.onPrimary }]}>{opt.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {orc.formasPagamento.pix && (
-          <OlliInput label="Chave PIX" value={orc.chavePix ?? ''} onChangeText={v => onChange({ chavePix: v })} placeholder="CPF, CNPJ, e-mail ou chave aleatória" leftIcon="key-variant" containerStyle={{ marginTop: 12 }} />
-        )}
-
-        <OlliInput label="Condições de pagamento" value={orc.condicoesPagamento ?? ''} onChangeText={v => onChange({ condicoesPagamento: v })} placeholder="Ex: 50% de entrada, restante na entrega" multiline />
-
-        <View style={styles.rowFields}>
-          <OlliMoneyInput
-            label="Sinal / entrada"
-            value={orc.sinalValor ?? 0}
-            onChangeValue={v => {
-              const clamped = Math.max(0, Math.min(orc.valorTotal, v));
-              // Percentual derivado do valorTotal (pós-desconto) — a MESMA base do clamp
-              // acima e do "restante" (linha ~63). Antes usava o subtotal (pré-desconto),
-              // então "50%" não batia com o total real quando havia desconto.
-              onChange({ sinalValor: clamped, sinalPercentual: orc.valorTotal ? Math.round((clamped / orc.valorTotal) * 100) : 0 });
-            }}
-            containerStyle={{ flex: 1, marginRight: 10 }}
-          />
-          <View style={{ flex: 1 }}>
-            <View style={styles.sinalDataRow}>
-              <Text style={[styles.fieldLabel, { marginBottom: 0 }]}>Data do sinal</Text>
-              <TouchableOpacity onPress={() => onChange({ sinalData: isoToBR(todayISO()) })} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={styles.hojeLink}>Hoje</Text>
-              </TouchableOpacity>
-            </View>
-            <OlliInput mask="date" value={orc.sinalData ?? ''} onChangeText={v => onChange({ sinalData: v })} placeholder="DD/MM/AAAA" containerStyle={{ marginBottom: 0 }} />
-          </View>
-        </View>
-        {orc.sinalValor ? (
-          <View style={styles.sinalInfo}>
-            <MaterialCommunityIcons name="information" size={15} color={cores.primary} />
-            <Text style={styles.sinalInfoText}>Sinal {formatCurrency(orc.sinalValor)} · Restante {formatCurrency(restante)}</Text>
-          </View>
-        ) : null}
-      </View>
-
       {/* CONDIÇÕES */}
       <View style={styles.card}>
         <SectionTitle icon="file-document-outline">Condições e garantia</SectionTitle>
+        <OlliInput
+          label="Condições comerciais"
+          value={orc.condicoesPagamento ?? ''}
+          onChangeText={v => onChange({ condicoesPagamento: v })}
+          placeholder="Ex.: 50% na aprovação e restante na conclusão. O pagamento é combinado diretamente com a empresa."
+          multiline
+        />
         <OlliInput label="Condições contratuais" value={orc.condicoesContratuais ?? ''} onChangeText={v => onChange({ condicoesContratuais: v })} placeholder="Prazo, materiais inclusos, responsabilidades..." multiline />
         <OlliInput label="Garantia" value={orc.garantia ?? ''} onChangeText={v => onChange({ garantia: v })} placeholder="Ex: 90 dias para mão de obra" multiline />
         <CampoComVoz label="Informações adicionais" value={orc.informacoesAdicionais ?? ''} onChangeText={v => onChange({ informacoesAdicionais: v })} placeholder="Observações gerais (toque no microfone para ditar)" multiline />
@@ -260,17 +188,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.base },
   sectionIconBg: { width: 30, height: 30, borderRadius: 8, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
-  paymentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  paymentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surface },
-  paymentChipActive: { backgroundColor: c.primary, borderColor: c.primary },
-  paymentLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
-  rowFields: { flexDirection: 'row' },
-  sinalInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.primaryContainer, borderRadius: BorderRadius.md, padding: 10, marginTop: 4 },
-  sinalInfoText: { fontSize: 13, color: c.primary, fontWeight: '700' },
-  sinalDataRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  hojeLink: { fontSize: 12, fontWeight: '700', color: c.primary },
-
   fotosHint: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: -6, marginBottom: 14, lineHeight: 17 },
   fotosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
   fotoThumbWrap: { position: 'relative' },

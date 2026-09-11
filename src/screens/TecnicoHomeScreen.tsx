@@ -135,7 +135,7 @@ export default function TecnicoHomeScreen() {
   const idsHoje = new Set(paraHoje.map((o) => o.id));
   const abertas = ordens.filter((o) => STATUS_ABERTOS.includes(o.status) && !idsHoje.has(o.id));
   const concluidasHoje = ordens.filter(
-    (o) => o.status === 'concluida' && !!o.atualizadoEm && mesmoDia(new Date(o.atualizadoEm), hoje),
+    (o) => o.status === 'concluida' && !!o.concluidoEm && mesmoDia(new Date(o.concluidoEm), hoje),
   );
 
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'técnico';

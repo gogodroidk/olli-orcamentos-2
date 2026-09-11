@@ -24,9 +24,6 @@ export { abrirWhatsApp } from './exportarDocumento';
  *     `false` => rodapé DISCRETO da OLLI em todo documento. `true` (Pro/
  *     Empresa) => sem esse rodapé (dados legais/PIX/validade PERMANECEM).
  */
-import { qrSvg } from './qrcode';
-import { gerarPixCopiaECola } from './pixBrCode';
-
 export type CapaEstilo = 'logo' | 'foto' | 'nenhuma';
 
 interface CapaCampos {
@@ -40,8 +37,8 @@ export interface OpcoesPdf {
   removerMarca?: boolean;
   /**
    * URL pública do orçamento (`https://link.../o/<token>`). Quando presente, o PDF
-   * ganha os blocos de QR "Aprovar" e "Recusar". Ausente (offline, sem nuvem), o
-   * documento cai no texto de instrução de sempre — nunca mostra um QR morto.
+   * ganha botões/link de ação "Abrir e aprovar" e "Abrir e pedir ajuste". Ausente
+   * (offline, sem nuvem), o documento cai no texto de instrução de sempre.
    */
   linkPublico?: string;
 }
@@ -184,46 +181,12 @@ function renderItensTabela(itens: ItemOrcamento[]): string {
 }
 
 /**
- * Texto das condições de pagamento a partir dos dados do orçamento.
- * Retorna HTML já seguro: o texto livre do usuário (condicoesPagamento) é
- * escapado aqui; o `<br/>` do ramo do sinal é marcação fixa controlada.
+ * Condições comerciais do documento. A forma de pagamento e a chave Pix não são
+ * impressas automaticamente; o sinal/entrada tem bloco próprio logo depois,
+ * porque é um marco comercial que o prestador explicitamente configurou.
  */
-function pagamentoTexto(o: Orcamento): string {
-  const partes: string[] = [];
-  // Sinal/entrada preenchido no wizard — antes NÃO aparecia no PDF entregue ao
-  // cliente (só o percentual, e só quando não havia condição em texto livre). O
-  // valor em R$ tem prioridade sobre o percentual; a data entra se houver.
-  if (o.sinalValor && o.sinalValor > 0) {
-    const dataTxt = o.sinalData ? ` até ${escapeHtml(dataSinalBR(o.sinalData))}` : '';
-    partes.push(`Entrada de ${formatCurrency(o.sinalValor)}${dataTxt}`);
-  } else if (o.sinalPercentual) {
-    partes.push(`Sinal de ${o.sinalPercentual}% na aprovação`);
-  }
-  if (o.condicoesPagamento) {
-    // Texto livre do usuário — escapado (pode ser adulterado via sync).
-    partes.push(escapeHtml(o.condicoesPagamento));
-  } else {
-    const formas: string[] = [];
-    if (o.formasPagamento?.pix) formas.push('Pix');
-    if (o.formasPagamento?.credito) formas.push('Crédito');
-    if (o.formasPagamento?.debito) formas.push('Débito');
-    if (o.formasPagamento?.dinheiro) formas.push('Dinheiro');
-    if (partes.length && formas.length) partes.push(`Restante na conclusão · ${formas.join(', ')}`);
-    else if (formas.length) partes.push(formas.join(' · '));
-  }
-  return partes.length ? partes.join('<br/>') : 'A combinar';
-}
-
-/** Data ISO (YYYY-MM-DD…) → DD/MM/YYYY; qualquer outro formato passa direto. */
-function dataSinalBR(d: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
-}
-
-/** 3 colunas de condições: Pagamento · Garantia · Prazo (omite vazias). */
 function renderCondicoes(o: Orcamento): string {
-  // `pagamento` já vem como HTML seguro de pagamentoTexto (texto livre escapado lá).
-  const pagamento = pagamentoTexto(o);
+  const comerciais = o.condicoesPagamento ? escapeHtml(o.condicoesPagamento) : '';
   const garantia = o.garantia ?? '';
   // Prazo é só data de agendamento/execução — informacoesAdicionais (observações)
   // ganha bloco próprio em renderObservacoes() e não deve ser "engolido" aqui
@@ -231,11 +194,39 @@ function renderCondicoes(o: Orcamento): string {
   const prazo = o.agendamentoServico || o.dataPrestacaoServico || '';
 
   const cols: string[] = [];
-  if (pagamento) cols.push(`<div class="cond-col"><div class="cond-label">Pagamento</div><div class="cond-val">${pagamento}</div></div>`);
+  if (comerciais) cols.push(`<div class="cond-col"><div class="cond-label">Condições comerciais</div><div class="cond-val">${comerciais}</div></div>`);
   if (garantia) cols.push(`<div class="cond-col"><div class="cond-label">Garantia</div><div class="cond-val">${escapeHtml(garantia)}</div></div>`);
   if (prazo) cols.push(`<div class="cond-col"><div class="cond-label">Prazo</div><div class="cond-val">${escapeHtml(prazo)}</div></div>`);
   if (cols.length === 0) return '';
   return `<div class="conditions">${cols.join('')}</div>`;
+}
+
+/** Entrada/sinal configurado no wizard — sempre limitado ao total da proposta. */
+function renderSinal(o: Orcamento): string {
+  const total = Math.max(0, o.valorTotal || 0);
+  let entrada = 0;
+  let percentual: number | undefined;
+
+  if (typeof o.sinalValor === 'number' && o.sinalValor > 0) {
+    entrada = Math.min(o.sinalValor, total);
+    percentual = total > 0 ? Math.round((entrada / total) * 100) : undefined;
+  } else if (typeof o.sinalPercentual === 'number' && o.sinalPercentual > 0 && total > 0) {
+    percentual = Math.min(100, Math.max(0, o.sinalPercentual));
+    entrada = Math.round(total * (percentual / 100) * 100) / 100;
+  }
+
+  if (entrada <= 0) return '';
+  const data = o.sinalData ? formatDateBR(o.sinalData) : '';
+  const dataTexto = data ? ` até ${escapeHtml(data)}` : '';
+  const saldo = Math.max(0, Math.round((total - entrada) * 100) / 100);
+  const percentualTexto = typeof percentual === 'number' ? ` (${formatNumber(percentual, 0)}%)` : '';
+
+  return `
+    <div class="text-block">
+      <div class="eyebrow">Entrada / sinal</div>
+      <div class="body">${formatCurrency(entrada)}${percentualTexto}${dataTexto}. Saldo restante: ${formatCurrency(saldo)}.</div>
+    </div>
+  `;
 }
 
 /** Bloco "Observações" (informacoesAdicionais) — sempre exibido quando preenchido. */
@@ -256,42 +247,6 @@ function renderLaudo(o: Orcamento): string {
     <div class="text-block">
       <div class="eyebrow">Laudo técnico</div>
       <div class="body">${escapeHtml(o.laudoTecnico)}</div>
-    </div>
-  `;
-}
-
-/**
- * Bloco de COBRANÇA Pix — copia-e-cola + QR com o VALOR já embutido (o sinal quando
- * há, senão o total). O cliente escaneia ou copia e paga na hora, direto na conta do
- * prestador. 100% offline (qrSvg local, sem API externa) e NÃO processa pagamento —
- * é só o "código do banco". Só aparece quando há chave Pix E o Pix está nas formas de
- * pagamento (o prestador controla ligando/desligando no orçamento).
- */
-function renderPixCobranca(o: Orcamento, empresa: Empresa): string {
-  const chave = (o.chavePix || empresa.chavePix || '').trim();
-  if (!chave || !o.formasPagamento?.pix) return '';
-  const temSinal = !!(o.sinalValor && o.sinalValor > 0);
-  // Clampa ao total (defesa em profundidade contra sinal stale) — nunca cobrar mais que o total.
-  const valor = temSinal ? Math.min(o.sinalValor!, o.valorTotal) : o.valorTotal;
-  if (!valor || valor <= 0) return '';
-  const brcode = gerarPixCopiaECola({
-    chave,
-    valor,
-    nome: empresa.nome,
-    cidade: empresa.cidade || '',
-    txid: o.numero,
-  });
-  if (!brcode) return '';
-  const rotulo = temSinal ? 'Pague o sinal por Pix' : 'Pague por Pix';
-  return `
-    <div class="pix-cobranca">
-      <div class="pix-cob-qr">${qrSvg(brcode)}</div>
-      <div class="pix-cob-info">
-        <div class="pix-cob-rotulo">${rotulo}</div>
-        <div class="pix-cob-valor">${formatCurrency(valor)}</div>
-        <div class="pix-cob-instr">Abra o app do banco → Pix → escaneie o QR, ou copie o código:</div>
-        <div class="pix-cob-code">${escapeHtml(brcode)}</div>
-      </div>
     </div>
   `;
 }
@@ -342,6 +297,9 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
   const emitidoEm = o.dataEmissao ? formatDateBR(o.dataEmissao) : formatDate(o.criadoEm);
   const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
   const logoSrc = img(empresa.logoUri);
+  const revisaoLinha = o.revisaoDeNumero
+    ? `<div class="cover-num">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>`
+    : '';
 
   if (plano.tipo === 'foto') {
     return `
@@ -354,6 +312,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
           : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         <div class="cover-kicker">ORÇAMENTO</div>
         <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        ${revisaoLinha}
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
       </div>
@@ -372,6 +331,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
         </div>
         <div class="cover-kicker">ORÇAMENTO</div>
         <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        ${revisaoLinha}
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
       </div>
@@ -466,24 +426,14 @@ function cssModelos(accent: string): string {
   `;
 }
 
-/**
- * Bloco de QR para uma ação do cliente.
- *
- * O SVG vai INLINE, não como `<img src="data:image/svg+xml...">`: o motor de
- * impressão do iOS (UIMarkupTextPrintFormatter) costuma ignorar data-URI de SVG,
- * enquanto o do Android (Chromium) as renderiza. Um QR que aparece num celular e
- * some no outro entrega ao cliente um retângulo branco.
- *
- * A URL vai TAMBÉM por extenso: numa folha impressa, num PDF aberto no desktop, ou
- * num leitor que não abre a câmera, o texto é a única saída.
- */
-function renderQrAcao(url: string, rotulo: string, legenda: string, classe: string): string {
+/** Bloco de link clicável para uma ação do cliente. O URL também fica visível
+ * para cópia quando o visualizador não mantém links do PDF. */
+function renderLinkAcao(url: string, rotulo: string, legenda: string, classe: string): string {
   return `
-    <div class="qr-card ${classe}">
-      <div class="qr-rotulo">${escapeHtml(rotulo)}</div>
-      <div class="qr-img">${qrSvg(url)}</div>
-      <div class="qr-legenda">${escapeHtml(legenda)}</div>
-      <div class="qr-url">${escapeHtml(url)}</div>
+    <div class="link-card ${classe}">
+      <a class="link-button" href="${escapeHtml(url)}">${escapeHtml(rotulo)}</a>
+      <div class="link-legenda">${escapeHtml(legenda)}</div>
+      <div class="link-url">${escapeHtml(url)}</div>
     </div>
   `;
 }
@@ -498,10 +448,8 @@ function renderQrAcao(url: string, rotulo: string, legenda: string, classe: stri
  * no iOS descarta até hiperlinks comuns — o link funcionaria no Android e morreria
  * no iPhone.
  *
- * O QR funciona em todo lugar, inclusive numa folha impressa. Ele leva à página
- * pública, que tem botões de verdade e grava a decisão de forma atômica.
- *
- * O QR NUNCA aprova sozinho: `?acao=` só PRÉ-SELECIONA na página. `GET` não pode
+ * O link leva à página pública, que tem botões de verdade e grava a decisão de
+ * forma atômica. `?acao=` só PRÉ-SELECIONA na página. `GET` não pode
  * mudar estado — um pré-visualizador de link (WhatsApp, Slack) que buscasse a URL
  * aprovaria o orçamento sem o cliente tocar em nada.
  */
@@ -510,32 +458,32 @@ function renderApprovalGuide(o: Orcamento, linkPublico?: string): string {
   const podeRecusar = o.exibirRecusa !== false;
   if (!podeAprovar && !podeRecusar && !o.solicitarAssinaturaCliente) return '';
 
-  // Com link publicado: QR de ação. Sem link (offline / sem nuvem): texto de sempre.
-  const temQr = !!linkPublico && (podeAprovar || podeRecusar);
-  if (temQr) {
+  // Com link publicado: botões de ação. Sem link (offline / sem nuvem): texto de sempre.
+  const temLink = !!linkPublico && (podeAprovar || podeRecusar);
+  if (temLink) {
     const base = linkPublico as string;
     const sep = base.includes('?') ? '&' : '?';
     const cards = [
       podeAprovar
-        ? renderQrAcao(`${base}${sep}acao=aprovar`, 'Aprovar', 'Aponte a câmera do celular', 'qr-aprovar')
+        ? renderLinkAcao(`${base}${sep}acao=aprovar`, 'Abrir e aprovar', 'Abra a página e confirme com um toque', 'link-aprovar')
         : '',
       podeRecusar
-        ? renderQrAcao(`${base}${sep}acao=recusar`, 'Recusar ou pedir ajuste', 'Aponte a câmera do celular', 'qr-recusar')
+        ? renderLinkAcao(`${base}${sep}acao=recusar`, 'Abrir e pedir ajuste', 'Abra a página para revisar a proposta', 'link-recusar')
         : '',
     ].filter(Boolean).join('');
 
     const nota = o.solicitarAssinaturaCliente
       ? 'Se preferir, assine no campo abaixo e devolva este documento ao prestador.'
-      : 'A confirmação ainda pede um toque na página — o QR só abre a opção escolhida.';
+      : 'A confirmação ainda pede um toque na página — o botão abre a opção escolhida.';
 
     return `
-      <div class="approval-guide approval-guide-qr">
+      <div class="approval-guide approval-guide-link">
         <div class="approval-head">
           <div class="approval-kicker">Próximo passo</div>
           <div class="approval-title">Como fechar este orçamento</div>
           <div class="approval-copy">${escapeHtml(nota)}</div>
         </div>
-        <div class="qr-acoes">${cards}</div>
+        <div class="link-acoes">${cards}</div>
       </div>
     `;
   }
@@ -604,9 +552,9 @@ export function gerarHtmlOrcamento(
   const itensHtml = renderItensTabela(o.itens);
   const condicoesHtml = renderCondicoes(o);
   const approvalGuideHtml = renderApprovalGuide(o, opts?.linkPublico);
+  const sinalHtml = renderSinal(o);
   const observacoesHtml = renderObservacoes(o);
   const laudoHtml = renderLaudo(o);
-  const pixCobrancaHtml = renderPixCobranca(o, empresa);
 
   // Tons claros do accent pré-calculados (color-mix nem sempre roda no expo-print).
   const accentSoft = mixWhite(accent, 0.09);   // fundo do TOTAL / pílula
@@ -626,12 +574,9 @@ export function gerarHtmlOrcamento(
   ].filter(Boolean).join(' · ');
   const contatoEmpresa = [empresa.telefone, empresa.email].filter(Boolean).join(' · ');
 
-  // Rodapé do prestador — contato + PIX (dado legal/comercial). Este bloco é
-  // SEMPRE renderizado; removerMarca só afeta a linha da marca OLLI, nunca isto.
-  const pixRodape = o.chavePix || empresa.chavePix || '';
-  const rodapeContato = [contatoEmpresa || empresa.nome, pixRodape ? `PIX ${pixRodape}` : '']
-    .filter(Boolean)
-    .join('  ·  ');
+  // Rodapé do prestador: contato apenas. Dados de cobrança não entram no
+  // orçamento; removerMarca só afeta a linha da marca OLLI.
+  const rodapeContato = contatoEmpresa || empresa.nome;
 
   // Marca OLLI discreta (apenas quando removerMarca é falsy). Texto fixo/controlado.
   const brandOlliHtml = removerMarca
@@ -737,30 +682,18 @@ export function gerarHtmlOrcamento(
   .cond-col { flex: 1; }
   .cond-label { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
   .cond-val { font-size: 12.5px; color: #3C4756; margin-top: 6px; line-height: 1.55; }
-  .pix-cobranca { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 20px; align-items: center; page-break-inside: avoid; }
-  .pix-cob-qr { flex: 0 0 auto; width: 108px; height: 108px; }
-  .pix-cob-qr svg { width: 108px; height: 108px; display: block; }
-  .pix-cob-info { flex: 1; min-width: 0; }
-  .pix-cob-rotulo { font-size: 10px; font-weight: 800; letter-spacing: 1.3px; color: #9AA3B2; text-transform: uppercase; }
-  .pix-cob-valor { font-size: 20px; font-weight: 800; color: #0A2540; margin: 2px 0 6px; }
-  .pix-cob-instr { font-size: 11px; color: #6B7484; margin-bottom: 6px; }
-  .pix-cob-code { font-family: 'Courier New', monospace; font-size: 9px; color: #3C4756; word-break: break-all; line-height: 1.4; background: #FFFFFF; border: 1px solid #E7E9EE; border-radius: 8px; padding: 8px 10px; }
   .approval-guide { margin-top: 26px; border: 1px solid ${accentBorder}; background: ${accentChipBg}; border-radius: 14px; padding: 16px 18px; display: flex; gap: 22px; align-items: flex-start; page-break-inside: avoid; }
-  /* Variante com QR: empilha o texto sobre os dois cartões de ação. */
-  .approval-guide-qr { display: block; }
+  /* Variante com links: empilha o texto sobre os dois cartões de ação. */
+  .approval-guide-link { display: block; }
   .approval-head { margin-bottom: 14px; }
-  .qr-acoes { display: flex; gap: 14px; align-items: stretch; }
-  .qr-card { flex: 1; background: #FFFFFF; border: 1.5px solid ${accentBorder}; border-radius: 12px; padding: 12px 10px 10px; text-align: center; page-break-inside: avoid; }
-  /* Cor só na borda e no rótulo: o QR PRECISA de módulos escuros sobre branco puro
-     para a câmera ler. Fundo colorido atrás do código quebra a leitura. */
-  .qr-aprovar { border-color: ${accent}; }
-  .qr-recusar { border-color: #C6CEDA; }
-  .qr-rotulo { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 8px; color: #0A2540; }
-  .qr-aprovar .qr-rotulo { color: ${accent}; }
-  .qr-img { display: block; margin: 0 auto 8px; width: 128px; height: 128px; }
-  .qr-img svg { width: 100%; height: 100%; display: block; }
-  .qr-legenda { font-size: 9.5px; color: #5A6A7D; margin-bottom: 4px; }
-  .qr-url { font-size: 7.5px; color: #8A97A6; word-break: break-all; line-height: 1.25; }
+  .link-acoes { display: flex; gap: 14px; align-items: stretch; }
+  .link-card { flex: 1; background: #FFFFFF; border: 1.5px solid ${accentBorder}; border-radius: 12px; padding: 14px 12px 11px; text-align: center; page-break-inside: avoid; }
+  .link-aprovar { border-color: ${accent}; }
+  .link-recusar { border-color: #C6CEDA; }
+  .link-button { display: block; border-radius: 8px; padding: 10px 12px; background: ${accent}; color: #FFFFFF; font-size: 12px; font-weight: 800; text-decoration: none; }
+  .link-recusar .link-button { background: #EEF2F6; color: #243447; }
+  .link-legenda { font-size: 9.5px; color: #5A6A7D; margin-top: 9px; margin-bottom: 4px; }
+  .link-url { font-size: 7.5px; color: #8A97A6; word-break: break-all; line-height: 1.25; }
   .approval-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; color: ${accent}; text-transform: uppercase; white-space: nowrap; }
   .approval-title { font-family: 'Spectral', Georgia, serif; font-size: 18px; font-weight: 700; color: #16202E; margin-top: 2px; white-space: nowrap; }
   .approval-copy { flex: 1; font-size: 12.5px; color: #3C4756; line-height: 1.65; }
@@ -820,6 +753,7 @@ ${renderCapa(o, empresa, planoCapa)}
       <div class="header-right">
         <div class="doc-title">Orçamento</div>
         <div class="doc-num">Nº ${escapeHtml(o.numero)}</div>
+        ${o.revisaoDeNumero ? `<div class="doc-date">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>` : ''}
         <div class="doc-date">Emitido em ${emitidoEm}</div>
         ${o.validadeOrcamento ? `<div class="pill">Válido até ${formatDateBR(o.validadeOrcamento)}</div>` : `<div class="pill">Válido por 15 dias</div>`}
       </div>
@@ -863,9 +797,8 @@ ${renderCapa(o, empresa, planoCapa)}
 
     <!-- CONDIÇÕES -->
     ${condicoesHtml}
+    ${sinalHtml}
 
-    <!-- COBRANÇA PIX (copia-e-cola + QR com o valor) -->
-    ${pixCobrancaHtml}
     ${approvalGuideHtml}
 
     <!-- CONDIÇÕES CONTRATUAIS (texto livre, opcional) -->
@@ -919,7 +852,7 @@ ${renderCapa(o, empresa, planoCapa)}
       </div>
     ` : ''}
 
-    <!-- FOOTER — dados do prestador (contato/PIX/validade) SEMPRE presentes -->
+    <!-- FOOTER — contato do prestador e validade SEMPRE presentes -->
     <div class="footer">
       <span class="footer-contact">${escapeHtml(rodapeContato)}</span>
       ${o.validadeOrcamento ? `<span class="footer-contact">Válido até ${formatDateBR(o.validadeOrcamento)}</span>` : ''}
@@ -950,8 +883,8 @@ export async function montarHtmlOrcamentoCompleto(
 
 /**
  * Link público do orçamento, se der. NUNCA lança: sem nuvem, sem login ou sem
- * internet o PDF sai com o texto de instrução em vez do QR — melhor um documento
- * sem QR do que um QR que não resolve.
+ * internet o PDF sai com o texto de instrução em vez de um link — melhor um
+ * documento explícito do que uma ação que não resolve.
  *
  * `import` dinâmico de propósito: `clienteLink` puxa supabase e o banco, e o
  * pdfGenerator é usado em contextos (preview, teste) onde isso não deve carregar.

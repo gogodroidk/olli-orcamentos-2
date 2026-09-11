@@ -7,6 +7,8 @@
  * senão a Central de Ajuda começa a mentir pro usuário.
  */
 
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from '../../services/entitlements';
+
 /** Tipo de bloco do corpo de um artigo. */
 export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
 
@@ -43,6 +45,7 @@ export const CATEGORIAS_AJUDA: AjudaCategoria[] = [
   { id: 'comecar', titulo: 'Primeiros passos', icone: 'rocket-launch-outline' },
   { id: 'orcamentos', titulo: 'Orçamentos e clientes', icone: 'file-document-edit-outline' },
   { id: 'campo', titulo: 'Campo: OS e equipamentos', icone: 'toolbox-outline' },
+  { id: 'governo', titulo: 'Documentos e fontes oficiais', icone: 'bank-outline' },
   { id: 'conta', titulo: 'Equipe, planos e conta', icone: 'account-group-outline' },
   { id: 'dados', titulo: 'Backup, offline e privacidade', icone: 'shield-lock-outline' },
   { id: 'suporte', titulo: 'Suporte', icone: 'lifebuoy' },
@@ -177,7 +180,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          'Depois que o serviço foi pago, você emite um recibo numerado automaticamente (a numeração é sequencial e nunca se repete), com a forma de pagamento usada — crédito, débito, dinheiro ou PIX (com sua chave já preenchida a partir de Meu Negócio).',
+          'Depois que o serviço foi pago, você emite um recibo numerado automaticamente (a numeração é sequencial e nunca se repete), com a forma de pagamento usada — crédito, débito, dinheiro ou PIX (com sua chave já preenchida a partir de Meu Negócio). Se houver sinal ou parcelas, registre cada recebimento: o OLLI mostra Pagamento parcial até o saldo zerar.',
       },
       {
         tipo: 'passos',
@@ -252,6 +255,91 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
     ],
   },
 
+  // ── Documentos e fontes oficiais ────────────────────────────────────────
+  {
+    id: 'nfse-padrao-nacional',
+    categoriaId: 'governo',
+    titulo: 'Emitir NFS-e pelo portal oficial',
+    resumo: 'Passo a passo seguro para abrir o emissor nacional sem o OLLI fingir que emitiu a nota.',
+    tags: ['nfs-e', 'nota fiscal', 'nota fiscal de serviço', 'gov.br', 'imposto', 'governo'],
+    corpo: [
+      {
+        tipo: 'paragrafo',
+        conteudo:
+          'A NFS-e é emitida no ambiente oficial do governo. O OLLI pode organizar os dados do cliente e do serviço, mas não deve pedir sua senha gov.br nem declarar que uma nota foi emitida sem protocolo do portal.',
+      },
+      {
+        tipo: 'passos',
+        conteudo: [
+          'Abra o serviço oficial: https://www.gov.br/pt-br/servicos/emitir-nota-fiscal-de-servico-eletronica.',
+          'Entre com sua conta gov.br ou certificado, conforme o município e o perfil do prestador.',
+          'Confira cliente, serviço, retenções e valores antes de transmitir.',
+          'Guarde o número/protocolo e anexe a cópia da nota ao documento do cliente quando essa integração estiver disponível.',
+        ],
+      },
+      {
+        tipo: 'aviso',
+        conteudo:
+          'O emissor, as regras e a disponibilidade dependem do município. Para integração por API, o governo exige credenciamento e os layouts técnicos vigentes; o OLLI não raspa o portal nem guarda credenciais.',
+      },
+    ],
+  },
+  {
+    id: 'pmoc-fontes-atualizadas',
+    categoriaId: 'governo',
+    titulo: 'PMOC: documento técnico e fontes atualizadas',
+    resumo: 'O que o OLLI organiza e o que precisa ser validado pelo responsável técnico.',
+    tags: ['pmoc', 'anvisa', 'ar condicionado', 'responsavel tecnico', 'rdc'],
+    corpo: [
+      {
+        tipo: 'paragrafo',
+        conteudo:
+          'A Lei 13.589/2018 exige PMOC para edifícios de uso público e coletivo climatizados artificialmente. O OLLI organiza equipamentos, planos, ordens, checklists e evidências; isso não substitui a responsabilidade técnica nem transforma um rascunho em certificado legal.',
+      },
+      {
+        tipo: 'passos',
+        conteudo: [
+          'Cadastre o local, os equipamentos e o responsável técnico real.',
+          'Defina periodicidade, procedimento e evidência esperada para cada ativo.',
+          'Gere as ordens recorrentes e registre execução, fotos e observações.',
+          'Revise a versão vigente com o responsável antes de entregar ao cliente.',
+          'Consulte a legislação em https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13589.htm e as normas sanitárias atuais.',
+        ],
+      },
+      {
+        tipo: 'aviso',
+        conteudo:
+          'Normas sanitárias mudam. A antiga RE 9/2003 foi revogada pela RDC 886/2024; por isso o OLLI deve exibir fonte e data de conferência, nunca congelar um limite regulatório sem revisão humana.',
+      },
+    ],
+  },
+  {
+    id: 'assinatura-eletronica-govbr',
+    categoriaId: 'governo',
+    titulo: 'Assinatura eletrônica gov.br',
+    resumo: 'Diferença entre aceite desenhado no OLLI e assinatura avançada validada pelo ITI.',
+    tags: ['assinatura', 'gov.br', 'iti', 'certificado', 'contrato'],
+    corpo: [
+      {
+        tipo: 'paragrafo',
+        conteudo:
+          'A assinatura desenhada no OLLI registra o aceite no documento e deixa uma trilha de data e versão. Ela é apresentada honestamente como comprovação entre as partes, não como assinatura digital certificada ICP-Brasil.',
+      },
+      {
+        tipo: 'passos',
+        conteudo: [
+          'Para uma assinatura avançada, consulte https://www.gov.br/governodigital/pt-br/identidade/assinatura-eletronica.',
+          'Verifique se a conta gov.br tem o nível exigido e se o documento precisa de validação no ITI.',
+          'Guarde o arquivo assinado e o comprovante de validação junto ao documento do cliente.',
+        ],
+      },
+      {
+        tipo: 'aviso',
+        conteudo: 'Nunca informe senha, código de segundo fator ou certificado privado ao OLLI ou a uma IA. A futura integração oficial deverá usar fluxo OAuth/homologação e confirmação do usuário.',
+      },
+    ],
+  },
+
   // ── Equipe, planos e conta ───────────────────────────────────────────────
   {
     id: 'equipe-permissoes',
@@ -299,7 +387,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          'Orçamentos, recibos, clientes, agenda, diagnóstico de código de erro offline e o link do cliente são ilimitados em QUALQUER plano — inclusive no Grátis. Os planos pagos liberam recursos extras:',
+          `No Grátis, rascunhos, recibos, clientes, agenda e histórico ficam sem limite; você pode enviar, compartilhar por link ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos distintos por mês. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática. Os planos pagos liberam recursos extras:`,
       },
       {
         tipo: 'passos',

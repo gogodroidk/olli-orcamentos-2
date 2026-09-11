@@ -9,7 +9,8 @@ import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, corCategoria, type Cores } from '../theme';
 import {
   getEmpresa, getClientes,
-  getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getOrcamentosParadosAgregado, getUltimosOrcamentos,
+  getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getOrcamentosAgregadoPorStatusNoPeriodo,
+  getOrcamentosParadosAgregado, getUltimosOrcamentos,
 } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
@@ -84,6 +85,15 @@ function saudacao(): string {
 const mesmoDia = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
+/** Início do mês local e início do próximo, em YYYY-MM-DD para o agregado SQL. */
+function intervaloMesAtual(): { inicio: string; fimExclusivo: string } {
+  const hoje = new Date();
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+  const ymd = (data: Date) => `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+  return { inicio: ymd(inicio), fimExclusivo: ymd(fim) };
+}
+
 /** Rótulo amigável do horário da próxima parada: "Hoje · 14:30", "Amanhã · 09:00" ou "18/06 · 14:30". */
 function quandoLabel(iso: string): string {
   const d = new Date(iso);
@@ -147,6 +157,7 @@ export default function HomeScreen() {
   // mais o histórico inteiro de orçamentos pra reduzir aqui a cada foco.
   const [totalOrcamentos, setTotalOrcamentos] = useState(0);
   const [aprovadosResumo, setAprovadosResumo] = useState({ contagem: 0, valorTotal: 0 });
+  const [recusadosMesResumo, setRecusadosMesResumo] = useState({ contagem: 0, valorTotal: 0 });
   const [emAbertoResumo, setEmAbertoResumo] = useState({ contagem: 0, valorTotal: 0 });
   const [paradosResumo, setParadosResumo] = useState({ contagem: 0, valorTotal: 0 });
   const [recentes, setRecentes] = useState<Orcamento[]>([]);
@@ -262,9 +273,11 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     setCarregandoErro(false);
     try {
-      const [total, aprov, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
+      const periodo = intervaloMesAtual();
+      const [total, aprov, recusados, aberto, parados, recentesLista, emp, prox, cli] = await Promise.all([
         getOrcamentosTotalAtivos(),
-        getOrcamentosAgregadoPorStatus(['aprovado']),
+        getOrcamentosAgregadoPorStatusNoPeriodo(['aprovado'], periodo.inicio, periodo.fimExclusivo),
+        getOrcamentosAgregadoPorStatusNoPeriodo(['recusado'], periodo.inicio, periodo.fimExclusivo),
         getOrcamentosAgregadoPorStatus(STATUS_PROPOSTA_ENVIADA),
         getOrcamentosParadosAgregado(STATUS_PROPOSTA_ENVIADA, 5),
         getUltimosOrcamentos(4),
@@ -272,6 +285,7 @@ export default function HomeScreen() {
       ]);
       setTotalOrcamentos(total);
       setAprovadosResumo(aprov);
+      setRecusadosMesResumo(recusados);
       setEmAbertoResumo(aberto);
       setParadosResumo(parados);
       setRecentes(recentesLista);
@@ -439,13 +453,16 @@ export default function HomeScreen() {
   }, [radarCarregando, radarBloqueados]);
 
   // ── métricas reais (já agregadas em SQL — ver load()) ──
-  const faturamento = aprovadosResumo.valorTotal;
+  const valorAprovadoMes = aprovadosResumo.valorTotal;
   // "Em aberto" = proposta já entregue ao cliente e ainda sem desfecho — cobre
   // enviado/visualizado/em_negociacao/aguardando_assinatura (STATUS_PROPOSTA_
   // ENVIADA), não só os dois estados antigos. Sem isso as propostas mais
   // quentes (visualizado/em_negociação) sumiam do funil e do radar de parados.
-  const conversao = totalOrcamentos ? Math.round((aprovadosResumo.contagem / totalOrcamentos) * 100) : 0;
-  const conversaoDetalhe = totalOrcamentos ? `${aprovadosResumo.contagem}/${totalOrcamentos} aprovados` : 'sem histórico';
+  const decisoesMes = aprovadosResumo.contagem + recusadosMesResumo.contagem;
+  const conversao = decisoesMes ? Math.round((aprovadosResumo.contagem / decisoesMes) * 100) : 0;
+  const conversaoDetalhe = decisoesMes
+    ? `${aprovadosResumo.contagem} aprovados de ${decisoesMes} decididos`
+    : 'sem decisões neste mês';
   /**
    * `false` SÓ quando a leitura terminou e disse que não existe nenhum orçamento.
    * Enquanto carrega — ou quando a leitura falhou — vale `null` (não sabemos), e
@@ -453,7 +470,6 @@ export default function HomeScreen() {
    * "não tem" (o mesmo P0 dos radares, aplicado ao gate de exibição).
    */
   const temHistorico = carregando || carregandoErro ? null : totalOrcamentos > 0;
-  const emAbertoDetalhe = paradosResumo.contagem > 0 ? `${paradosResumo.contagem} parados` : 'sem atrasos';
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
   const abrirOlli = () => {
@@ -637,7 +653,7 @@ export default function HomeScreen() {
         {/* KPIs */}
         {carregando ? (
           <View style={styles.kpis}>
-            {[0, 1, 2].map(i => (
+            {[0, 1, 2, 3].map(i => (
               <View key={i} style={[styles.kpi, { height: 96, justifyContent: 'center', gap: 8 }]}>
                 <OlliSkeleton width="70%" height={19} />
                 <OlliSkeleton width="50%" height={11} />
@@ -658,24 +674,27 @@ export default function HomeScreen() {
           <AnimatedEntrance index={1}>
             <View style={styles.kpis}>
               <View style={styles.kpi}>
-                <CountUp value={faturamento} format="currency" style={[styles.kpiValue, { color: cores.onSurface }]} />
-                <Text style={styles.kpiLabel}>aprovados</Text>
-                <Text style={styles.kpiHint}>valor fechado</Text>
+                <Text style={styles.kpiLabel}>Aprovado neste mês</Text>
+                <CountUp value={valorAprovadoMes} format="currency" style={[styles.kpiValue, { color: cores.onSurface }]} />
+                <Text style={styles.kpiHint}>{aprovadosResumo.contagem} {aprovadosResumo.contagem === 1 ? 'orçamento' : 'orçamentos'}</Text>
               </View>
-              <View style={styles.kpiDivider} />
               <View style={styles.kpi}>
+                <Text style={styles.kpiLabel}>Aguardando cliente</Text>
+                <CountUp value={emAbertoResumo.contagem} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={500} />
+                <Text style={styles.kpiHint}>enviados sem resposta</Text>
+              </View>
+              <View style={styles.kpi}>
+                <Text style={styles.kpiLabel}>Pedem follow-up</Text>
+                <CountUp value={paradosResumo.contagem} format="int" style={[styles.kpiValue, { color: paradosResumo.contagem > 0 ? cores.warning : cores.onSurface }]} duration={500} />
+                <Text style={[styles.kpiHint, paradosResumo.contagem > 0 && styles.kpiHintWarn]}>há mais de 5 dias</Text>
+              </View>
+              <View style={styles.kpi}>
+                <Text style={styles.kpiLabel}>Conversão do mês</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                   <CountUp value={conversao} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={600} />
                   <Text style={[styles.kpiValue, { color: cores.onSurface }]}>%</Text>
                 </View>
                 <Text style={styles.kpiHint}>{conversaoDetalhe}</Text>
-                <Text style={styles.kpiLabel}>conversão</Text>
-              </View>
-              <View style={styles.kpiDivider} />
-              <View style={styles.kpi}>
-                <CountUp value={emAbertoResumo.contagem} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={500} />
-                <Text style={styles.kpiLabel}>em aberto</Text>
-                <Text style={[styles.kpiHint, paradosResumo.contagem > 0 && styles.kpiHintWarn]}>{emAbertoDetalhe}</Text>
               </View>
             </View>
           </AnimatedEntrance>
@@ -1092,13 +1111,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
   heroBtnGhostText: { fontSize: 13, fontWeight: '800' },
 
-  kpis: { flexDirection: 'row', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, paddingVertical: 14 },
-  kpi: { flex: 1, alignItems: 'center' },
-  kpiValue: { ...Typography.value, fontSize: 19, color: c.onSurface },
-  kpiLabel: { fontSize: 11, color: c.onSurfaceVariant, marginTop: 3, fontWeight: '500' },
-  kpiHint: { fontSize: 10.5, color: c.onSurfaceMuted, marginTop: 2, fontWeight: '700', textAlign: 'center' },
+  kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, padding: 8 },
+  kpi: { flexGrow: 1, flexBasis: '45%', minHeight: 94, alignItems: 'flex-start', justifyContent: 'center', backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.lg, paddingHorizontal: 12, paddingVertical: 10 },
+  kpiValue: { ...Typography.value, fontSize: 19, color: c.onSurface, marginTop: 4 },
+  kpiLabel: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '800' },
+  kpiHint: { fontSize: 10.5, color: c.onSurfaceMuted, marginTop: 3, fontWeight: '600' },
   kpiHintWarn: { color: c.warning },
-  kpiDivider: { width: 1, backgroundColor: c.outline, marginVertical: 4 },
 
   anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
   anzolIcon: { width: 46, height: 46, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },

@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, type NavigatorScreenParams } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, type NavigatorScreenParams } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { BorderRadius, comAlfa, sombrasDe, useCores, useEstilos, useGradientes, type Cores } from '../theme';
 import { useEhDesktop } from '../hooks/useEhDesktop';
@@ -20,6 +20,7 @@ import CodigosErroScreen from '../screens/CodigosErroScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
 import ModelosDocumentoScreen from '../screens/ModelosDocumentoScreen';
+import CentralDocumentosScreen from '../screens/CentralDocumentosScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
 import ClientesScreen from '../screens/ClientesScreen';
 import ServicosScreen from '../screens/ServicosScreen';
@@ -30,6 +31,7 @@ import AgendaScreen from '../screens/AgendaScreen';
 import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
+import AutopilotScreen from '../screens/AutopilotScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
@@ -56,6 +58,9 @@ import LegalScreen from '../screens/LegalScreen';
 import TecnicoHomeScreen from '../screens/TecnicoHomeScreen';
 import type { AjudaRouteParams } from '../screens/AjudaScreen';
 import { usePermissao } from '../hooks/usePermissao';
+import { getEmpresa } from '../database/database';
+import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
+import type { StatusOrcamento } from '../types';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
 // nativo/APK nada disto entra na árvore. Barril em src/screens/desktop.
@@ -99,7 +104,7 @@ export type RootStackParamList = {
   Entrar: undefined;
   // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
   // (origem: diagnóstico / código de erro). Tudo opcional — sem isto cai no fluxo normal.
-  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem };
+  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[] };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
@@ -111,11 +116,13 @@ export type RootStackParamList = {
   Conta: undefined;
   MeuNegocio: undefined;
   ModelosDocumento: undefined;
+  CentralDocumentos: undefined;
   Diagnostico: undefined;
   DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
   OlliChat: undefined;
+  Autopilot: undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Ferramenta ÚNICA do ofício de dedetização (gate `vertical: 'dedetizacao'`).
@@ -171,7 +178,12 @@ export type TabParamList = {
   // Registradas condicionalmente sob `ehDesktop`; no mobile/APK nunca montam.
   // Vivem DENTRO do shell (com a sidebar visível), em vez de cobrirem-na como
   // telas de stack. Opcionais no tipo porque não existem no modo mobile.
-  OrcamentosTab?: { clienteId?: string; clienteNome?: string } | undefined;
+  OrcamentosTab?: {
+    clienteId?: string;
+    clienteNome?: string;
+    /** Recorte contextual vindo de um KPI do dashboard, sem substituir os filtros manuais. */
+    recorteInicial?: 'em_aberto' | 'a_receber' | StatusOrcamento;
+  } | undefined;
   ClientesTab?: undefined;
   RelatoriosTab?: undefined;
   FerramentasTab?: undefined;
@@ -212,7 +224,78 @@ const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
+const AutopilotCentro = comCentroDesktop(AutopilotScreen);
+
+/**
+ * Contas antigas podem ter uma linha `empresa` criada antes dos campos mínimos.
+ * Enquanto ela estiver incompleta, a porta das abas permanece fechada e aponta
+ * para a edição do cadastro. O dado é relido ao voltar da tela, sem confiar num
+ * flag local que poderia estar desatualizado.
+ */
+function TabsComPerfilGuard() {
+  const nav = useNavigation<any>();
+  const cores = useCores();
+  const insets = useSafeAreaInsets();
+  const [estado, setEstado] = React.useState<'verificando' | 'liberado' | 'incompleto'>('verificando');
+  const [pendentes, setPendentes] = React.useState<string[]>([]);
+
+  useFocusEffect(React.useCallback(() => {
+    let ativo = true;
+    setEstado('verificando');
+    getEmpresa()
+      .then((empresa) => {
+        if (!ativo) return;
+        // Instalação de desenvolvimento sem empresa segue compatível; contas
+        // autenticadas novas chegam aqui somente depois do Onboarding.
+        if (!empresa) {
+          setEstado('liberado');
+          return;
+        }
+        const faltantes = camposPendentesPerfil(empresa);
+        setPendentes(faltantes.map(campo => ROTULO_CAMPO_PERFIL[campo]));
+        setEstado(faltantes.length ? 'incompleto' : 'liberado');
+      })
+      .catch(() => {
+        if (ativo) setEstado('incompleto');
+      });
+    return () => { ativo = false; };
+  }, []));
+
+  if (estado === 'liberado') return <TabNavigator />;
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: cores.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }}>
+      <View style={{ width: '100%', maxWidth: 460, padding: 24, borderRadius: 20, backgroundColor: cores.surface, borderWidth: 1, borderColor: cores.outline, alignItems: 'center' }}>
+        {estado === 'verificando' ? (
+          <ActivityIndicator size="large" color={cores.primary} />
+        ) : (
+          <MaterialCommunityIcons name="store-cog-outline" size={44} color={cores.primary} />
+        )}
+        <Text style={{ marginTop: 16, color: cores.onSurface, fontWeight: '800', fontSize: 21, textAlign: 'center' }}>
+          {estado === 'verificando' ? 'Preparando seu espaço…' : 'Complete seu negócio para continuar'}
+        </Text>
+        <Text style={{ marginTop: 8, color: cores.onSurfaceVariant, fontSize: 14, lineHeight: 21, textAlign: 'center' }}>
+          {estado === 'verificando'
+            ? 'Conferindo os dados que identificam sua empresa nos orçamentos.'
+            : pendentes.length
+              ? `Falta preencher: ${pendentes.join(', ')}.`
+              : 'Não conseguimos confirmar o cadastro agora. Tente abrir os dados do negócio.'}
+        </Text>
+        {estado === 'incompleto' && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => nav.navigate('MeuNegocio')}
+            style={{ marginTop: 20, minHeight: 48, paddingHorizontal: 20, borderRadius: 14, backgroundColor: cores.primary, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 15 }}>Completar agora</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
 const ModelosDocumentoCentro = comCentroDesktop(ModelosDocumentoScreen);
+const CentralDocumentosCentro = comCentroDesktop(CentralDocumentosScreen);
 const DiagnosticoIACentro = comCentroDesktop(DiagnosticoIAScreen);
 const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
@@ -486,7 +569,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
         contentStyle: { backgroundColor: cores.background },
       }}
     >
-      <Stack.Screen name="Tabs" component={TabNavigator} />
+      <Stack.Screen name="Tabs" component={TabsComPerfilGuard} />
       {/* Onboarding é pós-login: entra com fade (não é uma "próxima página").
           NÃO recebe wrap desktop — é capa full-bleed (centraliza por conta própria). */}
       <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade', animationDuration: 320 }} />
@@ -496,7 +579,16 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Landing pública (web deslogado): capa full-bleed, sem wrap desktop e sem
           gesto de voltar. NÃO tem path no linking (a URL raiz '/' segue sendo '/'
           para preservar o canonical de SEO). */}
-      <Stack.Screen name="Landing" component={LandingScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
+      <Stack.Screen
+        name="Landing"
+        component={LandingScreen}
+        options={{
+          animation: 'fade',
+          animationDuration: 320,
+          gestureEnabled: false,
+          title: 'OLLI Orçamentos',
+        }}
+      />
       {/* As telas abaixo usam `comCentroDesktop`: mobile/APK intacto (pass-through);
           desktop centraliza a tela mobile-like sobre o shell. Referências estáveis
           criadas no módulo (ver topo do arquivo). */}
@@ -514,10 +606,12 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Conta" component={ContaCentro} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioCentro} />
       <Stack.Screen name="ModelosDocumento" component={ModelosDocumentoCentro} />
+      <Stack.Screen name="CentralDocumentos" component={CentralDocumentosCentro} />
       <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIACentro} />
       {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
+      <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />

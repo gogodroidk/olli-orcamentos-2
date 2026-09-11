@@ -46,23 +46,56 @@ function escaparHtml(v) {
 }
 
 /**
+ * Assunto seguro para header: remove quebras de linha (header injection) e
+ * mantém o tamanho dentro do limite aceito pelo provider.
+ */
+function assuntoSeguro(v, fallback = 'OLLI Orçamentos') {
+  const limpo = String(v ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+    .slice(0, 180);
+  return limpo || fallback;
+}
+
+/**
+ * Chave de idempotência curta e determinística quando o chamador a fornece.
+ * O Resend usa esta chave para devolver o mesmo resultado em retries, sem
+ * duplicar uma mensagem transacional.
+ */
+function idempotencyKeySeguro(v) {
+  if (typeof v !== 'string') return '';
+  return v.replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 240);
+}
+
+function logoHtml(logoUrl) {
+  if (typeof logoUrl !== 'string' || !/^https:\/\//i.test(logoUrl)) {
+    return '<div style="font-size:20px;font-weight:800;letter-spacing:-.03em;color:#0E1726">OLLI <span style="color:#0B6FCE">Orçamentos</span></div>';
+  }
+  return `<img src="${escaparHtml(logoUrl)}" alt="OLLI Orçamentos" width="180" style="display:block;border:0;max-width:180px;height:auto" />`;
+}
+
+/**
  * Envia UM e-mail. Nunca lança.
  * @returns {Promise<{ok: boolean, motivo?: 'desligado'|'sem_destinatario'|'falha'}>}
  */
-export async function enviarEmail(env, { para, assunto, html, texto }) {
+export async function enviarEmail(env, { para, assunto, html, texto, idempotencyKey }) {
   if (!emailLigado(env)) return { ok: false, motivo: 'desligado' };
   if (!para || typeof para !== 'string') return { ok: false, motivo: 'sem_destinatario' };
   try {
+    const headers = {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    };
+    const chave = idempotencyKeySeguro(idempotencyKey);
+    if (chave) headers['Idempotency-Key'] = chave;
+
     const r = await fetch(RESEND_API, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         from: remetente(env),
         to: [para],
-        subject: assunto,
+        subject: assuntoSeguro(assunto),
         html,
         // Alternativa em texto: cliente de e-mail que não renderiza HTML (e vários
         // filtros de spam) tratam melhor quem manda as duas partes.
@@ -71,7 +104,9 @@ export async function enviarEmail(env, { para, assunto, html, texto }) {
     });
     if (!r.ok) {
       // Sem `throw`: quem chama é fluxo de negócio e não pode cair por causa disto.
-      console.error('[olli-email] Resend recusou:', r.status, await r.text().catch(() => ''));
+      // O corpo do provider pode conter destinatário, IDs ou detalhes internos.
+      // Guardamos apenas a classe HTTP; a outbox mantém o código categorizado.
+      console.error('[olli-email] Resend recusou:', r.status);
       return { ok: false, motivo: 'falha' };
     }
     return { ok: true };
@@ -132,5 +167,80 @@ export async function enviarConvite(env, { para, empresa, papel, link }) {
   </div>
 </body></html>`;
 
-  return enviarEmail(env, { para, assunto, html, texto });
+  return enviarEmail(env, {
+    para,
+    assunto,
+    html,
+    texto,
+    idempotencyKey: `convite:${para}:${link}`,
+  });
+}
+
+/**
+ * Boas-vindas transacionais da OLLI Orçamentos.
+ *
+ * Este módulo só renderiza e despacha quando o Worker tem RESEND_API_KEY. Sem
+ * chave continua sendo no-op; a confirmação do e-mail pelo Supabase deve
+ * acontecer antes de o chamador emitir o evento de boas-vindas.
+ */
+export async function enviarBoasVindas(env, { para, nome, appLink, logoUrl, idempotencyKey }) {
+  const nomeSeguro = escaparHtml(nome || 'profissional');
+  const nomeTexto = String(nome || 'profissional').replace(/[\r\n]+/g, ' ').trim().slice(0, 120) || 'profissional';
+  const link = typeof appLink === 'string' && /^https:\/\//i.test(appLink)
+    ? appLink
+    : 'https://olliorcamentos.online';
+  const linkSeguro = escaparHtml(link);
+  const assunto = 'Bem-vindo ao OLLI Orçamentos';
+  const texto = [
+    `Olá, ${nomeTexto}!`,
+    '',
+    'Sua conta no OLLI Orçamentos está pronta.',
+    '',
+    'Para começar:',
+    '1. Configure os dados do seu negócio.',
+    '2. Cadastre seu primeiro cliente.',
+    '3. Monte e envie seu primeiro orçamento profissional.',
+    '',
+    `Abra o OLLI: ${link}`,
+    '',
+    'Você receberá apenas mensagens necessárias para sua conta e, se escolher, dicas para aproveitar melhor a plataforma.',
+    'OLLI Orçamentos',
+  ].join('\n');
+
+  const html = `<!doctype html>
+<html lang="pt-BR"><body style="margin:0;background:#F6F8FA;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:560px;margin:0 auto;padding:28px 18px">
+    <div style="background:#fff;border:1px solid #E6EAEF;border-radius:18px;padding:30px">
+      ${logoHtml(logoUrl)}
+      <p style="margin:28px 0 7px;font-size:13px;font-weight:700;color:#0B6FCE;letter-spacing:.04em">BEM-VINDO</p>
+      <h1 style="margin:0 0 14px;font-size:25px;line-height:1.25;color:#0E1726">Olá, ${nomeSeguro}!</h1>
+      <p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#4A5568">
+        Sua conta no <strong>OLLI Orçamentos</strong> está pronta para ajudar você a organizar o serviço e apresentar orçamentos profissionais.
+      </p>
+      <p style="margin:0 0 10px;font-size:15px;font-weight:700;color:#0E1726">Comece em três passos:</p>
+      <ol style="margin:0 0 26px;padding-left:22px;font-size:15px;line-height:1.8;color:#4A5568">
+        <li>Configure os dados e a identidade do seu negócio.</li>
+        <li>Cadastre seu primeiro cliente.</li>
+        <li>Monte e envie seu primeiro orçamento.</li>
+      </ol>
+      <a href="${linkSeguro}" style="display:inline-block;background:#0B6FCE;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 23px;border-radius:10px">Abrir o OLLI Orçamentos</a>
+      <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#8A93A2">
+        Se o botão não abrir, copie este endereço:<br />
+        <span style="word-break:break-all;color:#4A5568">${linkSeguro}</span>
+      </p>
+    </div>
+    <p style="margin:18px 4px 0;text-align:center;font-size:12px;line-height:1.6;color:#8A93A2">
+      Você receberá mensagens necessárias para sua conta. Dicas e novidades só serão enviadas se você escolher recebê-las.<br />
+      OLLI Orçamentos
+    </p>
+  </div>
+</body></html>`;
+
+  return enviarEmail(env, {
+    para,
+    assunto,
+    html,
+    texto,
+    idempotencyKey: idempotencyKey || `boas-vindas:${para}:v1`,
+  });
 }

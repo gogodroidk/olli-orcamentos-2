@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:olli:schema:location:v1",
+  "title": "OLLI Service Location v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["organization_id", "location_id", "client_id", "label", "status", "version", "updated_at"],
+  "properties": {
+    "organization_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "location_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "client_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "status": { "enum": ["active", "inactive"] },
+    "version": { "type": "integer", "minimum": 1 },
+    "updated_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }
+  }
+}

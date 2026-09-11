@@ -52,7 +52,7 @@ export interface ResumoAssinatura {
 	ativo: boolean;
 	/** Pago, porém a última cobrança FALHOU (past_due) — acesso mantido, mas tem que resolver. */
 	pagamentoFalhou: boolean;
-	origem?: "gratis" | "pagamento" | "admin";
+	origem?: "gratis" | "pagamento" | "admin" | "trial";
 }
 
 function mapearPlano(v: unknown): PlanoId {

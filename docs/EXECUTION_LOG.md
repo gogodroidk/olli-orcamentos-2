@@ -1,7 +1,96 @@
 # EXECUTION_LOG — OLLI Orçamentos
 
 > O que já foi ENTREGUE, com evidência (commit ou arquivo). Atualizar ao fim de cada onda.
-> Última atualização: 2026-07-12.
+> Última atualização: 2026-09-08.
+
+## Validação de staging, build e aparelho — 2026-09-08
+
+- O painel administrativo passou a exigir **AAL2 antes de qualquer leitura
+  global**: métricas, usuários, feedback, administradores, auditoria e detalhe
+  de usuário são bloqueados em AAL1 antes da consulta service-role. O HTML do
+  painel não tenta mais usar `/metrics` como teste de login; exibe um gate claro
+  de MFA e só revela os dados após a confirmação. `npm run test:admin-governanca`
+  passou com 34 verificações.
+- O histórico de versões ganhou uma outbox local por partição: `orcamento_versoes`
+  usa `espelho_pendente`, a migration local v4 preserva bancos existentes,
+  uploads confirmados limpam a marca e o `syncOnLogin` drena até 20 pendências por
+  retomada. `npm run test:versoes-espelho` passou com 12 verificações; falhas de
+  rede/contexto não são mais um tiro único.
+- O commit `0bda661f9000a348e9491f78d00848675aec7dd4` foi publicado no branch
+  `codex/piloto-p0` e o Cloudflare Git Build atualizou o Worker isolado para
+  `53697bb1-fc3f-405f-bdf6-55ee0b7b490e` (100% staging, deployment
+  `fa01b6e5-85ba-445f-afa9-815b36b1afbb`). O smoke público foi repetido com
+  sucesso; produção continua sem promoção.
+- O patch corretivo `67b7dae9cee599b683516d9cdc5b5fb2459053c0` também foi
+  publicado em staging: versão ativa observada `7add4339-840e-4bbd-a699-cc99bf73a19b`
+  (deployment `0d938610-705b-442a-aa37-676490c201ff`), 100% no Worker isolado;
+  o smoke foi repetido e permaneceu verde.
+- A tela `HojeScreen` deixou de baixar o histórico inteiro de orçamentos para
+  contar assinaturas pendentes e detectar movimento recente: agora usa um agregado
+  SQL de status e uma lista de datas. O contrato `test:hoje-agregado` passou com 4
+  verificações e `npm test` permaneceu verde.
+- O webhook Stripe ganhou limitador por IP antes do primeiro byte do corpo,
+  reutilizando o binding sensível `STRIPE_RL`; `/transcrever` ficou documentado
+  como coberto por teto incremental, rate limit e quota server-side. O novo teste
+  `test:stripe-webhook-gate` prova que 429 não consome o stream.
+- O primeiro reteste no `SM-G780F` encontrou uma regressão de ordem de abertura
+  da migration local: o índice de `espelho_pendente` era criado antes da coluna
+  em bancos antigos. O índice foi movido para depois de `runMigrations`; o APK
+  foi recompilado (`assembleDebug`), reinstalado preservando o banco existente e
+  abriu sem `ERR_INTERNAL_SQLITE_ERROR`, `no such column`, `FATAL EXCEPTION`,
+  `AndroidRuntime` ou `ReactNativeJS`. A suíte completa e o contrato do outbox
+  (13 checks) passaram após a correção.
+
+- Cloudflare Git Build do `olli-diagnostico-staging` está conectado ao repositório
+  `gogodroidk/olli-orcamentos-2`, branch `codex/piloto-p0`, previews desligados e
+  deploy restrito a `--env staging`. O primeiro build (`81e53bff-2918-4581-a274-905dc91ee866`)
+  terminou em **success**; a versão ativa apareceu como `85ddf947`.
+- `npm run staging:smoke` passou health `200`, CORS `204`, gates de método `405`,
+  shell admin `200`, sem efeitos colaterais. `npm run check:environments`, `npm test`,
+  `npm run typecheck`, build web (`pnpm build`), testes do Worker, `wrangler types`
+  e `wrangler types --check` também passaram; o dry-run do Worker foi executado sem deploy.
+- O APK debug foi compilado com `:app:assembleDebug`, instalado via ADB no
+  `SM-G780F` (`RX8NB033HXP`, Android 13/API 33), ligado ao Metro por
+  `adb reverse tcp:8081 tcp:8081` e aberto sem `FATAL EXCEPTION`, `AndroidRuntime`
+  ou `ReactNativeJS` após o bundle. A tela de login carregou e o e-mail de QA foi
+  preenchido; a senha não é lida nem armazenada pelo agente, portanto o login
+  autenticado continua um passo humano seguro.
+- O guard de assinatura agora é persistente no config plugin versionado
+  `plugins/withReleaseSigningGuard.js`, registrado em `app.json`: uma regeneração
+  limpa do Android reaplicou o guard, o `assembleDebug` passou e `assembleRelease`
+  sem keystore falhou antes de produzir artefato. A árvore `android/` continua
+  gerada/ignorada, mas não perde mais essa regra.
+- A tabela desktop de orçamentos ganhou paridade financeira: carrega recibos junto
+  da lista e mostra `Aguardando pagamento`, `Pago` ou `Recibo emitido` pelo mesmo
+  contrato de `src/services/pagamentos.ts`, com `FinanceiroBadge` acessível. O teste
+  C5 e a suíte completa permanecem verdes.
+- O checklist da tela Hoje agora anuncia papel `checkbox` e estado marcado para
+  leitores de tela; `test:acessibilidade-checklist` fecha a regressão sem adicionar
+  animação nova ou alterar o fluxo de dados.
+- Os KPIs desktop `Em aberto` e `Contas a receber` agora abrem a lista de orçamentos
+  com recorte contextual tipado e chip removível; o usuário não cai mais na lista
+  completa sem explicação. O contrato C5 verifica as duas rotas.
+- O badge financeiro também foi levado à lista mobile de orçamentos, atualizando os
+  recibos ao voltar à tela, no sync e no pull-to-refresh. Desktop e mobile agora
+  distinguem o mesmo trio de estados sem criar uma fonte de pagamento paralela.
+- O guard de onboarding/login que impede sobrescrever uma empresa remota foi
+  reconciliado como concluído: `EntrarScreen`, `OnboardingScreen` e `cloudSync`
+  mantêm `tem`/`nao_tem`/`nao_sei`, rechecagem antes da escrita e push fail-closed;
+  os testes de partição/equipe cobrem a decisão.
+- O PDF de orçamento passou a exibir também a entrada/sinal configurado (valor ou
+  percentual, data e saldo restante), limitado ao total e escapado; o laudo técnico
+  já existente continua no mesmo documento. `test:contrato-prestacao`, C5 e
+  `npm test` passaram após a alteração.
+- A UI de clientes ganhou o gate de papel `gerenciar_clientes`: técnicos continuam
+  com leitura/criação, enquanto edição, exclusão e lote ficam bloqueados com motivo
+  acessível.
+- A auditoria final confirmou que o restante desse item já estava no código: o
+  `cloudSync` resolve o tenant dos tombstones por tabela/papel e `OrdensDesktopScreen`
+  já falha fechado durante a resolução; a documentação foi reconciliada com os testes
+  de contexto/tenant.
+- O paywall Empresa também foi reconciliado como implementado: convite no Worker
+  consulta entitlement do owner, diferencia `sim`/`nao`/`erro`, retorna `402` sem
+  Empresa e preserva grandfathering; mobile/desktop mantêm o gate visual.
 
 ## 💰 DECISÃO F0d — grandfathering do paywall Empresa (2026-07-17)
 
@@ -438,6 +527,265 @@ chegaram ao mobile (badges PMOC, shimmer do skeleton, NovoOrcamentoScreen com `w
 (365KB) importado estático no boot; notificação de PMOC sem handler de toque (payload morto); MFA do admin; e
 drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 
+## Execução controlada — documentos, pagamento e marco de OS (2026-09-10)
+
+- PDF de orçamento: removido o QR code de aprovação; o HTML agora usa botões/link `Abrir e aprovar` e `Abrir e pedir ajuste`, mantendo o URL visível para cópia e a confirmação atômica na página pública.
+- Central de documentos: nova entrada em Conta reúne modelos/contratos/termos, recibos, OS, PMOC e certificado, apontando para os geradores oficiais sem duplicar lógica de PDF.
+- Ajuda oficial: adicionados artigos versionáveis sobre NFS-e nacional, PMOC e assinatura gov.br/ITI, com links oficiais e limites claros (sem guardar credenciais ou fingir emissão).
+- Financeiro: recebimentos agora são somados por orçamento; lançamentos abaixo do total aparecem como `Pagamento parcial`, o botão usa o saldo restante e só a quitação completa pode virar `Pago`/`Recibo emitido`.
+- Biblioteca de documentos: a Central agora cruza orçamentos, contratos/termos derivados, recibos, OS e PMOC em uma lista pesquisável com filtros de estado e origem; a projeção é read-only e não inventa PDF ou assinatura.
+- IA de catálogo: criado contrato puro de prévia para lotes de serviços/produtos com fonte HTTPS, data, cidade, confiança, deduplicação, limite de 50 itens e confirmação restrita a conta pessoal/dono; nenhum caminho escreve no banco.
+- Performance: a biblioteca de documentos passou a carregar somente páginas recentes (40 itens por origem) em vez de baixar histórico completo no foco da tela; o histórico completo continua nas telas próprias.
+- Persistência da biblioteca: criadas as tabelas locais `documentos`/`documento_versoes`, backup/restore/logout seguro, migration Supabase `20260910160000_document_library` com RLS fail-closed e sync app↔nuvem para registro e versões.
+- A biblioteca visual mescla a projeção recente com registros persistidos; ao abrir a prévia de contrato/garantia/conclusão, o orçamento passa a ter um registro versionado local, sem sobrescrever documentos já enviados/assinados.
+- Exportação: o PDF nativo agora devolve a URI salva e a prévia marca o registro como enviado/assinado após a entrega; na web o status é rastreado mesmo quando o navegador escolhe o destino do print.
+- Recibos: criação e segunda via agora registram o recibo na biblioteca; após exportar o PDF, o artefato é associado sem bloquear a entrega se o índice local falhar.
+- OS/PMOC: conclusão de uma OS e aprovação operacional de uma versão PMOC criam registros de biblioteca de forma best-effort, mantendo a distinção entre documento organizado e certificação legal.
+- Integridade: versões de documento passaram a ser `INSERT OR IGNORE` localmente e no pull, preservando o contrato append-only mesmo em retries ou sync duplicado.
+- Pagamentos: `registrarPagamento` agora exige orçamento aprovado/convertido, valor/data/forma válidos e rejeita recebimento acima do saldo; a UI informa quitação apenas quando a soma realmente fecha o total.
+- RLS documental: migration `20260910170000_document_library_no_hard_delete` removeu o DELETE direto de documentos para clientes autenticados; o caminho de usuário fica em arquivamento/soft-delete com trilha.
+- Ownership documental: migration `20260910180000_document_library_freeze` adicionou FK composta pai/filho, bloqueio de troca de tenant/criador e triggers que impedem reescrever documento congelado ou versão existente.
+- Storage: migration `20260910190000_storage_documents_immutable` retirou update/delete de usuários autenticados para `olli-documentos`; logos e fotos mantêm o fluxo editável.
+- Grants Data API: migration `20260911100000_document_library_grants` revogou grants padrão de `anon`/`authenticated` e liberou somente SELECT/INSERT/UPDATE previstos para documentos (sem DELETE) e SELECT/INSERT para versões; privilégios service_role ficaram separados.
+- QA web: Playwright passou em desktop (1280×720) e mobile (390×844), sem console/page errors; ambas as rotas pararam honestamente no login demo (`authRequired=true`) e não fingiram fluxo autenticado.
+- Segurança de dependências: OSV Scanner ficou sem vulnerabilidades nos locks do app, Worker e painel após `sharp` 0.35.4 e `js-yaml` 4.3.2. Gitleaks encontrou somente chaves públicas anon/JWT já presentes no histórico; não foi encontrado segredo de serviço no escopo desta rodada.
+- App mobile: criado registro rápido de pagamento com valor, data e forma; o badge financeiro `Pago` permanece separado do status comercial do orçamento.
+- Ordem de serviço: adicionado `concluido_em` no tipo, SQLite v5, sync app↔Supabase, painel web e KPIs; transição repetida preserva o marco, reabertura limpa e reconclusão cria outro.
+- Staging Supabase: migration `20260908112342_ordens_servico_concluido_em` aplicada e reparada como `applied`; coluna e índice verificados. Produção não foi tocada.
+- Worker staging: versão `ee5e349c-e22a-4ddc-ba4a-2d69d52acd65`, deployment `bc556d42-1af6-4018-8d5b-97d838e3ea61`, tráfego 100% no `workers.dev`; `npm run staging:smoke` passou com `sideEffects: none`.
+- Validação: `npm run typecheck`, `npm test` (exit 0), build web, suíte automatizada completa (188 checks no meta-gate), APK debug instalado no SM-G780F/API 33; Home e Central de Documentos abriram no aparelho (`artifacts/device-sm-g780f-documentos-final.png`) sem fatal/erro SQLite. Permanecem warnings conhecidos de ciclos de import e debugger do Expo.
+- Supabase staging: a migration `20260910143000_fix_ia_quota_lint` corrigiu os casts de RPC, a referência de conflito da cota diária e a variável morta; `supabase db lint` agora retorna `No schema errors found`.
+
+## Revalidação e execução multiagente — 2026-09-11
+
+- Três auditorias independentes foram executadas em paralelo (documentos/IA,
+  financeiro/RLS e QA/release) sem editar o repositório. Os achados foram
+  incorporados somente após revisão central.
+- Corrigido o último erro de compilação da Central de Documentos (`OlliButton`)
+  e adicionado detalhe seguro, histórico, abertura de PDF, arquivamento com
+  confirmação e fallback de origem.
+- Aplicadas no Supabase staging as migrations `financial_integrity_guards`,
+  `validate_financial_constraints` e `document_storage_key`. CHECKs validados,
+  trigger de saldo ativo, colunas de chave de Storage presentes; produção não
+  foi tocada.
+- O Storage privado ganhou decoder base64 sem `atob` global (compatível com
+  Hermes), hash SHA-256 no PDF nativo e chave persistente para regenerar URL
+  assinada em outro aparelho. Pai + versão da biblioteca agora são gravados em
+  transação SQLite.
+- A Central de Documentos foi adicionada ao painel web com busca/filtros,
+  estados, origem, versão e indicação de arquivo privado.
+- O chat mobile ganhou o modo "Preparar alteração" com prévia persistida,
+  confirmação/cancelamento/reversão e mensagem explícita de que nada muda sem
+  confirmação; o Worker já tinha a allowlist/RBAC/CAS correspondente.
+- O formulário web e a emissão nativa de recibos passaram a bloquear valor acima
+  do saldo; o estado financeiro foi separado do status comercial e os controles
+  financeiros receberam gate de papel.
+- Evidências: `npm run typecheck`, `npm test`, `npm run test:c5-orcamentos-financeiro`,
+  `npm run test:c8-ia-segura`, `npm run test:storage-provider`,
+  `npm run test:biblioteca-documentos`, `npm run test:ia-importacao-segura`,
+  build `webapp` e `npm run staging:smoke` passaram. Debug APK recompilado e
+  instalado no SM-G780F/API 33; Home, Conta, Central de Documentos e modo
+  preparar do Chat abriram sem fatal/erro SQLite. O build release foi bloqueado
+  corretamente pelo guard de assinatura, que continua gate humano.
+
+## Ledger financeiro e comprovante — execução 2026-09-11
+
+- Criada a tabela `public.pagamentos` no staging com evento append-only,
+  idempotência `(user_id, idempotency_key)`, saldo por orçamento sob `FOR UPDATE`,
+  estados `registrado/estornado`, motivo/ator obrigatórios no estorno e sem
+  DELETE para clientes.
+- Grants Data API do ledger foram fechados para `anon`/`PUBLIC`; authenticated
+  recebe apenas SELECT/INSERT/UPDATE sob RLS. A RPC
+  `registrar_pagamento_financeiro` está disponível somente para authenticated;
+  funções de trigger não são executáveis pelo cliente.
+- Mobile e web passaram a chamar o ledger antes do upsert do recibo quando há
+  sessão; falha transitória fica em `ledgerStatus=pendente`, erro de regra bloqueia
+  o lançamento. O recibo preserva `pagamentoId`/idempotency e não afirma nuvem
+  confirmada quando não há confirmação.
+- O modal mobile permite anexar imagem de comprovante; o painel web aceita
+  PDF/imagem, calcula SHA-256 e envia ao bucket privado `olli-documentos`,
+  mantendo chave/hash/tipo/tamanho no evento e no blob compatível.
+- O estado financeiro ignora recibos marcados como estornados e o detalhe exibe
+  aviso de sincronização pendente sem duplicar cobrança.
+- Verificações do ledger: `npm run test:ledger-pagamentos` e `npm run typecheck`
+  passaram; staging confirmou colunas, policies, grants, RPC e trigger.
+- Teste transacional adicional em tabela temporária (com `ROLLBACK`) encontrou e
+  fechou a borda de INSERT que comparava `OLD` indevidamente; também foi provado
+  que INSERT já estornado, UPDATE de valor e DELETE são rejeitados, enquanto a
+  transição registrada→estornado com ator/motivo válidos passa.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
+
+## Continuação — vínculo ledger/recibo, rollback de importação e QA web (2026-09-11)
+
+- Criada a migration versionada `20260911124652_payments_ledger_receipt_link` e
+  aplicada somente no Supabase staging `sbpkutknpywezeagioon`; o histórico remoto
+  foi reparado como `applied` pelo CLI autenticado. Produção permaneceu intocada.
+- O vínculo ledger↔recibo agora é uma transição única `NULL → id` protegida por
+  trigger: exige recibo do mesmo tenant, rejeita segundo vínculo e não permite
+  alterar valor, orçamento, forma, comprovante ou estado junto. A RPC é
+  `SECURITY INVOKER`, com `EXECUTE` apenas para `authenticated`.
+- Mobile e painel web gravam o recibo e, em seguida, tentam concluir o vínculo;
+  `ledgerReciboVinculado` fica falso quando a nuvem ainda não confirmou o espelho.
+  O sincronizador do app reprocessa tanto pendências quanto vínculos ainda abertos,
+  sem criar outro evento graças à chave de idempotência.
+- QA transacional em `scripts/qa-ledger-receipt-link.sql` criou usuário/recibos de
+  teste dentro de uma transação e confirmou vínculo idempotente, bloqueio de edição,
+  bloqueio de `DELETE` e rollback; consulta posterior comprovou zero resíduos.
+- A Central de Dados web passou a guardar o snapshot anterior de cada linha e a
+  fazer compensação em ordem reversa quando uma mutation falha. Inclusões usam
+  lixeira (soft-delete), atualizações restauram o valor anterior e qualquer falha
+  de compensação é mostrada ao operador.
+- O harness Playwright (`scripts/qa-web.mjs`) agora grava rota/status final,
+  DOMContentLoaded/load, quantidade de recursos e bytes transferidos em
+  `qa-artifacts/qa-web-results.json`. Desktop `1280×720` e mobile `390×844`
+  chegaram ao guard `/auth/login` sem console/page errors; como não há credencial
+  demo disponível nesta sessão, o resultado permanece explicitamente
+  `authRequired=true`, sem fingir E2E autenticado.
+- Gates executados após a alteração: `npm run typecheck`,
+  `npm run test:ledger-pagamentos`, `npm run test:importacao-rollback`,
+  `npm run check:environments` e `npm run qa:web` (todos passaram).
+
+## Prévia IA de catálogo e editor persistido (2026-09-11)
+
+- O Worker recebeu `POST /ia/importacao/preview`: autenticação JWT, cota/rate-limit
+  existentes, texto limitado a 12.000 caracteres, no máximo 50 itens, fontes
+  exclusivamente HTTPS fornecidas pelo usuário e resposta JSON Schema estrita.
+  O retorno é uma prévia `aguardando_confirmacao` com `requiresReview=true`;
+  nenhum catálogo, preço, cliente ou orçamento é gravado.
+- O painel passou a exibir um editor para documentos em `rascunho/pronto`. O
+  snapshot inteiro é lido do blob e salvo pela RPC
+  `editar_documento_rascunho`, que cria a próxima versão e atualiza o ponteiro
+  na mesma transação; `enviado/assinado/arquivado` são rejeitados pelo banco.
+- A migration `20260911130917_documento_editor_rascunho` foi aplicada e reparada
+  como `applied` somente no staging. A QA transacional criou documento/versão
+  sintéticos, confirmou a nova versão e o bloqueio após envio, e terminou com
+  `ROLLBACK` (zero resíduos).
+- Worker staging foi publicado manualmente (sem Git Build) em
+  `olli-diagnostico-staging.workers.dev`, versão
+  `52ceba62-0bf1-4797-a272-a74907275ae4`, 100% do tráfego isolado em
+  `workers.dev`; smoke passou health, CORS, method gates (incluindo a nova rota),
+  shell admin e `sideEffects: none`. A IA permanece `off` no staging porque não
+  há secret de provedor habilitado nesta janela.
+- Evidências novas: `npm run test:ia-importacao-worker`,
+  `npm run test:rotas-metodo` (51), `npm run test:biblioteca-documentos` (14),
+  `npm run test:ledger-pagamentos`, `npm run test:importacao-rollback`,
+  `npm run typecheck`, build web, dry-run/deploy Wrangler e `npm run staging:smoke`.
+- Smoke Android reproduzível (`npm run qa:android`) no `SM-G780F`
+  (`RX8NB033HXP`, Android 13/API 33) passou com primeiro frame em 4,932 s,
+  sem FATAL/SQLite/Metro error e screenshot estabilizado em
+  `artifacts/device-sm-g780f-qa-latest.png`. O script aguarda a hidratação do
+  SQLite/Metro antes da captura para não registrar a tela de splash como vazia.
+
+## Força total — doctor Expo e menor privilégio PMOC (2026-09-11)
+
+- `expo-doctor` inicialmente encontrou 23 patches desalinhados no SDK 57. O
+  `npx expo install --fix` oficial atualizou Expo para `57.0.22` e os módulos
+  compatíveis; `npm run doctor` agora passa em 20/20 verificações e o lockfile foi
+  atualizado sem vulnerabilidades reportadas pelo npm.
+- O upgrade revelou e corrigiu o contrato de permissões de notificação em
+  `src/services/agenda.ts`: Expo 57 expõe `granted`, não `status`. Typecheck e
+  build web voltaram a passar.
+- A auditoria de segurança identificou que a fábrica PMOC permitia DELETE a
+  qualquer membro ativo. A migration `20260911135510_pmoc_delete_least_privilege`
+  restringe cabeçalhos a dono/admin/gestor e remove DELETE de tokens e versões
+  históricas para usuários autenticados. Teste com owner + técnico sintéticos,
+  `SET LOCAL ROLE authenticated` e `ROLLBACK` comprovou que o técnico não apaga
+  ativo; consulta posterior encontrou zero resíduos.
+
+## Força total — arquivos privados, PKCE e harness Android (2026-09-11)
+
+- A Central de Documentos web agora gera URL assinada de 15 minutos para
+  `arquivo_chave` do bucket `olli-documentos`, com validação de bucket/tenant/
+  categoria, loading e erro acessíveis. A chave nunca é exibida como URL pública.
+- O editor limita o texto a 200.000 caracteres e mostra contador para evitar
+  travamento perceptual; a RPC continua impondo limite de 1 MiB no JSON.
+- O helper inerte de Google Agenda trocou `Math.random` por `expo-crypto`
+  `getRandomValues` com rejeição de viés; a flag nativa permanece desligada até
+  OAuth HTTPS e build assinado serem homologados.
+- O smoke Android passou a configurar `adb reverse` e abrir o dev client com
+  `127.0.0.1:8081`, eliminando dependência de Wi‑Fi/LAN. A execução final no
+  `RX8NB033HXP` passou em 4,807 ms de primeiro frame, aguardou 25 s de hidratação,
+  capturou a Home e não encontrou FATAL/SQLite/Metro error.
+
+## Força total — alinhamento final de staging (2026-09-11)
+
+- A migration `20260911141612_remove_duplicate_ia_quota_indexes` foi aplicada e
+  reparada como `applied` somente no staging. Ela remove os três índices UNIQUE
+  legados que duplicavam as constraints de chave primária das cotas IA; as
+  constraints `_pkey` permanecem intactas. O advisor de performance deixou de
+  reportar os avisos de índices duplicados.
+- O advisor de performance ainda sinaliza múltiplas policies permissivas nas
+  tabelas legadas `contadores`, `empresa`, `exclusoes`, `produtos`, `recibos` e
+  `servicos`. Elas são uma combinação de policies de compartilhamento e dono;
+  não foram fundidas automaticamente porque isso mudaria o contrato de acesso.
+  A revisão estrutural ficou registrada como gate posterior, sem novos avisos
+  de segurança introduzidos nesta rodada.
+- O manifesto de ambientes aponta `20260911141612` como a última migration
+  aplicada em staging. Produção continua sem migration, deploy, segredo novo ou
+  alteração de cobrança.
+- Validação final: `npm run doctor` (20/20), `npm run typecheck`, `npm test`
+  (inclui a suíte completa), `pnpm build` do painel, `npm audit --omit=dev`
+  (0 vulnerabilidades), types/dry-run do Wrangler e `npm run staging:smoke`
+  passaram.
+- `supabase db lint --linked` retornou **No schema errors found**. A consulta
+  de policies confirmou quatro DELETE de gestão (`assets`, `service_contracts`,
+  `pmoc_plans`, `pmoc_ordens_geradas`) e nenhum DELETE para tokens/versões;
+  as três constraints `_pkey` das cotas continuam presentes após a limpeza.
+- QA web em desktop `1280×720` e mobile `390×844`: HTTP 200, sem console/page
+  errors e carregamento dentro do orçamento; sem credencial demo disponível,
+  ambos pararam honestamente em `/auth/login` (`authRequired=true`).
+- QA Android final no `SM-G780F`/`RX8NB033HXP`: primeiro frame em 17,058 ms
+  (limite 20 s), hidratação aguardada por 25 s, Home capturada e zero
+  `FATAL EXCEPTION`, `SQLiteException` ou erro de Metro. Avisos de desenvolvimento
+  (ciclos de import e `LayoutAnimation` no New Architecture) permanecem não
+  fatais e não foram tratados como sucesso silencioso.
+
+## Autopilot IA — primeira fatia multimodal (2026-09-11)
+
+- A pesquisa de repositórios e runtimes foi consolidada em
+  `docs/PLANO_AUTOPILOT_IA_2026-09-11.md`. A decisão é usar o
+  `env.AI.toMarkdown` do Cloudflare para arquivos pequenos e o normalizador
+  Structured Output existente; Docling/PaddleOCR ficam fora do Worker, em job
+  isolado, até haver corpus e limites de parser comprovados.
+- O Worker recebeu `POST /ia/autopilot/preview`. Ele aceita texto colado ou um
+  único PDF/PNG/JPG/WEBP/TXT/CSV/JSON de até 4 MiB, valida MIME/base64/magic
+  bytes, calcula SHA-256, converte PDF/imagem com `toMarkdown` quando disponível
+  e retorna clientes, produtos, serviços, itens de orçamento e documentos com
+  confiança/evidência. A prévia é sempre `aguardando_confirmacao`,
+  `requiresReview=true` e `persistida=false`.
+- O staging ganhou o flag explícito `AUTOPILOT_WORKERS_AI_ENABLED=true` para
+  usar o modelo open-weight `@cf/google/gemma-4-26b-a4b-it` quando o secret do
+  OpenRouter não estiver provisionado. A cota/rate-limit e a cobrança pós-
+  sucesso continuam passando pelo caminho comum; nenhum provider é escolhido
+  pelo arquivo ou pelo modelo.
+- O painel web passou a exibir o Autopilot na Central de Dados e no Assistente:
+  anexo, texto colado, intenção, referências privadas do catálogo, confiança,
+  evidência, avisos e prévia. O usuário pode abrir um orçamento rascunho com
+  vários itens ou confirmar somente inclusões novas de clientes/produtos/
+  serviços; duplicidades e preço zero são preservados, e falha de inclusão tenta
+  compensação reversa.
+- O app recebeu a tela `AutopilotScreen`, acessível pela Conta e por um atalho
+  no Chat. Ela usa DocumentPicker/ImagePicker, mostra a fonte e a revisão e
+  leva todos os itens válidos ao editor de orçamento sem salvar automaticamente.
+  A voz web ganhou push-to-talk com Web Speech API; não há escuta contínua nem
+  captura em segundo plano.
+- Testes novos: `test:ia-autopilot`, `test:ia-autopilot-web` e
+  `test:ia-autopilot-mobile`. Todos cobrem texto/PDF, Workers AI fallback,
+  magic bytes, limites, prompt injection, preview-only, navegação e ausência de
+  mutação automática. Typecheck web/mobile e build do painel passaram.
+- O Worker staging foi publicado com a rota nova e o flag `autopilot: on` no
+  health público: versão `6a6b5859-a5ff-4319-b8f6-c78d555b48b7`, deployment
+  `0cc0a0db-26f9-42f3-9011-8318b1a4e16e`, 100% isolado em `workers.dev`.
+  `GET /ia/autopilot/preview` responde 405 com o método correto e POST sem JWT
+  responde 401; nenhum arquivo ou dado foi gravado durante o smoke.
+- O smoke não foi apresentado como inferência autenticada: o ambiente staging
+  ainda exige o secret de serviço/cota e uma conta de teste própria para o
+  canário. Nenhuma credencial de produção foi copiada ou provisionada.
+- Após incluir `expo-document-picker`, `npx expo run:android --variant debug`
+  terminou `BUILD SUCCESSFUL`, instalou o APK `1.1.2` no `RX8NB033HXP` e o
+  `npm run qa:android` repetido com o Metro aquecido passou em 5,221 ms, sem
+  FATAL/SQLite/Metro error. A primeira tentativa fria (bundle de 17,667 ms)
+  ficou registrada como incompleta e não foi contada como aprovação.

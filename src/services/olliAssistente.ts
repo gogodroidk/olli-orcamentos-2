@@ -368,6 +368,38 @@ export interface ChatMensagem {
 export interface ChatResultado {
   ok: boolean;
   resposta: string;
+  /** A cota grátis acabou e o servidor exige consentimento/saldo de crédito. */
+  semCreditos?: boolean;
+  /** Prévia persistida; nunca é aplicada durante o /chat. */
+  rascunho?: RascunhoAcaoChat;
+}
+
+export interface MudancaAcaoChat {
+  field: string;
+  before: string | number | boolean | null;
+  after: string | number | boolean | null;
+}
+
+/** Token fica somente em memória da tela; não é salvo no histórico do chat. */
+export interface RascunhoAcaoChat {
+  id: string;
+  confirmationToken: string;
+  scope: string;
+  targetLabel: string;
+  summary: string;
+  changes: MudancaAcaoChat[];
+  status: 'aguardando_confirmacao' | 'aplicada' | 'cancelada' | 'revertida';
+}
+
+export type ModoChat = 'consulta' | 'rascunho_acao';
+
+export interface ChatOpcoesCredito {
+  /** Consentimento explícito do usuário para gastar 1 crédito nesta tentativa. */
+  confirmarCredito?: boolean;
+  /** Chave estável reaproveitada nos retries para a cobrança ser idempotente. */
+  creditoRef?: string;
+  /** O modo de ação só prepara diff; a aplicação passa por endpoint separado. */
+  modo?: ModoChat;
 }
 
 const CHAT_SEM_IA =
@@ -384,10 +416,14 @@ const CHAT_CANCELADO =
  * `mensagens` deve conter a conversa inteira (a do usuário já incluída no fim).
  * Nunca lança: em erro devolve `{ ok:false, resposta }` com texto amigável.
  *
- * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
- * (botão "Cancelar" durante o loading).
+ * `sinalCancelamento` permite cancelamento manual. `opcoesCredito` só é enviado
+ * quando houve consentimento explícito; saldo positivo nunca é consentimento.
  */
-export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: AbortSignal): Promise<ChatResultado> {
+export async function enviarChat(
+  mensagens: ChatMensagem[],
+  sinalCancelamento?: AbortSignal,
+  opcoesCredito?: ChatOpcoesCredito,
+): Promise<ChatResultado> {
   if (!DIAGNOSTICO_URL) return { ok: false, resposta: CHAT_SEM_IA };
 
   // O Worker exige login (JWT do Supabase). Sem sessão → mensagem amigável.
@@ -402,7 +438,12 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
   sinalCancelamento?.addEventListener('abort', onCancelar);
   try {
     const corpo: Record<string, unknown> = { mensagens };
+    if (opcoesCredito?.modo === 'rascunho_acao') corpo.modo = 'rascunho_acao';
     if (vertical) corpo.vertical = vertical;
+    if (opcoesCredito?.confirmarCredito === true) corpo.confirmarCredito = true;
+    if (opcoesCredito?.confirmarCredito === true && opcoesCredito.creditoRef?.trim()) {
+      corpo.creditoRef = opcoesCredito.creditoRef.trim();
+    }
     const r = await fetch(`${DIAGNOSTICO_URL}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -412,16 +453,19 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
     if (!r.ok) {
       const errData = await r.json().catch(() => null);
       if (respostaSemCreditos(r.status, errData)) {
-        return { ok: false, resposta: SEM_CREDITOS_VOZ };
+        return { ok: false, resposta: SEM_CREDITOS_VOZ, semCreditos: true };
       }
       return { ok: false, resposta: mensagemPorStatus(r.status, CHAT_FALHOU, errData?.erro) };
     }
     const data: any = await r.json();
     if (data?.ok && typeof data.resposta === 'string') {
       track(Eventos.aiUsed, { fonte: 'chat' });
-      return { ok: true, resposta: data.resposta };
+      const rascunho = normalizarRascunhoAcaoChat(data.rascunho);
+      return { ok: true, resposta: data.resposta, ...(rascunho ? { rascunho } : {}) };
     }
-    if (respostaSemCreditos(r.status, data)) return { ok: false, resposta: SEM_CREDITOS_VOZ };
+    if (respostaSemCreditos(r.status, data)) {
+      return { ok: false, resposta: SEM_CREDITOS_VOZ, semCreditos: true };
+    }
     return { ok: false, resposta: mensagemErroIA(data?.erro, CHAT_SEM_IA) };
   } catch (e: any) {
     if (e?.name === 'AbortError') {
@@ -433,3 +477,66 @@ export async function enviarChat(mensagens: ChatMensagem[], sinalCancelamento?: 
     sinalCancelamento?.removeEventListener('abort', onCancelar);
   }
 }
+
+function normalizarRascunhoAcaoChat(valor: unknown): RascunhoAcaoChat | undefined {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return undefined;
+  const bruto = valor as Record<string, unknown>;
+  const texto = (v: unknown, limite: number) => typeof v === 'string' && v.trim() && v.length <= limite ? v.trim() : '';
+  const id = texto(bruto.id, 160);
+  const confirmationToken = texto(bruto.confirmationToken, 160);
+  const scope = texto(bruto.scope, 40);
+  const targetLabel = texto(bruto.targetLabel, 160);
+  const summary = texto(bruto.summary, 240);
+  if (!id || !confirmationToken || !scope || !targetLabel || !summary || bruto.status !== 'aguardando_confirmacao' || !Array.isArray(bruto.changes) || bruto.changes.length < 1 || bruto.changes.length > 6) return undefined;
+  const changes: MudancaAcaoChat[] = [];
+  for (const item of bruto.changes) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return undefined;
+    const change = item as Record<string, unknown>;
+    const field = texto(change.field, 80);
+    const valido = (v: unknown): v is string | number | boolean | null => v === null || typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v));
+    if (!field || !valido(change.before) || !valido(change.after)) return undefined;
+    changes.push({ field, before: change.before, after: change.after });
+  }
+  return { id, confirmationToken, scope, targetLabel, summary, changes, status: 'aguardando_confirmacao' };
+}
+
+export type ResultadoAcaoChat =
+  | { ok: true; status: RascunhoAcaoChat['status']; podeReverter?: boolean }
+  | { ok: false; mensagem: string };
+
+async function chamarAcaoChat(endpoint: 'confirmar' | 'cancelar' | 'reverter', rascunho: RascunhoAcaoChat): Promise<ResultadoAcaoChat> {
+  if (!DIAGNOSTICO_URL) return { ok: false, mensagem: CHAT_SEM_IA };
+  const token = await accessTokenAtual();
+  if (!token) return { ok: false, mensagem: PRECISA_LOGIN };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_CHAT_MS);
+  try {
+    const response = await fetch(`${DIAGNOSTICO_URL}/ia/acoes/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ actionId: rascunho.id, confirmationToken: rascunho.confirmationToken }),
+      signal: controller.signal,
+    });
+    const data: any = await response.json().catch(() => null);
+    if (response.ok && data?.ok === true && ['aplicada', 'cancelada', 'revertida'].includes(data.status)) {
+      return { ok: true, status: data.status, podeReverter: data.podeReverter === true || data.status === 'aplicada' };
+    }
+    const erros: Record<string, string> = {
+      confirmacao_invalida: 'A confirmação não corresponde à prévia. Gere outra alteração.',
+      permissao_atual_invalida: 'Seu papel ou vínculo mudou; a alteração foi bloqueada.',
+      acao_expirada: 'Esta prévia expirou. Peça à OLLI para preparar outra.',
+      registro_alterado_desde_previa: 'O registro mudou desde a prévia. Revise antes de tentar de novo.',
+      registro_alterado_apos_aplicacao: 'O registro foi alterado depois da aplicação; o desfazer foi bloqueado.',
+      estado_invalido: 'Esta ação já foi decidida e não pode repetir essa etapa.',
+    };
+    return { ok: false, mensagem: erros[data?.erro] ?? 'A ação não foi concluída. Nada adicional foi alterado.' };
+  } catch (e: any) {
+    return { ok: false, mensagem: e?.name === 'AbortError' ? CHAT_TIMEOUT : OFFLINE };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export const confirmarAcaoChat = (rascunho: RascunhoAcaoChat) => chamarAcaoChat('confirmar', rascunho);
+export const cancelarAcaoChat = (rascunho: RascunhoAcaoChat) => chamarAcaoChat('cancelar', rascunho);
+export const reverterAcaoChat = (rascunho: RascunhoAcaoChat) => chamarAcaoChat('reverter', rascunho);

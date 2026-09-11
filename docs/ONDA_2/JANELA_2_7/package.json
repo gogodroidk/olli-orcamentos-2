@@ -1,0 +1,9 @@
+{
+  "name": "olli-onda-2-janela-2-7-renderer-acceptance-local",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/acceptance-kernel.test.mjs",
+    "coverage": "node --experimental-test-coverage --test tests/acceptance-kernel.test.mjs"
+  }
+}

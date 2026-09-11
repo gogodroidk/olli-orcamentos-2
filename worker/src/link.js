@@ -344,7 +344,7 @@ export async function responderLink(token, request, env) {
 // o evento 'visualizado' com ip_hash/user-agent; quando ausente, o evento ainda é
 // gravado (sem enriquecimento). Assim a trilha funciona independentemente disso.
 /**
- * `?acao=aprovar|recusar` vem dos QR codes do PDF. Ele SÓ PRÉ-SELECIONA a ação na
+ * `?acao=aprovar|recusar` vem dos botões/links do PDF. Ele SÓ PRÉ-SELECIONA a ação na
  * página: rola até os botões e, no caso de recusa, abre o campo de motivo. NUNCA
  * envia.
  *
@@ -514,7 +514,7 @@ function pageOrcamento(row, preSelecao = '') {
   }).join('');
 
   const conds = [];
-  if (d.condicoesPagamento) conds.push(`<div class="cond"><div class="cond-l">Pagamento</div><div class="cond-v">${esc(d.condicoesPagamento)}</div></div>`);
+  if (d.condicoesPagamento) conds.push(`<div class="cond"><div class="cond-l">Condições comerciais</div><div class="cond-v">${esc(d.condicoesPagamento)}</div></div>`);
   if (d.garantia) conds.push(`<div class="cond"><div class="cond-l">Garantia</div><div class="cond-v">${esc(d.garantia)}</div></div>`);
   if (d.prazo) conds.push(`<div class="cond"><div class="cond-l">Prazo</div><div class="cond-v">${esc(d.prazo)}</div></div>`);
   const condsHtml = conds.length ? `<div class="conds">${conds.join('')}</div>` : '';
@@ -594,6 +594,7 @@ function pageOrcamento(row, preSelecao = '') {
       <div class="title">Você recebeu um orçamento de ${esc(nomePrestador)}</div>
       <div class="meta">
         ${numero ? `<span class="meta-txt">Nº ${esc(numero)}</span>` : ''}
+        ${d.revisaoDeNumero ? `<span class="pill">Revisão do nº ${esc(d.revisaoDeNumero)}</span>` : ''}
         ${emitido ? `<span class="meta-txt">· ${esc(emitido)}</span>` : ''}
         ${validadePill}
       </div>
@@ -656,7 +657,7 @@ function pageOrcamento(row, preSelecao = '') {
       alert('Não consegui registrar agora. Verifique a internet e tente de novo.');
     }
 
-    // Pré-seleção vinda do QR do PDF (?acao=). NÃO envia nada: rola até as ações e,
+    // Pré-seleção vinda do botão/link do PDF (?acao=). NÃO envia nada: rola até as ações e,
     // na recusa, abre o campo de motivo. O cliente ainda confirma com um toque.
     (function(){
       var acao = ${JSON.stringify(preSelecao)};

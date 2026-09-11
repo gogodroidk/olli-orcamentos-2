@@ -235,6 +235,7 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
 		titulo: o.titulo ?? null,
 		descricao: o.descricao ?? null,
 		status: o.status,
+		concluido_em: o.concluidoEm ?? null,
 		tecnico_id: o.tecnicoId ?? null,
 		tecnico_nome: o.tecnicoNome ?? null,
 		data_agendada: o.dataAgendada ?? null,

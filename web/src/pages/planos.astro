@@ -22,6 +22,7 @@ import {
 	PRECO_PRO,
 	reais,
 } from "../data/planos";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
@@ -46,7 +47,8 @@ const doze =
 /**
  * FAQ DE DECISÃO — as perguntas que travam a assinatura, respondidas com a VERDADE
  * lida do código e dos Termos:
- *  - grátis sem prazo → entitlements (ilimitado) + Termos §4 (plano gratuito existe);
+ *  - grátis sem prazo → entitlements (histórico/rascunhos sem limite, envios com
+ *    cota mensal) + Termos §4 (plano gratuito existe);
  *  - cartão só no pago → Termos §4 (pagamento pela Stripe);
  *  - cancelamento → Termos §5 (portal Stripe; acesso até o fim do período pago;
  *    volta ao grátis; sem multa; arrependimento de 7 dias, CDC art. 49);
@@ -56,11 +58,11 @@ const doze =
 const faq = [
 	{
 		q: "O plano Grátis acaba depois de um tempo?",
-		a: "Não. O Grátis não é teste de 7 dias — é grátis sem prazo pra acabar. Orçamento, ordem de serviço, recibo, cliente e agenda ficam ilimitados, sem cartão e sem fidelidade. O único limite é a IA de diagnóstico, com 3 usos por mês.",
+		a: `Não. O Grátis é permanente: rascunhos, ordem de serviço, recibos, clientes e histórico ficam sem limite. Você pode enviar ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos por mês, e a IA tem 3 usos mensais. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Preciso de cartão de crédito para começar?",
-		a: "Para o Grátis, não — você cria a conta e já usa. O cartão só entra quando você escolhe assinar o Pro ou o Empresa, e o pagamento é processado pela Stripe.",
+		a: "Não. Tanto o Grátis permanente quanto o teste Pro opcional de 14 dias começam sem cartão. Só pedimos cartão quando você decide assinar um plano pago pela Stripe; o teste não renova nem cobra automaticamente.",
 	},
 	{
 		q: "Posso cancelar quando quiser?",
@@ -114,15 +116,15 @@ const schemaBreadcrumb = {
 			<a href="/#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
 			<a href="/#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
 		</div>
-		<a href={APP_URL} class="rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-		<a href={APP_CADASTRO_URL} class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+		<a href={APP_URL} class="inline-flex min-h-11 items-center rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+		<a href={APP_CADASTRO_URL} class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
 	</Header>
 
 	<main id="conteudo">
 		<!-- ══════════ HERO ══════════ -->
 		<section class="mx-auto max-w-4xl px-6 pb-8 pt-14 text-center">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="hover:text-brand-fg">Início</a>
+				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
 				<span class="text-slate">Planos</span>
 			</nav>

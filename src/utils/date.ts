@@ -76,6 +76,20 @@ export function parseDateBR(br: string): string {
 }
 
 /**
+ * Converte uma data civil brasileira para um instante ISO seguro para colunas
+ * `timestamptz`. Meio-dia UTC é deliberado: ao exibir o dia em fusos brasileiros
+ * (e na maioria dos fusos civis), a conversão não atravessa a meia-noite.
+ *
+ * Data ausente ou inválida vira `null` — nunca enviamos `DD/MM/AAAA` diretamente
+ * ao Postgres, pois o parser do servidor pode rejeitar ou interpretar mês/dia na
+ * ordem errada.
+ */
+export function dataBrParaIsoSeguro(br: string | null | undefined): string | null {
+  const iso = parseDateBR(br ?? '');
+  return iso ? `${iso}T12:00:00.000Z` : null;
+}
+
+/**
  * Parseia 'HH:mm' em `{ hours, minutes }` (números) para alimentar o
  * TimePickerModal (react-native-paper-dates). String vazia/inválida → `{}`,
  * que o TimePickerModal interpreta como "usar a hora atual do aparelho".

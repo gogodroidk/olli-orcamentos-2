@@ -12,10 +12,14 @@ const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 const AUDIO_BASE64_MAX_CHARS = 4_000_000;
 
 export const OPENROUTER_MODELOS_PADRAO = Object.freeze([
-  'google/gemma-4-26b-a4b-it:free',
-  'openai/gpt-oss-20b:free',
-  'google/gemma-4-31b-it:free',
-  'nvidia/nemotron-nano-9b-v2:free',
+  // Todos são gratuitos, texto→texto e anunciam `response_format` +
+  // `structured_outputs` no catálogo oficial. Isso é obrigatório porque a
+  // mesma cadeia atende respostas livres e JSON Schema com
+  // `require_parameters:true`; um modelo sem esse contrato quebraria voz,
+  // diagnóstico ou orçamento mesmo que o chat simples parecesse funcionar.
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'z-ai/glm-5.2:free',
+  'liquid/lfm-2.5-2.6b:free',
 ]);
 
 function erroSeguro(codigo, { overloaded = false, status } = {}) {

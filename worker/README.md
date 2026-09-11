@@ -11,7 +11,12 @@ nunca no app ou no APK.
 - `POST /voz/conversa` — conversa guiada → itens de orçamento
 - `POST /transcrever` — áudio → texto, ou áudio → texto → itens
 - `POST /chat` — assistente conversacional
-- `GET /` — health check (`{ ok:true, service:'olli-diagnostico', ia:'on'|'off' }`)
+- `POST /ia/importacao/preview` — normaliza texto de catálogo em uma prévia com
+  fontes/confiabilidade; não grava nada e exige revisão antes da Central de Dados
+- `POST /ia/autopilot/preview` — lê texto ou um PDF/imagem/CSV/JSON pequeno,
+  extrai clientes, catálogo, orçamento e documentos com evidência/confiança;
+  retorna somente uma prévia (`requiresReview=true`)
+- `GET /` — health check (`{ ok:true, service:'olli-diagnostico', ia:'on'|'off', autopilot:'on'|'off' }`)
 
 Todos os POST exigem `Authorization: Bearer <token Supabase>`.
 
@@ -52,6 +57,9 @@ EXPO_PUBLIC_DIAGNOSTICO_URL=https://olli-diagnostico.SEU-SUBDOMINIO.workers.dev
 - `AI_PROVIDER=openrouter` e `OPENROUTER_TEXT_MODELS` → públicas (em `wrangler.jsonc`).
 - `OPENROUTER_API_KEY` → **secret** (`wrangler secret put`).
 - `AI` → binding Workers AI para transcrição; não é uma chave no APK.
+- `AUTOPILOT_WORKERS_AI_ENABLED=true` → habilita no staging o modelo open-weight
+  allowlisted `@cf/google/gemma-4-26b-a4b-it` para a prévia Autopilot quando o
+  OpenRouter não estiver configurado. Mantenha desligado em produção até o gate.
 - `GEMINI_MODEL`/`GEMINI_API_KEY` existem apenas para rollback deliberado com
   `AI_PROVIDER=gemini`; não há troca silenciosa de fornecedor.
 
@@ -68,6 +76,11 @@ fallback offline. Os limites conservadores ficam em `wrangler.jsonc`.
 
 Sem a chave, o Worker responde `{ ok:false, motivo:'ia_nao_configurada' }` e o app
 usa o fallback offline (602 códigos) — nunca quebra.
+
+O Autopilot também falha fechado sem o binding/modelo de staging. Arquivos ficam
+limitados a 4 MiB, sem ZIP/macros/SVG/executáveis, e não são persistidos pelo
+endpoint. Para lotes maiores, use a futura fila de quarentena com Storage privado,
+Queue/Workflow, TTL e DLQ; não aumente o limite do request como atalho.
 
 ### Validação antes de publicar
 

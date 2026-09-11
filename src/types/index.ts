@@ -54,9 +54,9 @@ export const STATUS_COLORS: Record<StatusOrcamento, string> = {
 /**
  * Status que representam uma PROPOSTA JÁ ENVIADA ao cliente (mestre 13.5). Editar
  * um orçamento nestes estados NÃO pode sobrescrever silenciosamente o que o
- * cliente já viu: o `saveOrcamento` grava uma VERSÃO (snapshot) antes. Fonte única
- * da verdade, usada pelo app e por qualquer tela de edição (dentro ou fora do
- * escopo desta frente) para não divergir a regra.
+ * cliente já viu: o `saveOrcamento` recusa mudança comercial e a interface cria
+ * uma REVISÃO com outro ID/número ligada ao original. Fonte única da verdade,
+ * usada pelo app e por qualquer tela de edição para não divergir a regra.
  */
 export const STATUS_PROPOSTA_ENVIADA: readonly StatusOrcamento[] = [
   'enviado',
@@ -112,6 +112,8 @@ export interface ContratoPadrao {
 export interface Empresa {
   id: string;
   nome: string;
+  /** Forma de atuação declarada no onboarding; controla a exigência de CNPJ sem excluir autônomos. */
+  tipoNegocio?: 'autonomo' | 'empresa';
   segmento?: Segmento;
   especialidade: string;
   slogan: string;
@@ -137,9 +139,9 @@ export interface Empresa {
   verticais?: VerticalId[];
   ferramentasAtivas?: FerramentaId[];
 
-  // Personalização — padrões usados para pré-preencher novos orçamentos e
-  // documentos (o.corMarca segue prevalecendo por orçamento; aqui é só o
-  // valor inicial sugerido). Tudo opcional: schema-less no SQLite (id + data
+  // Personalização — padrões centrais usados para pré-preencher novos orçamentos
+  // e documentos. O orçamento guarda um snapshot da identidade aplicada para um
+  // documento já enviado não mudar retroativamente. Tudo opcional: schema-less no SQLite (id + data
   // JSON), então adicionar estes campos não exige nenhuma migração.
   corMarca?: string;
   validadeDiasPadrao?: number;
@@ -339,6 +341,26 @@ export interface Orcamento {
 
   criadoEm: string;
   atualizadoEm: string;
+  /**
+   * Última alteração deliberada feita pelo prestador no editor. É diferente de
+   * `atualizadoEm`, que também muda por sync/status/assinatura. Serve para a UI
+   * dizer honestamente "Editado em ..." sem confundir uma visualização do cliente
+   * com mudança no conteúdo.
+   */
+  editadoEm?: string;
+  /**
+   * Relação entre uma revisão e o orçamento original. Documentos já enviados ou
+   * aceitos não são sobrescritos: "Criar revisão" nasce como outro rascunho,
+   * preserva o original e registra de onde veio. Campos aditivos no blob JSON,
+   * portanto sem migration e compatíveis com backups antigos.
+   */
+  revisaoDeId?: string;
+  revisaoDeNumero?: string;
+  revisaoCriadaEm?: string;
+  /** Número original quando uma corrida entre aparelhos exigiu renumeração no sync. */
+  numeroAnterior?: string;
+  /** ISO da renumeração automática; mantém a trilha sem expor detalhes internos no PDF. */
+  renumeradoEm?: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. Vive no blob JSON. */
   excluidoEm?: string;
 }
@@ -395,11 +417,78 @@ export interface Recibo {
   /** RELÓGIO DE SYNC: ISO da última escrita, carimbado pelo banco. Vive no blob JSON
    *  e é espelhado na coluna `atualizado_em` da nuvem. Ver `Cliente.atualizadoEm`. */
   atualizadoEm?: string;
+  /** Número original quando uma corrida entre aparelhos exigiu renumeração no sync. */
+  numeroAnterior?: string;
+  /** ISO da renumeração automática; trilha de auditoria no blob sincronizado. */
+  renumeradoEm?: string;
   // Ciclo comercial (Onda 3): true assim que o PDF do recibo é gerado/compartilhado
   // pelo menos uma vez. `false`/ausente = pagamento registrado mas o PDF do recibo
   // ainda não foi emitido para o cliente (registro rápido de "Registrar pagamento").
   // Campo opcional e aditivo — nenhuma migração necessária (linha vive no blob JSON).
   pdfEmitido?: boolean;
+  /** ID do evento no ledger financeiro remoto, quando a gravação online confirmou. */
+  pagamentoId?: string;
+  /** O evento já foi ligado à linha remota do recibo (NULL -> id, uma vez). */
+  ledgerReciboVinculado?: boolean;
+  /** Chave de idempotência usada para retentar sem criar outro evento. */
+  idempotencyKey?: string;
+  /** Estado do espelho no ledger; pendente não significa que a nuvem confirmou. */
+  ledgerStatus?: 'pendente' | 'confirmado' | 'falhou';
+  /** Código sanitizado da última falha transitória do ledger (sem mensagem bruta). */
+  ledgerErro?: 'indisponivel' | 'timeout' | 'offline' | 'nao_autorizado';
+  /** Chave privada do comprovante no Storage, quando anexado. */
+  comprovanteChave?: string;
+  comprovanteHash?: string;
+  comprovanteMime?: 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/webp';
+  comprovanteTamanhoBytes?: number;
+  /** Estorno financeiro é um evento explícito; nunca apagar o recibo. */
+  estornadoEm?: string;
+  motivoEstorno?: string;
+}
+
+/** Registro de biblioteca de documentos. O arquivo/PDF é um artefato; o objeto
+ * e suas versões permanecem append-only para não sobrescrever o que o cliente
+ * recebeu. */
+export type TipoDocumentoBiblioteca =
+  | 'orcamento' | 'contrato' | 'garantia' | 'conclusao' | 'recibo'
+  | 'ordem_servico' | 'pmoc' | 'laudo' | 'checklist' | 'certificado';
+
+export type StatusDocumentoBiblioteca = 'rascunho' | 'pronto' | 'enviado' | 'assinado' | 'arquivado';
+
+export interface DocumentoBibliotecaRegistro {
+  id: string;
+  tipo: TipoDocumentoBiblioteca;
+  status: StatusDocumentoBiblioteca;
+  titulo: string;
+  clienteId?: string;
+  clienteNome: string;
+  origemTipo: 'orcamento' | 'recibo' | 'ordem_servico' | 'pmoc' | 'manual';
+  origemId?: string;
+  origemNumero?: string;
+  versaoAtual: number;
+  dados: Record<string, unknown>;
+  arquivoUri?: string;
+  /** Chave privada do Storage (bucket/caminho), estável entre aparelhos. */
+  arquivoChave?: string;
+  arquivoHash?: string;
+  criadoEm: string;
+  atualizadoEm: string;
+  enviadoEm?: string;
+  assinadoEm?: string;
+  excluidoEm?: string;
+}
+
+export interface DocumentoBibliotecaVersao {
+  id: string;
+  documentoId: string;
+  numeroVersao: number;
+  dados: Record<string, unknown>;
+  arquivoUri?: string;
+  /** Chave privada do Storage da versão, quando houver artefato remoto. */
+  arquivoChave?: string;
+  arquivoHash?: string;
+  criadoEm: string;
+  criadoPor?: string;
 }
 
 export interface ModeloOrcamento {
@@ -630,6 +719,8 @@ export interface OrdemServico {
   titulo: string;
   descricao?: string;
   status: StatusOS;
+  /** ISO da transição para concluída; edição posterior não altera este marco. */
+  concluidoEm?: string;
   /** Técnico atribuído (quem executa). Ausente enquanto ninguém foi designado. */
   tecnicoId?: string;
   tecnicoNome?: string;

@@ -7,7 +7,10 @@
  *   POST /voz/conversa → mesmo Tier B acima, rota dedicada (alias de /voz com conversa[])
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
+ *   POST /ia/importacao/preview → prévia estruturada de catálogo (sem escrita)
+ *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
+ *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *
  * Segurança:
  *   - OPENROUTER_API_KEY é SECRET do Worker (nunca vai pro app/APK e nunca é
@@ -18,6 +21,9 @@
  *     toda rota autenticada usa Bearer token, nunca cookie.
  *   - Toda rota de IA valida content-length (413 se exceder) e trunca/sanitiza
  *     cada campo antes de montar o prompt (proteção de custo + prompt injection).
+ *   - Autopilot aceita somente um arquivo pequeno em base64, valida magic bytes
+ *     e usa `toMarkdown` sem persistir o conteúdo; jobs grandes ficam na fila
+ *     isolada planejada para a próxima fase.
  *
  * O diagnóstico (POST '/') é ATERRADO na base oficial HVAC (hvac_codigos +
  * hvac_chunks via full-text search no Supabase) antes de chamar a IA — ver
@@ -45,6 +51,8 @@ import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
+import { handleResendWebhook } from './resendWebhook.js';
+import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
@@ -61,6 +69,9 @@ import {
 } from './iaQuota.js';
 import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
+import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
+import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
+import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import {
   rotuloVertical,
@@ -98,6 +109,11 @@ const MAX_BODY_BYTES = 65536;
 // precisa de um teto bem maior que o das rotas de texto. 4MB cobre alguns
 // minutos de fala num codec compacto (aac/ogg) com folga.
 const MAX_AUDIO_BODY_BYTES = 4_194_304;
+
+// Autopilot recebe uma fonte codificada em base64 para a prévia pequena. O
+// arquivo decodificado continua limitado a 4 MiB pelo módulo; o teto de corpo
+// inclui a expansão base64 + JSON e impede bufferizações arbitrárias.
+const MAX_AUTOPILOT_BODY_BYTES = Math.ceil(IA_AUTOPILOT_MAX_BYTES / 3) * 4 + 32 * 1024;
 
 // /eta e /geocodificar recebem só coordenadas/endereço — corpo minúsculo por
 // natureza. Mesmo teto (4KB) das outras rotas de payload pequeno (equipe.js, link.js).
@@ -165,7 +181,13 @@ async function getUser(request, env) {
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever']);
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview', '/ia/autopilot/preview']);
+
+function autopilotWorkersAiConfigurada(env, pathname) {
+  return pathname === '/ia/autopilot/preview'
+    && env?.AUTOPILOT_WORKERS_AI_ENABLED === 'true'
+    && env?.AI && typeof env.AI.run === 'function';
+}
 
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
@@ -824,19 +846,74 @@ function chatSystem(vertical) {
 // custo de inferência ilimitado por request.
 const CHAT_MAX = { mensagens: 40, texto: 4000 };
 
+const IA_ACTION_DRAFT_SCHEMA = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['resposta', 'pronto', 'escopo', 'alvo', 'resumo', 'mudancas'],
+  properties: {
+    resposta: { type: 'string', maxLength: 800 },
+    pronto: { type: 'boolean' },
+    escopo: {
+      type: 'string',
+      enum: ['nenhum', 'orcamento', 'cliente', 'produto', 'servico', 'agenda', 'empresa', 'equipe'],
+    },
+    alvo: { type: 'string', maxLength: 160 },
+    resumo: { type: 'string', maxLength: 240 },
+    mudancas: {
+      type: 'array',
+      maxItems: 6,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['campo', 'proposto'],
+        properties: {
+          campo: { type: 'string', maxLength: 80 },
+          proposto: { type: ['string', 'number', 'boolean', 'null'] },
+        },
+      },
+    },
+  },
+});
+
+function chatActionSystem(vertical) {
+  return `${chatSystem(vertical)}\n\nVocê está preparando uma alteração auditável no sistema. Nunca execute, apague, envie, cobre ou confirme nada. Retorne SOMENTE o JSON do schema. Se faltar um alvo único ou o valor novo, use pronto=false, escopo="nenhum", alvo="", mudancas=[] e faça uma pergunta curta em resposta. Escopos e campos permitidos: orcamento(status, validadeOrcamento, condicoesPagamento, garantia, informacoesAdicionais, laudoTecnico); cliente(nome, telefone, endereco, complemento, cidade, estado, cep); produto(nome, descricao, preco, custo, unidade, marca, modelo); servico(nome, descricao, preco, custo, unidade); agenda(titulo, inicio, fim, status, observacao, endereco); empresa(nome, telefone, whatsapp, email, endereco, cidade, estado, site, especialidade, slogan, corMarca); equipe(papel, ativo). O alvo deve ser o número do orçamento, o nome exato do registro, o e-mail exato do membro ou um UUID. Não proponha senha, exclusão, cobrança, envio, arquivo, logo ou campo fora dessa lista.`;
+}
+
+function actionFailureMessage(reason) {
+  if (reason === 'target_not_found') return 'Não encontrei esse registro na sua empresa. Diga o número ou o nome exato.';
+  if (reason === 'target_ambiguous') return 'Encontrei mais de um registro com esse nome. Informe um alvo mais específico.';
+  if (reason === 'role_not_allowed' || reason === 'owner_protected') return 'Seu papel atual não permite preparar essa alteração.';
+  if (reason === 'no_change') return 'O registro já está com esse valor; nenhuma alteração foi preparada.';
+  if (reason === 'field_not_allowed' || reason === 'value_invalid' || reason === 'proposal_invalid') return 'A mudança pedida não cabe nos campos seguros. Diga exatamente o campo e o novo valor.';
+  return 'Não consegui confirmar o registro e as permissões agora. Nada foi alterado; tente novamente em instantes.';
+}
+
 async function handleChat(bodyText, env, user) {
   const raw = parseJsonBody(bodyText);
   const { mensagens, vertical } = raw;
+  const actionMode = raw && raw.modo === 'rascunho_acao';
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
-    .filter((m) => m && typeof m.texto === 'string' && m.texto.trim())
-    .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.texto === 'string' && m.texto.trim())
+    // O histórico chega do cliente e não é assinado pelo servidor. Portanto,
+    // uma bolha que se declara `assistant` nunca pode ganhar o papel privilegiado
+    // de `model` no provider: ela entra como dado de usuário delimitado. Isso
+    // preserva contexto para consulta sem permitir que um cliente forje uma
+    // instrução anterior da OLLI, sobretudo no modo de ação.
+    .map((m) => ({
+      role: 'user',
+      parts: [{ text: m.role === 'assistant'
+        ? `<HISTORICO_ASSISTENTE_NAO_CONFIAVEL>${cortar(m.texto, CHAT_MAX.texto)}</HISTORICO_ASSISTENTE_NAO_CONFIAVEL>`
+        : cortar(m.texto, CHAT_MAX.texto) }],
+    }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
   const text = await gerarIA(env, {
-    system: chatSystem(vertical),
+    system: actionMode ? chatActionSystem(vertical) : chatSystem(vertical),
     user: contents,
-    temperature: 0.6,
+    wantJson: actionMode,
+    jsonSchema: actionMode ? IA_ACTION_DRAFT_SCHEMA : undefined,
+    temperature: actionMode ? 0.1 : 0.6,
     beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
   });
   if (!text) return json({ ok: false, erro: 'resposta_vazia' });
@@ -846,10 +923,33 @@ async function handleChat(bodyText, env, user) {
     conteudo: bodyText,
   });
   if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
-  return json({ ok: true, resposta: text });
+
+  if (!actionMode) return json({ ok: true, resposta: text });
+  const parsed = parseJsonLoose(text);
+  if (!parsed || typeof parsed.resposta !== 'string' || typeof parsed.pronto !== 'boolean') {
+    return json({ ok: false, erro: 'resposta_invalida' });
+  }
+  const answer = cortar(parsed.resposta, 800) || 'Preciso de mais detalhes para preparar a alteração.';
+  if (!parsed.pronto) return json({ ok: true, resposta: answer });
+
+  const persisted = await createPersistedAiActionDraft(env, user, {
+    escopo: parsed.escopo,
+    alvo: parsed.alvo,
+    resumo: parsed.resumo,
+    mudancas: parsed.mudancas,
+  });
+  if (!persisted.ok) return json({ ok: true, resposta: actionFailureMessage(persisted.reason) });
+  return json({ ok: true, resposta: answer, rascunho: persisted.draft });
 }
 
 const handler = {
+  scheduled(controller, env, ctx) {
+    // O modo de dispatch é fail-closed. Nesta janela o config usa somente
+    // `simulator`, e o consumer ainda confere o destinatário exato antes da
+    // chamada externa. A Promise fica registrada no ciclo de vida do evento.
+    ctx.waitUntil(processarWelcomeOutbox(env));
+  },
+
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
@@ -867,6 +967,18 @@ const handler = {
     // handleStripe cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/stripe/')) {
       return handleStripe(request, env, url);
+    }
+
+    // ── AÇÕES DA IA (confirmar/cancelar/reverter; nunca por texto livre) ──
+    if (url.pathname.startsWith('/ia/acoes/')) {
+      return handleIaActions(request, env, url);
+    }
+
+    // ── EVENTOS RESEND (assinatura Svix + idempotência no Supabase) ──
+    // Endpoint servidor-a-servidor: não aceita JWT, corpo é validado pela
+    // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
+    if (url.pathname === '/resend/webhook') {
+      return handleResendWebhook(request, env);
     }
 
     // ── PAGAMENTOS PIX MERCADO PAGO (créditos por Pix; planos por Pix) ──
@@ -1015,6 +1127,7 @@ const handler = {
         ok: true,
         service: 'olli-diagnostico',
         ia: aiConfigurada(env) ? 'on' : 'off',
+        autopilot: autopilotWorkersAiConfigurada(env, '/ia/autopilot/preview') ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
       });
@@ -1054,13 +1167,19 @@ const handler = {
     // esse header (Number(null)=0) e escaparia da 1ª camada sozinha. Evita gastar
     // 1 validação de token ou 1 dos 20 tokens/min do usuário com um body que nem
     // vamos processar.
-    const maxBodyIa = url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
+    const maxBodyIa = url.pathname === '/transcrever'
+      ? MAX_AUDIO_BODY_BYTES
+      : url.pathname === '/ia/autopilot/preview'
+        ? MAX_AUTOPILOT_BODY_BYTES
+        : MAX_BODY_BYTES;
     if (!cabeNoTeto(request, maxBodyIa).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
     const corpoIa = await bodyMuitoGrande(request, maxBodyIa);
     if (corpoIa.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
-    if (!aiConfigurada(env)) return json({ ok: false, motivo: 'ia_nao_configurada' });
+    if (!aiConfigurada(env) && !autopilotWorkersAiConfigurada(env, url.pathname)) {
+      return json({ ok: false, motivo: 'ia_nao_configurada' });
+    }
 
     // Exige login (protege a cota da IA).
     const user = await getUser(request, env);
@@ -1120,6 +1239,34 @@ const handler = {
       if (url.pathname === '/voz/conversa') return await handleVozConversa(corpoIa.raw, env, user);
       if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env, user);
       if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env, user);
+      if (url.pathname === '/ia/importacao/preview') {
+        const previa = await prepararPreviaImportacaoIa(corpoIa.raw, env, user, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaImportacaoIa(previa.erro) }, 422);
+        return json(previa);
+      }
+      if (url.pathname === '/ia/autopilot/preview') {
+        const previa = await prepararPreviaAutopilot(corpoIa.raw, env, user, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaAutopilot(previa.erro) }, 422);
+        // A pré-autorização acima só evita inferência quando a conta já está
+        // sem acesso. A contagem/cobrança definitiva acontece depois de uma
+        // prévia válida, como no chat e na voz, e usa a mesma janela de
+        // idempotência de IA para não cobrar retry duas vezes.
+        const cobranca = await cobrarCreditoVoz(env, user, {
+          confirmarCredito: corpoAutorizacao && corpoAutorizacao.confirmarCredito === true,
+          creditoRef: corpoAutorizacao && corpoAutorizacao.creditoRef,
+          conteudo: corpoIa.raw,
+        });
+        if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
+        return json(previa);
+      }
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {
       const reservaNegada = reservaCotaDoErro(e);

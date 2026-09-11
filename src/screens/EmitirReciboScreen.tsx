@@ -15,7 +15,7 @@ import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo, getRecibos } from '../database/database';
-import { getReciboDoOrcamento, marcarReciboComoPdfEmitido } from '../services/pagamentos';
+import { getReciboDoOrcamento, marcarReciboComoPdfEmitido, registrarPagamentoNoLedger, vincularPagamentoAoRecibo } from '../services/pagamentos';
 import { Recibo, Empresa, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
@@ -26,6 +26,7 @@ import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { montarMensagemPedidoAvaliacao, montarMensagemAgradecimento, montarMensagemPedidoIndicacao } from '../utils/mensagensOrcamento';
+import { garantirDocumentoRecibo, registrarArtefatoDocumentoBiblioteca } from '../services/documentosBiblioteca';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
@@ -96,9 +97,14 @@ function EmitirReciboConteudo() {
           setClienteTelefone(o.clienteTelefone);
           setValorRecebido(o.valorTotal);
         }
+        if (!o) return;
         try {
           const recibos = await getRecibos();
           const pendente = getReciboDoOrcamento(orcamentoId, recibos);
+          const recebidoSemPendente = recibos
+            .filter((r) => r.orcamentoId === orcamentoId && r.id !== (pendente?.id ?? ''))
+            .reduce((total, r) => total + (Number.isFinite(r.valorRecebido) ? Math.max(0, r.valorRecebido) : 0), 0);
+          const saldoRestante = Math.max(0, Math.round((o.valorTotal - recebidoSemPendente) * 100) / 100);
           // Só reaproveita como "pendente" quando pdfEmitido é explicitamente
           // false. Ausente (recibo LEGADO, anterior a este campo) já foi
           // emitido na época — não deve ser retomado/renumerado aqui.
@@ -109,6 +115,11 @@ function EmitirReciboConteudo() {
             setValorRecebido(pendente.valorRecebido);
             setFormaPagamento(pendente.formaPagamento);
             setDataRecebimento(pendente.dataRecebimento);
+          } else {
+            // Depois de uma entrada parcial cujo PDF já foi emitido, a próxima
+            // emissão deve sugerir apenas o saldo — nunca o valor integral de
+            // novo. Saldo zero deixa o botão de emissão desabilitado.
+            setValorRecebido(saldoRestante);
           }
         } catch {
           // sem recibo pendente encontrado: segue o fluxo normal (cria um novo)
@@ -187,6 +198,23 @@ function EmitirReciboConteudo() {
       Alert.alert('Atenção', 'Preencha o nome do cliente e o valor.');
       return;
     }
+    if (orc) {
+      // A validação vive também aqui, imediatamente antes do salvamento, para
+      // cobrir digitação manual, reabertura após pagamento parcial e qualquer
+      // alteração concorrente feita por outro dispositivo.
+      const recibosAtuais = await getRecibos();
+      const recebidoSemAtual = recibosAtuais
+        .filter((r) => r.orcamentoId === orc.id && r.id !== (reciboPendente?.id ?? ''))
+        .reduce((total, r) => total + (Number.isFinite(r.valorRecebido) ? Math.max(0, r.valorRecebido) : 0), 0);
+      const saldoRestante = Math.max(0, (orc.valorTotal || 0) - recebidoSemAtual);
+      if (saldoRestante <= 0 || valorRecebido > saldoRestante + 0.005) {
+        Alert.alert(
+          'Valor acima do saldo',
+          `Este orçamento tem ${formatCurrency(saldoRestante)} disponível para receber. Ajuste o valor antes de emitir o recibo.`,
+        );
+        return;
+      }
+    }
     setSharing(true);
     try {
       // O número real é obtido SÓ AQUI (ao salvar): getNextReciboNumber incrementa
@@ -222,9 +250,29 @@ function EmitirReciboConteudo() {
           criadoEm: reciboPendente?.criadoEm ?? nowISO(),
           pdfEmitido: true,
         };
+        const ledger = await registrarPagamentoNoLedger({
+          id: recibo.id,
+          idempotencyKey: recibo.idempotencyKey ?? recibo.id,
+          orcamentoId: recibo.orcamentoId,
+          valor: recibo.valorRecebido,
+          formaPagamento: recibo.formaPagamento,
+          dataRecebimento: recibo.dataRecebimento,
+        });
+        if (ledger.status === 'negado') throw new Error(ledger.mensagem);
+        recibo = {
+          ...recibo,
+          idempotencyKey: ledger.idempotencyKey,
+          ledgerStatus: ledger.status,
+          ...(ledger.status === 'confirmado' ? { pagamentoId: ledger.pagamentoId } : { ledgerErro: ledger.erro }),
+        };
         // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
         // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
         await saveRecibo(recibo);
+        if (recibo.pagamentoId && await vincularPagamentoAoRecibo(recibo.pagamentoId, recibo.id)) {
+          recibo = { ...recibo, ledgerReciboVinculado: true };
+          await saveRecibo(recibo);
+        }
+        await garantirDocumentoRecibo(recibo);
         setReciboPendente(recibo);
       } catch {
         Alert.alert('Erro', 'Não foi possível salvar o recibo agora. Tente novamente.');
@@ -235,7 +283,11 @@ function EmitirReciboConteudo() {
       try {
         const html = await buildHtml(recibo);
         // Entrega multiplataforma (web: imprime/salva PDF; nativo: print + share).
-        await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
+        const uri = await exportarHtmlComoPdf(html, `Recibo-${numeroFinal}`, { dialogTitle: `Recibo ${numeroFinal}` });
+        try {
+          const registro = await garantirDocumentoRecibo(recibo);
+          await registrarArtefatoDocumentoBiblioteca(registro.id, uri);
+        } catch { /* o PDF já foi entregue; a biblioteca é best-effort */ }
         // PDF gerado/compartilhado com sucesso: limpa o "pendente" para o card
         // azul "Pagamento já registrado... gere o PDF" sumir — a ação que ele
         // pedia já foi concluída (sem isso o card ficava contradizendo a tela).
@@ -276,7 +328,11 @@ function EmitirReciboConteudo() {
     );
     try {
       const html = await buildHtml(r);
-      await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      const uri = await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      try {
+        const registro = await garantirDocumentoRecibo(r);
+        await registrarArtefatoDocumentoBiblioteca(registro.id, uri);
+      } catch { /* segunda via entregue; não bloquear por falha de índice local */ }
       // Pagamento registrado sem PDF ainda (ver "Registrar pagamento" na lista de
       // orçamentos): agora que o PDF foi gerado/compartilhado pela 1ª vez, marca
       // o recibo como emitido — vira o badge financeiro do orçamento de "Pago"
@@ -523,6 +579,9 @@ function EmitirReciboConteudo() {
                   <Text style={styles.reciboMeta}>{formatDateTime(item.criadoEm)} · {item.formaPagamento}</Text>
                   {item.pdfEmitido === false && (
                     <Text style={styles.reciboPendenteTag}>Pagamento registrado · PDF ainda não gerado</Text>
+                  )}
+                  {item.ledgerStatus === 'pendente' && (
+                    <Text style={styles.reciboPendenteTag}>Sincronização financeira pendente · não registre novamente</Text>
                   )}
                 </View>
                 <Text style={styles.reciboValor}>{formatCurrency(item.valorRecebido)}</Text>

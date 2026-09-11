@@ -963,7 +963,15 @@ export async function handleStripe(request, env, url) {
   }
   if (path === '/stripe/webhook') {
     // Sem OPTIONS/CORS: a Stripe fala servidor-a-servidor, não browser.
-    if (request.method === 'POST') return handleWebhook(request, env);
+    if (request.method === 'POST') {
+      // O HMAC continua sendo a autenticação autoritativa, mas o limite por IP
+      // vem antes de ler/bufferizar o corpo. Um emissor abusivo não consegue
+      // gastar memória do isolate com assinaturas inválidas; 429 faz a Stripe
+      // reenviar legitimamente quando o balde voltar a abrir.
+      const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+      if (!(await rateOk(env, `webhook:${ip}`))) return json({ erro: 'muitas_requisicoes' }, 429);
+      return handleWebhook(request, env);
+    }
     return json({ erro: 'metodo_nao_suportado' }, 405);
   }
 

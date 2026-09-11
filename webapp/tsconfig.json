@@ -51,7 +51,13 @@
 			// app e o worker leem (`src/services/entitlements.ts`), para o comparativo
 			// nunca prometer recurso que o produto não entrega. Módulo puro, zero imports.
 			"@entitlements": ["../src/services/entitlements.ts"],
-			"@plano-efetivo": ["../src/services/planoEfetivo.ts"]
+			"@plano-efetivo": ["../src/services/planoEfetivo.ts"],
+			"@verticais": ["../src/services/verticais.ts"],
+			"@vertical-segmento": ["../src/services/verticalSegmento.ts"],
+			"@limites-comerciais": ["../src/services/limitesComerciais.ts"],
+			"@ia-segura": ["../src/services/olliAcoesSeguras.ts"],
+			"@precificacao": ["../src/services/precificacao.ts"],
+			"@auth-policy": ["../src/services/authPolicy.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

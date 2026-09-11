@@ -5,32 +5,33 @@ on:
   pull_request:
 
 jobs:
-  # 1) App (raiz): typecheck + testes do app Expo/React Native.
+  # 1) App (raiz): o mesmo preflight que governa a release local.
   app-gate:
     name: app-gate
     runs-on: ubuntu-latest
     continue-on-error: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # scripts/teste-*.ts rodam via `node arquivo.ts` direto, usando o type
       # stripping nativo do Node — recurso que só existe a partir do Node 22.
       # Em Node 20 esses testes quebram de cara com "Unknown file extension
       # .ts", então este job (só ele) sobe em 22 em vez dos 20 dos outros.
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
 
       - name: Instalar dependências (npm ci — package-lock.json na raiz)
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Testes
-        run: npm test
+      # Não separar typecheck/teste aqui: o preflight também fecha contraste,
+      # Doctor, config de release e o meta-teste que garante que todo teste novo
+      # está ligado ao gate. Assim um futuro Git/Cloudflare build não pode ficar
+      # verde só porque executou um subconjunto antigo da suíte.
+      - name: Preflight completo
+        run: npm run preflight
 
   # 2) Painel (webapp/): build de produção (tsc && vite build) — pega erro de tipo.
   painel:
@@ -42,10 +43,10 @@ jobs:
         working-directory: webapp
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # O painel importa tipos/serviços compartilhados da raiz. Node 22
           # atende o type stripping usado pelo app e o Vite do painel.
@@ -83,10 +84,10 @@ jobs:
         working-directory: web
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # Astro 7 exige Node >=22.12; Node 20 faz o check abortar antes
           # mesmo de ler o projeto.
@@ -106,3 +107,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # 4) Worker Cloudflare: bindings gerados + bundle de deploy sem publicação.
+  worker:
+    name: worker
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Conferir tipos dos bindings
+        run: |
+          npm run types
+          npm run types:check
+
+      - name: Testes do Worker
+        run: npm test
+
+      - name: Validar bundle sem publicar
+        run: npm run check

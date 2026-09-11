@@ -26,6 +26,7 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 qa-artifacts/
+artifacts/
 
 # macOS
 .DS_Store
@@ -53,6 +54,7 @@ credentials.json
 
 # QC screenshots da sessao (nao sao deliverables)
 /*.png
+/tmp/
 .claude/launch.json
 
 # Cache local do Wrangler; regenerado automaticamente e nunca versionado.

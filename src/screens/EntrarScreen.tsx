@@ -12,7 +12,6 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
 import { BotaoApple } from '../components/BotaoApple';
 import { appleSignInDisponivel, signInWithApple } from '../services/appleAuth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sobreSecundario, type Cores } from '../theme';
 import { Fonts } from '../theme/fonts';
 import { OlliInput } from '../components/OlliInput';
@@ -27,12 +26,12 @@ import {
   normalizarTelefoneBR, temDadosLocais, getCurrentUser,
 } from '../services/supabase';
 import { abrirParticaoDoUsuario, getEmpresa, saveEmpresa } from '../database/database';
-import { onboardedKeyForUser } from './OnboardingScreen';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
+import { SENHA_MINIMA } from '../services/authPolicy';
 
 // Fecha uma sessão de autenticação pendente (retorno do OAuth) caso o app
 // tenha sido reaberto no meio do fluxo. Idempotente e seguro na web e no nativo.
@@ -98,8 +97,9 @@ export default function EntrarScreen() {
 
   /**
    * Semeia o telefone do cadastro na empresa local (best-effort, silencioso).
-   * Se a empresa existe e está sem telefone/whatsapp, preenche os vazios; se não
-   * existe, cria uma empresa mínima com o telefone e o e-mail. Nunca lança.
+   * Se a empresa já existe e está sem telefone/WhatsApp, preenche os vazios.
+   * Nunca cria uma empresa aqui: a ausência precisa continuar passando pelo
+   * onboarding e pela confirmação remota em três estados. Nunca lança.
    */
   async function semearTelefoneEmpresa(telDigits: string) {
     if (!telDigits) return;
@@ -133,10 +133,7 @@ export default function EntrarScreen() {
       if (!usuario?.id) throw new Error('sessao_indeterminada');
       await abrirParticaoDoUsuario(usuario.id);
 
-      const [empresa, onboarded] = await Promise.all([
-        getEmpresa(),
-        AsyncStorage.getItem(onboardedKeyForUser(usuario.id)).catch(() => null),
-      ]);
+      const empresa = await getEmpresa();
       if (empresa !== null) {
         destino = 'Tabs';
       } else {
@@ -153,8 +150,7 @@ export default function EntrarScreen() {
         //   'nao_sei' → verificação com retry, sem Home nem formulário editável.
         const estado = await resolverEstadoEmpresaDaSessao();
         if (estado === 'tem') destino = 'Tabs';
-        else if (estado === 'nao_tem' && onboarded === '1') destino = 'Tabs';
-        // `nao_tem` sem skip e `nao_sei` ficam em Onboarding; a tela só libera o
+        // `nao_tem` e `nao_sei` ficam em Onboarding; a tela só libera o
         // formulário depois de confirmar novamente que não existe empresa remota.
       }
     } catch {
@@ -178,8 +174,8 @@ export default function EntrarScreen() {
       Alert.alert('Faltou o telefone', 'Informe um WhatsApp válido com DDD.');
       return;
     }
-    if (!email.trim() || senha.length < 8) {
-      Alert.alert('Atenção', 'Informe um e-mail válido e senha de pelo menos 8 caracteres.');
+    if (!email.trim() || senha.length < SENHA_MINIMA) {
+      Alert.alert('Atenção', `Informe um e-mail válido e senha de pelo menos ${SENHA_MINIMA} caracteres.`);
       return;
     }
     if (modo === 'signup' && senha !== confirmar) {

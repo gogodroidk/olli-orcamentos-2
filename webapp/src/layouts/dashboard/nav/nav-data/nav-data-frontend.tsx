@@ -44,6 +44,7 @@ export const frontendNavData: NavProps["data"] = [
 			{ title: "Produtos", path: "/produtos", icon: <Package size={24} /> },
 			{ title: "Serviços", path: "/servicos", icon: <Wrench size={24} /> },
 			{ title: "Recibos", path: "/recibos", icon: <Receipt size={24} /> },
+			{ title: "Documentos", path: "/documentos", icon: <FileText size={24} /> },
 			{ title: "Central de dados", path: "/dados", icon: <DatabaseBackup size={24} /> },
 		],
 	},

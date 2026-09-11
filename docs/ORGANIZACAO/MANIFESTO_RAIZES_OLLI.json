@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-03T02:38:01-03:00",
+  "brand": "OLLI Orçamentos",
+  "canonicalRepository": "C:\\OLLI_REL",
+  "centralHub": "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO",
+  "rules": {
+    "singleEditableCodeRoot": true,
+    "followReparsePointsDuringInventory": false,
+    "moveDriveRoot": false,
+    "deleteOriginsAutomatically": false,
+    "inspectSecrets": false
+  },
+  "roots": [
+    {
+      "path": "C:\\OLLI_REL",
+      "classification": "CANONICAL_CODE",
+      "editable": true,
+      "canonical": true,
+      "action": "USE"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO",
+      "classification": "NAVIGATION_HUB",
+      "editable": false,
+      "canonical": false,
+      "action": "OPEN_TO_NAVIGATE"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\OLLI ORCAMENTOS",
+      "classification": "DRIVE_SYNCED_HISTORICAL",
+      "editable": false,
+      "canonical": false,
+      "action": "PRESERVE_IN_PLACE"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\Projetos OLLI\\olli-orcamentos",
+      "classification": "GIT_BASE_HISTORICAL",
+      "editable": false,
+      "canonical": false,
+      "action": "PRESERVE_IN_PLACE"
+    },
+    {
+      "path": "C:\\olli",
+      "classification": "LEGACY_DIVERGENT_CLONE",
+      "editable": false,
+      "canonical": false,
+      "action": "READ_ONLY"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\_Arquivo OLLI",
+      "classification": "HISTORICAL_ARCHIVE",
+      "editable": false,
+      "canonical": false,
+      "action": "RETAIN"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Documents\\OLLI DASH IA",
+      "classification": "AUXILIARY_PROJECT",
+      "editable": false,
+      "canonical": false,
+      "action": "KEEP_SEPARATE"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Documents\\olli-command",
+      "classification": "AUXILIARY_LEGACY_TOOL",
+      "editable": false,
+      "canonical": false,
+      "action": "KEEP_SEPARATE"
+    },
+    {
+      "path": "C:\\olli-kb",
+      "classification": "HVAC_KNOWLEDGE_BASE",
+      "editable": false,
+      "canonical": false,
+      "action": "KEEP_SEPARATE"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\OLLI_Campanha_5_Pecas",
+      "classification": "MARKETING_ASSETS",
+      "editable": false,
+      "canonical": false,
+      "action": "LINK_FROM_HUB"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Documents\\OLLI",
+      "classification": "EMPTY_PLACEHOLDER",
+      "editable": false,
+      "canonical": false,
+      "action": "DO_NOT_USE_AS_ROOT"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\_Arquivo OLLI\\HUB OLLI DUPLICADO ESTATICO 2026-08-30",
+      "classification": "ARCHIVED_STATIC_DUPLICATE",
+      "editable": false,
+      "canonical": false,
+      "action": "RETAIN_NON_CANONICAL"
+    }
+  ]
+}
+

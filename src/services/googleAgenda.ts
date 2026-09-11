@@ -12,15 +12,16 @@ import { Agendamento } from '../types';
  * ─────────────────────────────────────────────────────────────────────────
  * GOOGLE AGENDA — sincronização opcional (scaffold atrás de flag)
  * ─────────────────────────────────────────────────────────────────────────
- * LIGA quando o dono criar o OAuth client Android (ver passos humanos da
- * planta): console.cloud.google.com/apis/credentials → "Criar credenciais" →
- * "ID do cliente OAuth" → tipo Android → pacote online.olliorcamentos.app →
- * SHA-1 do keystore de assinatura. Copiar o client ID para
- * `EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID` no `.env` do build.
+ * ESTADO ATUAL: DESLIGADO EM FAIL-CLOSED. O scaffold abaixo usava retorno por
+ * custom URI scheme, fluxo que o Google não aceita mais como base segura para
+ * clientes OAuth Android. Definir somente um client ID NÃO liga o recurso.
+ * A ativação exige substituir este retorno por uma arquitetura nativa/claimed
+ * HTTPS suportada, configurar o projeto OAuth e provar o fluxo no build assinado.
  *
- * Enquanto essa env var estiver vazia, `googleAgendaDisponivel()` retorna
- * false e NADA deste serviço é chamado pela UI — código inerte, sem crash,
- * sem prompts, sem custo.
+ * Até essa troca ser entregue, `googleAgendaDisponivel()` retorna false e NADA
+ * deste serviço é chamado pela UI — código inerte, sem prompt e sem promessa
+ * falsa. Exportar `.ics` e abrir o formulário do Google Agenda na web seguem
+ * disponíveis pelo painel, pois não dependem deste OAuth nativo.
  *
  * O OLLI já avisa o técnico 60 min antes de cada compromisso com lembretes
  * locais (expo-notifications, ver services/agenda.ts) mesmo sem o Google
@@ -48,6 +49,9 @@ const EVENTS_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/ev
 
 const TOKENS_KEY = 'olli.googleagenda.tokens';
 
+/** Trava explícita: client ID sozinho nunca reativa o scaffold legado. */
+const GOOGLE_AGENDA_NATIVO_HABILITADO = false;
+
 interface TokensSalvos {
   accessToken: string;
   refreshToken?: string;
@@ -62,17 +66,26 @@ interface TokensSalvos {
  * isto for true.
  */
 export function googleAgendaDisponivel(): boolean {
-  return !!GOOGLE_AGENDA_CLIENT_ID && Platform.OS !== 'web';
+  return GOOGLE_AGENDA_NATIVO_HABILITADO && !!GOOGLE_AGENDA_CLIENT_ID && Platform.OS !== 'web';
 }
 
 // ─── PKCE helpers (verifier local + challenge S256 via expo-crypto) ───────
 
 const VERIFIER_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
 
-function gerarCodeVerifier(): string {
+async function gerarCodeVerifier(): Promise<string> {
+  // O fluxo fica desligado até a troca para redirect HTTPS, mas o helper não
+  // pode guardar aleatoriedade previsível caso a flag seja ativada no futuro.
+  const Crypto = await import('expo-crypto');
+  const limite = 256 - (256 % VERIFIER_CHARS.length);
   let out = '';
-  for (let i = 0; i < 64; i++) {
-    out += VERIFIER_CHARS[Math.floor(Math.random() * VERIFIER_CHARS.length)];
+  while (out.length < 64) {
+    const bytes = Crypto.getRandomValues(new Uint8Array(64));
+    for (const byte of bytes) {
+      if (byte >= limite) continue;
+      out += VERIFIER_CHARS[byte % VERIFIER_CHARS.length];
+      if (out.length === 64) break;
+    }
   }
   return out;
 }
@@ -94,16 +107,9 @@ async function gerarCodeChallenge(verifier: string): Promise<string> {
 }
 
 /**
- * Redirect URI aceito pelo Google para client OAuth do tipo ANDROID.
- *
- * O Google NÃO aceita um custom scheme arbitrário (ex.: `olliorcamentos://`)
- * para client Android — só o "reverse client ID": o client ID vem no formato
- * `<num>-<hash>.apps.googleusercontent.com`, e o scheme válido é ele invertido,
- * `com.googleusercontent.apps.<num>-<hash>:/oauthredirect`. Esse scheme precisa
- * estar registrado como intent filter no app.json ao ATIVAR o recurso (passo
- * humano, junto com o env var e o rebuild) e o "Custom URI scheme" habilitado
- * nas Advanced Settings do client no console. Enquanto GOOGLE_AGENDA_CLIENT_ID
- * é vazio, nada disto roda (googleAgendaDisponivel() é false).
+ * Scaffold legado de redirect por reverse client ID. Mantido temporariamente
+ * apenas para facilitar a substituição; a trava acima impede sua execução.
+ * Não registrar este scheme nem ativar o recurso sem redesenhar o OAuth.
  */
 function reverseClientIdScheme(): string {
   const sufixo = '.apps.googleusercontent.com';
@@ -194,7 +200,7 @@ export async function conectarGoogleAgenda(): Promise<boolean> {
   if (!googleAgendaDisponivel()) return false;
   try {
     const WebBrowser = await import('expo-web-browser');
-    const codeVerifier = gerarCodeVerifier();
+    const codeVerifier = await gerarCodeVerifier();
     const codeChallenge = await gerarCodeChallenge(codeVerifier);
     const redirect = redirectUri();
     const params = new URLSearchParams({

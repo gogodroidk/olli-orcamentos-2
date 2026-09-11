@@ -15,8 +15,8 @@
  *  7.   NUMERAÇÃO (`extrairSequencia`). Se um lado enxergar um sequencial menor
  *       que o outro num número torto, ele reemite um número que o outro já deu por
  *       usado — dois documentos diferentes com o mesmo "00126" no PDF.
- *  8.   TRAVA DE EDIÇÃO (`edicaoBloqueada`). Se um lado deixar editar o que o
- *       outro congela, o mesmo documento tem duas regras conforme onde foi aberto.
+ *  8.   EDIÇÃO/REVISÃO (`edicaoBloqueada`). Rascunho edita; documento enviado
+ *       fica congelado e gera uma revisão ligada ao original em todas as telas.
  *
  * As seções 7 e 8 leem o CÓDIGO-FONTE dos dois lados, como a seção 5 de
  * `teste-backup-equipe.ts`: `src/database/database.ts` importa expo-sqlite e as
@@ -25,6 +25,10 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { qtdParaTexto, textoParaNumero } from '../webapp/src/olli/numero.ts';
+import {
+  erroEhColisaoNumero,
+  numeroDocumentoAposColisao,
+} from '../src/utils/numeroDocumento.ts';
 
 const ler = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
@@ -123,7 +127,7 @@ for (const [nome, entrada, esperado] of CASOS) {
   checar(`painel concorda em ${JSON.stringify(entrada)}`, seqPainel(entrada), seqApp(entrada));
 }
 
-console.log('\n8) TRAVA DE EDIÇÃO: documento que o cliente já tem não abre para editar');
+console.log('\n8) EDIÇÃO E REVISÃO: documento enviado não é sobrescrito; ganha uma revisão');
 // (a) A regra em si, nos dois lados. O painel lista os status na mão; o app compõe
 //     por `acordoAceito`. Aqui exigimos que as duas somas deem no mesmo conjunto.
 const formSrc = ler('../webapp/src/pages/olli/orcamentos/FormOrcamento.tsx');
@@ -143,16 +147,23 @@ checar(
   true,
 );
 
-// (b) A regra só vale se estiver LIGADA. Cada tela que leva ao editor precisa
-//     esconder "Editar" — um botão que abre a tela para recusar no fim é pior que
-//     botão ausente: o usuário digita tudo e perde no "Salvar".
-for (const [nome, caminho] of [
-  ['OrcamentosScreen (lista mobile)', '../src/screens/OrcamentosScreen.tsx'],
-  ['VisualizarOrcamentoScreen (detalhe)', '../src/screens/VisualizarOrcamentoScreen.tsx'],
-  ['OrcamentosDesktopScreen (tabela desktop)', '../src/screens/desktop/OrcamentosDesktopScreen.tsx'],
-] as const) {
-  checar(`${nome} esconde "Editar" com !edicaoBloqueada(`, ler(caminho).includes('!edicaoBloqueada('), true);
-}
+// (b) A regra só vale se estiver LIGADA. Rascunho ainda edita; um documento já
+//     entregue oferece REVISÃO e cria outro id/número ligado ao original. Assim o
+//     usuário não perde a capacidade de corrigir e o cliente não recebe um papel
+//     antigo silenciosamente.
+const listaMobileSrc = ler('../src/screens/OrcamentosScreen.tsx');
+const detalheMobileSrc = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
+const desktopSrc = ler('../src/screens/desktop/OrcamentosDesktopScreen.tsx');
+checar('lista mobile troca Editar por Revisar quando edicaoBloqueada',
+  /edicaoBloqueada\(o\.status\) \? 'Revisar' : 'Editar'/.test(listaMobileSrc), true);
+checar('lista mobile cria novo número para a revisão',
+  /revisaoDeId: o\.revisaoDeId \?\? o\.id/.test(listaMobileSrc) && /getNextOrcamentoNumber\(\)/.test(listaMobileSrc), true);
+checar('detalhe troca Editar por Criar revisão quando edicaoBloqueada',
+  /edicaoBloqueada\(orc\.status\) \? \([\s\S]{0,300}label="Criar revisão"/.test(detalheMobileSrc), true);
+checar('detalhe liga a revisão ao documento original',
+  /revisaoDeId: orc\.revisaoDeId \?\? orc\.id/.test(detalheMobileSrc), true);
+checar('tabela desktop oferece Revisar para bloqueado e Editar para rascunho',
+  /edicaoBloqueada\(o\.status\) \? \([\s\S]{0,260}rotulo="Revisar"[\s\S]{0,260}rotulo="Editar"/.test(desktopSrc), true);
 
 // (c) A guarda do PRÓPRIO editor. É a única que cobre quem não passa por tela
 //     nenhuma: o deep link `orcamentos/:id/editar` abre o editor direto pela URL.
@@ -168,8 +179,8 @@ checar(
 // (d) A recusa PERMANENTE não pode ser tratada como falha transitória: "tente
 //     novamente em instantes" num caminho que nunca abre é o usuário repetindo
 //     para sempre e perdendo o que digitou.
-checar('saveOrcamento sinaliza a recusa com codigo ORCAMENTO_ACEITO', dbSrc.includes("codigo = 'ORCAMENTO_ACEITO'"), true);
-checar('NovoOrcamentoScreen distingue essa recusa', novoSrc.includes("'ORCAMENTO_ACEITO'"), true);
+checar('saveOrcamento sinaliza a recusa com codigo ORCAMENTO_PROTEGIDO', dbSrc.includes("codigo = 'ORCAMENTO_PROTEGIDO'"), true);
+checar('NovoOrcamentoScreen distingue essa recusa', novoSrc.includes("'ORCAMENTO_PROTEGIDO'"), true);
 checar('e o catch do save não é mais cego (`catch {`)', /\} catch \{\s*\n\s*avisar\('Não foi possível salvar'/.test(novoSrc), false);
 
 // (e) A trava mora ANTES da escrita. Depois do INSERT ela não trava nada.
@@ -180,11 +191,11 @@ checar('saveOrcamento existe', saveInicio >= 0, true);
 // não existe, e -1 é MENOR que qualquer índice. Só comparar posições daria verde
 // para o pior caso possível — a recusa APAGADA do código. É o "não sei" virando
 // "está tudo certo" dentro do próprio teste.
-checar('saveOrcamento recusa o orçamento aceito', saveCorpo.includes('throw new OrcamentoAceitoError'), true);
+checar('saveOrcamento recusa conteúdo enviado ou aceito', saveCorpo.includes('throw new OrcamentoProtegidoError'), true);
 checar('saveOrcamento grava com INSERT OR REPLACE', saveCorpo.includes('INSERT OR REPLACE'), true);
 checar(
   'e a recusa vem ANTES da gravação (depois do INSERT não trava nada)',
-  saveCorpo.indexOf('throw new OrcamentoAceitoError') < saveCorpo.indexOf('INSERT OR REPLACE'),
+  saveCorpo.indexOf('throw new OrcamentoProtegidoError') < saveCorpo.indexOf('INSERT OR REPLACE'),
   true,
 );
 
@@ -193,8 +204,7 @@ checar(
 //     falha de teste, com o pré-requisito junto. E a proteção é ESTRUTURAL, não só
 //     o comentário no cabeçalho: a extensão `.sql.pendente` tira o arquivo do glob
 //     `migrations/*.sql`, porque um "aplica tudo que é novo" não lê comentário —
-//     aplicaria o índice sem o tratamento do 23505 no push e o documento de quem
-//     perdesse a corrida pararia de subir, calado, para sempre.
+//     aplicaria o índice sem auditar duplicatas e sem uma janela controlada.
 const migracao = ler('../supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente');
 checar('migration do número único continua no repo', migracao.length > 0, true);
 checar(
@@ -208,10 +218,44 @@ checar('com o índice de orcamentos por tenant', migracao.includes('orcamentos_n
 checar('e o de recibos', migracao.includes('recibos_numero_por_tenant_uidx'), true);
 checar('grão (user_id, numero) — numeração é do prestador, não global', migracao.includes('(user_id, numero)'), true);
 checar(
-  'e o aviso de NÃO APLICAR sem tratar o 23505 no push (senão o documento some calado)',
+  'e o aviso de NÃO APLICAR automaticamente antes dos gates humanos',
   migracao.includes('NÃO APLIQUE') && migracao.includes('23505'),
   true,
 );
+
+console.log('\n9) COLISÃO 23505: mobile e painel renumeram, auditam e tentam novamente');
+const dataFixa = new Date(2026, 7, 25);
+checar(
+  'orçamento sobe acima do maior piso local/remoto',
+  numeroDocumentoAposColisao('orcamentos', ['00126', '00426'], 3, dataFixa).numero,
+  '00526',
+);
+checar(
+  'recibo respeita também o piso monotônico do contador',
+  numeroDocumentoAposColisao('recibos', ['REC-00926'], 10, dataFixa).numero,
+  'REC-01126',
+);
+checar(
+  'só o índice exato de orçamento autoriza renumerar orçamento',
+  erroEhColisaoNumero('orcamentos', {
+    code: '23505',
+    message: 'duplicate key value violates unique constraint "orcamentos_numero_por_tenant_uidx"',
+  }),
+  true,
+);
+checar(
+  'um 23505 de outra constraint NÃO muda número comercial',
+  erroEhColisaoNumero('orcamentos', { code: '23505', message: 'unique constraint "outra_uidx"' }),
+  false,
+);
+
+const cloudSrc = ler('../src/services/cloudSync.ts');
+checar('mobile tem handler de renumeração', cloudSrc.includes('tentarRenumerarDocumento('), true);
+checar('mobile tenta novamente só após erroEhColisaoNumero', cloudSrc.includes('erroEhColisaoNumero(table, erroInicial)'), true);
+checar('mobile persiste número anterior na auditoria', cloudSrc.includes('numeroAnterior: base.numeroAnterior ?? objeto.numero'), true);
+checar('painel detecta a mesma constraint', mutSrc.includes('erroEhColisaoNumero(tabela, error)'), true);
+checar('painel gera o próximo número e reenvia', mutSrc.includes('const numero = await proximoNumeroDocumento('), true);
+checar('painel também guarda numeroAnterior', mutSrc.includes('numeroAnterior: atual.numeroAnterior ?? atual.numero'), true);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

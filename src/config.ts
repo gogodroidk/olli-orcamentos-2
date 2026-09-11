@@ -34,15 +34,13 @@ export const SUPABASE_ANON_KEY: string =
 export const LINK_BASE_URL: string = (process.env.EXPO_PUBLIC_LINK_BASE_URL ?? 'https://link.olliorcamentos.online').replace(/\/+$/, '');
 
 /**
- * URL do Worker de diagnóstico no Cloudflare (Etapa 2). A chave da IA
- * (Gemini ou Claude) é SECRET do Worker — nunca uma var EXPO_PUBLIC do app.
+ * URL pública do Worker de diagnóstico no Cloudflare. A chave do provedor de
+ * IA é SECRET do Worker — nunca uma var EXPO_PUBLIC do app.
  * Ex.: https://olli-diagnostico.SEU-USUARIO.workers.dev
  *
- * SEM fallback hardcoded: ao contrário de LINK_BASE_URL (link público, seguro
- * expor um domínio padrão), aqui um valor "chutado" seria PERIGOSO — apontaria
- * silenciosamente para o worker/domínio errado e o app pareceria "configurado"
- * sem estar. Se a env var não vier, fica vazio e `isDiagnosticoIADisponivel()`
- * retorna false, ativando o caminho honesto ("IA ainda não ligada").
+ * Não há fallback no código: cada perfil do EAS declara explicitamente o
+ * domínio público em `eas.json`. Builds fora do EAS continuam desligando a IA
+ * quando a env não vier, em vez de apontar silenciosamente para outro ambiente.
  */
 export const DIAGNOSTICO_URL: string = (process.env.EXPO_PUBLIC_DIAGNOSTICO_URL ?? '').replace(/\/+$/, '');
 
@@ -68,8 +66,8 @@ export const PAGAMENTOS_URL: string = DIAGNOSTICO_URL;
 export const WHATSAPP_SUPORTE: string = (process.env.EXPO_PUBLIC_WHATSAPP_SUPORTE ?? '5511941727487').replace(/\D/g, '');
 
 /**
- * ID do cliente OAuth ANDROID do Google (Google Cloud Console → Credenciais),
- * usado pela sincronização com o Google Agenda. Vazio = recurso desligado:
+ * ID reservado para a futura integração nativa suportada do Google Agenda.
+ * Vazio = recurso desligado:
  * `googleAgendaDisponivel()` (em services/googleAgenda.ts) retorna false e o
  * bloco "Conectar Google Agenda" nem aparece na tela de Agenda — sem isso não
  * há client_id para autorizar, então mostrar o botão seria um beco sem saída.

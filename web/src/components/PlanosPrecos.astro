@@ -31,6 +31,7 @@ import {
 } from "../data/planos";
 import {
 	IA_USOS_GRATIS_MES,
+	ORCAMENTOS_ENVIADOS_GRATIS_MES,
 	RECURSOS_BASE,
 	recursosAdicionais,
 	rotuloBullet,
@@ -68,6 +69,7 @@ const doze =
 
 // Bullets derivados de entitlements — ver data/recursos.ts.
 const bulletsGratis = [
+	`Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
 	...RECURSOS_BASE,
 	`IA de diagnóstico: ${IA_USOS_GRATIS_MES} usos por mês`,
 ];
@@ -196,5 +198,5 @@ const cartoes: Cartao[] = [
 		))}
 	</div>
 
-	<p class="mt-10 text-center text-sm text-muted">Sem cartão pra testar. Sem fidelidade. Cancela quando quiser.</p>
+	<p class="mt-10 text-center text-sm text-muted">Grátis sem prazo. Depois do primeiro envio, você pode ativar 14 dias de Pro — sem cartão e sem cobrança automática.</p>
 </div>

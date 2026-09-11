@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import { criarIcsAgendamento, criarUrlGoogleAgenda } from "../webapp/src/pages/olli/agenda/googleAgenda.ts";
 
 const agendamento = {
@@ -42,4 +43,8 @@ assert.equal(new URL(diaTodoNoturno!).searchParams.get("dates"), "20260820/20260
 assert.equal(criarUrlGoogleAgenda({ ...agendamento, inicio: "inválido" }), null);
 assert.equal(criarIcsAgendamento({ ...agendamento, inicio: "inválido" }), null);
 
-console.log("teste-agenda-google: 20 verificações passaram");
+const agendaNativa = readFileSync(new URL("../src/services/googleAgenda.ts", import.meta.url), "utf8");
+assert.match(agendaNativa, /getRandomValues/);
+assert.doesNotMatch(agendaNativa, /Math\.random/);
+
+console.log("teste-agenda-google: 22 verificações passaram");
