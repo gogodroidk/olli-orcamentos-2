@@ -769,7 +769,7 @@ Ver `KNOWN_BLOCKERS.md`.
   compensação reversa.
 - O app recebeu a tela `AutopilotScreen`, acessível pela Conta e por um atalho
   no Chat. Ela usa DocumentPicker/ImagePicker, mostra a fonte e a revisão e
-  leva o primeiro item válido ao editor de orçamento sem salvar automaticamente.
+  leva todos os itens válidos ao editor de orçamento sem salvar automaticamente.
   A voz web ganhou push-to-talk com Web Speech API; não há escuta contínua nem
   captura em segundo plano.
 - Testes novos: `test:ia-autopilot`, `test:ia-autopilot-web` e
@@ -781,6 +781,9 @@ Ver `KNOWN_BLOCKERS.md`.
   `0cc0a0db-26f9-42f3-9011-8318b1a4e16e`, 100% isolado em `workers.dev`.
   `GET /ia/autopilot/preview` responde 405 com o método correto e POST sem JWT
   responde 401; nenhum arquivo ou dado foi gravado durante o smoke.
+- O smoke não foi apresentado como inferência autenticada: o ambiente staging
+  ainda exige o secret de serviço/cota e uma conta de teste própria para o
+  canário. Nenhuma credencial de produção foi copiada ou provisionada.
 - Após incluir `expo-document-picker`, `npx expo run:android --variant debug`
   terminou `BUILD SUCCESSFUL`, instalou o APK `1.1.2` no `RX8NB033HXP` e o
   `npm run qa:android` repetido com o Metro aquecido passou em 5,221 ms, sem
