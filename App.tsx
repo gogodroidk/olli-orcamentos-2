@@ -304,6 +304,11 @@ function AppConteudo() {
     })();
   }, []);
 
+  const sincronizarTudo = useCallback(async () => {
+    await syncOnLogin();
+    await sincronizarPagamentosPendentes();
+  }, []);
+
   // Sincronização per-row (painel web) ao logar. Listener global central: cobre
   // o login feito em qualquer tela (inclusive ContaScreen). Ao entrar uma sessão
   // (SIGNED_IN ou INITIAL_SESSION já autenticado), dispara o sync em background.
@@ -358,10 +363,6 @@ function AppConteudo() {
   // não re-emite quando o app volta do bolso para a frente, então o que foi
   // escrito offline ficava esperando o app ser morto e reaberto. Ver
   // services/religarSync.ts para o limite que este gatilho NÃO cobre.
-  const sincronizarTudo = useCallback(async () => {
-    await syncOnLogin();
-    await sincronizarPagamentosPendentes();
-  }, []);
   useEffect(() => iniciarReligarSync(sincronizarTudo), [sincronizarTudo]);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar

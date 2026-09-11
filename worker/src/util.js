@@ -39,6 +39,7 @@ const METODOS_POR_ROTA = new Map([
   ['/voz/conversa', 'POST'],
   ['/chat', 'POST'],
   ['/transcrever', 'POST'],
+  ['/ia/importacao/preview', 'POST'],
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],

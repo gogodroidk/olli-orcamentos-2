@@ -384,10 +384,25 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 				const linhaLedger = Array.isArray(ledger.data) ? ledger.data[0] : ledger.data;
 				salvo.idempotencyKey = idempotencyKey;
 				salvo.ledgerStatus = typeof linhaLedger?.id === "string" ? "confirmado" : "pendente";
-				if (typeof linhaLedger?.id === "string") salvo.pagamentoId = linhaLedger.id;
+				if (typeof linhaLedger?.id === "string") {
+					salvo.pagamentoId = linhaLedger.id;
+					// O recibo ainda não foi upsertado; o vínculo é concluído logo
+					// depois, por uma RPC NULL -> id protegida por trigger.
+					salvo.ledgerReciboVinculado = false;
+				}
 			}
 
 			await salvar.mutateAsync(salvo);
+			if (salvo.pagamentoId && salvo.ledgerStatus === "confirmado") {
+				const vinculo = await supabase.rpc("vincular_pagamento_recibo", {
+					p_pagamento_id: salvo.pagamentoId,
+					p_recibo_id: salvo.id,
+				});
+				if (!vinculo.error) {
+					salvo.ledgerReciboVinculado = true;
+					await salvar.mutateAsync(salvo);
+				}
+			}
 			aoFechar();
 		} catch (e2) {
 			setErro((e2 as Error)?.message ?? "Não foi possível salvar o recibo. Tente de novo.");

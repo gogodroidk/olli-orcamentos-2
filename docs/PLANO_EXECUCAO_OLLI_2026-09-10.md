@@ -96,10 +96,13 @@ ou ficam fora da IA.
   o marco, não `atualizado_em`.
 - Segurança IA: allowlist, diff, confirmação, auditoria, tenant/RBAC e limites já
   existentes; a prévia de importação em lote agora valida fonte HTTPS, data,
-  confiança, duplicidade e papel do executor, sem escrever no catálogo. Parser/PDF
-  real e tela de aprovação continuam como próxima fatia.
-- Staging: Worker `ee5e349c-e22a-4ddc-ba4a-2d69d52acd65`, deployment
-  `bc556d42-1af6-4018-8d5b-97d838e3ea61`, smoke sem side effects.
+  confiança, duplicidade e papel do executor, sem escrever no catálogo. A Central
+  de Dados acrescenta prévia determinística para CSV/XLSX/JSON e compensação
+  reversível por linha; ingestão de PDF/foto continua fora do caminho crítico até
+  existir um parser isolado e homologado.
+- Staging: Worker `52ceba62-0bf1-4797-a272-a74907275ae4`, deployment
+  `7b633269-83b0-47ee-9343-8ac855d7f609`, smoke sem side effects e rota de
+  prévia IA publicada sem domínio de produção.
 - Integridade financeira staging: CHECKs de status/valor validados e trigger
   transacional de saldo em `recibos`; a UI nativa/web bloqueia excedente e o
   estado financeiro sobrevive a mudanças comerciais.
@@ -108,24 +111,44 @@ ou ficam fora da IA.
   Documentos também está disponível no painel web.
 - IA mobile: modo contextual de preparação com diff, confirmação, cancelamento
   e reversão pelos endpoints allowlisted já existentes no Worker.
+- IA de importação: Worker expõe `POST /ia/importacao/preview`, autenticado e
+  limitado pela mesma cota/rate-limit, que aceita texto + fontes HTTPS, retorna
+  lote estruturado com preço/confiança e marca `requiresReview=true`; não há
+  escrita, cobrança, busca externa ou alteração automática. O commit continua
+  sob confirmação humana na Central de Dados.
 - Ledger financeiro: tabela `pagamentos` append-only no staging, idempotência por
   tenant/chave, saldo serializado por orçamento, comprovante privado e estorno
   auditável; a trigger também fecha INSERT direto já estornado e registra
-  `ledgerStatus` no recibo sem esconder pendências.
+  `ledgerStatus` no recibo sem esconder pendências. A migration
+  `20260911124652_payments_ledger_receipt_link` adiciona o vínculo controlado
+  NULL→recibo, idempotente e limitado ao mesmo tenant, sem editar o evento.
+- Outbox financeiro: recibos pendentes e eventos confirmados ainda sem vínculo
+  são reprocessados no login/retorno ao primeiro plano; o estado
+  `ledgerReciboVinculado` impede duplicação e mantém a tentativa auditável.
+- Importação reversível: a Central de Dados registra o snapshot anterior de cada
+  linha, aplica em ordem determinística e, em erro, compensa em ordem reversa
+  usando os valores anteriores ou a lixeira (soft-delete). Falha de compensação
+  fica explícita para não declarar sucesso parcial como concluído.
+- QA web: o harness Playwright registra HTTP final, rota, console/page errors,
+  DOMContentLoaded/load, recursos e bytes transferidos em
+  `qa-artifacts/qa-web-results.json`; sem credencial de demonstração, o caso
+  autenticado para no guard e é reportado como `authRequired=true`.
 
 ## 4. Próximas fatias, em ordem
 
-1. Central de Documentos: editor de rascunho visual, abertura de todos os tipos
-   de origem e paginação por cursor; manter versões congeladas.
-2. Pagamentos: integrar reconciliação/outbox local para reprocessar eventos
-   pendentes e tela de estorno com motivo; ledger/RPC/hash/comprovante já estão
-   no staging e o recibo continua derivado do evento.
+1. Central de Documentos: editor de rascunho visual e RPC transacional já estão
+   entregues; permanece a expansão de abertura/paginação de tipos de origem, sem
+   mudar o contrato de versões congeladas.
+2. Pagamentos: ledger/RPC/hash/comprovante, vínculo controlado, retry mobile e
+   estorno já estão no staging; a visualização administrativa de estorno no painel
+   web fica como melhoria posterior, sem bloquear o fluxo mobile homologado.
 3. Ajuda oficial: registro de fonte/versão, NFS-e e PMOC; links/deep links primeiro.
-4. IA de documentos: job isolado para PDF/CSV/foto, parser aprovado, preview/diff,
-   aprovação em lote e auditoria; o modo de ação do chat já está conectado para
-   campos allowlisted, mas não executa documentos/importação.
-5. Performance: baseline frio/quente no SM-G780F, SQLite, bundle, listas, fontes e
-   JS thread; só então lazy loading, agregados, virtualização e thumbnails.
+4. IA de documentos: CSV/XLSX/JSON e o endpoint de texto já possuem
+   preview/diff/rollback seguro; PDF/foto continuam bloqueados até o job isolado,
+   parser aprovado e validação de saída estruturada (não entram no caminho crítico).
+5. Performance: QA web mede carregamento frio nos dois viewports e o smoke ADB
+   mede o primeiro frame do SM-G780F; ainda falta separar um perfil release sem
+   Metro para decidir lazy loading, virtualização e thumbnails.
 6. Landing/onboarding: páginas por vertical e copy de teste grátis baseada em dados,
    sem prometer recurso ainda não liberado.
 7. Auditoria final independente: RLS/tenant, upload, IA, pagamentos, deploy,
@@ -148,9 +171,13 @@ ou ficam fora da IA.
 - 100% dos documentos enviados preservam versão e origem;
 - pagamento parcial não informa “pago” antes do saldo zerar;
 - IA sem confirmação não altera banco; ação não allowlisted falha fechado;
+- uma importação interrompida restaura as linhas já tocadas ou as marca na lixeira,
+  e falhas de rollback ficam visíveis;
 - RLS/tenant isolam conta A de B;
 - boot e navegação do aparelho de referência sem fatal, SQLite error ou tela vazia;
 - smoke staging com health, CORS, método, auth shell e `sideEffects: none`.
+- QA web gera métricas de carregamento nos viewports desktop/mobile e não confunde
+  guard de login com fluxo autenticado.
 
 ## 7. Gates para liberar usuários reais
 

@@ -15,7 +15,7 @@ import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo, getRecibos } from '../database/database';
-import { getReciboDoOrcamento, marcarReciboComoPdfEmitido, registrarPagamentoNoLedger } from '../services/pagamentos';
+import { getReciboDoOrcamento, marcarReciboComoPdfEmitido, registrarPagamentoNoLedger, vincularPagamentoAoRecibo } from '../services/pagamentos';
 import { Recibo, Empresa, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
@@ -268,6 +268,10 @@ function EmitirReciboConteudo() {
         // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
         // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
         await saveRecibo(recibo);
+        if (recibo.pagamentoId && await vincularPagamentoAoRecibo(recibo.pagamentoId, recibo.id)) {
+          recibo = { ...recibo, ledgerReciboVinculado: true };
+          await saveRecibo(recibo);
+        }
         await garantirDocumentoRecibo(recibo);
         setReciboPendente(recibo);
       } catch {

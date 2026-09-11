@@ -428,6 +428,8 @@ export interface Recibo {
   pdfEmitido?: boolean;
   /** ID do evento no ledger financeiro remoto, quando a gravação online confirmou. */
   pagamentoId?: string;
+  /** O evento já foi ligado à linha remota do recibo (NULL -> id, uma vez). */
+  ledgerReciboVinculado?: boolean;
   /** Chave de idempotência usada para retentar sem criar outro evento. */
   idempotencyKey?: string;
   /** Estado do espelho no ledger; pendente não significa que a nuvem confirmou. */

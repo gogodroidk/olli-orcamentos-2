@@ -126,6 +126,28 @@ export type ResultadoLedgerPagamento =
   | { status: 'pendente'; idempotencyKey: string; erro: 'indisponivel' | 'timeout' | 'offline' | 'nao_autorizado' }
   | { status: 'negado'; mensagem: string };
 
+/**
+ * Liga o evento financeiro ao recibo depois que o mirror do recibo terminou o
+ * upsert remoto. É uma operação NULL → id, idempotente no servidor; falha de
+ * rede permanece pendente para a próxima sincronização, sem editar o evento.
+ */
+export async function vincularPagamentoAoRecibo(pagamentoId: string, reciboId: string): Promise<boolean> {
+  if (!supabase || !pagamentoId.trim() || !reciboId.trim()) return false;
+  try {
+    const sessao = await supabase.auth.getSession();
+    if (!sessao.data.session) return false;
+    const { data, error } = await supabase.rpc('vincular_pagamento_recibo', {
+      p_pagamento_id: pagamentoId,
+      p_recibo_id: reciboId,
+    });
+    if (error) return false;
+    const row = Array.isArray(data) ? data[0] : data;
+    return !!row && String(row.id ?? '') === pagamentoId;
+  } catch {
+    return false;
+  }
+}
+
 function erroLedgerTerminal(codigo?: string | null, mensagem?: string | null): boolean {
   const texto = `${codigo ?? ''} ${mensagem ?? ''}`.toLocaleLowerCase('pt-BR');
   return /ultrapassa|nao_recebivel|não_recebivel|orcamento_do_pagamento|idempotency_key_reutilizada|valor_pagamento_invalido|forma_pagamento_invalida|data_recebimento_invalida|sessao_obrigatoria|id_pagamento_invalido/.test(texto)
@@ -150,6 +172,8 @@ export async function registrarPagamentoNoLedger(input: {
   if (!dataIso) return { status: 'negado', mensagem: 'Informe uma data de recebimento válida.' };
   if (!supabase) return { status: 'pendente', idempotencyKey: input.idempotencyKey, erro: 'indisponivel' };
   try {
+    const sessao = await supabase.auth.getSession();
+    if (!sessao.data.session) return { status: 'pendente', idempotencyKey: input.idempotencyKey, erro: 'nao_autorizado' };
     const { data, error } = await supabase.rpc('registrar_pagamento_financeiro', {
       p_id: input.id,
       p_orcamento_id: input.orcamentoId ?? null,
@@ -219,7 +243,7 @@ export async function registrarPagamento(input: RegistrarPagamentoInput): Promis
     comprovante: input.comprovante,
   });
   if (ledger.status === 'negado') throw new Error(ledger.mensagem);
-  const recibo: Recibo = {
+  let recibo: Recibo = {
     id,
     numero,
     orcamentoId: orcamento.id,
@@ -237,6 +261,7 @@ export async function registrarPagamento(input: RegistrarPagamentoInput): Promis
     idempotencyKey: ledger.idempotencyKey,
     ledgerStatus: ledger.status,
     ...(ledger.status === 'confirmado' ? { pagamentoId: ledger.pagamentoId } : { ledgerErro: ledger.erro }),
+    ...(ledger.status === 'confirmado' ? { ledgerReciboVinculado: false } : {}),
     ...(input.comprovante ? {
       comprovanteChave: input.comprovante.chave,
       comprovanteHash: input.comprovante.hash,
@@ -245,37 +270,55 @@ export async function registrarPagamento(input: RegistrarPagamentoInput): Promis
     } : {}),
   };
   await saveRecibo(recibo);
+  if (ledger.status === 'confirmado' && await vincularPagamentoAoRecibo(ledger.pagamentoId, recibo.id)) {
+    recibo = { ...recibo, ledgerReciboVinculado: true };
+    await saveRecibo(recibo);
+  }
   return recibo;
 }
 
-/** Reprocessa somente recibos explicitamente marcados como pendentes. */
+/** Reprocessa lançamentos pendentes e tenta concluir o vínculo ledger ↔ recibo. */
 export async function sincronizarPagamentosPendentes(): Promise<number> {
-  const pendentes = (await getRecibos()).filter((recibo) => recibo.ledgerStatus === 'pendente' && !recibo.estornadoEm);
+  const pendentes = (await getRecibos()).filter((recibo) =>
+    !recibo.estornadoEm && (
+      recibo.ledgerStatus === 'pendente' ||
+      (!!recibo.pagamentoId && recibo.ledgerReciboVinculado !== true)
+    )
+  );
   let confirmados = 0;
   for (const recibo of pendentes) {
-    const ledger = await registrarPagamentoNoLedger({
-      id: recibo.id,
-      idempotencyKey: recibo.idempotencyKey ?? recibo.id,
-      orcamentoId: recibo.orcamentoId,
-      valor: recibo.valorRecebido,
-      formaPagamento: recibo.formaPagamento,
-      dataRecebimento: recibo.dataRecebimento,
-      comprovante: recibo.comprovanteChave ? {
-        chave: recibo.comprovanteChave,
-        hash: recibo.comprovanteHash,
-        mime: recibo.comprovanteMime,
-        tamanhoBytes: recibo.comprovanteTamanhoBytes,
-      } : undefined,
-    });
-    if (ledger.status !== 'confirmado') continue;
-    await saveRecibo({
-      ...recibo,
-      pagamentoId: ledger.pagamentoId,
-      idempotencyKey: ledger.idempotencyKey,
-      ledgerStatus: 'confirmado',
-      ledgerErro: undefined,
-    });
-    confirmados += 1;
+    let atual = recibo;
+    if (atual.ledgerStatus === 'pendente' || !atual.pagamentoId) {
+      const ledger = await registrarPagamentoNoLedger({
+        id: atual.id,
+        idempotencyKey: atual.idempotencyKey ?? atual.id,
+        orcamentoId: atual.orcamentoId,
+        valor: atual.valorRecebido,
+        formaPagamento: atual.formaPagamento,
+        dataRecebimento: atual.dataRecebimento,
+        comprovante: atual.comprovanteChave ? {
+          chave: atual.comprovanteChave,
+          hash: atual.comprovanteHash,
+          mime: atual.comprovanteMime,
+          tamanhoBytes: atual.comprovanteTamanhoBytes,
+        } : undefined,
+      });
+      if (ledger.status !== 'confirmado') continue;
+      atual = {
+        ...atual,
+        pagamentoId: ledger.pagamentoId,
+        idempotencyKey: ledger.idempotencyKey,
+        ledgerStatus: 'confirmado',
+        ledgerErro: undefined,
+        ledgerReciboVinculado: false,
+      };
+      await saveRecibo(atual);
+      confirmados += 1;
+    }
+    if (atual.pagamentoId && atual.ledgerReciboVinculado !== true) {
+      const ligado = await vincularPagamentoAoRecibo(atual.pagamentoId, atual.id);
+      if (ligado) await saveRecibo({ ...atual, ledgerReciboVinculado: true });
+    }
   }
   return confirmados;
 }

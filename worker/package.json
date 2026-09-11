@@ -14,8 +14,9 @@
     "test:email": "node scripts/teste-email.js",
     "test:resend-webhook": "node scripts/teste-resend-webhook.js",
     "test:ia-actions": "node scripts/teste-ia-actions.js",
+    "test:ia-importacao": "node scripts/teste-ia-importacao.js",
     "test:welcome-outbox-consumer": "node scripts/teste-welcome-outbox-consumer.js",
-    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:welcome-outbox-consumer",
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:welcome-outbox-consumer",
     "deploy": "npm run types:check && wrangler deploy"
   },
   "dependencies": {

@@ -6,15 +6,19 @@
  * snapshots grandes sem necessidade; a origem continua apontando para o fluxo
  * oficial de edição/geração.
  */
-import { Archive, ExternalLink, FileCheck2, FileText, Inbox, Lock, RotateCw, Search } from "lucide-react";
+import { Archive, ExternalLink, FileCheck2, FileText, Inbox, Lock, Pencil, RotateCw, Save, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useOlliList } from "@/olli/data";
+import { buscarDocumentoWeb, editarDocumentoWeb, type DocumentoWebEditavel } from "@/olli/documentos";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
+import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
+import { toast } from "sonner";
 
 type StatusDocumento = "rascunho" | "pronto" | "enviado" | "assinado" | "arquivado";
 type TipoDocumento = "orcamento" | "contrato" | "garantia" | "conclusao" | "recibo" | "ordem_servico" | "pmoc" | "laudo" | "checklist" | "certificado";
@@ -78,6 +82,46 @@ export default function DocumentosPage() {
 	const [busca, setBusca] = useState("");
 	const [status, setStatus] = useState<StatusDocumento | "todos">("todos");
 	const [tipo, setTipo] = useState("todos");
+	const [editor, setEditor] = useState<(DocumentoWebEditavel & { texto: string }) | null>(null);
+	const [abrindoEditor, setAbrindoEditor] = useState(false);
+	const [salvandoEditor, setSalvandoEditor] = useState(false);
+
+	async function abrirEditor(doc: LinhaDocumento) {
+		if (!["rascunho", "pronto"].includes(doc.status)) {
+			toast.info("Documentos enviados, assinados ou arquivados ficam congelados. Abra a origem para criar uma nova revisão.");
+			return;
+		}
+		setAbrindoEditor(true);
+		try {
+			const atual = await buscarDocumentoWeb(doc.id);
+			const texto = typeof atual.dados.texto === "string"
+				? atual.dados.texto
+				: typeof atual.dados.observacoes === "string"
+					? atual.dados.observacoes
+					: typeof atual.dados.conteudo === "string" ? atual.dados.conteudo : "";
+			setEditor({ ...atual, texto });
+		} catch (erro) {
+			toast.error((erro as Error).message || "Não consegui abrir o rascunho.");
+		} finally {
+			setAbrindoEditor(false);
+		}
+	}
+
+	async function salvarEditor() {
+		if (!editor || salvandoEditor) return;
+		setSalvandoEditor(true);
+		try {
+			const dados = { ...editor.dados, texto: editor.texto };
+			const salvo = await editarDocumentoWeb({ id: editor.id, titulo: editor.titulo, dados });
+			setEditor(null);
+			await refetch();
+			toast.success(`Rascunho salvo como versão ${salvo.versao}.`);
+		} catch (erro) {
+			toast.error((erro as Error).message || "Não consegui salvar a nova versão.");
+		} finally {
+			setSalvandoEditor(false);
+		}
+	}
 
 	const documentos = useMemo(() => {
 		const termo = busca.trim().toLocaleLowerCase("pt-BR");
@@ -157,17 +201,31 @@ export default function DocumentosPage() {
 								<td className="px-4 py-3.5 text-text-secondary">{doc.origem_numero ? `${doc.origem_tipo} · ${doc.origem_numero}` : doc.origem_tipo}</td>
 								<td className="px-4 py-3.5"><Badge variant={statusVariant(doc.status)}>{STATUS_LABEL[doc.status] ?? doc.status}</Badge></td>
 								<td className="px-4 py-3.5 tabular-nums text-text-secondary">{dataLegivel(doc.atualizado_em)}</td>
-								<td className="px-4 py-3.5 text-right">{doc.arquivo_uri ? <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline"><ExternalLink className="size-3.5" />Abrir</a> : doc.arquivo_chave ? <span className="inline-flex items-center gap-1.5 text-text-secondary" title="URL assinada será gerada quando o documento for aberto no app"><Lock className="size-3.5" />Protegido</span> : <span className="text-text-disabled">Não exportado</span>}</td>
+								<td className="px-4 py-3.5 text-right"><div className="flex items-center justify-end gap-3">{["rascunho", "pronto"].includes(doc.status) && <Button type="button" variant="ghost" size="sm" className="gap-1.5 rounded-full" onClick={() => { void abrirEditor(doc); }} disabled={abrindoEditor}><Pencil className="size-3.5" />Editar</Button>}{doc.arquivo_uri ? <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline"><ExternalLink className="size-3.5" />Abrir</a> : doc.arquivo_chave ? <span className="inline-flex items-center gap-1.5 text-text-secondary" title="URL assinada será gerada quando o documento for aberto no app"><Lock className="size-3.5" />Protegido</span> : <span className="text-text-disabled">Não exportado</span>}</div></td>
 							</tr>)}</tbody>
 						</table>
 					</div>
 					<div className="divide-y divide-border/60 md:hidden">{documentos.map((doc) => <div key={doc.id} className="space-y-2 p-4">
 						<div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-2.5"><FileText className="mt-0.5 size-4 shrink-0 text-primary" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-text-primary">{doc.titulo}</p><p className="mt-0.5 text-xs text-text-secondary">{doc.cliente_nome || "Documento técnico"}</p></div></div><Badge variant={statusVariant(doc.status)}>{STATUS_LABEL[doc.status] ?? doc.status}</Badge></div>
-						<div className="flex items-center justify-between gap-2 pl-6 text-xs text-text-disabled"><span>{TIPOS[doc.tipo] ?? doc.tipo} · v{doc.versao_atual ?? 1} · {dataLegivel(doc.atualizado_em)}</span>{doc.arquivo_uri && <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary"><ExternalLink className="size-3" />Abrir PDF</a>}</div>
+						<div className="flex items-center justify-between gap-2 pl-6 text-xs text-text-disabled"><span>{TIPOS[doc.tipo] ?? doc.tipo} · v{doc.versao_atual ?? 1} · {dataLegivel(doc.atualizado_em)}</span><div className="flex items-center gap-3">{["rascunho", "pronto"].includes(doc.status) && <Button type="button" variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-2" onClick={() => { void abrirEditor(doc); }} disabled={abrindoEditor}><Pencil className="size-3" />Editar</Button>}{doc.arquivo_uri && <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary"><ExternalLink className="size-3" />Abrir PDF</a>}</div></div>
 					</div>)}</div>
 				</Card>
 			)}
 			<p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-text-disabled"><Lock className="size-3.5" />Arquivos privados; o acesso é limitado à sua conta e à equipe autorizada.</p>
+			<Dialog open={!!editor} onOpenChange={(aberto) => !aberto && !salvandoEditor && setEditor(null)}>
+				<DialogContent className="max-w-2xl">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2"><Pencil className="size-4 text-primary" />Editar rascunho</DialogTitle>
+						<DialogDescription>Salvar cria uma nova versão. Documentos enviados, assinados ou arquivados não podem ser sobrescritos.</DialogDescription>
+					</DialogHeader>
+					{editor && <div className="grid gap-4 py-2">
+						<label className="grid gap-1.5 text-sm font-medium text-text-primary" htmlFor="documento-editor-titulo">Título<input id="documento-editor-titulo" value={editor.titulo} onChange={(e) => setEditor({ ...editor, titulo: e.target.value })} maxLength={240} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-normal outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" /></label>
+						<label className="grid gap-1.5 text-sm font-medium text-text-primary" htmlFor="documento-editor-texto">Conteúdo / observações<Textarea id="documento-editor-texto" value={editor.texto} onChange={(e) => setEditor({ ...editor, texto: e.target.value })} maxLength={1000000} rows={12} className="min-h-48 resize-y text-sm leading-6" placeholder="Adicione as observações ou o texto que deseja revisar…" /></label>
+						<p className="text-xs text-text-secondary">Versão atual: {editor.versao}. A origem, o cliente e o histórico continuam preservados.</p>
+					</div>}
+					<DialogFooter><Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={salvandoEditor}>Cancelar</Button><Button type="button" onClick={() => { void salvarEditor(); }} disabled={!editor?.titulo.trim() || salvandoEditor} className="gap-2"><Save className="size-4" />{salvandoEditor ? "Salvando…" : "Salvar nova versão"}</Button></DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

@@ -47,14 +47,14 @@
       "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
       "baselineSource": "main_schema_metadata_only",
       "latestStagingMigration": {
-        "version": "20260911122145",
+        "version": "20260911134000",
         "status": "applied",
-        "appliedAt": "2026-09-11T12:21:45-03:00",
+        "appliedAt": "2026-09-11T13:40:00-03:00",
         "scope": "staging_only",
-        "description": "financial ledger with insert/append-only guards, explicit grants, receipt proof, and stable document storage keys"
+        "description": "financial ledger, controlled receipt linkage, and append-only insert/estorno guards with receipt proof and stable document storage keys"
       },
       "lastPromotionCheckpoint": {
-        "recordedAt": "2026-09-08T06:38:24-03:00",
+        "recordedAt": "2026-09-11T10:22:01-03:00",
         "baselineMigration": "staging_schema_baseline_20260906",
         "incrementalMigrationsApplied": 41,
         "migrationApplicationMode": "supabase_sql_editor_manual_then_staging_history_repair",
@@ -79,8 +79,8 @@
         "workerDeployment": {
           "name": "olli-diagnostico-staging",
           "url": "https://olli-diagnostico-staging.igoreluisa.workers.dev",
-          "deploymentId": "bc556d42-1af6-4018-8d5b-97d838e3ea61",
-          "versionId": "ee5e349c-e22a-4ddc-ba4a-2d69d52acd65",
+          "deploymentId": "7b633269-83b0-47ee-9343-8ac855d7f609",
+          "versionId": "52ceba62-0bf1-4797-a272-a74907275ae4",
           "health": "HTTP_200",
           "welcomeDispatchMode": "off_until_staging_secrets",
           "routes": []
@@ -95,7 +95,7 @@
           "latestBuildId": "81e53bff-2918-4581-a274-905dc91ee866",
           "latestCommit": "67b7dae9cee599b683516d9cdc5b5fb2459053c0",
           "latestBuildStatus": "success",
-          "latestActiveVersionLabel": "ee5e349c"
+          "latestActiveVersionLabel": "52ceba62"
         },
         "githubPromotion": {
           "pullRequest": 42,

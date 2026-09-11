@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -33,6 +33,22 @@ async function clickIfVisible(locator, timeout = 800) {
   } catch {
     return false;
   }
+}
+
+async function navigationMetrics(page) {
+  return page.evaluate(() => {
+    const entry = performance.getEntriesByType('navigation')[0];
+    const nav = entry && 'domContentLoadedEventEnd' in entry ? entry : null;
+    const resources = performance.getEntriesByType('resource');
+    const bytes = resources.reduce((sum, resource) => sum + (Number(resource.transferSize) || 0), 0);
+    return {
+      domContentLoadedMs: nav ? Math.round(nav.domContentLoadedEventEnd) : null,
+      loadEventMs: nav ? Math.round(nav.loadEventEnd) : null,
+      responseEndMs: nav ? Math.round(nav.responseEnd) : null,
+      resourceCount: resources.length,
+      transferBytes: bytes,
+    };
+  }).catch(() => ({ domContentLoadedMs: null, loadEventMs: null, responseEndMs: null, resourceCount: null, transferBytes: null }));
 }
 
 async function reachHome(page) {
@@ -79,12 +95,16 @@ async function runViewport(name, viewport) {
     logs.push({ type: 'pageerror', text: error.message });
   });
 
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForLoadState('networkidle', { timeout: 120000 }).catch(() => {});
   const accessState = await reachHome(page);
   await page.waitForTimeout(1200);
 
   const bodyText = await page.locator('body').innerText();
+  const metrics = await navigationMetrics(page);
+  const performanceBudgetPassed = [metrics.domContentLoadedMs, metrics.loadEventMs]
+    .filter((value) => typeof value === 'number')
+    .every((value) => value <= 12000);
   const homeShot = resolve(outDir, `qa-${name}-home.png`);
   await page.screenshot({ path: homeShot, fullPage: false });
 
@@ -99,6 +119,10 @@ async function runViewport(name, viewport) {
       homeHasQuickActions: false,
       homeHasNewBudget: false,
       flowReachedClientStep: false,
+      httpStatus: response?.status() ?? null,
+      finalUrl: page.url(),
+      navigation: metrics,
+      performanceBudgetPassed,
       consoleIssues: logs,
     };
   }
@@ -124,6 +148,10 @@ async function runViewport(name, viewport) {
     homeHasQuickActions: RX.quickActions.test(bodyText),
     homeHasNewBudget: RX.newBudget.test(bodyText) || opened,
     flowReachedClientStep: RX.clientStep.test(flowText),
+    httpStatus: response?.status() ?? null,
+    finalUrl: page.url(),
+    navigation: metrics,
+    performanceBudgetPassed,
     consoleIssues: logs,
   };
 }
@@ -133,8 +161,9 @@ const results = [
   await runViewport('mobile', { width: 390, height: 844 }),
 ];
 
+writeFileSync(resolve(outDir, 'qa-web-results.json'), JSON.stringify({ generatedAt: new Date().toISOString(), url, results }, null, 2));
 console.log(JSON.stringify(results, null, 2));
 
-if (results.some((result) => result.consoleIssues.length > 0 || (!result.authRequired && (!result.homeHasQuickActions || !result.homeHasNewBudget || !result.flowReachedClientStep)))) {
+if (results.some((result) => result.consoleIssues.length > 0 || !result.performanceBudgetPassed || (!result.authRequired && (!result.homeHasQuickActions || !result.homeHasNewBudget || !result.flowReachedClientStep)))) {
   process.exitCode = 1;
 }

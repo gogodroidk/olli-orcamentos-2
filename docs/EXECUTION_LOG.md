@@ -617,3 +617,64 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.
+
+## Continuação — vínculo ledger/recibo, rollback de importação e QA web (2026-09-11)
+
+- Criada a migration versionada `20260911124652_payments_ledger_receipt_link` e
+  aplicada somente no Supabase staging `sbpkutknpywezeagioon`; o histórico remoto
+  foi reparado como `applied` pelo CLI autenticado. Produção permaneceu intocada.
+- O vínculo ledger↔recibo agora é uma transição única `NULL → id` protegida por
+  trigger: exige recibo do mesmo tenant, rejeita segundo vínculo e não permite
+  alterar valor, orçamento, forma, comprovante ou estado junto. A RPC é
+  `SECURITY INVOKER`, com `EXECUTE` apenas para `authenticated`.
+- Mobile e painel web gravam o recibo e, em seguida, tentam concluir o vínculo;
+  `ledgerReciboVinculado` fica falso quando a nuvem ainda não confirmou o espelho.
+  O sincronizador do app reprocessa tanto pendências quanto vínculos ainda abertos,
+  sem criar outro evento graças à chave de idempotência.
+- QA transacional em `scripts/qa-ledger-receipt-link.sql` criou usuário/recibos de
+  teste dentro de uma transação e confirmou vínculo idempotente, bloqueio de edição,
+  bloqueio de `DELETE` e rollback; consulta posterior comprovou zero resíduos.
+- A Central de Dados web passou a guardar o snapshot anterior de cada linha e a
+  fazer compensação em ordem reversa quando uma mutation falha. Inclusões usam
+  lixeira (soft-delete), atualizações restauram o valor anterior e qualquer falha
+  de compensação é mostrada ao operador.
+- O harness Playwright (`scripts/qa-web.mjs`) agora grava rota/status final,
+  DOMContentLoaded/load, quantidade de recursos e bytes transferidos em
+  `qa-artifacts/qa-web-results.json`. Desktop `1280×720` e mobile `390×844`
+  chegaram ao guard `/auth/login` sem console/page errors; como não há credencial
+  demo disponível nesta sessão, o resultado permanece explicitamente
+  `authRequired=true`, sem fingir E2E autenticado.
+- Gates executados após a alteração: `npm run typecheck`,
+  `npm run test:ledger-pagamentos`, `npm run test:importacao-rollback`,
+  `npm run check:environments` e `npm run qa:web` (todos passaram).
+
+## Prévia IA de catálogo e editor persistido (2026-09-11)
+
+- O Worker recebeu `POST /ia/importacao/preview`: autenticação JWT, cota/rate-limit
+  existentes, texto limitado a 12.000 caracteres, no máximo 50 itens, fontes
+  exclusivamente HTTPS fornecidas pelo usuário e resposta JSON Schema estrita.
+  O retorno é uma prévia `aguardando_confirmacao` com `requiresReview=true`;
+  nenhum catálogo, preço, cliente ou orçamento é gravado.
+- O painel passou a exibir um editor para documentos em `rascunho/pronto`. O
+  snapshot inteiro é lido do blob e salvo pela RPC
+  `editar_documento_rascunho`, que cria a próxima versão e atualiza o ponteiro
+  na mesma transação; `enviado/assinado/arquivado` são rejeitados pelo banco.
+- A migration `20260911130917_documento_editor_rascunho` foi aplicada e reparada
+  como `applied` somente no staging. A QA transacional criou documento/versão
+  sintéticos, confirmou a nova versão e o bloqueio após envio, e terminou com
+  `ROLLBACK` (zero resíduos).
+- Worker staging foi publicado manualmente (sem Git Build) em
+  `olli-diagnostico-staging.workers.dev`, versão
+  `52ceba62-0bf1-4797-a272-a74907275ae4`, 100% do tráfego isolado em
+  `workers.dev`; smoke passou health, CORS, method gates (incluindo a nova rota),
+  shell admin e `sideEffects: none`. A IA permanece `off` no staging porque não
+  há secret de provedor habilitado nesta janela.
+- Evidências novas: `npm run test:ia-importacao-worker`,
+  `npm run test:rotas-metodo` (51), `npm run test:biblioteca-documentos` (14),
+  `npm run test:ledger-pagamentos`, `npm run test:importacao-rollback`,
+  `npm run typecheck`, build web, dry-run/deploy Wrangler e `npm run staging:smoke`.
+- Smoke Android reproduzível (`npm run qa:android`) no `SM-G780F`
+  (`RX8NB033HXP`, Android 13/API 33) passou com primeiro frame em 4,932 s,
+  sem FATAL/SQLite/Metro error e screenshot estabilizado em
+  `artifacts/device-sm-g780f-qa-latest.png`. O script aguarda a hidratação do
+  SQLite/Metro antes da captura para não registrar a tela de splash como vazia.

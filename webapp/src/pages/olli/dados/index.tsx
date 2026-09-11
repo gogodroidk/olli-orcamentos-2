@@ -28,7 +28,7 @@ import { useOlliList } from "@/olli/data";
 import { LIMITE_ARQUIVO_BYTES, type LinhaBruta, criarCsv, normalizarCabecalho, normalizarChave, numeroBr } from "@/olli/importacao/parser";
 import { lerArquivoTabular } from "@/olli/importacao/arquivo";
 import { extrairOrcamentosOlli } from "@/olli/importacao/orcamento";
-import { useContextoDeEscrita, useSalvar } from "@/olli/mutacoes";
+import { useContextoDeEscrita, useExcluir, useSalvar } from "@/olli/mutacoes";
 import { type LinhaCatalogo, linhaParaItem } from "@/pages/olli/catalogo/FormItemCatalogo";
 import { type LinhaCliente, linhaParaCliente } from "@/pages/olli/clientes/FormCliente";
 import { type LinhaAsset } from "@/pages/olli/equipamentos/equipamento";
@@ -148,6 +148,10 @@ export default function CentralDeDadosPage() {
 	const salvarProduto = useSalvar("produtos");
 	const salvarServico = useSalvar("servicos");
 	const salvarOrcamento = useSalvar("orcamentos");
+	const excluirCliente = useExcluir("clientes");
+	const excluirProduto = useExcluir("produtos");
+	const excluirServico = useExcluir("servicos");
+	const excluirOrcamento = useExcluir("orcamentos");
 
 	const cabecalhos = useMemo(() => Object.keys(linhasImportadas[0] ?? {}), [linhasImportadas]);
 	const consultas = [clientes, produtos, servicos, equipamentos, orcamentos, recibos, agendamentos, ordens];
@@ -308,18 +312,65 @@ export default function CentralDeDadosPage() {
 		if (!pronto || contexto.isError) { toast.error("A base não foi carregada por completo. Nada foi alterado."); return; }
 		if ((tipo === "produtos" || tipo === "servicos" || tipo === "orcamentos" || tipo === "fornecedor") && !catalogoPermitido) { toast.error("Permissão de proprietário não confirmada. A importação foi bloqueada."); return; }
 		setAplicando(true);
+		const tabela = tipo === "clientes" ? "clientes" : tipo === "servicos" ? "servicos" : tipo === "orcamentos" ? "orcamentos" : "produtos";
+		type OperacaoAplicada = { objeto: unknown; anterior?: unknown };
+		const operacoes: OperacaoAplicada[] = [];
+		const anteriorPorId = (id: string): unknown => {
+			if (tabela === "clientes") {
+				const linha = (clientes.data ?? []).find((item) => item.id === id);
+				return linha ? linhaParaCliente(linha) : undefined;
+			}
+			if (tabela === "orcamentos") {
+				const linha = (orcamentos.data ?? []).find((item) => item.id === id);
+				if (!linha) return undefined;
+				return linha.dados && typeof linha.dados === "object" ? linha.dados as Orcamento : linha as unknown as Orcamento;
+			}
+			const lista = tabela === "produtos" ? produtos.data ?? [] : servicos.data ?? [];
+			const linha = lista.find((item) => item.id === id);
+			return linha ? linhaParaItem(tabela === "produtos" ? "produto" : "servico", linha) : undefined;
+		};
+		const desfazer = async (operacao: OperacaoAplicada) => {
+			if (tabela === "clientes") {
+				if (operacao.anterior) await salvarCliente.mutateAsync(operacao.anterior as Cliente);
+				else await excluirCliente.mutateAsync(operacao.objeto as Cliente);
+			} else if (tabela === "servicos") {
+				if (operacao.anterior) await salvarServico.mutateAsync(operacao.anterior as ServicoItem);
+				else await excluirServico.mutateAsync(operacao.objeto as ServicoItem);
+			} else if (tabela === "orcamentos") {
+				if (operacao.anterior) await salvarOrcamento.mutateAsync(operacao.anterior as Orcamento);
+				else await excluirOrcamento.mutateAsync(operacao.objeto as Orcamento);
+			} else if (operacao.anterior) {
+				await salvarProduto.mutateAsync(operacao.anterior as ProdutoItem);
+			} else {
+				await excluirProduto.mutateAsync(operacao.objeto as ProdutoItem);
+			}
+		};
 		try {
-			// Salvar o backup antes é responsabilidade do usuário; a ação deixa isso explícito no botão.
+			// O pacote operacional continua sendo o backup recomendado. Como cada
+			// linha é uma mutation independente, registramos o estado anterior antes
+			// de cada chamada para poder fazer compensação reversível se a rede falhar.
 			for (const proposta of aplicaveis) {
 				if (!proposta.objeto) continue;
+				const operacao = { objeto: proposta.objeto, anterior: anteriorPorId(proposta.objeto.id) };
+				operacoes.push(operacao);
 				if (tipo === "clientes") await salvarCliente.mutateAsync(proposta.objeto as Cliente);
 				else if (tipo === "servicos") await salvarServico.mutateAsync(proposta.objeto as ServicoItem);
 				else if (tipo === "orcamentos") await salvarOrcamento.mutateAsync(proposta.objeto as Orcamento);
 				else await salvarProduto.mutateAsync(proposta.objeto as ProdutoItem);
 			}
-			toast.success(`${aplicaveis.length} registro${aplicaveis.length === 1 ? "" : "s"} aplicado${aplicaveis.length === 1 ? "" : "s"}.`);
+			toast.success(`${aplicaveis.length} registro${aplicaveis.length === 1 ? "" : "s"} aplicado${aplicaveis.length === 1 ? "" : "s"}. Se precisar, use a lixeira para desfazer uma inclusão.`);
 			setLinhasImportadas([]); setOrcamentosImportados([]); setMapeamento({});
-		} catch (erro) { toast.error((erro as Error).message || "A importação parou. Nenhum registro restante foi aplicado."); }
+		} catch (erro) {
+			let falhasRollback = 0;
+			for (const operacao of [...operacoes].reverse()) {
+				try { await desfazer(operacao); } catch { falhasRollback += 1; }
+			}
+			if (falhasRollback === 0) {
+				toast.error(`A importação falhou e ${operacoes.length} alteração${operacoes.length === 1 ? " foi" : "ões foram"} revertida${operacoes.length === 1 ? "" : "s"}. ${ (erro as Error).message || "Tente novamente." }`);
+			} else {
+				toast.error(`A importação falhou; ${falhasRollback} reversão${falhasRollback === 1 ? " ficou" : "ões ficaram"} pendente${falhasRollback === 1 ? "" : "s"}. Não repita o arquivo: confira a lixeira e o pacote operacional antes de tentar novamente.`);
+			}
+		}
 		finally { setAplicando(false); }
 	}
 
@@ -355,7 +406,7 @@ export default function CentralDeDadosPage() {
 							<div className="mb-4 flex flex-wrap gap-2">{(["inserir", "atualizar", "ignorar", "ambiguo", "erro"] as AcaoPreview[]).map((acao) => <Badge key={acao} variant={statusVariant(acao)}>{totais[acao]} {acao}</Badge>)}</div>
 							<div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-muted/50 text-xs uppercase tracking-wide text-text-secondary"><tr><th className="px-3 py-2">Linha</th><th className="px-3 py-2">Ação</th><th className="px-3 py-2">Motivo</th></tr></thead><tbody>{propostas.slice(0, MAX_AMOSTRA).map((p) => <tr key={p.linha} className="border-t"><td className="px-3 py-2 tabular-nums">{p.linha}</td><td className="px-3 py-2"><Badge variant={statusVariant(p.acao)}>{p.acao}</Badge></td><td className="px-3 py-2 text-text-secondary">{p.motivo}</td></tr>)}</tbody></table></div>
 							{propostas.length > MAX_AMOSTRA && <p className="mt-2 text-xs text-text-secondary">Mostrando {MAX_AMOSTRA} de {propostas.length} linhas. Os totais acima incluem o arquivo inteiro.</p>}
-							<div className="mt-5 flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-2 text-sm text-text-secondary"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-darker" /><span>Antes de confirmar, baixe o pacote operacional. A aplicação só insere/atualiza as linhas aprovadas; não há exclusão nesta operação.</span></div><Button onClick={aplicarImportacao} disabled={!aplicaveis.length || aplicando || contexto.isLoading || contexto.isError || !pronto}>{aplicando ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Confirmar {aplicaveis.length} alteração{aplicaveis.length === 1 ? "" : "ões"}</Button></div>
+							<div className="mt-5 flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-2 text-sm text-text-secondary"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-darker" /><span>Antes de confirmar, baixe o pacote operacional. Se uma gravação falhar no meio, o OLLI tenta reverter as linhas desta execução com a lixeira e os valores anteriores.</span></div><Button onClick={aplicarImportacao} disabled={!aplicaveis.length || aplicando || contexto.isLoading || contexto.isError || !pronto}>{aplicando ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Confirmar {aplicaveis.length} alteração{aplicaveis.length === 1 ? "" : "ões"}</Button></div>
 						</CardContent></Card>
 					</>}
 				</TabsContent>

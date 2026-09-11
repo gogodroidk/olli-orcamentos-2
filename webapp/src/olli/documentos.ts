@@ -66,3 +66,55 @@ export async function registrarDocumentoWeb(input: {
   if (atualizado.error) throw atualizado.error;
   return { id: existente.id, versao };
 }
+
+export type DocumentoWebEditavel = {
+  id: string;
+  titulo: string;
+  status: "rascunho" | "pronto" | "enviado" | "assinado" | "arquivado";
+  versao: number;
+  dados: Record<string, unknown>;
+};
+
+/** Lê o snapshot atual para o editor — o blob completo, nunca só os espelhos. */
+export async function buscarDocumentoWeb(id: string): Promise<DocumentoWebEditavel> {
+  const { data, error } = await supabase
+    .from("documentos")
+    .select("id,titulo,status,versao_atual,dados")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data || !data.id) throw new Error("documento_nao_encontrado");
+  const status = String(data.status) as DocumentoWebEditavel["status"];
+  if (!["rascunho", "pronto", "enviado", "assinado", "arquivado"].includes(status)) {
+    throw new Error("status_documento_invalido");
+  }
+  return {
+    id: String(data.id),
+    titulo: String(data.titulo ?? ""),
+    status,
+    versao: Number(data.versao_atual ?? 1),
+    dados: data.dados && typeof data.dados === "object" && !Array.isArray(data.dados) ? data.dados as Record<string, unknown> : {},
+  };
+}
+
+/**
+ * Salva um rascunho pela RPC transacional. A nova versão e o ponteiro do
+ * documento são criados juntos; o banco rejeita estados congelados.
+ */
+export async function editarDocumentoWeb(input: {
+  id: string;
+  titulo: string;
+  dados: Record<string, unknown>;
+}): Promise<{ id: string; versao: number }> {
+  const titulo = input.titulo.replace(/[\r\n]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  if (!titulo || titulo.length > 240) throw new Error("titulo_documento_invalido");
+  const { data, error } = await supabase.rpc("editar_documento_rascunho", {
+    p_documento_id: input.id,
+    p_titulo: titulo,
+    p_dados: input.dados,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row.id !== "string") throw new Error("resposta_editor_invalida");
+  return { id: row.id, versao: Number(row.versao_atual ?? 1) };
+}

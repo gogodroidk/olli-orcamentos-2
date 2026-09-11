@@ -11,6 +11,8 @@ nunca no app ou no APK.
 - `POST /voz/conversa` — conversa guiada → itens de orçamento
 - `POST /transcrever` — áudio → texto, ou áudio → texto → itens
 - `POST /chat` — assistente conversacional
+- `POST /ia/importacao/preview` — normaliza texto de catálogo em uma prévia com
+  fontes/confiabilidade; não grava nada e exige revisão antes da Central de Dados
 - `GET /` — health check (`{ ok:true, service:'olli-diagnostico', ia:'on'|'off' }`)
 
 Todos os POST exigem `Authorization: Bearer <token Supabase>`.

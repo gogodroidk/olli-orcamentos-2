@@ -7,6 +7,7 @@
  *   POST /voz/conversa → mesmo Tier B acima, rota dedicada (alias de /voz com conversa[])
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
+ *   POST /ia/importacao/preview → prévia estruturada de catálogo (sem escrita)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *
@@ -65,6 +66,7 @@ import {
 import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
+import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import {
   rotuloVertical,
@@ -169,7 +171,7 @@ async function getUser(request, env) {
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever']);
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview']);
 
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
@@ -1204,6 +1206,15 @@ const handler = {
       if (url.pathname === '/voz/conversa') return await handleVozConversa(corpoIa.raw, env, user);
       if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env, user);
       if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env, user);
+      if (url.pathname === '/ia/importacao/preview') {
+        const previa = await prepararPreviaImportacaoIa(corpoIa.raw, env, user, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaImportacaoIa(previa.erro) }, 422);
+        return json(previa);
+      }
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {
       const reservaNegada = reservaCotaDoErro(e);

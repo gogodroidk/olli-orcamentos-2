@@ -8,6 +8,7 @@ const checks = [
   { name: 'cors-preflight', method: 'OPTIONS', path: '/', status: 204 },
   { name: 'resend-method-gate', method: 'GET', path: '/resend/webhook', status: 405 },
   { name: 'ia-actions-method-gate', method: 'GET', path: '/ia/acoes/', status: 405 },
+  { name: 'ia-importacao-method-gate', method: 'GET', path: '/ia/importacao/preview', status: 405 },
   { name: 'admin-login-shell', method: 'GET', path: '/admin', status: 200 },
 ];
 const assert = (condition, message) => { if (!condition) throw new Error(message); };

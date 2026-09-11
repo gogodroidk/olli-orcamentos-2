@@ -10,8 +10,8 @@
   incompatível e o trigger `recibos_validar_financeiro` está ativo.
 - O trigger valida valor positivo/forma informada e trava a linha do orçamento
   antes de somar recebimentos, fechando a corrida de duas gravações concorrentes
-  na camada atual de recibos. O ledger dedicado e comprovante auditável seguem
-  como evolução posterior, não são fingidos por esta proteção.
+  na camada atual de recibos. O ledger dedicado agora também está aplicado no
+  staging, com comprovante auditável e estorno separado do recibo.
 - `arquivo_chave` estável foi adicionado ao registro/versão local e remoto; o
   PDF nativo calcula SHA-256, tenta upload privado e mantém `file://` como
   fallback explícito. URL assinada é regenerada pela chave e não é tratada como
@@ -31,7 +31,22 @@
 - A trigger do ledger foi exercitada em transação temporária: INSERT válido passa;
   INSERT como `estornado`, edição de valor e DELETE falham; somente a transição
   para estorno com ator/motivo/data passa. A borda de `OLD` no INSERT foi corrigida
-  antes de seguir para a integração.
+  antes de seguir para a integração. A migration de vínculo permite somente
+  `recibo_id` NULL→id do mesmo tenant, é idempotente e rejeita segundo vínculo;
+  o teste transacional deixou zero resíduos no staging.
+- A sincronização local/web registra `ledgerReciboVinculado` e retenta o vínculo
+  depois do upsert do recibo. Falhas transitórias permanecem pendentes; nenhuma
+  tentativa altera valor, estado ou comprovante já lançado.
+- A importação de CSV/XLSX/JSON no painel mantém um snapshot anterior por linha e
+  executa compensação em ordem reversa. Inclusões são soft-delete na lixeira;
+  falha de compensação não é escondida como sucesso.
+- O Worker staging expõe `/ia/importacao/preview` com JWT, rate-limit/cota,
+  limite de texto/itens, fontes HTTPS e JSON Schema estrito. O retorno é somente
+  prévia não persistida (`requiresReview=true`); não há busca externa nem escrita
+  automática.
+- O editor da Central usa a RPC `editar_documento_rascunho` (`SECURITY INVOKER`),
+  que cria versão e atualiza o ponteiro atomicamente. Estados enviados, assinados
+  e arquivados são congelados e não podem ser sobrescritos.
 
 - OSV Scanner 2.4.0: **0 vulnerabilidades** nos locks do app (`package-lock.json`), Worker (`worker/package-lock.json`) e painel (`webapp/pnpm-lock.yaml`). Foram corrigidos `sharp` 0.35.2 → 0.35.4 e `js-yaml` 4.3.1 → 4.3.2.
 - Gitleaks 8.30.1: 9 achados históricos, todos classificados como chave pública Supabase anon/JWT ou fixture pública. Não apareceu service-role key, Stripe secret, Resend key, Cloudflare token ou credencial privada no escopo atual. O histórico não foi reescrito automaticamente.
@@ -53,3 +68,6 @@
 1. Revisar a origem histórica das chaves anon/JWT e remover `.env` antigo do histórico somente com decisão explícita e plano de rotação.
 2. Reexecutar Gitleaks/OSV no gate de release e anexar os relatórios ao artefato da versão.
 3. Antes de produção, repetir RLS/tenant, IA, upload, rate/cost limit, backup/rollback e smoke pós-deploy.
+4. Adicionar o editor persistido da Central de Documentos e o job isolado para
+   PDF/foto antes de habilitar ingestão IA fora de CSV/XLSX/JSON; manter revisão
+   humana e sem escrita automática.
