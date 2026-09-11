@@ -108,13 +108,18 @@ ou ficam fora da IA.
   Documentos também está disponível no painel web.
 - IA mobile: modo contextual de preparação com diff, confirmação, cancelamento
   e reversão pelos endpoints allowlisted já existentes no Worker.
+- Ledger financeiro: tabela `pagamentos` append-only no staging, idempotência por
+  tenant/chave, saldo serializado por orçamento, comprovante privado e estorno
+  auditável; a trigger também fecha INSERT direto já estornado e registra
+  `ledgerStatus` no recibo sem esconder pendências.
 
 ## 4. Próximas fatias, em ordem
 
 1. Central de Documentos: editor de rascunho visual, abertura de todos os tipos
    de origem e paginação por cursor; manter versões congeladas.
-2. Pagamentos: ledger append-only dedicado, comprovante com hash/retensão,
-   idempotency key e RPC transacional; recibo continua derivado do evento.
+2. Pagamentos: integrar reconciliação/outbox local para reprocessar eventos
+   pendentes e tela de estorno com motivo; ledger/RPC/hash/comprovante já estão
+   no staging e o recibo continua derivado do evento.
 3. Ajuda oficial: registro de fonte/versão, NFS-e e PMOC; links/deep links primeiro.
 4. IA de documentos: job isolado para PDF/CSV/foto, parser aprovado, preview/diff,
    aprovação em lote e auditoria; o modo de ação do chat já está conectado para

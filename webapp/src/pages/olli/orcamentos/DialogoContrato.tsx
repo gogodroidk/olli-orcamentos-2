@@ -44,6 +44,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/ui/input";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Textarea } from "@/ui/textarea";
+import { registrarDocumentoWeb } from "@/olli/documentos";
 
 interface Props {
 	/** O orçamento de onde o contrato sai. `null` mantém o diálogo fechado. */
@@ -138,6 +139,22 @@ export default function DialogoContrato({ orcamento, empresa, aoFechar }: Props)
 		setImprimindo(true);
 		setErro(null);
 		try {
+			// Guarda o snapshot editado antes da impressão. Se a janela do navegador
+			// for cancelada, o documento continua como pronto/rascunho; nunca marcamos
+			// como enviado sem uma confirmação de entrega que o browser não fornece.
+			try {
+				await registrarDocumentoWeb({
+					tipo: "contrato",
+					titulo: `Contrato · orçamento nº ${orcamento.numero}`,
+					orcamento,
+					empresa,
+					dados: { orcamento, contrato: finais },
+					status: "pronto",
+				});
+			} catch {
+				// A impressão local não pode ser bloqueada pela biblioteca; o registro
+				// será tentado novamente na próxima abertura do contrato.
+			}
 			await imprimirContrato(orcamento, empresa, finais, { removerMarca: marca.marca.removerMarca });
 			aoFechar();
 		} catch {

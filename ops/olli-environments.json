@@ -47,11 +47,11 @@
       "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
       "baselineSource": "main_schema_metadata_only",
       "latestStagingMigration": {
-        "version": "20260911110216",
+        "version": "20260911122145",
         "status": "applied",
-        "appliedAt": "2026-09-11T11:02:16-03:00",
+        "appliedAt": "2026-09-11T12:21:45-03:00",
         "scope": "staging_only",
-        "description": "validated financial integrity checks, serialized receipt balance guard, and stable document storage keys"
+        "description": "financial ledger with insert/append-only guards, explicit grants, receipt proof, and stable document storage keys"
       },
       "lastPromotionCheckpoint": {
         "recordedAt": "2026-09-08T06:38:24-03:00",

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -33,6 +33,7 @@ import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/databa
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
+import { sincronizarPagamentosPendentes } from './src/services/pagamentos';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
@@ -317,7 +318,7 @@ function AppConteudo() {
     if (!supabase) return;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-        void syncOnLogin().finally(() => { void maybeAutoBackup(); });
+        void sincronizarTudo().finally(() => { void maybeAutoBackup(); });
       }
       // Guard de deep link deslogado (v4): com `linking`, a URL inicial tem
       // precedência sobre o initialRouteName — abrir /orcamentos "frio" (sem
@@ -357,7 +358,11 @@ function AppConteudo() {
   // não re-emite quando o app volta do bolso para a frente, então o que foi
   // escrito offline ficava esperando o app ser morto e reaberto. Ver
   // services/religarSync.ts para o limite que este gatilho NÃO cobre.
-  useEffect(() => iniciarReligarSync(syncOnLogin), []);
+  const sincronizarTudo = useCallback(async () => {
+    await syncOnLogin();
+    await sincronizarPagamentosPendentes();
+  }, []);
+  useEffect(() => iniciarReligarSync(sincronizarTudo), [sincronizarTudo]);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar
   if (fontsLoaded) applyFontPatch();

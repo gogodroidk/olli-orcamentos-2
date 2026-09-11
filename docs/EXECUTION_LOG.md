@@ -588,6 +588,32 @@ drift de docs (corrigido nesta rodada). Nenhum é retrabalho estrutural.
   preparar do Chat abriram sem fatal/erro SQLite. O build release foi bloqueado
   corretamente pelo guard de assinatura, que continua gate humano.
 
+## Ledger financeiro e comprovante — execução 2026-09-11
+
+- Criada a tabela `public.pagamentos` no staging com evento append-only,
+  idempotência `(user_id, idempotency_key)`, saldo por orçamento sob `FOR UPDATE`,
+  estados `registrado/estornado`, motivo/ator obrigatórios no estorno e sem
+  DELETE para clientes.
+- Grants Data API do ledger foram fechados para `anon`/`PUBLIC`; authenticated
+  recebe apenas SELECT/INSERT/UPDATE sob RLS. A RPC
+  `registrar_pagamento_financeiro` está disponível somente para authenticated;
+  funções de trigger não são executáveis pelo cliente.
+- Mobile e web passaram a chamar o ledger antes do upsert do recibo quando há
+  sessão; falha transitória fica em `ledgerStatus=pendente`, erro de regra bloqueia
+  o lançamento. O recibo preserva `pagamentoId`/idempotency e não afirma nuvem
+  confirmada quando não há confirmação.
+- O modal mobile permite anexar imagem de comprovante; o painel web aceita
+  PDF/imagem, calcula SHA-256 e envia ao bucket privado `olli-documentos`,
+  mantendo chave/hash/tipo/tamanho no evento e no blob compatível.
+- O estado financeiro ignora recibos marcados como estornados e o detalhe exibe
+  aviso de sincronização pendente sem duplicar cobrança.
+- Verificações do ledger: `npm run test:ledger-pagamentos` e `npm run typecheck`
+  passaram; staging confirmou colunas, policies, grants, RPC e trigger.
+- Teste transacional adicional em tabela temporária (com `ROLLBACK`) encontrou e
+  fechou a borda de INSERT que comparava `OLD` indevidamente; também foi provado
+  que INSERT já estornado, UPDATE de valor e DELETE são rejeitados, enquanto a
+  transição registrada→estornado com ator/motivo válidos passa.
+
 ## Bloqueios externos ativos
 
 Ver `KNOWN_BLOCKERS.md`.

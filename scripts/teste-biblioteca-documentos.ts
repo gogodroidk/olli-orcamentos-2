@@ -31,8 +31,11 @@ const webPage = readFileSync(new URL('../webapp/src/pages/olli/documentos/index.
 const webRoutes = readFileSync(new URL('../webapp/src/routes/sections/dashboard/frontend.tsx', import.meta.url), 'utf8');
 const webNav = readFileSync(new URL('../webapp/src/layouts/dashboard/nav/nav-data/nav-data-frontend.tsx', import.meta.url), 'utf8');
 const banco = readFileSync(new URL('../src/database/database.ts', import.meta.url), 'utf8');
+const webDocumentos = readFileSync(new URL('../webapp/src/olli/documentos.ts', import.meta.url), 'utf8');
+const dialogoContrato = readFileSync(new URL('../webapp/src/pages/olli/orcamentos/DialogoContrato.tsx', import.meta.url), 'utf8');
 ok('biblioteca web tem lista pesquisável', /useOlliList<LinhaDocumento>/.test(webPage) && /Buscar documentos/.test(webPage));
 ok('rota web de documentos está registrada', /pages\/olli\/documentos/.test(webRoutes));
 ok('menu web expõe Documentos', /title: "Documentos"/.test(webNav));
 ok('pai e versão usam transação local', /saveDocumentoBibliotecaComVersao/.test(banco) && /withTransactionAsync/.test(banco));
-console.log('PASSOU: 11 verificações');
+ok('painel registra snapshot de contrato', /registrarDocumentoWeb/.test(webDocumentos) && /documento_versoes/.test(webDocumentos) && /registrarDocumentoWeb/.test(dialogoContrato));
+console.log('PASSOU: 12 verificações');

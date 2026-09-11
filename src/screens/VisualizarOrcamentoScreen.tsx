@@ -8,6 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corStatusOrcamento, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
+import { OlliButton } from '../components/OlliButton';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
@@ -24,9 +25,10 @@ import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
-import { getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
+import { estornarPagamento, getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { RegistrarPagamentoModal, type PagamentoForm } from '../components/RegistrarPagamentoModal';
+import { EstornarPagamentoModal } from '../components/EstornarPagamentoModal';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
@@ -106,6 +108,8 @@ export default function VisualizarOrcamentoScreen() {
   const [duplicando, setDuplicando] = useState(false);
   const [criandoOS, setCriandoOS] = useState(false);
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
+  const [estornoAberto, setEstornoAberto] = useState(false);
+  const [estornando, setEstornando] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState(false);
@@ -459,6 +463,22 @@ export default function VisualizarOrcamentoScreen() {
         ? 'O saldo foi quitado. Se quiser, gere ou reenvie o recibo em seguida.'
         : 'O saldo continua aberto e o próximo recebimento pode ser registrado depois.',
     );
+  }
+
+  async function salvarEstorno(motivo: string) {
+    if (!podeFinanceiro) return;
+    const recibo = recibos.find((item) => item.orcamentoId === orc?.id && item.pagamentoId && !item.estornadoEm);
+    if (!recibo?.pagamentoId) throw new Error('Este recebimento ainda não tem confirmação no ledger remoto.');
+    setEstornando(true);
+    try {
+      await estornarPagamento(recibo.pagamentoId, motivo);
+      const atualizados = await getRecibos();
+      setRecibos(atualizados);
+      setEstornoAberto(false);
+      Alert.alert('Recebimento estornado', 'O evento continua no histórico e o saldo do orçamento foi recalculado.');
+    } finally {
+      setEstornando(false);
+    }
   }
 
   /**
@@ -850,6 +870,21 @@ export default function VisualizarOrcamentoScreen() {
           {getStatusFinanceiro(orc, recibos) === 'parcial' && (
             <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
           )}
+          {recibos.some((recibo) => recibo.orcamentoId === orc.id && recibo.ledgerStatus === 'pendente') && (
+            <Text style={styles.financeiroNota}>O recebimento foi salvo neste aparelho e está aguardando confirmação da nuvem. Não registre o mesmo pagamento novamente.</Text>
+          )}
+          {recibos.some((recibo) => recibo.orcamentoId === orc.id && !!recibo.pagamentoId && !recibo.estornadoEm) && (
+            <OlliButton
+              label="Estornar último recebimento"
+              variant="outline"
+              size="sm"
+              loading={estornando}
+              disabled={estornando}
+              onPress={() => setEstornoAberto(true)}
+              icon={<MaterialCommunityIcons name="undo-variant" size={17} color={cores.primary} />}
+              style={{ marginTop: Spacing.sm }}
+            />
+          )}
           {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
           {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
           {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
@@ -958,6 +993,12 @@ export default function VisualizarOrcamentoScreen() {
           aoFechar={() => setPagamentoAberto(false)}
           aoSalvar={salvarPagamento}
         />}
+      {podeFinanceiro && <EstornarPagamentoModal
+        visivel={estornoAberto}
+        referencia={`Orçamento nº ${orc.numero}`}
+        aoFechar={() => setEstornoAberto(false)}
+        aoSalvar={salvarEstorno}
+      />}
     </View>
   );
 }

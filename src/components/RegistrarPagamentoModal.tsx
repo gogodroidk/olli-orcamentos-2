@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from './OlliButton';
 import { OlliInput, OlliMoneyInput } from './OlliInput';
 import { todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
+import { enviarComprovanteLocal, type ComprovantePagamento } from '../services/comprovantePagamento';
 
 export type PagamentoForm = {
   valorRecebido: number;
   formaPagamento: string;
   dataRecebimento: string;
+  comprovante?: Pick<ComprovantePagamento, 'chave' | 'hash' | 'mime' | 'tamanhoBytes'>;
 };
 
 type Props = {
@@ -36,6 +39,8 @@ export function RegistrarPagamentoModal({ visivel, clienteNome, valorSugerido, a
   const [data, setData] = useState(isoToBR(todayISO()));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [comprovante, setComprovante] = useState<ComprovantePagamento | null>(null);
+  const [carregandoComprovante, setCarregandoComprovante] = useState(false);
 
   useEffect(() => {
     if (!visivel) return;
@@ -44,7 +49,29 @@ export function RegistrarPagamentoModal({ visivel, clienteNome, valorSugerido, a
     setData(isoToBR(todayISO()));
     setErro(null);
     setSalvando(false);
+    setComprovante(null);
+    setCarregandoComprovante(false);
   }, [visivel, valorSugerido]);
+
+  async function escolherComprovante() {
+    if (carregandoComprovante || salvando) return;
+    const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissao.granted) {
+      Alert.alert('Permissão necessária', 'Permita acesso às fotos para anexar o comprovante do pagamento.');
+      return;
+    }
+    const resultado = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85, allowsEditing: false });
+    if (resultado.canceled || !resultado.assets?.[0]?.uri) return;
+    setCarregandoComprovante(true);
+    setErro(null);
+    try {
+      setComprovante(await enviarComprovanteLocal(resultado.assets[0].uri));
+    } catch (e: any) {
+      setErro(e?.message ?? 'Não foi possível anexar o comprovante.');
+    } finally {
+      setCarregandoComprovante(false);
+    }
+  }
 
   async function salvar() {
     if (!Number.isFinite(valor) || valor <= 0) {
@@ -58,7 +85,12 @@ export function RegistrarPagamentoModal({ visivel, clienteNome, valorSugerido, a
     setErro(null);
     setSalvando(true);
     try {
-      await aoSalvar({ valorRecebido: valor, formaPagamento: forma, dataRecebimento: data });
+      await aoSalvar({
+        valorRecebido: valor,
+        formaPagamento: forma,
+        dataRecebimento: data,
+        ...(comprovante ? { comprovante: { chave: comprovante.chave, hash: comprovante.hash, mime: comprovante.mime, tamanhoBytes: comprovante.tamanhoBytes } } : {}),
+      });
     } catch (e: any) {
       setErro(e?.message ?? 'Não consegui registrar o pagamento agora.');
     } finally {
@@ -106,6 +138,18 @@ export function RegistrarPagamentoModal({ visivel, clienteNome, valorSugerido, a
               ))}
             </View>
 
+            <TouchableOpacity style={styles.comprovanteBtn} onPress={() => { void escolherComprovante(); }} disabled={carregandoComprovante || salvando} accessibilityRole="button" accessibilityLabel="Anexar comprovante de pagamento">
+              <MaterialCommunityIcons name="paperclip" size={19} color={cores.primaryLight} />
+              <Text style={styles.comprovanteBtnTexto}>{carregandoComprovante ? 'Salvando comprovante…' : comprovante ? 'Trocar comprovante' : 'Anexar comprovante (opcional)'}</Text>
+            </TouchableOpacity>
+            {comprovante && (
+              <View style={styles.comprovanteSelecionado}>
+                <Image source={{ uri: comprovante.url }} style={styles.comprovanteThumb} />
+                <View style={{ flex: 1 }}><Text style={styles.comprovanteNome}>Comprovante salvo na nuvem</Text><Text style={styles.comprovanteHash}>SHA-256 {comprovante.hash.slice(0, 12)}…</Text></View>
+                <TouchableOpacity onPress={() => setComprovante(null)} disabled={salvando} accessibilityRole="button" accessibilityLabel="Remover comprovante"><MaterialCommunityIcons name="close-circle-outline" size={20} color={cores.onSurfaceMuted} /></TouchableOpacity>
+              </View>
+            )}
+
             {erro ? <Text style={styles.erro} accessibilityRole="alert">{erro}</Text> : null}
 
             <OlliButton
@@ -140,4 +184,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   forma: { minWidth: 86, paddingHorizontal: 12, paddingVertical: 10, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, alignItems: 'center' },
   formaTexto: { color: c.onSurfaceVariant, fontSize: 13 },
   erro: { color: c.danger, fontSize: 13, marginTop: Spacing.md },
+  comprovanteBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: c.primaryLight + '70', borderRadius: BorderRadius.md, paddingHorizontal: Spacing.md, paddingVertical: 12, marginTop: Spacing.lg },
+  comprovanteBtnTexto: { flex: 1, color: c.primaryLight, fontSize: 13, fontWeight: '700' },
+  comprovanteSelecionado: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
+  comprovanteThumb: { width: 42, height: 42, borderRadius: BorderRadius.sm, backgroundColor: c.surfaceElevated },
+  comprovanteNome: { color: c.onSurface, fontSize: 12.5, fontWeight: '700' },
+  comprovanteHash: { color: c.onSurfaceMuted, fontSize: 10.5, marginTop: 2 },
 });

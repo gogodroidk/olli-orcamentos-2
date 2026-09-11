@@ -426,6 +426,22 @@ export interface Recibo {
   // ainda não foi emitido para o cliente (registro rápido de "Registrar pagamento").
   // Campo opcional e aditivo — nenhuma migração necessária (linha vive no blob JSON).
   pdfEmitido?: boolean;
+  /** ID do evento no ledger financeiro remoto, quando a gravação online confirmou. */
+  pagamentoId?: string;
+  /** Chave de idempotência usada para retentar sem criar outro evento. */
+  idempotencyKey?: string;
+  /** Estado do espelho no ledger; pendente não significa que a nuvem confirmou. */
+  ledgerStatus?: 'pendente' | 'confirmado' | 'falhou';
+  /** Código sanitizado da última falha transitória do ledger (sem mensagem bruta). */
+  ledgerErro?: 'indisponivel' | 'timeout' | 'offline' | 'nao_autorizado';
+  /** Chave privada do comprovante no Storage, quando anexado. */
+  comprovanteChave?: string;
+  comprovanteHash?: string;
+  comprovanteMime?: 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/webp';
+  comprovanteTamanhoBytes?: number;
+  /** Estorno financeiro é um evento explícito; nunca apagar o recibo. */
+  estornadoEm?: string;
+  motivoEstorno?: string;
 }
 
 /** Registro de biblioteca de documentos. O arquivo/PDF é um artefato; o objeto

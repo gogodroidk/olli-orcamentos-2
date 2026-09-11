@@ -28,15 +28,16 @@
  *    NÃO existem no blob — não viram `null`. É assim que o app grava.
  */
 import type { ItemOrcamento, Orcamento, Recibo } from "@dominio";
-import { AlertTriangle, Check, ChevronsUpDown, FileText, Loader2, RotateCw } from "lucide-react";
+import { AlertTriangle, Check, ChevronsUpDown, FileText, Loader2, Paperclip, RotateCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Campo, CampoMoeda } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
 import { StatusBadge } from "@/olli/components/record-list-helpers";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
 import { novoId } from "@/olli/contrato";
-import { agoraIso, brParaYmd, hojeYmd, ymdParaBr } from "@/olli/datas";
+import { agoraIso, brParaIso, brParaYmd, hojeYmd, ymdParaBr } from "@/olli/datas";
 import { proximoNumeroDocumento, useContextoDeEscrita, useSalvar } from "@/olli/mutacoes";
+import { supabase } from "@/lib/supabase";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/ui/command";
@@ -99,6 +100,8 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 	const [salvando, setSalvando] = useState(false);
 	/** O usuário mexeu no valor? Então o seletor de orçamento não o sobrescreve mais. */
 	const [valorTocado, setValorTocado] = useState(false);
+	const [comprovante, setComprovante] = useState<{ chave: string; hash: string; mime: Recibo["comprovanteMime"]; tamanhoBytes: number; url: string } | null>(null);
+	const [carregandoComprovante, setCarregandoComprovante] = useState(false);
 
 	// Número já COMPRADO num submit anterior que falhou depois de gerá-lo. Guardado
 	// aqui para o retry reaproveitar (mesmo padrão de FormOrcamento.tsx) — sem isto,
@@ -149,6 +152,8 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 		setErro(null);
 		setTentouSalvar(false);
 		setSalvando(false);
+		setComprovante(null);
+		setCarregandoComprovante(false);
 		// Nova sessão do diálogo: qualquer número comprado numa tentativa anterior (de
 		// um recibo já salvo, ou desistido) não pode vazar para esta. Só dentro de uma
 		// mesma sessão (retry sem fechar o diálogo) é que o número deve ser reaproveitado.
@@ -174,6 +179,39 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 			setValorTocado(false);
 		}
 	}, [aberto, recibo?.id, orcamentoIdInicial]);
+
+	async function anexarComprovante(file: File | undefined) {
+		if (!file || carregandoComprovante || salvando) return;
+		const permitidos = new Set(["application/pdf", "image/png", "image/jpeg", "image/webp"]);
+		if (!permitidos.has(file.type) || file.size <= 0 || file.size > 20 * 1024 * 1024) {
+			setErro("Anexe PDF ou imagem de até 20 MB.");
+			return;
+		}
+		setCarregandoComprovante(true);
+		setErro(null);
+		try {
+			const sessao = await supabase.auth.getSession();
+			const tenantId = contexto.data?.ownerUserId ?? sessao.data.session?.user?.id;
+			if (!tenantId || !/^[0-9a-f-]{36}$/i.test(tenantId)) throw new Error("Não consegui confirmar a empresa do comprovante.");
+			if (!globalThis.crypto?.subtle || !globalThis.crypto?.randomUUID) throw new Error("Seu navegador não oferece armazenamento seguro para o comprovante.");
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+			const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+			// Não reutilizar a extensão do nome enviado pelo usuário no caminho do
+			// Storage; deriva de uma allowlist MIME para impedir segmentos estranhos.
+			const extensao = file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+			const caminho = `${tenantId}/anexo/${globalThis.crypto.randomUUID()}.${extensao}`;
+			const { error } = await supabase.storage.from("olli-documentos").upload(caminho, file, { contentType: file.type, cacheControl: "3600", upsert: false });
+			if (error) throw new Error("Não foi possível salvar o comprovante na nuvem.");
+			const signed = await supabase.storage.from("olli-documentos").createSignedUrl(caminho, 60 * 60);
+			if (signed.error || !signed.data?.signedUrl) throw new Error("Não foi possível preparar o acesso seguro ao comprovante.");
+			setComprovante({ chave: `olli-documentos/${caminho}`, hash, mime: file.type as Recibo["comprovanteMime"], tamanhoBytes: file.size, url: signed.data.signedUrl });
+		} catch (e) {
+			setErro((e as Error)?.message ?? "Não foi possível anexar o comprovante.");
+		} finally {
+			setCarregandoComprovante(false);
+		}
+	}
 
 	/**
 	 * Escolher um orçamento traz cliente, valor e itens junto — é o fluxo principal
@@ -276,16 +314,22 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 				clienteTelefone: cliente.clienteTelefone ?? "",
 				itens,
 				valorRecebido,
-				formaPagamento: formaPagamento.trim(),
-				dataRecebimento: ymdParaBr(dataYmd), // 'DD/MM/AAAA' — formato do blob.
+					formaPagamento: formaPagamento.trim(),
+					dataRecebimento: ymdParaBr(dataYmd), // 'DD/MM/AAAA' — formato do blob.
 				exibirAssinatura: recibo?.exibirAssinatura ?? true,
 				criadoEm: recibo?.criadoEm ?? agoraIso(),
 				atualizadoEm: agoraIso(),
 				// Recibo nascido no painel ainda NÃO virou PDF. O app mostra "pagamento
 				// registrado · PDF ainda não gerado" e oferece gerar. Marcar true aqui
 				// mentiria: nenhum PDF foi entregue ao cliente.
-				pdfEmitido: recibo?.pdfEmitido ?? false,
-			};
+					pdfEmitido: recibo?.pdfEmitido ?? false,
+					...(comprovante ? {
+						comprovanteChave: comprovante.chave,
+						comprovanteHash: comprovante.hash,
+						comprovanteMime: comprovante.mime,
+						comprovanteTamanhoBytes: comprovante.tamanhoBytes,
+					} : {}),
+				};
 
 			if (orcamentoId) {
 				salvo.orcamentoId = orcamentoId;
@@ -301,6 +345,46 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 				// Chave OPCIONAL: o app OMITE quando não há vínculo. Não gravar null.
 				delete salvo.orcamentoId;
 				delete salvo.orcamentoNumero;
+			}
+
+			// O recibo continua sendo o documento compatível com o app, mas o evento
+			// financeiro também é registrado no ledger append-only. O RPC é idempotente
+			// por recibo/chave; uma falha transitória deixa o blob marcado como pendente
+			// em vez de bloquear o uso offline. Erros de regra (saldo, valor, estado)
+			// bloqueiam o upsert local para não criar uma falsa quitação.
+			const idempotencyKey = recibo?.idempotencyKey ?? salvo.id;
+			const dataLedger = brParaIso(salvo.dataRecebimento);
+			if (!dataLedger) {
+				setErro("Informe uma data de recebimento válida.");
+				return;
+			}
+			const ledger = await supabase.rpc("registrar_pagamento_financeiro", {
+				p_id: salvo.id,
+				p_orcamento_id: salvo.orcamentoId ?? null,
+				p_valor: salvo.valorRecebido,
+				p_forma_pagamento: salvo.formaPagamento,
+				p_data_recebimento: dataLedger,
+				p_idempotency_key: idempotencyKey,
+				p_recibo_id: null,
+				p_comprovante_chave: salvo.comprovanteChave ?? null,
+				p_comprovante_hash: salvo.comprovanteHash ?? null,
+				p_comprovante_mime: salvo.comprovanteMime ?? null,
+				p_comprovante_tamanho: salvo.comprovanteTamanhoBytes ?? null,
+			});
+			if (ledger.error) {
+				const codigo = String(ledger.error.code ?? "");
+				const mensagem = String(ledger.error.message ?? "");
+				if (/23514|23503|23505|22023|42501|ultrapassa|idempotency_key_reutilizada|nao_recebivel|não_recebivel/i.test(`${codigo} ${mensagem}`)) {
+					setErro("O servidor recusou este recebimento. Confira o saldo e não edite um pagamento já lançado; use estorno para corrigir.");
+					return;
+				}
+				salvo.ledgerStatus = "pendente";
+				salvo.ledgerErro = "indisponivel";
+			} else {
+				const linhaLedger = Array.isArray(ledger.data) ? ledger.data[0] : ledger.data;
+				salvo.idempotencyKey = idempotencyKey;
+				salvo.ledgerStatus = typeof linhaLedger?.id === "string" ? "confirmado" : "pendente";
+				if (typeof linhaLedger?.id === "string") salvo.pagamentoId = linhaLedger.id;
 			}
 
 			await salvar.mutateAsync(salvo);
@@ -470,6 +554,19 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 						/>
 					</div>
 				</Campo>
+
+				<div className="space-y-2">
+					<label htmlFor="comprovante-recibo" className="text-sm font-medium text-text-primary">Comprovante <span className="font-normal text-text-disabled">(opcional)</span></label>
+					<div className="flex flex-wrap items-center gap-2">
+						<label htmlFor="comprovante-recibo" className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary/60 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5">
+							<Paperclip aria-hidden="true" className="size-4" />
+							{carregandoComprovante ? "Salvando…" : comprovante ? "Trocar comprovante" : "Anexar arquivo"}
+						</label>
+						<input id="comprovante-recibo" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { void anexarComprovante(e.target.files?.[0]); e.currentTarget.value = ""; }} disabled={carregandoComprovante || salvando} />
+						{comprovante && <Badge variant="success">SHA-256 {comprovante.hash.slice(0, 12)}…</Badge>}
+					</div>
+					<p className="text-xs text-text-disabled">O arquivo fica privado na sua empresa e é ligado ao evento financeiro, não ao texto da IA.</p>
+				</div>
 			</form>
 		</FormDialog>
 	);

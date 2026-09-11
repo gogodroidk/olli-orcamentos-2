@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8');
+const migration = ler('../supabase/migrations/20260911130000_payments_ledger.sql');
+const grants = ler('../supabase/migrations/20260911131000_payments_ledger_grants.sql');
+const service = ler('../src/services/pagamentos.ts');
+const app = ler('../App.tsx');
+const estorno = ler('../src/components/EstornarPagamentoModal.tsx');
+const tipos = ler('../src/types/index.ts');
+const modal = ler('../src/components/RegistrarPagamentoModal.tsx');
+const web = ler('../webapp/src/pages/olli/recibos/FormRecibo.tsx');
+
+assert.match(migration, /create table if not exists public\.pagamentos/i);
+assert.match(migration, /unique \(user_id, idempotency_key\)/i);
+assert.match(migration, /pagamentos_proteger_append_only/);
+assert.match(migration, /pagamento_append_only/);
+assert.match(migration, /TG_OP = 'INSERT'/);
+assert.match(migration, /registrar_pagamento_financeiro/);
+assert.match(migration, /FOR UPDATE/);
+assert.match(migration, /recebido \+ p_valor > total_orcamento/);
+assert.match(migration, /estado IN \('registrado','estornado'\)/i);
+assert.match(migration, /estorno_auditavel_obrigatorio/);
+assert.match(ler('../supabase/migrations/20260911133000_payments_ledger_estorno_fix.sql'), /OLD\.estado = 'registrado' AND NEW\.estado = 'estornado'/);
+assert.match(ler('../supabase/migrations/20260911134000_payments_ledger_insert_guard.sql'), /pagamento_nasce_registrado/);
+assert.match(ler('../supabase/migrations/20260911134000_payments_ledger_insert_guard.sql'), /comprovante_chave_ck/);
+assert.match(grants, /revoke all on table public\.pagamentos from public, anon, authenticated/i);
+assert.match(grants, /grant select, insert, update on table public\.pagamentos to authenticated/i);
+assert.match(grants, /grant execute on function public\.registrar_pagamento_financeiro/i);
+assert.match(service, /registrarPagamentoNoLedger/);
+assert.match(service, /ledgerStatus/);
+assert.match(service, /idempotencyKey/);
+assert.match(service, /sincronizarPagamentosPendentes/);
+assert.match(app, /sincronizarPagamentosPendentes/);
+assert.match(app, /sincronizarTudo/);
+assert.match(tipos, /comprovanteChave/);
+assert.match(modal, /enviarComprovanteLocal/);
+assert.match(estorno, /Confirmar estorno/);
+assert.match(service, /estornarPagamento/);
+assert.match(web, /registrar_pagamento_financeiro/);
+assert.match(web, /comprovante-recibo/);
+
+console.log('PASSOU: ledger financeiro, idempotência, estorno, comprovante e grants validados.');

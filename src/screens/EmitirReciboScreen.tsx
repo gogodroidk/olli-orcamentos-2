@@ -15,7 +15,7 @@ import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
 import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getNextReciboNumber, saveRecibo, getRecibos } from '../database/database';
-import { getReciboDoOrcamento, marcarReciboComoPdfEmitido } from '../services/pagamentos';
+import { getReciboDoOrcamento, marcarReciboComoPdfEmitido, registrarPagamentoNoLedger } from '../services/pagamentos';
 import { Recibo, Empresa, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { formatDateTime, nowISO, todayISO } from '../utils/date';
@@ -249,6 +249,21 @@ function EmitirReciboConteudo() {
           exibirAssinatura: true,
           criadoEm: reciboPendente?.criadoEm ?? nowISO(),
           pdfEmitido: true,
+        };
+        const ledger = await registrarPagamentoNoLedger({
+          id: recibo.id,
+          idempotencyKey: recibo.idempotencyKey ?? recibo.id,
+          orcamentoId: recibo.orcamentoId,
+          valor: recibo.valorRecebido,
+          formaPagamento: recibo.formaPagamento,
+          dataRecebimento: recibo.dataRecebimento,
+        });
+        if (ledger.status === 'negado') throw new Error(ledger.mensagem);
+        recibo = {
+          ...recibo,
+          idempotencyKey: ledger.idempotencyKey,
+          ledgerStatus: ledger.status,
+          ...(ledger.status === 'confirmado' ? { pagamentoId: ledger.pagamentoId } : { ledgerErro: ledger.erro }),
         };
         // Persistimos o recibo ANTES da entrega: o registro fica salvo mesmo
         // que a geração/compartilhamento do PDF falhe (ou seja cancelada).
@@ -560,6 +575,9 @@ function EmitirReciboConteudo() {
                   <Text style={styles.reciboMeta}>{formatDateTime(item.criadoEm)} · {item.formaPagamento}</Text>
                   {item.pdfEmitido === false && (
                     <Text style={styles.reciboPendenteTag}>Pagamento registrado · PDF ainda não gerado</Text>
+                  )}
+                  {item.ledgerStatus === 'pendente' && (
+                    <Text style={styles.reciboPendenteTag}>Sincronização financeira pendente · não registre novamente</Text>
                   )}
                 </View>
                 <Text style={styles.reciboValor}>{formatCurrency(item.valorRecebido)}</Text>

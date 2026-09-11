@@ -23,6 +23,15 @@
 - O detalhe/lista mobile esconde recibo e dados financeiros de papéis sem
   `ver_valores_agregados`; o estado financeiro permanece independente do status
   comercial e não desaparece quando uma proposta quitada é encerrada.
+- O staging agora tem `public.pagamentos`: ledger por evento com chave de
+  idempotência, saldo serializado por orçamento, comprovante (chave/hash/mime/
+  tamanho), estorno auditável e grants explícitos sem DELETE para clientes.
+  Mobile/web marcam `ledgerStatus=pendente` quando a rede falha e não confundem
+  esse estado com confirmação remota.
+- A trigger do ledger foi exercitada em transação temporária: INSERT válido passa;
+  INSERT como `estornado`, edição de valor e DELETE falham; somente a transição
+  para estorno com ator/motivo/data passa. A borda de `OLD` no INSERT foi corrigida
+  antes de seguir para a integração.
 
 - OSV Scanner 2.4.0: **0 vulnerabilidades** nos locks do app (`package-lock.json`), Worker (`worker/package-lock.json`) e painel (`webapp/pnpm-lock.yaml`). Foram corrigidos `sharp` 0.35.2 → 0.35.4 e `js-yaml` 4.3.1 → 4.3.2.
 - Gitleaks 8.30.1: 9 achados históricos, todos classificados como chave pública Supabase anon/JWT ou fixture pública. Não apareceu service-role key, Stripe secret, Resend key, Cloudflare token ou credencial privada no escopo atual. O histórico não foi reescrito automaticamente.
