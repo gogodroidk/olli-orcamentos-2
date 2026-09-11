@@ -47,11 +47,11 @@
       "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
       "baselineSource": "main_schema_metadata_only",
       "latestStagingMigration": {
-        "version": "20260910190000",
+        "version": "20260911100000",
         "status": "applied",
-        "appliedAt": "2026-09-10T10:20:00-03:00",
+        "appliedAt": "2026-09-11T10:45:00-03:00",
         "scope": "staging_only",
-        "description": "ownership/freeze guards and immutable document Storage artifacts"
+        "description": "least-privilege Data API grants for document library"
       },
       "lastPromotionCheckpoint": {
         "recordedAt": "2026-09-08T06:38:24-03:00",
