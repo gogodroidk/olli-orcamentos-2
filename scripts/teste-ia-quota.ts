@@ -282,6 +282,12 @@ const indiceSql = await fs.readFile(
 verdadeiro('migration aditiva do índice é idempotente e não destrutiva',
   /create index if not exists ia_cota_usuario_diaria_user_idx[\s\S]*?on public\.ia_cota_usuario_diaria \(user_id\)/i.test(indiceSql) &&
   !/drop table|truncate table|delete from/i.test(indiceSql));
+const limpezaIndicesSql = await fs.readFile(
+  new URL('../supabase/migrations/20260911141612_remove_duplicate_ia_quota_indexes.sql', import.meta.url), 'utf8');
+verdadeiro('limpeza remove apenas índices UNIQUE legados duplicados',
+  ['ia_cota_global_diaria_pk', 'ia_cota_reservas_pk', 'ia_cota_usuario_diaria_pk']
+    .every((nome) => new RegExp(`drop index if exists public\\.${nome}`, 'i').test(limpezaIndicesSql)) &&
+  !/drop constraint|drop index if exists public\..*_pkey/i.test(limpezaIndicesSql));
 for (const estado of ['permitido', 'ja_reservado', 'limite_global', 'limite_usuario']) {
   verdadeiro(`migration contem estado ${estado}`, sql.includes(`'${estado}'`));
 }

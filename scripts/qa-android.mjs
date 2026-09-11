@@ -7,6 +7,7 @@ const adb = process.env.ADB_PATH || [
   'adb',
 ].find((candidate) => candidate === 'adb' || existsSync(candidate));
 const packageName = process.env.ANDROID_PACKAGE || 'online.olliorcamentos.app';
+const metroUrl = process.env.METRO_URL || 'http://127.0.0.1:8081';
 const outDir = resolve('artifacts');
 const screenshotPath = resolve(outDir, 'device-sm-g780f-qa-latest.png');
 const reportPath = resolve(outDir, 'qa-android-latest.json');
@@ -25,8 +26,10 @@ if (!devices.length) throw new Error('Nenhum Android em estado device.');
 const serial = devices[0][0];
 const startedAt = Date.now();
 run(['-s', serial, 'logcat', '-c']);
+run(['-s', serial, 'reverse', 'tcp:8081', 'tcp:8081']);
 run(['-s', serial, 'shell', 'am', 'force-stop', packageName]);
-run(['-s', serial, 'shell', 'monkey', '-p', packageName, '1'], { timeout: 15_000 });
+const deepLink = `olliorcamentos://expo-development-client/?url=${encodeURIComponent(metroUrl)}`;
+run(['-s', serial, 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', deepLink], { timeout: 15_000 });
 
 let logs = '';
 let mainAt = null;
@@ -53,6 +56,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   packageName,
   serial,
+  metroUrl,
   startupMs,
   startupBudgetMs: 20_000,
   startupBudgetPassed: startupMs !== null && startupMs <= 20_000,

@@ -133,6 +133,22 @@ ou ficam fora da IA.
   DOMContentLoaded/load, recursos e bytes transferidos em
   `qa-artifacts/qa-web-results.json`; sem credencial de demonstração, o caso
   autenticado para no guard e é reportado como `authRequired=true`.
+- Arquivos privados: a Central web gera URL assinada de curta duração para
+  `arquivo_chave`, validando bucket/tenant/categoria e sem transformar a chave em
+  link público; o editor limita o conteúdo e mostra contador.
+- Expo: o conjunto SDK 57 foi alinhado pelo instalador oficial (`57.0.22` e
+  patches compatíveis); `expo-doctor` passa em 20/20 e o contrato de permissões
+  de notificação usa `granted`.
+- PMOC/ativos: DELETE de cabeçalhos agora exige dono/admin/gestor; tokens e
+  versões históricas não têm DELETE para `authenticated`. A policy foi exercitada
+  com técnico sintético em staging e rollback transacional.
+- OAuth futuro: o verifier PKCE do scaffold de Google Agenda usa aleatoriedade
+  criptográfica; a integração nativa continua desligada até redirect HTTPS e
+  build assinado homologados.
+- Performance de dados: a migration `20260911141612_remove_duplicate_ia_quota_indexes`
+  removeu índices UNIQUE legados duplicados das cotas IA sem tocar nas constraints
+  primárias. Os avisos restantes de policies permissivas múltiplas em tabelas
+  legadas exigem revisão de contrato antes de qualquer consolidação.
 
 ## 4. Próximas fatias, em ordem
 
@@ -178,6 +194,9 @@ ou ficam fora da IA.
 - smoke staging com health, CORS, método, auth shell e `sideEffects: none`.
 - QA web gera métricas de carregamento nos viewports desktop/mobile e não confunde
   guard de login com fluxo autenticado.
+- A última rodada registrou HTTP 200, zero erros de console/page e orçamento de
+  carregamento aprovado nos dois viewports; o fluxo autenticado segue pendente
+  apenas por ausência de credencial demo nesta sessão.
 
 ## 7. Gates para liberar usuários reais
 

@@ -47,11 +47,33 @@
 - O editor da Central usa a RPC `editar_documento_rascunho` (`SECURITY INVOKER`),
   que cria versão e atualiza o ponteiro atomicamente. Estados enviados, assinados
   e arquivados são congelados e não podem ser sobrescritos.
+- A policy PMOC/ativos foi revisada para menor privilégio: técnico não apaga
+  cabeçalhos do tenant; somente dono/admin/gestor podem excluir, e tokens/versões
+  históricas não possuem DELETE para `authenticated`. O comportamento foi provado
+  em staging com um técnico sintético e `ROLLBACK`.
+- O alinhamento de patches do Expo 57 foi concluído com o instalador oficial;
+  `expo-doctor` passa 20/20 e a API de notificações usa `granted` conforme os
+  typings atuais.
+- O painel web não deixa mais `arquivo_chave` privado sem ação: valida bucket e
+  caminho e gera URL assinada de 15 minutos. O texto do editor tem teto de
+  200.000 caracteres, além do limite de 1 MiB imposto pela RPC.
+- O verifier PKCE do scaffold de Google Agenda usa `expo-crypto.getRandomValues`;
+  o recurso continua desligado até a arquitetura de redirect HTTPS ser aprovada.
+- A migration `20260911141612_remove_duplicate_ia_quota_indexes` remove apenas
+  índices UNIQUE redundantes das tabelas de cota IA; as constraints primárias
+  continuam sendo a autoridade de unicidade. O advisor de performance ainda
+  lista policies permissivas múltiplas em tabelas legadas, sem novo alerta de
+  segurança causado pelas mudanças desta rodada.
 
 - OSV Scanner 2.4.0: **0 vulnerabilidades** nos locks do app (`package-lock.json`), Worker (`worker/package-lock.json`) e painel (`webapp/pnpm-lock.yaml`). Foram corrigidos `sharp` 0.35.2 → 0.35.4 e `js-yaml` 4.3.1 → 4.3.2.
 - Gitleaks 8.30.1: 9 achados históricos, todos classificados como chave pública Supabase anon/JWT ou fixture pública. Não apareceu service-role key, Stripe secret, Resend key, Cloudflare token ou credencial privada no escopo atual. O histórico não foi reescrito automaticamente.
 - Supabase staging: migration `20260910143000_fix_ia_quota_lint` corrigiu os casts das RPCs, a referência de conflito da cota diária e a variável morta; `db lint` agora retorna **No schema errors found**. Produção não foi tocada.
 - Worker staging: smoke remoto passou health, CORS, method gates, shell administrativo e `sideEffects: none`.
+- Revalidação final: `supabase db lint --linked` retornou **No schema errors
+  found**; a policy QA de PMOC terminou com `ROLLBACK` e consulta posterior
+  confirmou zero resíduo. Os advisors continuam mostrando somente os sete
+  `SECURITY DEFINER` históricos e as policies permissivas legadas já listadas;
+  não apareceu alerta novo nas migrations desta rodada.
 
 ## Controles confirmados no código
 
@@ -68,6 +90,5 @@
 1. Revisar a origem histórica das chaves anon/JWT e remover `.env` antigo do histórico somente com decisão explícita e plano de rotação.
 2. Reexecutar Gitleaks/OSV no gate de release e anexar os relatórios ao artefato da versão.
 3. Antes de produção, repetir RLS/tenant, IA, upload, rate/cost limit, backup/rollback e smoke pós-deploy.
-4. Adicionar o editor persistido da Central de Documentos e o job isolado para
-   PDF/foto antes de habilitar ingestão IA fora de CSV/XLSX/JSON; manter revisão
-   humana e sem escrita automática.
+4. Adicionar o job isolado para PDF/foto antes de habilitar ingestão IA fora de
+   CSV/XLSX/JSON; manter revisão humana e sem escrita automática.

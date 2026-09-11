@@ -73,10 +73,19 @@ export function googleAgendaDisponivel(): boolean {
 
 const VERIFIER_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
 
-function gerarCodeVerifier(): string {
+async function gerarCodeVerifier(): Promise<string> {
+  // O fluxo fica desligado até a troca para redirect HTTPS, mas o helper não
+  // pode guardar aleatoriedade previsível caso a flag seja ativada no futuro.
+  const Crypto = await import('expo-crypto');
+  const limite = 256 - (256 % VERIFIER_CHARS.length);
   let out = '';
-  for (let i = 0; i < 64; i++) {
-    out += VERIFIER_CHARS[Math.floor(Math.random() * VERIFIER_CHARS.length)];
+  while (out.length < 64) {
+    const bytes = Crypto.getRandomValues(new Uint8Array(64));
+    for (const byte of bytes) {
+      if (byte >= limite) continue;
+      out += VERIFIER_CHARS[byte % VERIFIER_CHARS.length];
+      if (out.length === 64) break;
+    }
   }
   return out;
 }
@@ -191,7 +200,7 @@ export async function conectarGoogleAgenda(): Promise<boolean> {
   if (!googleAgendaDisponivel()) return false;
   try {
     const WebBrowser = await import('expo-web-browser');
-    const codeVerifier = gerarCodeVerifier();
+    const codeVerifier = await gerarCodeVerifier();
     const codeChallenge = await gerarCodeChallenge(codeVerifier);
     const redirect = redirectUri();
     const params = new URLSearchParams({

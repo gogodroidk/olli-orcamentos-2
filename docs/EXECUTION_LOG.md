@@ -678,3 +678,67 @@ Ver `KNOWN_BLOCKERS.md`.
   sem FATAL/SQLite/Metro error e screenshot estabilizado em
   `artifacts/device-sm-g780f-qa-latest.png`. O script aguarda a hidratação do
   SQLite/Metro antes da captura para não registrar a tela de splash como vazia.
+
+## Força total — doctor Expo e menor privilégio PMOC (2026-09-11)
+
+- `expo-doctor` inicialmente encontrou 23 patches desalinhados no SDK 57. O
+  `npx expo install --fix` oficial atualizou Expo para `57.0.22` e os módulos
+  compatíveis; `npm run doctor` agora passa em 20/20 verificações e o lockfile foi
+  atualizado sem vulnerabilidades reportadas pelo npm.
+- O upgrade revelou e corrigiu o contrato de permissões de notificação em
+  `src/services/agenda.ts`: Expo 57 expõe `granted`, não `status`. Typecheck e
+  build web voltaram a passar.
+- A auditoria de segurança identificou que a fábrica PMOC permitia DELETE a
+  qualquer membro ativo. A migration `20260911135510_pmoc_delete_least_privilege`
+  restringe cabeçalhos a dono/admin/gestor e remove DELETE de tokens e versões
+  históricas para usuários autenticados. Teste com owner + técnico sintéticos,
+  `SET LOCAL ROLE authenticated` e `ROLLBACK` comprovou que o técnico não apaga
+  ativo; consulta posterior encontrou zero resíduos.
+
+## Força total — arquivos privados, PKCE e harness Android (2026-09-11)
+
+- A Central de Documentos web agora gera URL assinada de 15 minutos para
+  `arquivo_chave` do bucket `olli-documentos`, com validação de bucket/tenant/
+  categoria, loading e erro acessíveis. A chave nunca é exibida como URL pública.
+- O editor limita o texto a 200.000 caracteres e mostra contador para evitar
+  travamento perceptual; a RPC continua impondo limite de 1 MiB no JSON.
+- O helper inerte de Google Agenda trocou `Math.random` por `expo-crypto`
+  `getRandomValues` com rejeição de viés; a flag nativa permanece desligada até
+  OAuth HTTPS e build assinado serem homologados.
+- O smoke Android passou a configurar `adb reverse` e abrir o dev client com
+  `127.0.0.1:8081`, eliminando dependência de Wi‑Fi/LAN. A execução final no
+  `RX8NB033HXP` passou em 4,807 ms de primeiro frame, aguardou 25 s de hidratação,
+  capturou a Home e não encontrou FATAL/SQLite/Metro error.
+
+## Força total — alinhamento final de staging (2026-09-11)
+
+- A migration `20260911141612_remove_duplicate_ia_quota_indexes` foi aplicada e
+  reparada como `applied` somente no staging. Ela remove os três índices UNIQUE
+  legados que duplicavam as constraints de chave primária das cotas IA; as
+  constraints `_pkey` permanecem intactas. O advisor de performance deixou de
+  reportar os avisos de índices duplicados.
+- O advisor de performance ainda sinaliza múltiplas policies permissivas nas
+  tabelas legadas `contadores`, `empresa`, `exclusoes`, `produtos`, `recibos` e
+  `servicos`. Elas são uma combinação de policies de compartilhamento e dono;
+  não foram fundidas automaticamente porque isso mudaria o contrato de acesso.
+  A revisão estrutural ficou registrada como gate posterior, sem novos avisos
+  de segurança introduzidos nesta rodada.
+- O manifesto de ambientes aponta `20260911141612` como a última migration
+  aplicada em staging. Produção continua sem migration, deploy, segredo novo ou
+  alteração de cobrança.
+- Validação final: `npm run doctor` (20/20), `npm run typecheck`, `npm test`
+  (inclui a suíte completa), `pnpm build` do painel, `npm audit --omit=dev`
+  (0 vulnerabilidades), types/dry-run do Wrangler e `npm run staging:smoke`
+  passaram.
+- `supabase db lint --linked` retornou **No schema errors found**. A consulta
+  de policies confirmou quatro DELETE de gestão (`assets`, `service_contracts`,
+  `pmoc_plans`, `pmoc_ordens_geradas`) e nenhum DELETE para tokens/versões;
+  as três constraints `_pkey` das cotas continuam presentes após a limpeza.
+- QA web em desktop `1280×720` e mobile `390×844`: HTTP 200, sem console/page
+  errors e carregamento dentro do orçamento; sem credencial demo disponível,
+  ambos pararam honestamente em `/auth/login` (`authRequired=true`).
+- QA Android final no `SM-G780F`/`RX8NB033HXP`: primeiro frame em 17,058 ms
+  (limite 20 s), hidratação aguardada por 25 s, Home capturada e zero
+  `FATAL EXCEPTION`, `SQLiteException` ou erro de Metro. Avisos de desenvolvimento
+  (ciclos de import e `LayoutAnimation` no New Architecture) permanecem não
+  fatais e não foram tratados como sucesso silencioso.

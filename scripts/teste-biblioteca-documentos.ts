@@ -41,4 +41,5 @@ ok('pai e versão usam transação local', /saveDocumentoBibliotecaComVersao/.te
 ok('painel registra snapshot de contrato', /registrarDocumentoWeb/.test(webDocumentos) && /documento_versoes/.test(webDocumentos) && /registrarDocumentoWeb/.test(dialogoContrato));
 ok('editor web lê o blob inteiro e usa RPC versionada', /buscarDocumentoWeb/.test(webDocumentos) && /editarDocumentoWeb/.test(webDocumentos) && /editar_documento_rascunho/.test(editorMigration));
 ok('editor não sobrescreve estados congelados', /documento_congelado_exige_nova_versao/.test(editorMigration) && /Salvar nova versão/.test(webPage));
-console.log('PASSOU: 14 verificações');
+ok('painel abre arquivo privado por URL assinada curta', /createSignedUrl/.test(webPage) && /Abrir protegido|Abrir arquivo/.test(webPage) && /olli-documentos/.test(webPage));
+console.log('PASSOU: 15 verificações');

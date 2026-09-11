@@ -24,6 +24,7 @@ const formOs = ler('webapp/src/pages/olli/ordens-servico/FormOs.tsx');
 const artigo = ler('web/src/content/blog/pmoc-quem-e-obrigado-lei-13589.md');
 const equipamentoMobile = ler('src/screens/EquipamentoScreen.tsx');
 const equipamentoDesktop = ler('src/screens/desktop/EquipamentosDesktopScreen.tsx');
+const leastPrivilege = ler('supabase/migrations/20260911135510_pmoc_delete_least_privilege.sql');
 
 checar('inventário HVAC tem identidade QR opaca e fotos preservadas',
   /qrToken:\s*string/.test(tipos) && /fotos:\s*string\[\]/.test(tipos) && /QR opaco/.test(tipos));
@@ -50,6 +51,8 @@ checar('conteúdo público não vende PMOC como laudo, certificado ou substituto
 checar('badges de situação usam contraste derivado nos dois clientes',
   /corCategoriaEmChip\(corBase, cores\.surface\)/.test(equipamentoMobile) && /corCategoriaEmChip\(corBase, cores\.surface\)/.test(equipamentoDesktop));
 checar('evidência C10 está registrada', existe('docs/PILOTO/ACEITE_C10_HVAC_PMOC_2026-09-05.md'));
+checar('DELETE de PMOC/ativos é restrito à gestão e histórico não é apagável',
+  /eh_gestao\(o\.id\)/.test(leastPrivilege) && /historicos/.test(leastPrivilege) && /DROP POLICY IF EXISTS/.test(leastPrivilege));
 
 if (falhas) {
   console.error(`\n${falhas} verificação(ões) falharam.`);
