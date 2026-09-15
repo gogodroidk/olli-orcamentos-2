@@ -4,6 +4,8 @@ const raiz = new URL('../', import.meta.url);
 const eas = JSON.parse(await readFile(new URL('eas.json', raiz), 'utf8'));
 const config = await readFile(new URL('src/config.ts', raiz), 'utf8');
 const agenda = await readFile(new URL('src/services/googleAgenda.ts', raiz), 'utf8');
+const plugin = await readFile(new URL('plugins/withReleaseSigningGuard.js', raiz), 'utf8');
+const androidGradle = await readFile(new URL('android/app/build.gradle', raiz), 'utf8');
 const urlEsperada = 'https://diagnostico.olliorcamentos.online';
 
 for (const perfil of ['development', 'preview', 'production']) {
@@ -14,6 +16,17 @@ for (const perfil of ['development', 'preview', 'production']) {
 }
 
 const jsonEas = JSON.stringify(eas);
+if (eas?.build?.production?.android?.credentialsSource !== 'remote') {
+  throw new Error('Produção Android precisa declarar credentialsSource=remote para o EAS');
+}
+for (const [nome, conteudo] of [['plugin', plugin], ['android/app/build.gradle', androidGradle]]) {
+  for (const trecho of ['EAS_BUILD', 'EAS_BUILD_RUNNER', 'eas-build.gradle', 'credentials.json', 'olliEasManagedSigningReady']) {
+    if (!conteudo.includes(trecho)) throw new Error(`${nome}: integração de assinatura gerenciada do EAS ausente (${trecho})`);
+  }
+  if (!/if \(olliLocalReleaseSigningReady\)/.test(conteudo)) {
+    throw new Error(`${nome}: assinatura local precisa ser separada da assinatura gerenciada pelo EAS`);
+  }
+}
 for (const segredo of ['OPENROUTER_API_KEY', 'SUPABASE_SERVICE_ROLE', 'SENTRY_AUTH_TOKEN']) {
   if (jsonEas.includes(segredo)) throw new Error(`Segredo não pode existir no eas.json: ${segredo}`);
 }
@@ -27,4 +40,4 @@ if (!/GOOGLE_AGENDA_NATIVO_HABILITADO &&/.test(agenda)) {
   throw new Error('googleAgendaDisponivel não está protegido pela trava de arquitetura');
 }
 
-console.log('Configuração de release: URL pública presente nos 3 perfis, sem segredos; Google Agenda fail-closed.');
+console.log('Configuração de release: URL pública presente nos 3 perfis, sem segredos; EAS remoto compatível com guard fail-closed; Google Agenda fail-closed.');

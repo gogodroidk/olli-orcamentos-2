@@ -1,5 +1,7 @@
 /** Regra server-side do plano efetivo; nunca mistura override com pagamento. */
-const STATUS_PAGOS = new Set(['active', 'trialing', 'past_due']);
+// `past_due` só poderá liberar acesso quando existir uma política de carência
+// autoritativa e auditável. Até lá, falha fechado.
+const STATUS_PAGOS = new Set(['active', 'trialing']);
 const PESO = { gratis: 0, pro: 1, empresa: 2 };
 
 function plano(valor) {
@@ -18,7 +20,7 @@ export function derivarEntitlement(row, agoraMs = Date.now()) {
   const pagamentoAtivo = !!row
     && typeof row.status === 'string'
     && STATUS_PAGOS.has(row.status)
-    && vigente(row.current_period_end, agoraMs, true);
+    && vigente(row.current_period_end, agoraMs, false);
   const pago = pagamentoAtivo ? planoContratado : 'gratis';
 
   const manual = plano(row && row.admin_plano_override);

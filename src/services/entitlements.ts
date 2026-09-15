@@ -74,6 +74,23 @@ export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
 };
 
 /**
+ * Recursos já previstos no entitlement comercial, mas ainda não entregues no
+ * produto atual. Entitlement e disponibilidade são estados diferentes: esta
+ * lista impede que a tela venda como pronto algo que o runtime ainda não faz.
+ */
+export const RECURSOS_EM_BREVE: ReadonlySet<Recurso> = new Set<Recurso>([
+  'mapa_equipe',
+  'dashboard_empresa',
+]);
+
+export type DisponibilidadeRecurso = 'nao_incluido' | 'em_breve' | 'disponivel';
+
+export function disponibilidadeRecurso(plano: PlanoId, recurso: Recurso): DisponibilidadeRecurso {
+  if (!temAcessoRecurso(plano, recurso)) return 'nao_incluido';
+  return RECURSOS_EM_BREVE.has(recurso) ? 'em_breve' : 'disponivel';
+}
+
+/**
  * `true` se o `plano` dá acesso ao `recurso`. Recurso desconhecido → false
  * (nega por padrão: mais seguro do que liberar por engano). Empresa é
  * superconjunto do Pro pelo próprio mapa, então não precisa de cascata aqui.

@@ -11,6 +11,7 @@ import { BorderRadius, comAlfa, sombrasDe, useCores, useEstilos, useGradientes, 
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { SidebarNav } from '../components/web/SidebarNav';
+import type { Recurso } from '../services/entitlements';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
@@ -132,7 +133,11 @@ export type RootStackParamList = {
   // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
   // do OLLI; ver src/services/pixCreditos.ts → /mp/*).
   Creditos: undefined;
-  Planos: undefined;
+  Planos: {
+    origem: 'gate';
+    recurso: Recurso;
+    plano: 'pro' | 'empresa';
+  } | undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
   // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.

@@ -13,6 +13,7 @@ import {
 
 const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8');
 const sql = ler('../supabase/migrations/20260905053000_cota_orcamentos_trial_pro.sql');
+const sqlEntitlementSeguro = ler('../supabase/migrations/20260914115639_harden_billing_entitlement_status.sql');
 const mobile = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
 const planosMobile = ler('../src/services/planos.ts');
 const web = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
@@ -110,6 +111,11 @@ assert.match(sql, /revoke all on table public\.trials_comerciais from public, an
 assert.match(sql, /grant execute on function public\.iniciar_trial_pro\(text\) to authenticated/i);
 assert.match(sql, /grant execute on function public\.plano_comercial_para_usuario\(uuid\) to service_role/i);
 assert.match(sql, /revoke all on function public\.plano_comercial_para_usuario\(uuid\) from public, anon, authenticated/i);
+assert.match(sqlEntitlementSeguro, /status in \('active', 'trialing'\)/i, 'entitlement pago aceita somente status fechados');
+assert.doesNotMatch(sqlEntitlementSeguro, /status in \([^)]*past_due/i, 'past_due sem política não libera plano');
+assert.match(sqlEntitlementSeguro, /current_period_end is not null/i, 'vigência paga precisa existir');
+assert.match(sqlEntitlementSeguro, /current_period_end > p_agora/i, 'vigência paga precisa estar no futuro');
+assert.match(sqlEntitlementSeguro, /revoke all on function public\.plano_comercial_efetivo/i, 'função privilegiada não fica pública');
 
 assert.match(mobile, /reservarEnvioOrcamento\(orc\.id, canal\)/, 'app deve autorizar antes de entregar');
 assert.match(mobile, /cancelarReservaEnvioOrcamento/, 'app deve cancelar reserva se a entrega falhar');
@@ -120,8 +126,8 @@ assert.match(creditosWorker, /rpc\/plano_comercial_para_usuario/, 'IA do Worker 
 assert.match(creditosWorker, /if \(trial\.ok\)/, 'RPC ausente deve degradar para a cota atual, sem derrubar o rollout');
 assert.match(
   planosMobile,
-  /export async function getPlanoCacheado[\s\S]*?return cacheValido\(cache\) \? cache\.plano : null;/,
-  'cache frio não pode reabrir trial Pro expirado',
+  /export async function getPlanoCacheado[\s\S]*?getCurrentUser\(\)[\s\S]*?planoCacheValido\(cache, user\.id\)/,
+  'cache frio exige a sessão atual e valida o dono antes de reabrir plano',
 );
 
 const fetchOriginal = globalThis.fetch;

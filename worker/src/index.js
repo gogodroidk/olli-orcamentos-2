@@ -47,6 +47,7 @@
  */
 
 import * as Sentry from '@sentry/cloudflare';
+import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
@@ -73,6 +74,7 @@ import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
+import { withSecurityHeaders } from './securityHeaders.js';
 import {
   rotuloVertical,
   vozSystem,
@@ -1278,6 +1280,13 @@ const handler = {
   },
 };
 
+const secureHandler = {
+  scheduled: handler.scheduled,
+  async fetch(request, env, ctx) {
+    return withSecurityHeaders(await handler.fetch(request, env, ctx));
+  },
+};
+
 /**
  * Sentry — crash reporting do worker.
  *
@@ -1302,9 +1311,12 @@ export default Sentry.withSentry(
     dsn: 'https://b015159326e49e2534d36452c334611f@o4511745793327104.ingest.us.sentry.io/4511745841889280',
     environment: 'production',
     sendDefaultPii: false,
+    beforeSend: (event) => limparEventoSentry(event),
+    beforeSendTransaction: (event) => limparEventoSentry(event),
+    beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb),
     dataCollection: { httpBodies: [] },
     // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
     tracesSampleRate: 0.1,
   }),
-  handler,
+  secureHandler,
 );

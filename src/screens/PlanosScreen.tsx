@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator, Platform } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,9 +15,10 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
 import { supabase } from '../services/supabase';
-import { getPlanoAtual, getPlanoCacheado, PlanoId } from '../services/planos';
+import { getPlanoAtual, getPlanoCacheado, PlanoId, type PlanoAtual } from '../services/planos';
 import {
   temAcessoRecurso,
+  disponibilidadeRecurso,
   IA_USOS_GRATIS_MES,
   ORCAMENTOS_ENVIADOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
@@ -147,8 +148,8 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     beneficios: [
       'Tudo do plano Pro',
       'Vários técnicos e permissões por papel',
-      'Equipe ao vivo no mapa',
-      'Painel de gestão da empresa',
+      'Equipe ao vivo no mapa (em breve)',
+      'Painel de gestão da empresa (em breve)',
       'Suporte prioritário',
     ],
   },
@@ -217,9 +218,9 @@ function montarLinhasComparativo(): LinhaComparativo[] {
   };
   const gateadas = RECURSOS_GATEADOS.map<LinhaComparativo>((r) => ({
     rotulo: RECURSO_LABEL[r],
-    gratis: temAcessoRecurso('gratis', r),
-    pro: temAcessoRecurso('pro', r),
-    empresa: temAcessoRecurso('empresa', r),
+    gratis: disponibilidadeRecurso('gratis', r) === 'disponivel',
+    pro: disponibilidadeRecurso('pro', r) === 'em_breve' ? 'Em breve' : disponibilidadeRecurso('pro', r) === 'disponivel',
+    empresa: disponibilidadeRecurso('empresa', r) === 'em_breve' ? 'Em breve' : disponibilidadeRecurso('empresa', r) === 'disponivel',
   }));
   return [...LINHAS_BASE, ia, ...gateadas];
 }
@@ -253,6 +254,7 @@ function mensagemErroPagamento(status: number | null, offline: boolean): string 
 
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Planos'>>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // Sem isto, a tela renderiza o layout mobile (coluna única) esticado no
@@ -286,6 +288,7 @@ export default function PlanosScreen() {
   // 3 estados explícitos (nunca colapsar erro em vazio): `planoErro` só vira
   // true numa falha de rede real; o plano exibido some do cache/última leitura.
   const [planoErro, setPlanoErro] = useState(false);
+  const [fontePlano, setFontePlano] = useState<PlanoAtual['fonte']>('indisponivel');
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | null>(null);
 
   // Semeia com o plano do cache local ANTES da leitura de rede, para NÃO piscar
@@ -304,8 +307,12 @@ export default function PlanosScreen() {
       const resultado = await getPlanoAtual();
       setPlanoAtualId(resultado.plano);
       setOrigemPlano(resultado.origem);
-      setOferta(await obterEstadoOfertaComercial());
+      setFontePlano(resultado.fonte);
+      const confirmadoNoServidor = resultado.fonte === 'servidor';
+      setPlanoErro(resultado.fonte === 'cache_mesmo_usuario' || resultado.fonte === 'indisponivel');
+      setOferta(confirmadoNoServidor ? await obterEstadoOfertaComercial() : null);
     } catch {
+      setFontePlano('indisponivel');
       setPlanoErro(true);
     } finally {
       setCarregandoPlano(false);
@@ -320,13 +327,23 @@ export default function PlanosScreen() {
     }, [carregarPlano]),
   );
 
-  const planos: Plano[] = PLANOS_BASE.map((p) => ({ ...p, atual: p.id === planoAtualId }));
+  const planoConhecido = fontePlano === 'servidor' || fontePlano === 'cache_mesmo_usuario';
+  const acoesPlanoDisponiveis = fontePlano === 'servidor' || fontePlano === 'sessao_ausente';
+  const planos: Plano[] = PLANOS_BASE.map((p) => ({ ...p, atual: planoConhecido && p.id === planoAtualId }));
   // Conta limpa (Frente 2): quem já paga não vê discurso de venda. Vê um card
   // discreto "Sua assinatura" que leva à AssinaturaScreen (faturas, cobrança,
   // trocar de plano/cartão e cancelar ficam lá, no portal seguro da Stripe).
   const ehTrial = origemPlano === 'trial';
   const ehPagante = planoAtualId !== 'gratis' && !ehTrial;
   const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
+  const contextoGate = route.params?.origem === 'gate'
+    && Object.prototype.hasOwnProperty.call(RECURSO_LABEL, route.params.recurso)
+    && (route.params.plano === 'pro' || route.params.plano === 'empresa')
+      ? {
+          recurso: RECURSO_LABEL[route.params.recurso],
+          plano: route.params.plano === 'empresa' ? 'Empresa' : 'Pro',
+        }
+      : null;
 
   async function abrirUrlPagamento(body?: object) {
     if (!PAGAMENTOS_URL) {
@@ -385,6 +402,10 @@ export default function PlanosScreen() {
     // 3.1.1 proíbe o link-out de checkout dentro do app.
     if (!COMPRA_NO_APP) return;
     if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
+    if (!acoesPlanoDisponiveis) {
+      Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
+      return;
+    }
     if (!supabase) {
       Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
       return;
@@ -434,6 +455,10 @@ export default function PlanosScreen() {
 
   function escolher(p: Plano) {
     if (p.atual) return;
+    if (p.id === 'gratis') {
+      if (acoesPlanoDisponiveis) nav.navigate('Entrar');
+      return;
+    }
     Haptics.selectionAsync().catch(() => {});
     // Pro e Empresa são ambos assináveis via Stripe Checkout.
     if (p.id === 'pro' || p.id === 'empresa') {
@@ -480,10 +505,22 @@ export default function PlanosScreen() {
         {planoErro ? (
           <View style={styles.cobrancaAviso}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-            <Text style={styles.cobrancaAvisoTexto}>Não deu para atualizar seu plano agora. O que está na tela pode estar desatualizado.</Text>
+            <Text style={styles.cobrancaAvisoTexto}>Não deu para confirmar seu plano agora. O estado exibido pode estar desatualizado e nenhuma nova contratação será iniciada até você tentar de novo.</Text>
             <TouchableOpacity onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
               <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
             </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {contextoGate ? (
+          <View style={styles.contextoGateCard} accessibilityRole="summary">
+            <MaterialCommunityIcons name="lightbulb-on-outline" size={21} color={cores.accentLight} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.contextoGateTitle}>Você veio por “{contextoGate.recurso}”</Text>
+              <Text style={styles.contextoGateText}>
+                Esse recurso faz parte do {contextoGate.plano}. Compare o que já está disponível e confirme a contratação somente se fizer sentido para o seu trabalho.
+              </Text>
+            </View>
           </View>
         ) : null}
 
@@ -596,6 +633,7 @@ export default function PlanosScreen() {
                 periodo={periodo}
                 ehDesktop={ehDesktop}
                 carregandoPlano={carregandoPlano}
+                acoesDisponiveis={acoesPlanoDisponiveis}
                 carregandoAcao={acaoEmAndamento === p.id}
                 onPress={() => escolher(p)}
                 onFalarSuporte={() => falarComSuporte(p)}
@@ -635,6 +673,7 @@ function PlanoCard({
   periodo,
   ehDesktop,
   carregandoPlano,
+  acoesDisponiveis,
   carregandoAcao,
   onPress,
   onFalarSuporte,
@@ -644,6 +683,7 @@ function PlanoCard({
   periodo: Periodo;
   ehDesktop?: boolean;
   carregandoPlano: boolean;
+  acoesDisponiveis: boolean;
   carregandoAcao: boolean;
   onPress: () => void;
   onFalarSuporte: () => void;
@@ -652,7 +692,7 @@ function PlanoCard({
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
-  // Ink de contraste sobre `accentLight` (ícone/badge do plano "mais popular").
+  // Ink de contraste sobre `accentLight` (ícone/badge do plano recomendado).
   const textoSobreAccent = textoSobre(cores.accentLight);
   // Preço exibido — sempre da fonte. No iOS a aba fica escondida, então `periodo`
   // permanece 'mensal' e o card mostra o mensal; o anual aparece na linha "no
@@ -692,7 +732,7 @@ function PlanoCard({
           <View style={styles.cardNameRow}>
             <Text style={styles.cardName}>{plano.nome}</Text>
             {plano.destaque && (
-              <View style={styles.popular}><Text style={styles.popularText}>MAIS POPULAR</Text></View>
+              <View style={styles.popular}><Text style={styles.popularText}>RECOMENDADO</Text></View>
             )}
             {plano.atual && (
               <View style={styles.atualPill}>
@@ -763,8 +803,8 @@ function PlanoCard({
           <Text style={styles.ctaIndisponivelText}>Contratação não disponível neste aplicativo Android</Text>
         </View>
       ) : plano.destaque ? (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano}>
-          <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan]}>
+        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
+          <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan, !acoesDisponiveis && styles.ctaDisabled]}>
             {carregandoAcao ? (
               <ActivityIndicator size="small" color={gradientes.sobreBrand} />
             ) : (
@@ -776,7 +816,7 @@ function PlanoCard({
           </LinearGradient>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={styles.ctaOutline} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao}>
+        <TouchableOpacity style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           {carregandoAcao ? (
             <ActivityIndicator size="small" color={cores.primaryLight} />
           ) : (
@@ -792,7 +832,7 @@ function PlanoCard({
           CTA principal e é claramente secundário — a verdade sobre o custo já
           está na linha acima, então aqui é só o caminho, não a promessa. */}
       {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && !plano.atual && plano.id === 'pro' && linha12x ? (
-        <TouchableOpacity style={styles.ctaSecundario} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao}>
+        <TouchableOpacity style={[styles.ctaSecundario, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || !acoesDisponiveis }}>
           <MaterialCommunityIcons name="credit-card-outline" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Pagar em 12x no cartão</Text>
         </TouchableOpacity>
@@ -915,6 +955,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardPlainDesktop: { flex: 1, marginBottom: 0 },
   cardBodyDesktop: { flex: 1 },
   ctaSpacer: { flex: 1, minHeight: Spacing.base },
+  ctaDisabled: { opacity: 0.45 },
 
   // Aviso de erro (mesmo padrão visual do cobrancaAviso em HomeScreen.tsx).
   cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
@@ -927,6 +968,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   trialText: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant, marginTop: 3 },
   trialButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, marginTop: 10, borderRadius: BorderRadius.md, backgroundColor: c.primary },
   trialButtonText: { color: c.onPrimary, fontSize: 13.5, fontWeight: '800' },
+  contextoGateCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.35), backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
+  contextoGateTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface },
+  contextoGateText: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant, marginTop: 3 },
 
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
   // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.

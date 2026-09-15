@@ -41,6 +41,8 @@ import {
 // direto (?modo=cadastro), Empresa fala no WhatsApp de vendas.
 const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
+const APP_PRO_MENSAL_URL = `${APP_CADASTRO_URL}&plano=pro&periodo=mensal`;
+const APP_PRO_ANUAL_URL = `${APP_CADASTRO_URL}&plano=pro&periodo=anual`;
 const WHATSAPP_URL = "https://wa.me/5511941727487";
 
 // Preços nos dois períodos — já mastigados por precoNoPeriodo (valor/sufixo/nota).
@@ -87,6 +89,7 @@ interface Cartao {
 	bullets: string[];
 	cta: string;
 	href: string;
+	hrefAnual?: string;
 	primary: boolean;
 	doze?: typeof doze;
 }
@@ -111,7 +114,8 @@ const cartoes: Cartao[] = [
 		anual: proAnual,
 		bullets: bulletsPro,
 		cta: "Assinar o Pro",
-		href: APP_CADASTRO_URL,
+		href: APP_PRO_MENSAL_URL,
+		hrefAnual: APP_PRO_ANUAL_URL,
 		primary: true,
 		doze,
 	},
@@ -188,12 +192,19 @@ const cartoes: Cartao[] = [
 					</p>
 				)}
 
-				<a
-					href={p.href}
-					target={p.href === WHATSAPP_URL ? "_blank" : undefined}
-					rel={p.href === WHATSAPP_URL ? "noopener" : undefined}
-					class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? "bg-brand text-white hover:bg-brand-strong" : "border border-line text-ink hover:border-brand hover:text-brand-fg"}`}
-				>{p.cta}</a>
+				{p.hrefAnual ? (
+					<Fragment>
+						<a href={p.href} class={`cta-mensal mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? "bg-brand text-white hover:bg-brand-strong" : "border border-line text-ink hover:border-brand hover:text-brand-fg"}`}>{p.cta}</a>
+						<a href={p.hrefAnual} class={`cta-anual mt-7 rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? "bg-brand text-white hover:bg-brand-strong" : "border border-line text-ink hover:border-brand hover:text-brand-fg"}`}>{p.cta}</a>
+					</Fragment>
+				) : (
+					<a
+						href={p.href}
+						target={p.href === WHATSAPP_URL ? "_blank" : undefined}
+						rel={p.href === WHATSAPP_URL ? "noopener" : undefined}
+						class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? "bg-brand text-white hover:bg-brand-strong" : "border border-line text-ink hover:border-brand hover:text-brand-fg"}`}
+					>{p.cta}</a>
+				)}
 			</div>
 		))}
 	</div>

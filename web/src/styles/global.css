@@ -515,6 +515,9 @@ body {
 .preco-anual {
 	display: none;
 }
+.cta-anual {
+	display: none;
+}
 .nota-anual {
 	display: none;
 }
@@ -523,6 +526,12 @@ body {
 }
 .planos-precos:has(#periodo-anual:checked) .preco-anual {
 	display: inline-flex;
+}
+.planos-precos:has(#periodo-anual:checked) .cta-mensal {
+	display: none;
+}
+.planos-precos:has(#periodo-anual:checked) .cta-anual {
+	display: block;
 }
 .planos-precos:has(#periodo-anual:checked) .nota-anual {
 	display: block;

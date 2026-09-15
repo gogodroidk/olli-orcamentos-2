@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Icon } from "@/components/icon";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/ui/button";
+import { useLoginStateContext } from "../providers/login-provider";
 
 /**
  * Botões Google/Apple — o caminho de MENOR fricção pra entrar.
@@ -22,6 +23,7 @@ const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", 
 
 export function OAuthButtons() {
 	const { t } = useTranslation();
+	const { callbackAuthPath } = useLoginStateContext();
 	const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 
 	// Espera a resposta e avisa em pt-BR se o provider falhar (ou não estiver
@@ -32,7 +34,7 @@ export function OAuthButtons() {
 		try {
 			const { error } = await supabase.auth.signInWithOAuth({
 				provider,
-				options: { redirectTo: window.location.origin },
+				options: { redirectTo: `${window.location.origin}${callbackAuthPath}` },
 			});
 			if (error) {
 				toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {

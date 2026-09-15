@@ -1,8 +1,8 @@
 import 'react-native-url-polyfill/auto';
 import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
+import { authStorage } from './authStorage';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -11,7 +11,7 @@ export function isSupabaseConfigured(): boolean {
 export const supabase: SupabaseClient | null = isSupabaseConfigured()
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
-        storage: AsyncStorage as any,
+        storage: authStorage,
         autoRefreshToken: true,
         persistSession: true,
         // OAuth por deep link (Google) usa PKCE: o app abre o navegador, recebe
@@ -79,7 +79,7 @@ export async function signOut() {
 export async function getCurrentUser() {
   if (!supabase) return null;
   try {
-    // getSession() lê a sessão do AsyncStorage (LOCAL, sem rede). getUser() faria
+    // getSession() lê a sessão do storage local protegido (LOCAL, sem rede).
     // um GET /auth/v1/user a CADA chamada — e este helper é usado em dezenas de
     // pontos (sidebar, telas, serviços, o sync), o que gerava um FLOOD de
     // /auth/v1/user a cada login/carga (parte do "app arrasta ao logar"). Para
@@ -97,8 +97,9 @@ export async function getCurrentUser() {
  * Sessão persistida atual (ou null). É a ÚNICA porta do app: App.tsx decide a
  * rota inicial por ela. Nunca lança — em qualquer erro (client ausente, storage
  * corrompido) devolve null, que é fail-closed (cai na tela Entrar, nunca dentro
- * do app). A sessão vem do AsyncStorage (persistSession:true), então funciona
- * offline depois do primeiro login.
+ * do app). No nativo a sessão vem de SecureStore; no web, do storage do
+ * navegador. Assim funciona offline depois do primeiro login sem plaintext no
+ * sandbox nativo.
  */
 export async function sessaoAtiva(): Promise<Session | null> {
   if (!supabase) return null;

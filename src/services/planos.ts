@@ -2,17 +2,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getCurrentUser } from './supabase';
 import { derivarPlanoEfetivo, type LinhaAssinaturaEfetiva } from './planoEfetivo';
 import { obterEstadoOfertaComercial } from './cotaEnvios';
-
-/** Chave de cache do último plano conhecido (com carimbo de quando foi lido). */
-const CACHE_KEY = 'olli.plano.cache';
-
-/** Janela de graça offline: usa o cache mesmo sem conseguir consultar a nuvem. */
-const GRACA_MS = 7 * 24 * 60 * 60 * 1000;
+import { PLANO_CACHE_KEY } from './storageKeys';
+import {
+  criarPlanoCache,
+  interpretarPlanoCache,
+  planoCacheValido,
+  type DadosPlanoCache,
+} from './planoCachePolicy';
 
 export type { PlanoId, Recurso } from './entitlements';
 export {
   RECURSOS_POR_PLANO,
   RECURSO_REMOVE_MARCA,
+  RECURSOS_EM_BREVE,
+  disponibilidadeRecurso,
   temAcessoRecurso,
   IA_USOS_GRATIS_MES,
   ORCAMENTOS_ENVIADOS_GRATIS_MES,
@@ -26,55 +29,34 @@ export interface PlanoAtual {
   status?: string;
   validoAte?: string;
   origem?: 'gratis' | 'pagamento' | 'admin' | 'trial';
+  /** Distingue estado confirmado, graça offline da mesma conta e incerteza. */
+  fonte: 'servidor' | 'cache_mesmo_usuario' | 'sessao_ausente' | 'indisponivel';
 }
 
-interface PlanoCache extends PlanoAtual {
-  /** epoch ms de quando este resultado foi obtido com sucesso da nuvem. */
-  lidoEm: number;
-}
-
-async function lerCache(): Promise<PlanoCache | null> {
+async function lerCache() {
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (typeof parsed.lidoEm !== 'number' || Number.isNaN(parsed.lidoEm)) return null;
-    if (parsed.plano !== 'gratis' && parsed.plano !== 'pro' && parsed.plano !== 'empresa') return null;
-    return parsed as PlanoCache;
+    return interpretarPlanoCache(await AsyncStorage.getItem(PLANO_CACHE_KEY));
   } catch {
     return null;
   }
 }
 
-async function salvarCache(resultado: PlanoAtual): Promise<void> {
+async function salvarCache(resultado: DadosPlanoCache, ownerUserId: string): Promise<void> {
   try {
-    const cache: PlanoCache = { ...resultado, lidoEm: Date.now() };
-    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    const cache = criarPlanoCache(ownerUserId, resultado);
+    await AsyncStorage.setItem(PLANO_CACHE_KEY, JSON.stringify(cache));
   } catch {
     // best-effort: falha ao gravar cache não deve quebrar o fluxo
   }
 }
 
-/** Cache ainda dentro da janela de graça (robusto a relógio/valor inválido). */
-function cacheValido(cache: PlanoCache | null): cache is PlanoCache {
-  if (!cache) return false;
-  if (cache.origem === 'trial') {
-    const termina = cache.validoAte ? Date.parse(cache.validoAte) : Number.NaN;
-    if (!Number.isFinite(termina) || termina <= Date.now()) return false;
-  }
-  const idade = Date.now() - cache.lidoEm;
-  if (Number.isNaN(idade)) return false;
-  return idade >= 0 && idade <= GRACA_MS;
-}
-
 /**
  * Deriva o plano efetivo a partir da linha de `assinaturas`: status
- * active/trialing/past_due contam como pago; canceled (ou qualquer outro
- * status desconhecido) não. Também verifica se `current_period_end` já
- * passou — assinatura vencida sem status atualizado ainda não conta como paga.
+ * Somente active/trialing com `current_period_end` futuro contam como pagos.
+ * `past_due`, vigência ausente, cancelada ou vencida falham fechados enquanto
+ * não existir uma política de carência autoritativa e auditável.
  */
-function derivarPlano(row: LinhaAssinaturaEfetiva): PlanoAtual {
+function derivarPlano(row: LinhaAssinaturaEfetiva): DadosPlanoCache {
   const efetivo = derivarPlanoEfetivo(row);
   return {
     plano: efetivo.planoEfetivo,
@@ -94,11 +76,13 @@ function derivarPlano(row: LinhaAssinaturaEfetiva): PlanoAtual {
  * configurado sempre retorna 'gratis'. Nunca lança.
  */
 export async function getPlanoAtual(): Promise<PlanoAtual> {
+  let ownerUserId: string | null = null;
   try {
-    if (!supabase) return { plano: 'gratis' };
+    if (!supabase) return { plano: 'gratis', origem: 'gratis', fonte: 'indisponivel' };
 
     const user = await getCurrentUser();
-    if (!user) return { plano: 'gratis' };
+    if (!user) return { plano: 'gratis', origem: 'gratis', fonte: 'sessao_ausente' };
+    ownerUserId = user.id;
 
     const { data, error } = await supabase
       .from('assinaturas')
@@ -109,7 +93,7 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
     if (error) throw error;
 
     // Sem linha na tabela = nunca assinou = grátis (resultado válido, não erro).
-    let resultado: PlanoAtual = data ? derivarPlano(data) : { plano: 'gratis' as PlanoId, origem: 'gratis' };
+    let resultado: DadosPlanoCache = data ? derivarPlano(data) : { plano: 'gratis' as PlanoId, origem: 'gratis' };
     if (resultado.plano === 'gratis') {
       const oferta = await obterEstadoOfertaComercial();
       if (oferta?.trialEstado === 'active' && oferta.planoEfetivo === 'pro' && oferta.trialTerminaEm) {
@@ -121,15 +105,21 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
         };
       }
     }
-    await salvarCache(resultado);
-    return resultado;
+    await salvarCache(resultado, ownerUserId);
+    return { ...resultado, fonte: 'servidor' };
   } catch {
-    // Falha de rede/consulta: usa o cache por até 7 dias de graça.
+    // Falha de rede/consulta: usa somente o cache da MESMA conta, ainda vigente.
     const cache = await lerCache();
-    if (cacheValido(cache)) {
-      return { plano: cache.plano, status: cache.status, validoAte: cache.validoAte, origem: cache.origem };
+    if (ownerUserId && planoCacheValido(cache, ownerUserId)) {
+      return {
+        plano: cache.plano,
+        status: cache.status,
+        validoAte: cache.validoAte,
+        origem: cache.origem,
+        fonte: 'cache_mesmo_usuario',
+      };
     }
-    return { plano: 'gratis' };
+    return { plano: 'gratis', origem: 'gratis', fonte: 'indisponivel' };
   }
 }
 
@@ -140,12 +130,14 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
  * enquanto a leitura de rede não chega). Retorna null se não há cache válido.
  */
 export async function getPlanoCacheado(): Promise<PlanoId | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
   const cache = await lerCache();
-  return cacheValido(cache) ? cache.plano : null;
+  return planoCacheValido(cache, user.id) ? cache.plano : null;
 }
 
 export function invalidarCachePlano(): void {
-  AsyncStorage.removeItem(CACHE_KEY).catch(() => {});
+  AsyncStorage.removeItem(PLANO_CACHE_KEY).catch(() => {});
 }
 
 // ─── Contrato de recursos por plano (Onda 1) ────────────────────────────────

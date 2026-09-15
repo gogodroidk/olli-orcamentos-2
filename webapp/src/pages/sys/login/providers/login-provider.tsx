@@ -1,4 +1,5 @@
 import { createContext, type PropsWithChildren, useContext, useMemo, useState } from "react";
+import { caminhoCallbackAuth, destinoDepoisDoLogin, lerIntencaoPlano, type IntencaoPlano } from "@/olli/plano-intent";
 
 export enum LoginStateEnum {
 	LOGIN = 0,
@@ -12,11 +13,17 @@ interface LoginStateContextType {
 	loginState: LoginStateEnum;
 	setLoginState: (loginState: LoginStateEnum) => void;
 	backToLogin: () => void;
+	intencaoPlano: IntencaoPlano | null;
+	destinoPosLogin: string | null;
+	callbackAuthPath: string;
 }
 const LoginStateContext = createContext<LoginStateContextType>({
 	loginState: LoginStateEnum.LOGIN,
 	setLoginState: () => {},
 	backToLogin: () => {},
+	intencaoPlano: null,
+	destinoPosLogin: null,
+	callbackAuthPath: "/auth/login",
 });
 
 export function useLoginStateContext() {
@@ -44,13 +51,23 @@ function estadoInicial(): LoginStateEnum {
 
 export function LoginProvider({ children }: PropsWithChildren) {
 	const [loginState, setLoginState] = useState(estadoInicial);
+	const [intencaoPlano] = useState<IntencaoPlano | null>(() =>
+		typeof window === "undefined" ? null : lerIntencaoPlano(window.location.search),
+	);
 
 	function backToLogin() {
 		setLoginState(LoginStateEnum.LOGIN);
 	}
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
-	const value: LoginStateContextType = useMemo(() => ({ loginState, setLoginState, backToLogin }), [loginState]);
+	const value: LoginStateContextType = useMemo(() => ({
+		loginState,
+		setLoginState,
+		backToLogin,
+		intencaoPlano,
+		destinoPosLogin: destinoDepoisDoLogin(intencaoPlano),
+		callbackAuthPath: caminhoCallbackAuth(intencaoPlano),
+	}), [loginState, intencaoPlano]);
 
 	return <LoginStateContext.Provider value={value}>{children}</LoginStateContext.Provider>;
 }

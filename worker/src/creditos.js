@@ -50,9 +50,6 @@ export const JANELA_IDEM_MS = 10 * 60 * 1000;
 // quem paga não consome cota nem crédito na IA de voz.
 const PLANOS_IA_ILIMITADA = new Set(['pro', 'empresa']);
 
-// Status que contam como pagos (espelha STATUS_PAGOS em src/services/planos.ts).
-const STATUS_PAGOS = new Set(['active', 'trialing', 'past_due']);
-
 // headers de service_role — o mesmo padrão dos outros módulos (sbHeaders vive em
 // index.js; aqui recebemos `env` e montamos direto para o módulo ser autocontido).
 function sbHeaders(env, extra = {}) {

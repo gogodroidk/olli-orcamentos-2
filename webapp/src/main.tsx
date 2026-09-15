@@ -1,4 +1,5 @@
 import "./global.css";
+import { limparBreadcrumbSentry, limparEventoSentry } from "@sentry-scrub";
 import "./theme/theme.css";
 import "./locales/i18n";
 import ReactDOM from "react-dom/client";
@@ -52,7 +53,10 @@ async function iniciarSentry() {
 			dsn: "https://d7ae2f4d668a5b5ddfe25f612c6f4181@o4511745793327104.ingest.us.sentry.io/4511745839726592",
 			environment: import.meta.env.PROD ? "production" : "development",
 			// LGPD: nada de IP/dado pessoal do cliente.
-			sendDefaultPii: false,
+				sendDefaultPii: false,
+				beforeSend: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+				beforeSendTransaction: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+				beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb as unknown as Record<string, unknown>) as unknown as typeof breadcrumb | null,
 			// Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
 			tracesSampleRate: 0.1,
 		});

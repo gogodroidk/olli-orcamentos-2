@@ -38,9 +38,11 @@ import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
 import { limparCacheTipoConta, resetarTipoConta } from './src/hooks/useTipoConta';
+import { recarregarPlanoGlobal, resetarPlano } from './src/hooks/usePlano';
 import { DESKTOP_BREAKPOINT } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 import * as Sentry from '@sentry/react-native';
+import { limparBreadcrumbSentry, limparEventoSentry } from './src/services/sentryScrub';
 
 /**
  * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
@@ -60,6 +62,9 @@ Sentry.init({
   environment: __DEV__ ? 'development' : 'production',
   // LGPD: nada de IP/dado pessoal. Mesma regra do errorReport.
   sendDefaultPii: false,
+  beforeSend: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+  beforeSendTransaction: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+  beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb as unknown as Record<string, unknown>) as unknown as typeof breadcrumb | null,
   // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
   tracesSampleRate: 0.1,
 });
@@ -321,8 +326,14 @@ function AppConteudo() {
   // dele para não competir por rede com o sync no exato momento do login.
   useEffect(() => {
     if (!supabase) return;
+    let usuarioDaSessao: string | null = null;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+        if (usuarioDaSessao !== session.user.id) {
+          usuarioDaSessao = session.user.id;
+          resetarPlano();
+          void recarregarPlanoGlobal();
+        }
         void sincronizarTudo().finally(() => { void maybeAutoBackup(); });
       }
       // Guard de deep link deslogado (v4): com `linking`, a URL inicial tem
@@ -338,6 +349,8 @@ function AppConteudo() {
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
       // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
       if (event === 'SIGNED_OUT') {
+        usuarioDaSessao = null;
+        resetarPlano();
         // O papel do usuário que saiu não pode sobreviver ao logout: o store em
         // memória e o cache em disco são compartilhados por todo o app. Num aparelho
         // usado por técnico e dono, herdar o papel anterior restringe ou promete

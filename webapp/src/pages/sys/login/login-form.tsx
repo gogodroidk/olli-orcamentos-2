@@ -20,7 +20,8 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 	const [loading, setLoading] = useState(false);
 	const navigatge = useNavigate();
 
-	const { loginState, setLoginState } = useLoginStateContext();
+	const { loginState, setLoginState, destinoPosLogin } = useLoginStateContext();
+	const destino = destinoPosLogin ?? GLOBAL_CONFIG.defaultRoute;
 	const signIn = useSignIn();
 
 	// Depois do login com Google/Apple, o Supabase volta pra ESTA tela com a sessão
@@ -29,8 +30,8 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 	// direto no sistema.
 	const { accessToken } = useUserToken();
 	useEffect(() => {
-		if (accessToken) navigatge(GLOBAL_CONFIG.defaultRoute, { replace: true });
-	}, [accessToken, navigatge]);
+		if (accessToken) navigatge(destino, { replace: true });
+	}, [accessToken, navigatge, destino]);
 
 	// Prefill de conveniência SÓ em DEV, e SÓ a partir de variáveis de ambiente
 	// locais (.env, fora do git). A credencial NUNCA fica no código: este é um
@@ -52,7 +53,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 		setLoading(true);
 		try {
 			await signIn(values);
-			navigatge(GLOBAL_CONFIG.defaultRoute, { replace: true });
+			navigatge(destino, { replace: true });
 			toast.success(t("sys.login.loginSuccessTitle"), {
 				closeButton: true,
 			});

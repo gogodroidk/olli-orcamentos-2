@@ -73,24 +73,30 @@ function findBlock(source, expression, from = 0) {
 }
 
 const SIGNING_READY = `
-def olliReleaseSigningReady = [
+def olliLocalReleaseSigningReady = [
     'OLLI_UPLOAD_KEYSTORE_PATH',
     'OLLI_UPLOAD_KEYSTORE_ALIAS',
     'OLLI_UPLOAD_KEYSTORE_PASSWORD',
     'OLLI_UPLOAD_KEY_PASSWORD',
 ].every { System.getenv(it) }
+def olliEasManagedSigningReady =
+    System.getenv('EAS_BUILD') == 'true' &&
+    System.getenv('EAS_BUILD_RUNNER') == 'eas-build' &&
+    (new File(projectDir, 'eas-build.gradle').exists() ||
+        new File(rootProject.projectDir, '../credentials.json').exists())
+def olliReleaseSigningReady = olliLocalReleaseSigningReady || olliEasManagedSigningReady
 `;
 
 const RELEASE_SIGNING = `
         release {
-            if (olliReleaseSigningReady) {
+            if (olliLocalReleaseSigningReady) {
                 storeFile file(System.getenv('OLLI_UPLOAD_KEYSTORE_PATH'))
                 storePassword System.getenv('OLLI_UPLOAD_KEYSTORE_PASSWORD')
                 keyAlias System.getenv('OLLI_UPLOAD_KEYSTORE_ALIAS')
                 keyPassword System.getenv('OLLI_UPLOAD_KEY_PASSWORD')
             } else {
-                // Debug fallback is only for configuration of device builds;
-                // the task-graph guard below rejects every release task.
+                // EAS injects the managed signing values after restoring its
+                // credentials; the task-graph guard rejects all other releases.
                 storeFile file('debug.keystore')
                 storePassword 'android'
                 keyAlias 'androiddebugkey'

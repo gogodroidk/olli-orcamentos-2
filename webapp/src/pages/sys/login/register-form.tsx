@@ -35,7 +35,7 @@ function telefoneE164Brasil(valor: string): string {
 
 function RegisterForm() {
 	const { t } = useTranslation();
-	const { loginState, backToLogin } = useLoginStateContext();
+	const { loginState, backToLogin, callbackAuthPath } = useLoginStateContext();
 	const [loading, setLoading] = useState(false);
 
 	const form = useForm<RegisterFormValues>({
@@ -57,7 +57,7 @@ function RegisterForm() {
 				email: values.email.trim(),
 				password: values.password,
 				options: {
-					emailRedirectTo: `${window.location.origin}/auth/login`,
+					emailRedirectTo: `${window.location.origin}${callbackAuthPath}`,
 					data: {
 						full_name: values.name.trim(),
 						name: values.name.trim(),

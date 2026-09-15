@@ -30,7 +30,7 @@
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
 import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, RotateCw, Sparkles, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { paraBr } from "@/olli/datas";
 // A leitura da assinatura saiu daqui para `olli/marcaDocumento`: ela ganhou um
@@ -60,6 +60,7 @@ import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe } from "./portal";
 import { iniciarTrialPro, obterEstadoOfertaComercial } from "@/olli/cota-envios";
 import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS, type EstadoOfertaComercial } from "@limites-comerciais";
+import { lerIntencaoPlano } from "@/olli/plano-intent";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -89,8 +90,9 @@ interface EstadoCheckout {
 }
 
 export default function Planos() {
+	const intencao = useMemo(() => lerIntencaoPlano(window.location.search), []);
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
-	const [periodo, setPeriodo] = useState<PeriodoCobranca>("mensal");
+	const [periodo, setPeriodo] = useState<PeriodoCobranca>(() => intencao?.periodo ?? "mensal");
 	const [checkout, setCheckout] = useState<EstadoCheckout>({ plano: null, carregando: false, erro: null });
 	const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
 	const [iniciandoTrial, setIniciandoTrial] = useState(false);
@@ -152,6 +154,22 @@ export default function Planos() {
 				<h1 className="text-2xl font-bold tracking-tight text-text-primary">Planos</h1>
 				<p className="mt-1 text-sm text-text-secondary">Sua assinatura e o que cada plano libera.</p>
 			</header>
+
+			{intencao ? (
+				<Card className="mb-5 border-brand/30 bg-brand/5 p-4" role="status">
+					<div className="flex items-start gap-3">
+						<Sparkles className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+						<div>
+							<p className="font-semibold text-text-primary">
+								Você escolheu revisar o {nomeDoPlano(intencao.plano)} {intencao.periodo}
+							</p>
+							<p className="mt-1 text-sm text-text-secondary">
+								Confira recursos, preço, renovação e cancelamento abaixo. Nenhuma cobrança começa sem seu clique e a confirmação final no checkout seguro.
+							</p>
+						</div>
+					</div>
+				</Card>
+			) : null}
 
 			{/* ─── 1. O SEU ESTADO (o mais importante da tela) ─── */}
 			{contexto.isLoading ? (
@@ -492,7 +510,7 @@ function CardPlano({
 					<Badge variant="success">Seu plano atual</Badge>
 				) : plano.destaque ? (
 					<Badge variant="default">
-						<Sparkles className="size-3" aria-hidden /> Mais escolhido
+						<Sparkles className="size-3" aria-hidden /> Recomendado
 					</Badge>
 				) : null}
 			</div>
