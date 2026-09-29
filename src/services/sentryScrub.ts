@@ -10,6 +10,12 @@ const BEARER = /\bBearer\s+[a-z0-9._~+/=-]{8,}/gi;
 const CPF_CNPJ = /\b(?:\d{3}[.\s-]?\d{3}[.\s-]?\d{3}[-\s]?\d{2}|\d{2}[.\s-]?\d{3}[.\s-]?\d{3}[\/\s-]?\d{4}[-\s]?\d{2})\b/g;
 const TELEFONE = /(?<!\d)(?:\+?55[\s.-]?)?(?:\(?\d{2}\)?[\s.-]?)?9?\d{4}[\s.-]?\d{4}(?!\d)/g;
 const CHAVE_SENSIVEL = /(authorization|cookie|set-cookie|token|secret|password|senha|passwd|api.?key|email|e.?mail|phone|telefone|whats|cpf|cnpj|address|endereco|cep|payload|body|request.?data|cliente|customer|prompt|chat|mensagem)/i;
+// Chaves ESTRUTURAIS do evento que casam com CHAVE_SENSIVEL por acidente de
+// substring: "ex-CEP-tion" casava com `cep` e o redator apagava o campo inteiro —
+// todo erro chegava ao Sentry sem tipo, mensagem e stack (achado 29/09). O
+// conteúdo delas continua passando pelo `sanitizar` (mensagem redigida, chaves
+// sensíveis internas removidas); só a chave em si deixa de ser descartada.
+const CHAVE_ESTRUTURAL = new Set(['exception']);
 
 export function redigirTextoSentry(valor: unknown): string {
   if (typeof valor !== 'string') return '';
@@ -34,18 +40,27 @@ export function redigirTextoSentry(valor: unknown): string {
   return texto.slice(0, 2_000);
 }
 
+// O campo de uma linha do stack mora na profundidade 7
+// (exception › values › [i] › stacktrace › frames › [j] › filename). Com teto 6
+// todo arquivo/função/linha virava "[TRUNCATED]" e o stack chegava inútil.
+const PROFUNDIDADE_MAX = 8;
+const MAX_ITENS_LISTA = 50;
+
 function sanitizar(valor: unknown, profundidade = 0): unknown {
-  if (profundidade > 6) return '[TRUNCATED]';
+  if (profundidade > PROFUNDIDADE_MAX) return '[TRUNCATED]';
   if (typeof valor === 'string') return redigirTextoSentry(valor);
   if (typeof valor === 'number') return Number.isFinite(valor) ? valor : null;
   if (typeof valor === 'boolean' || valor === null) return valor;
-  if (Array.isArray(valor)) return valor.slice(0, 50).map((item) => sanitizar(item, profundidade + 1));
+  if (Array.isArray(valor)) return valor.slice(0, MAX_ITENS_LISTA).map((item) => sanitizar(item, profundidade + 1));
   if (!valor || typeof valor !== 'object') return undefined;
 
   const saida: Record<string, unknown> = {};
   for (const [chave, item] of Object.entries(valor as Record<string, unknown>).slice(0, 80)) {
-    if (CHAVE_SENSIVEL.test(chave)) continue;
-    const limpo = sanitizar(item, profundidade + 1);
+    if (CHAVE_SENSIVEL.test(chave) && !(profundidade === 0 && CHAVE_ESTRUTURAL.has(chave))) continue;
+    // No Sentry o frame que QUEBROU é o último da lista (ordem: mais antigo →
+    // mais novo). Cortar do começo jogaria fora justamente ele num stack longo.
+    const fonte = chave === 'frames' && Array.isArray(item) ? item.slice(-MAX_ITENS_LISTA) : item;
+    const limpo = sanitizar(fonte, profundidade + 1);
     if (limpo !== undefined) saida[chave] = limpo;
   }
   return saida;

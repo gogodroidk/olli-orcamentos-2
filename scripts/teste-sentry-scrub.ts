@@ -37,4 +37,19 @@ assert.equal(original.user.email, 'cliente@exemplo.com', 'o redator não muta o 
 assert.equal(limparBreadcrumbSentry({ category: 'ui.click', message: 'Cliente João' }), null);
 assert.match(redigirTextoSentry('veja https://host.test/x?token=abc'), /^veja https:\/\/host\.test\/x$/);
 
-console.log('PASSOU: PII, autenticação, corpos, contexto, query e breadcrumbs sensíveis removidos.');
+// Regressão 29/09: "ex-CEP-tion" casava com a chave sensível `cep` e o evento
+// inteiro chegava ao Sentry SEM exception; e com teto de profundidade 6 cada
+// linha do stack virava "[TRUNCATED]". Redigir não pode apagar o diagnóstico.
+const excecao = (limpo.exception as { values: Array<{ type: string; value: string }> }).values[0];
+assert.equal(excecao.type, 'Error', 'exception sobrevive ao redator');
+assert.equal(excecao.value, 'token [REDACTED_JWT] de [REDACTED_EMAIL]', 'mensagem da exceção chega redigida, não apagada');
+const frames = Array.from({ length: 60 }, (_, i) => ({ filename: `app:///f${i}.js`, function: `fn${i}`, lineno: i, in_app: true }));
+const comStack = limparEventoSentry({
+  exception: { values: [{ type: 'TypeError', value: 'x', stacktrace: { frames }, mechanism: { type: 'onerror', handled: false } }] },
+});
+const framesLimpos = (comStack.exception as { values: Array<{ stacktrace: { frames: Array<Record<string, unknown>> } }> }).values[0].stacktrace.frames;
+assert.equal(framesLimpos.length, 50, 'stack longo é cortado em 50 frames');
+assert.deepEqual(framesLimpos.at(-1), { filename: 'app:///f59.js', function: 'fn59', lineno: 59, in_app: true }, 'o frame que quebrou (o último) fica, com arquivo/função/linha intactos');
+assert.equal(JSON.stringify(framesLimpos).includes('[TRUNCATED]'), false, 'nenhuma linha do stack vira [TRUNCATED]');
+
+console.log('PASSOU: PII, autenticação, corpos, contexto, query e breadcrumbs sensíveis removidos; exceção e stack preservados.');

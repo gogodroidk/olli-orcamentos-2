@@ -16,6 +16,7 @@
  * Escrita no Supabase é sempre via SERVICE_ROLE (bypassa RLS) — o usuário só tem
  * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
  */
+import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 
@@ -881,6 +882,9 @@ export async function handleWebhook(request, env) {
     // Eventos não tratados: 200 (a Stripe só precisa saber que recebemos).
   } catch (e) {
     console.error('[olli-stripe] webhook falhou:', e && (e.message || e));
+    // O 500 abaixo SEGURA a exceção: sem isto o withSentry nunca a vê e um webhook
+    // de pagamento quebrando em loop passaria calado. Corpo/assinatura não vão.
+    capturarExcecao(e, { origem: 'webhook', rota: '/stripe/webhook' });
     // 500 → a Stripe reenvia. Upserts são idempotentes, então reenvio é seguro.
     // NÃO marca como processado: queremos que o reenvio da Stripe seja tentado de novo.
     // Marca 'falhou' só para a trilha: `reivindicarEvento` trata 'falhou' e
