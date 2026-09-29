@@ -16,6 +16,11 @@ const CHAVE_SENSIVEL = /(authorization|cookie|set-cookie|token|secret|password|s
 // conteúdo delas continua passando pelo `sanitizar` (mensagem redigida, chaves
 // sensíveis internas removidas); só a chave em si deixa de ser descartada.
 const CHAVE_ESTRUTURAL = new Set(['exception']);
+// Mesma armadilha um nível abaixo: `mechanism.exception_id` (ex-CEP-tion_id) é o id
+// numérico que o LinkedErrors do SDK usa para amarrar a cadeia de `cause`. Sem ele
+// o Sentry recebia `parent_id` apontando para ids que não existem no evento. Vale
+// em qualquer profundidade: o valor é um número, e string passaria pelo redator.
+const CHAVE_ESTRUTURAL_QUALQUER_NIVEL = new Set(['exception_id']);
 
 export function redigirTextoSentry(valor: unknown): string {
   if (typeof valor !== 'string') return '';
@@ -56,7 +61,8 @@ function sanitizar(valor: unknown, profundidade = 0): unknown {
 
   const saida: Record<string, unknown> = {};
   for (const [chave, item] of Object.entries(valor as Record<string, unknown>).slice(0, 80)) {
-    if (CHAVE_SENSIVEL.test(chave) && !(profundidade === 0 && CHAVE_ESTRUTURAL.has(chave))) continue;
+    const estrutural = CHAVE_ESTRUTURAL_QUALQUER_NIVEL.has(chave) || (profundidade === 0 && CHAVE_ESTRUTURAL.has(chave));
+    if (CHAVE_SENSIVEL.test(chave) && !estrutural) continue;
     // No Sentry o frame que QUEBROU é o último da lista (ordem: mais antigo →
     // mais novo). Cortar do começo jogaria fora justamente ele num stack longo.
     const fonte = chave === 'frames' && Array.isArray(item) ? item.slice(-MAX_ITENS_LISTA) : item;

@@ -51,5 +51,22 @@ const framesLimpos = (comStack.exception as { values: Array<{ stacktrace: { fram
 assert.equal(framesLimpos.length, 50, 'stack longo é cortado em 50 frames');
 assert.deepEqual(framesLimpos.at(-1), { filename: 'app:///f59.js', function: 'fn59', lineno: 59, in_app: true }, 'o frame que quebrou (o último) fica, com arquivo/função/linha intactos');
 assert.equal(JSON.stringify(framesLimpos).includes('[TRUNCATED]'), false, 'nenhuma linha do stack vira [TRUNCATED]');
+// Cadeia de `cause` (LinkedErrors do SDK): `mechanism.exception_id` também casa
+// com `cep`; sem ele o `parent_id` do filho apontava para um id inexistente.
+const cadeia = limparEventoSentry({
+  exception: {
+    values: [
+      { type: 'TypeError', value: 'interno', mechanism: { type: 'chained', source: 'cause', exception_id: 1, parent_id: 0 } },
+      { type: 'Error', value: 'externo', mechanism: { type: 'auto.core.linked_errors', exception_id: 0 } },
+    ],
+  },
+});
+const mecanismos = (cadeia.exception as { values: Array<{ mechanism: Record<string, unknown> }> }).values.map((v) => v.mechanism);
+assert.deepEqual(mecanismos, [
+  { type: 'chained', source: 'cause', exception_id: 1, parent_id: 0 },
+  { type: 'auto.core.linked_errors', exception_id: 0 },
+], 'exception_id/parent_id da cadeia de cause sobrevivem ao redator');
+const aninhado = limparEventoSentry({ diagnostico: { exception: { value: 'x' } } }).diagnostico as Record<string, unknown>;
+assert.equal('exception' in aninhado, false, 'fora da raiz, `exception` continua sendo descartada');
 
 console.log('PASSOU: PII, autenticação, corpos, contexto, query e breadcrumbs sensíveis removidos; exceção e stack preservados.');
