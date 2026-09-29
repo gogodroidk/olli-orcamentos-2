@@ -60,7 +60,9 @@ const PADROES: Padrao[] = [
   { nome: 'senha da conta demo', re: /\bGrTech\w{4,}/g },
   // `senha: "..."`, `"password": "..."`, `**Senha:** "..."` — a chave colada no `:`/`=`.
   // Atributo de form (`type="password"`, `placeholder="sua senha"`) não casa.
-  { nome: 'senha literal em texto', re: /\b(?:senha|password|passwd)\b["'*]*\s*[:=]\**\s*[`'"][^`'"\s]{6,}[`'"]/gi },
+  // `(?<![A-Za-z0-9])` em vez de `\b`: `DEMO_PASSWORD="..."`/`DB_SENHA='...'` também é
+  // senha — com `\b`, o `_` antes da palavra escondia a variável de ambiente.
+  { nome: 'senha literal em texto', re: /(?<![A-Za-z0-9])(?:senha|password|passwd)\b["'*]*\s*[:=]\**\s*[`'"][^`'"\s]{6,}[`'"]/gi },
   { nome: 'Stripe secret/restricted key', re: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/g },
   { nome: 'Stripe webhook secret (whsec_)', re: /\bwhsec_[A-Za-z0-9+/=]{20,}/g },
   { nome: 'Mercado Pago access token', re: /\b(?:APP_USR|TEST)-\d{6,}-\d{6}-[0-9a-f]{20,}-\d{4,}/g },
@@ -86,14 +88,32 @@ const ARQUIVOS_FIXTURE: { prefixo: string; motivo: string }[] = [
   { prefixo: 'webapp/src/_mock/', motivo: 'usuários fictícios do template Slash (MSW), não existem no Supabase' },
 ];
 
-const EXTENSOES_BINARIAS = /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|pdf|ttf|otf|woff2?|eot|mp3|mp4|m4a|wav|ogg|webm|mov|zip|gz|tgz|7z|jar|apk|aab|keystore|jks|p12|glb|gltf|bin|wasm|riv|psd|xcf|db|sqlite)$/i;
+const EXTENSOES_BINARIAS = /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|pdf|ttf|otf|woff2?|eot|mp3|mp4|m4a|wav|ogg|webm|mov|zip|gz|tgz|7z|jar|apk|aab|glb|gltf|bin|wasm|riv|psd|xcf|db|sqlite)$/i;
+
+/**
+ * Arquivo que é segredo PELO NOME: não adianta procurar padrão dentro (keystore e
+ * .p12 são binários; `.env`/`.dev.vars` guardam token sem prefixo reconhecível,
+ * como o da Cloudflare). O .gitignore já cobre todos, mas `git add -f` passa por
+ * cima dele — então estar versionado já reprova. Os modelos `.example` passam.
+ */
+const ARQUIVO_SECRETO =
+  /(?:^|\/)(?:\.env(?:\.[^/]*)?|\.dev\.vars(?:\.[^/]*)?|credenciais-locais[^/]*\.env|credentials\.json|google-services\.json|GoogleService-Info\.plist|[^/]*service-account[^/]*\.json|[^/]*\.(?:keystore|jks|p12|pfx|p8|pem|key|mobileprovision|dump|backup))$/i;
+const MODELO_VERSIONAVEL = /\.example$/i;
+
+function arquivoSecreto(arquivo: string): boolean {
+  return ARQUIVO_SECRETO.test(arquivo) && !MODELO_VERSIONAVEL.test(arquivo);
+}
 const LIMITE_BYTES = 5 * 1024 * 1024;
 
 type Achado = { arquivo: string; linha: number; padrao: string; trecho: string };
 
-/** Mostra só o começo: o relatório do gate não pode virar o vazamento. */
+/**
+ * Mostra só o começo: o relatório do gate não pode virar o vazamento. No máximo
+ * 1/3 do valor (e nunca mais de 8 chars) — com 8 fixos, uma senha de 14 chars
+ * saía com mais da metade no log do CI.
+ */
 function mascarar(s: string): string {
-  return s.length <= 10 ? `${s.slice(0, 3)}…` : `${s.slice(0, 8)}…(${s.length} chars)`;
+  return `${s.slice(0, Math.min(8, Math.floor(s.length / 3)))}…(${s.length} chars)`;
 }
 
 function varrerTexto(arquivo: string, texto: string): Achado[] {
@@ -122,6 +142,7 @@ const devePegar: [string, string][] = [
   ['senha da demo', j('a senha é GrTech', 'Qwe9999')],
   ['senha literal', j('senha: "', 'Abc12345', '"')],
   ['senha em markdown', j('**Senha:** `', 'Abc12345', '`')],
+  ['senha em variável de ambiente', j('DEMO_PASSWORD="', 'Abc12345', '"')],
   ['stripe live', j('sk_', 'live_', 'A1b2C3d4E5f6G7h8I9j0')],
   ['whsec', j('whsec_', 'Q'.repeat(32))],
   ['mercado pago', j('APP_', 'USR-1234567890123456-092912-', 'ab12'.repeat(8), '-123456789')],
@@ -149,6 +170,16 @@ const deveSoltar: [string, string][] = [
 for (const [nome, amostra] of deveSoltar) {
   checar(`solta ${nome}`, varrerTexto('amostra', amostra).length === 0, JSON.stringify(varrerTexto('amostra', amostra)));
 }
+{
+  const m = mascarar(j('GrTech', 'Qwe9999'));
+  checar('relatório não mostra mais de 1/3 do valor', m.startsWith('GrTe…'), m);
+}
+for (const nome of ['.env', 'worker/.dev.vars', '.env.production', 'android/app/release.keystore', 'upload.jks', 'certs/apple.p12', 'AuthKey_ABC123.p8', 'firebase-service-account.json', 'google-services.json', 'credenciais-locais.env', 'dump-prod.backup']) {
+  checar(`reprova arquivo secreto versionado: ${nome}`, arquivoSecreto(nome));
+}
+for (const nome of ['.env.example', 'webapp/.env.example', 'worker/.dev.vars.example', 'src/lib/env.ts', 'docs/keystore.md', 'scripts/key.ts']) {
+  checar(`solta arquivo comum: ${nome}`, !arquivoSecreto(nome));
+}
 
 // ── 2) Lista o que está versionado — fail-closed ────────────────────────────
 console.log('\n2) lista os arquivos versionados');
@@ -165,6 +196,12 @@ if (arquivos) checar(`git ls-files listou arquivos (${arquivos.length})`, arquiv
 if (arquivos && arquivos.length > 100) {
   console.log('\n3) nenhum segredo em arquivo versionado');
   const achados: Achado[] = [];
+  const secretosPorNome = arquivos.filter(arquivoSecreto);
+  checar(
+    'nenhum arquivo de segredo versionado (.env, .dev.vars, keystore, .p12, .p8, service account...)',
+    secretosPorNome.length === 0,
+    `${secretosPorNome.join('\n        ')}\n        → git rm --cached <arquivo>, guarde no cofre local e ROTACIONE (o histórico já tem o valor).`,
+  );
   let lidos = 0;
   for (const arquivo of arquivos) {
     if (EXTENSOES_BINARIAS.test(arquivo)) continue;

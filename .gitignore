@@ -44,6 +44,7 @@ artifacts/
 .dev.vars.*
 **/.dev.vars
 **/.dev.vars.*
+!**/.dev.vars.example
 
 # typescript
 *.tsbuildinfo
@@ -60,6 +61,7 @@ qa-artifacts/
 # Credenciais de assinatura (NUNCA no repositorio)
 credentials.json
 *.keystore
+*.pfx
 # Cofre local e contas de serviço (Google/Firebase) — o cofre fica fora do repo.
 credenciais-locais*.env
 *service-account*.json
