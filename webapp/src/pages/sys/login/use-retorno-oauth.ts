@@ -2,6 +2,7 @@ import {
 	classificarErroOAuth,
 	type MotivoErroOAuth,
 	mensagemErroOAuth,
+	mensagemRetornoSemOrigem,
 	novaTentativaOAuth,
 	type ProvedorOAuth,
 	urlSemParametrosOAuth,
@@ -19,18 +20,24 @@ export const CHAVE_TENTATIVA_OAUTH = "olli:oauth-tentativa";
 let retornoTratado = false;
 let destinoCalculado: { valor: string | null } | null = null;
 
-function lerTentativa(): { tentativa: string; provedor: ProvedorOAuth } {
+/**
+ * `iniciadaAqui` = um botão Google/Apple desta aba gravou a tentativa antes do
+ * redirect. Sem ela, o `?code=`/`?error=` veio de outro lugar — sobretudo o link de
+ * confirmação de cadastro por e-mail (`emailRedirectTo` também é `/auth/login`) —
+ * e não pode virar "login com o Google" na mensagem nem no funil.
+ */
+function lerTentativa(): { tentativa: string; provedor: ProvedorOAuth; iniciadaAqui: boolean } {
 	try {
 		const cru = window.sessionStorage.getItem(CHAVE_TENTATIVA_OAUTH);
 		window.sessionStorage.removeItem(CHAVE_TENTATIVA_OAUTH);
 		const dado = cru ? (JSON.parse(cru) as { tentativa?: unknown; provedor?: unknown }) : null;
 		const provedor: ProvedorOAuth = dado?.provedor === "apple" ? "apple" : "google";
 		if (typeof dado?.tentativa === "string" && dado.tentativa.length <= 64)
-			return { tentativa: dado.tentativa, provedor };
-		return { tentativa: novaTentativaOAuth(), provedor };
+			return { tentativa: dado.tentativa, provedor, iniciadaAqui: true };
+		return { tentativa: novaTentativaOAuth(), provedor, iniciadaAqui: false };
 	} catch {
 		// Volta noutra aba/navegador (sem sessionStorage): tentativa nova, sem correlação.
-		return { tentativa: novaTentativaOAuth(), provedor: "google" };
+		return { tentativa: novaTentativaOAuth(), provedor: "google", iniciadaAqui: false };
 	}
 }
 
@@ -72,8 +79,13 @@ export function useRetornoOAuth() {
 		const retorno = retornoOAuthInicial;
 		if (retorno.tipo === "nenhum") return;
 
-		const { tentativa, provedor } = lerTentativa();
+		const { tentativa, provedor, iniciadaAqui } = lerTentativa();
 		const avisar = (motivo: MotivoErroOAuth) => {
+			if (!iniciadaAqui) {
+				// Link de e-mail (ou login começado noutro navegador): mensagem neutra, fora do funil.
+				toast.error(mensagemRetornoSemOrigem(motivo), { position: "top-center", duration: 12000 });
+				return;
+			}
 			void registrarFunilAuth("oauth_erro", { plataforma: "web", provedor, tentativa, motivo });
 			toast.error(mensagemErroOAuth(motivo, provedor), { position: "top-center", duration: 12000 });
 		};
@@ -91,7 +103,7 @@ export function useRetornoOAuth() {
 			.then(async ({ error }) => {
 				const { data } = await supabase.auth.getSession();
 				if (data.session) {
-					void registrarFunilAuth("oauth_sessao_criada", { plataforma: "web", provedor, tentativa });
+					if (iniciadaAqui) void registrarFunilAuth("oauth_sessao_criada", { plataforma: "web", provedor, tentativa });
 				} else {
 					// Sem erro e sem sessão = o supabase-js nem tentou: não havia
 					// code_verifier neste navegador (o login começou em outro lugar).

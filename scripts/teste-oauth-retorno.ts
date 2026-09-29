@@ -11,6 +11,7 @@ import {
   lerRetornoOAuth,
   MOTIVOS_ERRO_OAUTH,
   mensagemErroOAuth,
+  mensagemRetornoSemOrigem,
   normalizarPlataforma,
   novaTentativaOAuth,
   urlSemParametrosOAuth,
@@ -80,6 +81,17 @@ for (const motivo of MOTIVOS_ERRO_OAUTH) {
   ok(!/flow|verifier|pkce|exchange/i.test(m), `mensagem de ${motivo} sem jargão técnico`);
 }
 ok(mensagemErroOAuth('cancelado', 'apple').includes('Apple'), 'mensagem cita o provedor');
+// Link de confirmação de cadastro por e-mail também volta em /auth/login com
+// ?code=/?error=: sem tentativa OAuth gravada nesta aba, a mensagem não cita Google.
+for (const motivo of MOTIVOS_ERRO_OAUTH) {
+  const m = mensagemRetornoSemOrigem(motivo);
+  ok(m.length > 20 && !/google|apple/i.test(m), `retorno sem origem OAuth (${motivo}) não culpa o Google`);
+}
+igual(
+  lerRetornoOAuth('https://app.olliorcamentos.online/auth/login?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired'),
+  { tipo: 'erro', motivo: 'codigo_expirado' },
+  'link de e-mail vencido = código expirado (não cancelado)',
+);
 
 const erro = new ErroOAuth('navegador_trocado');
 igual(erro.name, 'ErroOAuth', 'nome do erro (traduzirErroAuth reconhece)');
@@ -219,6 +231,9 @@ const clienteWeb = ler('../webapp/src/lib/supabase.ts');
 ok(clienteWeb.indexOf('retornoOAuthInicial') < clienteWeb.indexOf('createClient(SUPABASE_URL'), 'URL lida ANTES do supabase-js consumir o code');
 const pagina = ler('../webapp/src/pages/sys/login/index.tsx');
 ok(/useRetornoOAuth\(\)/.test(pagina), 'tela de login trata o retorno');
+const hook = ler('../webapp/src/pages/sys/login/use-retorno-oauth.ts');
+ok(/if \(!iniciadaAqui\)[\s\S]{0,200}mensagemRetornoSemOrigem\(motivo\)/.test(hook), 'retorno sem tentativa OAuth desta aba usa mensagem neutra');
+ok(/if \(iniciadaAqui\) void registrarFunilAuth\("oauth_sessao_criada"/.test(hook), 'confirmação por e-mail não conta como sessão OAuth no funil');
 ok(/destinoDepoisDoOAuth\(\)/.test(pagina), 'intenção de plano sobrevive ao OAuth');
 const landing = ler('../web/src/scripts/session-redirect.ts');
 ok(/destinoResgateOAuth\(window\.location\.search, window\.location\.hash\)/.test(landing), 'landing resgata o code');

@@ -79,6 +79,26 @@ export function mensagemErroOAuth(motivo: MotivoErroOAuth, provedor: ProvedorOAu
 }
 
 /**
+ * Texto para um retorno (`?code=`/`?error=`) que NÃO nasceu de um botão Google/Apple
+ * nesta aba — na prática, o link de confirmação de cadastro por e-mail, que também
+ * volta para `/auth/login` (`emailRedirectTo`) e muitas vezes é aberto no app de
+ * e-mail, sem o code_verifier. Não pode culpar o "login com o Google" de quem se
+ * cadastrou por e-mail.
+ */
+export function mensagemRetornoSemOrigem(motivo: MotivoErroOAuth): string {
+  switch (motivo) {
+    case 'codigo_expirado':
+      return 'Este link de acesso expirou ou já foi usado. Entre com seu e-mail e senha ou peça um novo link.';
+    case 'rede':
+      return mensagemErroOAuth('rede');
+    case 'navegador_trocado':
+      return 'Este link foi aberto em um navegador diferente de onde você começou. Entre com seu e-mail e senha para continuar.';
+    default:
+      return 'Não conseguimos concluir o acesso por este link. Entre com seu e-mail e senha para continuar.';
+  }
+}
+
+/**
  * Classifica o erro que o GoTrue/provedor devolve na URL (`error`, `error_code`,
  * `error_description`) ou o erro da troca do code (`exchangeCodeForSession`).
  * Entrada crua em inglês → motivo fechado. Nunca devolve o texto cru.
