@@ -1337,25 +1337,6 @@ const secureHandler = {
   },
 };
 
-/**
- * Sentry — crash reporting do worker.
- *
- * withSentry envolve o handler inteiro: pega exceção não tratada em QUALQUER
- * rota (IA, Stripe, Mercado Pago, admin, link público) sem tocar no código
- * delas. Os try/catch existentes continuam mandando — o Sentry só vê o que
- * escapa deles, que é justamente o que hoje some sem deixar rastro.
- *
- * Exige "compatibility_flags": ["nodejs_compat"] no wrangler.jsonc
- * (AsyncLocalStorage). Sem a flag, o deploy passa e o worker quebra em runtime.
- *
- * A DSN é pública por natureza e está fixa de propósito: em env/secret, uma
- * variável faltando desligaria o monitoramento em silêncio — o padrão
- * "erro vira vazio". E secret a mais é secret a mais pra um push apagar.
- *
- * dataCollection.httpBodies: [] — NUNCA enviar corpo de requisição. Aqui passa
- * webhook de pagamento e prompt de cliente: corpo é dado pessoal (LGPD) e
- * assinatura HMAC. Só metadado vai.
- */
 // Falha TOTAL da cadeia de IA (todos os modelos, ou erro definitivo) vira
 // evento no Sentry — antes ela só virava 502 + console.error e a IA ficou dias
 // fora do ar sem ninguém saber. `info` já chega saneado de ai.js (código,
@@ -1378,6 +1359,25 @@ definirAlertaFalhaIA((info) => {
   });
 });
 
+/**
+ * Sentry — crash reporting do worker.
+ *
+ * withSentry envolve o handler inteiro: pega exceção não tratada em QUALQUER
+ * rota (IA, Stripe, Mercado Pago, admin, link público) sem tocar no código
+ * delas. Os try/catch existentes continuam mandando — o Sentry só vê o que
+ * escapa deles, que é justamente o que hoje some sem deixar rastro.
+ *
+ * Exige "compatibility_flags": ["nodejs_compat"] no wrangler.jsonc
+ * (AsyncLocalStorage). Sem a flag, o deploy passa e o worker quebra em runtime.
+ *
+ * A DSN é pública por natureza e está fixa de propósito: em env/secret, uma
+ * variável faltando desligaria o monitoramento em silêncio — o padrão
+ * "erro vira vazio". E secret a mais é secret a mais pra um push apagar.
+ *
+ * dataCollection.httpBodies: [] — NUNCA enviar corpo de requisição. Aqui passa
+ * webhook de pagamento e prompt de cliente: corpo é dado pessoal (LGPD) e
+ * assinatura HMAC. Só metadado vai.
+ */
 export default Sentry.withSentry(
   () => ({
     dsn: 'https://b015159326e49e2534d36452c334611f@o4511745793327104.ingest.us.sentry.io/4511745841889280',

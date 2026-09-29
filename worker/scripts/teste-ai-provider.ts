@@ -22,6 +22,9 @@ import {
   saudeIA,
   transcreverAudio,
 } from '../src/ai.js';
+import { ORCAMENTO_SCHEMA } from '../src/voz.js';
+import { IA_IMPORTACAO_SCHEMA } from '../src/iaImportacao.js';
+import { IA_AUTOPILOT_SCHEMA } from '../src/iaAutopilot.js';
 
 let falhas = 0;
 let passes = 0;
@@ -554,6 +557,37 @@ const erroComAlertaQuebrado = await erroDe(() => gerarIA(envSaude, { user: 'x' }
 checar('alerta quebrado não troca o erro devolvido', erroComAlertaQuebrado?.message, 'openrouter_400');
 definirAlertaFalhaIA(null);
 reiniciarSaudeIA();
+
+console.log('\n9) schemas reais cumprem o modo strict da OpenAI (sem rede)');
+// O gpt-4.1-nano é o 1º elo e a OpenAI recusa com 400 o schema INTEIRO quando
+// um objeto tem propriedade fora de `required` ou não fecha
+// `additionalProperties`. O ORCAMENTO_SCHEMA quebrou assim e só apareceu ao
+// vivo; este check pega a regressão offline. (DIAG_SCHEMA e
+// IA_ACTION_DRAFT_SCHEMA vivem em index.js e são cobertos pelo check:ai-models.)
+function violacoesStrict(schema, caminho = '$') {
+  if (!schema || typeof schema !== 'object') return [];
+  const saida = [];
+  const tipos = Array.isArray(schema.type) ? schema.type : [schema.type];
+  if (tipos.includes('object')) {
+    const props = Object.keys(schema.properties || {});
+    const obrigatorios = new Set(schema.required || []);
+    const fora = props.filter((prop) => !obrigatorios.has(prop));
+    if (fora.length) saida.push(`${caminho}: fora de required: ${fora.join(',')}`);
+    if (schema.additionalProperties !== false) saida.push(`${caminho}: additionalProperties != false`);
+    for (const prop of props) saida.push(...violacoesStrict(schema.properties[prop], `${caminho}.${prop}`));
+  }
+  if (schema.items) saida.push(...violacoesStrict(schema.items, `${caminho}[]`));
+  return saida;
+}
+checar('ORCAMENTO_SCHEMA (voz) é strict-compatível', violacoesStrict(ORCAMENTO_SCHEMA), []);
+checar('IA_IMPORTACAO_SCHEMA é strict-compatível', violacoesStrict(IA_IMPORTACAO_SCHEMA), []);
+checar('IA_AUTOPILOT_SCHEMA é strict-compatível', violacoesStrict(IA_AUTOPILOT_SCHEMA), []);
+checar('detector pega o bug antigo do orçamento', violacoesStrict({
+  type: 'object',
+  additionalProperties: false,
+  required: ['itens'],
+  properties: { titulo: { type: ['string', 'null'] }, itens: { type: 'array' } },
+}), ['$: fora de required: titulo']);
 
 globalThis.fetch = fetchReal;
 
