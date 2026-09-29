@@ -1,4 +1,5 @@
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
+import { chamarRpcServico } from './emailRpc.js';
 
 export const RESEND_WEBHOOK_VERSION = '2026-09-05.v1';
 export const RESEND_WEBHOOK_MAX_BODY_BYTES = 262144;
@@ -144,6 +145,38 @@ export function normalizarEventoResend(event, svixId) {
   return Object.freeze(normalized);
 }
 
+/**
+ * Evento que tira a conta da lista: bounce PERMANENTE, reclamação de spam ou
+ * endereço já suprimido pela própria Resend. Bounce temporário não suprime.
+ * Lê só discriminadores do envelope — nunca endereço, assunto ou corpo.
+ */
+export function motivoSupressaoResend(event) {
+  const payload = safeObject(event);
+  const data = safeObject(payload.data);
+  if (payload.type === 'email.bounced') {
+    return safeObject(data.bounce).type === 'Permanent' ? 'hard_bounce' : null;
+  }
+  if (payload.type === 'email.complained') return 'complaint';
+  if (payload.type === 'email.suppressed') return 'hard_bounce';
+  return null;
+}
+
+async function registrarSupressao(env, emailId, motivo, fetchImpl) {
+  const supabaseUrl = typeof env?.SUPABASE_URL === 'string' ? env.SUPABASE_URL.trim().replace(/\/+$/, '') : '';
+  const serviceRoleKey = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string' ? env.SUPABASE_SERVICE_ROLE_KEY.trim() : '';
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw Object.assign(new Error('supressao_sem_supabase'), { codigo: 'supressao_sem_supabase' });
+  }
+  const r = await chamarRpcServico({ supabaseUrl, serviceRoleKey }, fetchImpl, 'registrar_supressao_email_por_provider', {
+    p_provider_id: emailId,
+    p_motivo: motivo,
+  });
+  if (!r || typeof r !== 'object' || typeof r.registrado !== 'boolean') {
+    throw Object.assign(new Error('supressao_resposta_invalida'), { codigo: 'supressao_resposta_invalida' });
+  }
+  return r.registrado;
+}
+
 function response(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -159,7 +192,7 @@ function payloadBytes(value) {
  * Endpoint público do Resend: assinatura primeiro, idempotência no banco antes
  * de aceitar o evento e nenhuma PII do envelope armazenada na trilha.
  */
-export async function handleResendWebhook(request, env) {
+export async function handleResendWebhook(request, env, dependencias = {}) {
   if (request.method !== 'POST') {
     return response({ ok: false, erro: 'metodo_nao_suportado' }, 405);
   }
@@ -199,6 +232,12 @@ export async function handleResendWebhook(request, env) {
   if (!claim.ok) return response({ ok: false, erro: 'idempotencia_indisponivel' }, 500);
 
   try {
+    // Supressão ANTES de marcar processado: se falhar, o evento volta a 500 e a
+    // Resend reenvia (webhookEvents reprocessa quem não chegou a 'processado').
+    const motivo = motivoSupressaoResend(event);
+    if (motivo && normalized.emailId) {
+      await registrarSupressao(env, normalized.emailId, motivo, dependencias.fetchImpl || fetch);
+    }
     await marcarEvento(env, { origem: 'resend', eventId: normalized.eventId, status: 'processado' });
     return response({ ok: true, tipo: normalized.type });
   } catch (error) {

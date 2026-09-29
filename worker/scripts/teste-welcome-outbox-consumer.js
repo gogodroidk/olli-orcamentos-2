@@ -52,7 +52,7 @@ async function casoDesligado() {
   );
   assert.equal(calls, 0);
   assert.deepEqual(result, {
-    version: '2026-09-04.v1', mode: 'off', claimed: 0, sent: 0, failed: 0,
+    version: '2026-09-29.v2', mode: 'off', claimed: 0, sent: 0, failed: 0,
   });
 }
 
@@ -90,7 +90,7 @@ async function casoSucesso() {
   const result = await processarWelcomeOutbox(ENV, deps(fetchImpl));
   assert.equal(calls.length, 3);
   assert.deepEqual(result, {
-    version: '2026-09-04.v1', mode: 'simulator', claimed: 1, sent: 1, failed: 0,
+    version: '2026-09-29.v2', mode: 'simulator', claimed: 1, sent: 1, failed: 0,
   });
 }
 
@@ -135,6 +135,115 @@ async function casoRetry() {
   assert.equal(result.sent, 0);
 }
 
+const USER = '00000000-0000-4000-8000-000000000041';
+const ENV_PROD = Object.freeze({
+  ...ENV,
+  WELCOME_DISPATCH_MODE: 'production',
+  WELCOME_BATCH_LIMIT: '3',
+  EMAIL_DESCADASTRO_URL: 'https://diagnostico.olliorcamentos.online/email/descadastrar',
+});
+
+function claimLembrete() {
+  const key = `lembrete:assinatura:${USER}:cota_quase:2026-09`;
+  return {
+    ...claim('pessoa@example.com'),
+    event_id: key,
+    idempotency_key: key,
+    template: 'lembrete_assinatura',
+    template_version: 'lembrete_assinatura.v1',
+    purpose: 'billing_reminder',
+    dispatch_scope: 'production',
+    user_id: USER,
+    template_dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 },
+  };
+}
+
+async function casoProducaoBoasVindasELembrete() {
+  const calls = [];
+  const enviados = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) {
+      const body = JSON.parse(init.body);
+      assert.equal(body.p_dispatch_scope, 'production');
+      assert.equal(body.p_limit, 3);
+      return Response.json([
+        { ...claim('novo@example.com'), dispatch_scope: 'production', user_id: USER, template_dados: null },
+        claimLembrete(),
+      ]);
+    }
+    if (url === 'https://api.resend.com/emails') {
+      const body = JSON.parse(init.body);
+      enviados.push({ body, headers: init.headers });
+      return Response.json({ id: `email_${enviados.length}` }, { status: 200 });
+    }
+    if (url.endsWith('/rpc/settle_email_welcome_outbox')) {
+      const body = JSON.parse(init.body);
+      assert.equal(body.p_status, 'sent');
+      return Response.json([{ applied: true, status: 'sent', attempts: 1 }]);
+    }
+    throw new Error('url_inesperada');
+  };
+  const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
+  assert.deepEqual(result, { version: '2026-09-29.v2', mode: 'production', claimed: 2, sent: 2, failed: 0 });
+
+  // Boas-vindas: destinatário real, sem List-Unsubscribe.
+  assert.deepEqual(enviados[0].body.to, ['novo@example.com']);
+  assert.equal(Object.hasOwn(enviados[0].body, 'headers'), false);
+
+  // Lembrete: link assinado no corpo e no cabeçalho one-click.
+  const lembrete = enviados[1];
+  assert.deepEqual(lembrete.body.to, ['pessoa@example.com']);
+  assert.equal(lembrete.headers['Idempotency-Key'], claimLembrete().idempotency_key);
+  assert.equal(lembrete.body.subject, 'Faltam 2 orçamentos grátis este mês');
+  const unsub = lembrete.body.headers['List-Unsubscribe'];
+  assert.match(unsub, /^<https:\/\/diagnostico\.olliorcamentos\.online\/email\/descadastrar\?u=00000000-0000-4000-8000-000000000041&e=lembretes&a=[A-Za-z0-9_-]{43}>$/);
+  assert.equal(lembrete.body.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+  assert.ok(lembrete.body.text.includes(unsub.slice(1, -1)));
+  assert.ok(lembrete.body.html.includes('Parar de receber lembretes</a>'));
+  assert.equal(lembrete.body.text.includes(ENV.SUPABASE_SERVICE_ROLE_KEY), false);
+}
+
+async function casoLembreteSemDescadastro() {
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) return Response.json([claimLembrete()]);
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'), 'lembrete sem descadastro não pode chegar à Resend');
+    const body = JSON.parse(init.body);
+    assert.equal(body.p_status, 'dead_letter');
+    assert.equal(body.p_error_code, 'consumer_contract_error');
+    return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox({ ...ENV_PROD, EMAIL_DESCADASTRO_URL: '' }, deps(fetchImpl));
+  assert.equal(result.sent, 0);
+  assert.equal(result.failed, 1);
+}
+
+async function casoLembreteComDadosInvalidos() {
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) {
+      return Response.json([{ ...claimLembrete(), template_dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2, email: 'x@y.z' } }]);
+    }
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'));
+    assert.equal(JSON.parse(init.body).p_status, 'dead_letter');
+    return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
+  assert.equal(result.failed, 1);
+}
+
+async function casoSimuladorNaoEnviaLembreteReal() {
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) {
+      return Response.json([{ ...claimLembrete(), dispatch_scope: 'simulator' }]);
+    }
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'));
+    assert.equal(JSON.parse(init.body).p_error_code, 'simulator_recipient_rejected');
+    return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox({ ...ENV_PROD, WELCOME_DISPATCH_MODE: 'simulator' }, deps(fetchImpl));
+  assert.equal(result.sent, 0);
+}
+
 const originalLog = console.log;
 const originalError = console.error;
 console.log = () => {};
@@ -144,9 +253,13 @@ try {
   await casoSucesso();
   await casoDestinatarioBloqueado();
   await casoRetry();
+  await casoProducaoBoasVindasELembrete();
+  await casoLembreteSemDescadastro();
+  await casoLembreteComDadosInvalidos();
+  await casoSimuladorNaoEnviaLembreteReal();
 } finally {
   console.log = originalLog;
   console.error = originalError;
 }
 
-console.log('PASSOU: consumer welcome — off, sucesso, bloqueio de destinatário e retry');
+console.log('PASSOU: consumer da outbox — off, sucesso, bloqueio de destinatário, retry, produção (boas-vindas + lembrete com List-Unsubscribe) e falhas fechadas do lembrete');

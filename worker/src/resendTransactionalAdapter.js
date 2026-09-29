@@ -6,7 +6,7 @@
  * transporte explícito depois dos gates de identidade, secret e canário.
  */
 
-export const RESEND_TRANSACTIONAL_ADAPTER_VERSION = '2026-09-02.v2';
+export const RESEND_TRANSACTIONAL_ADAPTER_VERSION = '2026-09-29.v3';
 export const RESEND_EMAILS_ENDPOINT = 'https://api.resend.com/emails';
 
 const CONFIG_KEYS = Object.freeze(['apiKey', 'from', 'replyTo', 'transport']);
@@ -37,6 +37,8 @@ const MESSAGE_KEYS = Object.freeze([
   'html',
   'text',
 ]);
+// Lembrete = mesmo corpo + link de descadastro obrigatório (vira List-Unsubscribe).
+const LEMBRETE_MESSAGE_KEYS = Object.freeze([...MESSAGE_KEYS, 'unsubscribeUrl']);
 const TRANSPORT_RESPONSE_KEYS = Object.freeze(['status', 'body']);
 
 function exigir(condicao, codigo) {
@@ -109,7 +111,8 @@ function validarConfiguracao(config) {
 function validarEntrega(delivery) {
   chavesExatas(delivery, DELIVERY_KEYS, 'delivery_campos_invalidos');
   chavesExatas(delivery.claimedItem, OUTBOX_KEYS, 'outbox_campos_invalidos');
-  chavesExatas(delivery.message, MESSAGE_KEYS, 'message_campos_invalidos');
+  const lembrete = delivery.message?.kind === 'lembrete';
+  chavesExatas(delivery.message, lembrete ? LEMBRETE_MESSAGE_KEYS : MESSAGE_KEYS, 'message_campos_invalidos');
 
   const item = delivery.claimedItem;
   const message = delivery.message;
@@ -128,7 +131,8 @@ function validarEntrega(delivery) {
   exigir(message.template === template, 'message_template_divergente');
   exigir(message.templateVersion === templateVersion, 'message_template_version_divergente');
   exigir(message.purpose === purpose, 'message_purpose_divergente');
-  exigir(message.kind === 'transactional', 'message_kind_invalido');
+  exigir(message.kind === 'transactional' || message.kind === 'lembrete', 'message_kind_invalido');
+  const unsubscribeUrl = lembrete ? urlDescadastroSegura(message.unsubscribeUrl) : null;
 
   const subject = texto(message.subject);
   exigir(subject.length > 0 && subject.length <= 180 && !/[\r\n]/.test(subject), 'subject_invalido');
@@ -142,7 +146,16 @@ function validarEntrega(delivery) {
     subject,
     html: message.html,
     text: message.text,
+    unsubscribeUrl,
   });
+}
+
+function urlDescadastroSegura(valor) {
+  exigir(typeof valor === 'string' && valor.length <= 2048 && !/[<>\s]/.test(valor), 'unsubscribe_url_invalida');
+  let url;
+  try { url = new URL(valor); } catch { url = null; }
+  exigir(url && url.protocol === 'https:' && !url.username && !url.password, 'unsubscribe_url_invalida');
+  return url.toString();
 }
 
 function respostaValida(response) {
@@ -225,6 +238,14 @@ export function criarResendTransactionalAdapter(config = {}) {
         html: command.html,
         text: command.text,
         reply_to: trusted.replyTo,
+        // RFC 8058: o "Cancelar inscrição" nativo do Gmail/Outlook faz POST
+        // direto na rota assinada, sem abrir página.
+        ...(command.unsubscribeUrl ? {
+          headers: {
+            'List-Unsubscribe': `<${command.unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
+        } : {}),
       }),
     });
 

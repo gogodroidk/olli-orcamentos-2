@@ -1,13 +1,16 @@
 import { EMAIL_OUTBOX_VERSION } from './emailOutbox.js';
 import { renderizarEmailBoasVindas } from './welcomeEmailTemplate.js';
+import { renderizarEmailLembrete } from './emailLembretesTemplate.js';
 import { criarResendTransactionalAdapter } from './resendTransactionalAdapter.js';
 import { aplicarResultadoResendNaOutbox } from './resendOutboxOutcomeContract.js';
+import { chaveDescadastro, linkDescadastro } from './emailDescadastro.js';
+import { chamarRpcServico, lerJsonLimitado, sinalTimeout } from './emailRpc.js';
 
-export const WELCOME_OUTBOX_CONSUMER_VERSION = '2026-09-04.v1';
+export const WELCOME_OUTBOX_CONSUMER_VERSION = '2026-09-29.v2';
 
 const SIMULATOR_RECIPIENT = 'delivered@resend.dev';
-const MAX_RESPONSE_BYTES = 32 * 1024;
 const DEFAULT_LEASE_SECONDS = 120;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function exigir(condicao, codigo) {
   if (!condicao) {
@@ -49,44 +52,6 @@ function inteiroLimitado(valor, fallback, min, max) {
   return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
 
-function sinalTimeout(ms) {
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    return AbortSignal.timeout(ms);
-  }
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), ms);
-  return controller.signal;
-}
-
-async function lerJsonLimitado(response) {
-  if (!response.body) return null;
-  const reader = response.body.getReader();
-  const chunks = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > MAX_RESPONSE_BYTES) {
-      await reader.cancel();
-      throw Object.assign(new Error('resposta_grande'), { codigo: 'resposta_grande' });
-    }
-    chunks.push(value);
-  }
-  if (total === 0) return null;
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes));
-  } catch {
-    return null;
-  }
-}
-
 function validarConfig(env) {
   const supabaseUrl = texto(env?.SUPABASE_URL, 2048).replace(/\/+$/, '');
   const serviceRoleKey = texto(env?.SUPABASE_SERVICE_ROLE_KEY, 4096);
@@ -110,27 +75,10 @@ function validarConfig(env) {
     appUrl,
     supportUrl,
     logoUrl,
+    // Só lembrete precisa: sem URL de descadastro, lembrete não sai (vira
+    // dead_letter consumer_contract_error) — boas-vindas seguem normalmente.
+    descadastroUrl: texto(env?.EMAIL_DESCADASTRO_URL, 2048),
   });
-}
-
-async function chamarRpc(config, fetchImpl, nome, body) {
-  const response = await fetchImpl(`${config.supabaseUrl}/rest/v1/rpc/${nome}`, {
-    method: 'POST',
-    headers: {
-      apikey: config.serviceRoleKey,
-      Authorization: `Bearer ${config.serviceRoleKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal: sinalTimeout(10_000),
-  });
-  const payload = await lerJsonLimitado(response);
-  if (!response.ok) {
-    throw Object.assign(new Error(`supabase_rpc_${response.status}`), {
-      codigo: `supabase_rpc_${response.status}`,
-    });
-  }
-  return payload;
 }
 
 function mapearClaim(row) {
@@ -144,9 +92,18 @@ function mapearClaim(row) {
   exigir(row.status === 'sending', 'claim_status_invalido');
   exigir(row.provider_id === null && row.error_code === null, 'claim_resultado_invalido');
 
+  const userId = typeof row.user_id === 'string' && UUID_RE.test(row.user_id) ? row.user_id : null;
+  const dados = row.template_dados !== null && typeof row.template_dados === 'object' && !Array.isArray(row.template_dados)
+    ? row.template_dados
+    : null;
+
   return Object.freeze({
     claimToken,
     dispatchScope: row.dispatch_scope,
+    // Fora do claimedItem de propósito: o adapter e o contrato de resultado
+    // exigem o formato exato da outbox, sem campo a mais.
+    userId,
+    templateDados: dados,
     claimedItem: Object.freeze({
       version: EMAIL_OUTBOX_VERSION,
       eventId,
@@ -166,7 +123,9 @@ function mapearClaim(row) {
   });
 }
 
-function mensagemDoTemplate(item, config) {
+async function mensagemDoTemplate(claim, config, chave) {
+  const item = claim.claimedItem;
+  if (item.template !== 'boas_vindas') return mensagemDeLembrete(claim, config, chave);
   const render = renderizarEmailBoasVindas({
     eventId: item.eventId,
     template: item.template,
@@ -188,8 +147,37 @@ function mensagemDoTemplate(item, config) {
   });
 }
 
+async function mensagemDeLembrete(claim, config, chave) {
+  const item = claim.claimedItem;
+  exigir(claim.userId && claim.templateDados, 'lembrete_claim_incompleto');
+  exigir(config.descadastroUrl && chave, 'lembrete_sem_descadastro');
+  const unsubscribeUrl = await linkDescadastro({ baseUrl: config.descadastroUrl, userId: claim.userId, chave });
+  const render = renderizarEmailLembrete({
+    eventId: item.eventId,
+    template: item.template,
+    templateVersion: item.templateVersion,
+    purpose: item.purpose,
+    dados: claim.templateDados,
+    appUrl: config.appUrl,
+    supportUrl: config.supportUrl,
+    logoUrl: config.logoUrl,
+    unsubscribeUrl,
+  });
+  return Object.freeze({
+    eventId: render.eventId,
+    template: render.template,
+    templateVersion: render.templateVersion,
+    purpose: render.purpose,
+    kind: render.kind,
+    subject: render.subject,
+    html: render.html,
+    text: render.text,
+    unsubscribeUrl: render.unsubscribeUrl,
+  });
+}
+
 async function liquidar(config, fetchImpl, claim, outcome, agora) {
-  const payload = await chamarRpc(config, fetchImpl, 'settle_email_welcome_outbox', {
+  const payload = await chamarRpcServico(config, fetchImpl, 'settle_email_welcome_outbox', {
     p_idempotency_key: claim.claimedItem.idempotencyKey,
     p_claim_token: claim.claimToken,
     p_attempts: claim.claimedItem.attempts,
@@ -202,7 +190,7 @@ async function liquidar(config, fetchImpl, claim, outcome, agora) {
 }
 
 async function liquidarFalhaInterna(config, fetchImpl, claim, codigo, agora) {
-  await chamarRpc(config, fetchImpl, 'settle_email_welcome_outbox', {
+  await chamarRpcServico(config, fetchImpl, 'settle_email_welcome_outbox', {
     p_idempotency_key: claim.claimedItem.idempotencyKey,
     p_claim_token: claim.claimToken,
     p_attempts: claim.claimedItem.attempts,
@@ -232,6 +220,8 @@ function criarTransporte(fetchImpl) {
 /**
  * Processa uma rodada agendada. O modo simulator é uma barreira dupla:
  * o banco filtra dispatch_scope e o runtime aceita somente delivered@resend.dev.
+ * Em production, envia boas-vindas e lembretes (o lembrete sai com o link
+ * assinado de descadastro no corpo e no List-Unsubscribe).
  */
 export async function processarWelcomeOutbox(env, dependencias = {}) {
   const mode = modoDispatch(env);
@@ -250,7 +240,7 @@ export async function processarWelcomeOutbox(env, dependencias = {}) {
     : inteiroLimitado(env?.WELCOME_BATCH_LIMIT, 2, 1, 10);
   const workerId = `welcome:${Date.now()}:${idSeguro(randomUUID(), 64, 'worker_uuid_invalido')}`;
   const claimNow = now().toISOString();
-  const rows = await chamarRpc(config, fetchImpl, 'claim_email_welcome_outbox', {
+  const rows = await chamarRpcServico(config, fetchImpl, 'claim_email_welcome_outbox', {
     p_worker_id: workerId,
     p_dispatch_scope: mode,
     p_limit: batchLimit,
@@ -267,6 +257,13 @@ export async function processarWelcomeOutbox(env, dependencias = {}) {
   });
   let sent = 0;
   let failed = 0;
+  // Resolvida uma vez por rodada; null = lembretes desta rodada falham fechado.
+  let chave = null;
+  try {
+    chave = await chaveDescadastro(env);
+  } catch {
+    chave = null;
+  }
 
   for (const row of rows) {
     let claim;
@@ -277,7 +274,7 @@ export async function processarWelcomeOutbox(env, dependencias = {}) {
       if (mode === 'simulator') {
         exigir(claim.claimedItem.recipient === SIMULATOR_RECIPIENT, 'simulator_recipient_rejected');
       }
-      const message = mensagemDoTemplate(claim.claimedItem, config);
+      const message = await mensagemDoTemplate(claim, config, chave);
       providerInvoked = true;
       const result = await adapter.entregar({ claimedItem: claim.claimedItem, message });
       const settledAt = now().toISOString();

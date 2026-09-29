@@ -65,7 +65,7 @@ const factory = (transport: (request: any) => Promise<any>) => criarResendTransa
   transport,
 });
 
-checar('versão e endpoint são explícitos', RESEND_TRANSACTIONAL_ADAPTER_VERSION === '2026-09-02.v2' && RESEND_EMAILS_ENDPOINT === 'https://api.resend.com/emails');
+checar('versão e endpoint são explícitos', RESEND_TRANSACTIONAL_ADAPTER_VERSION === '2026-09-29.v3' && RESEND_EMAILS_ENDPOINT === 'https://api.resend.com/emails');
 checar('configuração ausente falha fechado', erroCodigo(() => criarResendTransactionalAdapter()) === 'config_campos_invalidos');
 checar('api key ausente falha fechado', erroCodigo(() => criarResendTransactionalAdapter({ ...configBase, apiKey: '', transport: async () => null })) === 'api_key_invalida');
 checar('api key grande demais não é truncada silenciosamente', erroCodigo(() => criarResendTransactionalAdapter({ ...configBase, apiKey: 'x'.repeat(513), transport: async () => null })) === 'api_key_invalida');
@@ -139,6 +139,28 @@ checar('campo extra com PII na mensagem é rejeitado', await erroCodigoAsync(() 
 checar('eventId divergente é rejeitado', await erroCodigoAsync(() => adapter.entregar({ claimedItem, message: { ...message, eventId: 'email-confirmed:outro' } })) === 'message_event_divergente');
 checar('subject com CRLF é rejeitado', await erroCodigoAsync(() => adapter.entregar({ claimedItem, message: { ...message, subject: 'Assunto\nforjado' } })) === 'subject_invalido');
 checar('idempotência grande demais não é truncada', await erroCodigoAsync(() => adapter.entregar({ claimedItem: { ...claimedItem, idempotencyKey: 'x'.repeat(241) }, message })) === 'idempotency_key_invalida');
+
+// ─── Lembrete: mesmo adapter, com List-Unsubscribe one-click obrigatório ───
+{
+  const unsub = 'https://diagnostico.olliorcamentos.online/email/descadastrar?u=00000000-0000-4000-8000-000000000001&e=lembretes&a=abc';
+  const lembreteMsg = { ...message, kind: 'lembrete', unsubscribeUrl: unsub };
+  let capturado: any = null;
+  const adapterLembrete = factory(async (request) => { capturado = request; return { status: 200, body: { id: 'email_lembrete_1' } }; });
+  const r: any = await adapterLembrete.entregar({ claimedItem, message: lembreteMsg });
+  const corpo = capturado ? JSON.parse(capturado.body) : {};
+  checar('lembrete é aceito com link de descadastro', r.ok === true && r.providerId === 'email_lembrete_1');
+  checar('lembrete leva List-Unsubscribe com o link', corpo.headers?.['List-Unsubscribe'] === `<${unsub}>`);
+  checar('lembrete leva List-Unsubscribe-Post one-click (RFC 8058)', corpo.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click');
+  checar('lembrete sem link de descadastro é recusado', await erroCodigoAsync(() => adapterLembrete.entregar({ claimedItem, message: { ...message, kind: 'lembrete' } as any })) === 'message_campos_invalidos');
+  checar('link de descadastro http é recusado', await erroCodigoAsync(() => adapterLembrete.entregar({ claimedItem, message: { ...lembreteMsg, unsubscribeUrl: 'http://x.test/a' } })) === 'unsubscribe_url_invalida');
+  checar('link com quebra de linha (header injection) é recusado', await erroCodigoAsync(() => adapterLembrete.entregar({ claimedItem, message: { ...lembreteMsg, unsubscribeUrl: `${unsub}\r\nBcc: x@y.z` } })) === 'unsubscribe_url_invalida');
+  checar('transacional não ganha List-Unsubscribe', await (async () => {
+    let req: any = null;
+    await factory(async (request) => { req = request; return { status: 200, body: { id: 'e2' } }; }).entregar(delivery);
+    return req && !Object.hasOwn(JSON.parse(req.body), 'headers');
+  })());
+  checar('kind desconhecido continua recusado', await erroCodigoAsync(() => adapterLembrete.entregar({ claimedItem, message: { ...message, kind: 'marketing' } })) === 'message_kind_invalido');
+}
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');

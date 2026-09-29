@@ -18,7 +18,11 @@
     "test:ia-importacao": "node scripts/teste-ia-importacao.js",
     "test:ia-autopilot": "node scripts/teste-ia-autopilot.js",
     "test:welcome-outbox-consumer": "node scripts/teste-welcome-outbox-consumer.js",
-    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer",
+    "test:email-lembretes-policy": "node scripts/teste-email-lembretes-policy.js",
+    "test:email-lembretes-template": "node scripts/teste-email-lembretes-template.js",
+    "test:email-lembretes-job": "node scripts/teste-email-lembretes-job.js",
+    "test:email-descadastro": "node scripts/teste-email-descadastro.js",
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-descadastro",
     "deploy": "npm run types:check && wrangler deploy"
   },
   "dependencies": {

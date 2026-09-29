@@ -45,6 +45,8 @@ const METODOS_POR_ROTA = new Map([
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
   ['/resend/webhook', 'POST'],
+  // Descadastro de lembretes: GET mostra a confirmação, POST grava.
+  ['/email/descadastrar', 'GET, POST'],
 ]);
 
 /**

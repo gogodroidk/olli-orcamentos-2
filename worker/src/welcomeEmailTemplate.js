@@ -7,7 +7,7 @@
 
 import { WELCOME_TEMPLATE_VERSION } from './welcomeEvent.js';
 
-export const WELCOME_EMAIL_RENDERER_VERSION = '2026-09-01.v1';
+export const WELCOME_EMAIL_RENDERER_VERSION = '2026-09-29.v1';
 export const WELCOME_EMAIL_BRAND = 'OLLI Orçamentos';
 
 const INPUT_KEYS = Object.freeze([
@@ -119,7 +119,7 @@ export function renderizarEmailBoasVindas(input = {}) {
                       </td>
                     </tr>
                   </table>
-                  <p style="margin:0 0 12px;color:#344454;font-size:16px;line-height:1.6;">Você receberá apenas avisos essenciais da conta. Lembretes educativos dependerão das preferências que você escolher na plataforma.</p>
+                  <p style="margin:0 0 12px;color:#344454;font-size:16px;line-height:1.6;">Além dos avisos essenciais da conta, podemos mandar poucos lembretes úteis sobre o uso da OLLI Orçamentos. Cada lembrete traz um link para parar de receber — as preferências são suas.</p>
                   <p style="margin:0;color:#344454;font-size:16px;line-height:1.6;">Precisa de ajuda? <a href="${supportHref}" style="color:#075f5a;text-decoration:underline;">Falar com o suporte da OLLI Orçamentos</a>.</p>
                 </td>
               </tr>
@@ -147,7 +147,7 @@ Para começar:
 
 Criar meu primeiro orçamento: ${appUrl}
 
-Você receberá apenas avisos essenciais da conta. Lembretes educativos dependerão das preferências escolhidas na plataforma.
+Além dos avisos essenciais da conta, podemos mandar poucos lembretes úteis sobre o uso da OLLI Orçamentos. Cada lembrete traz um link para parar de receber — as preferências são suas.
 
 Suporte da OLLI Orçamentos: ${supportUrl}
 
