@@ -24,6 +24,15 @@ export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
 export interface AjudaBloco {
   tipo: AjudaBlocoTipo;
   conteudo: string | string[];
+  /**
+   * Bloco que ensina a PAGAR (Pix, provedor do Pix): só aparece onde o OLLI pode
+   * vender — a web. Este conteúdo também roda no app das lojas (iOS e Android da
+   * Google Play), que não tem compra nem pode mandar pagar por fora — mesma regra
+   * de `lembreteAssinaturaLoja.ts` e da AssinaturaScreen. Lá a tela de Planos NÃO
+   * mostra "Pagar com Pix", então o texto também seria falso. Filtre com
+   * `corpoVisivel()`.
+   */
+  soNaWeb?: boolean;
 }
 
 export interface AjudaCategoria {
@@ -438,13 +447,19 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         tipo: 'passos',
         conteudo: [
           'Vá em Conta → Planos para comparar e assinar (mensal, anual com desconto, ou parcelado em até 12x sem juros).',
-          'Prefere Pix? Quando o Pix estiver disponível, a tela de Planos mostra "Pagar com Pix": você paga 1 mês ou 1 ano, pelo mesmo preço, e ele não renova sozinho — perto do vencimento o OLLI avisa para renovar.',
           'Para trocar de plano ou cancelar, use "Gerenciar assinatura" — abre o portal seguro de pagamento.',
         ],
       },
       {
+        // Só na web: no app das lojas não há Pix nem pode haver texto mandando pagar.
+        tipo: 'paragrafo',
+        soNaWeb: true,
+        conteudo:
+          'Prefere Pix? Quando o Pix estiver disponível, a tela de Planos mostra "Pagar com Pix": você paga 1 mês ou 1 ano, pelo mesmo preço, e ele não renova sozinho — perto do vencimento o OLLI avisa para renovar. O Pix é processado pela AbacatePay.',
+      },
+      {
         tipo: 'aviso',
-        conteudo: 'O cartão é cobrado pela Stripe e o Pix pela AbacatePay. O OLLI nunca guarda o número do seu cartão nem os seus dados bancários.',
+        conteudo: 'O cartão é cobrado pela Stripe. O OLLI nunca guarda o número do seu cartão nem os seus dados bancários.',
       },
     ],
   },
@@ -604,6 +619,15 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Os blocos que ESTA plataforma pode mostrar. `podeVender` = `plataformaPodeVender`
+ * (`services/lembreteAssinaturaLoja.ts`): só a web. Nas lojas somem os blocos
+ * `soNaWeb` (Pix e provedor do Pix).
+ */
+export function corpoVisivel(artigo: AjudaArtigo, podeVender: boolean): AjudaBloco[] {
+  return podeVender ? artigo.corpo : artigo.corpo.filter((b) => !b.soNaWeb);
+}
 
 export function getCategoria(id: string): AjudaCategoria | undefined {
   return CATEGORIAS_AJUDA.find(c => c.id === id);

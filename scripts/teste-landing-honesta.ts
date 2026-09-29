@@ -15,6 +15,7 @@
  *     preço do Pix no worker é o MESMO preço da landing — por isso a copy pode dizer
  *     "pelo mesmo preço" sem digitar número.
  *  6. Termos e Privacidade declaram o Pix e a AbacatePay.
+ *  7. Na Central de Ajuda (compartilhada com o app das lojas), Pix só em bloco `soNaWeb`.
  *
  * A saída pública de verdade (dist/) é conferida por `web/scripts/verificar-saida-publica.mjs`,
  * que roda dentro do `npm run build` da landing e derruba o build se algo vazar.
@@ -101,6 +102,22 @@ assert.equal(centavos(PLANO_PIX.pro_mensal.valor), PRECO_PRO.mensalCentavos, 'Pi
 assert.equal(centavos(PLANO_PIX.pro_anual.valor), PRECO_PRO.anualCentavos, 'Pix Pro anual = preço da landing');
 assert.equal(centavos(PLANO_PIX.empresa_mensal.valor), PRECO_EMPRESA.mensalCentavos, 'Pix Empresa mensal = preço da landing');
 assert.equal(centavos(PLANO_PIX.empresa_anual.valor), PRECO_EMPRESA.anualCentavos, 'Pix Empresa anual = preço da landing');
+
+// A Central de Ajuda também roda no app das LOJAS (iOS e Android da Play), que não
+// tem Pix nem pode mandar pagar por fora (regra de lembreteAssinaturaLoja.ts). O
+// bloco que fala de Pix/AbacatePay tem de ser `soNaWeb`, e as duas telas do app
+// têm de filtrar com `corpoVisivel` + `plataformaPodeVender`.
+const blocosAjuda = [...ajuda.matchAll(/\n {6}\{\n([\s\S]*?)\n {6}\},?/g)].map((m) => m[1]);
+const blocosComPix = blocosAjuda.filter((b) => /Pix|AbacatePay/.test(b) && /tipo: '(paragrafo|passos|aviso)'/.test(b));
+assert.ok(blocosComPix.length > 0, 'esperava ao menos um bloco de ajuda falando de Pix');
+for (const b of blocosComPix) {
+  assert.match(b, /soNaWeb: true/, `bloco da Central de Ajuda com Pix sem soNaWeb (apareceria no app das lojas): ${b.slice(0, 120)}`);
+}
+for (const tela of ['../src/screens/AjudaScreen.tsx', '../src/screens/desktop/AjudaDesktopScreen.tsx']) {
+  const fonte = ler(tela);
+  assert.match(fonte, /corpoVisivel\([^)]*plataformaPodeVender\(Platform\.OS\)\)/, `${tela}: corpo do artigo tem de passar por corpoVisivel`);
+  assert.doesNotMatch(fonte, /\.corpo\.map\(/, `${tela}: renderizar .corpo direto mostra o Pix nas lojas`);
+}
 
 // ─── 6. Documentos legais declaram o Pix ──────────────────────────────────────
 assert.match(termos, /por Pix, processado pela AbacatePay/, 'Termos §4 devem declarar o Pix do plano');
