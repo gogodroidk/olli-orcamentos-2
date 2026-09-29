@@ -52,6 +52,7 @@ import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
+import { handleAbacate } from './abacate.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
@@ -995,6 +996,15 @@ const handler = {
     // x-signature (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
     if (url.pathname.startsWith('/mp/')) {
       return handleMercadoPago(request, env, url);
+    }
+
+    // ── PLANO POR PIX — AbacatePay (decisão do dono, 29/09/2026) ──
+    // Vende PERÍODO de plano por Pix (avulso, 1 ou 12 meses). Mesmo perfil do MP:
+    // fora do gate da IA; o webhook autentica pelo ?webhookSecret= e RE-CONSULTA a
+    // cobrança na AbacatePay antes de liberar; as demais rotas validam o JWT.
+    // Com chave de dev em produção a rota fica DESLIGADA (nunca modo demo).
+    if (url.pathname.startsWith('/abacate/')) {
+      return handleAbacate(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──

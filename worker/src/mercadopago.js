@@ -54,7 +54,7 @@ const PACOTES = {
 };
 
 // Plano por PIX (avulso, libera N meses). Valores em REAIS. Anual = -20% (igual Stripe).
-const PLANO_PIX = {
+export const PLANO_PIX = {
   pro_mensal: { id: 'pro_mensal', plano: 'pro', meses: 1, valor: 39.0, nome: 'OLLI Pro · 1 mês' },
   pro_anual: { id: 'pro_anual', plano: 'pro', meses: 12, valor: 374.4, nome: 'OLLI Pro · 1 ano' },
   empresa_mensal: { id: 'empresa_mensal', plano: 'empresa', meses: 1, valor: 99.0, nome: 'OLLI Empresa · 1 mês' },
@@ -388,7 +388,7 @@ async function concederCredito(env, { userId, pacoteKey, paymentId }) {
  * (Empilhar 2 Pix curtos credita ~o maior, não a soma — borda aceitável; o pacote
  * anual já entrega 12 meses num pagamento só.) Preserva nível/vigência maiores já pagos.
  */
-async function concederPlanoPeriodo(env, { userId, planoKey, dataAprovacao }) {
+export async function concederPlanoPeriodo(env, { userId, planoKey, dataAprovacao }) {
   const cfg = PLANO_PIX[planoKey];
   if (!cfg) return json({ ok: true, sem_vinculo: true });
   const atual = await getAssinatura(env, userId);

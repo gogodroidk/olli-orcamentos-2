@@ -122,7 +122,8 @@
         { "name": "MP_RL", "namespace_id": "2008", "simple": { "limit": 12, "period": 60 } },
         { "name": "TRANSCREVER_RL", "namespace_id": "2009", "simple": { "limit": 20, "period": 60 } },
         { "name": "MPHOOK_RL", "namespace_id": "2010", "simple": { "limit": 120, "period": 60 } },
-        { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } }
+        { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } },
+        { "name": "ABACATE_RL", "namespace_id": "2012", "simple": { "limit": 12, "period": 60 } }
       ]
     }
   },
@@ -173,6 +174,9 @@
     // devolve `indisponivel` e a rota SEGUE (política `sensivel:false`), porque
     // derrubar cadastro de cliente por causa de limitador ausente seria pior que
     // o abuso que ele previne. /feriados não tem binding: não chama ninguém.
-    { "name": "CEP_RL", "namespace_id": "1011", "simple": { "limit": 30, "period": 60 } }
+    { "name": "CEP_RL", "namespace_id": "1011", "simple": { "limit": 30, "period": 60 } },
+    // Pix de plano AbacatePay (criar cobrança/status) por usuário. Id novo de
+    // propósito: o 1007 foi do ABACATE_RL antigo e não se reaproveita.
+    { "name": "ABACATE_RL", "namespace_id": "1012", "simple": { "limit": 12, "period": 60 } }
   ]
 }
