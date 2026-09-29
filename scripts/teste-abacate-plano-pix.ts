@@ -15,6 +15,12 @@
  *     concede plano a ninguém.
  *  4. REPLAY NÃO SOMA MESES. Webhook e polling liberam a mesma cobrança com a
  *     mesma vigência (derivada da data do pagamento).
+ *  5. CADA COBRANÇA LIBERA UMA VEZ SÓ (auditoria 29/09, item 11). Consumida, ela
+ *     fica em `webhook_events` (origem 'abacate'): plano revogado/estornado depois
+ *     NÃO volta pelo polling nem pelo replay do webhook; falha ao registrar o
+ *     consumo NÃO concede (5xx, reenvio).
+ *  6. WEBHOOK COM TETO POR IP, conferido antes do segredo — e o segredo nunca vai
+ *     para o log.
  */
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
 import { descricaoAbacate, handleAbacate, modoAbacate } from '../worker/src/abacate.js';
@@ -39,6 +45,7 @@ const USER = 'user-pix-1';
 const OUTRO = 'user-pix-2';
 const PAGO_EM = '2026-09-29T18:00:31.802Z';
 const RL_LIVRE = { limit: async () => ({ success: true }) };
+const RL_ESTOURADO = { limit: async () => ({ success: false }) };
 
 function envCom(extra: Record<string, unknown> = {}): any {
   return {
@@ -48,6 +55,7 @@ function envCom(extra: Record<string, unknown> = {}): any {
     ABACATEPAY_API_KEY: 'abc_prod_chave_falsa',
     ABACATE_WEBHOOK_SECRET: 'segredo-do-olli',
     ABACATE_RL: RL_LIVRE,
+    ABACATEHOOK_RL: RL_LIVRE,
     ...extra,
   };
 }
@@ -58,6 +66,12 @@ let criadas: any[] = [];
 let escritas: any[] = [];
 let linhaAssinatura: any = null;
 let chamadasAbacate = 0;
+// webhook_events falso: chave `origem|event_id` → linha. Índice único como no banco.
+let eventos: Record<string, any> = {};
+// Falhas injetadas: 'insert' (banco fora ao reivindicar), 'patch' (não fecha o
+// consumo) e 'assinatura' (upsert do plano falha).
+let falhar: Set<string> = new Set();
+let logs: string[] = [];
 
 function reset(): void {
   cobrancas = {};
@@ -65,6 +79,9 @@ function reset(): void {
   escritas = [];
   linhaAssinatura = null;
   chamadasAbacate = 0;
+  eventos = {};
+  falhar = new Set();
+  logs = [];
 }
 
 function resposta(obj: unknown, status = 200): Response {
@@ -86,8 +103,28 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
     if (tok === 'jwt-outro') return resposta({ id: OUTRO, email: 'outro@exemplo.com.br' });
     return resposta({}, 401);
   }
+  if (url.includes('/rest/v1/webhook_events')) {
+    const metodo = init.method || 'GET';
+    const q = new URL(url).searchParams;
+    const chaveQ = `${(q.get('origem') || '').replace(/^eq\./, '')}|${(q.get('event_id') || '').replace(/^eq\./, '')}`;
+    if (metodo === 'POST') {
+      if (falhar.has('insert')) return resposta({ message: 'banco fora' }, 500);
+      const corpo = JSON.parse(init.body);
+      const chave = `${corpo.origem}|${corpo.event_id}`;
+      if (eventos[chave]) return resposta({ code: '23505' }, 409);
+      eventos[chave] = { ...corpo };
+      return new Response(null, { status: 201 });
+    }
+    if (metodo === 'PATCH') {
+      if (falhar.has('patch')) return resposta({ message: 'banco fora' }, 500);
+      if (eventos[chaveQ]) Object.assign(eventos[chaveQ], JSON.parse(init.body));
+      return new Response(null, { status: 204 });
+    }
+    return resposta(eventos[chaveQ] ? [{ status: eventos[chaveQ].status }] : []);
+  }
   if (url.includes('/rest/v1/assinaturas')) {
     if ((init.method || 'GET') === 'GET') return resposta(linhaAssinatura ? [linhaAssinatura] : []);
+    if (falhar.has('assinatura')) return resposta({ message: 'banco fora' }, 500);
     const corpo = JSON.parse(init.body);
     escritas.push(corpo);
     linhaAssinatura = corpo;
@@ -120,7 +157,8 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
   throw new Error(`fetch inesperado no teste: ${url}`);
 }) as typeof fetch;
 
-console.error = () => {};
+// Captura o log (em vez de só silenciar) para provar que o segredo não vaza nele.
+console.error = (...args: unknown[]) => { logs.push(args.map(String).join(' ')); };
 
 async function chamar(env: any, metodo: string, caminho: string, opts: { jwt?: string; corpo?: unknown } = {}) {
   const url = new URL(`https://diagnostico.olliorcamentos.online${caminho}`);
@@ -244,10 +282,105 @@ console.log('\n4. webhook');
   const primeira = escritas[0]?.current_period_end;
   await chamar(envProd, 'POST', '/abacate/webhook?webhookSecret=segredo-do-olli', { corpo: forjado });
   await chamar(envProd, 'GET', '/abacate/status?id=pix_wh', { jwt: 'jwt-user' });
-  checar('replay (webhook + polling) não soma meses', escritas.map((e) => e.current_period_end), [primeira, primeira, primeira]);
+  checar('replay (webhook + polling) não reescreve o plano', escritas.map((e) => e.current_period_end), [primeira]);
 
   const inexistente = await chamar(envProd, 'POST', '/abacate/webhook?webhookSecret=segredo-do-olli', { corpo: { event: 'transparent.completed', data: { transparent: { id: 'pix_nao_existe' } } } });
-  checar('cobrança que a API não conhece = 503 (reenvia), nada gravado a mais', [inexistente.status, escritas.length], [503, 3]);
+  checar('cobrança que a API não conhece = 503 (reenvia), nada gravado a mais', [inexistente.status, escritas.length], [503, 1]);
+}
+
+const WH = '/abacate/webhook?webhookSecret=segredo-do-olli';
+const evtPago = (id: string) => ({ event: 'transparent.completed', data: { transparent: { id } } });
+
+console.log('\n5. consumo único (cobrança não reativa plano revogado)');
+{
+  reset();
+  cobranca('pix_estorno', USER, 'pro_mensal', 3900);
+  const pago = await chamar(envProd, 'GET', '/abacate/status?id=pix_estorno', { jwt: 'jwt-user' });
+  checar('1ª liberação concede', [pago.corpo?.pago, escritas.length], [true, 1]);
+  checar('...e grava o consumo (abacate, id da cobrança) como processado', eventos['abacate|pix_estorno']?.status, 'processado');
+  checar('...com o vínculo no payload, sem segredo', eventos['abacate|pix_estorno']?.payload, { user_id: USER, plano: 'pro_mensal', valor_centavos: 3900 });
+
+  // Dono estorna o Pix e revoga o plano à mão.
+  linhaAssinatura = { ...linhaAssinatura, status: 'canceled', current_period_end: '2026-09-30T00:00:00.000Z' };
+  const revogado = { ...linhaAssinatura };
+  const poll = await chamar(envProd, 'GET', '/abacate/status?id=pix_estorno', { jwt: 'jwt-user' });
+  checar('plano revogado não volta pelo polling', [poll.corpo?.pago, escritas.length, linhaAssinatura], [true, 1, revogado]);
+  const replay = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_estorno') });
+  checar('plano revogado não volta pelo replay do webhook', [replay.status, escritas.length, linhaAssinatura], [200, 1, revogado]);
+
+  reset();
+  cobranca('pix_replay', USER, 'empresa_mensal', 9900);
+  const a = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_replay') });
+  const b = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_replay') });
+  const c = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_replay') });
+  checar('replay do webhook não duplica: 200 em todos', [a.status, b.status, c.status], [200, 200, 200]);
+  checar('...uma escrita de plano e uma linha de consumo', [escritas.length, Object.keys(eventos)], [1, ['abacate|pix_replay']]);
+  const poll2 = await chamar(envProd, 'GET', '/abacate/status?id=pix_replay', { jwt: 'jwt-user' });
+  checar('...e o cliente no polling continua vendo pago:true', [poll2.corpo?.pago, escritas.length], [true, 1]);
+
+  reset();
+  cobranca('pix_pend2', USER, 'pro_mensal', 3900, 'PENDING');
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_pend2', { jwt: 'jwt-user' });
+  cobranca('pix_alheio2', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_alheio2', { jwt: 'jwt-outro' });
+  checar('pendente ou alheia não reivindica nada', Object.keys(eventos).length, 0);
+
+  reset();
+  cobranca('pix_banco_fora', USER, 'pro_mensal', 3900);
+  falhar.add('insert');
+  const whFora = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_banco_fora') });
+  checar('falha ao registrar não concede: webhook 503 (reenvio), plano intacto', [whFora.status, escritas.length], [503, 0]);
+  const pollFora = await chamar(envProd, 'GET', '/abacate/status?id=pix_banco_fora', { jwt: 'jwt-user' });
+  checar('falha ao registrar não concede: polling 502, nunca pago:true', [pollFora.status, pollFora.corpo?.pago ?? null, escritas.length], [502, null, 0]);
+  falhar.delete('insert');
+  const whVolta = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_banco_fora') });
+  checar('...banco de volta, o reenvio concede', [whVolta.status, escritas.length, eventos['abacate|pix_banco_fora']?.status], [200, 1, 'processado']);
+
+  reset();
+  cobranca('pix_meio', USER, 'pro_mensal', 3900);
+  eventos['abacate|pix_meio'] = { origem: 'abacate', event_id: 'pix_meio', status: 'recebido' };
+  const meio = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_meio') });
+  checar('tentativa anterior que morreu no meio (recebido) é reprocessada', [meio.status, escritas.length, eventos['abacate|pix_meio']?.status], [200, 1, 'processado']);
+
+  reset();
+  cobranca('pix_upsert', USER, 'pro_mensal', 3900);
+  falhar.add('assinatura');
+  const up = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_upsert') });
+  checar('concessão falhou = 503 e consumo marcado falhou (não processado)', [up.status, eventos['abacate|pix_upsert']?.status], [503, 'falhou']);
+  falhar.delete('assinatura');
+  const up2 = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_upsert') });
+  checar('...o reenvio concede', [up2.status, escritas.length, eventos['abacate|pix_upsert']?.status], [200, 1, 'processado']);
+
+  reset();
+  cobranca('pix_patch', USER, 'pro_mensal', 3900);
+  falhar.add('patch');
+  const pt = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_patch') });
+  checar('liberou mas o consumo não gravou = 503 para reenviar', [pt.status, escritas.length, eventos['abacate|pix_patch']?.status], [503, 1, 'recebido']);
+  falhar.delete('patch');
+  const primeira = escritas[0]?.current_period_end;
+  const pt2 = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_patch') });
+  checar('...o reenvio grava o consumo, com a MESMA vigência', [pt2.status, eventos['abacate|pix_patch']?.status, escritas[1]?.current_period_end], [200, 'processado', primeira]);
+}
+
+console.log('\n6. teto por IP no webhook');
+{
+  reset();
+  cobranca('pix_rl', USER, 'pro_mensal', 3900);
+  const envRl = envCom({ ABACATEHOOK_RL: RL_ESTOURADO });
+  const r = await chamar(envRl, 'POST', WH, { corpo: evtPago('pix_rl') });
+  checar('estourou o teto = 429, sem chamar a API nem gravar', [r.status, chamadasAbacate, escritas.length], [429, 0, 0]);
+  const chute = await chamar(envRl, 'POST', '/abacate/webhook?webhookSecret=chute', { corpo: {} });
+  checar('...o teto vem ANTES do segredo (barra quem tenta adivinhar)', chute.status, 429);
+  const semBinding = await chamar(envCom({ ABACATEHOOK_RL: undefined }), 'POST', WH, { corpo: evtPago('pix_rl') });
+  checar('limitador fora não derruba webhook de dinheiro', [semBinding.status, escritas.length], [200, 1]);
+
+  reset();
+  falhar.add('patch');
+  cobranca('pix_log', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_log') });
+  await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_nao_existe') });
+  checar('houve log de erro (o teste enxerga o log)', logs.length > 0, true);
+  checar('o segredo do webhook não aparece em nenhum log', logs.some((l) => l.includes('segredo-do-olli')), false);
 }
 
 console.error = errOriginal;
