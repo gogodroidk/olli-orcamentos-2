@@ -27,7 +27,11 @@ import { fileURLToPath } from 'node:url';
 import { PLANO_PIX } from '../worker/src/mercadopago.js';
 import { PRECO_EMPRESA, PRECO_PRO } from '../web/src/data/planos.ts';
 
-const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8');
+// CRLF → LF: com `core.autocrlf=true` (o padrão do Git no Windows, e o desta máquina)
+// o checkout vem em CRLF e as regex ancoradas em `\n` (blocos da Central de Ajuda)
+// não casavam — o teste falhava no PC do dono e passava no Linux.
+const ler = (caminho: string) =>
+  readFileSync(new URL(caminho, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const RAIZ_WEB = fileURLToPath(new URL('../web/src/', import.meta.url));
 
 function arquivos(dir: string, ext: RegExp): string[] {
