@@ -20,7 +20,7 @@ landing (em-breve reconciliado, `<main>`+skip-link, alvo do FAQ, CTA WhatsApp, "
 - [x] **FormOs sobrescreve o checklist do técnico** (Onda 9, H1) — merge por `id` com `fresca.checklist` (item que o painel não mexeu herda o fresco) + copy do diálogo corrigida pra verdade.
 
 ### P2 — segurança — ✅ FECHADOS na Onda 9 (código)
-- [x] **Senha da demo em texto puro nos docs** (Onda 9, H2) — `GrTechDemo2026` removida dos 2 .md (referência ao cofre/env). ⚠️ **rotação no Supabase segue humana** (BLOQUEIOS).
+- [x] **Senha da demo em texto puro nos docs** (Onda 9, H2) — senha (no cofre local) removida dos 2 .md (referência ao cofre/env). ⚠️ **rotação no Supabase segue humana** (BLOQUEIOS).
 - [x] **SIGNED_OUT por expiração não limpa cache** (Onda 9, H2) — `queryClient` extraído pra singleton (`store/queryClient.ts`, sem import circular); `userStore` chama `.clear()` no SIGNED_OUT. Não vaza mais entre tenants na mesma aba.
 
 ### P2/P3 — a11y & consistência

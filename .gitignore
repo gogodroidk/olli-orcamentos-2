@@ -32,9 +32,18 @@ artifacts/
 .DS_Store
 *.pem
 
-# local env files
+# local env files — qualquer .env* (inclusive .env.production/.env.staging),
+# menos os modelos versionados de propósito.
 .env
+.env.*
 .env*.local
+!.env.example
+!**/.env.example
+# Secrets locais do Wrangler (`wrangler dev` lê daqui) — mesmo valor do `secret put`.
+.dev.vars
+.dev.vars.*
+**/.dev.vars
+**/.dev.vars.*
 
 # typescript
 *.tsbuildinfo
@@ -51,6 +60,18 @@ qa-artifacts/
 # Credenciais de assinatura (NUNCA no repositorio)
 credentials.json
 *.keystore
+# Cofre local e contas de serviço (Google/Firebase) — o cofre fica fora do repo.
+credenciais-locais*.env
+*service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# Dumps de banco (produção tem dado de cliente — LGPD): nunca versionar.
+*.dump
+*.sql.gz
+*.backup
+dump*.sql
+**/supabase/backups/
 
 # QC screenshots da sessao (nao sao deliverables)
 /*.png
