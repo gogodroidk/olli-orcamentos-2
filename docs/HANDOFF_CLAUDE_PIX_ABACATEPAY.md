@@ -47,3 +47,18 @@ aplicou o patch AQUI, na worktree `C:\OLLI_REL`, por cima das suas alterações 
   - PROVADO com `wrangler tail`: a entrega de um webhook dev passou pela checagem do segredo.
   - O webhook dev usado no teste foi apagado.
 - Falta: o 1º Pix real de R$ 39, pago pelo dono, na conta gogodroidk (plano grátis), em app.olliorcamentos.online/planos.
+
+## ATUALIZAÇÃO 29/09 ~16:40: LEMBRETES DE ASSINATURA NO AR
+- A regra fica em `src/services/lembreteAssinatura.ts` e é pura (sem estado nem chamadas externas). O app usa direto, o painel usa pelo alias `@lembreteAssinatura`.
+  As adaptações por loja estão em `src/services/lembreteAssinaturaLoja.ts`.
+- A faixa aparece no Início do app (celular e desktop) e no Início e em Planos do painel.
+  - `/planos?renovar=pix` abre o Pix de renovação.
+- Os testes `teste-lembrete-assinatura` (25) e `teste-lembrete-assinatura-loja` (88) estão no `npm test`.
+- Aplicado em `C:\OLLI_REL`: o Codex não tinha mudado nada desde a foto 239633b. Backup em `backup-OLLI_REL-antes-lembretes/`, patch em `lembretes.patch`.
+  Painel publicado no deploy 921d88b5. O worker não mudou nesta rodada.
+- No APK os lembretes só chegam na próxima versão do app.
+- Falha anterior a esta rodada, do Codex: `test:auth-lifecycle` está definido mas fora da cadeia do `npm test`, e o `suite-completa` reclama disso.
+- Pendente (decisão do dono): ligar o e-mail real.
+  - Hoje há 2 travas: `WELCOME_DISPATCH_MODE=simulator` e o `dispatch_scope` padrão `hold`.
+  - Criar os e-mails de lembrete.
+  - Descartar as 38 boas-vindas atrasadas.

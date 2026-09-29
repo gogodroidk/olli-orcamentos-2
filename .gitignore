@@ -59,3 +59,7 @@ credentials.json
 
 # Cache local do Wrangler; regenerado automaticamente e nunca versionado.
 /.wrangler/
+
+# Gerados localmente (grafo do graphify, cache do Supabase CLI)
+graphify-out/
+supabase/.temp/
