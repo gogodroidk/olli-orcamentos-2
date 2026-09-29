@@ -1,6 +1,6 @@
 # OLLI Orçamentos — central de organização
 
-Atualizado em: **2026-09-03**
+Atualizado em: **2026-09-22**
 
 Este diretório é o índice oficial para entender onde estão o código, os
 materiais, os planos, as evidências e os próximos passos do OLLI Orçamentos.
@@ -19,8 +19,11 @@ nenhum deles é uma segunda fonte de verdade.
 
 | Ponto | Finalidade | Pode editar código atual? |
 | --- | --- | --- |
-| `C:\OLLI_REL` | Repositório canônico, testes, documentação e automação | **Sim** |
-| `C:\Users\ADMIN\Desktop\OLLI - CENTRAL DO PROJETO` | Navegação por junctions para materiais, histórico, KB e ferramentas | Não; abrir `01_PRODUTO_ATUAL\CODIGO_CANONICO` |
+| `C:\Users\ADMIN\Desktop\OLLI Orçamentos Master` | Ponto central humano no Desktop; navegação por junctions | Abra `01_PRODUTO_ATUAL\CODIGO_CANONICO` |
+| `C:\OLLI_REL` | Worktree físico canônico, testes, documentação e automação | **Sim** |
+
+O caminho `C:\Users\ADMIN\Desktop\OLLI - CENTRAL DO PROJETO` permanece como
+junction de compatibilidade para o Master e não constitui uma segunda central.
 
 A pasta `C:\Users\ADMIN\Desktop\OLLI ORCAMENTOS` é uma raiz histórica
 sincronizada pelo Google Drive. Ela continua com esse nome para não quebrar a

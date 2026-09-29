@@ -22,6 +22,7 @@ Este runbook cobre somente as alterações de organização de 2026-09-03. Ele n
 | `Desktop\OLLI ORCAMENTOS V1` | `Desktop\OLLI - CENTRAL DO PROJETO` | Rename do contêiner do hub |
 | `Desktop\2 PESSOAL\OLLI ORCAMENTOS V1` | `Desktop\_Arquivo OLLI\HUB OLLI DUPLICADO ESTATICO 2026-08-30` | Arquivamento reversível |
 | `Desktop\2 PESSOAL\OLLI ORCAMENTOS V1 zipp.zip` | `Desktop\_Arquivo OLLI\HUB OLLI DUPLICADO ESTATICO 2026-08-30.zip` | Arquivamento reversível |
+| `Desktop\OLLI - CENTRAL DO PROJETO` | `Desktop\OLLI Orçamentos Master` | Promoção do mesmo hub em 2026-09-22; o nome anterior vira junction de compatibilidade |
 
 ## Como desfazer com segurança
 
@@ -41,6 +42,10 @@ O script histórico `00_ADMIN\ROLLBACK_HUB.ps1` remove apenas junctions e o
 atalho do APK, mas continua sendo uma ação manual de alto impacto. Use
 `-WhatIf` e `-Confirm`; a automação não o executa.
 
+Para desfazer somente a promoção de nome de 2026-09-22, use primeiro
+`00_ADMIN\ROLLBACK_NOME_MASTER.ps1 -WhatIf`. Ele remove apenas a junction de
+compatibilidade e renomeia o contêiner de volta, sem tocar nas origens.
+
 ## Retenção
 
 A cópia estática foi arquivada, não deletada. Ela só poderá ser removida em uma
@@ -51,4 +56,3 @@ tarefa separada depois de:
 - confirmação de que não há arquivo exclusivo;
 - backup recuperável;
 - autorização explícita para exclusão.
-

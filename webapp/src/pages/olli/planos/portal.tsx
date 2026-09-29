@@ -34,6 +34,7 @@ export interface FaturaStripe {
 }
 
 export interface MetodoStripe { brand: string; last4: string }
+export interface StatusPortalStripe { gerenciavel: boolean; origem: "stripe" | "administrativa" | "nenhuma" }
 
 async function chamar(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
 	const { data, error } = await supabase.auth.getSession();
@@ -53,6 +54,9 @@ async function chamar(path: string, init?: RequestInit): Promise<Record<string, 
 			const codigo = typeof dados.erro === "string" ? dados.erro : "";
 			if (codigo === "sem_assinatura" || resposta.status === 404) throw new Error("Esta conta ainda não tem uma assinatura Stripe para gerenciar.");
 			if (codigo === "stripe_nao_configurado") throw new Error("A área de cobrança está indisponível no momento.");
+			if (codigo === "assinatura_nao_stripe") throw new Error("Este plano foi liberado administrativamente e não possui cobrança automática na Stripe.");
+			if (codigo === "falha_portal") throw new Error("A Stripe recusou a abertura do portal agora. Aguarde alguns segundos e tente novamente.");
+			if (codigo === "indisponivel") throw new Error("Não consegui consultar a assinatura com segurança. Nada foi alterado; tente novamente em instantes.");
 			if (codigo === "muitas_requisicoes") throw new Error("Muitas tentativas. Aguarde um instante e tente de novo.");
 			if (resposta.status === 401) throw new Error("Sua sessão expirou. Entre de novo para continuar.");
 			throw new Error("Não consegui consultar sua cobrança agora. Tente de novo em instantes.");
@@ -96,6 +100,15 @@ export async function obterMetodoStripe(): Promise<MetodoStripe | null> {
 	const dados = await chamar("/stripe/metodo");
 	const metodo = dados.metodo as Partial<MetodoStripe> | null | undefined;
 	return metodo && typeof metodo.brand === "string" && typeof metodo.last4 === "string" ? { brand: metodo.brand, last4: metodo.last4 } : null;
+}
+
+export async function obterStatusPortalStripe(): Promise<StatusPortalStripe> {
+	const dados = await chamar("/stripe/status");
+	const origem = dados.origem;
+	if (typeof dados.gerenciavel !== "boolean" || !["stripe", "administrativa", "nenhuma"].includes(String(origem))) {
+		throw new Error("A cobrança devolveu um estado inválido. Nada foi alterado.");
+	}
+	return { gerenciavel: dados.gerenciavel, origem: origem as StatusPortalStripe["origem"] };
 }
 
 export function BotaoPortalStripe({ className, rotulo = "Gerenciar assinatura" }: { className?: string; rotulo?: string }) {

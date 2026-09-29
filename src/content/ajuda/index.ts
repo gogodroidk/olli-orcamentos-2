@@ -197,6 +197,35 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       },
     ],
   },
+  {
+    id: 'central-precificacao',
+    categoriaId: 'orcamentos',
+    titulo: 'Como formar o preço de um serviço ou produto',
+    resumo: 'Use custos, taxas, risco e margem para encontrar o preço mínimo e o preço sugerido.',
+    tags: ['precificacao', 'preco', 'margem', 'markup', 'custo', 'mao de obra', 'peca', 'produto'],
+    corpo: [
+      {
+        tipo: 'paragrafo',
+        conteudo:
+          'A Central de Precificação funciona para qualquer ofício. Serviço considera materiais, horas, valor da hora, deslocamento e despesas. Produto ou peça considera compra, frete, embalagem e custos por unidade. Nos dois casos, impostos, taxa de pagamento, reserva de risco e margem entram de forma visível.',
+      },
+      {
+        tipo: 'passos',
+        conteudo: [
+          'Abra Comercial → Precificação e escolha Serviço ou Produto, peça ou material.',
+          'Preencha os custos reais. Campo em zero fica fora da conta.',
+          'Informe impostos, taxa do meio de pagamento, reserva para risco/garantia e a margem desejada.',
+          'Confira o custo total, o preço mínimo sem lucro, o preço sugerido, o lucro estimado e o espaço máximo de desconto sem prejuízo.',
+          'Dê um nome e salve no catálogo. O preço continua editável quando você usar o item em um orçamento.',
+        ],
+      },
+      {
+        tipo: 'aviso',
+        conteudo:
+          'O cálculo é uma referência baseada no que você informou, não uma tabela obrigatória de mercado. Compare com região, prazo, qualidade, capacidade e concorrência. Custo e margem são privados e não aparecem para o cliente.',
+      },
+    ],
+  },
 
   // ── Campo: OS e equipamentos ─────────────────────────────────────────────
   {

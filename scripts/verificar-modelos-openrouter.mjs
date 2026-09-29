@@ -34,7 +34,10 @@ for (const id of configurados) {
   const saidas = modelo?.architecture?.output_modalities ?? [];
   if (!saidas.includes('text')) throw new Error(`${id}: não anuncia saída textual`);
   const parametros = new Set(modelo?.supported_parameters ?? []);
-  for (const obrigatorio of ['response_format', 'structured_outputs']) {
+  // OLLI usa saída estruturada hoje e precisa de tool calling para evoluir
+  // para agentes com allowlist. Um modelo que só responde texto não entra na
+  // cadeia auditada, mesmo que pareça bom no chat manual.
+  for (const obrigatorio of ['response_format', 'structured_outputs', 'tools']) {
     if (!parametros.has(obrigatorio)) throw new Error(`${id}: não suporta ${obrigatorio}`);
   }
   if (modelo?.expiration_date) {

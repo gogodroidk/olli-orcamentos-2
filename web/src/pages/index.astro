@@ -23,6 +23,10 @@ const APP_URL = "https://app.olliorcamentos.online";
 // ?modo=cadastro). Sem isto, "Criar meu primeiro orçamento" caía na tela de
 // LOGIN e o cadastro ficava escondido atrás de um link. "Entrar" continua no APP_URL.
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
+// Link de participação exibido pelo Google Play Console na faixa fechada Alpha.
+// Não usar URL privada do Console nem anunciar disponibilidade pública: a lista
+// de testadores ainda é controlada pelo Google Play.
+const GOOGLE_PLAY_TESTE_URL = "https://play.google.com/apps/testing/online.olliorcamentos.app";
 
 const recursos = [
 	{
@@ -107,7 +111,7 @@ const faq = [
 	},
 	{
 		q: "Funciona no celular e no computador?",
-		a: "Sim. Hoje a OLLI roda no navegador do celular e do computador — você entra e já começa, sem instalar app nem configurar nada. O aplicativo Android está a caminho das lojas.",
+		a: "Sim. A OLLI roda no navegador do celular e do computador. O aplicativo existe somente para Android e está em teste fechado, com instalação restrita a testadores selecionados; ainda não há aplicativo para iPhone/iOS nesta versão.",
 	},
 	{
 		q: "Serve pro meu ofício?",
@@ -225,6 +229,29 @@ const schemaFaq = {
           <a href="#como" class="rounded-acao border border-line bg-card px-7 py-3.5 text-center text-base font-semibold text-ink shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2">
             Ver como funciona
           </a>
+        </div>
+        <div id="android-em-teste" class="mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1">
+          <p class="text-sm leading-relaxed text-slate">
+            <strong class="text-ink">Aplicativo Android em teste fechado.</strong>
+            A instalação pela Google Play está restrita a testadores selecionados. Se a sua conta ainda não foi incluída, use a OLLI pelo navegador. Não há aplicativo para iPhone/iOS nesta versão.
+          </p>
+          <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <a
+              href={GOOGLE_PLAY_TESTE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Acessar o teste fechado do OLLI para Android na Google Play (abre em nova guia)"
+              class="inline-flex min-h-11 items-center justify-center rounded-acao border border-brand px-4 py-2.5 text-center text-sm font-semibold text-brand-fg transition hover:bg-brand/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              Acessar o teste na Google Play <span class="ml-1" aria-hidden="true">↗</span>
+            </a>
+            <a
+              href={APP_CADASTRO_URL}
+              class="inline-flex min-h-11 items-center justify-center rounded-acao px-4 py-2.5 text-center text-sm font-semibold text-slate underline decoration-brand/30 underline-offset-2 transition hover:text-ink hover:decoration-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              Usar pelo navegador
+            </a>
+          </div>
         </div>
         <!-- Chips de ofício: a multi-verticalidade plantada acima da dobra, sem
              mexer no H1 (que já é agnóstico). Derivados de verticais.ts. -->

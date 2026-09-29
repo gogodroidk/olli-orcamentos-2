@@ -10,7 +10,7 @@ import { OlliCard } from '../components/OlliCard';
 import { OlliPressable } from '../components/OlliPressable';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { getOrcamentosPagina, getRecibosPagina, getOrdensServicoPagina, getPmocPlanosPagina, getDocumentosBiblioteca, getDocumentoBiblioteca, getDocumentoBibliotecaVersoes } from '../database/database';
+import { getOrcamentosPagina, getRecibosPagina, getRecibo, getOrdensServicoPagina, getPmocPlanosPagina, getDocumentosBiblioteca, getDocumentoBiblioteca, getDocumentoBibliotecaVersoes } from '../database/database';
 import {
   buscarBibliotecaDocumentos,
   construirBibliotecaDocumentos,
@@ -22,16 +22,9 @@ import {
 import { atualizarStatusDocumentoBiblioteca } from '../services/documentosBiblioteca';
 import { supabaseStorageProvider } from '../services/adapters/SupabaseStorageProvider';
 import type { DocumentoBibliotecaRegistro, DocumentoBibliotecaVersao } from '../types';
+import { CATALOGO_DOCUMENTOS } from '../services/catalogoDocumentos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-type Atalho = {
-  titulo: string;
-  descricao: string;
-  icone: keyof typeof MaterialCommunityIcons.glyphMap;
-  cor: string;
-  destino: keyof RootStackParamList;
-};
 
 /**
  * Entrada única para os documentos que já existem no produto.
@@ -97,15 +90,17 @@ export default function CentralDocumentosScreen() {
     abrirOrigem(doc);
   }
 
-  function abrirOrigem(doc: Pick<DocumentoBiblioteca, 'tipo' | 'origemTipo' | 'origemId'>) {
+  async function abrirOrigem(doc: Pick<DocumentoBiblioteca, 'tipo' | 'origemTipo' | 'origemId'>) {
     if (doc.tipo === 'orcamento' || doc.origemTipo === 'orcamento') {
       nav.navigate('VisualizarOrcamento', { orcamentoId: doc.origemId });
     } else if (doc.tipo === 'recibo') {
-      nav.navigate('EmitirRecibo', {});
+      const recibo = doc.origemId ? await getRecibo(doc.origemId).catch(() => null) : null;
+      nav.navigate('EmitirRecibo', recibo?.orcamentoId ? { orcamentoId: recibo.orcamentoId } : {});
     } else if (doc.tipo === 'pmoc') {
-      nav.navigate('Pmoc');
+      if (doc.origemId) nav.navigate('PmocPlano', { id: doc.origemId });
+      else nav.navigate('Pmoc');
     } else {
-      nav.navigate('OrdemServico');
+      nav.navigate('OrdemServico', doc.origemId ? { ordemId: doc.origemId } : undefined);
     }
   }
 
@@ -143,14 +138,6 @@ export default function CentralDocumentosScreen() {
       setAbrindoArtefato(false);
     }
   }
-
-  const atalhos: Atalho[] = [
-    { titulo: 'Modelos, contratos e termos', descricao: 'Escolha o visual e gere contrato, garantia ou termo de conclusão a partir do orçamento.', icone: 'file-document-edit-outline', cor: cores.primaryLight, destino: 'ModelosDocumento' },
-    { titulo: 'Recibos e pagamentos', descricao: 'Registre o recebimento, gere o recibo e compartilhe uma segunda via quando precisar.', icone: 'receipt-text-check-outline', cor: cores.success, destino: 'EmitirRecibo' },
-    { titulo: 'Ordens de serviço', descricao: 'Transforme o orçamento em execução com checklist, fotos, técnico e conclusão.', icone: 'clipboard-text-outline', cor: cores.accentLight, destino: 'OrdemServico' },
-    { titulo: 'PMOC e manutenção', descricao: 'Organize equipamentos, planos, periodicidades e as ordens recorrentes do cliente.', icone: 'calendar-sync-outline', cor: cores.warning, destino: 'Pmoc' },
-    { titulo: 'Certificado de dedetização', descricao: 'Preencha os dados do serviço e revise o certificado antes de gerar o PDF.', icone: 'file-certificate-outline', cor: cores.success, destino: 'CertificadoAnvisa' },
-  ];
 
   return (
     <View style={styles.raiz}>
@@ -222,23 +209,26 @@ export default function CentralDocumentosScreen() {
           </View>
         )}
 
-        <Text style={styles.secao}>Criar ou revisar um documento</Text>
-        {atalhos.map((item, index) => (
-          <AnimatedEntrance key={item.destino} index={index + 1}>
-            <OlliCard style={styles.card} onPress={() => nav.navigate(item.destino as never)}>
-              <View style={styles.cardLinha}>
-                <View style={[styles.cardIcon, { backgroundColor: item.cor + '1A', borderColor: item.cor + '44' }]}>
-                  <MaterialCommunityIcons name={item.icone} size={25} color={item.cor} />
+        <Text style={styles.secao}>Catálogo de documentos</Text>
+        <Text style={styles.catalogoDica}>Escolha um tipo para abrir o fluxo oficial. Uma alteração em documento enviado cria revisão; não sobrescreve o original.</Text>
+        <View style={styles.catalogoGrid}>
+          {CATALOGO_DOCUMENTOS.map((item, index) => (
+            <AnimatedEntrance key={item.tipo} index={index + 1}>
+              <OlliCard style={styles.catalogoCard} onPress={() => nav.navigate(item.destino as never)}>
+                <View style={styles.cardLinha}>
+                  <View style={[styles.cardIcon, { backgroundColor: cores.primaryLight + '1A', borderColor: cores.primaryLight + '44' }]}>
+                    <MaterialCommunityIcons name={item.icone} size={25} color={cores.primaryLight} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitulo}>{item.titulo}</Text>
+                    <Text style={styles.cardTexto}>{item.descricao}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={23} color={cores.onSurfaceMuted} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitulo}>{item.titulo}</Text>
-                  <Text style={styles.cardTexto}>{item.descricao}</Text>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={23} color={cores.onSurfaceMuted} />
-              </View>
-            </OlliCard>
-          </AnimatedEntrance>
-        ))}
+              </OlliCard>
+            </AnimatedEntrance>
+          ))}
+        </View>
 
         <Text style={styles.secao}>Orientação e fontes oficiais</Text>
         <OlliPressable style={styles.ajuda} onPress={() => nav.navigate('Ajuda', { categoriaId: 'governo', origem: 'Central de documentos' })}>
@@ -322,6 +312,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   versaoNumero: { color: c.primaryLight, fontWeight: '800', width: 30 },
   versaoData: { flex: 1, color: c.onSurfaceVariant, fontSize: 12 },
   card: { padding: Spacing.base, marginBottom: Spacing.sm },
+  catalogoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.sm },
+  catalogoCard: { width: '48.5%', minHeight: 132, padding: Spacing.md, marginBottom: Spacing.sm },
+  catalogoDica: { color: c.onSurfaceVariant, fontSize: 13, lineHeight: 19, marginTop: -Spacing.sm, marginBottom: Spacing.sm },
   cardLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   cardIcon: { width: 48, height: 48, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   cardTitulo: { color: c.onSurface, fontSize: 15, fontWeight: '800', marginBottom: 3 },

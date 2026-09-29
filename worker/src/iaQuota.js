@@ -23,8 +23,12 @@ const DIA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const LIMITE_MAXIMO = 1_000_000;
 const TIMEOUT_PADRAO_MS = 5_000;
 
-function indisponivel() {
-  return { permitido: false, estado: 'indisponivel' };
+function indisponivel(detalhe) {
+  const resultado = { permitido: false, estado: 'indisponivel' };
+  // Diagnóstico operacional sem prompt, PII, URL completa ou segredo. Não é
+  // enumerável para preservar o contrato antigo dos consumidores/testes.
+  if (detalhe) Object.defineProperty(resultado, 'detalhe', { value: detalhe, enumerable: false });
+  return resultado;
 }
 
 function inteiroNoIntervalo(valor, minimo, maximo) {
@@ -182,14 +186,19 @@ export async function reservarCotaIA(env, opcoes) {
   const temporizador = setTimeout(() => controlador.abort(), timeoutMs);
 
   try {
+    const headers = {
+      apikey: serviceRole,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    // `sb_secret_...` e uma API key opaca, nao um JWT. Mantemos Bearer apenas
+    // para o service_role legado durante a migracao sem downtime.
+    if (!serviceRole.startsWith('sb_secret_')) {
+      headers.Authorization = `Bearer ${serviceRole}`;
+    }
     const resposta = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        apikey: serviceRole,
-        Authorization: `Bearer ${serviceRole}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         p_user: userId,
         p_familia: familia,
@@ -201,17 +210,25 @@ export async function reservarCotaIA(env, opcoes) {
       signal: controlador.signal,
     });
 
-    if (!resposta.ok) return indisponivel();
+    if (!resposta.ok) {
+      // O código PostgREST é metadado de contrato (ex.: 22023/PGRST202), não
+      // conteúdo do pedido. Mantemos a mensagem do provedor fora da resposta.
+      const erroRemoto = await resposta.json().catch(() => null);
+      const codigo = typeof erroRemoto?.code === 'string'
+        ? erroRemoto.code.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24)
+        : '';
+      return indisponivel(`http_${resposta.status}${codigo ? `_${codigo}` : ''}`);
+    }
     const dados = await resposta.json().catch(() => null);
     const linha = linhaDaResposta(dados);
-    if (!linha) return indisponivel();
+    if (!linha) return indisponivel('resposta_invalida');
 
     // A resposta precisa ecoar os limites pedidos; divergencia sugere contrato
     // antigo/malformado e nao pode liberar uma chamada.
     if (linha.limiteGlobal !== limiteGlobal
       || linha.limiteUsuario !== limiteUsuario
       || linha.unidades !== unidades) {
-      return indisponivel();
+      return indisponivel('limites_divergentes');
     }
 
     return {
@@ -222,8 +239,8 @@ export async function reservarCotaIA(env, opcoes) {
       requestId,
       familia,
     };
-  } catch {
-    return indisponivel();
+  } catch (erro) {
+    return indisponivel(erro?.name === 'AbortError' ? 'timeout' : 'rede');
   } finally {
     clearTimeout(temporizador);
   }
@@ -236,8 +253,10 @@ function limiteConfigurado(valor, padrao) {
 
 /**
  * Wrapper de produção: traduz as vars do Worker para o contrato estrito acima.
- * Defaults deliberadamente conservadores enquanto a capacidade real da conta
- * gratuita não for comprovada. Os limites do Whisper são NEURÔNIOS estimados.
+ * A cota comercial do plano Grátis é aplicada antes desta reserva. Aqui o teto
+ * é operacional: impede abuso e tempestade de fallback sem transformar o plano
+ * Pro/Empresa em apenas dez mensagens por dia. Os limites do Whisper são
+ * NEURÔNIOS estimados.
  */
 export async function reservarCotaConfigurada(
   env,
@@ -246,11 +265,11 @@ export async function reservarCotaConfigurada(
   const whisper = familia === FAMILIAS_COTA_IA.WHISPER;
   const limiteGlobal = limiteConfigurado(
     whisper ? env?.WHISPER_GLOBAL_DAILY_LIMIT : env?.OPENROUTER_GLOBAL_DAILY_LIMIT,
-    whisper ? 8_000 : 40,
+    whisper ? 8_000 : 500,
   );
   const limiteUsuarioBruto = limiteConfigurado(
     whisper ? env?.WHISPER_USER_DAILY_LIMIT : env?.OPENROUTER_USER_DAILY_LIMIT,
-    whisper ? 940 : 10,
+    whisper ? 940 : 100,
   );
   const limiteUsuario = Math.min(limiteUsuarioBruto, limiteGlobal);
   return reservarCotaIA(env, {

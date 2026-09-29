@@ -17,6 +17,10 @@ const ENV = {
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-test-only',
   IA_RL: { limit: async () => ({ success: true }) },
 };
+const ENV_OPAQUE_SECRET = {
+  ...ENV,
+  SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_teste_opaco_somente_servidor',
+};
 
 assert.equal(validateAiActionProposal({
   escopo: 'orcamento', alvo: '00126', resumo: 'Aprovar orçamento',
@@ -43,7 +47,7 @@ assert.deepEqual(validateAiActionProposal({
   mudancas: [{ campo: 'corMarca', proposto: 'azul' }],
 }), { ok: false, reason: 'value_invalid' });
 
-async function testDraftCreation() {
+async function testDraftCreation(env = ENV) {
   const calls = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
@@ -57,7 +61,7 @@ async function testDraftCreation() {
     throw new Error(`url_inesperada:${url}`);
   };
   try {
-    const result = await createPersistedAiActionDraft(ENV, { id: USER_ID }, {
+    const result = await createPersistedAiActionDraft(env, { id: USER_ID }, {
       escopo: 'orcamento', alvo: '00126', resumo: 'Aprovar orçamento',
       mudancas: [{ campo: 'status', proposto: 'aprovado' }],
     });
@@ -71,6 +75,13 @@ async function testDraftCreation() {
     assert.equal(Object.hasOwn(stored, 'confirmationToken'), false);
     assert.equal(Object.hasOwn(stored, 'target_label'), false);
     assert.equal(JSON.stringify(stored).includes('Aprovar orçamento'), false);
+    const serviceCalls = calls.filter((call) => call.url.includes('/rest/v1/'));
+    for (const call of serviceCalls) {
+      assert.equal(call.init.headers.apikey, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (env.SUPABASE_SERVICE_ROLE_KEY.startsWith('sb_secret_')) {
+        assert.equal(Object.hasOwn(call.init.headers, 'Authorization'), false);
+      }
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -180,7 +191,7 @@ async function testInvalidToken() {
   }
 }
 
-await testDraftCreation();
+await testDraftCreation(ENV_OPAQUE_SECRET);
 await testWildcardTargetDoesNotSelectOnlyRow();
 await testConfirmation();
 await testInvalidToken();

@@ -73,7 +73,10 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   if (!supabase) return;
-  await supabase.auth.signOut();
+  // "Sair" encerra apenas este aparelho. O default do Supabase e `global` e
+  // revogava tambem o refresh token do painel e dos outros aparelhos, que
+  // deslogavam na renovacao seguinte sem explicar o motivo.
+  await supabase.auth.signOut({ scope: 'local' });
 }
 
 export async function getCurrentUser() {

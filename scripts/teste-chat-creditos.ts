@@ -12,6 +12,8 @@ assert.match(servico, /opcoesCredito\?\.confirmarCredito === true/);
 assert.match(servico, /corpo\.confirmarCredito = true/);
 assert.match(servico, /corpo\.creditoRef = opcoesCredito\.creditoRef\.trim\(\)/);
 assert.match(servico, /semCreditos: true/);
+assert.match(servico, /limite_indisponivel/);
+assert.match(servico, /Nada foi cobrado/);
 
 // O contador local não bloqueia a chamada. É o servidor que abre o gate.
 assert.doesNotMatch(tela, /const iaEsgotada/);

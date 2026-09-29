@@ -31,7 +31,7 @@ const baseEnv: any = {
 
 console.log('\nAdmin OLLI — allowlist de detalhe e consultas mínimas');
 
-checar('versão de política explícita', ADMIN_DATA_POLICY_VERSION === '2026-08-31.v1');
+checar('versão de política explícita', ADMIN_DATA_POLICY_VERSION === '2026-09-18.v2');
 checar('suporte lê apenas status da assinatura', podeLerDadosAdmin('suporte', 'assinatura') && selectAdminDataset('suporte', 'assinatura') === 'plano,status,current_period_end');
 checar('financeiro lê recibos', podeLerDadosAdmin('financeiro', 'recibos'));
 checar('leitura não recebe dataset', camposAdmin('leitura', 'orcamentos').length === 0);

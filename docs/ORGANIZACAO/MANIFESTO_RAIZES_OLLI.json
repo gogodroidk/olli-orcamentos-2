@@ -1,9 +1,10 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-03T02:38:01-03:00",
+  "updatedAt": "2026-09-22T14:24:29-03:00",
   "brand": "OLLI Orçamentos",
   "canonicalRepository": "C:\\OLLI_REL",
-  "centralHub": "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO",
+  "centralHub": "C:\\Users\\ADMIN\\Desktop\\OLLI Orçamentos Master",
+  "compatibilityHub": "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO",
   "rules": {
     "singleEditableCodeRoot": true,
     "followReparsePointsDuringInventory": false,
@@ -20,11 +21,18 @@
       "action": "USE"
     },
     {
-      "path": "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO",
-      "classification": "NAVIGATION_HUB",
+      "path": "C:\\Users\\ADMIN\\Desktop\\OLLI Orçamentos Master",
+      "classification": "MASTER_NAVIGATION_HUB",
       "editable": false,
       "canonical": false,
       "action": "OPEN_TO_NAVIGATE"
+    },
+    {
+      "path": "C:\\Users\\ADMIN\\Desktop\\OLLI - CENTRAL DO PROJETO",
+      "classification": "COMPATIBILITY_JUNCTION",
+      "editable": false,
+      "canonical": false,
+      "action": "PRESERVE_AS_ALIAS"
     },
     {
       "path": "C:\\Users\\ADMIN\\Desktop\\OLLI ORCAMENTOS",
@@ -98,4 +106,3 @@
     }
   ]
 }
-

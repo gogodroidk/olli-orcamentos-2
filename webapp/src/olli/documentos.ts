@@ -1,7 +1,7 @@
 import type { Empresa, Orcamento } from "@dominio";
 import { supabase } from "@/lib/supabase";
 
-type TipoDocumentoWeb = "contrato" | "garantia" | "conclusao" | "laudo" | "checklist" | "certificado";
+export type TipoDocumentoWeb = "orcamento" | "contrato" | "ordem_servico" | "pmoc" | "recibo" | "garantia" | "conclusao" | "laudo" | "checklist" | "certificado";
 
 /**
  * Registra uma versão de documento gerado pelo painel. O PDF continua sendo
@@ -48,7 +48,10 @@ export async function registrarDocumentoWeb(input: {
     const criado = await supabase.from("documentos").insert(documento);
     if (criado.error) throw criado.error;
     const versaoCriada = await supabase.from("documento_versoes").insert(versao);
-    if (versaoCriada.error) throw versaoCriada.error;
+    if (versaoCriada.error) {
+      await supabase.from("documentos").update({ excluido_em: agora, atualizado_em: agora }).eq("id", id).eq("user_id", userId);
+      throw versaoCriada.error;
+    }
     return { id, versao: 1 };
   }
 
@@ -65,6 +68,67 @@ export async function registrarDocumentoWeb(input: {
   }).eq("id", existente.id).eq("user_id", userId);
   if (atualizado.error) throw atualizado.error;
   return { id: existente.id, versao };
+}
+
+/**
+ * Cria um documento sem orçamento de origem. O registro continua dentro da
+ * biblioteca versionada e nasce como `manual`, para que contrato, laudo ou
+ * checklist não precisem de um orçamento artificial só para existir.
+ */
+export async function criarDocumentoManual(input: {
+  tipo: TipoDocumentoWeb;
+  titulo: string;
+  clienteNome?: string;
+  clienteId?: string | null;
+  texto?: string;
+}): Promise<{ id: string; versao: number }> {
+  const sessao = await supabase.auth.getSession();
+  const userId = sessao.data.session?.user?.id;
+  if (!userId) throw new Error("sessao_obrigatoria");
+
+  const titulo = input.titulo.replace(/[\r\n]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  if (!titulo || titulo.length > 240) throw new Error("titulo_documento_invalido");
+  const texto = (input.texto ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ").trim();
+  if (texto.length > 200_000) throw new Error("conteudo_documento_excede_limite");
+
+  const agora = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const dados = { texto, clienteNome: (input.clienteNome ?? "").trim(), criadoManualmente: true };
+  const documento = {
+    id,
+    user_id: userId,
+    criado_por: userId,
+    tipo: input.tipo,
+    status: "rascunho" as const,
+    titulo,
+    cliente_id: input.clienteId ?? null,
+    cliente_nome: (input.clienteNome ?? "").trim(),
+    origem_tipo: "manual" as const,
+    origem_id: null,
+    origem_numero: null,
+    versao_atual: 1,
+    dados,
+    criado_em: agora,
+    atualizado_em: agora,
+  };
+  const criado = await supabase.from("documentos").insert(documento);
+  if (criado.error) throw criado.error;
+  const versaoCriada = await supabase.from("documento_versoes").insert({
+    id: crypto.randomUUID(),
+    documento_id: id,
+    user_id: userId,
+    numero_versao: 1,
+    dados,
+    criado_por: userId,
+    criado_em: agora,
+  });
+  if (versaoCriada.error) {
+    // Não deixa um registro pai visível sem a primeira versão. A exclusão é
+    // soft e fica limitada ao id recém-criado e ao usuário autenticado.
+    await supabase.from("documentos").update({ excluido_em: agora, atualizado_em: agora }).eq("id", id).eq("user_id", userId);
+    throw versaoCriada.error;
+  }
+  return { id, versao: 1 };
 }
 
 export type DocumentoWebEditavel = {

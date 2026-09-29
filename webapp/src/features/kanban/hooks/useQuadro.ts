@@ -48,6 +48,7 @@ import { type Cartao, type LinhaOrcamento, montarColunas, rotuloDoStatus } from 
  */
 const OPCOES_LISTA = { orderBy: "atualizado_em", ascending: false };
 const CHAVE_LISTA = ["olli", "orcamentos", OPCOES_LISTA];
+const OPCOES_OS = { orderBy: "atualizado_em", ascending: false, colunas: "orcamento_id,status" };
 
 function mensagemDoErro(e: unknown): string {
 	if (e instanceof Error && e.message) return e.message;
@@ -58,6 +59,7 @@ function mensagemDoErro(e: unknown): string {
 export function useQuadro() {
 	const qc = useQueryClient();
 	const lista = useOlliList<LinhaOrcamento>("orcamentos", OPCOES_LISTA);
+	const ordens = useOlliList<{ orcamento_id: string | null; status: string }>("ordens_servico", OPCOES_OS);
 	const salvar = useSalvar("orcamentos");
 
 	/** Ids com gravação em voo — o card fica travado (não some, não vira placeholder). */
@@ -65,7 +67,11 @@ export function useQuadro() {
 	/** Último erro de movimentação, para o aviso fixo no topo (o toast some sozinho). */
 	const [erro, setErro] = useState<string | null>(null);
 
-	const colunas = useMemo(() => montarColunas(lista.data ?? []), [lista.data]);
+	const orcamentosFinalizados = useMemo(
+		() => new Set((ordens.data ?? []).filter((os) => os.status === "concluida" && os.orcamento_id).map((os) => String(os.orcamento_id))),
+		[ordens.data],
+	);
+	const colunas = useMemo(() => montarColunas(lista.data ?? [], orcamentosFinalizados), [lista.data, orcamentosFinalizados]);
 	const total = lista.data?.length ?? 0;
 
 	/** Mexe UM card no cache. Rollback por card (e não snapshot do quadro inteiro)
@@ -152,10 +158,10 @@ export function useQuadro() {
 	return {
 		colunas,
 		total,
-		isLoading: lista.isLoading,
-		isError: lista.isError,
-		error: lista.error,
-		refetch: lista.refetch,
+		isLoading: lista.isLoading || ordens.isLoading,
+		isError: lista.isError || ordens.isError,
+		error: lista.error ?? ordens.error,
+		refetch: async () => { await Promise.all([lista.refetch(), ordens.refetch()]); },
 		mover,
 		emVoo,
 		erro,

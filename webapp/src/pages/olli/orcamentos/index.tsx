@@ -44,6 +44,7 @@ import { lazyComRetry } from "@/components/lazy/carregar-chunk";
 import { useQueryClient } from "@tanstack/react-query";
 import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
+import { registrarDocumentoWeb } from "@/olli/documentos";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
 import { orcamentoComItensPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
@@ -442,6 +443,18 @@ export default function OrcamentosPage() {
 			try {
 				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });
+				try {
+					await registrarDocumentoWeb({
+						tipo: "orcamento",
+						titulo: `Orçamento nº ${linha.numero || "sem número"}`,
+						orcamento: blob,
+						empresa,
+						dados: blob as unknown as Record<string, unknown>,
+						status: "pronto",
+					});
+				} catch {
+					toast.error("O PDF abriu, mas não consegui registrar este orçamento na Central de documentos. Tente sincronizar e repetir o registro.");
+				}
 				await confirmarEnvioOrcamento(linha.id, reserva.reservaToken);
 				return marca;
 			} catch (erro) {

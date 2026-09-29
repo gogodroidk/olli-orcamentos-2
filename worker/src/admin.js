@@ -189,13 +189,62 @@ async function listAuthUsers(env) {
   return out;
 }
 
+const ATIVIDADE_DIA = 86400000;
+const ATIVIDADE_MAX_ROWS = 10000;
+
+function agruparAtividade(rows) {
+  const porUsuario = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || !row.user_id) continue;
+    const atual = porUsuario.get(row.user_id) || [];
+    atual.push(row);
+    porUsuario.set(row.user_id, atual);
+  }
+  return porUsuario;
+}
+
+function resumirAtividade(user, rows, agora = Date.now()) {
+  const eventos = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && row.criado_em)
+    .sort((a, b) => String(b.criado_em).localeCompare(String(a.criado_em)));
+  const limite30 = agora - 30 * ATIVIDADE_DIA;
+  const limite7 = agora - 7 * ATIVIDADE_DIA;
+  const ultimos30 = eventos.filter((row) => Date.parse(row.criado_em) >= limite30);
+  const ultimos7 = eventos.filter((row) => Date.parse(row.criado_em) >= limite7);
+  const diasAtivos30 = new Set(ultimos30.map((row) => String(row.criado_em).slice(0, 10))).size;
+  const ultimoUso = eventos[0]?.criado_em || user?.last_sign_in_at || null;
+  const ultimoMs = ultimoUso ? Date.parse(ultimoUso) : NaN;
+  let frequencia = 'nunca';
+  if (Number.isFinite(ultimoMs)) {
+    if (diasAtivos30 >= 8 || ultimos7.length >= 4) frequencia = 'frequente';
+    else if (agora - ultimoMs <= 30 * ATIVIDADE_DIA) frequencia = 'ativo';
+    else frequencia = 'inativo';
+  }
+  return {
+    logins: eventos.filter((row) => row.evento === 'login').length,
+    atividades: eventos.length,
+    atividades30: ultimos30.length,
+    diasAtivos30,
+    ultimoUso,
+    frequencia,
+  };
+}
+
+async function listarAtividades(env) {
+  return rest(
+    env,
+    `user_activity_log?select=user_id,id,evento,plataforma,criado_em&order=criado_em.desc&limit=${ATIVIDADE_MAX_ROWS}`,
+  );
+}
+
 // ─── handlers ────────────────────────────────────────────────
 async function metrics(env) {
-  const [users, orcs, clientes, agend] = await Promise.all([
+  const [users, orcs, clientes, agend, atividades] = await Promise.all([
     listAuthUsers(env),
     rest(env, 'orcamentos?select=valor_total,status,criado_em'),
     rest(env, 'clientes?select=id'),
     rest(env, 'agendamentos?select=id'),
+    listarAtividades(env),
   ]);
   const now = Date.now();
   const DAY = 86400000;
@@ -213,19 +262,29 @@ async function metrics(env) {
     const d = Math.floor((now - new Date(u.created_at).getTime()) / DAY);
     if (d >= 0 && d < 14) spark[13 - d]++;
   }
+  const porUsuario = agruparAtividade(atividades);
+  const resumos = users.map((u) => resumirAtividade(u, porUsuario.get(u.id), now));
+  const atividade30 = atividades.filter((row) => row && Date.parse(row.criado_em) >= now - 30 * DAY);
   return json({
     ok: true, usuarios: users.length, ativos, novos7, novos30,
     orcamentos: orcs.length, aprovados: aprovados.length, conversao,
     clientes: clientes.length, agendamentos: agend.length, faturamento, ticket, spark,
+    usando30: resumos.filter((item) => item.atividades30 > 0).length,
+    frequentes: resumos.filter((item) => item.frequencia === 'frequente').length,
+    nuncaUsaram: resumos.filter((item) => item.frequencia === 'nunca').length,
+    logins30: atividade30.filter((row) => row.evento === 'login').length,
+    atividade30: atividade30.length,
+    atividadeLimitada: atividades.length >= ATIVIDADE_MAX_ROWS,
   });
 }
 
 async function users(env) {
-  const [auth, empresas, orcs, assinaturas] = await Promise.all([
+  const [auth, empresas, orcs, assinaturas, atividades] = await Promise.all([
     listAuthUsers(env),
     rest(env, 'empresa?select=user_id,dados'),
     rest(env, 'orcamentos?select=user_id,status,valor_total'),
     rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    listarAtividades(env),
   ]);
   const empByUser = new Map();
   for (const e of empresas) empByUser.set(e.user_id, (e.dados && e.dados.nome) || '');
@@ -237,6 +296,7 @@ async function users(env) {
     cnt.set(o.user_id, (cnt.get(o.user_id) || 0) + 1);
     if (o.status === 'aprovado') fat.set(o.user_id, (fat.get(o.user_id) || 0) + (Number(o.valor_total) || 0));
   }
+  const porUsuario = agruparAtividade(atividades);
   const lista = auth.map((u) => ({
     id: u.id,
     email: u.email || '',
@@ -249,6 +309,7 @@ async function users(env) {
     faturamento: fat.get(u.id) || 0,
     plano: (plano.get(u.id) || {}).plano || 'gratis',
     planoOrigem: (plano.get(u.id) || {}).origem || 'gratis',
+    ...resumirAtividade(u, porUsuario.get(u.id)),
   }));
   lista.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
   return json({ ok: true, users: lista });
@@ -269,7 +330,7 @@ async function userDetail(env, id, actor) {
   // O customer id é uma dependência interna para listar faturas autorizadas;
   // ele nunca é devolvido pela projeção ao navegador.
   if (assinaturaSelect.length && podeFaturas && !assinaturaSelect.includes('stripe_customer_id')) assinaturaSelect.push('stripe_customer_id');
-  const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta] = await Promise.all([
+  const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta, atividadeBruta] = await Promise.all([
     ler('empresa') ? rest(env, `empresa?user_id=eq.${enc}&select=dados`) : Promise.resolve([]),
     consultar('orcamentos', `orcamentos?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
     consultar('clientes', `clientes?user_id=eq.${enc}`),
@@ -281,6 +342,7 @@ async function userDetail(env, id, actor) {
     consultar('creditos', `credit_ledger?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
     consultar('usosIa', `ia_uso_gratis?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
     consultar('auditoria', `admin_audit_log?target_user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
+    consultar('atividade', `user_activity_log?user_id=eq.${enc}`, '&order=criado_em.desc&limit=200'),
   ]);
   const assinaturaInterna = assinaturaArr[0] || null;
   const faturas = podeFaturas && assinaturaInterna && assinaturaInterna.stripe_customer_id
@@ -294,6 +356,7 @@ async function userDetail(env, id, actor) {
   const creditos = projetarLinhas(papel, 'creditos', creditosBrutos);
   const usosIa = projetarLinhas(papel, 'usosIa', usosIaBrutos);
   const auditoria = projetarLinhas(papel, 'auditoria', auditoriaBruta);
+  const atividade = projetarLinhas(papel, 'atividade', atividadeBruta);
   const assinatura = projetarLinhas(papel, 'assinatura', assinaturaArr)[0] || null;
   if (assinatura && assinaturaInterna) {
     assinatura.stripeVinculado = !!assinaturaInterna.stripe_subscription_id;
@@ -314,6 +377,58 @@ async function userDetail(env, id, actor) {
     usosIa,
     faturas,
     auditoria,
+    atividade,
+  });
+}
+
+function textoRelatorio(valor, limite = 500) {
+  return String(valor ?? '').replace(/[\r\n]+/g, ' ').slice(0, limite);
+}
+
+async function userReport(env, id, actor, motivo) {
+  const razao = motivoValido(motivo);
+  if (!id) return json({ ok: false, erro: 'sem_id' }, 400);
+  if (!razao) return json({ ok: false, erro: 'motivo_invalido' }, 400);
+  const detalheResponse = await userDetail(env, id, actor);
+  if (!detalheResponse.ok) return detalheResponse;
+  const detalhe = await detalheResponse.json().catch(() => null);
+  if (!detalhe || !detalhe.ok) return json({ ok: false, erro: 'detalhe_indisponivel' }, 502);
+  const alvo = (await listAuthUsers(env)).find((user) => user.id === id);
+  if (!alvo) return json({ ok: false, erro: 'usuario_nao_encontrado' }, 404);
+  const linhas = [
+    'OLLI — relatório operacional de usuário',
+    `Gerado em: ${new Date().toISOString()}`,
+    `E-mail: ${textoRelatorio(alvo.email)}`,
+    `ID: ${textoRelatorio(id, 80)}`,
+    `Cadastro: ${textoRelatorio(alvo.created_at || '—')}`,
+    `Último login Auth: ${textoRelatorio(alvo.last_sign_in_at || '—')}`,
+    `Plano: ${textoRelatorio(detalhe.entitlement?.plano || 'gratis')}`,
+    `Saldo de créditos: ${textoRelatorio(detalhe.saldoCreditos ?? '—')}`,
+    `Orçamentos: ${detalhe.orcamentos.length}`,
+    `Clientes: ${detalhe.clientes.length}`,
+    `Agenda: ${detalhe.agenda.length}`,
+    `Recibos: ${detalhe.recibos.length}`,
+    `Usos IA resumidos: ${detalhe.usosIa.length}`,
+    '',
+    'Atividade recente (máximo 200 eventos):',
+    ...(detalhe.atividade.length
+      ? detalhe.atividade.map((item) => `${textoRelatorio(item.criado_em)} | ${textoRelatorio(item.evento, 40)} | ${textoRelatorio(item.plataforma, 20)}`)
+      : ['nenhum evento registrado']),
+  ];
+  const auditado = await auditar(env, actor, {
+    acao: 'usuario_relatorio_txt',
+    targetUserId: id,
+    motivo: razao,
+    depois: { formato: 'txt', eventos: detalhe.atividade.length },
+  });
+  if (!auditado) return json({ ok: false, erro: 'auditoria_indisponivel' }, 503);
+  const base = textoRelatorio(alvo.email || id, 80).replace(/[^a-z0-9._-]/gi, '_');
+  return new Response(`${linhas.join('\n')}\n`, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="olli-usuario-${base || 'relatorio'}.txt"`,
+    },
   });
 }
 
@@ -602,6 +717,10 @@ export async function handleAdmin(request, env, url) {
       if ((gate = exigir(user, 'detalhe', { aal2: true }))) return gate;
       return userDetail(env, id, user);
     }
+    if (m === 'GET' && p === '/admin/api/user/report') {
+      if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;
+      return userReport(env, id, user, url.searchParams.get('motivo'));
+    }
     if (m === 'POST' && p === '/admin/api/user/ban') {
       if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
       return setBan(env, id, true, user, body);
@@ -723,11 +842,12 @@ function adminHtml(env, nonce) {
  .skel{height:14px;border-radius:6px;background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.1),rgba(255,255,255,.05));background-size:200% 100%;animation:sh 1.2s infinite}
  @keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
  /* MODAL */
- .ov{position:fixed;inset:0;background:rgba(5,12,22,.74);display:none;align-items:flex-start;justify-content:center;padding:22px;overflow:auto;z-index:20;animation:fade .2s both}
+ .ov{position:fixed;inset:0;background:rgba(5,12,22,.74);display:none;align-items:flex-start;justify-content:center;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow:auto;z-index:20;animation:fade .2s both}
  .ov.show{display:flex}
- .modal{background:var(--surf);border:1px solid var(--line);border-radius:20px;max-width:660px;width:100%;padding:24px;animation:pop .3s cubic-bezier(.22,1,.36,1) both}
+ .modal{background:var(--surf);border:1px solid var(--line);border-radius:20px;max-width:660px;width:100%;max-height:calc(100dvh - 24px);overflow:auto;padding:24px;padding-bottom:max(24px,env(safe-area-inset-bottom));animation:pop .3s cubic-bezier(.22,1,.36,1) both}
  .mhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
  .modal h3{font-size:19px;font-weight:800}.modal .sub{color:var(--mut);font-size:12.5px;margin:2px 0 4px}
+ .mfaError{color:#ff9c9c;background:rgba(255,76,76,.1);border:1px solid rgba(255,120,120,.35);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13px;line-height:1.45}
  .mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:9px;margin:14px 0}
  .mc{background:var(--surf2);border:1px solid var(--line);border-radius:12px;padding:11px}.mc .v{font-family:'Spectral',serif;font-size:19px;font-weight:700}.mc .l{font-size:10.5px;color:var(--mut2);text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
  .sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut2);margin:14px 0 6px}
@@ -741,7 +861,7 @@ function adminHtml(env, nonce) {
  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surf);border:1px solid var(--line2);border-radius:13px;padding:12px 18px;font-size:13.5px;font-weight:600;opacity:0;transition:all .25s;z-index:40;box-shadow:0 14px 34px rgba(0,0,0,.4)}
  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
  .toast.ok{border-color:rgba(43,227,154,.5)}.toast.err{border-color:rgba(255,107,107,.5)}
- @media(max-width:620px){.top{align-items:flex-start;flex-direction:column}.top .right{justify-content:flex-start;width:100%}.search input{width:160px}th.hideSm,td.hideSm{display:none}}
+ @media(max-width:620px){.top{align-items:flex-start;flex-direction:column}.top .right{justify-content:flex-start;width:100%}.search input{width:160px}th.hideSm,td.hideSm{display:none}.modal{border-radius:16px;padding:18px;max-height:calc(100dvh - 16px)}}
 </style></head>
 <body>
 <div class="wrap">
@@ -770,7 +890,7 @@ function adminHtml(env, nonce) {
     <h2>Usuários <span class="muted" id="ucount"></span></h2>
     <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
    </div>
-   <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Plano</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
+   <div class="tbl"><table><thead><tr><th>Usuário</th><th class="hideSm">Empresa</th><th>Plano</th><th>Uso</th><th>Orç.</th><th class="hideSm">Faturamento</th><th class="hideSm">Cadastro</th><th>Status</th></tr></thead><tbody id="urows"></tbody></table></div>
    <div class="sec-head"><h2>Feedback & Erros <span class="muted" id="fcount"></span></h2></div>
    <div id="ffilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
    <div id="frows"></div>
@@ -783,7 +903,7 @@ function adminHtml(env, nonce) {
 
 <script nonce="${nonce}">
 const SB=${SB}, ANON=${ANON};
-let TOKEN=sessionStorage.getItem('olli_admin_tok')||'', ALLUSERS=[], MET=null, ME=null;
+let TOKEN=sessionStorage.getItem('olli_admin_tok')||'', REFRESH=sessionStorage.getItem('olli_admin_refresh')||'', ALLUSERS=[], MET=null, ME=null;
 const $=id=>document.getElementById(id);
 function show(v){$('loginView').classList.toggle('hidden',v!=='login');$('dashView').classList.toggle('hidden',v!=='dash');}
 function mostrarGateMfa(){show('dash');$('mfaGate').classList.remove('hidden');$('protectedContent').classList.add('hidden');}
@@ -812,17 +932,20 @@ async function login(){
   const j=await r.json();
   if(!j.access_token){$('loginErr').textContent='E-mail ou senha incorretos.';return;}
   TOKEN=j.access_token;
-  sessionStorage.setItem('olli_admin_tok',TOKEN);$('who').textContent=email;
+  REFRESH=j.refresh_token||'';
+  sessionStorage.setItem('olli_admin_tok',TOKEN);
+  if(REFRESH)sessionStorage.setItem('olli_admin_refresh',REFRESH);else sessionStorage.removeItem('olli_admin_refresh');
+  $('who').textContent=email;
   await carregarIdentidade();
   const fatores=await listarFatoresMfa();
   if(ME&&ME.aal!=='aal2'){
    mostrarGateMfa();
    if(fatores.length)await abrirDesafioMfa(fatores[0]);
   }else await loadDash();
- }catch(e){$('loginErr').textContent='Falha ao entrar. Tente de novo.';}
+ }catch(e){$('loginErr').textContent='Entrou, mas não consegui carregar a verificação em duas etapas. '+String(e&&e.message||'Tente novamente.').slice(0,180);}
  finally{$('loginBtn').textContent='Entrar';$('loginBtn').disabled=false;}
 }
-function logout(){TOKEN='';ME=null;sessionStorage.removeItem('olli_admin_tok');show('login');}
+function logout(){TOKEN='';REFRESH='';ME=null;sessionStorage.removeItem('olli_admin_tok');sessionStorage.removeItem('olli_admin_refresh');show('login');}
 
 async function carregarIdentidade(){
  const j=await api('me');ME=j.user||null;
@@ -838,25 +961,41 @@ async function carregarIdentidade(){
  }
 }
 
-async function authFetch(path,opts){
- const r=await fetch(SB+'/auth/v1/'+path,{...opts,headers:{apikey:ANON,Authorization:'Bearer '+TOKEN,'Content-Type':'application/json',...(opts&&opts.headers||{})}});
+async function renovarSessao(){
+ if(!REFRESH)return false;
+ try{
+  const r=await fetch(SB+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:ANON,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:REFRESH})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||!j.access_token)return false;
+  TOKEN=j.access_token;REFRESH=j.refresh_token||REFRESH;
+  sessionStorage.setItem('olli_admin_tok',TOKEN);sessionStorage.setItem('olli_admin_refresh',REFRESH);
+  return true;
+ }catch{return false;}
+}
+
+async function authFetch(path,opts={},retry=true){
+ const body=opts&&opts.body;
+ const headers={apikey:ANON,Authorization:'Bearer '+TOKEN,...(body?{'Content-Type':'application/json'}:{}),...(opts&&opts.headers||{})};
+ const r=await fetch(SB+'/auth/v1/'+path,{...opts,headers});
+ if(r.status===401&&retry&&await renovarSessao())return authFetch(path,opts,false);
  const j=await r.json().catch(()=>({}));
  if(!r.ok)throw new Error(j.msg||j.message||j.error_description||'Falha de autenticação');
  return j;
 }
 
 async function listarFatoresMfa(){
- try{
-  const j=await authFetch('factors');
-  const todos=Array.isArray(j)?j:[...(Array.isArray(j.totp)?j.totp:[]),...(Array.isArray(j.all)?j.all:[])];
-  return todos.filter((f,i,a)=>f&&f.factor_type==='totp'&&f.status==='verified'&&a.findIndex(x=>x.id===f.id)===i);
- }catch(e){return [];}
+ // O endpoint GET /auth/v1/factors não lista fatores no GoTrue atual. O SDK
+ // oficial implementa listFactors() sobre getUser() e lê user.factors; POST
+ // /factors continua reservado ao cadastro de um novo fator TOTP.
+ const j=await authFetch('user');
+ const todos=Array.isArray(j&&j.factors)?j.factors:[];
+ return todos.filter((f,i,a)=>f&&f.factor_type==='totp'&&f.status==='verified'&&a.findIndex(x=>x.id===f.id)===i);
 }
 
 function aplicarSessaoMfa(j){
  const token=j&&j.access_token;
  if(typeof token!=='string'||!token)throw new Error('A verificação não devolveu uma sessão válida.');
- TOKEN=token;sessionStorage.setItem('olli_admin_tok',TOKEN);
+ TOKEN=token;REFRESH=j.refresh_token||REFRESH;sessionStorage.setItem('olli_admin_tok',TOKEN);if(REFRESH)sessionStorage.setItem('olli_admin_refresh',REFRESH);
 }
 
 async function verificarFator(factorId,code){
@@ -868,11 +1007,16 @@ async function verificarFator(factorId,code){
 
 async function abrirDesafioMfa(fator){
  const d=$('modal');d.innerHTML='';
- d.append(el('h3',{},'Confirme o segundo fator'),el('div',{className:'sub'},'Digite o código de 6 dígitos do seu aplicativo autenticador.'));
- const code=el('input',{inputMode:'numeric',autoComplete:'one-time-code',maxLength:6,placeholder:'000000'});d.append(code);
+ d.append(el('h3',{},'Confirme o segundo fator'),el('div',{className:'sub'},'Abra o aplicativo autenticador em que você cadastrou “OLLI Admin” e digite o código atual de 6 números. Ele muda aproximadamente a cada 30 segundos.'));
+ const code=el('input',{inputMode:'numeric',autocomplete:'one-time-code',enterKeyHint:'done',pattern:'[0-9]*',maxLength:6,placeholder:'000000',ariaLabel:'Código MFA'}),err=el('div',{className:'mfaError',role:'alert'});err.hidden=true;d.append(code,err);
  const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Verificar');
- save.onclick=async()=>{save.disabled=true;try{await verificarFator(fator.id,code.value.trim());modalClose();toast('MFA confirmado.','ok');await loadDash();}catch(e){toast(e.message||'Código inválido.','err');}finally{save.disabled=false;}};
- acts.append(el('button',{className:'btn ghost sm',onclick:()=>{modalClose();mostrarGateMfa();}},'Continuar sem dados'),save);d.append(acts);$('ov').classList.add('show');code.focus();
+ save.disabled=true;
+ code.oninput=()=>{code.value=code.value.replace(/\\D/g,'').slice(0,6);save.disabled=code.value.length!==6;err.hidden=true;err.textContent='';};
+ code.onkeydown=e=>{if(e.key==='Enter'&&!save.disabled){e.preventDefault();save.click();}};
+ save.onclick=async()=>{const valor=code.value.trim();err.hidden=true;err.textContent='';if(!/^\\d{6}$/.test(valor)){err.textContent='Digite os 6 números do código atual.';err.hidden=false;code.focus();return;}save.disabled=true;try{await verificarFator(fator.id,valor);modalClose();toast('MFA confirmado.','ok');await loadDash();}catch(e){err.textContent=String(e&&e.message||'Código inválido.').slice(0,240);err.hidden=false;code.select();}finally{save.disabled=code.value.length!==6;}};
+ const ajuda=el('button',{className:'btn ghost sm',type:'button'},'Perdi acesso ao autenticador');
+ ajuda.onclick=()=>{err.textContent='O fator antigo precisa ser removido com uma recuperação administrativa auditada e, depois, cadastrado novamente. Nenhum dado é liberado sem essa confirmação.';err.hidden=false;};
+ acts.append(el('button',{className:'btn ghost sm',onclick:()=>{modalClose();mostrarGateMfa();}},'Continuar sem dados'),ajuda,save);d.append(acts);$('ov').classList.add('show');code.focus();
 }
 
 async function abrirSeguranca(){
@@ -884,7 +1028,7 @@ async function abrirSeguranca(){
   const qr=f&&f.totp&&f.totp.qr_code;
   if(qr){d.append(el('img',{src:qr,alt:'QR Code para cadastrar o OLLI Admin no autenticador',style:'display:block;width:220px;height:220px;margin:18px auto;background:#fff;padding:10px;border-radius:14px'}));}
   if(f&&f.totp&&f.totp.secret)d.append(el('div',{className:'sub',style:'word-break:break-all'},'Chave manual: '+f.totp.secret));
-  const code=el('input',{inputMode:'numeric',autoComplete:'one-time-code',maxLength:6,placeholder:'Código de 6 dígitos'});d.append(code);
+  const code=el('input',{inputMode:'numeric',autocomplete:'one-time-code',enterKeyHint:'done',pattern:'[0-9]*',maxLength:6,placeholder:'Código de 6 dígitos'});d.append(code);
   const acts=el('div',{className:'acts'}),save=el('button',{className:'btn sm'},'Ativar MFA');
   save.onclick=async()=>{save.disabled=true;try{await verificarFator(f.id,code.value.trim());modalClose();toast('MFA ativado.','ok');await loadDash();}catch(e){toast(e.message||'Não consegui verificar.','err');}finally{save.disabled=false;}};
   acts.append(el('button',{className:'btn ghost sm',onclick:modalClose},'Cancelar'),save);d.append(acts);
@@ -907,6 +1051,8 @@ function renderCards(m){
  c.append(
   card('👤',fmtNum(m.usuarios),'Usuários',m.novos7?('+'+m.novos7+' esta semana'):'—',m.novos7?'up':'flat'),
   card('⚡',fmtNum(m.ativos),'Já acessaram'),
+  card('🟢',fmtNum(m.usando30),'Usando · 30 dias',m.frequentes?fmtNum(m.frequentes)+' frequentes':'—',m.frequentes?'up':'flat'),
+  card('🔑',fmtNum(m.logins30),'Logins · 30 dias',m.atividade30?fmtNum(m.atividade30)+' eventos':'—',m.atividade30?'up':'flat'),
   card('📄',fmtNum(m.orcamentos),'Orçamentos',m.aprovados+' aprovados',m.aprovados?'up':'flat'),
   card('🎯',m.conversao+'%','Conversão'),
   card('🧾',fmtBRL(m.ticket),'Ticket médio'),
@@ -916,7 +1062,7 @@ function renderCards(m){
 }
 function renderUsers(list){
  const tb=$('urows');tb.innerHTML='';
- if(!list.length){tb.append(el('tr',{},el('td',{colSpan:7},el('div',{className:'empty'},'Nenhum usuário encontrado.'))));return;}
+ if(!list.length){tb.append(el('tr',{},el('td',{colSpan:8},el('div',{className:'empty'},'Nenhum usuário encontrado.'))));return;}
  for(const x of list){
   const tr=el('tr',{className:'row'});tr.onclick=()=>openUser(x);
   const u=el('div',{className:'u'});u.append(el('div',{className:'av'},initials(x.nome||x.email)),el('div',{},el('div',{className:'uem'},x.email||'—'),el('div',{className:'ues'},x.nome||'sem nome')));
@@ -924,6 +1070,7 @@ function renderUsers(list){
    el('td',{},u),
    el('td',{className:'hideSm '+(x.empresa?'':'muted')},x.empresa||'(sem empresa)'),
    el('td',{},el('span',{className:'pill '+(x.plano==='gratis'?'off':'on')},x.plano+(x.planoOrigem==='admin'?' · manual':''))),
+   el('td',{},el('span',{className:'pill '+(x.frequencia==='frequente'||x.frequencia==='ativo'?'on':'off')},x.frequencia||'nunca')),
    el('td',{},String(x.orcamentos)),
    el('td',{className:'hideSm muted'},x.faturamento?fmtBRL(x.faturamento):'—'),
    el('td',{className:'hideSm muted'},fmtDate(x.criadoEm)),
@@ -932,7 +1079,7 @@ function renderUsers(list){
   tb.append(tr);
  }
 }
-function applySearch(){const q=$('usearch').value.trim().toLowerCase();renderUsers(!q?ALLUSERS:ALLUSERS.filter(u=>(u.email||'').toLowerCase().includes(q)||(u.empresa||'').toLowerCase().includes(q)));}
+function applySearch(){const q=$('usearch').value.trim().toLowerCase();renderUsers(!q?ALLUSERS:ALLUSERS.filter(u=>(u.email||'').toLowerCase().includes(q)||(u.empresa||'').toLowerCase().includes(q)||(u.frequencia||'').toLowerCase().includes(q)));}
 
 // ── Feedback & Erros ──
 let ALLFB=[], FBFILTER='abertos';
@@ -994,6 +1141,18 @@ async function loadDash(){
 }
 
 function modalClose(){$('ov').classList.remove('show');}
+async function downloadUserReport(x){
+ const motivo=prompt('Informe o motivo do relatório TXT (fica na auditoria):');
+ if(!motivo||motivo.trim().length<3)return;
+ try{
+  const url='/admin/api/user/report?id='+encodeURIComponent(x.id)+'&motivo='+encodeURIComponent(motivo.trim());
+  const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+  if(r.status===401){logout();return;}
+  if(!r.ok){const j=await r.json().catch(()=>({}));toast(j.erro||'Não consegui gerar o relatório.','err');return;}
+  const blob=await r.blob(),link=document.createElement('a'),href=URL.createObjectURL(blob);
+  link.href=href;link.download='olli-usuario-relatorio.txt';document.body.append(link);link.click();link.remove();URL.revokeObjectURL(href);toast('Relatório TXT baixado.','ok');
+ }catch{toast('Falha ao gerar o relatório.','err');}
+}
 async function openUser(x){
  const ov=$('ov'),d=$('modal');d.innerHTML='<p class="muted">Carregando…</p>';ov.classList.add('show');
  try{
@@ -1006,7 +1165,7 @@ async function openUser(x){
   const fat=aprov.reduce((s,o)=>s+(Number(o.valor_total)||0),0);
   const ent=det.entitlement||{plano:'gratis',origem:'gratis'};
   const mini=el('div',{className:'mini'});
-  [['Plano',ent.plano+(ent.origem==='admin'?' · manual':'')],['Saldo',String(det.saldoCreditos||0)+' créditos'],['IA grátis',String((det.usosIa||[]).length)+' usos'],['Orçamentos',det.orcamentos.length],['Aprovados',aprov.length],['Faturamento',fmtBRL(fat)],['Clientes',det.clientes.length],['Agenda',det.agenda.length],['Recibos',det.recibos.length]].forEach(p=>{const c=el('div',{className:'mc'});c.append(el('div',{className:'v'},String(p[1])),el('div',{className:'l'},p[0]));mini.append(c);});
+  [['Plano',ent.plano+(ent.origem==='admin'?' · manual':'')],['Frequência',x.frequencia||'nunca'],['Logins registrados',x.logins??0],['Último uso',fmtDate(x.ultimoUso)],['Saldo',String(det.saldoCreditos||0)+' créditos'],['IA grátis',String((det.usosIa||[]).length)+' usos'],['Orçamentos',det.orcamentos.length],['Aprovados',aprov.length],['Faturamento',fmtBRL(fat)],['Clientes',det.clientes.length],['Agenda',det.agenda.length],['Recibos',det.recibos.length]].forEach(p=>{const c=el('div',{className:'mc'});c.append(el('div',{className:'v'},String(p[1])),el('div',{className:'l'},p[0]));mini.append(c);});
   d.append(mini);
   const mk=(title,rows)=>{const s=el('div',{className:'sec'});s.append(el('h4',{},title));if(!rows.length){s.append(el('div',{className:'muted',style:'font-size:13px'},'nenhum'));}else rows.forEach(r=>s.append(el('div',{className:'li'},el('span',{},r[0]),el('span',{className:'muted'},r[1]))));return s;};
   d.append(mk('Orçamentos recentes',det.orcamentos.slice(0,10).map(o=>['Nº'+o.numero+' · '+(o.cliente_nome||''),fmtBRL(o.valor_total)+' · '+o.status])));
@@ -1021,6 +1180,7 @@ async function openUser(x){
   d.append(mk('Faturas Stripe',det.faturas.slice(0,12).map(f=>[fmtDate(f.criadoEm)+' · '+(f.status||'—'),fmtBRL((f.valorCentavos||0)/100)])));
   d.append(mk('Créditos recentes',det.creditos.slice(0,12).map(c=>[(Number(c.delta)>0?'+':'')+c.delta+' · '+c.origem,fmtDate(c.criado_em)])));
   d.append(mk('Auditoria administrativa',det.auditoria.slice(0,10).map(a=>[a.acao+' · '+a.motivo,fmtDate(a.criado_em)])));
+  d.append(mk('Atividade registrada',det.atividade.slice(0,30).map(a=>[a.evento+' · '+a.plataforma,fmtDate(a.criado_em)])));
   d.append(mk('Clientes',det.clientes.slice(0,10).map(c=>[c.nome||'—',c.telefone||''])));
   d.append(mk('Agenda',det.agenda.slice(0,8).map(a=>[a.titulo||'—',fmtDate(a.inicio)+' · '+a.status])));
   const acts=el('div',{className:'acts'});
@@ -1029,6 +1189,7 @@ async function openUser(x){
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,'empresa',true)},'Conceder Empresa'));
   if(ass&&ass.admin_override_ativo)acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,null,false)},'Revogar plano manual'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>act(x,'reset')},'Enviar reset de senha'));
+  acts.append(el('button',{className:'btn ghost sm',onclick:()=>downloadUserReport(x)},'Baixar relatório TXT'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>act(x,x.bloqueado?'unban':'ban')},x.bloqueado?'Desbloquear':'Bloquear'));
   acts.append(el('button',{className:'btn danger sm',onclick:()=>act(x,'delete')},'Excluir conta'));
   d.append(acts);

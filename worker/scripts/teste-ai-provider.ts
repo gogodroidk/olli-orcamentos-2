@@ -88,7 +88,7 @@ checar('usa o primeiro modelo gratuito explícito', body.model, 'google/gemma-4-
 checar('nunca delega fallback via models plural', body.models, undefined);
 checar('router aleatório não entrou no request', JSON.stringify(body).includes('openrouter/free'), false);
 checar('coleta de dados negada', body.provider.data_collection, 'deny');
-checar('fallback interno do provedor desligado', body.provider.allow_fallbacks, false);
+checar('fallback interno fica limitado ao mesmo modelo gratuito', body.provider.allow_fallbacks, true);
 checar('JSON exige provedor compatível', body.provider.require_parameters, true);
 checar('modo JSON ativado', body.response_format, { type: 'json_object' });
 checar('ZDR não é forçado sem um endpoint estruturado saudável validado', body.zdr, undefined);

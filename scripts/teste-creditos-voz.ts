@@ -282,6 +282,8 @@ checar('payload sem saldo/delta controlado pelo cliente', ultimoConsumoRpc?.body
 });
 checar('service_role enviado sem ser impresso',
   ultimoConsumoRpc?.headers?.apikey === env.SUPABASE_SERVICE_ROLE_KEY, true);
+checar('service_role legado preserva Bearer durante a migracao',
+  ultimoConsumoRpc?.headers?.Authorization, `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`);
 checar('uma RPC, uma linha no ledger', [consumoRpcChamadas, ledgerLinhas.length], [1, 1]);
 
 console.log('\nQ2) mesmo ref é idempotente antes de verificar saldo');
@@ -294,6 +296,21 @@ const consumoRetry = await consumirCreditos(env, {
 });
 checar('retry reconhecido sem débito duplo', consumoRetry, { ok: true, duplicado: true, saldo: 3 });
 checar('saldo e número de linhas intactos', [saldo, ledgerLinhas.length], [3, 1]);
+
+console.log('\nQ2b) chave sb_secret moderna nunca e enviada como Bearer JWT');
+resetBanco(5);
+const envSecret = { ...env, SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_teste_opaco_somente_servidor' };
+await consumirCreditos(envSecret, {
+  userId: USER.id,
+  custo: 1,
+  acao: 'teste_chave_opaca',
+  ref: 'acao-chave-opaca-1',
+  descricao: 'Teste chave opaca',
+});
+checar('sb_secret segue no apikey', ultimoConsumoRpc?.headers?.apikey,
+  envSecret.SUPABASE_SERVICE_ROLE_KEY);
+checar('sb_secret nao entra em Authorization',
+  'Authorization' in (ultimoConsumoRpc?.headers ?? {}), false);
 
 console.log('\nQ3) saldo insuficiente não insere');
 resetBanco(1);

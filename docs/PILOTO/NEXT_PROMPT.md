@@ -1,6 +1,6 @@
 # Self-prompt — OLLI 0→100
 
-Atualizado em: **2026-09-08T04:48:58-03:00**
+Atualizado em: **2026-09-19**
 Estado: **CONTINUIDADE CONTROLADA — base local + staging público comprovados; gates externos ainda abertos**
 
 ## Estado canônico
@@ -21,6 +21,36 @@ Estado: **CONTINUIDADE CONTROLADA — base local + staging público comprovados;
 4. Admin: `/admin/api/user` exige AAL2 antes da primeira consulta service-role e o RBAC de detalhe admite suporte/financeiro/admin/owner com datasets mínimos; governança `24/24`, dados `21/21` e dry-run do Worker aprovados.
 5. Release: configuração Expo/EAS, identidade, perfis e assets auditados; `16/16`, release config e Expo config aprovados. APK debug foi compilado, instalado e aberto no `SM-G780F` (Android 13/API 33) com Metro via USB reverse; assinatura de release continua fail-closed. PWA ainda não instalável (`display=browser`, sem service worker); loja/AAB assinado não foram publicados.
 6. Billing: mapa Stripe/Mercado Pago/Apple IAP, proposta de fonte autoritativa servidor e roteiro sandbox de 12 passos; `230/230` asserções locais.
+
+## P0 imediato — orçamento organizado e aceite pelo cliente
+
+Este requisito faz parte da próxima release executável e não deve ser tratado como ideia futura.
+
+### Aprovação e recusa
+
+- Remover do orçamento qualquer QR Code de Pix/pagamento enquanto o pagamento não estiver vinculado de ponta a ponta ao cliente, ao orçamento, ao provider e à conciliação do OLLI.
+- Remover o QR Code usado para aprovação e substituí-lo por duas ações explícitas: **Aprovar orçamento** e **Recusar orçamento**.
+- No aplicativo e no PDF, as ações devem abrir no navegador uma página pública segura referente somente àquele orçamento.
+- Abrir o link não pode alterar o orçamento automaticamente. A página deve mostrar um resumo e exigir confirmação por `POST`, evitando aprovação acidental por pré-visualizadores, antivírus ou robôs de link.
+- O link deve usar token opaco, não enumerável, com hash persistido, escopo de tenant/orçamento, expiração, revogação e comportamento idempotente. Não colocar dados pessoais nem IDs sequenciais na URL.
+- A decisão confirmada deve sincronizar o status no OLLI, registrar data/hora e trilha mínima de auditoria, impedir decisão duplicada conflitante e mostrar ao cliente o estado final.
+- Aprovação comercial e pagamento são fluxos distintos. Aprovar não cobra; pagamento só poderá aparecer depois, por uma integração funcional e conciliável.
+
+### Separação de itens e valores
+
+- Todo item novo precisa ter categoria explícita e validada.
+- O orçamento deve renderizar seções separadas para **Serviços** e **Produtos, peças e equipamentos**.
+- Serviços devem exibir descrição, quantidade/unidade aplicável, valor unitário e subtotal.
+- Produtos, peças e equipamentos devem exibir descrição, subtipo, quantidade, unidade, valor unitário e subtotal.
+- Exibir subtotal de serviços, subtotal de produtos/peças/equipamentos, descontos ou acréscimos identificados e total geral sem dupla contagem.
+- Registros legados não podem ser silenciosamente classificados de maneira errada; devem usar uma migração compatível ou exigir revisão antes da nova emissão.
+
+### Aceite obrigatório
+
+- Provar o mesmo conteúdo e os mesmos totais no Android, web, visualização e PDF compartilhado.
+- Testar aprovação, recusa, link expirado, link revogado, repetição da mesma decisão, tentativa de decisão conflitante e isolamento entre tenants.
+- Testar orçamento somente com serviços, somente com produtos, misto, vazio, com desconto, com quantidade fracionada e com itens legados.
+- Confirmar que nenhum QR Code de pagamento ou aprovação permanece nos geradores ativos antes da publicação.
 
 ## Estado operacional de e-mail já comprovado
 

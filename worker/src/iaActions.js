@@ -115,11 +115,14 @@ async function sha256(value) {
 }
 
 function sbHeaders(env, extra = {}) {
-  return {
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    ...extra,
-  };
+  const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string'
+    ? env.SUPABASE_SERVICE_ROLE_KEY.trim()
+    : '';
+  const headers = { apikey: serviceRole, ...extra };
+  if (!serviceRole.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceRole}`;
+  }
+  return headers;
 }
 
 async function getUser(request, env) {

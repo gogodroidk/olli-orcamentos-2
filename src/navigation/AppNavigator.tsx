@@ -148,7 +148,7 @@ export type RootStackParamList = {
   Convite: { token?: string };
   // Onda 4 — Ordens de serviço (OS mínima + app do técnico). Role-aware:
   // gestão vê todas; técnico vê só as suas.
-  OrdemServico: undefined;
+  OrdemServico: { ordemId?: string } | undefined;
   // PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR da porta física).
   // abrirToken: vem do scanner (EscanearQr) → abre o equipamento com esse qrToken.
   Equipamento: { abrirToken?: string } | undefined;

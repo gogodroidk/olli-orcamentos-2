@@ -144,6 +144,7 @@ ${oficios}
 - [Site](${ORIGEM}/)
 - [Planos e preços](${ORIGEM}/planos/)
 - [Central de Ajuda](${ORIGEM}/ajuda/)
+- [Manifesto público para agentes](${ORIGEM}/agent-manifest.json)
 - [Termos de Uso](${ORIGEM}/legal/termos/)
 - [Política de Privacidade](${ORIGEM}/legal/privacidade/)
 `;

@@ -33,6 +33,7 @@ import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/databa
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
+import { iniciarAuthAutoRefreshNativo } from './src/services/authAutoRefresh';
 import { sincronizarPagamentosPendentes } from './src/services/pagamentos';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
@@ -194,6 +195,10 @@ function AppConteudo() {
     Spectral_600SemiBold,
     Spectral_700Bold,
   });
+
+  // O refresh token acompanha o ciclo de vida nativo: pausa no background e
+  // religa ao voltar. Evita refresh concorrente/suspenso parecer logout.
+  useEffect(() => iniciarAuthAutoRefreshNativo(), []);
 
   // Captura global de erro de JS -> caixa de feedback (o dono ve no /admin o que
   // quebra nos aparelhos). Instala uma vez; a tela atual vem do navigationRef.

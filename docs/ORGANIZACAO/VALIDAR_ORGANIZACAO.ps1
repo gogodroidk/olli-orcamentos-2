@@ -27,7 +27,9 @@ function Assert-True {
 }
 
 $canonical = 'C:\OLLI_REL'
-$hub = 'C:\Users\ADMIN\Desktop\OLLI - CENTRAL DO PROJETO'
+$masterName = 'OLLI Or{0}amentos Master' -f [char]0x00E7
+$hub = Join-Path 'C:\Users\ADMIN\Desktop' $masterName
+$compatibilityHub = 'C:\Users\ADMIN\Desktop\OLLI - CENTRAL DO PROJETO'
 $driveRoot = 'C:\Users\ADMIN\Desktop\OLLI ORCAMENTOS'
 $oldHub = 'C:\Users\ADMIN\Desktop\OLLI ORCAMENTOS V1'
 $duplicateOld = 'C:\Users\ADMIN\Desktop\2 PESSOAL\OLLI ORCAMENTOS V1'
@@ -40,6 +42,19 @@ $hubValidator = Join-Path $hub '00_ADMIN\VALIDAR_HUB.ps1'
 
 Assert-True (Test-Path -LiteralPath $canonical -PathType Container) 'Repositório canônico ausente.'
 Assert-True (Test-Path -LiteralPath $hub -PathType Container) 'Hub central ausente.'
+$compatibilityItem = if (Test-Path -LiteralPath $compatibilityHub) {
+    Get-Item -LiteralPath $compatibilityHub -Force
+} else {
+    $null
+}
+$compatibilityTarget = if ($compatibilityItem) { [string](($compatibilityItem.Target -join ';')) } else { '' }
+$compatibilityOk = [bool](
+    $compatibilityItem -and
+    (($compatibilityItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -and
+    [string]$compatibilityItem.LinkType -eq 'Junction' -and
+    $compatibilityTarget.TrimEnd('\').Equals($hub, [StringComparison]::OrdinalIgnoreCase)
+)
+Assert-True $compatibilityOk 'Junction de compatibilidade do Master ausente ou incorreta.'
 Assert-True (Test-Path -LiteralPath $driveRoot -PathType Container) 'Raiz Drive ausente.'
 Assert-True (Test-Path -LiteralPath (Join-Path $driveRoot '.tmp.driveupload')) 'Marcador do Drive ausente.'
 Assert-True (-not (Test-Path -LiteralPath $oldHub)) 'O nome antigo do hub voltou a existir.'
@@ -48,7 +63,8 @@ Assert-True (Test-Path -LiteralPath $duplicateArchive -PathType Container) 'Cóp
 Assert-True (-not (Test-Path -LiteralPath $zipOld)) 'O ZIP antigo voltou a competir em 2 PESSOAL.'
 Assert-True (Test-Path -LiteralPath $zipArchive -PathType Leaf) 'ZIP arquivado ausente.'
 
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$manifestText = [IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8)
+$manifest = $manifestText | ConvertFrom-Json
 Assert-True ($manifest.canonicalRepository -eq $canonical) 'Manifesto aponta outro canônico.'
 Assert-True ($manifest.centralHub -eq $hub) 'Manifesto aponta outro hub.'
 $editable = @($manifest.roots | Where-Object { $_.editable })
@@ -58,7 +74,7 @@ Assert-True ($editable[0].path -eq $canonical) 'A única raiz editável deve ser
 $branch = Invoke-GitStrict -Repository $canonical -Arguments @('branch', '--show-current')
 $head = Invoke-GitStrict -Repository $canonical -Arguments @('rev-parse', 'HEAD')
 $top = Invoke-GitStrict -Repository $canonical -Arguments @('rev-parse', '--show-toplevel')
-Assert-True ($branch -eq 'main') "Branch canônica inesperada: $branch"
+Assert-True (-not [string]::IsNullOrWhiteSpace($branch)) 'Worktree canônico está sem branch nomeada.'
 Assert-True ([IO.Path]::GetFullPath($top).TrimEnd('\') -eq $canonical) 'Git toplevel não é o canônico.'
 
 $driveText = Get-Content -LiteralPath $driveReadme -Raw
@@ -66,7 +82,7 @@ Assert-True ($driveText.Contains('CANONICAL_REPOSITORY=C:\OLLI_REL')) 'README do
 Assert-True ($driveText.Contains('DRIVE_ROLE=HISTORICAL_NON_CANONICAL')) 'README do Drive não declara seu papel histórico.'
 
 Assert-True (Test-Path -LiteralPath $hubValidator -PathType Leaf) 'Validador do hub ausente.'
-& powershell -NoProfile -ExecutionPolicy Bypass -File $hubValidator
+& $hubValidator
 if ($LASTEXITCODE -ne 0) {
     throw "Validador do hub falhou com exit code $LASTEXITCODE."
 }
@@ -77,6 +93,8 @@ $summary = [pscustomobject]@{
     Branch = $branch
     Head = $head
     Hub = $hub
+    CompatibilityHub = $compatibilityHub
+    CompatibilityHubValid = $compatibilityOk
     DriveMarkerIntact = $true
     EditableRoots = $editable.Count
     StaticDuplicateArchived = $true

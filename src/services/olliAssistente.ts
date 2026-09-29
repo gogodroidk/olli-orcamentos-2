@@ -65,6 +65,8 @@ const SOBRECARGA =
 /** Erro de servidor (5xx que não seja sobrecarga) — mesma mensagem para voz e chat. */
 const ERRO_SERVIDOR =
   'A OLLI teve um problema para responder agora. Tente de novo em instantes.';
+const LIMITE_INDISPONIVEL =
+  'A OLLI está validando o limite de uso agora. Nada foi cobrado; tente novamente em instantes.';
 const PRECISA_LOGIN =
   'Sua sessão expirou. Toque em Conta e entre de novo para usar a OLLI.';
 const MUITAS_REQUISICOES =
@@ -84,6 +86,7 @@ const TIMEOUT_CHAT_MS = 30_000;
  */
 function mensagemErroIA(erro: unknown, fallback: string): string {
   const s = typeof erro === 'string' ? erro : '';
+  if (s === 'limite_indisponivel') return LIMITE_INDISPONIVEL;
   const limite = mensagemLimiteIA(s);
   if (limite) return limite;
   if (/nao_autorizado|n[ãa]o_autorizado|401/i.test(s)) return PRECISA_LOGIN;
@@ -97,6 +100,7 @@ function mensagemErroIA(erro: unknown, fallback: string): string {
 
 /** Mapeia o status HTTP da resposta do Worker para uma mensagem amigável (alinhado com o que o worker de fato retorna: 429/503 = sobrecarga, 5xx = erro do servidor). */
 function mensagemPorStatus(status: number, fallback: string, codigo?: unknown): string {
+  if (codigo === 'limite_indisponivel') return LIMITE_INDISPONIVEL;
   const limite = mensagemLimiteIA(codigo);
   if (limite) return limite;
   if (status === 401) return PRECISA_LOGIN;

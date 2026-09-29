@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { carregarMinhaOrganizacao, registrarAcesso, type Organizacao } from '../services/equipe';
+import {
+  carregarMinhaOrganizacao,
+  registrarAcesso,
+  registrarAtividadeUsuario,
+  resetarAtividadeUsuario,
+  type Organizacao,
+} from '../services/equipe';
 import { sessaoAtiva } from '../services/supabase';
 
 /**
@@ -113,6 +119,7 @@ export async function limparCacheTipoConta(): Promise<void> {
 /** Zera o estado em memória (logout). Sem isto o papel do usuário anterior persiste na sessão do app. */
 export function resetarTipoConta(): void {
   acessoRegistradoParaOrg = null;
+  resetarAtividadeUsuario();
   definir({ tipo: 'pessoal', org: null, carregando: true, resolvido: false, atualizadoEm: 0 });
 }
 
@@ -154,6 +161,7 @@ async function revalidar(): Promise<void> {
       const org = r.org;
       const tipo: TipoConta = org ? 'empresa' : 'pessoal';
       definir({ tipo, org, carregando: false, resolvido: true, atualizadoEm: Date.now() });
+      void registrarAtividadeUsuario('login');
 
       // Só persiste amarrado ao dono do papel (ver CHAVE_CACHE).
       void sessaoAtiva()

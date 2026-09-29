@@ -4,9 +4,10 @@ import { AuthStorageSeguro } from '../src/services/authStorageCore.ts';
 class Memoria {
   dados = new Map<string, string>();
   falharSet = false;
+  falharRemove = false;
   async getItem(key: string) { return this.dados.get(key) ?? null; }
   async setItem(key: string, value: string) { if (this.falharSet) throw new Error('falha'); this.dados.set(key, value); }
-  async removeItem(key: string) { this.dados.delete(key); }
+  async removeItem(key: string) { if (this.falharRemove) throw new Error('falha'); this.dados.delete(key); }
   async getItemAsync(key: string) { return this.getItem(key); }
   async setItemAsync(key: string, value: string) { return this.setItem(key, value); }
   async deleteItemAsync(key: string) { return this.removeItem(key); }
@@ -26,6 +27,13 @@ assert.equal(await legado.getItem(chave), null, 'plaintext legado é removido ap
 assert.ok(seguro.dados.size > 2, 'payload grande foi dividido em múltiplas partes');
 assert.equal(await storage.getItem(chave), sessaoGrande, 'sessão segura remonta exatamente os chunks');
 
+const legadoConcorrente = new Memoria();
+const seguroConcorrente = new Memoria();
+const storageConcorrente = new AuthStorageSeguro(legadoConcorrente, seguroConcorrente);
+const sessaoAtualizada = JSON.stringify({ access_token: 'b'.repeat(2_400), refresh_token: 's'.repeat(900) });
+await Promise.all([storageConcorrente.setItem(chave, sessaoGrande), storageConcorrente.setItem(chave, sessaoAtualizada)]);
+assert.equal(await storageConcorrente.getItem(chave), sessaoAtualizada, 'gravações concorrentes preservam a última sessão inteira');
+
 const legadoFalha = new Memoria();
 const seguroFalha = new Memoria();
 await legadoFalha.setItem(chave, sessaoGrande);
@@ -40,7 +48,30 @@ const primeiraInstalacao = new AuthStorageSeguro(legadoReinstalado, seguroPersis
 await primeiraInstalacao.setItem(chave, sessaoGrande);
 legadoReinstalado.dados.clear(); // simula sandbox apagado na reinstalação; Keychain persiste
 const reinstalado = new AuthStorageSeguro(legadoReinstalado, seguroPersistente);
+seguroPersistente.dados.clear(); // reinstalação real também limpa o SecureStore do app
 assert.equal(await reinstalado.getItem(chave), null, 'reinstalação não ressuscita sessão antiga do Keychain');
+
+const legadoMarcadorPerdido = new Memoria();
+const seguroMarcadorPerdido = new Memoria();
+const storageMarcadorPerdido = new AuthStorageSeguro(legadoMarcadorPerdido, seguroMarcadorPerdido);
+await storageMarcadorPerdido.setItem(chave, sessaoGrande);
+legadoMarcadorPerdido.dados.delete('olli.auth.install.v1');
+assert.equal(await storageMarcadorPerdido.getItem(chave), sessaoGrande, 'marcador AsyncStorage perdido não derruba sessão SecureStore íntegra');
+
+const legadoMarcadorIndisponivel = new Memoria();
+const seguroMarcadorIndisponivel = new Memoria();
+legadoMarcadorIndisponivel.falharSet = true;
+const storageMarcadorIndisponivel = new AuthStorageSeguro(legadoMarcadorIndisponivel, seguroMarcadorIndisponivel);
+await storageMarcadorIndisponivel.setItem(chave, sessaoGrande);
+assert.equal(await storageMarcadorIndisponivel.getItem(chave), sessaoGrande, 'falha no marcador auxiliar não invalida sessão segura já publicada');
+
+const legadoRemocaoFalha = new Memoria();
+const seguroRemocaoFalha = new Memoria();
+await legadoRemocaoFalha.setItem(chave, sessaoGrande);
+legadoRemocaoFalha.falharRemove = true;
+const storageRemocaoFalha = new AuthStorageSeguro(legadoRemocaoFalha, seguroRemocaoFalha);
+await storageRemocaoFalha.setItem(chave, sessaoGrande);
+assert.equal(await storageRemocaoFalha.getItem(chave), sessaoGrande, 'falha ao limpar legado não corrompe manifesto seguro');
 
 const legadoLogout = new Memoria();
 const seguroLogout = new Memoria();
@@ -49,4 +80,4 @@ await logout.setItem(chave, sessaoGrande);
 await logout.removeItem(chave);
 assert.equal(await logout.getItem(chave), null, 'logout remove manifesto e sessão');
 
-console.log('PASSOU: chunks, migração, falha fechada, reinstalação e logout validados.');
+console.log('PASSOU: chunks, concorrência, metadados auxiliares, migração, reinstalação e logout validados.');

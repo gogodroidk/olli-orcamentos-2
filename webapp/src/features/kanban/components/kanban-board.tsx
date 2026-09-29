@@ -249,7 +249,7 @@ export default function KanbanBoard() {
 				<div>
 					<p className="text-base font-semibold text-text-primary">Nenhum orçamento ainda</p>
 					<p className="mx-auto mt-1 max-w-sm text-sm text-text-secondary">
-						Assim que você criar um orçamento, ele aparece aqui em Rascunho e você acompanha o funil até o Aprovado.
+						Assim que você criar um orçamento, ele aparece aqui em Rascunho e você acompanha o funil até o serviço ser Finalizado.
 					</p>
 				</div>
 			</Card>

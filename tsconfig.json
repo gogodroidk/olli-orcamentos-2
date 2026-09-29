@@ -25,6 +25,10 @@
     // Ferramentas Node (.mjs + testes que rodam via type stripping do Node, que
     // exige import com extensão `.ts`; scripts têm o próprio runtime Node).
     "scripts",
+    // Artefatos de QA têm configurações mínimas próprias e não fazem parte do
+    // programa Expo compilado por este gate. Eles são exercitados pelos scripts
+    // de contrato, não pelo tsc do app.
+    "qa-artifacts",
     // Cópias inteiras do repo feitas por worktrees do Claude: não são fonte.
     ".claude",
     "dist",

@@ -432,6 +432,37 @@ export async function registrarAcesso(
   }
 }
 
+let atividadeLoginUsuario: string | null = null;
+
+/**
+ * Registra atividade operacional sem carregar conteúdo de cliente, prompt,
+ * token ou endereço de rede. O RPC deriva user_id de auth.uid() e o app nunca
+ * recebe permissão de leitura do log.
+ */
+export async function registrarAtividadeUsuario(
+  evento: 'login' | 'app_open' = 'app_open',
+): Promise<void> {
+  try {
+    if (!supabase) return;
+    const user = await getCurrentUser();
+    if (!user) return;
+    if (evento === 'login' && atividadeLoginUsuario === user.id) return;
+    const { Platform } = require('react-native');
+    const plataforma = ['web', 'ios', 'android'].includes(Platform.OS) ? Platform.OS : 'unknown';
+    const { error } = await supabase.rpc('registrar_atividade_usuario', {
+      p_evento: evento,
+      p_plataforma: plataforma,
+    });
+    if (!error && evento === 'login') atividadeLoginUsuario = user.id;
+  } catch {
+    // best-effort: telemetria nunca bloqueia o uso do app.
+  }
+}
+
+export function resetarAtividadeUsuario(): void {
+  atividadeLoginUsuario = null;
+}
+
 // ─── helpers ─────────────────────────────────────────────────
 /** Token de acesso da sessão atual (ou null). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {

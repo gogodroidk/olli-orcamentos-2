@@ -27,6 +27,7 @@ const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesCom
 const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts", import.meta.url));
 const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
+const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -76,6 +77,7 @@ export default defineConfig(({ mode }) => {
 				"@ia-segura": iaSeguraFonte,
 				"@precificacao": precificacaoFonte,
 				"@auth-policy": authPolicyFonte,
+				"@ajuda": ajudaFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

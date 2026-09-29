@@ -3,7 +3,7 @@ import {
   View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Alert, RefreshControl, ActivityIndicator, Modal, Image, Platform, Linking,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -96,6 +96,7 @@ function StatusOSBadge({ status }: { status: StatusOS }) {
 // ─────────────────────────────────────────────────────────────
 export default function OrdemServicoScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'OrdemServico'>>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { org, carregando: carregandoConta } = useTipoConta();
@@ -117,6 +118,9 @@ export default function OrdemServicoScreen() {
 
   // Detalhe (modal full-screen) — mantém a OS aberta.
   const [detalheId, setDetalheId] = useState<string | null>(null);
+  useEffect(() => {
+    if (route.params?.ordemId) setDetalheId(route.params.ordemId);
+  }, [route.params?.ordemId]);
   // "+ Nova OS" (só gestão).
   const [showNova, setShowNova] = useState(false);
 

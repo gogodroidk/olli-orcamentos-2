@@ -2,12 +2,14 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
+import { GLOBAL_CONFIG } from "@/global-config";
 import { supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
 import { SENHA_MINIMA } from "@auth-policy";
 import { Button } from "@/ui/button";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { EmailAutocompleteInput } from "./components/EmailAutocompleteInput";
 import { OAuthButtons } from "./components/OAuthButtons";
@@ -35,7 +37,8 @@ function telefoneE164Brasil(valor: string): string {
 
 function RegisterForm() {
 	const { t } = useTranslation();
-	const { loginState, backToLogin, callbackAuthPath } = useLoginStateContext();
+	const navigate = useNavigate();
+	const { loginState, backToLogin, callbackAuthPath, destinoPosLogin } = useLoginStateContext();
 	const [loading, setLoading] = useState(false);
 
 	const form = useForm<RegisterFormValues>({
@@ -53,7 +56,7 @@ function RegisterForm() {
 		setLoading(true);
 		try {
 			const phone = telefoneE164Brasil(values.phone);
-			const { error } = await supabase.auth.signUp({
+			const { data, error } = await supabase.auth.signUp({
 				email: values.email.trim(),
 				password: values.password,
 				options: {
@@ -66,6 +69,11 @@ function RegisterForm() {
 				},
 			});
 			if (error) throw error;
+			if (data.session) {
+				toast.success("Conta criada. Seu espaço está pronto!", { position: "top-center" });
+				navigate(destinoPosLogin ?? GLOBAL_CONFIG.defaultRoute, { replace: true });
+				return;
+			}
 			toast.success("Conta criada! Confira seu e-mail para confirmar o cadastro.", {
 				position: "top-center",
 			});
@@ -105,6 +113,7 @@ function RegisterForm() {
 					}}
 					render={({ field }) => (
 						<FormItem>
+							<FormLabel>Seu nome</FormLabel>
 							<FormControl>
 								<Input autoComplete="name" placeholder="Seu nome" {...field} />
 							</FormControl>
@@ -125,6 +134,7 @@ function RegisterForm() {
 					}}
 					render={({ field }) => (
 						<FormItem>
+							<FormLabel>Telefone com DDD</FormLabel>
 							<FormControl>
 								<Input
 									type="tel"
@@ -151,8 +161,9 @@ function RegisterForm() {
 					}}
 					render={({ field }) => (
 						<FormItem>
+							<FormLabel>E-mail</FormLabel>
 							<FormControl>
-								<EmailAutocompleteInput placeholder={t("sys.login.email")} {...field} />
+								<EmailAutocompleteInput type="email" autoComplete="email" placeholder={t("sys.login.email")} {...field} />
 							</FormControl>
 							<FormMessage />
 						</FormItem>
@@ -168,6 +179,7 @@ function RegisterForm() {
 					}}
 					render={({ field }) => (
 						<FormItem>
+							<FormLabel>Senha</FormLabel>
 							<FormControl>
 								<Input type="password" autoComplete="new-password" placeholder={t("sys.login.password")} {...field} />
 							</FormControl>
@@ -185,6 +197,7 @@ function RegisterForm() {
 					}}
 					render={({ field }) => (
 						<FormItem>
+							<FormLabel>Confirme a senha</FormLabel>
 							<FormControl>
 								<Input
 									type="password"

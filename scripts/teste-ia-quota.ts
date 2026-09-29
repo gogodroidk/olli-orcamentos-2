@@ -119,6 +119,8 @@ verdadeiro('prompt/audio nunca vao no payload da RPC',
   !JSON.stringify(chamadas[0].payload).includes('orcamento cliente 123'));
 checar('service role no apikey', (chamadas[0].init.headers as any).apikey,
   env.SUPABASE_SERVICE_ROLE_KEY);
+checar('service_role legado continua no Bearer', (chamadas[0].init.headers as any).Authorization,
+  `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`);
 
 console.log('\n3) retry gera o mesmo request_id e NAO autoriza outro dispatch');
 const repetida = await reservarCotaIA(env, {
@@ -133,6 +135,21 @@ checar('retry nao autoriza chamar o upstream de novo', repetida.permitido, false
 checar('retry explicitamente idempotente', repetida.estado, 'ja_reservado');
 checar('mesmo request id enviado', chamadas[1].payload.p_request_id, idA);
 
+const envSecret = {
+  ...env,
+  SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_teste_opaco_somente_servidor',
+};
+await reservarCotaIA(envSecret, {
+  userId: USER_ID,
+  familia: FAMILIAS_COTA_IA.OPENROUTER,
+  requestId: 'request-chave-opaca-0001',
+  limiteGlobal: 1000,
+  limiteUsuario: 30,
+});
+const headersSecret = chamadas.at(-1)?.init.headers as Record<string, string>;
+checar('chave sb_secret segue no apikey', headersSecret.apikey, envSecret.SUPABASE_SERVICE_ROLE_KEY);
+verdadeiro('chave sb_secret nunca vira Bearer JWT', !('Authorization' in headersSecret));
+
 console.log('\n4) familias sao independentes mesmo com request_id igual');
 const whisper = await reservarCotaIA(env, {
   userId: USER_ID,
@@ -143,8 +160,8 @@ const whisper = await reservarCotaIA(env, {
   unidades: 94,
 });
 checar('Whisper ganha reserva propria', whisper.estado, 'permitido');
-checar('familia Whisper no payload', chamadas[2].payload.p_familia, 'whisper');
-checar('Whisper reserva neuronios, nao apenas 1 request', chamadas[2].payload.p_unidades, 94);
+checar('familia Whisper no payload', chamadas.at(-1)?.payload.p_familia, 'whisper');
+checar('Whisper reserva neuronios, nao apenas 1 request', chamadas.at(-1)?.payload.p_unidades, 94);
 
 console.log('\n5) limites negam, mas retornam estado conhecido');
 respostaForcada = [{

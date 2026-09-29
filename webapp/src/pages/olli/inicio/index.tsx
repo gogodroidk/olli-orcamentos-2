@@ -44,6 +44,11 @@ import { WelcomeHeader } from "./WelcomeHeader";
 export default function Inicio() {
 	const orcQ = useOlliList<OrcamentoRow>("orcamentos", { orderBy: "criado_em", ascending: false });
 	const recQ = useOlliList<ReciboRow>("recibos", { orderBy: "criado_em", ascending: false });
+	const osQ = useOlliList<{ orcamento_id: string | null; status: string }>("ordens_servico", {
+		orderBy: "atualizado_em",
+		ascending: false,
+		colunas: "orcamento_id,status",
+	});
 	// Leitura mínima só para saber SE existe cliente (1 linha, 1 coluna) — não entra
 	// em nenhum cálculo, serve só para o gate do onboarding abaixo.
 	const cliQ = useOlliList<{ id?: string | null }>("clientes", { limit: 1, colunas: "id" });
@@ -57,6 +62,10 @@ export default function Inicio() {
 	// isto lia só `empresaLinha.nome`, que NÃO é coluna de `empresa` — o nome do dono
 	// nunca chegava ao texto de cobrança.
 	const nomeEmpresa = (empresa?.nome ?? (empresaLinha?.nome as string | undefined) ?? "").trim() || undefined;
+	const orcamentosFinalizados = useMemo(
+		() => new Set((osQ.data ?? []).filter((os) => os.status === "concluida" && os.orcamento_id).map((os) => String(os.orcamento_id))),
+		[osQ.data],
+	);
 
 	// Conta claramente NOVA: as duas consultas TERMINARAM com sucesso (não é
 	// "carregando" nem "erro" travestido de vazio) e as duas vieram vazias. Só aí
@@ -70,8 +79,8 @@ export default function Inicio() {
 	// MESMO dinheiro: calcular duas vezes seria criar a chance de a faixa do topo e o
 	// cartão logo abaixo discordarem sobre quanto o dono tem a receber.
 	const radarDinheiro = useMemo(
-		() => (orcQ.data && recQ.data ? listarDinheiroParado(orcQ.data, recQ.data) : null),
-		[orcQ.data, recQ.data],
+		() => (orcQ.data && recQ.data && osQ.isSuccess ? listarDinheiroParado(orcQ.data, recQ.data, new Date(), orcamentosFinalizados) : null),
+		[orcQ.data, recQ.data, osQ.isSuccess, orcamentosFinalizados],
 	);
 	const aReceber = radarDinheiro;
 	const recebido = useMemo(() => (recQ.data ? calcularRecebidoNoMes(recQ.data) : null), [recQ.data]);
@@ -80,6 +89,7 @@ export default function Inicio() {
 	const recarregarTudo = () => {
 		orcQ.refetch();
 		recQ.refetch();
+		osQ.refetch();
 	};
 
 	// Aviso âmbar = dado que ficou FORA da conta. Some quando não há nada a avisar.
@@ -110,8 +120,8 @@ export default function Inicio() {
 			 */}
 			<RadarDinheiroCard
 				radar={radarDinheiro}
-				isLoading={orcQ.isLoading || recQ.isLoading}
-				isError={orcQ.isError || recQ.isError}
+				isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
+				isError={orcQ.isError || recQ.isError || osQ.isError}
 				onRetry={recarregarTudo}
 				empresa={empresa}
 			/>
@@ -159,8 +169,8 @@ export default function Inicio() {
 					to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
 					Icon={Wallet}
 					color="#F59E0B"
-					isLoading={orcQ.isLoading || recQ.isLoading}
-					isError={orcQ.isError || recQ.isError}
+					isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
+					isError={orcQ.isError || recQ.isError || osQ.isError}
 					onRetry={recarregarTudo}
 				/>
 

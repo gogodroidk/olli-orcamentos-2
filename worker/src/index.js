@@ -192,6 +192,11 @@ function autopilotWorkersAiConfigurada(env, pathname) {
     && env?.AI && typeof env.AI.run === 'function';
 }
 
+function autopilotConfigurado(env, pathname) {
+  return pathname === '/ia/autopilot/preview'
+    && (aiConfigurada(env) || autopilotWorkersAiConfigurada(env, pathname));
+}
+
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
 REGRAS DE OURO (inquebráveis):
@@ -249,7 +254,8 @@ function erroDaReservaCota(reserva) {
   if (reserva && reserva.estado === 'ja_reservado') {
     return json({ ok: false, erro: 'requisicao_repetida' }, 409);
   }
-  return json({ ok: false, erro: 'limite_indisponivel' }, 503);
+  const diagnostico = typeof reserva?.detalhe === 'string' ? reserva.detalhe : undefined;
+  return json({ ok: false, erro: 'limite_indisponivel', ...(diagnostico ? { diagnostico } : {}) }, 503);
 }
 
 function listaSaida(valor, maxItens, maxTexto) {
@@ -288,11 +294,23 @@ function sanitizarParaFiltro(v) {
   return encodeURIComponent(String(v || '').replace(/[,()*]/g, ''));
 }
 
+/** Headers server-side compatíveis com service_role legado e sb_secret moderno. */
+function supabaseServerHeaders(env, extra = {}) {
+  const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string'
+    ? env.SUPABASE_SERVICE_ROLE_KEY.trim()
+    : '';
+  const headers = { apikey: serviceRole, ...extra };
+  if (!serviceRole.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceRole}`;
+  }
+  return headers;
+}
+
 /** GET autenticado (service role) na REST do Supabase. [] em qualquer falha — nunca lança. */
 async function supabaseRest(env, path, signal) {
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
-      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+      headers: supabaseServerHeaders(env),
       signal,
     });
     if (!r.ok) return [];
@@ -641,7 +659,7 @@ const CNPJ_CACHE_V = 2;
 
 // Headers de service_role para o cache de CNPJ (mesmo padrão inline do resto do worker).
 function cnpjCacheHeaders(env, extra) {
-  return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, ...(extra || {}) };
+  return supabaseServerHeaders(env, extra || {});
 }
 
 // Lê o cache (public.cnpj_cache): devolve os `dados` se houver linha com < 30 dias;
@@ -1139,7 +1157,7 @@ const handler = {
         ok: true,
         service: 'olli-diagnostico',
         ia: aiConfigurada(env) ? 'on' : 'off',
-        autopilot: autopilotWorkersAiConfigurada(env, '/ia/autopilot/preview') ? 'on' : 'off',
+        autopilot: autopilotConfigurado(env, '/ia/autopilot/preview') ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
       });

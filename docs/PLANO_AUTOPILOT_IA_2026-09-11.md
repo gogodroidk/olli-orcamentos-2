@@ -3,6 +3,12 @@
 Data: 11/09/2026
 Escopo: primeira fatia executável no checkout canônico e no staging.
 
+Visão posterior: a estratégia de WhatsApp, catálogo de clientes, backoffice autônomo,
+fornecedores e monetização foi consolidada em
+[`PESQUISAS/2026-09-25_OLLI_AUTOPILOT_WHATSAPP_ECOSSISTEMA.md`](PESQUISAS/2026-09-25_OLLI_AUTOPILOT_WHATSAPP_ECOSSISTEMA.md).
+Este documento continua sendo a fonte da primeira fatia técnica; a visão posterior não
+autoriza conexão externa, envio, cobrança, compra nem produção.
+
 ## 1. O que o Autopilot deve resolver
 
 O prestador pode colar uma conversa, anexar um CSV/JSON, PDF, print do

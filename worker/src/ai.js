@@ -12,13 +12,17 @@ const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 const AUDIO_BASE64_MAX_CHARS = 4_000_000;
 
 export const OPENROUTER_MODELOS_PADRAO = Object.freeze([
-  // Todos são gratuitos, texto→texto e anunciam `response_format` +
+  // Todos são gratuitos, geram texto e anunciam `response_format` +
   // `structured_outputs` no catálogo oficial. Isso é obrigatório porque a
   // mesma cadeia atende respostas livres e JSON Schema com
   // `require_parameters:true`; um modelo sem esse contrato quebraria voz,
   // diagnóstico ou orçamento mesmo que o chat simples parecesse funcionar.
-  'nvidia/nemotron-3-super-120b-a12b:free',
-  'z-ai/glm-5.2:free',
+  // A lista é explícita e auditável; não usa `openrouter/free`, que escolhe
+  // um modelo aleatório e pode mudar o contrato sem uma alteração do OLLI.
+  // Nex Mini é mais leve que o Nemotron 120B e tende a ter capacidade
+  // gratuita disponível quando os endpoints maiores estão cheios.
+  'nex-agi/nex-n2.5-mini:free',
+  'nex-agi/nex-n2.5-pro:free',
   'liquid/lfm-2.5-2.6b:free',
 ]);
 
@@ -183,9 +187,12 @@ async function gerarOpenRouter(
     max_tokens: Math.round(numeroLimitado(maxTokens, wantJson ? 1_800 : 1_200, 64, 4_096)),
     provider: {
       data_collection: 'deny',
-      // O Worker controla o fallback por modelo e contabiliza cada tentativa.
-      // Desliga também o failover interno de endpoint/provedor do OpenRouter.
-      allow_fallbacks: false,
+      // O Worker continua controlando a cadeia de MODELOS e contabilizando cada
+      // tentativa. Dentro do modelo gratuito escolhido, o OpenRouter pode usar
+      // outro endpoint gratuito equivalente quando o primeiro estiver cheio;
+      // isso não troca o modelo, não habilita cobrança e evita transformar uma
+      // indisponibilidade transitória de um provedor em erro 503 para o usuário.
+      allow_fallbacks: true,
       ...(wantJson ? { require_parameters: true } : {}),
     },
     ...(wantJson ? { response_format: respostaEstruturada } : {}),
@@ -241,6 +248,14 @@ async function gerarOpenRouter(
     if (!response.ok) {
       // Não lê, devolve nem registra o corpo do provedor: ele pode repetir
       // prompt, transcrição ou conteúdo de cliente.
+      // O status e o modelo são metadados operacionais seguros e permitem
+      // distinguir rate-limit/capacidade de erro de configuração sem guardar
+      // a mensagem enviada pelo usuário.
+      console.warn('[olli-worker] openrouter_provider_status', {
+        model,
+        status: response.status,
+        tentativa: indice + 1,
+      });
       if (response.body && typeof response.body.cancel === 'function') {
         await response.body.cancel().catch(() => {});
       }

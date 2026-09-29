@@ -150,10 +150,11 @@ type Props = {
 };
 
 export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, onAbrir }: Props) {
+	const finalizado = coluna.id === "finalizados";
 	const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
 		id: cartao.id,
 		data: { colunaId: coluna.id },
-		disabled: salvando,
+		disabled: salvando || finalizado,
 	});
 	// Sem blob (linha corrompida/legada) não há documento para abrir — mesma trava da
 	// lista de Orçamentos (`MenuDaLinha`): o corpo fica visível, mas não clicável.
@@ -200,7 +201,7 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 			    Só a alça e o menu voltam a receber (`pointer-events-auto`). */}
 			<div className="pointer-events-none relative z-10">
 				<div className="flex items-center gap-1.5">
-					<button
+					{!finalizado && <button
 						type="button"
 						ref={setActivatorNodeRef}
 						{...listeners}
@@ -215,13 +216,13 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 						)}
 					>
 						<GripVertical className="size-4" aria-hidden />
-					</button>
+					</button>}
 
 					<span className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-text-secondary">
 						{cartao.numero}
 					</span>
 
-					<DropdownMenu>
+					{finalizado ? <span className="ml-auto shrink-0 text-[11px] font-medium text-primary">OS concluída</span> : <DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
 								variant="ghost"
@@ -263,7 +264,7 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 								</div>
 							))}
 						</DropdownMenuContent>
-					</DropdownMenu>
+					</DropdownMenu>}
 				</div>
 
 				<Miolo cartao={cartao} coluna={coluna} salvando={salvando} />

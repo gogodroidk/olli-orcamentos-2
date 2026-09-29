@@ -157,6 +157,7 @@ export function listarDinheiroParado(
 	orcamentos: OrcamentoRow[],
 	recibos: ReciboRow[],
 	agora: Date = new Date(),
+	orcamentosFinalizados: ReadonlySet<string> = new Set(),
 ): RadarDinheiro {
 	// Quanto já entrou por orçamento.
 	const recebidoPorOrc = new Map<string, number>();
@@ -175,6 +176,7 @@ export function listarDinheiroParado(
 	let quitados = 0;
 
 	for (const o of orcamentos) {
+		if (orcamentosFinalizados.has((o.id ?? "").trim())) continue;
 		const s = slug(o.status);
 		if (!aReceber.has(s)) continue;
 		const v = valorOrcamento(o);
@@ -234,8 +236,8 @@ export function listarDinheiroParado(
  * dinheiro parado são o MESMO dinheiro, e agora saem da mesma passagem de código —
  * não há como um dizer R$ 2.340 e o outro R$ 1.900 na mesma tela.
  */
-export function calcularAReceber(orcamentos: OrcamentoRow[], recibos: ReciboRow[]): SomaAReceber {
-	const { total, itens, semValor, jaRecebido, quitados } = listarDinheiroParado(orcamentos, recibos);
+export function calcularAReceber(orcamentos: OrcamentoRow[], recibos: ReciboRow[], orcamentosFinalizados: ReadonlySet<string> = new Set()): SomaAReceber {
+	const { total, itens, semValor, jaRecebido, quitados } = listarDinheiroParado(orcamentos, recibos, new Date(), orcamentosFinalizados);
 	return { total, itens, semValor, jaRecebido, quitados };
 }
 

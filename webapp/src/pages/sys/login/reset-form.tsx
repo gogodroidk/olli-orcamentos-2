@@ -7,7 +7,7 @@ import { Icon } from "@/components/icon";
 import { supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
 import { Button } from "@/ui/button";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
@@ -68,6 +68,7 @@ function ResetForm() {
 						}}
 						render={({ field }) => (
 							<FormItem>
+								<FormLabel>E-mail</FormLabel>
 								<FormControl>
 									<Input type="email" autoComplete="email" placeholder={t("sys.login.email")} {...field} />
 								</FormControl>

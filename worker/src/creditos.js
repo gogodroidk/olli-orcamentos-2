@@ -50,14 +50,19 @@ export const JANELA_IDEM_MS = 10 * 60 * 1000;
 // quem paga não consome cota nem crédito na IA de voz.
 const PLANOS_IA_ILIMITADA = new Set(['pro', 'empresa']);
 
-// headers de service_role — o mesmo padrão dos outros módulos (sbHeaders vive em
-// index.js; aqui recebemos `env` e montamos direto para o módulo ser autocontido).
+// Headers de acesso servidor ao Supabase. O JWT `service_role` legado pode ser
+// enviado como Bearer; a chave opaca moderna `sb_secret_...` NAO e JWT e deve ir
+// somente em `apikey` (como exige a documentacao atual do Supabase). Envia-la em
+// Authorization faz o gateway devolver `Invalid JWT` antes de chegar ao PostgREST.
 function sbHeaders(env, extra = {}) {
-  return {
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    ...extra,
-  };
+  const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string'
+    ? env.SUPABASE_SERVICE_ROLE_KEY.trim()
+    : '';
+  const headers = { apikey: serviceRole, ...extra };
+  if (!serviceRole.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceRole}`;
+  }
+  return headers;
 }
 
 /**
@@ -427,20 +432,24 @@ export async function preautorizarUsoIa(env, user, opts = {}) {
       `${env.SUPABASE_URL}/rest/v1/ia_uso_gratis` +
         `?user_id=eq.${encodeURIComponent(user.id)}` +
         `&periodo=eq.${encodeURIComponent(periodo)}` +
-        '&acao=eq.voz_ia&select=id&limit=1',
+        `&acao=eq.voz_ia&select=id&limit=${IA_GRATIS_MES + 1}`,
       {
-        headers: sbHeaders(env, {
-          Prefer: 'count=exact',
-          Range: '0-0',
-        }),
+        headers: sbHeaders(env, { Accept: 'application/json' }),
       },
     );
     if (!r.ok) {
       console.error('[olli-creditos] preauth_cota_status', r.status);
       return { permitido: false, motivo: 'indisponivel' };
     }
+    // O gateway novo de chaves pode omitir `Content-Range` mesmo quando o
+    // PostgREST respondeu 200. Leia também o corpo limitado: a tabela guarda
+    // no máximo a cota do mês e `limit` deixa essa leitura pequena e previsível.
     const faixa = r.headers.get('content-range') || '';
-    const total = Number(faixa.split('/')[1]);
+    const totalFaixa = Number(faixa.split('/')[1]);
+    const linhas = await r.json().catch(() => null);
+    const total = Number.isFinite(totalFaixa)
+      ? totalFaixa
+      : Array.isArray(linhas) ? linhas.length : NaN;
     if (!Number.isFinite(total)) {
       console.error('[olli-creditos] preauth_cota_sem_contagem');
       return { permitido: false, motivo: 'indisponivel' };

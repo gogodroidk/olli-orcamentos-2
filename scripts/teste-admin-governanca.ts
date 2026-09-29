@@ -25,11 +25,24 @@ console.log('\nAdmin OLLI — governança e fail-closed');
 
 const html = await handleAdmin(new Request('https://api.exemplo/admin'), baseEnv, new URL('https://api.exemplo/admin'));
 const pagina = await html.text();
+const codigoAdmin = fs.readFileSync('worker/src/admin.js', 'utf8');
+const corpoRelatorio = codigoAdmin.match(/async function userReport\([\s\S]*?\n}\n/)?.[0] || '';
 const csp = html.headers.get('content-security-policy') || '';
 checar('painel usa nonce no script', /<script nonce="[a-f0-9]{36}">/.test(pagina));
 checar('CSP não libera script unsafe-inline', !/script-src[^;]*unsafe-inline/.test(csp));
 checar('token fica em sessionStorage', pagina.includes("sessionStorage.getItem('olli_admin_tok')"));
 checar('token não fica em localStorage', !pagina.includes("localStorage.getItem('olli_admin_tok')"));
+checar(
+  'MFA lista fatores pelo usuário autenticado, como o SDK oficial',
+  /async function listarFatoresMfa\(\)\{[\s\S]*?authFetch\('user'\)[\s\S]*?j&&j\.factors/.test(pagina)
+    && !/async function listarFatoresMfa\(\)\{[\s\S]*?authFetch\('factors'\)/.test(pagina),
+);
+checar('sessão admin preserva refresh token só na aba', pagina.includes("sessionStorage.getItem('olli_admin_refresh')") && !pagina.includes("localStorage.getItem('olli_admin_refresh')"));
+checar('campo MFA usa autocomplete móvel refletido no DOM', pagina.includes("autocomplete:'one-time-code'") && !pagina.includes("autoComplete:'one-time-code'"));
+checar('botão MFA só libera com seis números', pagina.includes("save.disabled=true") && pagina.includes("save.disabled=code.value.length!==6") && pagina.includes("code.value.replace(/\\D/g,'')"));
+checar('admin resume atividade por usuário sem conteúdo sensível', codigoAdmin.includes('user_activity_log?select=user_id,id,evento,plataforma,criado_em') && codigoAdmin.includes("frequencia = 'frequente'"));
+checar('admin exporta relatório TXT com auditoria', codigoAdmin.includes("/admin/api/user/report") && codigoAdmin.includes("usuario_relatorio_txt") && codigoAdmin.includes("Content-Disposition"));
+checar('admin não exporta prompt, resposta ou token', !corpoRelatorio.includes('prompt') && !corpoRelatorio.includes('access_token'));
 
 const semLimiter = await handleAdmin(
   new Request('https://api.exemplo/admin/api/metrics'),
@@ -109,6 +122,16 @@ try {
   checar('AAL1 é negado antes de consulta service-role', consultasDetalhe === consultasAntes);
   const detalheAal2 = await detalhe('aal2');
   checar('AAL2 owner pode consultar detalhe sintético', detalheAal2.status === 200 && consultasDetalhe > consultasAntes);
+
+  const report = async (aal: 'aal1' | 'aal2') => {
+    const url = new URL(`https://api.exemplo/admin/api/user/report?id=${alvo}&motivo=auditoria%20operacional`);
+    return handleAdmin(new Request(url, { headers: { Authorization: `Bearer ${token(aal)}` } }), baseEnv, url);
+  };
+  const reportAal1 = await report('aal1');
+  checar('relatório TXT exige AAL2', reportAal1.status === 403);
+  const reportAal2 = await report('aal2');
+  const reportText = await reportAal2.text();
+  checar('AAL2 owner gera relatório TXT auditado', reportAal2.status === 200 && reportAal2.headers.get('content-type')?.startsWith('text/plain') && reportText.includes('OLLI — relatório operacional'));
 
   // Todas as leituras que enxergam mais de um tenant também exigem AAL2. Uma
   // senha AAL1 não pode abrir métricas, lista global, feedback, administradores

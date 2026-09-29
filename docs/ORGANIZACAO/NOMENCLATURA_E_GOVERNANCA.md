@@ -12,7 +12,8 @@
 | Nome | Significado |
 | --- | --- |
 | `C:\OLLI_REL` | Código canônico |
-| `OLLI - CENTRAL DO PROJETO` | Hub de navegação |
+| `OLLI Orçamentos Master` | Pasta central humana e hub de navegação |
+| `OLLI - CENTRAL DO PROJETO` | Junction de compatibilidade; não criar conteúdo novo por este nome |
 | `OLLI ORCAMENTOS` | Raiz legada do Google Drive; nome preservado por sincronização |
 | `HUB OLLI DUPLICADO ESTATICO AAAA-MM-DD` | Cópia congelada, não canônica |
 | `_Arquivo OLLI` | Retenção histórica |
@@ -67,4 +68,3 @@ Um “ponto único” significa navegação e governança únicas, não copiar g
 para uma pasta. A central usa junctions para preservar os caminhos dos quais
 Git, Drive e ferramentas dependem. Isso evita duplicação, quebra de sync e perda
 de histórico.
-

@@ -137,6 +137,7 @@ const ALVOS: Alvo[] = [
 			'/stripe/faturas',
 			'/stripe/metodo',
 			'/stripe/portal',
+			'/stripe/status',
 		],
 		donoDoPix: null,
 		donosDoCartao: [

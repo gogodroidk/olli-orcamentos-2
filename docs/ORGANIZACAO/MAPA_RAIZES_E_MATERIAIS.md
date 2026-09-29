@@ -1,6 +1,7 @@
 # Mapa de raízes, códigos e materiais do OLLI
 
-Data do inventário: **2026-09-03**
+Data do inventário: **2026-09-03**, com rota central atualizada em
+**2026-09-22**.
 Método: leitura local, sem seguir junctions, sem abrir secrets e com diretórios
 de dependências/cache excluídos das comparações.
 
@@ -9,7 +10,8 @@ de dependências/cache excluídos das comparações.
 | Caminho | Classe | Papel | Regra |
 | --- | --- | --- | --- |
 | `C:\OLLI_REL` | **CANÔNICO** | Produto atual e controles do piloto | Único local para editar código atual |
-| `Desktop\OLLI - CENTRAL DO PROJETO` | HUB | Índice por junctions | Navegação; não é checkout |
+| `Desktop\OLLI Orçamentos Master` | MASTER/HUB | Índice por junctions e administração | Ponto central humano; não é checkout |
+| `Desktop\OLLI - CENTRAL DO PROJETO` | COMPATIBILIDADE | Junction para o Master | Não é segunda central |
 | `Desktop\OLLI ORCAMENTOS` | DRIVE/HISTÓRICO | Materiais sincronizados e repo antigo | Não mover; não usar como código atual |
 | `Desktop\Projetos OLLI\olli-orcamentos` | GIT-BASE/HISTÓRICO | Git common-dir e checkout-base | Não editar como produto atual |
 | `C:\olli` | CLONE LEGADO | Branch antiga e builds locais | Somente consulta; contém config local não inspecionada |

@@ -51,13 +51,13 @@
     // Drift deliberadamente não promovido nesta janela: o deploy do dispatch
     // preservou por override a lista que já estava remota. Revalidar esta lista
     // local antes do próximo deploy sem override.
-    "OPENROUTER_TEXT_MODELS": "nvidia/nemotron-3-super-120b-a12b:free,z-ai/glm-5.2:free,liquid/lfm-2.5-2.6b:free",
+    "OPENROUTER_TEXT_MODELS": "nex-agi/nex-n2.5-mini:free,nex-agi/nex-n2.5-pro:free,liquid/lfm-2.5-2.6b:free",
     "OPENROUTER_SITE_URL": "https://olliorcamentos.online",
     "OPENROUTER_APP_NAME": "OLLI Orcamentos",
     // Reservas diárias pessimistas: uma tentativa enviada ao provedor conta
     // mesmo se terminar em timeout/429. Há margem para outras automações.
-    "OPENROUTER_GLOBAL_DAILY_LIMIT": "40",
-    "OPENROUTER_USER_DAILY_LIMIT": "10",
+    "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
+    "OPENROUTER_USER_DAILY_LIMIT": "100",
     // Whisper é contado em neurônios estimados, não em requests. 46,63/min;
     // 8.000 ≈ 171 min/dia e 940 ≈ 20 min/dia por usuário.
     "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
@@ -96,11 +96,11 @@
         "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
         "AI_PROVIDER": "openrouter",
         "AUTOPILOT_WORKERS_AI_ENABLED": "true",
-        "OPENROUTER_TEXT_MODELS": "nvidia/nemotron-3-super-120b-a12b:free,z-ai/glm-5.2:free,liquid/lfm-2.5-2.6b:free",
+        "OPENROUTER_TEXT_MODELS": "nex-agi/nex-n2.5-mini:free,nex-agi/nex-n2.5-pro:free,liquid/lfm-2.5-2.6b:free",
         "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
         "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",
-        "OPENROUTER_GLOBAL_DAILY_LIMIT": "40",
-        "OPENROUTER_USER_DAILY_LIMIT": "10",
+        "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
+        "OPENROUTER_USER_DAILY_LIMIT": "100",
         "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
         "WHISPER_USER_DAILY_LIMIT": "940",
         "GEMINI_MODEL": "gemini-2.5-flash",

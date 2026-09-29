@@ -31,6 +31,7 @@
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
 import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { paraBr } from "@/olli/datas";
@@ -60,7 +61,7 @@ import {
 } from "./precos";
 import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
-import { BotaoPortalStripe } from "./portal";
+import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
 import { iniciarTrialPro, obterEstadoOfertaComercial } from "@/olli/cota-envios";
 import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS, type EstadoOfertaComercial } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
@@ -155,6 +156,15 @@ export default function Planos() {
 	// OLLI sai do documento (olli/marcaRegra.ts): a regra de quem é dono da conta
 	// mora num lugar só.
 	const membroNaoDono = !contexto.isLoading && !contexto.isError && ehMembroNaoDono(contexto.data?.papel);
+	const consultarStatusStripe = !membroNaoDono && !!resumo && resumo.planoContratado !== "gratis";
+	const statusStripe = useQuery({
+		queryKey: ["olli", "stripe", "status"],
+		queryFn: obterStatusPortalStripe,
+		enabled: consultarStatusStripe,
+		staleTime: 60_000,
+		retry: 1,
+	});
+	const acessoAdministrativo = statusStripe.isSuccess && statusStripe.data.origem === "administrativa";
 
 	// Sem leitura confiável, NENHUM plano é marcado como atual: marcar "Grátis" por
 	// padrão seria exatamente o rebaixamento que esta tela existe para evitar.
@@ -220,7 +230,7 @@ export default function Planos() {
 				<CardErro mensagem={(error as Error)?.message} aoTentar={() => refetch()} tentando={isFetching} />
 			) : resumo ? (
 				<div className="space-y-3">
-					<CardStatus resumo={resumo} />
+					<CardStatus resumo={resumo} acessoAdministrativo={acessoAdministrativo} />
 					{acessoPorPix(resumo) ? (
 						<>
 							{pixLigado && (
@@ -232,9 +242,11 @@ export default function Planos() {
 							{/* Sem cliente na Stripe não há o que gerenciar nem cancelar: Pix não tem assinatura. */}
 							{resumo.temClienteStripe && <BotaoPortalStripe rotulo="Ver faturas no Portal da Stripe" />}
 						</>
-					) : (
-						resumo.planoContratado !== "gratis" && <BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />
-					)}
+					) : consultarStatusStripe && statusStripe.isLoading ? (
+						<Skeleton className="h-10 w-80 rounded-lg" />
+					) : statusStripe.data?.gerenciavel ? (
+						<BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />
+					) : null}
 				</div>
 			) : null}
 
@@ -368,7 +380,7 @@ function CardMembro() {
 	);
 }
 
-function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
+function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAssinatura; acessoAdministrativo?: boolean }) {
 	const nome = resumo.origem === "trial" ? "Pro" : nomeDoPlano(resumo.planoContratado);
 	const quando = dataBr(resumo.proximaCobranca);
 
@@ -378,6 +390,21 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 				tom="success"
 				titulo="Seu teste Pro está ativo"
 				texto={`${quando ? `Você tem os recursos Pro até ${quando}. ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
+			/>
+		);
+	}
+
+	if (resumo.origem === "admin" || acessoAdministrativo) {
+		return (
+			<Faixa
+				tom="success"
+				titulo={`${nome} liberado administrativamente`}
+				texto={`${quando ? `Acesso liberado até ${quando}. ` : ""}Esta conta não possui cobrança automática nem assinatura Stripe para cancelar.`}
+				acao={{
+					rotulo: "Falar sobre meu acesso",
+					href: linkWhatsApp(`Olá! Quero falar sobre o acesso administrativo ao plano ${nome} no OLLI.`),
+					discreta: true,
+				}}
 			/>
 		);
 	}

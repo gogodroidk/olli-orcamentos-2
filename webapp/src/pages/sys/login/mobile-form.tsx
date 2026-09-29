@@ -62,9 +62,9 @@ function MobileForm() {
 		setSecond(60);
 	};
 
-	const onFinish = (values: MobileFormValues) => {
-		console.log("Received values of form: ", values);
-	};
+	// Fluxo mantido fora da tela enquanto nao existe backend OTP. Nunca registre
+	// telefone nem codigo, mesmo em um caminho hoje inacessivel.
+	const onFinish = (_values: MobileFormValues) => {};
 
 	return (
 		<Form {...form}>

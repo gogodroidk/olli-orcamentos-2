@@ -1,18 +1,29 @@
+import { Loader2 } from "lucide-react";
 import { Navigate } from "react-router";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
 import SettingButton from "@/layouts/components/setting-button";
-import { useUserToken } from "@/store/userStore";
+import { useAuthHydrated, useUserToken } from "@/store/userStore";
 import BrandHero from "./components/BrandHero";
 import LoginForm from "./login-form";
-import MobileForm from "./mobile-form";
 import { LoginProvider } from "./providers/login-provider";
-import QrCodeFrom from "./qrcode-form";
 import RegisterForm from "./register-form";
 import ResetForm from "./reset-form";
 
 function LoginPage() {
 	const token = useUserToken();
+	const authHydrated = useAuthHydrated();
+
+	if (!authHydrated) {
+		return (
+			<div className="grid min-h-svh place-items-center bg-background" role="status" aria-live="polite">
+				<div className="flex items-center gap-3 text-sm text-muted-foreground">
+					<Loader2 className="size-5 animate-spin" aria-hidden />
+					Verificando sua sessão…
+				</div>
+			</div>
+		);
+	}
 
 	if (token.accessToken) {
 		return <Navigate to={GLOBAL_CONFIG.defaultRoute} replace />;
@@ -31,8 +42,6 @@ function LoginPage() {
 					<div className="w-full max-w-xs">
 						<LoginProvider>
 							<LoginForm />
-							<MobileForm />
-							<QrCodeFrom />
 							<RegisterForm />
 							<ResetForm />
 						</LoginProvider>

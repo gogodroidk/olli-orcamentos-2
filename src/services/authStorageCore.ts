@@ -70,6 +70,8 @@ async function apagarPartes(seguro: StorageSeguro, chave: string, manifesto: Man
 export class AuthStorageSeguro {
   private readonly legado: StorageAsync;
   private readonly seguro: StorageSeguro;
+  /** Supabase pode persistir a sessão mais de uma vez em paralelo (login + refresh). */
+  private filaEscrita: Promise<void> = Promise.resolve();
 
   constructor(legado: StorageAsync, seguro: StorageSeguro) {
     this.legado = legado;
@@ -84,6 +86,13 @@ export class AuthStorageSeguro {
     await this.legado.setItem(INSTALL_MARKER_KEY, '1');
   }
 
+  private enfileirar<T>(tarefa: () => Promise<T>): Promise<T> {
+    const proxima = this.filaEscrita.then(tarefa);
+    // A fila continua viva mesmo quando uma operação individual falha.
+    this.filaEscrita = proxima.then(() => undefined, () => undefined);
+    return proxima;
+  }
+
   async getItem(chave: string): Promise<string | null> {
     const [marcador, legado, manifesto] = await Promise.all([
       this.legado.getItem(INSTALL_MARKER_KEY),
@@ -93,10 +102,21 @@ export class AuthStorageSeguro {
 
     if (!marcador && !legado) {
       if (manifesto) {
-        await this.seguro.deleteItemAsync(chaveManifesto(chave)).catch(() => {});
-        await apagarPartes(this.seguro, chave, manifesto);
+        // O marcador fica no AsyncStorage e pode ser perdido isoladamente por
+        // migração/restore do sandbox. Se o manifesto + partes seguros estão
+        // íntegros, preservar a sessão é mais correto que transformar isso em
+        // logout; reinstalação real limpa o SecureStore junto com o app.
+        const partes = await Promise.all(
+          Array.from({ length: manifesto.partes }, (_, indice) =>
+            this.seguro.getItemAsync(chaveParte(chave, manifesto.geracao, indice)),
+          ),
+        );
+        if (partes.every((parte): parte is string => parte !== null)) {
+          await this.marcarInstalacao().catch(() => {});
+          return partes.join('');
+        }
       }
-      await this.marcarInstalacao();
+      await this.marcarInstalacao().catch(() => {});
       return null;
     }
 
@@ -107,12 +127,16 @@ export class AuthStorageSeguro {
         ),
       );
       if (partes.some((parte) => parte === null)) return null;
-      if (!marcador) await this.marcarInstalacao();
+      if (!marcador) await this.marcarInstalacao().catch(() => {});
+      // Uma falha antiga ao apagar o plaintext nao pode manter uma segunda
+      // copia para sempre. A sessao segura ja esta completa; tente limpar de
+      // novo sem transformar uma indisponibilidade do AsyncStorage em logout.
+      if (legado) await this.legado.removeItem(chave).catch(() => {});
       return partes.join('');
     }
 
     if (!legado) {
-      if (!marcador) await this.marcarInstalacao();
+      if (!marcador) await this.marcarInstalacao().catch(() => {});
       return null;
     }
 
@@ -124,7 +148,7 @@ export class AuthStorageSeguro {
     }
   }
 
-  async setItem(chave: string, valor: string): Promise<void> {
+  private async escreverItem(chave: string, valor: string): Promise<void> {
     const anterior = await this.lerManifesto(chave);
     const partes = dividir(valor);
     if (partes.length > MAX_CHUNKS) throw new Error('auth_storage_payload_muito_grande');
@@ -137,21 +161,32 @@ export class AuthStorageSeguro {
         await this.seguro.setItemAsync(chaveParte(chave, geracao, indice), partes[indice]);
         gravadas.push(indice);
       }
+      // O manifesto e o ponto de commit: ele so passa a apontar para a nova
+      // geracao depois de todas as partes existirem. Metadados auxiliares nao
+      // podem desfazer esse commit nem apagar a sessao recem-publicada.
       await this.seguro.setItemAsync(chaveManifesto(chave), JSON.stringify(novo));
-      await this.marcarInstalacao();
-      await this.legado.removeItem(chave);
     } catch (erro) {
       await Promise.all(gravadas.map((indice) => this.seguro.deleteItemAsync(chaveParte(chave, geracao, indice)).catch(() => {})));
       throw erro;
     }
 
+    await this.marcarInstalacao().catch(() => {});
+    await this.legado.removeItem(chave).catch(() => {});
     await apagarPartes(this.seguro, chave, anterior);
   }
 
-  async removeItem(chave: string): Promise<void> {
+  async setItem(chave: string, valor: string): Promise<void> {
+    return this.enfileirar(() => this.escreverItem(chave, valor));
+  }
+
+  private async removerItem(chave: string): Promise<void> {
     const manifesto = await this.lerManifesto(chave).catch(() => null);
     await this.seguro.deleteItemAsync(chaveManifesto(chave)).catch(() => {});
     await apagarPartes(this.seguro, chave, manifesto);
     await this.legado.removeItem(chave).catch(() => {});
+  }
+
+  async removeItem(chave: string): Promise<void> {
+    return this.enfileirar(() => this.removerItem(chave));
   }
 }
