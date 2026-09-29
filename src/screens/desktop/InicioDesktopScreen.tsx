@@ -15,6 +15,7 @@ import { EtaChip } from '../../components/EtaChip';
 import { StatusBadge } from '../../components/StatusBadge';
 import { GatePro } from '../../components/GatePro';
 import { EmptyState } from '../../components/EmptyState';
+import { LembreteAssinaturaFaixa } from '../../components/LembreteAssinaturaFaixa';
 import {
   getEmpresa, getClientes, getRecibos,
   getOrcamentosAgregadoPorStatus, getContasAReceberAgregado, getUltimosOrcamentos,
@@ -27,6 +28,7 @@ import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../
 import { getCurrentUser } from '../../services/supabase';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { usePermissao } from '../../hooks/usePermissao';
+import { useLembreteAssinatura } from '../../hooks/useLembreteAssinatura';
 import { abrirWhatsApp } from '../../utils/pdfGenerator';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
@@ -101,6 +103,9 @@ export default function InicioDesktopScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { ehEmpresa, papel, pode, carregando: permCarregando } = usePermissao();
+  // Lembrete de assinatura (regra única em services/lembreteAssinatura.ts). Chamado
+  // antes dos early-returns (regra dos hooks); só o painel do dono/gestor o mostra.
+  const lembreteAssinatura = useLembreteAssinatura();
   // Breakpoint explícito da fileira de 4 KPIs: em 1024-1279px (mínimo do modo
   // desktop) 4×220 + gaps não cabe na largura útil e a quebra automática do
   // flex-wrap cai pra um 2+2 desalinhado — força 2 colunas simétricas até
@@ -437,6 +442,15 @@ export default function InicioDesktopScreen() {
 
   return (
     <LayoutDesktop titulo={`${saudacao()}, ${primeiroNome}`} subtitulo={subtitulo}>
+      {/* Lembrete de assinatura — some sozinho quando não há nada a lembrar. */}
+      <LembreteAssinaturaFaixa
+        lembrete={lembreteAssinatura.lembrete}
+        onAcao={lembreteAssinatura.executar}
+        onDispensar={lembreteAssinatura.dispensar}
+        iniciandoTrial={lembreteAssinatura.iniciandoTrial}
+        style={styles.lembreteAssinatura}
+      />
+
       {/* KPIs — clicáveis, cada um leva à lista que o explica */}
       <View style={styles.kpiGrid}>
         <KpiCard
@@ -838,6 +852,7 @@ function VazioAgenda({ irParaAgenda }: { irParaAgenda: () => void }) {
 }
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
+  lembreteAssinatura: { marginBottom: Spacing.lg },
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

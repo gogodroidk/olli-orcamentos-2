@@ -33,7 +33,6 @@
 import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 import { paraBr } from "@/olli/datas";
 // A leitura da assinatura saiu daqui para `olli/marcaDocumento`: ela ganhou um
 // SEGUNDO leitor (o gerador de documentos, que decide se o selo OLLI sai) e duas
@@ -62,9 +61,10 @@ import {
 import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
-import { iniciarTrialPro, obterEstadoOfertaComercial } from "@/olli/cota-envios";
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS, type EstadoOfertaComercial } from "@limites-comerciais";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
+import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
+import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -119,20 +119,16 @@ export default function Planos() {
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
 	const [periodo, setPeriodo] = useState<PeriodoCobranca>(() => intencao?.periodo ?? "mensal");
 	const [checkout, setCheckout] = useState<EstadoCheckout>({ plano: null, carregando: false, erro: null });
-	const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
+	// Mesma query do lembrete de assinatura: iniciar o teste aqui atualiza a faixa junto.
+	const ofertaQ = useQuery(opcoesOfertaComercial);
+	const oferta = ofertaQ.data ?? null;
 	const [iniciandoTrial, setIniciandoTrial] = useState(false);
 	// Pix só aparece quando o worker CONFIRMA que está ligado; até lá (e se falhar), nada de Pix.
 	const [pixLigado, setPixLigado] = useState(false);
 	// Pix aberto: o período fica congelado no clique (mexer no seletor atrás do diálogo não troca o valor).
 	const [pixAberto, setPixAberto] = useState<{ plano: "pro" | "empresa"; periodo: PeriodoCobranca } | null>(null);
 
-	async function carregarOferta() {
-		setOferta(await obterEstadoOfertaComercial());
-	}
-
-	useEffect(() => {
-		void carregarOferta();
-	}, []);
+	const carregarOferta = () => ofertaQ.refetch();
 
 	useEffect(() => {
 		let ativo = true;
@@ -185,16 +181,45 @@ export default function Planos() {
 
 	async function comecarTrial() {
 		setIniciandoTrial(true);
-		const inicio = await iniciarTrialPro();
-		if (!inicio) {
-			setIniciandoTrial(false);
-			toast.error("Não foi possível iniciar o teste. Confirme a conexão e tente novamente; o teste não foi consumido.");
-			return;
-		}
-		await Promise.all([refetch(), carregarOferta()]);
+		await comecarTesteProComAviso(() => Promise.all([refetch(), carregarOferta()]));
 		setIniciandoTrial(false);
-		toast.success(`Pro liberado até ${new Date(inicio.terminaEm).toLocaleDateString("pt-BR")}. Sem cobrança automática.`);
 	}
+
+	// Plano que o Pix renova: o vigente comprado por Pix ou o que venceu (voltou ao Grátis).
+	const planoParaRenovarPix: "pro" | "empresa" | null =
+		!resumo || isError || membroNaoDono
+			? null
+			: acessoPorPix(resumo)
+				? resumo.planoEfetivo
+				: resumo.planoEfetivo === "gratis" && resumo.planoContratado !== "gratis"
+					? resumo.planoContratado
+					: null;
+	const cardRenovarPixVisivel = !!resumo && !isError && !membroNaoDono && acessoPorPix(resumo) && pixLigado;
+	const cardTrialVisivel = !membroNaoDono && oferta?.trialEstado === "eligible" && resumo?.planoEfetivo === "gratis";
+
+	function irParaCatalogo() {
+		document.getElementById("escolha-seu-plano")?.scrollIntoView({ behavior: "smooth", block: "start" });
+	}
+
+	function renovarComPix() {
+		if (planoParaRenovarPix && pixLigado) setPixAberto({ plano: planoParaRenovarPix, periodo: "mensal" });
+		else irParaCatalogo();
+	}
+
+	// `?renovar=pix` (vindo do lembrete de outra tela): abre o Pix do plano atual assim
+	// que assinatura e Pix estiverem confirmados. Uma vez só — e o parâmetro sai da URL
+	// para recarregar a página não reabrir a cobrança.
+	const [pedidoRenovarPix, setPedidoRenovarPix] = useState(
+		() => new URLSearchParams(window.location.search).get(PARAM_RENOVAR_PIX) === "pix",
+	);
+	useEffect(() => {
+		if (!pedidoRenovarPix || !pixLigado || !planoParaRenovarPix) return;
+		setPedidoRenovarPix(false);
+		setPixAberto({ plano: planoParaRenovarPix, periodo: "mensal" });
+		const url = new URL(window.location.href);
+		url.searchParams.delete(PARAM_RENOVAR_PIX);
+		window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+	}, [pedidoRenovarPix, pixLigado, planoParaRenovarPix]);
 
 	return (
 		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">
@@ -218,6 +243,23 @@ export default function Planos() {
 					</div>
 				</Card>
 			) : null}
+
+			{/*
+			 * Lembrete de assinar/renovar (mesma regra do app). Some quando esta tela já
+			 * mostra o mesmo estado: o card "Renovar com Pix", o card do teste grátis, o
+			 * status de plano vencido e o convite genérico (a tela inteira já é o convite).
+			 */}
+			<LembreteAssinaturaFaixa
+				className="mb-5"
+				aoIrParaPlanos={irParaCatalogo}
+				aoRenovarPix={renovarComPix}
+				ocultar={(l) =>
+					l.tipo === "assinar" ||
+					l.tipo === "plano_vencido" ||
+					(l.tipo === "renovar_pix" && cardRenovarPixVisivel) ||
+					(l.tipo === "trial_disponivel" && cardTrialVisivel)
+				}
+			/>
 
 			{/* ─── 1. O SEU ESTADO (o mais importante da tela) ─── */}
 			{contexto.isLoading ? (
@@ -250,7 +292,7 @@ export default function Planos() {
 				</div>
 			) : null}
 
-			{!membroNaoDono && oferta?.trialEstado === "eligible" && resumo?.planoEfetivo === "gratis" ? (
+			{cardTrialVisivel ? (
 				<Card className="mt-4 gap-0 border-primary/35 bg-primary/5 p-5">
 					<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 						<div className="flex items-start gap-3">
@@ -273,7 +315,10 @@ export default function Planos() {
 			) : null}
 
 			{/* ─── 2. O CATÁLOGO ─── */}
-			<div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+			<div
+				id="escolha-seu-plano"
+				className="mt-8 flex scroll-mt-4 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+			>
 				<h2 className="text-base font-semibold text-text-primary">Escolha seu plano</h2>
 				<SeletorPeriodo periodo={periodo} aoMudar={setPeriodo} />
 			</div>

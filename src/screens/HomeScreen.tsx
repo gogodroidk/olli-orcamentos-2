@@ -36,8 +36,10 @@ import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
 import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
+import { LembreteAssinaturaFaixa } from '../components/LembreteAssinaturaFaixa';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
+import { useLembreteAssinatura } from '../hooks/useLembreteAssinatura';
 import { track, Eventos } from '../services/analytics';
 
 /** Quantos clientes do radar o plano Grátis mostra completos (o resto vira teaser bloqueado). */
@@ -126,6 +128,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Lembrete de assinatura (regra única em services/lembreteAssinatura.ts); relê a cada foco.
+  const lembreteAssinatura = useLembreteAssinatura();
 
   /**
    * Cores do hero, derivadas do fundo EFETIVO (véu achatado sobre `background`).
@@ -507,6 +511,17 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* LEMBRETE DE ASSINATURA — logo abaixo do cumprimento. Some sozinho quando
+            não há nada a lembrar (inclusive conta nova sem orçamento); fora da web
+            não oferece compra (regra das lojas em services/lembreteAssinaturaLoja.ts). */}
+        <LembreteAssinaturaFaixa
+          lembrete={lembreteAssinatura.lembrete}
+          onAcao={lembreteAssinatura.executar}
+          onDispensar={lembreteAssinatura.dispensar}
+          iniciandoTrial={lembreteAssinatura.iniciandoTrial}
+          style={styles.lembreteAssinatura}
+        />
 
         {/* PALCO DO DINHEIRO PARADO — a PRIMEIRA coisa depois do cumprimento.
             Os radares de cobrança e de follow-up já existiam e acertavam; o que
@@ -1063,6 +1078,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
+  lembreteAssinatura: { marginHorizontal: Spacing.base, marginTop: Spacing.sm, marginBottom: Spacing.sm },
   greeting: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '500' },
   name: { fontSize: 21, fontWeight: '800', color: c.onBackground, marginTop: 1 },
   company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },

@@ -20,6 +20,7 @@ const clienteLinkStub = fileURLToPath(new URL("./src/shims/clienteLink.web.ts", 
 // no tsconfig. Ambos os arquivos são TypeScript puro, sem imports, seguros de empacotar.
 const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.meta.url));
 const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
+const lembreteAssinaturaFonte = fileURLToPath(new URL("../src/services/lembreteAssinatura.ts", import.meta.url));
 const sentryScrubFonte = fileURLToPath(new URL("../src/services/sentryScrub.ts", import.meta.url));
 const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
@@ -70,6 +71,7 @@ export default defineConfig(({ mode }) => {
 				// preço da landing e entitlements do app, empacotados como valor.
 				"@precos": precosFonte,
 				"@entitlements": entitlementsFonte,
+				"@lembreteAssinatura": lembreteAssinaturaFonte,
 				"@sentry-scrub": sentryScrubFonte,
 				"@verticais": verticaisFonte,
 				"@vertical-segmento": verticalSegmentoFonte,

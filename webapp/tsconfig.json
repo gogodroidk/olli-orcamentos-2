@@ -51,6 +51,9 @@
 			// app e o worker leem (`src/services/entitlements.ts`), para o comparativo
 			// nunca prometer recurso que o produto não entrega. Módulo puro, zero imports.
 			"@entitlements": ["../src/services/entitlements.ts"],
+			// LEMBRETE DE ASSINATURA — a MESMA regra de "que lembrete de pagar esta conta vê"
+			// que o app usa, para painel e celular nunca cobrarem diferente. Módulo puro.
+			"@lembreteAssinatura": ["../src/services/lembreteAssinatura.ts"],
 			"@plano-efetivo": ["../src/services/planoEfetivo.ts"],
 			"@verticais": ["../src/services/verticais.ts"],
 			"@vertical-segmento": ["../src/services/verticalSegmento.ts"],

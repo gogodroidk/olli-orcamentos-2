@@ -2,6 +2,7 @@ import type { Empresa } from "@dominio";
 import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { LembreteAssinaturaFaixa } from "@/pages/olli/planos/LembreteAssinaturaFaixa";
 import { ClientesEsfriandoCard } from "./ClientesEsfriandoCard";
 import { FaixaHoje } from "./FaixaHoje";
 import {
@@ -109,6 +110,13 @@ export default function Inicio() {
 	return (
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
 			<WelcomeHeader />
+
+			{/*
+			 * Lembrete de assinar/renovar — mesma regra do app (limite do Grátis, teste do
+			 * Pro acabando, Pix vencendo). Acima de tudo porque, quando é crítico, é o que
+			 * trava o trabalho do dia. Sem dado confirmado não aparece nada.
+			 */}
+			<LembreteAssinaturaFaixa />
 
 			{contaNova && <PrimeirosPassosCard />}
 
