@@ -28,8 +28,9 @@ jobs:
 
       # Não separar typecheck/teste aqui: o preflight roda `npm test` e também
       # fecha lint (catraca), contraste, Doctor, config de release e o
-      # meta-teste que garante que todo teste novo está ligado ao gate. Assim um futuro Git/Cloudflare build não pode ficar
-      # verde só porque executou um subconjunto antigo da suíte.
+      # meta-teste que garante que todo teste novo está ligado ao gate. Assim
+      # um futuro Git/Cloudflare build não pode ficar verde só porque executou
+      # um subconjunto antigo da suíte.
       - name: Preflight completo
         run: npm run preflight
 
