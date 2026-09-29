@@ -40,6 +40,7 @@
  */
 import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { rateOkSensivel } from './rateLimit.js';
+import { getAssinatura } from './stripe.js';
 
 const ABACATE_API = 'https://api.abacatepay.com/v2';
 
@@ -146,6 +147,43 @@ async function abacateFetch(env, caminho, init = {}) {
   }
 }
 
+/** Maior folga aceita entre a criação da cobrança e o `inicio` gravado nela. */
+const INICIO_MAX_MS = 400 * 864e5;
+
+/**
+ * De quando conta o período que esta cobrança compra. RENOVAR NÃO PODE COMER DIAS:
+ * se o MESMO plano ainda está ativo, o novo período começa no fim do atual; senão
+ * (grátis, vencido, ou troca de plano), começa agora. Vai gravado NA cobrança
+ * (metadata.inicio) no momento em que ela é criada — por isso liberar de novo a
+ * mesma cobrança dá a mesma vigência, e o replay não soma meses.
+ * Falha ao ler a assinatura → começa agora (o cliente perde no máximo os dias que
+ * faltavam; nunca ganha meses de graça).
+ */
+async function inicioDoPeriodo(env, userId, planoAlvo) {
+  const agora = Date.now();
+  const atual = await getAssinatura(env, userId);
+  if (!atual || atual.error) return new Date(agora).toISOString();
+  const fim = atual.current_period_end ? Date.parse(atual.current_period_end) : NaN;
+  const ativo = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status);
+  if (ativo && atual.plano === planoAlvo && Number.isFinite(fim) && fim > agora) {
+    return new Date(fim).toISOString();
+  }
+  return new Date(agora).toISOString();
+}
+
+/**
+ * Data-base da vigência, lida da cobrança: `metadata.inicio` quando é coerente com
+ * a criação (não antes dela, nem mais de ~13 meses depois); senão `createdAt`.
+ */
+function baseDaVigencia(cobranca) {
+  const criado = Date.parse(cobranca.createdAt);
+  const inicio = Date.parse(cobranca.metadata && cobranca.metadata.inicio);
+  if (Number.isFinite(criado) && Number.isFinite(inicio) && inicio >= criado - 60_000 && inicio - criado <= INICIO_MAX_MS) {
+    return new Date(inicio).toISOString();
+  }
+  return cobranca.createdAt;
+}
+
 /**
  * externalId = `olli:pl:<userId>:<pedidoId>:<planoKey>` — mesmo formato do Pix de
  * plano do Mercado Pago. Devolve { userId, planoKey } ou null.
@@ -196,13 +234,14 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   if (!situacao) return { estado: 'indisponivel' };
   if (situacao.status !== 'PAID') return { estado: 'pendente' };
 
-  // Vigência a partir da CRIAÇÃO da cobrança: é imutável (o `updatedAt` do `get`
-  // vem em cache) e fica a no máximo 1h do pagamento, porque o Pix expira em 1h.
-  // Data fixa = liberar de novo dá a mesma vigência (ver concederPlanoPeriodo).
+  // Vigência a partir de uma data GRAVADA na cobrança (o início do período, ou a
+  // criação) — nunca de "agora" nem do `updatedAt` (que vem em cache). Data fixa =
+  // liberar de novo dá a mesma vigência (ver concederPlanoPeriodo). A criação fica
+  // a no máximo 1h do pagamento, porque o Pix expira em 1h.
   const res = await concederPlanoPeriodo(env, {
     userId: vinculo.userId,
     planoKey: vinculo.planoKey,
-    dataAprovacao: cobranca.createdAt,
+    dataAprovacao: baseDaVigencia(cobranca),
   });
   return { estado: res.ok ? 'liberado' : 'indisponivel' };
 }
@@ -227,6 +266,7 @@ async function criarPixPlano(request, env) {
   if (!plano) return json({ ok: false, erro: 'plano_invalido' }, 400);
 
   const externalId = `olli:pl:${user.id}:${crypto.randomUUID()}:${plano.id}`;
+  const inicio = await inicioDoPeriodo(env, user.id, plano.plano);
   const data = await abacateFetch(env, '/transparents/create', {
     method: 'POST',
     body: JSON.stringify({
@@ -236,7 +276,7 @@ async function criarPixPlano(request, env) {
         expiresIn: 3600,
         description: descricaoAbacate(plano.nome),
         externalId,
-        metadata: { externalId },
+        metadata: { externalId, inicio },
       },
     }),
   });
@@ -250,6 +290,7 @@ async function criarPixPlano(request, env) {
     status: data.status || 'PENDING',
     expiresAt: data.expiresAt || null,
     plano: { id: plano.id, nome: plano.nome, meses: plano.meses, valor: plano.valor },
+    inicio,
   });
 }
 

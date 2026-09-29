@@ -20,16 +20,17 @@
  *
  * ═══ CHECKOUT DE VERDADE ═══
  * Pro e Empresa, mensal ou anual, abrem o Stripe Checkout pelo worker (`checkout.ts`).
- * CARTÃO → STRIPE. PIX → MERCADO PAGO (e, hoje, Pix só existe para recarregar créditos,
- * na tela de Créditos do app — o painel não vende Pix). Decisão do dono, textual: "deixe
- * os pagamentos do CARTÃO no STRIPE, e os pagamentos PIX no MERCADO PAGO". O OLLI não
- * vende assinatura por cartão no Mercado Pago (`/mp/plano/assinatura`): se aparecer um
- * botão daqui apontando para `/mp/`, é regressão e o gate
- * `scripts/teste-roteamento-pagamento.ts` reprova. Mapa: docs/ENXAME/PAGAMENTOS_ROTEAMENTO.md.
+ * CARTÃO → STRIPE (`checkout.ts`). PIX DO PLANO → `/abacate/*` (`pix.ts` + `DialogPix.tsx`),
+ * decisão do dono de 29/09/2026: o checkout só de cartão perdeu um cliente real. O botão
+ * "Pagar com Pix" só aparece quando `/abacate/config` diz `pix:true` — nunca há Pix de
+ * mentira. O Pix não renova sozinho (paga-se 1 mês ou 12 meses e, no vencimento, de novo).
+ * O OLLI não vende assinatura por cartão no Mercado Pago (`/mp/plano/assinatura`): se
+ * aparecer um botão daqui apontando para `/mp/`, é regressão. A recarga de créditos por Pix
+ * continua na tela de Créditos do app. Mapa: docs/ENXAME/PAGAMENTOS_ROTEAMENTO.md.
  * Qualquer falha vira um estado honesto com "Tentar de novo" e o WhatsApp como
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
-import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, RotateCw, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { paraBr } from "@/olli/datas";
@@ -47,6 +48,8 @@ import { Skeleton } from "@/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { cn } from "@/utils";
 import { type FalhaCheckout, iniciarCheckout, type PlanoCheckout } from "./checkout";
+import { DialogPix } from "./DialogPix";
+import { type PlanoPix, pixDisponivel } from "./pix";
 import { nomeDoPlano, type PlanoBase, PLANOS_BASE } from "./planos-base";
 import {
 	DESCONTO_ANUAL_ROTULO,
@@ -82,6 +85,27 @@ function idCheckout(plano: "pro" | "empresa", periodo: PeriodoCobranca): PlanoCh
 	return periodo === "anual" ? "empresa_anual" : "empresa";
 }
 
+/** Resolve (plano + período) na chave do catálogo de Pix do worker (`PLANO_PIX`). */
+function idPix(plano: "pro" | "empresa", periodo: PeriodoCobranca): PlanoPix {
+	return `${plano}_${periodo === "anual" ? "anual" : "mensal"}`;
+}
+
+/**
+ * Plano PAGO, vigente, sem assinatura na Stripe = acesso comprado por Pix (não renova sozinho).
+ * Só `renovaSozinho === false` afirma isso; `undefined` (não consegui ler) cai na tela de sempre.
+ * O tipo estreita o plano para pro/empresa, os únicos que têm Pix.
+ */
+function acessoPorPix(
+	resumo: ResumoAssinatura,
+): resumo is ResumoAssinatura & { planoEfetivo: "pro" | "empresa"; renovaSozinho: false } {
+	return (
+		resumo.ativo &&
+		resumo.origem === "pagamento" &&
+		resumo.renovaSozinho === false &&
+		(resumo.planoEfetivo === "pro" || resumo.planoEfetivo === "empresa")
+	);
+}
+
 /** Estado do checkout em andamento — um por vez, com erro visível (nunca silencioso). */
 interface EstadoCheckout {
 	plano: PlanoId | null;
@@ -96,6 +120,10 @@ export default function Planos() {
 	const [checkout, setCheckout] = useState<EstadoCheckout>({ plano: null, carregando: false, erro: null });
 	const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
 	const [iniciandoTrial, setIniciandoTrial] = useState(false);
+	// Pix só aparece quando o worker CONFIRMA que está ligado; até lá (e se falhar), nada de Pix.
+	const [pixLigado, setPixLigado] = useState(false);
+	// Pix aberto: o período fica congelado no clique (mexer no seletor atrás do diálogo não troca o valor).
+	const [pixAberto, setPixAberto] = useState<{ plano: "pro" | "empresa"; periodo: PeriodoCobranca } | null>(null);
 
 	async function carregarOferta() {
 		setOferta(await obterEstadoOfertaComercial());
@@ -103,6 +131,16 @@ export default function Planos() {
 
 	useEffect(() => {
 		void carregarOferta();
+	}, []);
+
+	useEffect(() => {
+		let ativo = true;
+		void pixDisponivel().then((ligado) => {
+			if (ativo) setPixLigado(ligado);
+		});
+		return () => {
+			ativo = false;
+		};
 	}, []);
 
 	// A tabela `assinaturas` é lida pelo MEU user_id — mas quem é membro não-dono
@@ -183,7 +221,20 @@ export default function Planos() {
 			) : resumo ? (
 				<div className="space-y-3">
 					<CardStatus resumo={resumo} />
-					{resumo.planoContratado !== "gratis" && <BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />}
+					{acessoPorPix(resumo) ? (
+						<>
+							{pixLigado && (
+								<CardRenovarPix
+									plano={resumo.planoEfetivo}
+									aoRenovar={(periodoRenovacao) => setPixAberto({ plano: resumo.planoEfetivo, periodo: periodoRenovacao })}
+								/>
+							)}
+							{/* Sem cliente na Stripe não há o que gerenciar nem cancelar: Pix não tem assinatura. */}
+							{resumo.temClienteStripe && <BotaoPortalStripe rotulo="Ver faturas no Portal da Stripe" />}
+						</>
+					) : (
+						resumo.planoContratado !== "gratis" && <BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />
+					)}
 				</div>
 			) : null}
 
@@ -228,9 +279,26 @@ export default function Planos() {
 						aoAssinar={() => {
 							if (p.id === "pro" || p.id === "empresa") assinar(p.id);
 						}}
+						pixDisponivel={pixLigado}
+						aoPagarComPix={() => {
+							if (p.id === "pro" || p.id === "empresa") setPixAberto({ plano: p.id, periodo });
+						}}
 					/>
 				))}
 			</div>
+
+			{pixAberto ? (
+				<DialogPix
+					// `key` = uma cobrança nova por abertura (nunca reaproveita QR de outra escolha).
+					key={`${pixAberto.plano}-${pixAberto.periodo}`}
+					plano={idPix(pixAberto.plano, pixAberto.periodo)}
+					nomePlano={nomeDoPlano(pixAberto.plano)}
+					aoFechar={() => setPixAberto(null)}
+					// O servidor já liberou o plano: relê a assinatura e a oferta (some o trial, marca "plano atual").
+					aoPago={() => void Promise.all([refetch(), carregarOferta()])}
+					linkWhatsApp={linkWhatsApp}
+				/>
+			) : null}
 
 			{/* ─── 3. O COMPARATIVO (a verdade linha a linha) ─── */}
 			<h2 className="mb-3 mt-10 text-base font-semibold text-text-primary">Comparar recurso a recurso</h2>
@@ -239,7 +307,15 @@ export default function Planos() {
 			<p className="mt-6 text-xs text-text-secondary">
 				Pro e Empresa você assina agora, direto por aqui: escolha mensal ou anual (o anual sai {DESCONTO_ANUAL_ROTULO}{" "}
 				mais barato) e o pagamento <strong>no cartão</strong> abre em seguida, no ambiente seguro da Stripe — renova
-				automaticamente e você cancela quando quiser pelo Portal da Stripe. Se precisar de ajuda, o WhatsApp continua disponível.
+				automaticamente e você cancela quando quiser pelo Portal da Stripe.
+				{pixLigado ? (
+					<>
+						{" "}
+						Prefere <strong>Pix</strong>? Use "Pagar com Pix": ele libera 1 mês (ou 12, no anual) e não renova sozinho —
+						perto do vencimento você paga de novo.
+					</>
+				) : null}{" "}
+				Se precisar de ajuda, o WhatsApp continua disponível.
 			</p>
 		</div>
 	);
@@ -327,6 +403,23 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 		);
 	}
 
+	// ATIVO POR PIX — não há renovação automática nem cancelamento: dizer "renova
+	// automaticamente" aqui seria mentira.
+	if (acessoPorPix(resumo)) {
+		return (
+			<Faixa
+				tom="success"
+				titulo={`${nome} ativo`}
+				texto={`${quando ? `Acesso até ${quando}. ` : ""}Pagamento por Pix não renova sozinho.`}
+				acao={{
+					rotulo: "Falar sobre minha assinatura",
+					href: linkWhatsApp(`Olá! Quero falar sobre a minha assinatura do plano ${nome} no OLLI.`),
+					discreta: true,
+				}}
+			/>
+		);
+	}
+
 	// ATIVO.
 	if (resumo.ativo) {
 		const teste = resumo.status === "trialing";
@@ -383,6 +476,43 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
 			}}
 		/>
+	);
+}
+
+/** Renovar o plano atual por Pix. Os preços vêm da mesma fonte do catálogo (`precoDoPlano`). */
+function CardRenovarPix({
+	plano,
+	aoRenovar,
+}: {
+	plano: "pro" | "empresa";
+	aoRenovar: (periodo: PeriodoCobranca) => void;
+}) {
+	const preco = precoDoPlano(plano);
+	if (!preco) return null;
+	return (
+		<Card className="gap-0 border-border p-5">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+				<div className="flex items-start gap-3">
+					<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+						<QrCode className="size-5" aria-hidden />
+					</span>
+					<div>
+						<p className="font-semibold text-text-primary">Renovar com Pix</p>
+						<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">
+							Os dias que faltam não se perdem: a renovação começa quando o seu acesso atual termina.
+						</p>
+					</div>
+				</div>
+				<div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+					<Button variant="outline" className="min-h-[44px]" onClick={() => aoRenovar("mensal")}>
+						Renovar 1 mês com Pix — {reais(preco.mensalCentavos)}
+					</Button>
+					<Button className="min-h-[44px]" onClick={() => aoRenovar("anual")}>
+						Renovar 1 ano com Pix — {reais(preco.anualCentavos)}
+					</Button>
+				</div>
+			</div>
+		</Card>
 	);
 }
 
@@ -471,6 +601,8 @@ function CardPlano({
 	carregando,
 	erro,
 	aoAssinar,
+	pixDisponivel,
+	aoPagarComPix,
 }: {
 	plano: PlanoBase;
 	periodo: PeriodoCobranca;
@@ -481,6 +613,9 @@ function CardPlano({
 	carregando: boolean;
 	erro: FalhaCheckout | null;
 	aoAssinar: () => void;
+	/** O worker confirmou que o Pix está ligado. Sem isso, nenhum botão de Pix. */
+	pixDisponivel: boolean;
+	aoPagarComPix: () => void;
 }) {
 	const ehAtual = atual === true;
 	const preco = precoDoPlano(plano.id);
@@ -560,6 +695,18 @@ function CardPlano({
 								`Assinar ${plano.nome}`
 							)}
 						</Button>
+
+						{pixDisponivel && (
+							<Button
+								variant="secondary"
+								className="mt-2 min-h-[44px] w-full"
+								onClick={aoPagarComPix}
+								disabled={carregando}
+							>
+								<QrCode className="size-4" aria-hidden />
+								Pagar com Pix
+							</Button>
+						)}
 
 						{erro && (
 							<div

@@ -71,10 +71,10 @@ function resposta(obj: unknown, status = 200): Response {
   return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function cobranca(id: string, userId: string, planoKey: string, amount: number, status = 'PAID', devMode = false) {
+function cobranca(id: string, userId: string, planoKey: string, amount: number, status = 'PAID', devMode = false, inicio?: string) {
   cobrancas[id] = {
     id, amount, status, devMode, createdAt: '2026-09-29T18:00:30.289Z', updatedAt: PAGO_EM,
-    metadata: { externalId: `olli:pl:${userId}:pedido-${id}:${planoKey}` },
+    metadata: { externalId: `olli:pl:${userId}:pedido-${id}:${planoKey}`, ...(inicio ? { inicio } : {}) },
   };
 }
 
@@ -164,6 +164,16 @@ console.log('\n2. criar cobrança');
   checar('descrição sem "·" nem acento (a API recusa)', criadas[0]?.data?.description, 'OLLI Pro - 1 mes');
   checar('descrição cabe em 37', descricaoAbacate('OLLI Empresa · 1 ano ' + 'x'.repeat(50)).length, 37);
   checar('criar NÃO libera plano', escritas.length, 0);
+  checar('sem plano ativo, o período começa agora', Math.abs(Date.parse(criadas[0]?.data?.metadata?.inicio) - Date.now()) < 60_000, true);
+
+  // Renovação antecipada: Pro ativo até daqui a 5 dias → o novo mês começa no fim.
+  const fimAtual = new Date(Date.now() + 5 * 864e5).toISOString();
+  linhaAssinatura = { user_id: USER, plano: 'pro', status: 'active', current_period_end: fimAtual };
+  await chamar(envProd, 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'pro_mensal' } });
+  checar('renovar o MESMO plano cedo começa no fim do atual (não come dias)', criadas[2]?.data?.metadata?.inicio, fimAtual);
+  await chamar(envProd, 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'empresa_mensal' } });
+  checar('trocar de plano começa agora', Math.abs(Date.parse(criadas[3]?.data?.metadata?.inicio) - Date.now()) < 60_000, true);
+  linhaAssinatura = null;
   const semRl = await chamar(envCom({ ABACATE_RL: undefined }), 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'pro_mensal' } });
   checar('sem limitador = fail-closed 429', semRl.status, 429);
 }
@@ -200,6 +210,16 @@ console.log('\n3. polling (/status)');
   reset();
   const lixo = await chamar(envProd, 'GET', '/abacate/status?id=../../x', { jwt: 'jwt-user' });
   checar('id malformado = 400 sem chamar a API', [lixo.status, chamadasAbacate], [400, 0]);
+
+  reset();
+  cobranca('pix_renova', USER, 'pro_mensal', 3900, 'PAID', false, '2026-10-20T00:00:00.000Z');
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_renova', { jwt: 'jwt-user' });
+  checar('renovação: vigência = início gravado + 1 mês', escritas[0]?.current_period_end, '2026-11-20T00:00:00.000Z');
+
+  reset();
+  cobranca('pix_inicio_absurdo', USER, 'pro_mensal', 3900, 'PAID', false, '2030-01-01T00:00:00.000Z');
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_inicio_absurdo', { jwt: 'jwt-user' });
+  checar('início fora da janela é ignorado (usa a criação)', escritas[0]?.current_period_end, '2026-10-29T18:00:30.289Z');
 }
 
 console.log('\n4. webhook');

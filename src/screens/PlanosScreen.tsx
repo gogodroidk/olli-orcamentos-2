@@ -35,6 +35,8 @@ import {
   type PeriodoCobranca,
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
+import { PixPlanoModal } from '../components/PixPlanoModal';
+import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -290,6 +292,18 @@ export default function PlanosScreen() {
   const [planoErro, setPlanoErro] = useState(false);
   const [fontePlano, setFontePlano] = useState<PlanoAtual['fonte']>('indisponivel');
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | null>(null);
+  // Pix do plano (AbacatePay). `pixLigado` só vira true quando o worker confirma
+  // que o Pix está ligado DE VERDADE — sem isso, nenhum botão de Pix aparece.
+  const [pixLigado, setPixLigado] = useState(false);
+  const [cobrancaPix, setCobrancaPix] = useState<CobrancaPixPlano | null>(null);
+  const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
+
+  useEffect(() => {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
+    let vivo = true;
+    pixPlanoDisponivel().then((ok) => { if (vivo) setPixLigado(ok); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
 
   // Semeia com o plano do cache local ANTES da leitura de rede, para NÃO piscar
   // a página de venda para quem já é pagante (a "conta limpa" da Frente 2).
@@ -466,6 +480,51 @@ export default function PlanosScreen() {
     }
   }
 
+  // Pix (AbacatePay): paga o período da aba (1 ou 12 meses), sem renovação
+  // automática. Mesmas guardas de loja e de sessão do cartão.
+  async function pagarComPix(p: Plano) {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixLigado) return;
+    if (p.id !== 'pro' && p.id !== 'empresa') return;
+    if (!acoesPlanoDisponiveis) {
+      Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
+      return;
+    }
+    const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
+    if (!sessao) {
+      Alert.alert('Faça login primeiro', `Para assinar o plano ${p.nome}, entre com sua conta OLLI.`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+      ]);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    setPixEmAndamento(p.id);
+    try {
+      const c = await criarPixPlano(chavePixPlano(p.id, periodo));
+      if (!c) {
+        Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
+        return;
+      }
+      setCobrancaPix(c);
+    } finally {
+      setPixEmAndamento(null);
+    }
+  }
+
+  const aoPixPago = useCallback(() => { void carregarPlano(); }, [carregarPlano]);
+
+  async function gerarNovoPix() {
+    const atual = cobrancaPix;
+    setCobrancaPix(null);
+    if (!atual) return;
+    const c = await criarPixPlano(atual.plano.id);
+    if (!c) {
+      Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
+      return;
+    }
+    setCobrancaPix(c);
+  }
+
   // 12× no cartão: só o Pro tem produto avulso. Força o checkout 'pro_12x'
   // (valor cheio do ano), independentemente da aba mensal/anual selecionada.
   function pagar12x(p: Plano) {
@@ -638,6 +697,9 @@ export default function PlanosScreen() {
                 onPress={() => escolher(p)}
                 onFalarSuporte={() => falarComSuporte(p)}
                 onPagar12x={() => pagar12x(p)}
+                pixLigado={pixLigado}
+                carregandoPix={pixEmAndamento === p.id}
+                onPagarPix={() => { void pagarComPix(p); }}
               />
             );
             // Desktop: cada card numa célula flex (larguras iguais). Sem a entrada
@@ -655,7 +717,9 @@ export default function PlanosScreen() {
             (assinatura que renova, 12x no cartão) que este aparelho não faz;
             mantido sem alteração no Android/web, onde a compra é real. */}
         {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
-        <Text style={styles.rodape}>Plano se paga no cartão, no ambiente seguro da Stripe. Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. (O Pix do OLLI é só para recarregar créditos, em Conta → Créditos.) 💙</Text>
+        <Text style={styles.rodape}>{pixLigado
+          ? 'No cartão (Stripe), mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. No Pix, você paga 1 mês ou 1 ano de uma vez, sem renovação automática: perto do vencimento, paga de novo. 💙'
+          : 'Plano se paga no cartão, no ambiente seguro da Stripe. Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. 💙'}</Text>
         )}
         </>
         )}
@@ -664,6 +728,12 @@ export default function PlanosScreen() {
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
         <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} />
       </ScrollView>
+      <PixPlanoModal
+        cobranca={cobrancaPix}
+        aoFechar={() => { setCobrancaPix(null); void carregarPlano(); }}
+        aoPago={aoPixPago}
+        aoGerarNovo={() => { void gerarNovoPix(); }}
+      />
     </View>
   );
 }
@@ -678,6 +748,9 @@ function PlanoCard({
   onPress,
   onFalarSuporte,
   onPagar12x,
+  pixLigado,
+  carregandoPix,
+  onPagarPix,
 }: {
   plano: Plano;
   periodo: Periodo;
@@ -688,6 +761,9 @@ function PlanoCard({
   onPress: () => void;
   onFalarSuporte: () => void;
   onPagar12x: () => void;
+  pixLigado: boolean;
+  carregandoPix: boolean;
+  onPagarPix: () => void;
 }) {
   const cores = useCores();
   const gradientes = useGradientes();
@@ -827,6 +903,24 @@ function PlanoCard({
           )}
         </TouchableOpacity>
       )}
+
+      {/* Pix (AbacatePay): paga o período da aba de uma vez, sem renovação
+          automática. Só aparece com o Pix ligado de verdade no worker e onde há
+          compra (web) — iPhone e Android da Play seguem sem compra no app. */}
+      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && pixLigado && !plano.atual && (plano.id === 'pro' || plano.id === 'empresa') && preco ? (
+        <TouchableOpacity style={[styles.ctaOutline, styles.ctaPix, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagarPix} activeOpacity={0.85} disabled={carregandoPix || carregandoPlano || !acoesDisponiveis} accessibilityRole="button" accessibilityState={{ disabled: carregandoPix || carregandoPlano || !acoesDisponiveis }}>
+          {carregandoPix ? (
+            <ActivityIndicator size="small" color={cores.primaryLight} />
+          ) : (
+            <>
+              <MaterialCommunityIcons name="qrcode" size={17} color={cores.primaryLight} />
+              <Text style={styles.ctaOutlineText}>
+                {periodo === 'anual' ? `Pagar com Pix — ${reais(preco.anualCentavos)} (1 ano)` : `Pagar com Pix — ${reais(preco.mensalCentavos)} (1 mês)`}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : null}
 
       {/* Pro: pagar em 12× no cartão. iOS: escondido (é compra). Fica DEPOIS do
           CTA principal e é claramente secundário — a verdade sobre o custo já
@@ -1047,6 +1141,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ctaGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 14, marginTop: Spacing.lg },
   ctaGradText: { fontSize: 15, fontWeight: '800' },
   ctaOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, borderWidth: 1.5, borderColor: c.primaryLight, backgroundColor: comAlfa(c.primaryLight, 0.10) },
+  ctaPix: { marginTop: Spacing.sm },
   ctaOutlineText: { fontSize: 14.5, fontWeight: '800', color: c.primaryLight },
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: c.successLight, borderWidth: 1, borderColor: comAlfa(c.success, 0.3) },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: c.success },
