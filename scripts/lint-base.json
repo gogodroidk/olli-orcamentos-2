@@ -1,0 +1,288 @@
+{
+  "_leia": "Gerado por `npm run lint:base`. Erros do Biome que já existiam, por arquivo × regra. O gate reprova se alguma contagem subir; não edite à mão.",
+  "app": {
+    "App.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "scripts/teste-brasil-dados.ts": {
+      "lint/suspicious/noSelfCompare": 1
+    },
+    "scripts/teste-isolamento-tenant.ts": {
+      "lint/suspicious/noAssignInExpressions": 3
+    },
+    "scripts/teste-resend-outbox-outcome-contract.ts": {
+      "lint/suspicious/noSelfCompare": 1
+    },
+    "src/components/AnimatedEntrance.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 4
+    },
+    "src/components/AuroraBackground.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/components/AvisoSaidaCard.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/components/Celebracao.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 2,
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/components/CountUp.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 4
+    },
+    "src/components/EmptyState.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 2
+    },
+    "src/components/EstadoIA.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/components/EtaChip.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/components/OlliMascot.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 6
+    },
+    "src/components/OlliSkeleton.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/components/OverlayProgresso.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/components/PdfPreviewModal.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/components/PixPlanoModal.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/components/StepIndicator.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/components/assinatura/AssinaturaClienteModal.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/components/tecnico/BarraOffline.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/components/web/TabelaDados.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/components/web/TeatroOffline.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/screens/AgendaScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 6
+    },
+    "src/screens/AjudaScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3,
+      "lint/suspicious/noArrayIndexKey": 2
+    },
+    "src/screens/ClientesScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 8
+    },
+    "src/screens/CodigosErroScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/ContaScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/CreditosScreen.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/screens/DiagnosticoIAScreen.tsx": {
+      "lint/suspicious/noArrayIndexKey": 2
+    },
+    "src/screens/EquipamentoScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/FerramentasOficioScreen.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/screens/HojeScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/HomeScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/LegalScreen.tsx": {
+      "lint/suspicious/noArrayIndexKey": 4
+    },
+    "src/screens/MeuNegocioScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/NovoOrcamentoScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 6
+    },
+    "src/screens/OlliChatScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/OnboardingScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/OrcamentosScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 2
+    },
+    "src/screens/PlanosScreen.tsx": {
+      "lint/correctness/useJsxKeyInIterable": 1,
+      "lint/suspicious/noArrayIndexKey": 2
+    },
+    "src/screens/PmocPlanoScreen.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/screens/ProdutosScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/screens/RelatorioDiaScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/screens/ServicosScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/screens/desktop/AgendaDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 7,
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/screens/desktop/AjudaDesktopScreen.tsx": {
+      "lint/suspicious/noArrayIndexKey": 2
+    },
+    "src/screens/desktop/ClientesDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 5
+    },
+    "src/screens/desktop/EquipamentosDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/desktop/EquipeDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/desktop/LixeiraDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 2
+    },
+    "src/screens/desktop/OrdensDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/desktop/PainelOS.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/desktop/PmocDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/screens/desktop/ProdutosDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 2
+    },
+    "src/screens/desktop/RecibosDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/screens/desktop/ServicosDesktopScreen.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 2
+    },
+    "src/services/cep.ts": {
+      "lint/suspicious/noAssignInExpressions": 1
+    },
+    "src/services/iaAutopilot.ts": {
+      "lint/suspicious/noControlCharactersInRegex": 6
+    },
+    "src/services/ritualDiario.ts": {
+      "lint/suspicious/noImplicitAnyLet": 1
+    },
+    "worker/scripts/teste-ai-provider.ts": {
+      "lint/suspicious/noImplicitAnyLet": 2
+    },
+    "worker/src/admin.js": {
+      "lint/suspicious/noAssignInExpressions": 14
+    },
+    "worker/src/iaAutopilot.js": {
+      "lint/suspicious/noControlCharactersInRegex": 6
+    },
+    "worker/src/iaImportacao.js": {
+      "lint/suspicious/noControlCharactersInRegex": 6
+    },
+    "worker/src/notificationInbox.js": {
+      "lint/suspicious/noControlCharactersInRegex": 6
+    }
+  },
+  "painel": {
+    "src/components/code/highlight-code.tsx": {
+      "lint/a11y/noStaticElementInteractions": 1
+    },
+    "src/components/loading/line-loading.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/components/loading/route-loading.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 1
+    },
+    "src/components/nav/components/nav-item-render.tsx": {
+      "lint/a11y/noStaticElementInteractions": 1
+    },
+    "src/features/kanban/components/kanban-board.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/global.css": {
+      "lint/suspicious/noDuplicateProperties": 1
+    },
+    "src/layouts/components/assistente-flutuante.tsx": {
+      "lint/a11y/useAriaPropsSupportedByRole": 1
+    },
+    "src/layouts/components/assistente-global.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/layouts/components/setting-button.tsx": {
+      "lint/a11y/useAriaPropsSupportedByRole": 1
+    },
+    "src/layouts/dashboard/index.tsx": {
+      "lint/a11y/useValidAnchor": 1
+    },
+    "src/olli/documentos.ts": {
+      "lint/suspicious/noControlCharactersInRegex": 6
+    },
+    "src/olli/iaAutopilot.ts": {
+      "lint/suspicious/noControlCharactersInRegex": 6
+    },
+    "src/pages/olli/agenda/googleAgenda.ts": {
+      "lint/suspicious/noControlCharactersInRegex": 2
+    },
+    "src/pages/olli/clientes/FormCliente.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/pages/olli/configuracoes/index.tsx": {
+      "lint/a11y/useSemanticElements": 2
+    },
+    "src/pages/olli/dados/index.tsx": {
+      "lint/a11y/noLabelWithoutControl": 1
+    },
+    "src/pages/olli/diagnostico/PorSintoma.tsx": {
+      "lint/correctness/useExhaustiveDependencies": 6,
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/pages/olli/diagnostico/componentes.tsx": {
+      "lint/suspicious/noArrayIndexKey": 1
+    },
+    "src/pages/olli/documentos/index.tsx": {
+      "lint/a11y/useAriaPropsSupportedByRole": 1,
+      "lint/correctness/useExhaustiveDependencies": 3
+    },
+    "src/pages/olli/ferramentas/CalculadoraDialog.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/pages/olli/planos/index.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/pages/sys/login/components/EmailAutocompleteInput.tsx": {
+      "lint/a11y/noNoninteractiveElementToInteractiveRole": 2,
+      "lint/a11y/useFocusableInteractive": 1,
+      "lint/a11y/useSemanticElements": 3
+    },
+    "src/pages/sys/login/index.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/pages/sys/login/mobile-form.tsx": {
+      "lint/a11y/noStaticElementInteractions": 1
+    },
+    "src/routes/components/login-auth-guard.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/routes/components/onboarding-guard.tsx": {
+      "lint/a11y/useSemanticElements": 1
+    },
+    "src/store/userStore.ts": {
+      "lint/correctness/useExhaustiveDependencies": 4
+    }
+  }
+}
