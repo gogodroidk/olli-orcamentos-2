@@ -116,23 +116,34 @@ function trecho(fonte: string, inicio: string, fim: string): string {
   const j = fonte.indexOf(fim, i + inicio.length);
   return fonte.slice(i, j === -1 ? undefined : j);
 }
+/**
+ * `primeiro` aparece em `fonte` e ANTES de `depois`. Os dois têm de existir:
+ * comparar `indexOf` cru passa em silêncio quando a chamada some (-1 < qualquer).
+ */
+function vemAntes(fonte: string, primeiro: string, depois: string, msg: string): void {
+  const a = fonte.indexOf(primeiro);
+  const b = fonte.indexOf(depois);
+  assert.notEqual(a, -1, `${msg} — ausente: ${primeiro}`);
+  assert.notEqual(b, -1, `${msg} — ausente: ${depois}`);
+  assert.ok(a < b, msg);
+}
 
 const app = ler('App.tsx');
-assert.ok(app.indexOf('conectarSentry(Sentry)') > app.indexOf('Sentry.init('), 'App: conecta DEPOIS do Sentry.init');
+vemAntes(app, 'Sentry.init(', 'conectarSentry(Sentry)', 'App: conecta DEPOIS do Sentry.init');
 assert.match(trecho(app, '} catch (e) {\n        // Erro técnico', 'finally'), /capturarExcecao\(e, \{ origem: 'boot' \}\)/, 'App: catch do boot reporta');
 
 const boundaryApp = ler('src/components/ErrorBoundary.tsx');
 assert.match(trecho(boundaryApp, 'componentDidCatch(', 'resetar ='), /capturarExcecao\(erro, \{ origem: 'error-boundary'/, 'app: ErrorBoundary reporta');
 
 const main = ler('webapp/src/main.tsx');
-assert.ok(main.indexOf('conectarSentry(Sentry)') > main.indexOf('Sentry.init('), 'painel: conecta DEPOIS do Sentry.init');
+vemAntes(main, 'Sentry.init(', 'conectarSentry(Sentry)', 'painel: conecta DEPOIS do Sentry.init');
 assert.match(ler('webapp/src/routes/components/error-boundary.tsx'), /capturarExcecao\(error, \{ origem: "rota-painel"/, 'painel: errorElement reporta');
 assert.match(trecho(ler('webapp/src/components/lazy/chunk-boundary.tsx'), 'componentDidCatch(', 'recarregar'), /capturarExcecao\(erro, \{ origem: "chunk-boundary"/, 'painel: ChunkBoundary reporta');
 assert.match(ler('webapp/vite.config.ts'), /"@sentry-captura": sentryCapturaFonte/, 'painel: alias no Vite (import de valor)');
 assert.match(ler('webapp/tsconfig.json'), /"@sentry-captura": \["\.\.\/src\/services\/sentryCaptura\.ts"\]/, 'painel: alias no tsconfig');
 
 const worker = ler('worker/src/index.js');
-assert.ok(worker.indexOf('conectarSentry(Sentry)') < worker.indexOf('export default Sentry.withSentry('), 'worker: conecta antes do withSentry');
+vemAntes(worker, 'conectarSentry(Sentry)', 'export default Sentry.withSentry(', 'worker: conecta antes do withSentry');
 assert.match(trecho(worker, "const overloaded = !!(e && e.overloaded);", 'return json('), /capturarExcecao\(e, \{ origem: 'ia'/, 'worker: catch da IA (502) reporta');
 assert.match(trecho(ler('worker/src/stripe.js'), "console.error('[olli-stripe] webhook falhou:'", 'return json('), /capturarExcecao\(e, \{ origem: 'webhook'/, 'worker: catch do webhook Stripe (500) reporta');
 assert.match(trecho(ler('worker/src/resendWebhook.js'), '} catch (error) {\n    // 500 segurado', 'return response('), /capturarExcecao\(error, \{ origem: 'webhook'/, 'worker: catch do webhook Resend (500) reporta');
