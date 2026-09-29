@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 // @ts-expect-error — módulo .mjs sem declaração de tipos; testado pelo comportamento.
-import { ALVOS, comparar, contar, lerDiagnosticos } from './checar-lint.mjs';
+import { ALVOS, coberturaSumiu, comparar, contar, lerDiagnosticos, total } from './checar-lint.mjs';
 
 const RAIZ = resolve(import.meta.dirname, '..');
 
@@ -75,6 +75,15 @@ checar('conserto → 2 melhoras para apertar a base', r.melhoras.length === 2);
 
 r = comparar(BASE, { 'src/a.ts': { 'lint/x': 1 }, 'src/b.ts': { 'lint/y': 2 } });
 checar('melhora num arquivo NÃO compensa piora em outro', r.novos.length === 1 && r.novos[0].arquivo === 'src/b.ts');
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n3b) alvo que zerou de repente é "não sei", não "consertado"');
+checar('total soma todas as contagens', total(BASE) === 3, `recebido: ${total(BASE)}`);
+checar('total de alvo vazio/ausente = 0', total({}) === 0 && total(undefined) === 0);
+// `includes` quebrado → Biome sai 0 com saída vazia → contagem {}. Sem a trava, passava.
+checar('base com erro + atual vazio → cobertura sumiu (reprova)', coberturaSumiu(BASE, {}) === true);
+checar('base com erro + atual com erro → segue a catraca normal', coberturaSumiu(BASE, { 'src/a.ts': { 'lint/x': 1 } }) === false);
+checar('base já vazia + atual vazio → alvo limpo de verdade, passa', coberturaSumiu({}, {}) === false);
 
 // ═══════════════════════════════════════════════════════════════════════════
 console.log('\n4) a base versionada cobre todos os alvos');

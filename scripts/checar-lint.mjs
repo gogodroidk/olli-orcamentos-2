@@ -23,6 +23,14 @@
  * vira vazio). Saída 1 sem nenhum diagnóstico, qualquer outra saída diferente
  * de 0/1, ou alvo que some da base → reprova.
  *
+ * O mesmo vale para "o Biome rodou sobre NADA": um `includes` quebrado no
+ * `biome.json` (pasta renomeada, `!src/**` a mais) faz o Biome sair com 0 e
+ * saída vazia — e sem esta trava a catraca leria isso como "consertaram tudo",
+ * passaria e ainda sugeriria `lint:base`, gravando a base vazia. Por isso um
+ * alvo que tinha erro na base e de repente tem ZERO reprova. Se foi conserto de
+ * verdade (todos os erros do alvo), `npm run lint:base` registra isso — de
+ * propósito, com alguém olhando.
+ *
  * Só erros entram na conta. Avisos (`useImportType`, `noImplicitAnyLet`…) ficam
  * para quem quiser rodar `npx biome lint` à mão.
  */
@@ -94,6 +102,24 @@ export function comparar(base, atual) {
   return { novos, melhoras };
 }
 
+/** Soma de todas as contagens de um alvo (`{ arquivo: { regra: n } }`). */
+export function total(contagem) {
+  let soma = 0;
+  for (const regras of Object.values(contagem ?? {})) {
+    for (const n of Object.values(regras ?? {})) soma += Number(n) || 0;
+  }
+  return soma;
+}
+
+/**
+ * A base tinha erro e agora não há NENHUM: mais provável o Biome ter parado de
+ * ver os arquivos (includes/ignore quebrado) do que alguém ter zerado o alvo.
+ * Não é "zero erro", é "não sei" — reprova.
+ */
+export function coberturaSumiu(base, atual) {
+  return total(base) > 0 && total(atual) === 0;
+}
+
 /**
  * Roda o Biome da raiz (`@biomejs/biome`, versão cravada igual à do painel)
  * dentro da pasta do alvo. Devolve os diagnósticos ou LANÇA — nunca `[]` por
@@ -148,6 +174,14 @@ function principal() {
     if (!base[nome]) {
       // Alvo sem base = catraca sem trava. Não é "zero erro", é "não sei".
       console.error(`  FALHA  ${nome}: ausente de scripts/lint-base.json — rode \`npm run lint:base\``);
+      falhas++;
+      continue;
+    }
+    if (coberturaSumiu(base[nome], atual[nome])) {
+      console.error(
+        `  FALHA  ${nome}: o Biome não achou NENHUM erro, mas a base tem ${total(base[nome])}. ` +
+          'Confira o `includes` do biome.json do alvo; se todos foram consertados mesmo, rode `npm run lint:base`.',
+      );
       falhas++;
       continue;
     }
