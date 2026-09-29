@@ -7,7 +7,9 @@ console.log('\nConversão Pro — continuidade de intenção sem checkout autom�
 const anual = lerIntencaoPlano('?modo=cadastro&plano=pro&periodo=anual&returnTo=https://malicioso.test');
 assert.deepEqual(anual, { plano: 'pro', periodo: 'anual' });
 assert.equal(destinoDepoisDoLogin(anual), '/planos?plano=pro&periodo=anual&origem=landing');
-assert.equal(caminhoCallbackAuth(anual), '/auth/login?plano=pro&periodo=anual');
+// Redirect do OAuth SEM query: a allowlist do Supabase compara a URL inteira e
+// `?plano=` mandava o code para a landing. A intenção vai no sessionStorage.
+assert.equal(caminhoCallbackAuth(anual), '/auth/login');
 assert.deepEqual(lerIntencaoPlano('?plano=pro&periodo=inventado'), { plano: 'pro', periodo: 'mensal' });
 assert.equal(lerIntencaoPlano('?plano=admin&periodo=anual'), null, 'plano fora da allowlist é ignorado');
 assert.equal(lerIntencaoPlano('?returnTo=https://malicioso.test'), null, 'returnTo sozinho nunca cria destino');

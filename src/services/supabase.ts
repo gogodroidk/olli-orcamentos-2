@@ -3,6 +3,15 @@ import { Platform } from 'react-native';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 import { authStorage } from './authStorage';
+import {
+  classificarErroOAuth,
+  criarRegistroFunilAuth,
+  decidirRetornoNativo,
+  ErroOAuth,
+  type MotivoErroOAuth,
+  normalizarPlataforma,
+  novaTentativaOAuth,
+} from './oauthRetorno';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -139,20 +148,35 @@ export async function temDadosLocais(): Promise<boolean> {
  * Nativo (Android/iOS): PKCE + deep link. Abrimos o navegador do sistema com a
  * URL de autorização do Supabase (skipBrowserRedirect para nós controlarmos o
  * retorno), o Google devolve para `olliorcamentos://auth/callback` com um `code`,
- * e trocamos esse code por sessão via exchangeCodeForSession. Cancelamento
- * (usuário fecha o navegador) resolve silencioso — quem chama trata `cancelado`.
+ * e trocamos esse code por sessão via exchangeCodeForSession.
+ *
+ * NUNCA falha em silêncio (incidente 16–25/09, ver oauthRetorno.ts): erro do
+ * Google na URL de retorno, code ausente ou troca recusada viram `ErroOAuth` com
+ * mensagem pt-BR pronta. Fechar a aba devolve `cancelado` — quem chama AVISA
+ * (no Android a aba às vezes fecha sozinha e a pessoa precisa saber que não entrou).
+ * Enquanto a aba está aberta, escutamos o deep link pelo Linking: se a Custom Tab
+ * resolver `dismiss` depois de já ter entregado o code, o code é aproveitado.
  *
  * Web: fluxo redirect simples (a própria página captura o retorno) — sem
  * skipBrowserRedirect, redirectTo = origem atual.
  *
- * Retorno: 'ok' (sessão criada), 'cancelado' (usuário desistiu) ou lança em erro
- * real (o chamador traduz com traduzirErroAuth). Import dinâmico de expo-web-browser/
- * expo-linking para o bundle não carregá-los à toa fora do fluxo.
+ * Funil sem PII: oauth_iniciado → oauth_sessao_criada | oauth_erro (motivo fechado).
+ * Import dinâmico de expo-web-browser/expo-linking para o bundle não carregá-los à
+ * toa fora do fluxo.
  */
 export type ResultadoOAuth = 'ok' | 'cancelado';
 
+// A tabela `auth_funil_eventos` aceita INSERT de anon (sem SELECT). Sem a
+// migration aplicada, o registrador se desliga no primeiro erro.
+const registrarFunilAuth = criarRegistroFunilAuth(
+  supabase ? (linha) => supabase!.from('auth_funil_eventos').insert(linha) : null,
+);
+
 export async function signInWithGoogle(): Promise<ResultadoOAuth> {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
+  const plataforma = normalizarPlataforma(Platform.OS);
+  const tentativa = novaTentativaOAuth();
+  void registrarFunilAuth('oauth_iniciado', { plataforma, tentativa });
 
   if (Platform.OS === 'web') {
     const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
@@ -160,7 +184,10 @@ export async function signInWithGoogle(): Promise<ResultadoOAuth> {
       provider: 'google',
       options: { redirectTo },
     });
-    if (error) throw error;
+    if (error) {
+      void registrarFunilAuth('oauth_erro', { plataforma, tentativa, motivo: classificarErroOAuth(error.code, error.message) });
+      throw error;
+    }
     // Na web o próprio navegador redireciona; a sessão é resolvida no retorno.
     return 'ok';
   }
@@ -169,23 +196,43 @@ export async function signInWithGoogle(): Promise<ResultadoOAuth> {
   const WebBrowser = await import('expo-web-browser');
   const redirectTo = Linking.createURL('auth/callback');
 
+  const falhar: (motivo: MotivoErroOAuth) => never = (motivo) => {
+    void registrarFunilAuth('oauth_erro', { plataforma, tentativa, motivo });
+    throw new ErroOAuth(motivo);
+  };
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo, skipBrowserRedirect: true },
   });
-  if (error) throw error;
-  if (!data?.url) throw new Error('Não consegui iniciar o login com o Google.');
+  if (error) falhar(classificarErroOAuth(error.code, error.message));
+  if (!data?.url) falhar('desconhecido');
 
-  const res = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-  if (res.type !== 'success') {
-    // 'cancel' / 'dismiss' → usuário fechou o navegador; silêncio (não é erro).
-    return 'cancelado';
+  // Rede de segurança do Android: guarda o deep link que chegar enquanto a aba
+  // estiver aberta (a Custom Tab pode resolver `dismiss` mesmo tendo entregue o code).
+  let urlCapturada: string | null = null;
+  const assinatura = Linking.addEventListener('url', ({ url }) => {
+    if (url.startsWith(redirectTo)) urlCapturada = url;
+  });
+  let res: { type: string; url?: string | null };
+  try {
+    res = await WebBrowser.openAuthSessionAsync(data!.url, redirectTo);
+  } catch (e) {
+    return falhar(classificarErroOAuth(null, (e as Error)?.message));
+  } finally {
+    assinatura.remove();
   }
 
-  const code = new URL(res.url).searchParams.get('code');
-  if (!code) throw new Error('Não recebi o código de acesso do Google.');
+  const decisao = decidirRetornoNativo(res, urlCapturada);
+  if (decisao.tipo === 'cancelado') {
+    void registrarFunilAuth('oauth_erro', { plataforma, tentativa, motivo: 'cancelado' });
+    return 'cancelado';
+  }
+  if (decisao.tipo === 'erro') return falhar(decisao.motivo);
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-  if (exchangeError) throw exchangeError;
+  const { data: troca, error: exchangeError } = await supabase.auth.exchangeCodeForSession(decisao.codigo);
+  if (exchangeError) falhar(classificarErroOAuth(exchangeError.code, exchangeError.message));
+  if (!troca?.session) falhar('sem_sessao');
+  void registrarFunilAuth('oauth_sessao_criada', { plataforma, tentativa });
   return 'ok';
 }

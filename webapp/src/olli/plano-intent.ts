@@ -26,7 +26,66 @@ export function destinoDepoisDoLogin(intencao: IntencaoPlano | null): string | n
 	return `/planos?plano=${intencao.plano}&periodo=${intencao.periodo}&origem=landing`;
 }
 
-export function caminhoCallbackAuth(intencao: IntencaoPlano | null): string {
-	if (!intencao) return '/auth/login';
-	return `/auth/login?plano=${intencao.plano}&periodo=${intencao.periodo}`;
+/**
+ * Caminho de retorno do OAuth/cadastro. SEMPRE `/auth/login`, sem query, mesmo com
+ * intenção de plano: o Supabase compara o `redirectTo` com a allowlist pela URL
+ * INTEIRA, então `/auth/login?plano=pro` não bate com `/auth/login` e o GoTrue manda
+ * o `?code=` para o Site URL (a landing), onde ele morre — conta criada sem sessão
+ * (incidente 16–25/09). A intenção viaja no sessionStorage (`guardarIntencaoOAuth`).
+ */
+export function caminhoCallbackAuth(_intencao: IntencaoPlano | null): string {
+	return '/auth/login';
+}
+
+/** Chave da intenção de plano guardada durante a ida-e-volta ao Google/Apple. */
+export const CHAVE_INTENCAO_OAUTH = 'olli:oauth-intencao';
+/** A ida-e-volta ao provedor leva segundos; 30 min cobre quem demora e expira o resto. */
+const VALIDADE_INTENCAO_MS = 30 * 60 * 1000;
+
+type ArmazenamentoSimples = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+/**
+ * Guarda a intenção de plano antes do redirect do OAuth. Mesma aba = mesmo
+ * sessionStorage na volta. Sem intenção, apaga qualquer resto de tentativa antiga.
+ * Nunca lança (storage bloqueado só perde a conveniência, não o login).
+ */
+export function guardarIntencaoOAuth(
+	armazenamento: ArmazenamentoSimples | null | undefined,
+	intencao: IntencaoPlano | null,
+	agora = Date.now(),
+): void {
+	try {
+		if (!armazenamento) return;
+		if (!intencao) {
+			armazenamento.removeItem(CHAVE_INTENCAO_OAUTH);
+			return;
+		}
+		armazenamento.setItem(
+			CHAVE_INTENCAO_OAUTH,
+			JSON.stringify({ plano: intencao.plano, periodo: intencao.periodo, em: agora }),
+		);
+	} catch {
+		// storage indisponível (aba privada/bloqueada): segue sem a intenção
+	}
+}
+
+/**
+ * Lê E APAGA a intenção guardada. Revalida contra a mesma allowlist de
+ * `lerIntencaoPlano` (o storage é editável pelo usuário) e descarta se vencida.
+ */
+export function consumirIntencaoOAuth(
+	armazenamento: ArmazenamentoSimples | null | undefined,
+	agora = Date.now(),
+): IntencaoPlano | null {
+	try {
+		if (!armazenamento) return null;
+		const cru = armazenamento.getItem(CHAVE_INTENCAO_OAUTH);
+		armazenamento.removeItem(CHAVE_INTENCAO_OAUTH);
+		if (!cru) return null;
+		const dado = JSON.parse(cru) as { plano?: unknown; periodo?: unknown; em?: unknown };
+		if (typeof dado.em !== 'number' || agora - dado.em > VALIDADE_INTENCAO_MS || dado.em > agora) return null;
+		return lerIntencaoPlano(`?${new URLSearchParams({ plano: String(dado.plano), periodo: String(dado.periodo) })}`);
+	} catch {
+		return null;
+	}
 }

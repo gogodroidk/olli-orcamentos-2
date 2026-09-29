@@ -3,16 +3,20 @@ import { Navigate } from "react-router";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
 import SettingButton from "@/layouts/components/setting-button";
+import { destinoDepoisDoLogin, lerIntencaoPlano } from "@/olli/plano-intent";
 import { useAuthHydrated, useUserToken } from "@/store/userStore";
 import BrandHero from "./components/BrandHero";
 import LoginForm from "./login-form";
 import { LoginProvider } from "./providers/login-provider";
 import RegisterForm from "./register-form";
 import ResetForm from "./reset-form";
+import { destinoDepoisDoOAuth, useRetornoOAuth } from "./use-retorno-oauth";
 
 function LoginPage() {
 	const token = useUserToken();
 	const authHydrated = useAuthHydrated();
+	// Volta do Google/Apple: avisa se o login não fechou e mede o funil (sem PII).
+	useRetornoOAuth();
 
 	if (!authHydrated) {
 		return (
@@ -26,7 +30,13 @@ function LoginPage() {
 	}
 
 	if (token.accessToken) {
-		return <Navigate to={GLOBAL_CONFIG.defaultRoute} replace />;
+		// Quem veio de um CTA de plano volta para o plano — pela URL (login por
+		// e-mail) ou pela intenção guardada antes do redirect do OAuth.
+		const destino =
+			destinoDepoisDoLogin(lerIntencaoPlano(window.location.search)) ??
+			destinoDepoisDoOAuth() ??
+			GLOBAL_CONFIG.defaultRoute;
+		return <Navigate to={destino} replace />;
 	}
 
 	return (

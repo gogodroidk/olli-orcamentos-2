@@ -13,6 +13,13 @@ export interface AuthErrorMensagem {
 
 /** Traduz um erro de auth (Supabase ou de rede) para título+texto amigáveis em PT-BR. */
 export function traduzirErroAuth(e: unknown): AuthErrorMensagem {
+  // Erro do login social já classificado (oauthRetorno.ts): a mensagem pt-BR vem
+  // pronta e diz o que fazer — não pode virar o "Ops" genérico lá de baixo.
+  const mensagemUsuario = (e as { mensagemUsuario?: unknown } | null | undefined)?.mensagemUsuario;
+  if ((e as { name?: string } | null)?.name === 'ErroOAuth' && typeof mensagemUsuario === 'string') {
+    return { titulo: 'Login não concluído', texto: mensagemUsuario };
+  }
+
   const msg: string = (e as any)?.message ?? String(e ?? '');
 
   if (/already registered|already exists|User already/i.test(msg)) {
