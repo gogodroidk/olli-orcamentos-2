@@ -54,10 +54,20 @@ function jwtEhAnon(trecho: string): boolean {
   }
 }
 
+/** Connection string de banco local (teste efêmero) ou com placeholder no lugar da senha não é segredo. */
+function urlPostgresLocalOuModelo(trecho: string): boolean {
+  const m = /:\/\/[^:/@]+:([^@]+)@(.+)$/.exec(trecho);
+  if (!m) return false;
+  const [, senha, host] = m;
+  if (/^(?:localhost|127\.0\.0\.1|\[::1\])$/i.test(host)) return true;
+  return /[[\]<>{}$*]|\.\.\./.test(senha); // [YOUR-PASSWORD], <senha>, ${DB_PASS}, ***
+}
+
 const PADROES: Padrao[] = [
   // A senha da demo começa pelo nome da empresa; o padrão pega qualquer token
   // `GrTech…` sem soletrá-la aqui (o e-mail `demo@grtech.com.br` não casa: `.` ≠ `\w`).
-  { nome: 'senha da conta demo', re: /\bGrTech\w{4,}/g },
+  // Sem diferenciar caixa: a senha em minúsculas ou maiúsculas continua sendo a senha.
+  { nome: 'senha da conta demo', re: /\bGrTech\w{4,}/gi },
   // `senha: "..."`, `"password": "..."`, `**Senha:** "..."` — a chave colada no `:`/`=`.
   // Atributo de form (`type="password"`, `placeholder="sua senha"`) não casa.
   // `(?<![A-Za-z0-9])` em vez de `\b`: `DEMO_PASSWORD="..."`/`DB_SENHA='...'` também é
@@ -70,6 +80,13 @@ const PADROES: Padrao[] = [
   { nome: 'Resend API key (re_)', re: /\bre_[A-Za-z0-9_]{20,}/g },
   { nome: 'OpenRouter API key', re: /\bsk-or-v1-[A-Za-z0-9]{20,}/g },
   { nome: 'Supabase access token (sbp_)', re: /\bsbp_[A-Za-z0-9]{30,}/g },
+  // Chave opaca moderna do Supabase, que substitui o JWT service_role (o worker aceita as
+  // duas — worker/src/creditos.js). Sem este padrão, só a service_role ANTIGA era pega.
+  { nome: 'Supabase secret key (sb_secret_)', re: /\bsb_secret_[A-Za-z0-9_-]{20,}/g },
+  // Senha do banco dentro da connection string (`supabase db push`, psql, pooler).
+  // Banco local de teste (localhost/127.0.0.1) e placeholder (`[YOUR-PASSWORD]`) passam.
+  { nome: 'senha em connection string Postgres', re: /\bpostgres(?:ql)?:\/\/[^:/@\s'"`]+:[^@\s'"`]{6,}@[^\s'"`/:?]+/gi, permitido: urlPostgresLocalOuModelo },
+  { nome: 'Sentry auth token', re: /\bsntry[su]_[A-Za-z0-9+/=_-]{40,}/g },
   { nome: 'JWT (service_role/assinado)', re: /\beyJhbGci[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, permitido: jwtEhAnon },
   { nome: 'GitHub token', re: /\b(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}/g },
   { nome: 'AWS access key', re: /\bAKIA[0-9A-Z]{16}\b/g },
@@ -78,7 +95,7 @@ const PADROES: Padrao[] = [
 ];
 
 /** O valor se declara falso — é fixture, não segredo. */
-const MARCA_DE_FALSO = /falsa|falso|fake|invalid|synthetic|never_real|nunca_real|exemplo|example|dummy|placeholder|xxxx|local_pass/i;
+const MARCA_DE_FALSO = /falsa|falso|fake|invalid|synthetic|never_real|nunca_real|exemplo|example|dummy|placeholder|xxxx|local_pass|_teste_/i;
 
 /**
  * Arquivos inteiros de fixture. Só entra aqui o que é mock de template sem
@@ -140,6 +157,10 @@ const b64u = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
 const jwt = (role: string) => j('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9', '.', b64u({ iss: 'supabase', role, ref: 'x'.repeat(20) }), '.', 'a'.repeat(43));
 const devePegar: [string, string][] = [
   ['senha da demo', j('a senha é GrTech', 'Qwe9999')],
+  ['senha da demo em minúsculas', j('login grtech', 'qwe9999')],
+  ['supabase sb_secret_', j('SUPABASE_SERVICE_ROLE_KEY=sb_', 'secret_', 'N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz')],
+  ['senha do banco na connection string', j('postgresql://postgres.abcdefghij:', 'Zq8wLp2Xv9', '@aws-0-sa-east-1.pooler.supabase.com:6543/postgres')],
+  ['sentry', j('sntrys_', 'eyJpYXQiOjE3M'.repeat(4))],
   ['senha literal', j('senha: "', 'Abc12345', '"')],
   ['senha em markdown', j('**Senha:** `', 'Abc12345', '`')],
   ['senha em variável de ambiente', j('DEMO_PASSWORD="', 'Abc12345', '"')],
@@ -161,6 +182,10 @@ const deveSoltar: [string, string][] = [
   ['fixture resend sintética', j("apiKey: 're_", "synthetic_never_real'")],
   ['doc com prefixo sem corpo', j('copiar o Access Token (`APP_', 'USR-...`) e o (sk_', 'live_...)')],
   ['JWT anon (público)', jwt('anon')],
+  ['fixture sb_secret_ de teste', j("SUPABASE_SERVICE_ROLE_KEY: 'sb_", "secret_teste_opaco_somente_servidor'")],
+  ['chave publishable do Supabase (pública)', j('sb_', 'publishable_', 'uDltTEnZAUek_YYGFhKaUw_q0DNu_6_')],
+  ['banco local efêmero', j('postgresql://local_user:', 'private_value', '@localhost/olli_ephemeral')],
+  ['connection string com placeholder', j('postgresql://postgres:', '[YOUR-PASSWORD]', '@db.abcdefghij.supabase.co:5432/postgres')],
   ['PEM montado em runtime', j('`-----BEGIN PRIVATE ', 'KEY-----\\n${pemB64}\\n`')],
   ['código que lê senha do form', 'password: values.password'],
   ['atributo de input', '<input id="senha" type="password" autoComplete="new-password" placeholder="sua senha"/>'],
