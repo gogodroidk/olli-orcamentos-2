@@ -48,14 +48,23 @@
     "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
     "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
     "AI_PROVIDER": "openrouter",
-    // Drift deliberadamente não promovido nesta janela: o deploy do dispatch
-    // preservou por override a lista que já estava remota. Revalidar esta lista
-    // local antes do próximo deploy sem override.
-    "OPENROUTER_TEXT_MODELS": "nex-agi/nex-n2.5-mini:free,nex-agi/nex-n2.5-pro:free,liquid/lfm-2.5-2.6b:free",
+    // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
+    // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
+    // com cada ID na allowlist de worker/src/ai.js, que também manda o teto de
+    // preço (max_price) em toda request. Mesma ordem de OPENROUTER_MODELOS_PADRAO
+    // — `npm run check:ai-models` (raiz) exige igualdade e valida ao vivo.
+    "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,google/gemini-2.5-flash-lite,mistralai/mistral-small-24b-instruct-2501",
+    "OPENROUTER_PERMITIR_PAGO": "true",
     "OPENROUTER_SITE_URL": "https://olliorcamentos.online",
     "OPENROUTER_APP_NAME": "OLLI Orcamentos",
     // Reservas diárias pessimistas: uma tentativa enviada ao provedor conta
     // mesmo se terminar em timeout/429. Há margem para outras automações.
+    // Estes tetos SÃO o teto de gasto da IA paga (cada tentativa = 1 unidade):
+    //   típico  (~1,5k tokens in / 400 out): ~US$ 0,0003 × 500 ≈ US$ 0,15/dia
+    //   pior caso (32k in / 4.096 out, no teto de preço 0,12/0,48 por milhão):
+    //            ~US$ 0,0058 × 500 ≈ US$ 2,90/dia (~US$ 87/mês)
+    // Subir o GLOBAL sobe esse teto na mesma proporção. Recomendado também um
+    // limite de crédito na própria chave do OpenRouter (painel), como 2ª trava.
     "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
     "OPENROUTER_USER_DAILY_LIMIT": "100",
     // Whisper é contado em neurônios estimados, não em requests. 46,63/min;
@@ -96,7 +105,8 @@
         "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
         "AI_PROVIDER": "openrouter",
         "AUTOPILOT_WORKERS_AI_ENABLED": "true",
-        "OPENROUTER_TEXT_MODELS": "nex-agi/nex-n2.5-mini:free,nex-agi/nex-n2.5-pro:free,liquid/lfm-2.5-2.6b:free",
+        "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,google/gemini-2.5-flash-lite,mistralai/mistral-small-24b-instruct-2501",
+        "OPENROUTER_PERMITIR_PAGO": "true",
         "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
         "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",
         "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",

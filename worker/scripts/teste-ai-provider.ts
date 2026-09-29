@@ -6,10 +6,22 @@
  *     node worker/scripts/teste-ai-provider.ts
  *
  * Não usa rede, credencial, banco nem áudio real. Os mocks verificam o contrato
- * que mais importa para produção: modelos gratuitos, privacidade, histórico,
- * timeout, rollback explícito e transcrição pelo binding Workers AI.
+ * que mais importa para produção: modelos gratuitos, pago só por allowlist +
+ * flag + teto de preço, privacidade, histórico, timeout, rollback explícito,
+ * saúde/alerta sem PII e transcrição pelo binding Workers AI.
  */
-import { aiConfigurada, gerarIA, transcreverAudio } from '../src/ai.js';
+import {
+  IA_FALHAS_PARA_DEGRADAR,
+  OPENROUTER_MODELOS_PADRAO,
+  OPENROUTER_MODELOS_PAGOS_PERMITIDOS,
+  aiConfigurada,
+  definirAlertaFalhaIA,
+  gerarIA,
+  pagamentoOpenRouterPermitido,
+  reiniciarSaudeIA,
+  saudeIA,
+  transcreverAudio,
+} from '../src/ai.js';
 
 let falhas = 0;
 let passes = 0;
@@ -340,6 +352,208 @@ checar('texto transcrito', transcricao, 'Troca de disjuntor para a Dona Helena.'
 
 const erroAudio = await erroDe(() => transcreverAudio(envAudio, { audioBase64: 'não-é-base64' }));
 checar('base64 inválido é recusado antes do binding', erroAudio?.message, 'audio_base64_invalido');
+
+console.log('\n7) modelo pago: só com OPENROUTER_PERMITIR_PAGO=true E na allowlist em código');
+function respostaOk(texto = 'ok pago') {
+  return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: texto } }] }) };
+}
+const avisos = [];
+const warnReal = console.warn;
+console.warn = (...args) => avisos.push(args);
+
+checar('allowlist tem exatamente a cadeia de produção', OPENROUTER_MODELOS_PADRAO, [
+  'openai/gpt-4.1-nano',
+  'google/gemini-2.5-flash-lite',
+  'mistralai/mistral-small-24b-instruct-2501',
+]);
+checar('allowlist é imutável', Object.isFrozen(OPENROUTER_MODELOS_PAGOS_PERMITIDOS), true);
+checar('flag ausente = pago desligado', pagamentoOpenRouterPermitido({}), false);
+checar('flag "1" não liga pago', pagamentoOpenRouterPermitido({ OPENROUTER_PERMITIR_PAGO: '1' }), false);
+checar('flag "yes" não liga pago', pagamentoOpenRouterPermitido({ OPENROUTER_PERMITIR_PAGO: 'yes' }), false);
+checar('flag "true" liga pago', pagamentoOpenRouterPermitido({ OPENROUTER_PERMITIR_PAGO: ' TRUE ' }), true);
+
+const cadeiaMista = [
+  'google/gemini-2.5-flash-lite',
+  'x-ai/grok-4', // pago FORA da allowlist (ainda não avisado neste isolate)
+  'openai/gpt-4.1-nano',
+  'openrouter/free',
+  'google/gemma-4-26b-a4b-it:free',
+].join(',');
+
+// Sem a flag: allowlisted pago também é ignorado; só o :free sobra.
+const corposSemFlag = [];
+globalThis.fetch = async (_url, init) => {
+  corposSemFlag.push(JSON.parse(init.body));
+  return respostaOk();
+};
+await gerarIA({ AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'falsa', OPENROUTER_TEXT_MODELS: cadeiaMista }, {
+  user: 'sem flag',
+  beforeAttempt: async () => {},
+});
+checar('sem flag: só o :free foi chamado', corposSemFlag.map((c) => c.model), ['google/gemma-4-26b-a4b-it:free']);
+checar('sem flag: :free não recebe max_price', corposSemFlag[0].provider.max_price, undefined);
+checar('sem flag: pago da allowlist gera aviso', avisos.some(([tag, info]) =>
+  tag === '[olli-worker] openrouter_modelo_ignorado'
+  && info.model === 'google/gemini-2.5-flash-lite'
+  && info.motivo === 'pago_nao_liberado'), true);
+
+// Com a flag: allowlist passa (com teto), fora da allowlist continua fora.
+const envPago = {
+  AI_PROVIDER: 'openrouter',
+  OPENROUTER_API_KEY: 'falsa',
+  OPENROUTER_PERMITIR_PAGO: 'true',
+  OPENROUTER_TEXT_MODELS: cadeiaMista,
+};
+const corposPago = [];
+globalThis.fetch = async (_url, init) => {
+  const corpo = JSON.parse(init.body);
+  corposPago.push(corpo);
+  return corposPago.length < 3 ? respostaErro(404) : respostaOk('resposta paga');
+};
+const callbacksPago = [];
+const respostaPaga = await gerarIA(envPago, {
+  user: 'com flag',
+  wantJson: true,
+  jsonSchema: { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } } },
+  beforeAttempt: async (info) => callbacksPago.push(info),
+});
+checar('com flag: resposta do terceiro elo', respostaPaga, 'resposta paga');
+checar('com flag: ordem preservada, fora da allowlist e router removidos', corposPago.map((c) => c.model), [
+  'google/gemini-2.5-flash-lite',
+  'openai/gpt-4.1-nano',
+  'google/gemma-4-26b-a4b-it:free',
+]);
+checar('com flag: cada tentativa reservou cota', callbacksPago.map((c) => [c.tentativa, c.total]), [[1, 3], [2, 3], [3, 3]]);
+checar('com flag: gemini leva teto de preço da allowlist', corposPago[0].provider.max_price, { prompt: 0.12, completion: 0.48 });
+checar('com flag: nano leva teto de preço da allowlist', corposPago[1].provider.max_price, { prompt: 0.12, completion: 0.48 });
+checar('com flag: :free não leva max_price', corposPago[2].provider.max_price, undefined);
+checar('com flag: data_collection continua deny em todas', corposPago.map((c) => c.provider.data_collection), ['deny', 'deny', 'deny']);
+checar('com flag: require_parameters continua em todas', corposPago.map((c) => c.provider.require_parameters), [true, true, true]);
+checar('com flag: json_schema strict mantido', corposPago[0].response_format.json_schema.strict, true);
+checar('com flag: pago fora da allowlist gera aviso', avisos.some(([, info]) =>
+  info?.model === 'x-ai/grok-4' && info?.motivo === 'fora_da_allowlist'), true);
+await gerarIA(envPago, { user: 'de novo', beforeAttempt: async () => {} });
+checar('aviso sai uma vez por isolate, não a cada request', avisos.filter(([, info]) =>
+  info?.model === 'x-ai/grok-4').length, 1);
+checar('nenhum aviso carrega chave ou prompt', JSON.stringify(avisos).includes('falsa') || JSON.stringify(avisos).includes('com flag'), false);
+
+const corposPadrao = [];
+globalThis.fetch = async (_url, init) => {
+  corposPadrao.push(JSON.parse(init.body).model);
+  return respostaOk();
+};
+await gerarIA({ AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'falsa', OPENROUTER_PERMITIR_PAGO: 'true' }, { user: 'padrão' });
+checar('com flag e sem lista: usa o primeiro da cadeia padrão paga', corposPadrao, ['openai/gpt-4.1-nano']);
+
+// 400 com json_schema: o modelo não serve aquele schema; o próximo pode servir.
+const modelos400 = [];
+globalThis.fetch = async (_url, init) => {
+  const corpo = JSON.parse(init.body);
+  modelos400.push(corpo.model);
+  return modelos400.length === 1 ? respostaErro(400) : respostaOk('{"ok":true}');
+};
+const callbacks400 = [];
+const resposta400 = await gerarIA({ AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'falsa', OPENROUTER_PERMITIR_PAGO: 'true' }, {
+  user: 'schema',
+  wantJson: true,
+  jsonSchema: { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } } },
+  beforeAttempt: async (info) => callbacks400.push(info.model),
+});
+checar('400 com json_schema passa ao próximo modelo', resposta400, '{"ok":true}');
+checar('400 com json_schema: cada modelo reservou a sua cota', callbacks400, [
+  'openai/gpt-4.1-nano',
+  'google/gemini-2.5-flash-lite',
+]);
+let chamadas400SemSchema = 0;
+globalThis.fetch = async () => {
+  chamadas400SemSchema++;
+  return respostaErro(400);
+};
+const erro400SemSchema = await erroDe(() => gerarIA({ AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'falsa', OPENROUTER_PERMITIR_PAGO: 'true' }, {
+  user: 'json_object',
+  wantJson: true,
+  beforeAttempt: async () => {},
+}));
+checar('400 sem json_schema continua definitivo', [chamadas400SemSchema, erro400SemSchema?.message], [1, 'openrouter_400']);
+
+let redeSoForaDaAllowlist = 0;
+globalThis.fetch = async () => {
+  redeSoForaDaAllowlist++;
+  return respostaOk();
+};
+const erroForaAllowlist = await erroDe(() => gerarIA({
+  AI_PROVIDER: 'openrouter',
+  OPENROUTER_API_KEY: 'falsa',
+  OPENROUTER_PERMITIR_PAGO: 'true',
+  OPENROUTER_TEXT_MODELS: 'openai/gpt-5,anthropic/claude-sonnet-4',
+}, { user: 'caro' }));
+checar('com flag: só modelos fora da allowlist falha fechado', erroForaAllowlist?.message, 'modelos_permitidos_ausentes');
+checar('com flag: e sem chamar a rede', redeSoForaDaAllowlist, 0);
+console.warn = warnReal;
+
+console.log('\n8) saúde honesta e alerta da cadeia sem PII');
+reiniciarSaudeIA();
+const alertas = [];
+definirAlertaFalhaIA((info) => alertas.push(info));
+const envSaude = { AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'falsa', OPENROUTER_PERMITIR_PAGO: 'true' };
+checar('sem chave: off', saudeIA({ AI_PROVIDER: 'openrouter' }).ia, 'off');
+checar('configurada e sem amostra: on com amostra 0', [saudeIA(envSaude).ia, saudeIA(envSaude).amostra], ['on', 0]);
+
+const PROMPT_SENSIVEL = 'Cliente Dona Helena CPF 123.456.789-00';
+globalThis.fetch = async () => respostaErro(503);
+for (let i = 0; i < IA_FALHAS_PARA_DEGRADAR; i++) {
+  await erroDe(() => gerarIA(envSaude, { user: PROMPT_SENSIVEL, beforeAttempt: async () => {} }));
+}
+const saudeRuim = saudeIA(envSaude);
+checar(`${IA_FALHAS_PARA_DEGRADAR} falhas seguidas: degradada`, saudeRuim.ia, 'degradada');
+checar('falhas seguidas contadas', saudeRuim.falhasSeguidas, IA_FALHAS_PARA_DEGRADAR);
+checar('última falha registrada', typeof saudeRuim.ultimaFalhaEm, 'string');
+checar('alerta disparou uma vez (limitado por intervalo)', alertas.length, 1);
+checar('alerta só com metadado operacional', alertas[0], {
+  provedor: 'openrouter',
+  codigo: 'sobrecarregado',
+  status: 503,
+  tentativas: 3,
+  modelos: 3,
+  falhasSeguidas: 1,
+});
+checar('alerta não contém o prompt', JSON.stringify(alertas).includes('Helena'), false);
+checar('alerta não contém a chave', JSON.stringify(alertas).includes('falsa'), false);
+
+// Cota negada NÃO é falha do provedor.
+const erroCota = new Error('cota_ia_negada');
+erroCota.name = 'CotaIAError';
+const antesCota = saudeIA(envSaude).falhasSeguidas;
+const recebidoCota = await erroDe(() => gerarIA(envSaude, {
+  user: 'x',
+  beforeAttempt: async () => {
+    throw erroCota;
+  },
+}));
+checar('cota negada propaga o mesmo erro', recebidoCota === erroCota, true);
+checar('cota negada não conta como falha da IA', saudeIA(envSaude).falhasSeguidas, antesCota);
+
+// Entrada vazia também não.
+await erroDe(() => gerarIA(envSaude, { user: '   ' }));
+checar('mensagem ausente não conta como falha da IA', saudeIA(envSaude).falhasSeguidas, antesCota);
+
+globalThis.fetch = async () => respostaOk();
+await gerarIA(envSaude, { user: 'volta', beforeAttempt: async () => {} });
+const saudeBoa = saudeIA(envSaude);
+checar('um sucesso real volta para on', saudeBoa.ia, 'on');
+checar('sucesso zera falhas seguidas', saudeBoa.falhasSeguidas, 0);
+checar('último sucesso registrado', typeof saudeBoa.ultimoSucessoEm, 'string');
+checar('amostra soma sucessos e falhas', saudeBoa.amostra, IA_FALHAS_PARA_DEGRADAR + 1);
+
+reiniciarSaudeIA();
+definirAlertaFalhaIA(() => {
+  throw new Error('sentry fora');
+});
+globalThis.fetch = async () => respostaErro(400);
+const erroComAlertaQuebrado = await erroDe(() => gerarIA(envSaude, { user: 'x' }));
+checar('alerta quebrado não troca o erro devolvido', erroComAlertaQuebrado?.message, 'openrouter_400');
+definirAlertaFalhaIA(null);
+reiniciarSaudeIA();
 
 globalThis.fetch = fetchReal;
 

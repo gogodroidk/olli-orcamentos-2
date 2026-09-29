@@ -1,5 +1,6 @@
 /**
- * OLLI — Worker de IA: OpenRouter gratuito para raciocínio e Workers AI para voz.
+ * OLLI — Worker de IA: OpenRouter (cadeia paga barata em allowlist, com teto de
+ * preço) para raciocínio e Workers AI para voz.
  *
  * Endpoints (o app chama exatamente estes):
  *   POST /            → diagnóstico técnico (OLLI Técnica)
@@ -62,7 +63,15 @@ import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
-import { aiConfigurada, gerarIA, provedorIA, transcreverAudio } from './ai.js';
+import {
+  aiConfigurada,
+  definirAlertaFalhaIA,
+  gerarIA,
+  pagamentoOpenRouterPermitido,
+  provedorIA,
+  saudeIA,
+  transcreverAudio,
+} from './ai.js';
 import {
   FAMILIAS_COTA_IA,
   criarGateTentativasOpenRouter,
@@ -1152,11 +1161,24 @@ const handler = {
 
     // Health check público (abrir no navegador mostra que está online). GET '/'
     // NUNCA exige auth; só o POST '/' (diagnóstico) passa pelo gate de IA abaixo.
+    // `ia` reflete as gerações REAIS deste isolate ('degradada' após falhas
+    // seguidas — ver saudeIA em ai.js); não chama o provedor a cada GET.
+    // `ia_saude.amostra:0` = isolate novo, ainda sem evidência nem de sucesso
+    // nem de falha. Nunca expõe código de erro nem modelo aqui (rota pública).
     if (request.method === 'GET' && url.pathname === '/') {
+      const saude = saudeIA(env);
       return json({
         ok: true,
         service: 'olli-diagnostico',
-        ia: aiConfigurada(env) ? 'on' : 'off',
+        ia: saude.ia,
+        ia_saude: {
+          amostra: saude.amostra,
+          falhas_seguidas: saude.falhasSeguidas,
+          ultimo_sucesso: saude.ultimoSucessoEm,
+          ultima_falha: saude.ultimaFalhaEm,
+          escopo: 'isolate',
+        },
+        ia_pago: pagamentoOpenRouterPermitido(env) ? 'on' : 'off',
         autopilot: autopilotConfigurado(env, '/ia/autopilot/preview') ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
@@ -1334,6 +1356,28 @@ const secureHandler = {
  * webhook de pagamento e prompt de cliente: corpo é dado pessoal (LGPD) e
  * assinatura HMAC. Só metadado vai.
  */
+// Falha TOTAL da cadeia de IA (todos os modelos, ou erro definitivo) vira
+// evento no Sentry — antes ela só virava 502 + console.error e a IA ficou dias
+// fora do ar sem ninguém saber. `info` já chega saneado de ai.js (código,
+// status HTTP, contagens); o limite de 1 alerta/10 min por isolate também fica
+// lá. Mensagem fixa + fingerprint fixo = um único issue agrupado no Sentry.
+// Tudo vai em `tags`: o limparEventoSentry apaga `extra`/`contexts` inteiros.
+definirAlertaFalhaIA((info) => {
+  const tag = (valor) => (valor === null || valor === undefined ? 'n/d' : String(valor));
+  Sentry.captureMessage('ia_cadeia_falhou', {
+    level: 'error',
+    fingerprint: ['ia_cadeia_falhou'],
+    tags: {
+      ia_provedor: tag(info.provedor),
+      ia_codigo: tag(info.codigo),
+      ia_status: tag(info.status),
+      ia_tentativas: tag(info.tentativas),
+      ia_modelos: tag(info.modelos),
+      ia_falhas_seguidas: tag(info.falhasSeguidas),
+    },
+  });
+});
+
 export default Sentry.withSentry(
   () => ({
     dsn: 'https://b015159326e49e2534d36452c334611f@o4511745793327104.ingest.us.sentry.io/4511745841889280',
