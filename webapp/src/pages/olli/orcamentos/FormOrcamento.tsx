@@ -31,7 +31,8 @@
  */
 import type { ItemOrcamento, Orcamento, ProdutoItem, ServicoItem } from "@dominio";
 import { propostaJaEnviada, STATUS_LABELS } from "@dominio";
-import { AlertTriangle, Boxes, Check, Copy, Loader2, Plus, RotateCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { AlertTriangle, Boxes, Check, Copy, Lightbulb, Loader2, Plus, RotateCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { AVISO_EXEMPLO } from "@ativacao";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Campo, CampoMoeda, formatarMoeda } from "@/olli/components/campos";
@@ -263,9 +264,11 @@ interface Props {
 	ehNovo: boolean;
 	/** Oferecido quando a edição está bloqueada. */
 	aoDuplicar?: (o: Orcamento) => void;
+	/** Orçamento de EXEMPLO da ativação: o editor avisa que valores são só referência. */
+	exemplo?: boolean;
 }
 
-export default function FormOrcamento({ aberto, aoFechar, inicial, ehNovo, aoDuplicar }: Props) {
+export default function FormOrcamento({ aberto, aoFechar, inicial, ehNovo, aoDuplicar, exemplo }: Props) {
 	const formId = useId();
 
 	// TRAVA (motivo 2 do cabeçalho): documento já enviado não abre para edição.
@@ -275,7 +278,15 @@ export default function FormOrcamento({ aberto, aoFechar, inicial, ehNovo, aoDup
 	}
 
 	return (
-		<Editor key={inicial.id} formId={formId} aberto={aberto} aoFechar={aoFechar} inicial={inicial} ehNovo={ehNovo} />
+		<Editor
+			key={inicial.id}
+			formId={formId}
+			aberto={aberto}
+			aoFechar={aoFechar}
+			inicial={inicial}
+			ehNovo={ehNovo}
+			exemplo={ehNovo && exemplo === true}
+		/>
 	);
 }
 
@@ -289,12 +300,14 @@ function Editor({
 	aoFechar,
 	inicial,
 	ehNovo,
+	exemplo,
 }: {
 	formId: string;
 	aberto: boolean;
 	aoFechar: () => void;
 	inicial: Orcamento;
 	ehNovo: boolean;
+	exemplo: boolean;
 }) {
 	// O estado NASCE do blob inteiro e só é PATCHED — ver motivo 1 do cabeçalho.
 	// `comDefaults` blinda blob legado (sem formasPagamento/itens) contra TypeError.
@@ -609,6 +622,14 @@ function Editor({
 						<p>
 							<strong className="font-medium text-text-primary">Revisão do orçamento {orc.revisaoDeNumero}.</strong>{" "}
 							O original está preservado. Salve e envie este novo documento ao cliente.
+						</p>
+					</div>
+				)}
+				{exemplo && (
+					<div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2.5 text-sm text-text-secondary">
+						<Lightbulb aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
+						<p>
+							<strong className="font-medium text-text-primary">Orçamento de exemplo.</strong> {AVISO_EXEMPLO}
 						</p>
 					</div>
 				)}

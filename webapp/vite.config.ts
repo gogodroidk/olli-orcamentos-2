@@ -26,6 +26,7 @@ const sentryCapturaFonte = fileURLToPath(new URL("../src/services/sentryCaptura.
 const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
 const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesComerciais.ts", import.meta.url));
+const ativacaoFonte = fileURLToPath(new URL("../src/services/ativacao.ts", import.meta.url));
 const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts", import.meta.url));
 const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
@@ -79,6 +80,7 @@ export default defineConfig(({ mode }) => {
 				"@verticais": verticaisFonte,
 				"@vertical-segmento": verticalSegmentoFonte,
 				"@limites-comerciais": limitesComerciaisFonte,
+				"@ativacao": ativacaoFonte,
 				"@ia-segura": iaSeguraFonte,
 				"@precificacao": precificacaoFonte,
 				"@auth-policy": authPolicyFonte,

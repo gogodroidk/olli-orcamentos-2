@@ -22,6 +22,7 @@ import { formatCurrency } from '../utils/currency';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { track, Eventos } from '../services/analytics';
+import { AVISO_EXEMPLO } from '../services/ativacao';
 
 // Steps
 import Step1Cliente from '../steps/Step1Cliente';
@@ -155,11 +156,14 @@ export default function NovoOrcamentoScreen() {
   // diagnóstico / código de erro. Lidos só na criação (não no modo edição).
   const prefillClienteId = (route.params as any)?.clienteId as string | undefined;
   const prefillItem = (route.params as any)?.prefillItem as
-    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number }
     | undefined;
   const prefillItems = (route.params as any)?.prefillItems as
-    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }[]
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number }[]
     | undefined;
+  // Orçamento de EXEMPLO da ativação (Início → "Seu primeiro orçamento em 1 minuto"):
+  // os itens chegam com valor de referência e o editor avisa que é exemplo.
+  const ehExemplo = !isEdit && !!(route.params as any)?.exemploVertical;
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -261,16 +265,22 @@ export default function NovoOrcamentoScreen() {
 
       // Pré-carrega itens de diagnóstico/Autopilot para o usuário só ajustar
       // preço e quantidade. Preço não é inventado aqui: a origem pode trazer
-      // somente descrição e o editor continua sendo a autoridade.
+      // somente descrição e o editor continua sendo a autoridade. Só o exemplo
+      // da ativação manda `precoSugerido` — e aí a tela diz que é referência.
       const itensPrefill = [
         ...(prefillItem ? [prefillItem] : []),
         ...(Array.isArray(prefillItems) ? prefillItems : []),
-      ].filter((item) => item?.nome?.trim()).map((item): ItemOrcamento => ({
-        id: generateId(), tipo: item.tipo, catalogoId: '', nome: item.nome.trim(),
-        descricao: item.descricao?.trim() || undefined, preco: 0,
-        quantidade: typeof item.quantidade === 'number' && item.quantidade > 0 ? item.quantidade : 1,
-        unidade: 'un', subtotal: 0,
-      }));
+      ].filter((item) => item?.nome?.trim()).map((item): ItemOrcamento => {
+        const quantidade = typeof item.quantidade === 'number' && item.quantidade > 0 ? item.quantidade : 1;
+        const preco = typeof item.precoSugerido === 'number' && Number.isFinite(item.precoSugerido) && item.precoSugerido >= 0
+          ? round2(item.precoSugerido)
+          : 0;
+        return {
+          id: generateId(), tipo: item.tipo, catalogoId: '', nome: item.nome.trim(),
+          descricao: item.descricao?.trim() || undefined, preco, quantidade,
+          unidade: item.unidade?.trim() || 'un', subtotal: round2(preco * quantidade),
+        };
+      });
       if (itensPrefill.length) base = calcTotais({ ...base, itens: itensPrefill });
 
       setOrc(base);
@@ -346,7 +356,7 @@ export default function NovoOrcamentoScreen() {
       // festa) — o overlay dispara e a navegação real acontece no onDone dele,
       // pra dar tempo do usuário ver a animação antes de trocar de tela.
       if (!isEdit) {
-        track(Eventos.quoteCreated, { origem: 'manual', itens: toSave.itens.length });
+        track(Eventos.quoteCreated, { origem: ehExemplo ? 'exemplo_ativacao' : 'manual', itens: toSave.itens.length });
         pendingNavRef.current = toSave.id;
         setCelebrando(true);
       } else {
@@ -445,6 +455,12 @@ export default function NovoOrcamentoScreen() {
             <Text style={styles.revisionBannerText}>
               Revisão do nº {orc.revisaoDeNumero}: o original está preservado. Salve e envie este novo orçamento.
             </Text>
+          </View>
+        ) : null}
+        {ehExemplo ? (
+          <View style={styles.revisionBanner} accessible accessibilityRole="summary">
+            <MaterialCommunityIcons name="lightbulb-on-outline" size={17} color="#fff" />
+            <Text style={styles.revisionBannerText}>Orçamento de exemplo. {AVISO_EXEMPLO}</Text>
           </View>
         ) : null}
         <StepIndicator steps={STEPS} current={step} />

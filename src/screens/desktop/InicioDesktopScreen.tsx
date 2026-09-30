@@ -16,6 +16,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { GatePro } from '../../components/GatePro';
 import { EmptyState } from '../../components/EmptyState';
 import { LembreteAssinaturaFaixa } from '../../components/LembreteAssinaturaFaixa';
+import { AtivacaoInicio } from '../../components/AtivacaoInicio';
 import {
   getEmpresa, getClientes, getRecibos,
   getOrcamentosAgregadoPorStatus, getContasAReceberAgregado, getUltimosOrcamentos,
@@ -450,6 +451,9 @@ export default function InicioDesktopScreen() {
         iniciandoTrial={lembreteAssinatura.iniciandoTrial}
         style={styles.lembreteAssinatura}
       />
+
+      {/* Ativação — primeiro orçamento de exemplo + checklist (mesmo bloco do celular). */}
+      <AtivacaoInicio style={styles.lembreteAssinatura} />
 
       {/* KPIs — clicáveis, cada um leva à lista que o explica */}
       <View style={styles.kpiGrid}>
