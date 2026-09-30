@@ -258,7 +258,7 @@ interface LinkRow {
 async function lerLinkRow(orcamentoId: string, userId: string): Promise<LinkRow | null> {
   if (!supabase) return null;
   // 0ª tentativa: com pagamento_informado_em ("Já paguei" do cliente, migration
-  // 20260930120000). Sem a coluna (42703), segue a escada antiga abaixo.
+  // 20260930120300). Sem a coluna (42703), segue a escada antiga abaixo.
   try {
     const { data, error } = await supabase
       .from(TABLE)
@@ -407,7 +407,7 @@ async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
   if (!supabase) return [];
   const mapear = (arr: any[]): LinkDonoRow[] =>
     arr.map((r) => ({ orcamentoId: r?.orcamento_id ?? undefined, ...normalizarLinkRow(r) }));
-  // 0ª tentativa: com pagamento_informado_em (migration 20260930120000); sem a
+  // 0ª tentativa: com pagamento_informado_em (migration 20260930120300); sem a
   // coluna (42703), segue a escada antiga.
   try {
     const { data, error } = await supabase

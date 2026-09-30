@@ -285,7 +285,7 @@ caso('mensagem de lembrete: nome, meses, serviço do ofício e o prestador', () 
 
 // ─── 5. Migration do "Já paguei" ─────────────────────────────────────────────
 caso('migration: coluna pagamento_informado_em + CHECK com pagamento_informado', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20260930120000_link_pagamento_informado.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20260930120300_link_pagamento_informado.sql', import.meta.url), 'utf8');
   assert.match(sql, /add column if not exists pagamento_informado_em timestamptz/);
   assert.match(sql, /check \(evento in \('visualizado', 'aprovado', 'recusado', 'pagamento_informado'\)\)/);
   assert.match(sql, /drop constraint if exists eventos_orcamento_publico_evento_check/);

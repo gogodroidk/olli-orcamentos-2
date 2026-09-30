@@ -115,7 +115,7 @@ function sbHeaders(env, extra = {}) {
 // inteira (PostgREST 400). O worker grava o motivo em AMBAS, então ler
 // resposta_cliente já basta para a página.
 const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente';
-// Coluna do "Já paguei" (migration 20260930120000_link_pagamento_informado.sql).
+// Coluna do "Já paguei" (migration 20260930120300_link_pagamento_informado.sql).
 // Pedida numa 1ª tentativa; se o banco ainda não tem a coluna (PostgREST 400), a
 // leitura cai para SELECT_COLS e a linha volta marcada `_semPagamentoInformado` —
 // a página então NÃO mostra o botão "Já paguei" (desligado dizendo que está
