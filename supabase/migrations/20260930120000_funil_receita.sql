@@ -42,7 +42,9 @@
 --     ("Marcar como conta interna") ou por SQL;
 --   - e-mails passados pelo chamador (o worker manda o ADMIN_EMAIL, que é o dono);
 --   - administradores do SaaS (admin_memberships);
---   - contas que já receberam plano manual (cortesia/demo: admin_override_*);
+--   - contas que já receberam plano manual (cortesia/demo: admin_override_*) ou
+--     concessão LEGADA gravada direto em assinaturas com id de gateway fictício
+--     ('comp_manual_…', 'sub_demo_…', 'reviewer_…' — ver funil_assinatura_ficticia);
 --   - membros convidados de equipe de outro dono.
 --
 -- Leitura: SÓ service_role (o worker, depois de super-admin + TOTP). Nenhuma
@@ -129,6 +131,24 @@ $$;
 
 revoke all on function public.funil_registrar_marco(uuid, text, text) from public, anon, authenticated;
 
+-- Concessão LEGADA (antes do override auditado do painel, 20/08): cortesia do
+-- dono, conta demo e revisor da loja foram gravados direto em `assinaturas` como
+-- 'active' com ids de gateway INVENTADOS (em 30/09 havia 3 linhas assim e 0
+-- pagantes reais). Id real da Stripe é prefixo + alfanumérico: 'sub_1Nx…',
+-- 'cus_Px…' — nunca 'sub_demo_grtech' nem 'reviewer_google_play_…'. Linha assim
+-- não é pagamento e a conta é interna.
+create or replace function public.funil_assinatura_ficticia(p_sub text, p_cus text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(p_sub !~ '^sub_[A-Za-z0-9]+$', false)
+      or coalesce(p_cus !~ '^cus_[A-Za-z0-9]+$', false);
+$$;
+
+revoke all on function public.funil_assinatura_ficticia(text, text) from public, anon, authenticated;
+
 -- Status de orçamento que só existem depois de a proposta sair para o cliente.
 -- 'cancelado' fica de fora: rascunho descartado também é cancelado.
 create or replace function public.funil_marco_orcamento()
@@ -170,6 +190,7 @@ $$;
 
 -- Pago = ativo num plano pago. A concessão manual do painel mexe só nas colunas
 -- admin_* (e nasce 'canceled' quando cria a linha), então não conta como pago.
+-- A concessão legada (ids fictícios) também não.
 create or replace function public.funil_marco_assinatura()
 returns trigger
 language plpgsql
@@ -177,7 +198,8 @@ security definer
 set search_path = ''
 as $$
 begin
-  if new.status = 'active' and new.plano in ('pro', 'empresa') then
+  if new.status = 'active' and new.plano in ('pro', 'empresa')
+     and not public.funil_assinatura_ficticia(new.stripe_subscription_id, new.stripe_customer_id) then
     perform public.funil_registrar_marco(
       new.user_id,
       'pagou',
@@ -246,6 +268,7 @@ select a.user_id, 'pagou', 'retroativo', coalesce(a.atualizado_em, now()), true
   from public.assinaturas a
  where a.status = 'active'
    and a.plano in ('pro', 'empresa')
+   and not public.funil_assinatura_ficticia(a.stripe_subscription_id, a.stripe_customer_id)
 on conflict (user_id, marco) do nothing;
 
 -- ─── 5. Datas de cada degrau por conta (base das agregações) ────────────────
@@ -331,7 +354,9 @@ as $$
         then 'lista_interna'
       when exists (select 1 from public.admin_memberships am where am.user_id = r.id) then 'admin'
       when exists (select 1 from public.assinaturas s
-                    where s.user_id = r.id and (s.admin_override_ativo or s.admin_override_at is not null))
+                    where s.user_id = r.id
+                      and (s.admin_override_ativo or s.admin_override_at is not null
+                           or public.funil_assinatura_ficticia(s.stripe_subscription_id, s.stripe_customer_id)))
         then 'cortesia'
       when exists (select 1 from public.organizacao_membros om
                      join public.organizacoes o on o.id = om.org_id

@@ -53,7 +53,7 @@ create table public.orcamento_envios_gratis (owner_user_id uuid, estado text, co
 create table public.trials_comerciais (tenant_id uuid primary key, owner_user_id uuid, iniciado_em timestamptz);
 create table public.assinaturas (
   user_id uuid primary key references auth.users(id), plano text, status text,
-  stripe_subscription_id text, mp_preapproval_id text, atualizado_em timestamptz default now(),
+  stripe_subscription_id text, stripe_customer_id text, mp_preapproval_id text, atualizado_em timestamptz default now(),
   admin_override_ativo boolean not null default false, admin_override_at timestamptz
 );
 create table public.webhook_events (origem text, event_id text, status text, payload jsonb, processado_em timestamptz);
@@ -66,7 +66,10 @@ create table public.organizacao_membros (org_id uuid, user_id uuid, papel text);
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const A1 = id(1), A2 = id(2), A3 = id(3), B1 = id(11), B2 = id(12);
 const DONO = id(91), LISTA_ID = id(92), LISTA_EMAIL = id(93), ADMIN = id(94), CORTESIA = id(95), MEMBRO = id(96);
-const INTERNAS = [DONO, LISTA_ID, LISTA_EMAIL, ADMIN, CORTESIA, MEMBRO];
+// Concessão LEGADA gravada direto em assinaturas com id de gateway fictício (como o
+// revisor da Google Play e a demo em produção em 30/09).
+const LEGADO = id(97);
+const INTERNAS = [DONO, LISTA_ID, LISTA_EMAIL, ADMIN, CORTESIA, MEMBRO, LEGADO];
 
 const db = new PGlite();
 await db.exec(ESQUEMA);
@@ -85,7 +88,8 @@ insert into auth.users (id, email, created_at, last_sign_in_at) values
   ('${LISTA_EMAIL}', 'demo@olli.test', '2026-09-08T12:00Z', '2026-09-08T12:10Z'),
   ('${ADMIN}', 'admin@olli.test', '2026-09-08T12:00Z', '2026-09-08T12:10Z'),
   ('${CORTESIA}', 'cortesia@olli.test', '2026-09-08T12:00Z', '2026-09-08T12:10Z'),
-  ('${MEMBRO}', 'tecnico@olli.test', '2026-09-08T12:00Z', '2026-09-08T12:10Z');
+  ('${MEMBRO}', 'tecnico@olli.test', '2026-09-08T12:00Z', '2026-09-08T12:10Z'),
+  ('${LEGADO}', 'revisor@olli.test', '2026-09-08T12:00Z', '2026-09-08T12:10Z');
 
 insert into public.user_activity_log values ('${A1}', 'login', '2026-09-08T13:00Z');
 insert into public.empresa (user_id, dados, atualizado_em) values
@@ -94,7 +98,10 @@ insert into public.clientes values ('c-a1', '${A1}', '2026-09-08T14:30Z');
 insert into public.orcamentos values ('o-a1', '${A1}', 'enviado', '2026-09-08T15:00Z', '2026-09-09T12:00Z');
 -- Conta interna já "paga" antes da migration: a carga retroativa grava o marco.
 insert into public.assinaturas (user_id, plano, status, stripe_subscription_id, atualizado_em)
-  values ('${LISTA_ID}', 'empresa', 'active', 'sub_sintetica_1', '2026-09-08T16:00Z');
+  values ('${LISTA_ID}', 'empresa', 'active', 'sub_1Sintetica1', '2026-09-08T16:00Z');
+-- Concessão legada: 'active' com ids inventados. Não é pagamento e a conta é interna.
+insert into public.assinaturas (user_id, plano, status, stripe_subscription_id, stripe_customer_id, atualizado_em)
+  values ('${LEGADO}', 'empresa', 'active', 'reviewer_google_play_sintetico', 'reviewer_sintetico', '2026-09-08T16:00Z');
 `);
 
 await db.exec(MIGRATION);
@@ -124,14 +131,16 @@ insert into public.empresa (user_id, dados, atualizado_em) values ('${B2}', '{"n
 -- Internas: todas com funil completo — sem a exclusão, inflariam cada degrau.
 insert into public.orcamentos
   select 'o-int-' || n, u, 'aprovado', '2026-09-08T13:00Z', '2026-09-08T13:30Z'
-  from unnest(array['${DONO}','${LISTA_ID}','${LISTA_EMAIL}','${ADMIN}','${CORTESIA}','${MEMBRO}']::uuid[]) with ordinality as t(u, n);
+  from unnest(array['${DONO}','${LISTA_ID}','${LISTA_EMAIL}','${ADMIN}','${CORTESIA}','${MEMBRO}','${LEGADO}']::uuid[]) with ordinality as t(u, n);
 insert into public.funil_exclusoes (user_id, motivo) values ('${LISTA_ID}', 'conta de teste do dono');
 insert into public.funil_exclusoes (email, motivo) values ('demo@olli.test', 'conta demo');
 insert into public.admin_memberships values ('${ADMIN}');
 insert into public.assinaturas (user_id, plano, status, admin_override_ativo, admin_override_at)
   values ('${CORTESIA}', 'empresa', 'canceled', true, '2026-09-08T12:30Z');
 insert into public.assinaturas (user_id, plano, status, stripe_subscription_id)
-  values ('${ADMIN}', 'pro', 'active', 'sub_sintetica_2');
+  values ('${ADMIN}', 'pro', 'active', 'sub_1Sintetica2');
+-- Qualquer escrita futura na linha legada (renovação, toque do painel) também não vira "pagou".
+update public.assinaturas set atualizado_em = now() where user_id = '${LEGADO}';
 insert into public.organizacoes values ('${id(500)}', '${A1}');
 insert into public.organizacao_membros values ('${id(500)}', '${A1}', 'owner'), ('${id(500)}', '${MEMBRO}', 'tecnico');
 `);
@@ -204,12 +213,12 @@ const exc = (await db.query<{ regra: string; contas: number }>(
   'select regra, contas::int from public.admin_funil_exclusoes($1)', [EMAILS_DONO],
 )).rows;
 const porRegra = Object.fromEntries(exc.map((e) => [e.regra, e.contas]));
-checar('uma regra por conta: dono 1, lista 2, admin 1, cortesia 1, membro 1',
-  JSON.stringify(porRegra) === JSON.stringify({ admin: 1, cortesia: 1, dono: 1, lista_interna: 2, membro_equipe: 1 }), JSON.stringify(porRegra));
+checar('uma regra por conta: dono 1, lista 2, admin 1, cortesia 2 (override + legado), membro 1',
+  JSON.stringify(porRegra) === JSON.stringify({ admin: 1, cortesia: 2, dono: 1, lista_interna: 2, membro_equipe: 1 }), JSON.stringify(porRegra));
 const marcos = (await db.query<{ user_id: string; excluida_por: string | null }>(
   'select user_id::text, excluida_por from public.funil_contas_marcos($1)', [EMAILS_DONO],
 )).rows;
-checar('todas as 6 internas marcadas e nenhuma real', marcos.filter((m) => m.excluida_por).map((m) => m.user_id).sort().join() === [...INTERNAS].sort().join());
+checar('todas as 7 internas marcadas e nenhuma real', marcos.filter((m) => m.excluida_por).map((m) => m.user_id).sort().join() === [...INTERNAS].sort().join());
 checar('internas não aparecem no funil (aprovado da coorte 07/09 = só A1)', pega('2026-09-07', 'orcamento_aprovado')?.contas === 1);
 const semDono = await coortes([]);
 const cadSemDono = semDono.find((l) => l.semana === '2026-09-07' && l.degrau === 'cadastro');
@@ -229,6 +238,11 @@ checar('trigger: perfil novo grava marco', marco(B2, 'perfil_empresa')?.origem =
 checar('trigger: Pix (sem subscription) = origem avulso', marco(A1, 'pagou')?.origem === 'avulso');
 checar('trigger: Stripe = origem stripe', marco(ADMIN, 'pagou')?.origem === 'stripe');
 checar('concessão manual (override) NÃO é pagou', !marco(CORTESIA, 'pagou'));
+checar('concessão legada (id fictício) NÃO vira pagou na carga retroativa nem no trigger', !marco(LEGADO, 'pagou'));
+const ficticia = async (sub: string | null, cus: string | null) =>
+  (await db.query<{ f: boolean }>('select public.funil_assinatura_ficticia($1, $2) f', [sub, cus])).rows[0].f;
+checar('id real da Stripe não é fictício', !(await ficticia('sub_1NxAbC23dEf', 'cus_PqR45sTu')) && !(await ficticia(null, null)) && !(await ficticia(null, 'cus_PqR45sTu')));
+checar('ids inventados são fictícios', (await ficticia('sub_demo_grtech', 'cus_demo_grtech')) && (await ficticia('comp_manual_empresa', null)) && (await ficticia(null, 'reviewer_x')));
 
 const antes = marco(B1, 'orcamento_enviado')?.criado_em;
 await db.exec(`update public.orcamentos set status = 'aprovado' where id = 'o-b1';
