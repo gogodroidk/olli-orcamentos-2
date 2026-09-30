@@ -35,13 +35,12 @@ create or replace function public.registrar_atividade_usuario(
   p_evento text,
   p_plataforma text default 'unknown'
 )
-returns bigint
+returns void
 language plpgsql
 security invoker
 set search_path = ''
 as $$
 declare
-  novo_id bigint;
   evento_normalizado text := lower(trim(coalesce(p_evento, '')));
   plataforma_normalizada text := lower(trim(coalesce(p_plataforma, 'unknown')));
 begin
@@ -59,11 +58,11 @@ begin
     plataforma_normalizada := 'unknown';
   end if;
 
+  -- Sem RETURNING: o usuário só tem INSERT nesta tabela (nem SELECT, nem
+  -- policy de leitura), e RETURNING exige os dois — com ele, toda chamada
+  -- falhava com "permission denied". Quem lê é só o admin (service_role).
   insert into public.user_activity_log (user_id, evento, plataforma)
-  values ((select auth.uid()), evento_normalizado, plataforma_normalizada)
-  returning id into novo_id;
-
-  return novo_id;
+  values ((select auth.uid()), evento_normalizado, plataforma_normalizada);
 end;
 $$;
 

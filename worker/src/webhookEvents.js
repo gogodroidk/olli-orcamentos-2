@@ -107,14 +107,18 @@ async function estadoDoEvento(env, origem, eventId) {
  * Fecha o evento. Best-effort DE PROPÓSITO: a idempotência já foi garantida pelo
  * insert, então uma falha aqui não pode derrubar um webhook que JÁ processou o
  * pagamento — o efeito de negócio está feito; isto é a trilha.
+ *
+ * Devolve `true` só quando o banco CONFIRMOU a escrita. Quem só quer a trilha
+ * (Stripe, Resend) ignora o retorno; quem usa o 'processado' como "já consumido"
+ * (Pix AbacatePay) precisa saber se ele ficou gravado — "não sei" não é "gravei".
  */
 export async function marcarEvento(env, { origem, eventId, status, erro }) {
-  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return false;
   try {
     const url =
       `${env.SUPABASE_URL}/rest/v1/webhook_events` +
       `?origem=eq.${encodeURIComponent(origem)}&event_id=eq.${encodeURIComponent(String(eventId))}`;
-    await fetch(url, {
+    const r = await fetch(url, {
       method: 'PATCH',
       headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify({
@@ -123,7 +127,9 @@ export async function marcarEvento(env, { origem, eventId, status, erro }) {
         processado_em: new Date().toISOString(),
       }),
     });
+    return r.ok;
   } catch {
     // trilha não derruba pagamento
+    return false;
   }
 }

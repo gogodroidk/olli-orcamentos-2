@@ -13,7 +13,10 @@ export function testarParserCentralDeDados() {
 	afirmar(objetos[0]?.descrição === "A; B", "CSV deve aceitar delimitador entre aspas");
 	afirmar(protegerCsv("=2+2").startsWith("'"), "exportação deve neutralizar fórmula");
 	afirmar(criarCsv(["nome"], [["+55"]]).includes("'+55"), "telefones perigosos devem sair protegidos");
-	afirmar(protegerCsv("-123,45") === "-123,45", "número negativo deve preservar o round-trip");
+	// Round-trip é sobre o VALOR: a vírgula decimal faz a célula sair entre aspas
+	// (`"-123,45"`), o que é CSV correto — o que não pode é ganhar o prefixo `'`.
+	afirmar(protegerCsv("-123.45") === "-123.45", "número negativo não pode ganhar prefixo de fórmula");
+	afirmar(parseCsv(protegerCsv("-123,45"))[0]?.[0] === "-123,45", "número negativo deve preservar o round-trip");
 	afirmar(protegerCsv("-1+CMD()").startsWith("'"), "expressão iniciada por menos deve continuar neutralizada");
 	const orcamento = {
 		id: "123e4567-e89b-42d3-a456-426614174000", numero: "00126", clienteId: "", clienteNome: "Cliente", clienteTelefone: "",
@@ -28,3 +31,8 @@ export function testarParserCentralDeDados() {
 	try { extrairOrcamentosOlli(JSON.stringify({ formato: "olli-orcamentos", versao: 1, orcamentos: [{ ...orcamento, itens: [] }] })); } catch { rejeitou = true; }
 	afirmar(rejeitou, "orçamento incompleto deve falhar fechado");
 }
+
+// O script `test:importacao` roda este arquivo direto com `node`. Sem esta
+// chamada ele só DECLARAVA a função e saía com 0 — um teste que nunca rodou.
+testarParserCentralDeDados();
+console.log("PASSOU: parser da central de dados (CSV BR, fórmula neutralizada, pacote OLLI fail-closed).");

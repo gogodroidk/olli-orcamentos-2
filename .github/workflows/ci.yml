@@ -26,10 +26,11 @@ jobs:
       - name: Instalar dependências (npm ci — package-lock.json na raiz)
         run: npm ci
 
-      # Não separar typecheck/teste aqui: o preflight também fecha contraste,
-      # Doctor, config de release e o meta-teste que garante que todo teste novo
-      # está ligado ao gate. Assim um futuro Git/Cloudflare build não pode ficar
-      # verde só porque executou um subconjunto antigo da suíte.
+      # Não separar typecheck/teste aqui: o preflight roda `npm test` e também
+      # fecha lint (catraca), contraste, Doctor, config de release e o
+      # meta-teste que garante que todo teste novo está ligado ao gate. Assim
+      # um futuro Git/Cloudflare build não pode ficar verde só porque executou
+      # um subconjunto antigo da suíte.
       - name: Preflight completo
         run: npm run preflight
 
@@ -73,6 +74,11 @@ jobs:
 
       - name: Build
         run: pnpm run build
+
+      # Testes puros do painel (sem DOM/rede). Até 29/09 este script só
+      # declarava a função e saía com 0 — nunca tinha rodado de verdade.
+      - name: Testes do painel
+        run: pnpm run test:importacao
 
   # 3) Landing (web/): astro check (type-check) + build.
   landing:
@@ -138,3 +144,28 @@ jobs:
 
       - name: Validar bundle sem publicar
         run: npm run check
+
+  # 5) Lint (Biome) com catraca: app (raiz) + painel (webapp/). Reprova só erro
+  # NOVO — os 173 + 58 erros de 29/09 estão congelados em scripts/lint-base.json.
+  # Também roda dentro do preflight; o job separado existe para o PR mostrar
+  # "lint" com nome próprio, sem esperar typecheck, suíte e Doctor.
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      # O Biome (versão cravada, a mesma do painel) vem do package-lock.json
+      # da raiz; o painel não precisa das próprias dependências para o lint.
+      - name: Instalar dependências (npm ci — package-lock.json na raiz)
+        run: npm ci
+
+      - name: Lint sem erro novo
+        run: npm run lint

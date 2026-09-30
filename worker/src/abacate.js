@@ -33,14 +33,28 @@
  *    DATA DO PAGAMENTO (`updatedAt` da cobrança paga), não de "agora" — ver
  *    `concederPlanoPeriodo`. Por isso o polling do app e o webhook podem ambos
  *    liberar sem somar meses.
+ *  - CADA COBRANÇA LIBERA UMA VEZ SÓ (auditoria 29/09, item 11). A vigência fixa
+ *    impedia somar meses, mas não impedia DESFAZER uma revogação: estornado ou
+ *    revogado o plano à mão, o polling (ou um replay do webhook) lia a mesma
+ *    cobrança PAID e ligava o plano de novo. Agora a cobrança é registrada como
+ *    consumida em `webhook_events` (origem 'abacate', event_id = id da cobrança);
+ *    depois de consumida ela responde "pago" mas não concede mais nada.
+ *  - O webhook tem teto por IP (`ABACATEHOOK_RL`), conferido ANTES do segredo.
+ *
+ * O `?webhookSecret=` chega na URL. Nada aqui loga URL nem query (os logs cortam
+ * no `?`, e o Sentry já tira query — `sentryScrub.ts`).
  *
  * NUNCA MODO DEMO (ordem permanente do dono): chave de desenvolvimento
  * (`abc_dev_…`) gera QR falso. Em produção ela deixa a rota DESLIGADA, dizendo que
  * está desligada — só `ABACATE_PERMITIR_DEV=true` (staging/teste) a aceita.
  */
 import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
-import { rateOkSensivel } from './rateLimit.js';
+import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
+import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
+
+/** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
+const ORIGEM_CONSUMO = 'abacate';
 
 const ABACATE_API = 'https://api.abacatepay.com/v2';
 
@@ -209,7 +223,19 @@ function lerVinculo(cobranca) {
  *  - `check` traz o status fresco (PAID na hora), e nada mais.
  * Confiar só no `get` deixaria o cliente pagando e o app dizendo "aguardando".
  *
- * Retorno: { estado: 'liberado' | 'pendente' | 'invalida' | 'alheia' | 'indisponivel' }
+ * CONSUMO ÚNICO: paga e válida, a cobrança é REIVINDICADA em `webhook_events`
+ * antes de conceder (mesmo padrão do webhook da Stripe). Três estados:
+ *  - reivindicou (primeira vez, ou tentativa anterior que não terminou) → concede
+ *    e marca 'processado';
+ *  - já 'processado' → NÃO concede de novo. Responde 'liberado' (a cobrança foi
+ *    paga e aplicada), então o polling segue vendo pago:true e nada muda — nem
+ *    quando o plano foi revogado/estornado depois;
+ *  - não deu para saber (banco fora) → NÃO concede: 'indisponivel', 5xx, reenvio.
+ * Se concedeu mas o 'processado' não gravou, volta `registrado:false`: o webhook
+ * responde 503 para a AbacatePay reenviar e a marca ser gravada (o reprocesso dá
+ * a mesma vigência, então não soma nada).
+ *
+ * Retorno: { estado: 'liberado' | 'pendente' | 'invalida' | 'alheia' | 'indisponivel', registrado? }
  */
 async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const idEnc = encodeURIComponent(idCobranca);
@@ -234,6 +260,16 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   if (!situacao) return { estado: 'indisponivel' };
   if (situacao.status !== 'PAID') return { estado: 'pendente' };
 
+  // Reivindica SÓ agora: cobrança pendente, forjada ou alheia não deixa rastro.
+  const consumo = { origem: ORIGEM_CONSUMO, eventId: idCobranca };
+  const claim = await reivindicarEvento(env, {
+    ...consumo,
+    tipo: 'plano_pix',
+    payload: { user_id: vinculo.userId, plano: vinculo.planoKey, valor_centavos: Number(cobranca.amount) },
+  });
+  if (!claim.ok) return { estado: 'indisponivel' };
+  if (claim.duplicado) return { estado: 'liberado', registrado: true };
+
   // Vigência a partir de uma data GRAVADA na cobrança (o início do período, ou a
   // criação) — nunca de "agora" nem do `updatedAt` (que vem em cache). Data fixa =
   // liberar de novo dá a mesma vigência (ver concederPlanoPeriodo). A criação fica
@@ -243,7 +279,14 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
     planoKey: vinculo.planoKey,
     dataAprovacao: baseDaVigencia(cobranca),
   });
-  return { estado: res.ok ? 'liberado' : 'indisponivel' };
+  if (!res.ok) {
+    // 'falhou' deixa a próxima tentativa reprocessar (ver estadoDoEvento).
+    await marcarEvento(env, { ...consumo, status: 'falhou', erro: `concessao_http_${res.status}` });
+    return { estado: 'indisponivel' };
+  }
+  const registrado = await marcarEvento(env, { ...consumo, status: 'processado' });
+  if (!registrado) console.error('[olli-abacate] plano liberado, mas o consumo não gravou — aguardando reenvio');
+  return { estado: 'liberado', registrado };
 }
 
 // ─── GET /abacate/config ─────────────────────────────────────
@@ -316,6 +359,16 @@ async function checarStatus(request, env, url) {
 
 // ─── POST /abacate/webhook?webhookSecret= ────────────────────
 async function webhook(request, env, url) {
+  // Teto por IP ANTES de olhar o segredo: barra quem tenta adivinhar o
+  // `webhookSecret` e, com ele vazado, a amplificação (cada POST válido faz 2
+  // leituras na AbacatePay e escritas no Supabase). NÃO é fail-closed, pelo mesmo
+  // motivo do MPHOOK_RL: 429 só faz a AbacatePay reenviar (qualquer não-2xx
+  // reenvia com backoff), e limitador fora não pode derrubar webhook de dinheiro.
+  const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+  if (!deixaPassar(await checarLimite(env.ABACATEHOOK_RL, `abacatehook:${ip}`), { sensivel: false })) {
+    return json({ erro: 'muitas_requisicoes' }, 429);
+  }
+
   const secret = env.ABACATE_WEBHOOK_SECRET;
   if (!secret || !compararConstante(url.searchParams.get('webhookSecret') || '', secret)) {
     return json({ erro: 'nao_autorizado' }, 401);
@@ -334,7 +387,8 @@ async function webhook(request, env, url) {
 
   const r = await liberarSePaga(env, id);
   // indisponível → 5xx para a AbacatePay reenviar; o resto não melhora com reenvio.
-  if (r.estado === 'indisponivel') return json({ erro: 'indisponivel' }, 503);
+  // Liberado SEM o consumo gravado também reenvia: é o reenvio que grava a marca.
+  if (r.estado === 'indisponivel' || r.registrado === false) return json({ erro: 'indisponivel' }, 503);
   return json({ ok: true, estado: r.estado });
 }
 
