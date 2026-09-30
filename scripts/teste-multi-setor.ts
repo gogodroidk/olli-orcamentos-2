@@ -274,6 +274,26 @@ for (const m of MODELOS_DOCUMENTO_OFICIO) {
     assert.ok(texto.includes(inciso), `rascunho do painel traz o inciso ${inciso}`);
   }
 }
+{
+  // Inciso XI pede número E validade: licença sem validade no cadastro não pode sair
+  // como linha completa no rascunho; e o que o app já salvou (validade, CIT) é reusado.
+  const soNumero = textoModeloDocumentoOficio('comprovante_pragas', { licencaSanitaria: 'LS-123', licencaAmbiental: 'LA-9' }, null).texto;
+  assert.match(soNumero, /Licença sanitária — número e validade \(XI\): LS-123 · validade ________________/);
+  assert.match(
+    textoModeloDocumentoOficio('comprovante_pragas', { responsavelTecnico: 'Ana' }, null).texto,
+    /\(IX\): Ana · registro ________________/,
+    'RT sem registro não sai como linha completa (IX pede os dois)',
+  );
+  assert.match(soNumero, /Licença ambiental — número e validade \(XI\): LA-9 · validade ________________/);
+  const completo = textoModeloDocumentoOficio(
+    'comprovante_pragas',
+    { licencaSanitaria: 'LS-123', licencaSanitariaValidade: '31/12/2026', licencaAmbiental: 'LA-9', licencaAmbientalValidade: '30/06/2027', telefoneCit: '0800 771 3733' },
+    null,
+  ).texto;
+  assert.match(completo, /LS-123 · validade 31\/12\/2026/);
+  assert.match(completo, /LA-9 · validade 30\/06\/2027/);
+  assert.match(completo, /Toxicológica \(X\): 0800 771 3733/, 'CIT salvo pelo app entra no rascunho');
+}
 assert.deepEqual(MODELOS_DOCUMENTO_OFICIO.map((m) => m.vertical), ['dedetizacao', 'caixa_dagua']);
 
 // ─── 11. Telas usam a regra única (app + painel) ─────────────────────────────

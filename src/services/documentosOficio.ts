@@ -307,9 +307,12 @@ export interface EmpresaParaModelo {
   telefone?: string | null;
   whatsapp?: string | null;
   licencaSanitaria?: string | null;
+  licencaSanitariaValidade?: string | null;
   licencaAmbiental?: string | null;
+  licencaAmbientalValidade?: string | null;
   responsavelTecnico?: string | null;
   responsavelTecnicoRegistro?: string | null;
+  telefoneCit?: string | null;
 }
 
 /** Os modelos e o ofício de cada um (o painel só oferece o do ofício da empresa). */
@@ -320,6 +323,14 @@ export const MODELOS_DOCUMENTO_OFICIO: readonly { id: ModeloDocumentoOficio; tit
 
 function valorOuLacuna(v: string | null | undefined): string {
   return preenchido(v) ? String(v).trim() : '________________';
+}
+
+/**
+ * "número · validade DD/MM/AAAA" com lacuna no que faltar. O inciso XI pede os DOIS:
+ * imprimir só o número faria a linha parecer completa sem estar.
+ */
+function licencaComValidade(numero: string | null | undefined, validade: string | null | undefined): string {
+  return `${valorOuLacuna(numero)} · validade ${valorOuLacuna(validade)}`;
 }
 
 function enderecoEmpresa(e: EmpresaParaModelo | null | undefined): string {
@@ -351,13 +362,13 @@ export function textoModeloDocumentoOficio(
       `Grupo(s) químico(s) (VI): ${valorOuLacuna(null)}`,
       `Nome e concentração do(s) produto(s) (VII): ${valorOuLacuna(null)}`,
       `Orientações pertinentes (VIII): ${valorOuLacuna(null)}`,
-      `Responsável técnico e registro profissional (IX): ${valorOuLacuna([empresa?.responsavelTecnico, empresa?.responsavelTecnicoRegistro].filter(preenchido).join(' · ') || null)}`,
-      `Telefone do Centro de Informação Toxicológica (X): ${valorOuLacuna(null)}`,
+      `Responsável técnico e registro profissional (IX): ${valorOuLacuna(empresa?.responsavelTecnico)} · registro ${valorOuLacuna(empresa?.responsavelTecnicoRegistro)}`,
+      `Telefone do Centro de Informação Toxicológica (X): ${valorOuLacuna(empresa?.telefoneCit)}`,
       `Empresa — razão social (XI): ${valorOuLacuna(empresa?.nome)}`,
       `Empresa — endereço (XI): ${valorOuLacuna(enderecoEmpresa(empresa) || null)}`,
       `Empresa — telefone (XI): ${valorOuLacuna(telefone)}`,
-      `Licença sanitária — número e validade (XI): ${valorOuLacuna(empresa?.licencaSanitaria)}`,
-      `Licença ambiental — número e validade (XI): ${valorOuLacuna(empresa?.licencaAmbiental)}`,
+      `Licença sanitária — número e validade (XI): ${licencaComValidade(empresa?.licencaSanitaria, empresa?.licencaSanitariaValidade)}`,
+      `Licença ambiental — número e validade (XI): ${licencaComValidade(empresa?.licencaAmbiental, empresa?.licencaAmbientalValidade)}`,
       '',
       AVISO_REVISAO_TECNICA,
     ];
