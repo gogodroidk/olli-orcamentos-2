@@ -158,6 +158,18 @@ comment on table public.contrato_visitas is
 -- pmoc_ordens_geradas_tenant_unica).
 create unique index if not exists contrato_visitas_tenant_unica
   on public.contrato_visitas (user_id, contrato_id, periodo);
+-- A visita só aponta para contrato do MESMO tenant. Sem isto, qualquer conta logada
+-- que soubesse o id de um contrato (um técnico da equipe, um ex-membro) gravaria no
+-- PRÓPRIO tenant (`user_id = auth.uid()` passa na policy) a reserva
+-- 'cv_<contrato>_<mês>' — o id é global e determinístico —, e o gerador do dono veria
+-- a colisão como "outro gerador já reservou": a visita daquele mês nunca nasceria.
+-- A FK composta vale também para o service_role (cron), que ignora RLS.
+create unique index if not exists service_contracts_id_user_unica
+  on public.service_contracts (id, user_id);
+alter table public.contrato_visitas drop constraint if exists contrato_visitas_contrato_mesmo_tenant_fk;
+alter table public.contrato_visitas add constraint contrato_visitas_contrato_mesmo_tenant_fk
+  foreign key (contrato_id, user_id) references public.service_contracts (id, user_id) on delete cascade;
+
 create index if not exists contrato_visitas_contrato_idx on public.contrato_visitas (contrato_id, periodo);
 create index if not exists contrato_visitas_ordem_idx on public.contrato_visitas (ordem_id);
 create index if not exists contrato_visitas_ativos_idx

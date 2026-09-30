@@ -217,6 +217,12 @@ const dup = await como(GESTOR_A, () => tenta(visita('outro-id', DONO_A, 'ctA1', 
 checar('mesmo contrato + mês com OUTRO id é barrado pela chave única', !dup.ok && /contrato_visitas_tenant_unica/.test(dup.erro), dup.erro);
 const tecV = await como(TEC_A, () => tenta(visita('cv_tec', DONO_A, 'ctA1', '2026-11')));
 checar('técnico não gera visita', !tecV.ok, tecV.erro);
+// Posseiro: grava a reserva determinística do mês no PRÓPRIO tenant apontando para o
+// contrato do dono. Se passasse, o gerador do dono veria o id ocupado e pularia o mês.
+const tecPosse = await como(TEC_A, () => tenta(visita('cv_ctA1_2026-11', TEC_A, 'ctA1', '2026-11')));
+checar('técnico não ocupa a reserva do mês no próprio tenant (FK contrato+tenant)', !tecPosse.ok && /foreign key/i.test(tecPosse.erro), tecPosse.erro || 'passou sem erro');
+const bPosse = await como(DONO_B, () => tenta(visita('cv_ctA1_2026-12', DONO_B, 'ctA1', '2026-12')));
+checar('dono B não ocupa a reserva de um contrato de A no tenant dele', !bPosse.ok && /foreign key/i.test(bPosse.erro), bPosse.erro || 'passou sem erro');
 checar('técnico LÊ a visita da empresa', (await como(TEC_A, () => contagem('select count(*)::int n from public.contrato_visitas'))) === 1);
 checar('dono B não vê a visita de A', (await como(DONO_B, () => contagem('select count(*)::int n from public.contrato_visitas'))) === 0);
 const bV = await como(DONO_B, () => tenta(visita('cv_b', DONO_A, 'ctA1', '2026-12')));
