@@ -99,6 +99,31 @@ export const EXEMPLOS_POR_VERTICAL: Readonly<Record<VerticalId, ExemploOrcamento
       { tipo: 'servico', nome: 'Aplicação de gel em cozinha e banheiros', quantidade: 1, unidade: 'un', valorReferencia: 100 },
     ],
   },
+  caixa_dagua: {
+    vertical: 'caixa_dagua',
+    titulo: "Limpeza e desinfecção de caixa d'água",
+    itens: [
+      { tipo: 'servico', nome: "Limpeza e desinfecção de caixa d'água (até 1.000 litros)", descricao: 'Esvaziamento, escovação das paredes, desinfecção e enxágue, com certificado de limpeza.', quantidade: 1, unidade: 'un', valorReferencia: 250 },
+      { tipo: 'servico', nome: 'Vistoria da tampa, da boia e do extravasor', quantidade: 1, unidade: 'un', valorReferencia: 50 },
+    ],
+  },
+  piscina: {
+    vertical: 'piscina',
+    titulo: 'Manutenção mensal de piscina',
+    itens: [
+      { tipo: 'servico', nome: 'Visita de limpeza (peneira, escovação e aspiração)', descricao: 'Uma visita por semana, com medição de pH e cloro.', quantidade: 4, unidade: 'un', valorReferencia: 100 },
+      { tipo: 'produto', nome: 'Produtos para tratamento da água (cloro e corretor de pH)', quantidade: 1, unidade: 'un', valorReferencia: 80 },
+    ],
+  },
+  extintores: {
+    vertical: 'extintores',
+    titulo: 'Recarga e inspeção de extintores',
+    itens: [
+      { tipo: 'servico', nome: 'Recarga de extintor de pó ABC 4 kg', quantidade: 3, unidade: 'un', valorReferencia: 50 },
+      { tipo: 'servico', nome: 'Recarga de extintor de CO2 6 kg', quantidade: 1, unidade: 'un', valorReferencia: 90 },
+      { tipo: 'servico', nome: 'Visita técnica e inspeção dos extintores', quantidade: 1, unidade: 'un', valorReferencia: 60 },
+    ],
+  },
   jardinagem: {
     vertical: 'jardinagem',
     titulo: 'Manutenção de jardim',

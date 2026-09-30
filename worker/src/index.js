@@ -573,9 +573,9 @@ async function handleCnpj(cnpjBruto, request, env) {
       // decidir alguma coisa deve usar `meiEstado` abaixo, nunca este.
       mei: !!d.opcao_pelo_mei,
       // ─── Os três estados, honestos (usar ESTES) ───
-      // Isto deixa de ser detalhe burocrático em 1º de setembro de 2026: pela
-      // Resolução CGSN nº 189/2026, MEI/ME/EPP do Simples passam a emitir NFS-e
-      // só pelo Emissor Nacional. Um app que "acha" que o cliente não é MEI
+      // Isto deixa de ser detalhe burocrático: o MEI já emite NFS-e só pelo
+      // Emissor Nacional desde 01/09/2023 (CGSN 169/2022) e ME/EPP do Simples
+      // passam a emitir em 01/11/2026 (CGSN 191/2026). Um app que "acha" que o cliente não é MEI
       // porque a API não respondeu manda o prestador pro caminho fiscal errado.
       meiEstado: tresEstados(d.opcao_pelo_mei),
       simplesEstado: tresEstados(d.opcao_pelo_simples),

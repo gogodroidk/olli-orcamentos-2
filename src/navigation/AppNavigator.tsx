@@ -36,6 +36,7 @@ import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
+import CertificadoCaixaDaguaScreen from '../screens/CertificadoCaixaDaguaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
@@ -136,8 +137,10 @@ export type RootStackParamList = {
   Autopilot: undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
-  // Ferramenta ÚNICA do ofício de dedetização (gate `vertical: 'dedetizacao'`).
+  // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).
   CertificadoAnvisa: undefined;
+  // Certificado de limpeza de caixa d'água (gate `vertical: 'caixa_dagua'`).
+  CertificadoCaixaDagua: undefined;
   // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
   FerramentasOficio: undefined;
   // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
@@ -316,6 +319,7 @@ const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
 const CalculadoraTintaCentro = comCentroDesktop(CalculadoraTintaScreen);
 const CertificadoAnvisaCentro = comCentroDesktop(CertificadoAnvisaScreen);
+const CertificadoCaixaDaguaCentro = comCentroDesktop(CertificadoCaixaDaguaScreen);
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
@@ -629,6 +633,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
+      <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
       <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />

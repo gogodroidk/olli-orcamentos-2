@@ -146,5 +146,8 @@ export const PACKS_OFICIO: readonly PackOficio[] = [
 	{ id: 'hidraulica-vazamento', vertical: 'hidraulica', nome: 'Vazamento e reparo', itens: ['Visita', 'Mão de obra', 'Peças'] },
 	{ id: 'pintura-ambiente', vertical: 'pintura', nome: 'Pintura de ambiente', itens: ['Preparação', 'Tinta', 'Aplicação'] },
 	{ id: 'dedetizacao-residencial', vertical: 'dedetizacao', nome: 'Controle residencial', itens: ['Inspeção', 'Aplicação', 'Retorno'] },
+	{ id: 'caixa-dagua-limpeza', vertical: 'caixa_dagua', nome: "Limpeza de caixa d'água", itens: ['Esvaziamento', 'Limpeza e desinfecção', 'Certificado'] },
+	{ id: 'piscina-mensal', vertical: 'piscina', nome: 'Manutenção mensal de piscina', itens: ['Visitas', 'Produtos', 'Deslocamento'] },
+	{ id: 'extintores-recarga', vertical: 'extintores', nome: 'Recarga de extintores', itens: ['Recarga', 'Inspeção', 'Deslocamento'] },
 	{ id: 'jardinagem-manutencao', vertical: 'jardinagem', nome: 'Manutenção de jardim', itens: ['Poda', 'Adubação', 'Limpeza'] },
 ];

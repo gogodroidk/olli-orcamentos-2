@@ -36,7 +36,8 @@ E um filtro que mata mais ideia do que qualquer análise de custo:
 O brief pediu: *"o projeto tem uma nota sobre a Res. CGSN 189/2026 que eu NUNCA confirmei —
 confirme ou desminta com fonte oficial."*
 
-**Confirmada.** Publicada em **28/04/2026**. A partir de **1º de setembro de 2026**, ME e EPP
+**Confirmada.** Publicada em **28/04/2026**. (Atualização de 30/09/2026: a CGSN nº 191/2026 trocou a
+data para **1º de novembro de 2026**, [Receita](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026).) A partir da data fixada, ME e EPP
 optantes do Simples Nacional prestadoras de serviço sujeito a ISS **são obrigadas** a emitir
 NFS-e de padrão nacional, **exclusivamente pelo Emissor Nacional — modalidade web OU API**.
 A norma ainda **veda** a ME/EPP emitir NFS-e em operação sujeita só a ICMS.
@@ -526,7 +527,8 @@ em vez de economizar tempo, e a pesquisa acabou de derrubar o único obstáculo 
 do Visual Crossing tem licença comercial. **Custo R$ 0, zero passo humano, zero espera pelo dono.**
 A infra de radar já existe. Não há argumento contra.
 
-**2. NFS-e PREPARADA — 🟢 ENTRA JÁ.** É a única com **data em lei**: 1º de setembro de 2026.
+**2. NFS-e PREPARADA — 🟢 ENTRA JÁ.** É a única com **data em lei**: 1º de novembro de 2026 para ME/EPP
+(CGSN 191/2026; era 1º de setembro pela CGSN 189/2026).
 Custo R$ 0, sem certificado, sem provedor, sem responsabilidade fiscal — porque **prepara, não
 emite**. O concorrente que não fizer nada até setembro vai ter que explicar ao cliente por que a
 nota não sai. Isso é vantagem de calendário, e calendário não espera.
