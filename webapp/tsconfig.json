@@ -54,17 +54,29 @@
 			// LEMBRETE DE ASSINATURA — a MESMA regra de "que lembrete de pagar esta conta vê"
 			// que o app usa, para painel e celular nunca cobrarem diferente. Módulo puro.
 			"@lembreteAssinatura": ["../src/services/lembreteAssinatura.ts"],
+			// RADAR DE DINHEIRO — a MESMA regra de dinheiro parado / proposta parada /
+			// cliente sumido que o resumo diário por e-mail (worker) usa. Módulo puro.
+			"@radar-dinheiro": ["../src/services/radarDinheiro.ts"],
+			// RESUMO POR E-MAIL — textos e leitura do botão "Receber resumo diário por e-mail",
+			// iguais aos do app (Conta → Notificações). Módulo puro, zero imports.
+			"@resumo-email": ["../src/services/resumoEmailPreferencia.ts"],
 			"@plano-efetivo": ["../src/services/planoEfetivo.ts"],
 			"@verticais": ["../src/services/verticais.ts"],
 			"@vertical-segmento": ["../src/services/verticalSegmento.ts"],
 			"@limites-comerciais": ["../src/services/limitesComerciais.ts"],
+			// ATIVAÇÃO — exemplo de orçamento por ofício, checklist e aviso do teste do Pro:
+			// a MESMA regra do app (src/services/ativacao.ts). Módulo puro.
+			"@ativacao": ["../src/services/ativacao.ts"],
 			"@ia-segura": ["../src/services/olliAcoesSeguras.ts"],
 			"@precificacao": ["../src/services/precificacao.ts"],
 			"@auth-policy": ["../src/services/authPolicy.ts"],
 			"@oauth-retorno": ["../src/services/oauthRetorno.ts"],
 			"@sentry-scrub": ["../src/services/sentryScrub.ts"],
 			"@sentry-captura": ["../src/services/sentryCaptura.ts"],
-			"@ajuda": ["../src/content/ajuda/index.ts"]
+			"@ajuda": ["../src/content/ajuda/index.ts"],
+			// ASSINATURA PELA GOOGLE PLAY — catálogo e URL de gerenciar, os mesmos do app
+			// e do worker (src/services/playBillingRegras.ts). Módulo puro, zero imports.
+			"@play-billing-regras": ["../src/services/playBillingRegras.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

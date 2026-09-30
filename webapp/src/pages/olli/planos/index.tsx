@@ -61,6 +61,7 @@ import {
 import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
+import { urlGerenciarNaPlay } from "@play-billing-regras";
 import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
 import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
@@ -284,6 +285,8 @@ export default function Planos() {
 							{/* Sem cliente na Stripe não há o que gerenciar nem cancelar: Pix não tem assinatura. */}
 							{resumo.temClienteStripe && <BotaoPortalStripe rotulo="Ver faturas no Portal da Stripe" />}
 						</>
+					) : resumo.renovaPelaPlay ? (
+						<CardAssinaturaPlay produto={resumo.produtoPlay} />
 					) : consultarStatusStripe && statusStripe.isLoading ? (
 						<Skeleton className="h-10 w-80 rounded-lg" />
 					) : statusStripe.data?.gerenciavel ? (
@@ -399,6 +402,35 @@ function CardErro({ mensagem, aoTentar, tentando }: { mensagem?: string; aoTenta
 				<Button variant="outline" onClick={aoTentar} disabled={tentando} className="shrink-0">
 					<RotateCw className={cn("size-4", tentando && "animate-spin")} aria-hidden />
 					Tentar de novo
+				</Button>
+			</div>
+		</Card>
+	);
+}
+
+/** Pacote do app Android na Google Play (app.json → expo.android.package). */
+const PACOTE_ANDROID = "online.olliorcamentos.app";
+
+/**
+ * Assinatura vendida pela GOOGLE PLAY (no app Android). Não é da Stripe: o Portal da Stripe
+ * não a enxerga, e o Pix não deve ser oferecido (ela já renova sozinha pela loja). Cancelar,
+ * pausar ou trocar o cartão é na Play Store — o link abre a página de assinaturas de lá.
+ */
+function CardAssinaturaPlay({ produto }: { produto?: string }) {
+	return (
+		<Card className="gap-0 border-border p-5">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<p className="font-semibold text-text-primary">Assinatura pela Google Play</p>
+					<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">
+						Você assinou pelo app Android, e a cobrança é feita na sua conta Google. Para cancelar, pausar ou trocar a
+						forma de pagamento, use a Play Store.
+					</p>
+				</div>
+				<Button asChild variant="outline" className="min-h-[44px] shrink-0">
+					<a href={urlGerenciarNaPlay(PACOTE_ANDROID, produto)} target="_blank" rel="noopener noreferrer">
+						Gerenciar na Google Play
+					</a>
 				</Button>
 			</div>
 		</Card>

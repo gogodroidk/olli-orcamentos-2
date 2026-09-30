@@ -19,6 +19,9 @@ import { PRECO_PRO, reais } from '../../services/precosPlanos';
 import { cancelarTodosLembretes } from '../../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../../services/pmocLembretes';
 import { cancelarRitualDiario } from '../../services/ritualDiario';
+import { ResumoEmailControle, descricaoResumoEmail } from '../../components/ResumoEmailControle';
+import { useResumoEmail } from '../../hooks/useResumoEmail';
+import { ROTULO_RESUMO_EMAIL } from '../../services/resumoEmailPreferencia';
 import { adicionarFotoGaleria } from '../../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../../services/equipe';
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../../services/supabase';
@@ -76,7 +79,7 @@ function formatarTelefoneExibicao(digits: string): string {
 }
 
 /** Chaves da navegação lateral — cada uma corresponde a um card na coluna de conteúdo. */
-type ChaveSecao = 'perfil' | 'empresa' | 'plano' | 'equipe' | 'backup' | 'aparencia' | 'perigo';
+type ChaveSecao = 'perfil' | 'empresa' | 'plano' | 'equipe' | 'backup' | 'aparencia' | 'notificacoes' | 'perigo';
 
 const SECOES: { chave: ChaveSecao; label: string; icone: keyof typeof MaterialCommunityIcons.glyphMap }[] = [
   { chave: 'perfil', label: 'Perfil', icone: 'account-circle-outline' },
@@ -85,6 +88,7 @@ const SECOES: { chave: ChaveSecao; label: string; icone: keyof typeof MaterialCo
   { chave: 'equipe', label: 'Organização e equipe', icone: 'account-group-outline' },
   { chave: 'backup', label: 'Backup e sincronização', icone: 'cloud-sync-outline' },
   { chave: 'aparencia', label: 'Aparência', icone: 'palette-swatch-outline' },
+  { chave: 'notificacoes', label: 'Notificações', icone: 'email-fast-outline' },
   { chave: 'perigo', label: 'Zona de perigo', icone: 'alert-octagon-outline' },
 ];
 
@@ -117,6 +121,8 @@ export default function ContaDesktopScreen() {
   const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
+  // Resumo diário por e-mail (servidor, 7h): a MESMA preferência do celular e do painel.
+  const resumoEmail = useResumoEmail('app');
   const [carregando, setCarregando] = useState(true);
 
   const [busyBackup, setBusyBackup] = useState(false);
@@ -844,6 +850,25 @@ export default function ContaDesktopScreen() {
               />
             </Secao>
 
+            {/* NOTIFICAÇÕES — o resumo diário por e-mail sai do servidor e vale para a
+                conta: é a MESMA preferência do celular e do painel. */}
+            <Secao registrarRef={getRegistrar('notificacoes')} icone="email-fast-outline" titulo="Notificações" descricao="O que a OLLI te avisa por e-mail.">
+              <LinhaAcao
+                icone="email-fast-outline"
+                corIcone={cores.primary}
+                titulo={ROTULO_RESUMO_EMAIL}
+                descricao={descricaoResumoEmail(resumoEmail.situacao, resumoEmail.erroAoSalvar)}
+                direita={
+                  <ResumoEmailControle
+                    situacao={resumoEmail.situacao}
+                    salvando={resumoEmail.salvando}
+                    alternar={resumoEmail.alternar}
+                    recarregar={resumoEmail.recarregar}
+                  />
+                }
+              />
+            </Secao>
+
             {/* ZONA DE PERIGO */}
             <Secao registrarRef={getRegistrar('perigo')} icone="alert-octagon-outline" titulo="Zona de perigo" descricao="Ações permanentes. Use com cuidado." perigo>
               {!configured || !user ? (
@@ -895,7 +920,9 @@ export default function ContaDesktopScreen() {
                         </View>
                       ))}
                       <Text style={styles.excluirNota}>
-                        Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta.
+                        Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta.
+                        Assinatura feita pela Google Play (no app Android) não é cancelada pela exclusão: cancele antes em
+                        Play Store › Pagamentos e assinaturas, senão a cobrança continua.
                       </Text>
                       <OlliInput
                         label="Para confirmar, digite EXCLUIR"

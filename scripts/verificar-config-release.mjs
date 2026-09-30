@@ -38,8 +38,16 @@ for (const [nome, conteudo] of fontesAssinatura) {
     throw new Error(`${nome}: assinatura local precisa ser separada da assinatura gerenciada pelo EAS`);
   }
 }
-for (const segredo of ['OPENROUTER_API_KEY', 'SUPABASE_SERVICE_ROLE', 'SENTRY_AUTH_TOKEN']) {
+for (const segredo of ['OPENROUTER_API_KEY', 'SUPABASE_SERVICE_ROLE', 'SENTRY_AUTH_TOKEN', 'REVENUECAT_WEBHOOK_SECRET']) {
   if (jsonEas.includes(segredo)) throw new Error(`Segredo não pode existir no eas.json: ${segredo}`);
+}
+// Google Play (RevenueCat): no app só entra a chave PÚBLICA do SDK (`goog_…`).
+// A Secret API key (`sk_…`) dá acesso de escrita ao RevenueCat e nunca vai ao bundle.
+for (const [perfil, cfg] of Object.entries(eas.build ?? {})) {
+  const chaveRc = cfg?.env?.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY;
+  if (chaveRc !== undefined && !/^goog_[A-Za-z0-9]{10,}$/.test(String(chaveRc))) {
+    throw new Error(`eas.json (${perfil}): EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY tem de ser a chave pública goog_… do RevenueCat`);
+  }
 }
 if (!/process\.env\.EXPO_PUBLIC_DIAGNOSTICO_URL \?\? ''/.test(config)) {
   throw new Error('src/config.ts precisa falhar fechado quando a env pública não vier');

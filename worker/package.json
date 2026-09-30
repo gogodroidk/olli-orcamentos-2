@@ -22,9 +22,14 @@
     "test:email-lembretes-template": "node scripts/teste-email-lembretes-template.js",
     "test:email-lembretes-job": "node scripts/teste-email-lembretes-job.js",
     "test:email-descadastro": "node scripts/teste-email-descadastro.js",
-    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-descadastro && npm run test:link-pix",
-    "deploy": "npm run types:check && wrangler deploy",
-    "test:link-pix": "node scripts/teste-link-pix.js"
+    "test:funil-receita": "node scripts/teste-funil-receita.js",
+    "test:revenuecat-webhook": "node scripts/teste-revenuecat-webhook.js",
+    "test:resumo-dinheiro-policy": "node scripts/teste-resumo-dinheiro-policy.js",
+    "test:resumo-dinheiro-template": "node scripts/teste-resumo-dinheiro-template.js",
+    "test:resumo-dinheiro-job": "node scripts/teste-resumo-dinheiro-job.js",
+    "test:link-pix": "node scripts/teste-link-pix.js",
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-descadastro && npm run test:funil-receita && npm run test:revenuecat-webhook && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix",
+    "deploy": "npm run types:check && wrangler deploy"
   },
   "dependencies": {
     "@sentry/cloudflare": "^10.66.0"

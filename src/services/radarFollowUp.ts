@@ -31,10 +31,12 @@
 import { getOrcamentos, getClientes, getEmpresa } from '../database/database';
 import { montarMensagemFollowUpOrcamento } from '../utils/mensagensOrcamento';
 import { Cliente, Empresa, Orcamento, propostaJaEnviada } from '../types';
+import { LIMIAR_PROPOSTA_PARADA_DIAS } from './radarDinheiro';
 
 const MS_POR_DIA = 86400000;
-/** Limiar de dias parado (sem resposta do cliente) para entrar no radar. */
-const DIAS_LIMIAR = 3;
+/** Limiar de dias parado (sem resposta do cliente) para entrar no radar — o MESMO
+ *  do painel e do resumo diário por e-mail (`radarDinheiro.ts`). */
+const DIAS_LIMIAR = LIMIAR_PROPOSTA_PARADA_DIAS;
 
 export interface OrcamentoParaFollowUp {
   orcamento: Orcamento;

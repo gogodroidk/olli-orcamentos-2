@@ -38,6 +38,7 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { CountUp } from '../components/CountUp';
 import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
 import { LembreteAssinaturaFaixa } from '../components/LembreteAssinaturaFaixa';
+import { AtivacaoInicio } from '../components/AtivacaoInicio';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
 import { useLembreteAssinatura } from '../hooks/useLembreteAssinatura';
@@ -532,6 +533,11 @@ export default function HomeScreen() {
           iniciandoTrial={lembreteAssinatura.iniciandoTrial}
           style={styles.lembreteAssinatura}
         />
+
+        {/* ATIVAÇÃO — "Seu primeiro orçamento em 1 minuto" (conta sem orçamento) e o
+            checklist curto até o OLLI estar pronto. Some sozinho quando conclui e
+            não aparece enquanto lê ou se a leitura falhar (services/ativacao.ts). */}
+        <AtivacaoInicio style={styles.lembreteAssinatura} />
 
         {/* PALCO DO DINHEIRO PARADO — a PRIMEIRA coisa depois do cumprimento.
             Os radares de cobrança e de follow-up já existiam e acertavam; o que

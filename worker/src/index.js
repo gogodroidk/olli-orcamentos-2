@@ -12,6 +12,7 @@
  *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
+ *   POST /revenuecat/webhook → assinatura da Google Play (Authorization secreto, sem JWT)
  *
  * Segurança:
  *   - OPENROUTER_API_KEY é SECRET do Worker (nunca vai pro app/APK e nunca é
@@ -55,6 +56,7 @@ import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
+import { handleRevenueCat } from './revenuecat.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
@@ -83,6 +85,7 @@ import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
+import { processarResumoDinheiro } from './resumoDinheiroJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
@@ -986,6 +989,9 @@ const handler = {
     // no minuto seguinte. Relógio = horário agendado, não o de execução.
     const agendado = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
     ctx.waitUntil(processarLembretesEmail(env, { now: () => agendado }));
+    // Resumo diário do dinheiro parado: 7h00–7h50 de Brasília (de 10 em 10 min),
+    // segunda a sábado, só com EMAIL_RESUMO_MODE=production. Também só enfileira.
+    ctx.waitUntil(processarResumoDinheiro(env, { now: () => agendado }));
   },
 
   async fetch(request, env) {
@@ -1047,6 +1053,14 @@ const handler = {
     // Com chave de dev em produção a rota fica DESLIGADA (nunca modo demo).
     if (url.pathname.startsWith('/abacate/')) {
       return handleAbacate(request, env, url);
+    }
+
+    // ── ASSINATURA PELA GOOGLE PLAY — webhook do RevenueCat ──
+    // Servidor-a-servidor, sem JWT: autentica pelo `Authorization` secreto
+    // (REVENUECAT_WEBHOOK_SECRET) e fica DESLIGADO sem ele. Fora do gate da IA,
+    // mesmo perfil dos webhooks de pagamento acima. Ver worker/src/revenuecat.js.
+    if (url.pathname.startsWith('/revenuecat/')) {
+      return handleRevenueCat(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──

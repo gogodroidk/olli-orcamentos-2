@@ -21,28 +21,23 @@
  * já puxa o gerador de PDF do app. Estes módulos são TypeScript puro (só `Intl` e
  * string) — não arrastam react-native.
  *
- * O que SOBROU aqui é só a LEITURA: converter as linhas do Supabase nos mesmos sinais
- * que o app lê do SQLite (orçamento aprovado/convertido, agendamento concluído, recibo).
+ * A LEITURA (que linha do Supabase conta como parada, como serviço concluído) também
+ * não é espelho: mora em `src/services/radarDinheiro.ts` (alias `@radar-dinheiro`), o
+ * módulo puro que este painel E o resumo diário por e-mail (worker) leem. Os "Clientes
+ * para lembrar" deste painel são `listarClientesParaLembrarDasLinhas` — a MESMA função
+ * que conta os clientes para lembrar no e-mail das 7h; o número do e-mail e o do
+ * cartão são um só (teste de paridade em `worker/scripts/teste-resumo-dinheiro-policy.js`).
  *
- * ⚠️ NOTA DE MANUTENÇÃO: quem mexer em `servicosConcluidos` (src/services/radarClientes.ts)
- * precisa mexer em `servicosDasLinhas` abaixo no mesmo commit — a regra é compartilhada,
- * a leitura não.
+ * ⚠️ NOTA DE MANUTENÇÃO: o app converte o SQLite em "serviços concluídos" em
+ * `servicosConcluidos` (src/services/radarClientes.ts); o painel e o e-mail, em
+ * `servicosConcluidosDasLinhas` (radarDinheiro.ts). Quem mexer num mexe no outro.
  */
 import type { Empresa } from "@dominio";
+import { listarClientesParaLembrarDasLinhas } from "@radar-dinheiro";
 import { type CobrancaPronta, prepararCobranca } from "../../../../../src/utils/cobrancaCliente";
-import {
-	type ClienteParaLembrar,
-	listarClientesParaLembrar,
-	mensagemLembrete,
-	msDe,
-	msDoRecibo,
-	retornoDoOficio,
-	type ServicoConcluido,
-} from "../../../../../src/utils/posVenda";
+import { type ClienteParaLembrar, mensagemLembrete } from "../../../../../src/utils/posVenda";
 import { type DinheiroParado, numeroWhatsapp } from "./financeiro";
 import type { AgendamentoRow, OrcamentoRow, ReciboRow } from "./helpers";
-
-const slug = (s?: string | null) => (s ?? "").trim().toLowerCase();
 
 /* ═════════════════  1. COBRAR O DINHEIRO PARADO (1 toque)  ═════════════════ */
 
@@ -111,47 +106,12 @@ export interface EntradaParaLembrar {
 }
 
 /**
- * As linhas do Supabase viradas nos MESMOS sinais de "serviço concluído" que o app lê
- * do SQLite (ver `servicosConcluidos` em `src/services/radarClientes.ts`):
- *  • orçamento aprovado ou convertido — data da aprovação ≈ última escrita;
- *  • agendamento CONCLUÍDO — pelo fim (ou início);
- *  • recibo não estornado — pela data do recebimento em DD/MM/AAAA (lida sem trocar
- *    dia e mês, `msDoRecibo`), caindo para a criação.
+ * Clientes na hora de ser lembrados — a MESMA regra do celular (`utils/posVenda.ts`),
+ * com a MESMA leitura das linhas do Supabase que o resumo diário por e-mail usa
+ * (`listarClientesParaLembrarDasLinhas`, `@radar-dinheiro`).
  */
-export function servicosDasLinhas(entrada: Pick<EntradaParaLembrar, "orcamentos" | "agendamentos" | "recibos">): ServicoConcluido[] {
-	const servicos: ServicoConcluido[] = [];
-	for (const o of entrada.orcamentos) {
-		const st = slug(o.status);
-		if (st !== "aprovado" && st !== "convertido") continue;
-		servicos.push({
-			clienteId: o.cliente_id ?? o.dados?.clienteId,
-			quando: msDe(o.dados?.atualizadoEm ?? o.atualizado_em ?? o.criado_em ?? o.dados?.criadoEm),
-		});
-	}
-	for (const a of entrada.agendamentos) {
-		if (slug(a.status) !== "concluido") continue;
-		servicos.push({ clienteId: a.cliente_id, quando: msDe(a.fim) ?? msDe(a.inicio) });
-	}
-	for (const r of entrada.recibos) {
-		if (r.dados?.estornadoEm) continue;
-		servicos.push({
-			clienteId: r.cliente_id ?? r.dados?.clienteId,
-			quando: msDoRecibo(r.dados?.dataRecebimento, r.criado_em ?? r.dados?.criadoEm),
-		});
-	}
-	return servicos;
-}
-
-/** Clientes na hora de ser lembrados — a MESMA regra do celular (`utils/posVenda.ts`). */
 export function listarParaLembrar(entrada: EntradaParaLembrar, agora: Date = new Date()): ClienteParaLembrar[] {
-	return listarClientesParaLembrar({
-		clientes: entrada.clientes,
-		servicos: servicosDasLinhas(entrada),
-		mesesIntervalo: retornoDoOficio(entrada.verticais).meses,
-		lembrados: entrada.lembrados,
-		adiados: entrada.adiados,
-		agora,
-	});
+	return listarClientesParaLembrarDasLinhas(entrada, agora);
 }
 
 /**

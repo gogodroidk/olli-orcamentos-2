@@ -8,6 +8,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
+import { ResumoEmailControle, descricaoResumoEmail } from '../components/ResumoEmailControle';
+import { useResumoEmail } from '../hooks/useResumoEmail';
+import { ROTULO_RESUMO_EMAIL } from '../services/resumoEmailPreferencia';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliPressable } from '../components/OlliPressable';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -237,6 +240,8 @@ export default function ContaScreen() {
   const [ritualBomDia, setRitualBomDia] = useState(true);
   const [ritualFecharDia, setRitualFecharDia] = useState(true);
   const [ritualDomingo, setRitualDomingo] = useState(false);
+  // Resumo diário por e-mail (servidor, 7h): preferência na nuvem, 3 estados.
+  const resumoEmail = useResumoEmail('app');
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState<BackupVersionadoResumo[]>([]);
   const [carregandoBackups, setCarregandoBackups] = useState(false);
@@ -1057,7 +1062,7 @@ export default function ContaScreen() {
               </View>
               <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
                 <Text style={styles.toolLabel}>Bom dia da OLLI</Text>
-                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente sumido)</Text>
+                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente para lembrar)</Text>
               </View>
               <Switch
                 value={ritualBomDia}
@@ -1080,6 +1085,25 @@ export default function ContaScreen() {
                 onValueChange={(v) => handleToggleRitual('fecharDia', v)}
                 trackColor={{ false: cores.outline, true: cores.primary + '80' }}
                 thumbColor={ritualFecharDia ? cores.primary : '#fff'}
+              />
+            </View>
+
+            {/* Resumo diário por E-MAIL: diferente dos rituais acima (notificação local
+                deste aparelho), sai do servidor e vale para a conta — celular, desktop e
+                painel mostram a mesma preferência. */}
+            <View style={[styles.toolRow, styles.toolDivider]}>
+              <View style={[styles.toolIcon, { backgroundColor: cores.primary + '1E', borderColor: cores.primary + '3A' }]}>
+                <MaterialCommunityIcons name="email-fast-outline" size={20} color={cores.primary} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                <Text style={styles.toolLabel}>{ROTULO_RESUMO_EMAIL}</Text>
+                <Text style={styles.toolDesc}>{descricaoResumoEmail(resumoEmail.situacao, resumoEmail.erroAoSalvar)}</Text>
+              </View>
+              <ResumoEmailControle
+                situacao={resumoEmail.situacao}
+                salvando={resumoEmail.salvando}
+                alternar={resumoEmail.alternar}
+                recarregar={resumoEmail.recarregar}
               />
             </View>
 
@@ -1406,7 +1430,13 @@ function ModalExcluirConta({
             ))}
 
             <Text style={styles.excluirNota}>
-              Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
+              Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
+              {/* A assinatura da Google Play é cobrada pela loja, e o OLLI não consegue
+                  cancelá-la por aqui: sem este aviso, a exclusão prometeria parar uma
+                  cobrança que continua. iOS: sem citar outra loja (Guideline 2.3.10). */}
+              {Platform.OS === 'ios'
+                ? ''
+                : ' Assinatura feita pela Google Play não é cancelada pela exclusão: cancele antes em Play Store › Pagamentos e assinaturas, senão a cobrança continua.'}
             </Text>
 
             {avisoApple}

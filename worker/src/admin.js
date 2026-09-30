@@ -10,6 +10,8 @@
  *   POST /admin/api/user/reset?email=    → enviar e-mail de redefinição ao usuário
  *   POST /admin/api/user/delete?id=<uid> → excluir (conta + dados via cascade)
  *   POST /admin/api/me/password          → trocar a própria senha (do admin)
+ *   GET  /admin/api/funil?semanas=12     → funil de receita por coorte semanal (sem PII)
+ *   POST /admin/api/funil/exclusao?id=   → tirar/devolver uma conta interna do funil
  *
  * Segurança: toda rota /admin/api exige JWT validado pelo Supabase. O e-mail
  * ADMIN_EMAIL é o owner de recuperação; administradores adicionais vivem em
@@ -27,6 +29,7 @@ import {
   projetarLinhas,
   selectAdminDataset,
 } from './adminDataPolicy.js';
+import { montarFunil, semanasFunil } from './funilReceita.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -101,6 +104,24 @@ async function rest(env, path) {
     return Array.isArray(j) ? j : [];
   } catch {
     return [];
+  }
+}
+
+// `rest()` acima devolve [] em qualquer falha — serve para listas de apoio, mas
+// NÃO para número de negócio: "não consegui ler" viraria "zero". Este helper
+// devolve os três estados explicitamente.
+async function lerEstado(env, path, init = {}) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+      ...init,
+      headers: svc(env, init.body ? { 'Content-Type': 'application/json' } : {}),
+    });
+    if (!r.ok) return { ok: false, status: r.status };
+    const dados = await r.json().catch(() => undefined);
+    if (!Array.isArray(dados)) return { ok: false, status: 502 };
+    return { ok: true, dados };
+  } catch {
+    return { ok: false, status: 0 };
   }
 }
 
@@ -330,7 +351,7 @@ async function userDetail(env, id, actor) {
   // O customer id é uma dependência interna para listar faturas autorizadas;
   // ele nunca é devolvido pela projeção ao navegador.
   if (assinaturaSelect.length && podeFaturas && !assinaturaSelect.includes('stripe_customer_id')) assinaturaSelect.push('stripe_customer_id');
-  const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta, atividadeBruta] = await Promise.all([
+  const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta, atividadeBruta, funilLeitura] = await Promise.all([
     ler('empresa') ? rest(env, `empresa?user_id=eq.${enc}&select=dados`) : Promise.resolve([]),
     consultar('orcamentos', `orcamentos?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
     consultar('clientes', `clientes?user_id=eq.${enc}`),
@@ -343,6 +364,7 @@ async function userDetail(env, id, actor) {
     consultar('usosIa', `ia_uso_gratis?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
     consultar('auditoria', `admin_audit_log?target_user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
     consultar('atividade', `user_activity_log?user_id=eq.${enc}`, '&order=criado_em.desc&limit=200'),
+    lerEstado(env, `funil_exclusoes?user_id=eq.${enc}&select=motivo&limit=1`),
   ]);
   const assinaturaInterna = assinaturaArr[0] || null;
   const faturas = podeFaturas && assinaturaInterna && assinaturaInterna.stripe_customer_id
@@ -378,6 +400,13 @@ async function userDetail(env, id, actor) {
     faturas,
     auditoria,
     atividade,
+    // Lista interna do funil: 'interna' | 'no_funil' | 'indisponivel' (não sei
+    // nunca vira "está no funil" — o painel desabilita o botão).
+    funil: !funilLeitura.ok
+      ? { estado: 'indisponivel' }
+      : funilLeitura.dados.length
+        ? { estado: 'interna', motivo: String(funilLeitura.dados[0].motivo || '') }
+        : { estado: 'no_funil' },
   });
 }
 
@@ -655,6 +684,72 @@ async function auditList(env) {
   return json({ ok: true, auditoria: rows });
 }
 
+// ─── funil de receita ────────────────────────────────────────
+// Contas internas: o ADMIN_EMAIL (dono) vai como parâmetro; o resto vem da
+// tabela funil_exclusoes e das regras automáticas do SQL. Nenhum e-mail fixo aqui.
+function emailsForaDoFunil(env) {
+  const dono = adminEmail(env);
+  return dono ? [dono] : [];
+}
+
+async function funil(env, semanasParam) {
+  const semanas = semanasFunil(semanasParam);
+  const emails = emailsForaDoFunil(env);
+  const [coortes, exclusoes] = await Promise.all([
+    lerEstado(env, 'rpc/admin_funil_coortes', {
+      method: 'POST',
+      body: JSON.stringify({ p_emails_excluidos: emails, p_semanas: semanas }),
+    }),
+    lerEstado(env, 'rpc/admin_funil_exclusoes', {
+      method: 'POST',
+      body: JSON.stringify({ p_emails_excluidos: emails }),
+    }),
+  ]);
+  // 404 = migration do funil ainda não aplicada. Qualquer falha é "não sei":
+  // o painel mostra indisponível, nunca uma tabela de zeros.
+  if (!coortes.ok || !exclusoes.ok) {
+    const semMigration = coortes.status === 404 || exclusoes.status === 404;
+    return json({ ok: false, erro: semMigration ? 'funil_sem_migration' : 'funil_indisponivel' }, 503);
+  }
+  try {
+    return json({ ok: true, geradoEm: new Date().toISOString(), ...montarFunil(coortes.dados, exclusoes.dados, semanas) });
+  } catch {
+    return json({ ok: false, erro: 'funil_invalido' }, 502);
+  }
+}
+
+async function setExclusaoFunil(env, actor, id, body = {}) {
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json({ ok: false, erro: 'sem_id' }, 400);
+  const motivo = motivoValido(body.motivo);
+  if (!motivo || motivo.length > 200) return json({ ok: false, erro: 'motivo_invalido' }, 400);
+  const excluir = body.excluir === true;
+  const enc = encodeURIComponent(id);
+  try {
+    const r = excluir
+      ? await fetch(`${env.SUPABASE_URL}/rest/v1/funil_exclusoes`, {
+        method: 'POST',
+        headers: svc(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify({ user_id: id, motivo, criado_por: actor.id }),
+      })
+      : await fetch(`${env.SUPABASE_URL}/rest/v1/funil_exclusoes?user_id=eq.${enc}`, {
+        method: 'DELETE',
+        headers: svc(env, { Prefer: 'return=minimal' }),
+      });
+    // 409 = já estava na lista (índice único): o estado pedido já vale.
+    if (!r.ok && !(excluir && r.status === 409)) return json({ ok: false, erro: 'falha_funil' }, 502);
+  } catch {
+    return json({ ok: false, erro: 'falha_funil' }, 502);
+  }
+  const auditoria = await auditar(env, actor, {
+    acao: excluir ? 'funil_conta_interna_marcada' : 'funil_conta_interna_desmarcada',
+    targetUserId: id,
+    motivo,
+    depois: { foraDoFunil: excluir },
+    requestId: body.requestId,
+  });
+  return json({ ok: true, auditoria });
+}
+
 // ─── roteador ────────────────────────────────────────────────
 export async function handleAdmin(request, env, url) {
   if (url.pathname === '/admin' || url.pathname === '/admin/') {
@@ -740,6 +835,13 @@ export async function handleAdmin(request, env, url) {
     if (m === 'POST' && p === '/admin/api/user/plan') {
       if ((gate = exigir(user, 'financeiro', { aal2: true }))) return gate;
       return setPlanoManual(env, user, id, body);
+    }
+    // Funil: agregado de todos os tenants (sem PII) — mesmo gate das métricas.
+    if (m === 'GET' && p === '/admin/api/funil') {
+      return exigir(user, 'admin', { aal2: true }) || funil(env, url.searchParams.get('semanas'));
+    }
+    if (m === 'POST' && p === '/admin/api/funil/exclusao') {
+      return exigir(user, 'admin', { aal2: true }) || setExclusaoFunil(env, user, id, body);
     }
     if (m === 'GET' && p === '/admin/api/feedback') {
       if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
@@ -841,6 +943,17 @@ function adminHtml(env, nonce) {
  .empty{text-align:center;color:var(--mut);padding:40px 16px;font-size:14px}
  .skel{height:14px;border-radius:6px;background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.1),rgba(255,255,255,.05));background-size:200% 100%;animation:sh 1.2s infinite}
  @keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
+ /* FUNIL */
+ .funil{overflow-x:auto}
+ .funil table{min-width:760px}
+ .funil th,.funil td{text-align:right;padding:10px 12px;white-space:nowrap}
+ .funil th:first-child,.funil td:first-child{text-align:left}
+ .funil td b{font-family:'Spectral',serif;font-size:16px;font-weight:700}
+ .funil td small{display:block;font-size:11px;color:var(--mut2);margin-top:2px}
+ .funil td small.bom{color:var(--ok)}.funil td small.fraco{color:var(--warn)}
+ .funil tr.tot td{background:rgba(127,233,245,.05)}
+ .funil tr.tempo td{color:var(--mut);font-size:12px}
+ .nota{font-size:12px;color:var(--mut2);margin-top:8px;line-height:1.5}
  /* MODAL */
  .ov{position:fixed;inset:0;background:rgba(5,12,22,.74);display:none;align-items:flex-start;justify-content:center;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow:auto;z-index:20;animation:fade .2s both}
  .ov.show{display:flex}
@@ -886,6 +999,9 @@ function adminHtml(env, nonce) {
   </div>
   <div id="protectedContent" class="hidden">
    <div class="cards" id="cards"></div>
+   <div class="sec-head"><h2>Funil de receita <span class="muted" id="funilSub"></span></h2></div>
+   <div class="tbl funil" id="funilBox" aria-live="polite"></div>
+   <div class="nota" id="funilNota"></div>
    <div class="sec-head">
     <h2>Usuários <span class="muted" id="ucount"></span></h2>
     <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
@@ -1127,9 +1243,45 @@ async function fbResolve(f){
  try{await api('feedback/resolve?id='+encodeURIComponent(f.id)+'&resolvido='+(f.resolvido?'0':'1'),{method:'POST'});f.resolvido=!f.resolvido;renderFbFilters();renderFeedback();toast(f.resolvido?'Resolvido ✓':'Reaberto','ok');}catch(e){toast('Falha.','err');}
 }
 
+// ── Funil de receita ──
+// Três estados: carregando | erro (diz que NÃO sabe — nunca mostra zeros) | valor.
+const ERRO_FUNIL={funil_sem_migration:'a migration do funil ainda não foi aplicada no banco.',funil_indisponivel:'o banco não respondeu.',funil_invalido:'o banco respondeu num formato inesperado.',sem_permissao:'seu papel não pode ver o funil.',mfa_necessario:'confirme o MFA para ver o funil.'};
+function fmtHoras(h){if(h==null)return '—';if(h<1)return Math.round(h*60)+' min';if(h<48)return (h<10?h.toLocaleString('pt-BR',{maximumFractionDigits:1}):Math.round(h))+' h';return (h/24).toLocaleString('pt-BR',{maximumFractionDigits:1})+' d';}
+function celFunil(c,ordem){
+ const td=el('td');
+ if(!c){td.append(el('b',{},'—'));return td;}
+ td.append(el('b',{},fmtNum(c.contas)));
+ if(ordem>1){const t=c.taxa;td.append(el('small',{className:t==null?'':(t>=50?'bom':(t<20?'fraco':''))},t==null?'—':t+'% do anterior'));}
+ return td;
+}
+function renderFunil(f){
+ const box=$('funilBox');box.innerHTML='';
+ $('funilSub').textContent='(cadastros das últimas '+f.semanas+' semanas)';
+ if(f.vazio){box.append(el('div',{className:'empty'},'Nenhum cadastro nesta janela.'));$('funilNota').textContent=notaExclusao(f);return;}
+ const tb=el('table'),th=el('thead'),hr=el('tr');
+ hr.append(el('th',{},'Coorte'));for(const d of f.degraus)hr.append(el('th',{},d.rotulo));th.append(hr);tb.append(th);
+ const body=el('tbody');
+ const tot=el('tr',{className:'tot'});tot.append(el('td',{},el('b',{},'Todas')));f.total.forEach((c,i)=>tot.append(celFunil(c,f.degraus[i].ordem)));body.append(tot);
+ const tempo=el('tr',{className:'tempo'});tempo.append(el('td',{},'Tempo mediano desde o degrau anterior'));f.total.forEach((c,i)=>tempo.append(el('td',{},i===0?'':fmtHoras(c&&c.medianaHorasAnterior))));body.append(tempo);
+ for(const co of f.coortes){const tr=el('tr');tr.append(el('td',{},'sem. '+fmtDate(co.semana+'T12:00:00')));co.degraus.forEach((c,i)=>tr.append(celFunil(c,f.degraus[i].ordem)));body.append(tr);}
+ tb.append(body);box.append(tb);
+ $('funilNota').textContent='Conversão = dos que chegaram ao degrau anterior, quantos chegaram a este. Coorte = semana do cadastro (segunda a domingo, horário de Brasília). Para contas anteriores à ativação do funil, as datas de "perfil", "enviado", "aprovado" e "pagou" são aproximadas. '+notaExclusao(f);
+}
+function notaExclusao(f){
+ if(!f.contasExcluidas)return 'Nenhuma conta interna fora do funil.';
+ return 'Fora do funil: '+f.contasExcluidas+' conta(s) interna(s) — '+f.exclusoes.map(e=>e.rotulo+' '+e.contas).join(' · ')+'.';
+}
+async function carregarFunil(){
+ const box=$('funilBox');box.innerHTML='';$('funilNota').textContent='';
+ box.append(el('div',{className:'empty'},'Carregando funil…'));
+ try{renderFunil(await api('funil?semanas=12'));}
+ catch(e){if(String(e.message)==='401')return;box.innerHTML='';box.append(el('div',{className:'empty'},'Funil indisponível: '+(ERRO_FUNIL[e.codigo]||'não consegui ler os dados.')+' Nenhum número foi zerado — a leitura falhou.'));}
+}
+
 async function loadDash(){
  if(!ME||ME.aal!=='aal2'){mostrarGateMfa();return;}
  liberarDados();
+ carregarFunil();
  show('dash');$('cards').innerHTML='';$('urows').innerHTML='';
  for(let i=0;i<6;i++){const c=el('div',{className:'card'});c.append(el('div',{className:'skel',style:'width:60%;height:24px'}),el('div',{className:'skel',style:'width:40%;margin-top:10px'}));$('cards').append(c);}
  try{
@@ -1188,6 +1340,10 @@ async function openUser(x){
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,'pro',true)},'Conceder Pro'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,'empresa',true)},'Conceder Empresa'));
   if(ass&&ass.admin_override_ativo)acts.append(el('button',{className:'btn ghost sm',onclick:()=>openPlanForm(x,null,false)},'Revogar plano manual'));
+  const fe=(det.funil&&det.funil.estado)||'indisponivel';
+  const podeFunil=['owner','admin'].includes(ME&&ME.papel);
+  if(podeFunil&&fe==='indisponivel')acts.append(el('button',{className:'btn ghost sm',disabled:true,title:'Não consegui ler a lista de contas internas'},'Funil: estado indisponível'));
+  else if(podeFunil)acts.append(el('button',{className:'btn ghost sm',onclick:()=>setFunil(x,fe!=='interna')},fe==='interna'?'Devolver ao funil':'Tirar do funil (conta interna)'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>act(x,'reset')},'Enviar reset de senha'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>downloadUserReport(x)},'Baixar relatório TXT'));
   acts.append(el('button',{className:'btn ghost sm',onclick:()=>act(x,x.bloqueado?'unban':'ban')},x.bloqueado?'Desbloquear':'Bloquear'));
@@ -1204,6 +1360,11 @@ async function act(x,a){
  const confirmacao=a==='delete'?prompt('Digite EXCLUIR para confirmar:'):undefined;
  if(a==='delete'&&confirmacao!=='EXCLUIR')return;
  try{await api('user/'+a+'?id='+encodeURIComponent(x.id),{method:'POST',body:JSON.stringify({motivo,requestId,confirmacao})});modalClose();toast(a==='delete'?'Conta excluída':'Feito','ok');await loadDash();}catch(e){toast(mensagemErro(e),'err');}
+}
+
+async function setFunil(x,excluir){
+ const motivo=prompt(excluir?'Por que esta conta é interna? (ex.: conta de teste do dono)':'Por que esta conta volta ao funil?');if(!motivo||motivo.trim().length<3)return;
+ try{await api('funil/exclusao?id='+encodeURIComponent(x.id),{method:'POST',body:JSON.stringify({excluir,motivo:motivo.trim().slice(0,200),requestId:crypto.randomUUID()})});toast(excluir?'Conta fora do funil.':'Conta de volta ao funil.','ok');await openUser(x);carregarFunil();}catch(e){toast(mensagemErro(e),'err');}
 }
 
 function mensagemErro(e){

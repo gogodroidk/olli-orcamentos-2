@@ -21,16 +21,21 @@ const clienteLinkStub = fileURLToPath(new URL("./src/shims/clienteLink.web.ts", 
 const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.meta.url));
 const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
 const lembreteAssinaturaFonte = fileURLToPath(new URL("../src/services/lembreteAssinatura.ts", import.meta.url));
+const radarDinheiroFonte = fileURLToPath(new URL("../src/services/radarDinheiro.ts", import.meta.url));
+const resumoEmailFonte = fileURLToPath(new URL("../src/services/resumoEmailPreferencia.ts", import.meta.url));
 const sentryScrubFonte = fileURLToPath(new URL("../src/services/sentryScrub.ts", import.meta.url));
 const sentryCapturaFonte = fileURLToPath(new URL("../src/services/sentryCaptura.ts", import.meta.url));
 const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
 const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesComerciais.ts", import.meta.url));
+const ativacaoFonte = fileURLToPath(new URL("../src/services/ativacao.ts", import.meta.url));
 const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts", import.meta.url));
 const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
 const oauthRetornoFonte = fileURLToPath(new URL("../src/services/oauthRetorno.ts", import.meta.url));
 const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
+// Assinatura pela Google Play: o MESMO catálogo/URL de gerenciar que o app usa. Módulo puro.
+const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -74,16 +79,20 @@ export default defineConfig(({ mode }) => {
 				"@precos": precosFonte,
 				"@entitlements": entitlementsFonte,
 				"@lembreteAssinatura": lembreteAssinaturaFonte,
+				"@radar-dinheiro": radarDinheiroFonte,
+				"@resumo-email": resumoEmailFonte,
 				"@sentry-scrub": sentryScrubFonte,
 				"@sentry-captura": sentryCapturaFonte,
 				"@verticais": verticaisFonte,
 				"@vertical-segmento": verticalSegmentoFonte,
 				"@limites-comerciais": limitesComerciaisFonte,
+				"@ativacao": ativacaoFonte,
 				"@ia-segura": iaSeguraFonte,
 				"@precificacao": precificacaoFonte,
 				"@auth-policy": authPolicyFonte,
 				"@oauth-retorno": oauthRetornoFonte,
 				"@ajuda": ajudaFonte,
+				"@play-billing-regras": playBillingRegrasFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

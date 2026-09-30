@@ -134,14 +134,9 @@ export function formatInt(v: number): string {
  * Melhor esforço para o valor do orçamento: coluna → blob → subtotal.
  * Devolve `null` quando NÃO EXISTE valor — quem soma precisa saber a diferença
  * entre "zero reais" e "não sei", senão o painel mente sobre o caixa.
+ * Mora em `src/services/radarDinheiro.ts`: o resumo diário por e-mail lê o valor igual.
  */
-export function valorOrcamento(o: OrcamentoRow): number | null {
-	const candidatos = [o.valor_total, o.dados?.valorTotal, o.subtotal, o.dados?.subtotal];
-	for (const c of candidatos) {
-		if (typeof c === "number" && Number.isFinite(c)) return c;
-	}
-	return null;
-}
+export { valorOrcamento } from "@radar-dinheiro";
 
 /** Percentual inteiro pt-BR (ex.: "62%"). `null` (sem base de cálculo) vira "—". */
 export function formatPct(v: number | null): string {

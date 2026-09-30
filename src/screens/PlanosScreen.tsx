@@ -37,6 +37,15 @@ import {
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
 import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
+import {
+  ESTADO_PLAY_BILLING,
+  carregarOfertasPlay,
+  comprarNaPlay,
+  restaurarComprasPlay,
+  type ResultadoOfertasPlay,
+} from '../services/playBilling';
+import { liberacaoPlayConfirmada, ofertaPara, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
+import { getAssinaturaNaPlay } from '../services/assinatura';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -82,6 +91,32 @@ const COMPRA_NO_APP = Platform.OS !== 'ios';
  * não abre Stripe, Mercado Pago, WhatsApp comercial nem outro caminho externo de
  * compra de bens digitais. Só a web mantém contratação; o Android apenas informa. */
 const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
+
+/**
+ * VENDA PELA PRÓPRIA GOOGLE PLAY (Play Billing via RevenueCat). Não é compra
+ * externa — é a loja cobrando —, então convive com `BUILD_PLAY_SEM_COMPRA_EXTERNA`:
+ * o Android continua sem Stripe, Pix e WhatsApp comercial, e ganha só o botão que
+ * abre a folha de pagamento da Play. Ligada apenas com a chave pública do RevenueCat
+ * no build, fora do Expo Go (ver services/playBillingRegras.ts). Desligada = a tela
+ * fica exatamente como antes: informa, não vende. iOS: sempre desligada.
+ */
+const VENDA_PELA_PLAY = ESTADO_PLAY_BILLING === 'ligado';
+
+/** Ofertas da Play com o estado de carga explícito (nunca "não carregou" = "não há"). */
+type EstadoOfertasPlay = { estado: 'carregando' } | ResultadoOfertasPlay;
+
+/** O que o card de um plano pago precisa para vender pela Play (`null` = venda desligada). */
+interface VendaPlayCard {
+  estado: EstadoOfertasPlay['estado'];
+  /** Oferta deste plano no período da aba, com o preço que a LOJA devolveu. */
+  oferta: OfertaPlay | null;
+  comprando: boolean;
+  onAssinar: () => void;
+  onTentarDeNovo: () => void;
+  onEntrar: () => void;
+}
+
+const esperar = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Período cobrado, escolhido na aba. O 12× NÃO é período — é uma forma de pagar
  *  o valor cheio do ano, tratada à parte (ver a linha honesta no card do Pro). */
@@ -297,6 +332,13 @@ export default function PlanosScreen() {
   const [pixLigado, setPixLigado] = useState(false);
   const [cobrancaPix, setCobrancaPix] = useState<CobrancaPixPlano | null>(null);
   const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
+  // Google Play (só com VENDA_PELA_PLAY): ofertas com preço da loja, compra em curso
+  // e restauração. Desligada, o estado nasce e fica em 'desligado'.
+  const [ofertasPlay, setOfertasPlay] = useState<EstadoOfertasPlay>(
+    VENDA_PELA_PLAY ? { estado: 'carregando' } : { estado: 'desligado' },
+  );
+  const [compraPlayEm, setCompraPlayEm] = useState<PlanoId | null>(null);
+  const [restaurandoPlay, setRestaurandoPlay] = useState(false);
 
   useEffect(() => {
     if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
@@ -335,10 +377,18 @@ export default function PlanosScreen() {
 
   // Recarrega ao focar a tela — cobre a volta do checkout/portal Stripe (o
   // usuário sai para o navegador e volta pelo botão "voltar" do sistema).
+  const carregarPlay = useCallback(async () => {
+    if (!VENDA_PELA_PLAY) return;
+    setOfertasPlay({ estado: 'carregando' });
+    setOfertasPlay(await carregarOfertasPlay());
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       carregarPlano();
-    }, [carregarPlano]),
+      // Relê a Play a cada foco: cobre quem foi à Conta fazer login e voltou.
+      void carregarPlay();
+    }, [carregarPlano, carregarPlay]),
   );
 
   const planoConhecido = fontePlano === 'servidor' || fontePlano === 'cache_mesmo_usuario';
@@ -525,6 +575,102 @@ export default function PlanosScreen() {
     setCobrancaPix(c);
   }
 
+  /**
+   * Depois que a Play confirma, quem liga o plano é o SERVIDOR (webhook do
+   * RevenueCat → worker). Aqui só relemos o plano do servidor por alguns segundos;
+   * "liberado" só é dito quando o servidor confirmar. Sem confirmação no prazo, a
+   * mensagem é honesta: pago na Play, liberação a caminho.
+   */
+  async function aguardarLiberacaoPlay(esperado: PlanoPlay | null) {
+    for (let tentativa = 0; tentativa < 8; tentativa++) {
+      await esperar(2500);
+      try {
+        // Plano pago no servidor NÃO basta (quem já pagava por Pix/Stripe, ou sobe do
+        // Pro para o Empresa pela Play, já tem plano pago): só confirma quando a linha
+        // traz o produto da Play gravado pelo webhook — ver liberacaoPlayConfirmada.
+        const [r, play] = await Promise.all([getPlanoAtual(), getAssinaturaNaPlay()]);
+        const produtoNoServidor = play.estado === 'ok' ? play.produto : null;
+        if (liberacaoPlayConfirmada(r, produtoNoServidor, esperado)) {
+          await carregarPlano();
+          Alert.alert('Plano liberado', `Seu plano ${r.plano === 'empresa' ? 'Empresa' : 'Pro'} está ativo. Obrigado por assinar o OLLI!`);
+          return;
+        }
+      } catch {
+        // rede instável: tenta de novo na próxima volta
+      }
+    }
+    await carregarPlano();
+    Alert.alert(
+      'Pagamento confirmado pela Google Play',
+      'Estamos liberando seu plano — pode levar alguns minutos. Você não precisa pagar de novo: volte a esta tela daqui a pouco.',
+    );
+  }
+
+  async function assinarPelaPlay(p: Plano) {
+    if (!VENDA_PELA_PLAY) return;
+    if (p.id !== 'pro' && p.id !== 'empresa') return;
+    if (!acoesPlanoDisponiveis) {
+      Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
+      return;
+    }
+    if (ofertasPlay.estado !== 'ok') return;
+    const oferta = ofertaPara(ofertasPlay.ofertas, p.id, periodo);
+    if (!oferta) return;
+    Haptics.selectionAsync().catch(() => {});
+    setCompraPlayEm(p.id);
+    try {
+      const r = await comprarNaPlay(oferta);
+      if (r.estado === 'confirmada') await aguardarLiberacaoPlay(oferta.plano);
+      else if (r.estado === 'pendente') {
+        Alert.alert('Pagamento em processamento', 'A Google Play ainda está confirmando o pagamento. Assim que ela confirmar, seu plano é liberado — não pague de novo.');
+      } else if (r.estado === 'sem_login') {
+        Alert.alert('Faça login primeiro', `Para assinar o plano ${p.nome}, entre com sua conta OLLI.`, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+        ]);
+      } else if (r.estado === 'erro' || r.estado === 'outra_conta') {
+        Alert.alert('Google Play', r.mensagem);
+      }
+      // 'cancelado' (o usuário fechou a folha da Play) e 'desligado': silêncio.
+    } finally {
+      setCompraPlayEm(null);
+    }
+  }
+
+  async function restaurarPlay() {
+    if (!VENDA_PELA_PLAY || restaurandoPlay) return;
+    setRestaurandoPlay(true);
+    try {
+      const r = await restaurarComprasPlay();
+      if (r.estado === 'ok') {
+        if (r.temAssinaturaAtiva) await aguardarLiberacaoPlay(null);
+        else Alert.alert('Nada para restaurar', 'Não encontramos assinatura ativa do OLLI na conta Google deste aparelho.');
+      } else if (r.estado === 'sem_login') {
+        Alert.alert('Faça login primeiro', 'Entre com a sua conta OLLI para restaurar a assinatura.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+        ]);
+      } else if (r.estado === 'erro' || r.estado === 'outra_conta') {
+        Alert.alert('Google Play', r.mensagem);
+      }
+    } finally {
+      setRestaurandoPlay(false);
+    }
+  }
+
+  /** Props de venda pela Play de um card, ou `null` quando a venda está desligada. */
+  function vendaPlayDoCard(p: Plano): VendaPlayCard | null {
+    if (!VENDA_PELA_PLAY || (p.id !== 'pro' && p.id !== 'empresa')) return null;
+    return {
+      estado: ofertasPlay.estado,
+      oferta: ofertasPlay.estado === 'ok' ? ofertaPara(ofertasPlay.ofertas, p.id, periodo) : null,
+      comprando: compraPlayEm === p.id,
+      onAssinar: () => { void assinarPelaPlay(p); },
+      onTentarDeNovo: () => { void carregarPlay(); },
+      onEntrar: () => nav.navigate('Conta'),
+    };
+  }
+
   // 12× no cartão: só o Pro tem produto avulso. Força o checkout 'pro_12x'
   // (valor cheio do ano), independentemente da aba mensal/anual selecionada.
   function pagar12x(p: Plano) {
@@ -644,6 +790,8 @@ export default function PlanosScreen() {
             <Text style={styles.introSub}>
               {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                 ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
+                : VENDA_PELA_PLAY
+                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados aqui pela Google Play, mensal ou anual — a cobrança e o cancelamento ficam na sua conta Google.`
                 : Platform.OS === 'android'
                   ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.`
                   : `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
@@ -656,7 +804,7 @@ export default function PlanosScreen() {
             uma compra que este aparelho não faz) — mas o preço anual continua
             visível como INFORMAÇÃO na linha "no anual…" dentro de cada card. */}
         {COMPRA_NO_APP && (
-        BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
+        BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? null : (
         <AnimatedEntrance index={1}>
           <View style={styles.toggle} accessibilityRole="tablist">
             <TouchableOpacity
@@ -676,7 +824,11 @@ export default function PlanosScreen() {
               accessibilityState={{ selected: periodo === 'anual' }}
             >
               <Text style={[styles.toggleText, periodo === 'anual' && styles.toggleTextActive]}>Anual</Text>
-              <View style={styles.toggleBadge}><Text style={styles.toggleBadgeText}>-{DESCONTO_ANUAL_ROTULO}</Text></View>
+              {/* O desconto é o da fonte (Stripe). Na Play quem define o preço é o
+                  Play Console, então o selo não aparece — o card mostra o da loja. */}
+              {BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
+                <View style={styles.toggleBadge}><Text style={styles.toggleBadgeText}>-{DESCONTO_ANUAL_ROTULO}</Text></View>
+              )}
             </TouchableOpacity>
           </View>
         </AnimatedEntrance>
@@ -700,6 +852,7 @@ export default function PlanosScreen() {
                 pixLigado={pixLigado}
                 carregandoPix={pixEmAndamento === p.id}
                 onPagarPix={() => { void pagarComPix(p); }}
+                vendaPlay={vendaPlayDoCard(p)}
               />
             );
             // Desktop: cada card numa célula flex (larguras iguais). Sem a entrada
@@ -716,6 +869,33 @@ export default function PlanosScreen() {
         {/* iOS (Guideline 3.1.1): rodapé escondido — descreve uma compra
             (assinatura que renova, 12x no cartão) que este aparelho não faz;
             mantido sem alteração no Android/web, onde a compra é real. */}
+        {/* Google Play: como a assinatura funciona + "Restaurar compras" (exigência
+            prática de loja: quem trocou de aparelho recupera sem pagar de novo). */}
+        {VENDA_PELA_PLAY ? (
+          <View style={styles.playRodape}>
+            <Text style={styles.rodape}>
+              Pela Google Play, mensal e anual são assinaturas que renovam automaticamente e são cobradas na sua conta Google. Cancele quando quiser em Play Store › Pagamentos e assinaturas.
+            </Text>
+            <TouchableOpacity
+              style={styles.ctaSecundario}
+              onPress={() => { void restaurarPlay(); }}
+              disabled={restaurandoPlay}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: restaurandoPlay }}
+            >
+              {restaurandoPlay ? (
+                <ActivityIndicator size="small" color={cores.onSurfaceVariant} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="restore" size={16} color={cores.onSurfaceVariant} />
+                  <Text style={styles.ctaSecundarioText}>Restaurar compras da Google Play</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
         <Text style={styles.rodape}>{pixLigado
           ? 'No cartão (Stripe), mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. No Pix, você paga 1 mês ou 1 ano de uma vez, sem renovação automática: perto do vencimento, paga de novo. 💙'
@@ -726,7 +906,7 @@ export default function PlanosScreen() {
 
         {/* COMPARATIVO — sempre visível (info, não venda): deixa óbvio o que cada
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
-        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} />
+        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={!VENDA_PELA_PLAY} />
       </ScrollView>
       <PixPlanoModal
         cobranca={cobrancaPix}
@@ -751,6 +931,7 @@ function PlanoCard({
   pixLigado,
   carregandoPix,
   onPagarPix,
+  vendaPlay,
 }: {
   plano: Plano;
   periodo: Periodo;
@@ -764,6 +945,8 @@ function PlanoCard({
   pixLigado: boolean;
   carregandoPix: boolean;
   onPagarPix: () => void;
+  /** Venda pela Google Play deste card; `null` = desligada (comportamento anterior). */
+  vendaPlay: VendaPlayCard | null;
 }) {
   const cores = useCores();
   const gradientes = useGradientes();
@@ -774,13 +957,22 @@ function PlanoCard({
   // permanece 'mensal' e o card mostra o mensal; o anual aparece na linha "no
   // anual…" logo abaixo, como informação.
   const preco = plano.preco;
-  const exibido = preco ? precoNoPeriodo(preco, periodo) : { valor: 'Grátis', sufixo: '', nota: null };
+  // Na Google Play o preço é o que a LOJA devolveu (cadastrado no Play Console) —
+  // nunca o da Stripe. Sem oferta carregada, nenhum número aparece ('—').
+  const precoLoja = vendaPlay?.oferta?.precoTexto ?? null;
+  const exibido = !preco
+    ? { valor: 'Grátis', sufixo: '', nota: null }
+    : vendaPlay
+      ? { valor: precoLoja ?? '—', sufixo: precoLoja ? (periodo === 'anual' ? '/ano' : '/mês') : '', nota: null }
+      : precoNoPeriodo(preco, periodo);
   // Linha secundária de preço:
   //  - aba anual (Android/web): o total do ano + a economia;
   //  - caso contrário: o anual como informação (equivalente /mês, total, −20%).
   const notaAnual =
     !preco
       ? null
+      : vendaPlay
+        ? (precoLoja ? 'Preço da Google Play, cobrado na sua conta Google.' : null)
       : periodo === 'anual' && COMPRA_NO_APP
         ? exibido.nota
         : `No anual: ${reais(preco.anualPorMesCentavos)}/mês (${reais(preco.anualCentavos)}/ano, −${DESCONTO_ANUAL_ROTULO})`;
@@ -875,9 +1067,13 @@ function PlanoCard({
           <Text style={styles.ctaIndisponivelText}>Assinatura ainda não disponível no iPhone</Text>
         </View>
       ) : BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
-        <View style={styles.ctaIndisponivel}>
-          <Text style={styles.ctaIndisponivelText}>Contratação não disponível neste aplicativo Android</Text>
-        </View>
+        vendaPlay ? (
+          <CtaPlay plano={plano} periodo={periodo} venda={vendaPlay} carregandoPlano={carregandoPlano} acoesDisponiveis={acoesDisponiveis} />
+        ) : (
+          <View style={styles.ctaIndisponivel}>
+            <Text style={styles.ctaIndisponivelText}>Contratação não disponível neste aplicativo Android</Text>
+          </View>
+        )
       ) : plano.destaque ? (
         <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan, !acoesDisponiveis && styles.ctaDisabled]}>
@@ -965,11 +1161,105 @@ function PlanoCard({
 }
 
 /**
+ * CTA de assinatura pela Google Play. Os 3 estados da carga das ofertas viram
+ * 3 CTAs diferentes — carregando não é "indisponível", e erro não é "não vende":
+ *  - carregando  → botão travado, sem preço;
+ *  - erro        → aviso + "Tentar de novo";
+ *  - sem login   → "Entrar para assinar" (a compra fica ligada à conta OLLI);
+ *  - ok          → "Assinar Pro — <preço da loja>/mês", ou aviso honesto se a
+ *                  loja não devolveu este produto.
+ */
+function CtaPlay({
+  plano,
+  periodo,
+  venda,
+  carregandoPlano,
+  acoesDisponiveis,
+}: {
+  plano: Plano;
+  periodo: Periodo;
+  venda: VendaPlayCard;
+  carregandoPlano: boolean;
+  acoesDisponiveis: boolean;
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+
+  if (venda.estado === 'carregando' || venda.estado === 'desligado') {
+    return (
+      <View style={[styles.ctaOutline, styles.ctaDisabled]} accessibilityState={{ disabled: true, busy: venda.estado === 'carregando' }}>
+        <ActivityIndicator size="small" color={cores.primaryLight} />
+        <Text style={styles.ctaOutlineText}>Carregando preço da Google Play…</Text>
+      </View>
+    );
+  }
+  if (venda.estado === 'erro') {
+    return (
+      <View style={styles.ctaIndisponivel}>
+        <Text style={styles.ctaIndisponivelText}>Não deu para carregar os preços da Google Play.</Text>
+        <TouchableOpacity onPress={venda.onTentarDeNovo} activeOpacity={0.8} style={styles.avisoAcaoHit} accessibilityRole="button">
+          <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  if (venda.estado === 'sem_login') {
+    return (
+      <TouchableOpacity style={styles.ctaOutline} onPress={venda.onEntrar} activeOpacity={0.85} accessibilityRole="button">
+        <Text style={styles.ctaOutlineText}>Entrar para assinar o {plano.nome}</Text>
+        <MaterialCommunityIcons name="arrow-right" size={17} color={cores.primaryLight} />
+      </TouchableOpacity>
+    );
+  }
+  if (!venda.oferta) {
+    return (
+      <View style={styles.ctaIndisponivel}>
+        <Text style={styles.ctaIndisponivelText}>
+          {periodo === 'anual' ? 'O plano anual' : 'Este plano'} ainda não está à venda na Google Play.
+        </Text>
+      </View>
+    );
+  }
+  const travado = venda.comprando || carregandoPlano || !acoesDisponiveis;
+  return (
+    <TouchableOpacity
+      style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]}
+      onPress={venda.onAssinar}
+      activeOpacity={0.85}
+      disabled={travado}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: travado, busy: venda.comprando }}
+    >
+      {venda.comprando ? (
+        <ActivityIndicator size="small" color={cores.primaryLight} />
+      ) : (
+        <>
+          <MaterialCommunityIcons name="google-play" size={17} color={cores.primaryLight} />
+          <Text style={styles.ctaOutlineText}>
+            {`${plano.cta} — ${venda.oferta.precoTexto}${periodo === 'anual' ? '/ano' : '/mês'}`}
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/**
  * Comparativo Grátis × Pro × Empresa. A coluna do plano ATUAL do usuário ganha
  * um selo e um leve realce — é assim que a tela deixa óbvio "o que você já tem"
  * (e, por contraste, o que ganharia ao subir). Puro informativo: nenhum CTA.
  */
-function ComparativoTabela({ planoAtualId, ehDesktop }: { planoAtualId: PlanoId; ehDesktop?: boolean }) {
+function ComparativoTabela({
+  planoAtualId,
+  ehDesktop,
+  precosDaFonte = true,
+}: {
+  planoAtualId: PlanoId;
+  ehDesktop?: boolean;
+  /** false quando quem cobra é a Google Play: o preço válido é o do card (da loja),
+   *  então a tabela não repete o da Stripe — só compara recursos. */
+  precosDaFonte?: boolean;
+}) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const colunas: { id: PlanoId; nome: string; precoMensal: number | null }[] = [
@@ -1003,7 +1293,9 @@ function ComparativoTabela({ planoAtualId, ehDesktop }: { planoAtualId: PlanoId;
               return (
                 <View key={c.id} style={[styles.compHeadCell, atual && styles.compColAtual]}>
                   <Text style={[styles.compHeadNome, atual && styles.compHeadNomeAtual]}>{c.nome}</Text>
-                  <Text style={styles.compHeadPreco}>{c.precoMensal === null ? 'Grátis' : `${reais(c.precoMensal)}/mês`}</Text>
+                  {c.precoMensal === null || precosDaFonte ? (
+                    <Text style={styles.compHeadPreco}>{c.precoMensal === null ? 'Grátis' : `${reais(c.precoMensal)}/mês`}</Text>
+                  ) : null}
                   {atual ? (
                     <View style={styles.compAtualPill}><Text style={styles.compAtualPillText}>Atual</Text></View>
                   ) : null}
@@ -1025,11 +1317,14 @@ function ComparativoTabela({ planoAtualId, ehDesktop }: { planoAtualId: PlanoId;
           ))}
         </View>
 
-        {/* Resumo do anual — informação completa (vale no iOS também, sem CTA). */}
+        {/* Resumo do anual — informação completa (vale no iOS também, sem CTA).
+            Some quando quem cobra é a Google Play (o preço lá é o do card). */}
+        {precosDaFonte ? (
         <Text style={styles.compAnualNota}>
           No plano anual (−{DESCONTO_ANUAL_ROTULO}): Pro por {reais(PRECO_PRO.anualPorMesCentavos)}/mês ({reais(PRECO_PRO.anualCentavos)}/ano) e
           Empresa por {reais(PRECO_EMPRESA.anualPorMesCentavos)}/mês ({reais(PRECO_EMPRESA.anualCentavos)}/ano).
         </Text>
+        ) : null}
       </View>
     </AnimatedEntrance>
   );
@@ -1154,6 +1449,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ctaSecundarioText: { fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   rodape: { fontSize: 12.5, color: c.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
+  // Rodapé da venda pela Google Play: explicação + "Restaurar compras".
+  playRodape: { alignItems: 'center', marginTop: Spacing.xs },
 
   // ─── Comparativo ──────────────────────────────────────────────────────────
   compWrap: { marginTop: Spacing.lg },

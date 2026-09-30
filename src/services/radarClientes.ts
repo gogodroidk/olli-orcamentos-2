@@ -4,8 +4,12 @@
  * um SERVIÇO CONCLUÍDO e estão na hora de repetir (pelo ofício do prestador), para ele
  * lembrar o cliente ANTES de o cliente chamar o concorrente.
  *
- * A REGRA mora em `utils/posVenda.ts` (TS puro, a MESMA que o painel web usa). Aqui
- * fica só a leitura local e a conversão em "serviços concluídos":
+ * A REGRA mora em `utils/posVenda.ts` (TS puro, a MESMA que o painel web E o resumo
+ * diário por e-mail usam — via `listarClientesParaLembrarDasLinhas` em
+ * `radarDinheiro.ts`: o número "N clientes para lembrar" do e-mail das 7h é o desta
+ * lista). Aqui fica só a leitura local e a conversão em "serviços concluídos" — o
+ * espelho de `servicosConcluidosDasLinhas` (radarDinheiro.ts) para o SQLite; quem
+ * mexer num mexe no outro:
  *  - orçamento aprovado ou convertido (data da aprovação ≈ `atualizadoEm`, como no
  *    radar de cobrança; cai para `criadoEm` em registro legado);
  *  - agendamento concluído (fim, ou início);
@@ -98,7 +102,7 @@ async function servicosConcluidos(): Promise<ServicoConcluido[]> {
   ]);
   const servicos: ServicoConcluido[] = [];
   for (const o of orcamentos) {
-    if (o.status !== 'aprovado' && o.status !== 'convertido') continue;
+    if (o.status !== 'aprovado' && o.status !== 'convertido') continue; // = STATUS_SERVICO_FECHADO (radarDinheiro)
     servicos.push({ clienteId: o.clienteId, quando: msDe(o.atualizadoEm || o.criadoEm) });
   }
   for (const a of agendamentos) {
