@@ -661,7 +661,7 @@ async function handleGeocode(request, env) {
   // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
   // pode custar 1 chamada à Geocoding API (paga). Mesmo binding do /eta — as duas
   // rotas alimentam o mesmo fluxo (endereço → coordenada → rota) — e, agora,
-  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver /eta acima).
+  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver `handleEtaAgora` em etaSaida.js).
   const estadoLimite = await checarLimite(env.ETA_RL, user.id);
   if (!deixaPassar(estadoLimite, { sensivel: true })) {
     return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);

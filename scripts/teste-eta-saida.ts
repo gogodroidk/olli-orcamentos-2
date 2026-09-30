@@ -570,6 +570,44 @@ console.log('\n17b) POST /eta ("saindo agora") — trânsito de verdade, e só q
   checar('/eta sem chave: desligado dizendo que está desligado', semChave.corpo.motivo, 'eta_nao_configurado');
   const lixo = await chamarAgora({ origem: { lat: 'x' }, destino: SANTO_ANDRE }, { rotas: rotaOk() });
   checar('/eta coordenada inválida: 400 sem chamada', [lixo.status, pediuRotas(lixo.chamadas)], [400, 0]);
+
+  // Corpo gigante SEM Content-Length (chunked): a leitura tem de parar no teto,
+  // não bufferizar tudo para depois medir. Em index.js o /eta já lia assim
+  // (bodyMuitoGrande); a mudança para etaSaida.js não pode perder a defesa.
+  for (const [rota, handler] of [['/eta', handleEtaAgora], ['/eta/saida', handleEtaSaida]] as const) {
+    let pedacosLidos = 0;
+    const pedaco = new TextEncoder().encode('x'.repeat(1024));
+    const stream = new ReadableStream<Uint8Array>({
+      pull(ctrl) {
+        pedacosLidos++;
+        if (pedacosLidos > 1000) ctrl.close(); // ~1 MB se ninguém parar a leitura
+        else ctrl.enqueue(pedaco);
+      },
+    });
+    const { f, chamadas } = montarFetch({ rotas: rotaOk() });
+    const req = new Request('https://olli-diagnostico' + rota, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-de-teste', 'Content-Type': 'application/json' },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+    const resp: Response = await handler(req, { OLLI_ROUTES_API_KEY: CHAVE, ETA_RL: { limit: async () => ({ success: true }) } }, {
+      fetch: f,
+      getUser: async () => ({ id: 'usuario-de-teste' }),
+    });
+    checar(`${rota} corpo chunked acima do teto: 413 sem chamada paga`, [resp.status, pediuRotas(chamadas)], [413, 0]);
+    checar(`${rota} corpo chunked: para de ler logo depois do teto`, pedacosLidos < 20, true);
+    const comHeader = new Request('https://olli-diagnostico' + rota, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-de-teste', 'Content-Length': '999999' },
+      body: '{}',
+    });
+    const r2: Response = await handler(comHeader, { OLLI_ROUTES_API_KEY: CHAVE, ETA_RL: { limit: async () => ({ success: true }) } }, {
+      fetch: f,
+      getUser: async () => ({ id: 'usuario-de-teste' }),
+    });
+    checar(`${rota} Content-Length acima do teto: 413 sem ler o corpo`, r2.status, 413);
+  }
 }
 
 console.log('\n18) A CHAVE NUNCA SAI DO WORKER');

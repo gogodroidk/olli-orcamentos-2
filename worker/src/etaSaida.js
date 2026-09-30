@@ -52,7 +52,8 @@
  * lembrete fixo. O custo de liberar sem vigia é uma conta aberta na Google.
  */
 
-import { checarLimite, deixaPassar } from './rateLimit.js';
+import { lerCorpoLimitado } from './bodyLimit.js';
+import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { parseJsonBody } from './util.js';
 
 // ─── Constantes de política (nada de número mágico solto no corpo) ─────────
@@ -555,16 +556,18 @@ export async function handleEtaSaida(request, env, deps = {}) {
   if (!user) return json({ ok: false, estado: 'indisponivel', erro: 'nao_autorizado' }, 401);
   if (!env.OLLI_ROUTES_API_KEY) return respIndisponivel('eta_nao_configurado');
 
-  // Teto de payload ANTES do parse (corpo é minúsculo por natureza).
-  let raw = '';
-  try {
-    raw = await request.text();
-  } catch {
-    return respIndisponivel('corpo_ilegivel', 400);
-  }
-  if (raw.length > MAX_BODY_BYTES) {
+  // Teto de payload ANTES do parse (corpo é minúsculo por natureza). Nunca
+  // `request.text()` antes de olhar o tamanho: o Content-Length barra sem ler, e
+  // a leitura incremental pega o chunked/sem header SEM bufferizar o corpo todo
+  // (mesma defesa de index.js/bodyMuitoGrande — B1/O2-18).
+  if (!cabeNoTeto(request, MAX_BODY_BYTES).ok) {
     return json({ ok: false, estado: 'indisponivel', erro: 'payload_grande' }, 413);
   }
+  const lido = await lerCorpoLimitado(request, MAX_BODY_BYTES);
+  if (lido.grande) {
+    return json({ ok: false, estado: 'indisponivel', erro: 'payload_grande' }, 413);
+  }
+  const raw = lido.raw;
 
   // Rate limit ANTES de qualquer fetch pago. FAIL-CLOSED: limiter que não
   // responde não é permissão. Ver o docblock do topo.
@@ -710,13 +713,13 @@ export async function handleEtaAgora(request, env, deps = {}) {
   if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
 
   // Teto de payload ANTES do parse — corpo minúsculo por natureza (2 coordenadas).
-  let raw = '';
-  try {
-    raw = await request.text();
-  } catch {
-    return json({ ok: false, erro: 'corpo_ilegivel' }, 400);
-  }
-  if (raw.length > MAX_BODY_BYTES) return json({ ok: false, erro: 'payload_grande' }, 413);
+  // Mesma leitura limitada do /eta/saida acima: em index.js esta rota já usava
+  // `bodyMuitoGrande` (leitura incremental) e a mudança para cá não pode trocar
+  // isso por um `request.text()` que bufferiza o que o cliente mandar.
+  if (!cabeNoTeto(request, MAX_BODY_BYTES).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
+  const lido = await lerCorpoLimitado(request, MAX_BODY_BYTES);
+  if (lido.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
+  const raw = lido.raw;
 
   // Rate limit por usuário ANTES do fetch pago. FAIL-CLOSED: limiter ausente ou
   // mudo não é permissão (ver o docblock do topo e rateLimit.js).
