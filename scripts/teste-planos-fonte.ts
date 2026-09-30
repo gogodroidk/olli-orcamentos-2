@@ -58,6 +58,7 @@ function ler(caminho: string): string {
 
 const tela = ler('../src/screens/PlanosScreen.tsx');
 const gatePro = ler('../src/components/GatePro.tsx');
+const equipeAoVivo = ler('../src/screens/EquipeAoVivoScreen.tsx');
 const painelPlanos = ler('../webapp/src/pages/olli/planos/index.tsx');
 
 // Regra do revisor: nenhum "39"/"99" (nem "R$ 39"/"R$ 99") solto na tela.
@@ -115,6 +116,12 @@ checar('mapa Empresa está marcado em breve', disponibilidadeRecurso('empresa', 
 checar('dashboard Empresa está marcado em breve', disponibilidadeRecurso('empresa', 'dashboard_empresa'), 'em_breve');
 checar('app não vende mapa como pronto', tela.includes('Equipe ao vivo no mapa (em breve)'), true);
 checar('app não vende dashboard como pronto', tela.includes('Painel de gestão da empresa (em breve)'), true);
+// GPS: o expo-location não está instalado. Nenhuma tela promete localização
+// "no próximo update" nem vende "onde cada técnico está agora" (faxina 30/09).
+checar('paywall do mapa não vende como pronto', gatePro.includes("mapa_equipe: 'Equipe ao vivo no mapa (em breve).'"), true);
+checar('Equipe ao vivo diz que a localização pelo app não está disponível', equipeAoVivo.includes('Localização pelo app: ainda não disponível'), true);
+checar('Equipe ao vivo não promete o "próximo update"', /pr[oó]ximo update/i.test(equipeAoVivo), false);
+checar('Equipe ao vivo não promete "onde cada técnico está agora"', equipeAoVivo.includes('onde cada técnico está agora'), false);
 checar('comparativo possui estado Em breve', tela.includes("? 'Em breve'"), true);
 checar('app usa rótulo neutro Recomendado', tela.includes('RECOMENDADO') && !tela.includes('MAIS POPULAR'), true);
 checar('painel usa rótulo neutro Recomendado', painelPlanos.includes('Recomendado') && !painelPlanos.includes('Mais escolhido'), true);

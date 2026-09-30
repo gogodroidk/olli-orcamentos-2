@@ -50,7 +50,8 @@ const COPY_RECURSO: Record<Recurso, string> = {
   relatorio_dia: 'Ouça o resumo do seu dia em um toque.',
   modelos_pdf_premium: 'Modelos de orçamento premium que vendem por você.',
   equipe: 'Vários técnicos, papéis e permissões.',
-  mapa_equipe: 'Acompanhe sua equipe ao vivo no mapa.',
+  // `em_breve` em entitlements.ts: o app ainda não lê o GPS — não vender como pronto.
+  mapa_equipe: 'Equipe ao vivo no mapa (em breve).',
   dashboard_empresa: 'Painel de gestão com a operação inteira.',
   remove_olli_brand: 'Orçamento 100% com a sua marca, sem o selo do OLLI.',
 };
