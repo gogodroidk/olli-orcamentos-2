@@ -261,6 +261,17 @@ const otpCss = ler('webapp/src/pages/sys/login/components/codigo-otp.css');
 const rotas = ler('webapp/src/routes/sections/auth.tsx');
 ok(/verifyOtp\(\{\s*token_hash/.test(confirmar), '/auth/confirm usa verifyOtp com token_hash');
 ok(/lerConfirmacao/.test(confirmar), '/auth/confirm usa o parser testado');
+// O supabase-js apaga o ?code= da barra ao trocar o PKCE, e a página é lazy: ela
+// precisa ler a URL de entrada guardada antes do client, senão vira "Link incompleto".
+const libSupabaseWeb = ler('webapp/src/lib/supabase.ts');
+ok(
+  /export const urlDeEntrada[\s\S]*?window\.location\.href[\s\S]*?createClient\(/.test(libSupabaseWeb),
+  'painel guarda a URL de entrada ANTES de criar o client',
+);
+ok(
+  /lerConfirmacao\(urlDaConfirmacao\(\)/.test(confirmar) && /urlDeEntrada/.test(confirmar),
+  '/auth/confirm lê a URL de entrada quando o supabase-js já apagou o ?code=',
+);
 ok(/"confirm"/.test(rotas) && /"nova-senha"/.test(rotas), 'rotas /auth/confirm e /auth/nova-senha existem');
 ok(/path: "nova-senha"/.test(rotas), 'rota antiga /nova-senha continua viva (e-mails já enviados)');
 ok(/urlRecuperacaoSenha\(\)/.test(reset), 'painel usa o redirectTo do contrato');

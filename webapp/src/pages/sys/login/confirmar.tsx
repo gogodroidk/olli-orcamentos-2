@@ -1,4 +1,5 @@
 import {
+	CAMINHO_NOVA_SENHA,
 	classificarFalhaAcesso,
 	type LeituraConfirmacao,
 	liberaReenvioEm,
@@ -17,7 +18,7 @@ import { CheckCircle2, Loader2, MailWarning } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { GLOBAL_CONFIG } from "@/global-config";
-import { supabase } from "@/lib/supabase";
+import { supabase, urlDeEntrada } from "@/lib/supabase";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
@@ -47,6 +48,26 @@ function estadoInicial(leitura: LeituraConfirmacao): Estado {
 	return leitura;
 }
 
+/**
+ * A URL que a tela deve ler. O supabase-js troca o `?code=` (link antigo, PKCE) e o
+ * APAGA da barra antes de esta página (lazy) montar, quando a rede dele ganha a
+ * corrida. Nesse caso vale a URL de entrada, guardada antes do client existir.
+ * Só o `code` é apagado por ele; `token_hash` e `#error` ficam na barra.
+ */
+function urlDaConfirmacao(): string {
+	const atual = window.location.href;
+	try {
+		const entrada = new URL(urlDeEntrada);
+		const agora = new URL(atual);
+		if (entrada.pathname === agora.pathname && entrada.searchParams.has("code") && !agora.searchParams.has("code")) {
+			return urlDeEntrada;
+		}
+	} catch {
+		// URL de entrada ilegível: fica com a atual.
+	}
+	return atual;
+}
+
 /** Tira o token da barra de endereço (histórico, Referer, print de tela). */
 function limparUrl() {
 	try {
@@ -72,7 +93,7 @@ function limparUrl() {
 function ConfirmarPage() {
 	const navigate = useNavigate();
 	const [estado, setEstado] = useState<Estado>(() =>
-		estadoInicial(lerConfirmacao(window.location.href, GLOBAL_CONFIG.defaultRoute)),
+		estadoInicial(lerConfirmacao(urlDaConfirmacao(), GLOBAL_CONFIG.defaultRoute)),
 	);
 	const vivo = useRef(true);
 	useEffect(
@@ -87,16 +108,19 @@ function ConfirmarPage() {
 	useEffect(() => {
 		if (aguardando === null) return;
 		let ativo = true;
+		// O link antigo não traz `type`; se ia para a nova senha, era recuperação — e o
+		// reenvio certo é outro link de senha, não um código de login.
+		const tipoLink: TipoLinkEmail | null = aguardando === CAMINHO_NOVA_SENHA ? "recovery" : null;
 		supabase.auth
 			.initialize()
 			.then(async ({ error }) => {
 				const { data } = await supabase.auth.getSession();
 				if (!ativo) return;
 				if (data.session) setEstado({ tipo: "ok", destino: aguardando });
-				else setEstado({ tipo: "erro", motivo: error ? classificarFalhaAcesso(error) : "desconhecido", tipoLink: null });
+				else setEstado({ tipo: "erro", motivo: error ? classificarFalhaAcesso(error) : "desconhecido", tipoLink });
 			})
 			.catch((e) => {
-				if (ativo) setEstado({ tipo: "erro", motivo: classificarFalhaAcesso(e), tipoLink: null });
+				if (ativo) setEstado({ tipo: "erro", motivo: classificarFalhaAcesso(e), tipoLink });
 			})
 			.finally(limparUrl);
 		return () => {
