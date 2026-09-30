@@ -110,6 +110,40 @@ Depois do deploy, `GET /` deve mostrar `ia:"on"`, `provedor:"openrouter"` e
 modelo. A aprovação final exige um POST autenticado sintético. Nunca use áudio,
 nome ou dado de cliente no canário.
 
+## SEND_EMAIL_HOOK_SECRET — e-mails de login/cadastro pela Resend (Send Email Hook)
+
+O Supabase do OLLI não tem SMTP próprio: o SMTP padrão só entrega para membros da
+equipe, ~2 por hora. Com o **Send Email Hook** ligado, o Auth não manda e-mail e chama
+`POST /auth/email-hook` (este worker), que renderiza em pt-BR e envia pela Resend:
+confirmação de cadastro, recuperação de senha, login por código/magic link, troca de
+e-mail (as duas pontas), convite e reautenticação. Todo e-mail mostra o **código** em
+destaque e (menos a reautenticação) o botão para
+`AUTH_EMAIL_CONFIRM_URL?token_hash=…&type=…&next=…` (recuperação: `next=/auth/nova-senha`).
+
+Fail-closed: sem `SEND_EMAIL_HOOK_SECRET`, sem `RESEND_API_KEY`, com assinatura
+inválida ou sem o limitador `AUTH_EMAIL_RL`, a rota responde erro e o Supabase mostra
+erro ao usuário — nunca finge que mandou. `AUTH_OTP_VALIDADE_MINUTOS` tem de ser igual a
+`mailer_otp_exp / 60` no Supabase. Nenhum log leva e-mail, código ou token.
+
+**Pré-requisito que NÃO está neste worker:** o painel precisa estar no ar com
+`/auth/confirm` (lê `token_hash`/`type`/`next`, chama `verifyOtp`) e `/auth/nova-senha`.
+Em 30/09 o painel só tem `/auth/login` e `/nova-senha` — ligar o hook antes disso faz
+todo botão de e-mail cair em 404 (o código de 6 dígitos continua valendo onde houver
+tela para digitá-lo).
+
+Os tipos `*_notification` (senha trocada, e-mail trocado, MFA etc.) **não** são
+suportados: a rota responde 400. Mantenha as notificações de segurança do Auth
+desligadas (`mailer_notifications_*_enabled=false`, o padrão) enquanto não houver template.
+
+Ordem para ligar (o hook só é ligado no Supabase DEPOIS do worker E do painel no ar):
+1. Gere o segredo (`v1,whsec_` + 32 bytes aleatórios em base64) e guarde no cofre.
+2. `npx wrangler secret put SEND_EMAIL_HOOK_SECRET` (o valor inteiro, com `v1,whsec_`).
+3. `wrangler deploy` (cria o binding `AUTH_EMAIL_RL`).
+4. No Supabase (Management API, `PATCH /v1/projects/<ref>/config/auth`):
+   `hook_send_email_enabled=true`, `hook_send_email_uri=https://diagnostico.olliorcamentos.online/auth/email-hook`,
+   `hook_send_email_secrets=<o mesmo valor>`, `mailer_otp_length=6`, `mailer_otp_exp=600`.
+5. Teste com um cadastro real de um e-mail seu. Para desligar: `hook_send_email_enabled=false`.
+
 ## RESEND_API_KEY / RESEND_FROM — e-mail transacional (prioridade 14, OPCIONAL)
 
 Sem `RESEND_API_KEY` no cofre, o worker **não manda e-mail** e se comporta exatamente

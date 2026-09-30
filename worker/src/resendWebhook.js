@@ -1,6 +1,7 @@
 import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { chamarRpcServico } from './emailRpc.js';
+import { verificarStandardWebhook } from './standardWebhooks.js';
 
 export const RESEND_WEBHOOK_VERSION = '2026-09-05.v1';
 export const RESEND_WEBHOOK_MAX_BODY_BYTES = 262144;
@@ -38,39 +39,14 @@ function textoSeguro(value, limit = 160) {
     : null;
 }
 
-function base64ToBytes(value) {
-  try {
-    const binary = atob(value);
-    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  } catch {
-    return null;
-  }
-}
-
-function compararConstante(left, right) {
-  if (typeof left !== 'string' || typeof right !== 'string' || left.length !== right.length) return false;
-  let diff = 0;
-  for (let index = 0; index < left.length; index += 1) diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return diff === 0;
-}
-
 function header(headers, name) {
   return headers?.get(name) || headers?.get(name.toLowerCase()) || '';
-}
-
-function parseSignatures(value) {
-  return value
-    .split(/\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => item.split(','))
-    .filter(([version, signature]) => version === 'v1' && Boolean(signature))
-    .map(([, signature]) => signature);
 }
 
 /**
  * Valida a assinatura Svix usada pelos webhooks do Resend.
  * O secret deve ser o valor `whsec_...` copiado do endpoint, nunca um token do app.
+ * Svix é Standard Webhooks com cabeçalhos `svix-*` (ver standardWebhooks.js).
  */
 export async function verificarAssinaturaResend(
   rawBody,
@@ -78,32 +54,7 @@ export async function verificarAssinaturaResend(
   secret,
   { nowMs = Date.now(), clockSkewSeconds = RESEND_WEBHOOK_CLOCK_SKEW_SECONDS } = {},
 ) {
-  if (typeof rawBody !== 'string' || !secret) return false;
-
-  const svixId = textoSeguro(header(headers, 'svix-id'), 120);
-  const timestamp = textoSeguro(header(headers, 'svix-timestamp'), 32);
-  const signatures = parseSignatures(header(headers, 'svix-signature'));
-  if (!svixId || !timestamp || !signatures.length) return false;
-
-  const timestampSeconds = Number(timestamp);
-  if (!Number.isSafeInteger(timestampSeconds)) return false;
-  if (Math.abs(Math.floor(nowMs / 1000) - timestampSeconds) > clockSkewSeconds) return false;
-
-  const encodedSecret = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
-  const keyBytes = base64ToBytes(encodedSecret);
-  if (!keyBytes?.length) return false;
-
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const signedPayload = `${svixId}.${timestamp}.${rawBody}`;
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
-  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
-  return signatures.some((signature) => compararConstante(expected, signature));
+  return verificarStandardWebhook(rawBody, headers, secret, { prefixo: 'svix', nowMs, clockSkewSeconds });
 }
 
 function safeObject(value) {
