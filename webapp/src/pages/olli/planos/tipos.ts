@@ -54,13 +54,18 @@ export interface ResumoAssinatura {
 	pagamentoFalhou: boolean;
 	origem?: "gratis" | "pagamento" | "admin" | "trial";
 	/**
-	 * Só preenchido para plano PAGO (`origem === "pagamento"`), lido de `stripe_subscription_id`:
-	 *  - `false` → sem assinatura na Stripe = acesso comprado por Pix, que NÃO renova sozinho;
-	 *  - `true`  → há assinatura recorrente na Stripe;
+	 * Só preenchido para plano PAGO (`origem === "pagamento"`), lido de `stripe_subscription_id`
+	 * e, sem Stripe, do vínculo com a Google Play (`revenuecat_produto_id`):
+	 *  - `false` → nem Stripe nem Play = acesso comprado por Pix, que NÃO renova sozinho;
+	 *  - `true`  → há assinatura recorrente na Stripe ou na Google Play;
 	 *  - `undefined` → não deu para ler. NÃO é "Pix": quem chega aqui vê a tela de sempre
 	 *    (erro ≠ vazio — "não sei" nunca vira "não renova").
 	 */
 	renovaSozinho?: boolean;
+	/** A assinatura é da Google Play (vendida no app Android): gerencia-se na Play Store. */
+	renovaPelaPlay?: boolean;
+	/** Produto da Play (`olli_pro:mensal`…), para abrir a assinatura certa na Play Store. */
+	produtoPlay?: string;
 	/** Há cliente na Stripe (compra antiga no cartão) — o Portal ainda serve para ver faturas. */
 	temClienteStripe?: boolean;
 }

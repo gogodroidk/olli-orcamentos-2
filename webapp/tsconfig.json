@@ -64,13 +64,19 @@
 			"@verticais": ["../src/services/verticais.ts"],
 			"@vertical-segmento": ["../src/services/verticalSegmento.ts"],
 			"@limites-comerciais": ["../src/services/limitesComerciais.ts"],
+			// ATIVAÇÃO — exemplo de orçamento por ofício, checklist e aviso do teste do Pro:
+			// a MESMA regra do app (src/services/ativacao.ts). Módulo puro.
+			"@ativacao": ["../src/services/ativacao.ts"],
 			"@ia-segura": ["../src/services/olliAcoesSeguras.ts"],
 			"@precificacao": ["../src/services/precificacao.ts"],
 			"@auth-policy": ["../src/services/authPolicy.ts"],
 			"@oauth-retorno": ["../src/services/oauthRetorno.ts"],
 			"@sentry-scrub": ["../src/services/sentryScrub.ts"],
 			"@sentry-captura": ["../src/services/sentryCaptura.ts"],
-			"@ajuda": ["../src/content/ajuda/index.ts"]
+			"@ajuda": ["../src/content/ajuda/index.ts"],
+			// ASSINATURA PELA GOOGLE PLAY — catálogo e URL de gerenciar, os mesmos do app
+			// e do worker (src/services/playBillingRegras.ts). Módulo puro, zero imports.
+			"@play-billing-regras": ["../src/services/playBillingRegras.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

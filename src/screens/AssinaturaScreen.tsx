@@ -17,11 +17,16 @@ import type { PlanoId } from '../services/planos';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 import { PixPlanoModal } from '../components/PixPlanoModal';
 import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
+import { ESTADO_PLAY_BILLING } from '../services/playBilling';
+import { urlGerenciarNaPlay } from '../services/playBillingRegras';
+import { ANDROID_PACKAGE } from '../config';
 import {
   getResumoAssinatura,
   getFaturas,
   getMetodoPagamento,
+  getAssinaturaNaPlay,
   abrirPortalAssinatura,
+  type AssinaturaNaPlay,
   type ResumoAssinatura,
   type Fatura,
   type MetodoPagamento,
@@ -51,6 +56,10 @@ const COMPRA_NO_APP = Platform.OS !== 'ios';
 /** Flag explícita desta branch: no Android da Play não há portal externo capaz de
  * trocar plano/cartão nem upsell de assinatura. Status e recibos seguem visíveis. */
 const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
+/** Venda pela própria Google Play ligada neste build (mesmo interruptor da
+ * PlanosScreen). Só muda o upsell do Grátis: em vez de "não disponível", leva à
+ * tela de Planos, onde a compra é feita pela Play. */
+const VENDA_PELA_PLAY = ESTADO_PLAY_BILLING === 'ligado';
 
 const PLANO_LABEL: Record<PlanoId, string> = { gratis: 'Grátis', pro: 'Pro', empresa: 'Empresa' };
 
@@ -137,7 +146,7 @@ function nomeBandeira(brand: string | null): string {
  * o invalida ao abrir o Portal, porque o usuário pode voltar de lá com o estado
  * da assinatura realmente mudado (cancelou, trocou de plano).
  */
-let cacheAssinatura: { resumo: ResumoAssinatura; faturas: Fatura[]; metodo: MetodoPagamento | null; ts: number } | null = null;
+let cacheAssinatura: { resumo: ResumoAssinatura; faturas: Fatura[]; metodo: MetodoPagamento | null; play: AssinaturaNaPlay; ts: number } | null = null;
 const CACHE_TTL_MS = 30_000;
 
 export default function AssinaturaScreen() {
@@ -148,6 +157,9 @@ export default function AssinaturaScreen() {
   const [resumo, setResumo] = useState<ResumoAssinatura | null>(null);
   const [faturas, setFaturas] = useState<Fatura[]>([]);
   const [metodo, setMetodo] = useState<MetodoPagamento | null>(null);
+  // Assinatura vendida pela Google Play? (qualquer plataforma: quem assinou no
+  // Android e abre a web precisa saber que se gerencia na Play Store.)
+  const [play, setPlay] = useState<AssinaturaNaPlay>({ estado: 'indisponivel' });
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [abrindoPortal, setAbrindoPortal] = useState(false);
@@ -168,19 +180,22 @@ export default function AssinaturaScreen() {
       setResumo(cacheAssinatura.resumo);
       setFaturas(cacheAssinatura.faturas);
       setMetodo(cacheAssinatura.metodo);
+      setPlay(cacheAssinatura.play);
       setCarregando(false);
       return;
     }
-    // As três leituras são independentes — dispara em paralelo.
-    const [r, f, m] = await Promise.all([
+    // As leituras são independentes — dispara em paralelo.
+    const [r, f, m, pl] = await Promise.all([
       getResumoAssinatura(),
       getFaturas(),
       getMetodoPagamento(),
+      getAssinaturaNaPlay(),
     ]);
-    cacheAssinatura = { resumo: r, faturas: f, metodo: m, ts: Date.now() };
+    cacheAssinatura = { resumo: r, faturas: f, metodo: m, play: pl, ts: Date.now() };
     setResumo(r);
     setFaturas(f);
     setMetodo(m);
+    setPlay(pl);
     setCarregando(false);
   }, []);
 
@@ -282,8 +297,10 @@ export default function AssinaturaScreen() {
   const semRenovacao = !!planoPago && resumo?.origem === 'pagamento' && resumo?.renovaSozinho === false;
   const mostraRenovarPix = semRenovacao && pixLigado && COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;
   const precoPlano = planoPago === 'empresa' ? PRECO_EMPRESA : PRECO_PRO;
-  // Sem assinatura nem cliente na Stripe, o portal não tem o que mostrar.
-  const mostraPortal = !semRenovacao || resumo?.temClienteStripe === true;
+  // Sem assinatura nem cliente na Stripe, o portal não tem o que mostrar. Assinatura
+  // da Google Play também não é da Stripe: ela se gerencia na Play Store (card abaixo).
+  const mostraPortal = (!semRenovacao && resumo?.renovaPelaPlay !== true) || resumo?.temClienteStripe === true;
+  const produtoPlay = play.estado === 'ok' ? play.produto : null;
 
   const subtituloHeader = ehPagante ? `Plano ${PLANO_LABEL[planoEfetivo]}` : 'Seu plano e cobranças';
 
@@ -389,6 +406,37 @@ export default function AssinaturaScreen() {
                   </AnimatedEntrance>
                 ) : null}
 
+                {/* Assinatura da GOOGLE PLAY: cancelar/pausar/trocar cartão é na
+                    própria Play Store (é a loja gerenciando a compra que ela fez,
+                    não um link-out de pagamento). Só aparece com a leitura 'ok' —
+                    'indisponivel' não vira "não é da Play" nem esconde o resto. */}
+                {produtoPlay ? (
+                  <AnimatedEntrance index={3}>
+                    <View style={[styles.card, { marginTop: Spacing.base }]}>
+                      <Text style={styles.cardTitle}>Assinatura pela Google Play</Text>
+                      <Text style={styles.gerenciarHint}>
+                        A cobrança é feita na sua conta Google. Para cancelar, pausar ou trocar a forma de pagamento, use a Play Store.
+                      </Text>
+                      {/* iOS: só o texto — nenhum link para outra loja no iPhone. */}
+                      {Platform.OS === 'ios' ? null : (
+                      <OlliButton
+                        label="Gerenciar na Google Play"
+                        variant="outline"
+                        fullWidth
+                        onPress={() => {
+                          Haptics.selectionAsync().catch(() => {});
+                          Linking.openURL(urlGerenciarNaPlay(ANDROID_PACKAGE, produtoPlay)).catch(() => {
+                            Alert.alert('Google Play', 'Não consegui abrir a Play Store. Abra a Play Store › Pagamentos e assinaturas.');
+                          });
+                        }}
+                        icon={<MaterialCommunityIcons name="google-play" size={18} color={cores.primaryLight} />}
+                        style={{ marginTop: Spacing.base }}
+                      />
+                      )}
+                    </View>
+                  </AnimatedEntrance>
+                ) : null}
+
                 {mostraPortal ? (
                 <AnimatedEntrance index={3}>
                   {BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
@@ -457,7 +505,7 @@ export default function AssinaturaScreen() {
                       </View>
                     ))}
                   </View>
-                  {BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
+                  {BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? (
                     <Text style={[styles.gerenciarHint, { marginTop: Spacing.base }]}>Consulte a comparação de planos no app. A contratação não está disponível neste aplicativo Android.</Text>
                   ) : (
                     <OlliButton

@@ -3,6 +3,7 @@ import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { LembreteAssinaturaFaixa } from "@/pages/olli/planos/LembreteAssinaturaFaixa";
+import { AtivacaoCard } from "./AtivacaoCard";
 import { ClientesEsfriandoCard } from "./ClientesEsfriandoCard";
 import { FaixaHoje } from "./FaixaHoje";
 import {
@@ -17,7 +18,6 @@ import {
 import { formatBRL, formatPct, mesPorExtenso, type OrcamentoRow, plural, type ReciboRow } from "./helpers";
 import { KpiDinheiroCard } from "./KpiDinheiroCard";
 import { ParadosCard } from "./ParadosCard";
-import { PrimeirosPassosCard } from "./PrimeirosPassosCard";
 import { RadarDinheiroCard } from "./RadarDinheiroCard";
 import { RecentOrcamentosCard } from "./RecentOrcamentosCard";
 import { StatusDonutCard } from "./StatusDonutCard";
@@ -50,10 +50,8 @@ export default function Inicio() {
 		ascending: false,
 		colunas: "orcamento_id,status",
 	});
-	// Leitura mínima só para saber SE existe cliente (1 linha, 1 coluna) — não entra
-	// em nenhum cálculo, serve só para o gate do onboarding abaixo.
-	const cliQ = useOlliList<{ id?: string | null }>("clientes", { limit: 1, colunas: "id" });
-	const { data: empresaLinha } = useMinhaEmpresa();
+	const empresaQ = useMinhaEmpresa();
+	const empresaLinha = empresaQ.data;
 
 	// `empresa` é tabela de BLOB: o objeto de domínio inteiro mora em `dados` (ver
 	// `empresaToRow` no cloudSync do app). Daqui saem nome, cidade e CHAVE PIX — é o
@@ -67,13 +65,6 @@ export default function Inicio() {
 		() => new Set((osQ.data ?? []).filter((os) => os.status === "concluida" && os.orcamento_id).map((os) => String(os.orcamento_id))),
 		[osQ.data],
 	);
-
-	// Conta claramente NOVA: as duas consultas TERMINARAM com sucesso (não é
-	// "carregando" nem "erro" travestido de vazio) e as duas vieram vazias. Só aí
-	// mostramos o guia de primeiros passos — nunca durante loading/erro, senão um
-	// erro de rede apagaria os dados reais do dono da tela.
-	const contaNova =
-		orcQ.isSuccess && (orcQ.data?.length ?? -1) === 0 && cliQ.isSuccess && (cliQ.data?.length ?? -1) === 0;
 
 	const emJogo = useMemo(() => (orcQ.data ? calcularEmJogo(orcQ.data) : null), [orcQ.data]);
 	// UMA passagem alimenta o radar de dinheiro parado E o KPI "A receber". Eles são o
@@ -118,7 +109,12 @@ export default function Inicio() {
 			 */}
 			<LembreteAssinaturaFaixa />
 
-			{contaNova && <PrimeirosPassosCard />}
+			{/*
+			 * ATIVAÇÃO — "Seu primeiro orçamento em 1 minuto" (exemplo do ofício, só com
+			 * zero orçamentos CONFIRMADO) + checklist curto até concluir. Reusa as MESMAS
+			 * leituras desta tela; enquanto alguma carrega ou falha, não aparece.
+			 */}
+			<AtivacaoCard orcamentos={orcQ} recibos={recQ} empresa={empresaQ} />
 
 			{/*
 			 * O PALCO. O radar de dinheiro parado vem ANTES dos KPIs de propósito: é a

@@ -158,7 +158,8 @@
         { "name": "MPHOOK_RL", "namespace_id": "2010", "simple": { "limit": 120, "period": 60 } },
         { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } },
         { "name": "ABACATE_RL", "namespace_id": "2012", "simple": { "limit": 12, "period": 60 } },
-        { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } }
+        { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } }
       ]
     }
   },
@@ -217,6 +218,10 @@
     // tentativa de adivinhar o segredo e a amplificação se ele vazar. Teto alto de
     // propósito (volume real: unidades por dia); 429 só faz a AbacatePay reenviar.
     // Id novo (1013): não reaproveita o 1007.
-    { "name": "ABACATEHOOK_RL", "namespace_id": "1013", "simple": { "limit": 60, "period": 60 } }
+    { "name": "ABACATEHOOK_RL", "namespace_id": "1013", "simple": { "limit": 60, "period": 60 } },
+    // /revenuecat/webhook por IP, conferido ANTES do Authorization secreto: barra
+    // quem tenta adivinhar o segredo. Teto alto de propósito (volume real: poucos
+    // eventos por assinante por mês); 429 só faz o RevenueCat reenviar.
+    { "name": "RCHOOK_RL", "namespace_id": "1014", "simple": { "limit": 60, "period": 60 } }
   ]
 }

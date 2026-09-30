@@ -12,6 +12,7 @@
  *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
+ *   POST /revenuecat/webhook → assinatura da Google Play (Authorization secreto, sem JWT)
  *
  * Segurança:
  *   - OPENROUTER_API_KEY é SECRET do Worker (nunca vai pro app/APK e nunca é
@@ -55,6 +56,7 @@ import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
+import { handleRevenueCat } from './revenuecat.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
@@ -1051,6 +1053,14 @@ const handler = {
     // Com chave de dev em produção a rota fica DESLIGADA (nunca modo demo).
     if (url.pathname.startsWith('/abacate/')) {
       return handleAbacate(request, env, url);
+    }
+
+    // ── ASSINATURA PELA GOOGLE PLAY — webhook do RevenueCat ──
+    // Servidor-a-servidor, sem JWT: autentica pelo `Authorization` secreto
+    // (REVENUECAT_WEBHOOK_SECRET) e fica DESLIGADO sem ele. Fora do gate da IA,
+    // mesmo perfil dos webhooks de pagamento acima. Ver worker/src/revenuecat.js.
+    if (url.pathname.startsWith('/revenuecat/')) {
+      return handleRevenueCat(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──

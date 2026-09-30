@@ -12,6 +12,10 @@
  *   CARTÃO        → `/stripe/*`   (checkout, portal, faturas, método)
  *   PIX CRÉDITOS  → `/mp/*`       (recarga de créditos, arquivo dono único)
  *   PIX DO PLANO  → `/abacate/*`  (período de plano, arquivo dono único)
+ *   GOOGLE PLAY   → SDK `react-native-purchases` (RevenueCat), só no Android e só
+ *                   em `src/services/playBilling.android.ts`; o servidor fica sabendo
+ *                   pelo `/revenuecat/webhook`, que o CLIENTE NUNCA chama (é do
+ *                   RevenueCat para o worker) e só `worker/src/revenuecat.js` atende
  *   NADA          → `/mp/plano/*` (plano no MP — o Pix de plano é da AbacatePay)
  *
  * Este script NÃO testa comportamento em runtime — ele tranca o DESTINO das chamadas.
@@ -79,13 +83,13 @@ function semComentarios(src: string): string {
     .join('\n');
 }
 
-/** Rotas de gateway citadas em código (string literal começando por /stripe, /mp ou /abacate). */
+/** Rotas de gateway citadas em código (string literal começando por /stripe, /mp, /abacate ou /revenuecat). */
 function rotasDeGateway(codigo: string): string[] {
   const achadas = new Set<string>();
-  const re = /['"`](\/(?:stripe|mp|abacate)\/[A-Za-z0-9/_-]*)['"`]/g;
+  const re = /['"`](\/(?:stripe|mp|abacate|revenuecat)\/[A-Za-z0-9/_-]*)['"`]/g;
   for (const m of codigo.matchAll(re)) achadas.add(m[1]);
   // Também pega o caso interpolado: `${PAGAMENTOS_URL}/mp/pix?...`
-  const re2 = /\$\{[A-Za-z_$][\w$]*\}(\/(?:stripe|mp|abacate)\/[A-Za-z0-9/_-]*)/g;
+  const re2 = /\$\{[A-Za-z_$][\w$]*\}(\/(?:stripe|mp|abacate|revenuecat)\/[A-Za-z0-9/_-]*)/g;
   for (const m of codigo.matchAll(re2)) achadas.add(m[1]);
   return [...achadas];
 }
@@ -103,6 +107,8 @@ interface Alvo {
   donoDoPixPlano: string | null;
   /** Arquivos que podem CITAR a AbacatePay (o dono + a UI do Pix do plano). */
   citamAbacate: string[];
+  /** Arquivo único que pode importar o SDK de compra da Play (`react-native-purchases`), ou null. */
+  donoDaPlay: string | null;
 }
 
 const ALVOS: Alvo[] = [
@@ -135,6 +141,7 @@ const ALVOS: Alvo[] = [
       'src/screens/PlanosScreen.tsx',
       'src/services/pixPlano.ts',
     ],
+    donoDaPlay: 'src/services/playBilling.android.ts',
   },
   {
 		rotulo: 'PAINEL (webapp/src/)',
@@ -160,6 +167,7 @@ const ALVOS: Alvo[] = [
 			'webapp/src/pages/olli/planos/index.tsx',
 			'webapp/src/pages/olli/planos/pix.ts',
 		],
+		donoDaPlay: null,
   },
 ];
 
@@ -175,6 +183,8 @@ for (const alvo of ALVOS) {
     '/mp/plano': [],       // plano no MP: o Pix de plano está dormente e o cartão saiu
     'mercadopago.com': [], // o cliente NUNCA fala direto com o gateway
     'preapproval': [],     // assinatura recorrente por cartão no MP
+    '/revenuecat': [],     // o webhook é do RevenueCat para o worker — o cliente NUNCA chama
+    'REVENUECAT_WEBHOOK_SECRET': [], // segredo do worker: o nome nem deveria aparecer no cliente
   };
   const porArquivo = new Map<string, string[]>();
 
@@ -208,8 +218,32 @@ for (const alvo of ALVOS) {
   const comPixPlano = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/abacate/'))).map(([f]) => f);
   checar('Pix do plano (/abacate/*) só no arquivo dono', comPixPlano, alvo.donoDoPixPlano ? [alvo.donoDoPixPlano] : []);
 
+  // Google Play: o SDK de compra (RevenueCat) mora num arquivo só. Qualquer outra
+  // tela que o importe direto pula as guardas de flag/Expo Go/login de lá.
+  const importamSdkPlay = arquivos.filter((rel) =>
+    /from\s+['"]react-native-purchases(?:-ui)?['"]|require\(\s*['"]react-native-purchases/.test(readFileSync(join(RAIZ, rel), 'utf8')),
+  ).sort();
+  checar('SDK da Play (react-native-purchases) só no arquivo dono', importamSdkPlay, alvo.donoDaPlay ? [alvo.donoDaPlay] : []);
+
   const comStripe = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/stripe/'))).map(([f]) => f).sort();
   checar('cartão (/stripe/*) só nos arquivos donos', comStripe, [...alvo.donosDoCartao].sort());
+}
+
+console.log('\n── Worker: /revenuecat/* só no arquivo dono ──');
+{
+  // Do lado do servidor, a rota nova tem UM dono (revenuecat.js) e UM ponto de
+  // entrada (o roteador do index.js). Um segundo arquivo atendendo /revenuecat/
+  // seria um segundo caminho para gravar plano pago sem as guardas de lá.
+  const doWorker = readdirSync(join(RAIZ, 'worker/src'))
+    .filter((n) => n.endsWith('.js'))
+    .map((n) => `worker/src/${n}`)
+    .filter((rel) => semComentarios(readFileSync(join(RAIZ, rel), 'utf8')).includes("'/revenuecat/"))
+    .sort();
+  checar('só index.js (roteia) e revenuecat.js (atende) citam /revenuecat/', doWorker, ['worker/src/index.js', 'worker/src/revenuecat.js']);
+  const idx = readFileSync(join(RAIZ, 'worker/src/index.js'), 'utf8');
+  checar('index.js delega /revenuecat/ para handleRevenueCat', idx.includes("url.pathname.startsWith('/revenuecat/')") && idx.includes('return handleRevenueCat(request, env, url);'), true);
+  const rc = readFileSync(join(RAIZ, 'worker/src/revenuecat.js'), 'utf8');
+  checar('revenuecat.js não chama gateway de outro provedor', /api\.stripe\.com|mercadopago\.com|abacatepay\.com/.test(rc), false);
 }
 
 console.log('\n── Contrato de tipo do painel ──');
