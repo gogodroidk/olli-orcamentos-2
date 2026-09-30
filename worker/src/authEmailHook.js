@@ -236,7 +236,12 @@ export function planejarEnvios(payload, config) {
     if (temAtual) {
       envios.push(envio('auth_email_change_atual', user.email, dados.token, dados.token_hash_new));
     }
-    envios.push(envio('auth_email_change_novo', user.new_email, dados.token_new, dados.token_hash));
+    // Sem troca segura a doc do Supabase manda usar "token + token_hash OU
+    // token_new + token_hash, conforme o que vier": o código da ponta nova pode
+    // chegar em `token` quando `token_new` vem vazio. Com troca segura, `token` é
+    // da ponta ATUAL e nunca pode ir para o endereço novo.
+    const codigoNovo = dados.token_new || (temAtual ? '' : dados.token);
+    envios.push(envio('auth_email_change_novo', user.new_email, codigoNovo, dados.token_hash));
     return Object.freeze(envios);
   }
 
@@ -403,17 +408,19 @@ export async function handleAuthEmailHook(request, env, dependencias = {}) {
       transport: criarTransporte(fetchImpl),
     });
     const agoraIso = new Date(nowMs).toISOString();
-    for (const envio of envios) {
-      const resultado = await entregar(adapter, {
-        ...envio,
-        validadeMinutos: config.validadeMinutos,
-        logoUrl: config.logoUrl,
-        supportUrl: config.supportUrl,
-      }, agoraIso);
-      if (!resultado.ok) {
-        log.error(`${LOG} resend_${resultado.code} tipo=${acao}`);
-        return respostaErro(resultado.retryable ? 503 : 502, MSG_INDISPONIVEL);
-      }
+    // As pontas saem em PARALELO: o Supabase corta o hook em ~5 s e cada envio
+    // pode esperar até RESEND_TIMEOUT_MS; em série, a troca de e-mail passaria do
+    // prazo. Idempotência por token torna seguro o reenvio após falha parcial.
+    const resultados = await Promise.all(envios.map((envio) => entregar(adapter, {
+      ...envio,
+      validadeMinutos: config.validadeMinutos,
+      logoUrl: config.logoUrl,
+      supportUrl: config.supportUrl,
+    }, agoraIso)));
+    const falhas = resultados.filter((resultado) => !resultado.ok);
+    if (falhas.length) {
+      for (const resultado of falhas) log.error(`${LOG} resend_${resultado.code} tipo=${acao}`);
+      return respostaErro(falhas.some((resultado) => resultado.retryable) ? 503 : 502, MSG_INDISPONIVEL);
     }
   } catch (erro) {
     // Exceção aqui é bug de contrato (template/adapter), não falha da Resend.

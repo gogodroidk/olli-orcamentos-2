@@ -125,7 +125,17 @@ inválida ou sem o limitador `AUTH_EMAIL_RL`, a rota responde erro e o Supabase 
 erro ao usuário — nunca finge que mandou. `AUTH_OTP_VALIDADE_MINUTOS` tem de ser igual a
 `mailer_otp_exp / 60` no Supabase. Nenhum log leva e-mail, código ou token.
 
-Ordem para ligar (o hook só é ligado no Supabase DEPOIS do worker no ar):
+**Pré-requisito que NÃO está neste worker:** o painel precisa estar no ar com
+`/auth/confirm` (lê `token_hash`/`type`/`next`, chama `verifyOtp`) e `/auth/nova-senha`.
+Em 30/09 o painel só tem `/auth/login` e `/nova-senha` — ligar o hook antes disso faz
+todo botão de e-mail cair em 404 (o código de 6 dígitos continua valendo onde houver
+tela para digitá-lo).
+
+Os tipos `*_notification` (senha trocada, e-mail trocado, MFA etc.) **não** são
+suportados: a rota responde 400. Mantenha as notificações de segurança do Auth
+desligadas (`mailer_notifications_*_enabled=false`, o padrão) enquanto não houver template.
+
+Ordem para ligar (o hook só é ligado no Supabase DEPOIS do worker E do painel no ar):
 1. Gere o segredo (`v1,whsec_` + 32 bytes aleatórios em base64) e guarde no cofre.
 2. `npx wrangler secret put SEND_EMAIL_HOOK_SECRET` (o valor inteiro, com `v1,whsec_`).
 3. `wrangler deploy` (cria o binding `AUTH_EMAIL_RL`).

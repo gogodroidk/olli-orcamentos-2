@@ -247,15 +247,19 @@ for (const [acao, e] of Object.entries(esperados)) {
   const { res, chamadas, linhas } = await chamar(d);
   assert.equal(res.status, 200);
   assert.equal(chamadas.length, 2);
-  assert.deepEqual(chamadas[0].body.to, [EMAIL]);
-  assert.equal(chamadas[0].body.subject, 'Confirme a troca de e-mail da sua conta');
-  assert.ok(chamadas[0].body.html.includes(`>${CODIGO}</div>`));
-  assert.deepEqual(chamadas[1].body.to, [NOVO_EMAIL]);
-  assert.equal(chamadas[1].body.subject, 'Confirme seu novo e-mail na OLLI Orçamentos');
-  assert.ok(chamadas[1].body.html.includes(`>${CODIGO_NOVO}</div>`));
+  // As pontas saem em paralelo: a ordem das chamadas não é contrato.
+  const paraAtual = chamadas.find((c) => c.body.to[0] === EMAIL);
+  const paraNovo = chamadas.find((c) => c.body.to[0] === NOVO_EMAIL);
+  assert.ok(paraAtual && paraNovo, 'uma chamada para cada ponta');
+  assert.equal(paraAtual.body.subject, 'Confirme a troca de e-mail da sua conta');
+  assert.ok(paraAtual.body.html.includes(`>${CODIGO}</div>`));
+  assert.equal(paraAtual.body.html.includes(CODIGO_NOVO), false, 'código da ponta nova não vai para o endereço atual');
+  assert.equal(paraNovo.body.subject, 'Confirme seu novo e-mail na OLLI Orçamentos');
+  assert.ok(paraNovo.body.html.includes(`>${CODIGO_NOVO}</div>`));
+  assert.equal(paraNovo.body.html.includes(CODIGO), false, 'código da ponta atual não vai para o endereço novo');
   assert.notEqual(
-    chamadas[0].init.headers['Idempotency-Key'],
-    chamadas[1].init.headers['Idempotency-Key'],
+    paraAtual.init.headers['Idempotency-Key'],
+    paraNovo.init.headers['Idempotency-Key'],
     'cada ponta tem sua chave',
   );
   semSegredosNoLog(linhas);
@@ -268,6 +272,17 @@ for (const [acao, e] of Object.entries(esperados)) {
   assert.equal(envios.length, 1);
   assert.equal(envios[0].destinatario, NOVO_EMAIL);
   assert.equal(envios[0].codigo, CODIGO_NOVO);
+  // Variante da doc: sem troca segura o código pode vir em `token` (token_new vazio).
+  const v = planejarEnvios(payload('email_change', { token: CODIGO_NOVO, token_hash: HASH_NOVO, token_new: '', token_hash_new: '' }, { new_email: NOVO_EMAIL }), config);
+  assert.equal(v.length, 1);
+  assert.equal(v[0].destinatario, NOVO_EMAIL);
+  assert.equal(v[0].codigo, CODIGO_NOVO, 'sem troca segura, token vale para a ponta nova');
+  assert.equal(new URL(v[0].link).searchParams.get('token_hash'), HASH_NOVO);
+  // Troca segura com token_new faltando: NÃO reaproveita o token da ponta atual.
+  assert.throws(
+    () => planejarEnvios(payload('email_change', { token: CODIGO, token_hash: HASH_NOVO, token_new: '', token_hash_new: HASH }, { new_email: NOVO_EMAIL }), config),
+    { codigo: 'codigo_invalido' },
+  );
   // Sem new_email = payload fora do contrato.
   assert.throws(() => planejarEnvios(payload('email_change', { token_new: CODIGO_NOVO }), config), { codigo: 'destinatario_invalido' });
 }
