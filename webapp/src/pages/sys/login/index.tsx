@@ -22,8 +22,10 @@ function LoginPage() {
 
 	if (!authHydrated) {
 		return (
-			<main className="grid min-h-svh place-items-center bg-background" role="status" aria-live="polite">
-				<div className="flex items-center gap-3 text-sm text-muted-foreground">
+			// `role="status"` fica no filho: no próprio <main> ele trocaria o papel do
+			// elemento e a página perderia o landmark que este <main> existe para dar.
+			<main className="grid min-h-svh place-items-center bg-background">
+				<div className="flex items-center gap-3 text-sm text-muted-foreground" role="status" aria-live="polite">
 					<Loader2 className="size-5 animate-spin" aria-hidden />
 					Verificando sua sessão…
 				</div>
