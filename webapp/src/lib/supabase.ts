@@ -1,3 +1,4 @@
+import { criarRegistroFunilAuth, lerRetornoOAuth, type RetornoOAuth } from "@oauth-retorno";
 import { createClient } from "@supabase/supabase-js";
 
 /**
@@ -15,6 +16,16 @@ const SUPABASE_ANON_KEY =
 	import.meta.env.VITE_SUPABASE_ANON_KEY ??
 	"sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_";
 
+/**
+ * Retorno do OAuth lido ANTES de criar o client. Com `detectSessionInUrl`, o
+ * supabase-js troca o `?code=` e o APAGA da barra de endereço sozinho — e, se não
+ * conseguir (code_verifier ausente, code vencido, erro do Google na URL), falha
+ * sem avisar ninguém. Guardar a URL aqui é o que permite à tela de login dizer o
+ * que aconteceu e medir o funil (`useRetornoOAuth`). Ver src/services/oauthRetorno.ts.
+ */
+export const retornoOAuthInicial: RetornoOAuth =
+	typeof window === "undefined" ? { tipo: "nenhum" } : lerRetornoOAuth(window.location.href);
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 	auth: {
 		persistSession: true,
@@ -23,3 +34,9 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 		flowType: "pkce",
 	},
 });
+
+/**
+ * Funil do login social sem PII (`public.auth_funil_eventos`, INSERT de anon sem
+ * SELECT). Sem a migration aplicada, desliga sozinho no primeiro erro.
+ */
+export const registrarFunilAuth = criarRegistroFunilAuth((linha) => supabase.from("auth_funil_eventos").insert(linha));

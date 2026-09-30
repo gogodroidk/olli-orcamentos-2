@@ -31,6 +31,7 @@ import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
+import { mensagemErroOAuth } from '../services/oauthRetorno';
 import { SENHA_MINIMA } from '../services/authPolicy';
 
 // Fecha uma sessão de autenticação pendente (retorno do OAuth) caso o app
@@ -216,7 +217,12 @@ export default function EntrarScreen() {
     setBusy(false);
   }
 
-  /** Login/cadastro com o Google (OAuth real). Cancelamento é silencioso. */
+  /**
+   * Login/cadastro com o Google (OAuth real). Nada termina em silêncio: se a aba
+   * do Google fechar sem concluir (a pessoa desistiu OU o Android fechou sozinho),
+   * avisamos que o login não aconteceu — antes, esse caso deixava a conta criada
+   * no Supabase e a pessoa parada na tela Entrar sem saber por quê.
+   */
   async function handleGoogle() {
     Haptics.selectionAsync().catch(() => {});
     if (!configured) {
@@ -230,7 +236,9 @@ export default function EntrarScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         await entrarNoApp();
       }
-      // 'cancelado' → silêncio (o usuário desistiu).
+      if (res === 'cancelado') {
+        Alert.alert('Login com o Google não concluído', mensagemErroOAuth('cancelado'));
+      }
     } catch (e: any) {
       const { titulo, texto } = traduzirErroAuth(e);
       Alert.alert(titulo, texto);
@@ -255,7 +263,9 @@ export default function EntrarScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         await entrarNoApp();
       }
-      // 'cancelado' → silêncio (o usuário desistiu).
+      if (res === 'cancelado') {
+        Alert.alert('Login com o Google não concluído', mensagemErroOAuth('cancelado'));
+      }
     } catch (e: any) {
       const { titulo, texto } = traduzirErroAuth(e);
       Alert.alert(titulo, texto);
