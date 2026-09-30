@@ -312,6 +312,12 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
           'A NFS-e é emitida no ambiente oficial do governo. O OLLI pode organizar os dados do cliente e do serviço, mas não deve pedir sua senha gov.br nem declarar que uma nota foi emitida sem protocolo do portal.',
       },
       {
+        // Datas conferidas na fonte oficial em 30/09/2026 (ver docs/ENXAME/ALERTA_NFSE_DATA.md).
+        tipo: 'paragrafo',
+        conteudo:
+          'Quem precisa usar o Emissor Nacional: o MEI desde 01/09/2023 (Resolução CGSN nº 169/2022) e as ME e EPP do Simples Nacional a partir de 01/11/2026 (Resolução CGSN nº 191/2026). Para empresas fora do Simples, vale a regra do seu município. Confirme no portal oficial, porque a regra fiscal muda.',
+      },
+      {
         tipo: 'passos',
         conteudo: [
           'Abra o serviço oficial: https://www.gov.br/pt-br/servicos/emitir-nota-fiscal-de-servico-eletronica.',

@@ -116,7 +116,8 @@ App Store Connect → Business. Detalhe em `docs/ENXAME/LOJA_IOS.md`.
 ## Três coisas da pesquisa que mudam decisão
 
 1. **A data da NFS-e estava errada nos meus próprios documentos.** Eles diziam que o
-   público inteiro vira obrigado em 01/09/2026. O **MEI está obrigado desde
+   público inteiro vira obrigado em 01/09/2026. (Correção de 30/09/2026: para ME/EPP a data
+   passou a ser **01/11/2026**, Resolução CGSN nº 191/2026.) O **MEI está obrigado desde
    01/09/2023** — e MEI é a maioria esmagadora do seu público. Dizer a um MEI "você
    será obrigado em setembro" erra o fato e perde a venda: ele já sente a dor hoje.
    Não chegou a nenhuma copy pública. Detalhe em `docs/ENXAME/ALERTA_NFSE_DATA.md`.

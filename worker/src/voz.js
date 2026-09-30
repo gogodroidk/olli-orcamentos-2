@@ -39,6 +39,9 @@ export function rotuloVertical(vertical) {
     case 'hidraulica': return 'hidráulica e encanamento (vazamentos, pressão, NBR 5626)';
     case 'pintura': return 'pintura e acabamento (cálculo de tinta, superfícies, demãos)';
     case 'dedetizacao': return 'controle de pragas / dedetização (RDC 622, produtos, responsável técnico)';
+    case 'caixa_dagua': return "limpeza e desinfecção de caixa d'água e reservatórios (volume, esvaziamento, desinfecção, certificado)";
+    case 'piscina': return 'limpeza e tratamento de piscinas (visitas, pH, cloro, filtro, produtos)';
+    case 'extintores': return 'extintores e prevenção de incêndio (recarga, inspeção, teste hidrostático, NBR 12962)';
     case 'jardinagem': return 'jardinagem e paisagismo (poda, irrigação, manutenção)';
     case 'geral': return 'serviços de campo em geral';
     case 'refrigeracao':

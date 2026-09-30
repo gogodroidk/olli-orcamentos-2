@@ -1,4 +1,5 @@
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import type { VerticalId } from './verticais';
 
 export type ItemCatalogoDocumento = {
   tipo: 'orcamento' | 'contrato' | 'ordem_servico' | 'pmoc' | 'recibo' | 'garantia' | 'conclusao' | 'laudo' | 'checklist' | 'certificado';
@@ -6,6 +7,8 @@ export type ItemCatalogoDocumento = {
   descricao: string;
   icone: keyof typeof import('@expo/vector-icons').MaterialCommunityIcons.glyphMap;
   destino: keyof RootStackParamList;
+  /** Documento de um ofício só: some para quem escolheu outro (gate `useVerticais`). */
+  vertical?: VerticalId;
 };
 
 export const CATALOGO_DOCUMENTOS: readonly ItemCatalogoDocumento[] = [
@@ -18,5 +21,6 @@ export const CATALOGO_DOCUMENTOS: readonly ItemCatalogoDocumento[] = [
   { tipo: 'conclusao', titulo: 'Conclusão', descricao: 'Entrega, aceite e observações.', icone: 'file-check-outline', destino: 'ModelosDocumento' },
   { tipo: 'laudo', titulo: 'Laudo técnico', descricao: 'Achados e recomendações.', icone: 'clipboard-text-search-outline', destino: 'ModelosDocumento' },
   { tipo: 'checklist', titulo: 'Checklist', descricao: 'Rotina operacional editável.', icone: 'format-list-checks', destino: 'ModelosDocumento' },
-  { tipo: 'certificado', titulo: 'Certificado', descricao: 'Modelo para revisar antes de emitir.', icone: 'certificate-outline', destino: 'CertificadoAnvisa' },
+  { tipo: 'certificado', titulo: 'Comprovante de controle de pragas', descricao: 'Campos da RDC 622/2022 para revisar antes de emitir.', icone: 'certificate-outline', destino: 'CertificadoAnvisa', vertical: 'dedetizacao' },
+  { tipo: 'certificado', titulo: "Certificado de caixa d'água", descricao: 'Limpeza, lacre e validade para revisar antes de emitir.', icone: 'water-check-outline', destino: 'CertificadoCaixaDagua', vertical: 'caixa_dagua' },
 ];
