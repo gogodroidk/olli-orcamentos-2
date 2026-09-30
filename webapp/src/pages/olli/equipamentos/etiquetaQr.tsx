@@ -9,8 +9,8 @@
  * QR pronto como imagem em `/q/<token>.svg` — é o que o app do celular imprime
  * na etiqueta física (src/utils/etiquetaQrPdf.ts).
  *
- * ZERO dependência nova: `qrcode.react` já está no projeto (usado em
- * sys/login/qrcode-form.tsx) — só reaproveitamos.
+ * ZERO dependência nova: `qrcode.react` já estava no projeto (herdado do
+ * template) — só reaproveitamos.
  *
  * 3 estados de verdade, sempre visíveis (nada "escondido"):
  *  - token ativo     → QR + link + "abrir etiqueta pública"

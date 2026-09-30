@@ -180,7 +180,6 @@ export default defineConfig(({ mode }) => {
 						"vendor-core": ["react", "react-dom", "react-router"],
 						"vendor-ui": ["antd", "@ant-design/cssinjs", "styled-components"],
 						"vendor-utils": ["dayjs", "i18next", "zustand", "@iconify/react"],
-						"vendor-charts": ["apexcharts", "react-apexcharts"],
 						// Sentry só chega por import() (ver main.tsx). Isolar aqui impede que
 						// o rollup o funda no chunk das features do motion: sem isso, a
 						// animação da primeira tela puxava o SDK de crash junto, ~160 KB gzip

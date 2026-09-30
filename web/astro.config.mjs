@@ -104,6 +104,10 @@ export default defineConfig({
       org: 'olli-p7',
       project: 'olli-landing',
       telemetry: false,
+      // O que vai em TODA página é o carregador de ~1 KB, não o SDK (~48 KB gzip):
+      // ele guarda o erro e só então importa o sentry.client.config.js. Ver o
+      // cabeçalho de src/scripts/sentry-sob-demanda.ts.
+      clientInitPath: './src/scripts/sentry-sob-demanda.ts',
       sourcemaps: {
         // ARMADILHA: ligar o Sentry faz o Vite emitir .map no dist. Sem token não
         // há upload, e o .map ia junto pro ar — expondo o código-fonte da landing

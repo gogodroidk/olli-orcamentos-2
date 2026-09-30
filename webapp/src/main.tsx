@@ -8,6 +8,7 @@ import { createBrowserRouter, Outlet, RouterProvider } from "react-router";
 import App from "./App";
 import { registerLocalIcons } from "./components/icon";
 import { GLOBAL_CONFIG } from "./global-config";
+import { ligarWebVitals } from "./olli/webVitals";
 import ErrorBoundary from "./routes/components/error-boundary";
 import { routesSection } from "./routes/sections";
 import { urlJoin } from "./utils";
@@ -67,6 +68,10 @@ async function iniciarSentry() {
 
 		// Despeja o que chegou antes do SDK (ouvintes acima + fronteiras de erro).
 		conectarSentry(Sentry);
+
+		// Web Vitals de campo (LCP/INP/CLS) como Sentry Metrics — fora da cota de
+		// erros e fora do caminho da primeira tela. Ver src/olli/webVitals.ts.
+		void ligarWebVitals((nome, valor, opcoes) => Sentry.metrics.distribution(nome, valor, opcoes));
 	} catch {
 		// Sentry indisponível (chunk bloqueado, rede caiu) NÃO pode derrubar o painel:
 		// o dono perde o monitoramento, nunca a tela. Os ouvintes nativos ficam de pé.
