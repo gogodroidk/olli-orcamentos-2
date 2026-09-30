@@ -44,6 +44,10 @@ export const Eventos = {
   pulsoMostrado: 'pulso_mostrado',
   pulsoRespondido: 'pulso_respondido',
   pulsoDispensado: 'pulso_dispensado',
+  // Ativação até o 1º orçamento enviado (services/ativacao.ts): o exemplo do ofício
+  // aberto no Início e o teste do Pro liberado pelo servidor no 1º envio.
+  exemploAtivacaoAberto: 'ativacao_exemplo_aberto',
+  trialAutomaticoLiberado: 'trial_automatico_liberado',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

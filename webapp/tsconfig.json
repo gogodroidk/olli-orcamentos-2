@@ -58,6 +58,9 @@
 			"@verticais": ["../src/services/verticais.ts"],
 			"@vertical-segmento": ["../src/services/verticalSegmento.ts"],
 			"@limites-comerciais": ["../src/services/limitesComerciais.ts"],
+			// ATIVAÇÃO — exemplo de orçamento por ofício, checklist e aviso do teste do Pro:
+			// a MESMA regra do app (src/services/ativacao.ts). Módulo puro.
+			"@ativacao": ["../src/services/ativacao.ts"],
 			"@ia-segura": ["../src/services/olliAcoesSeguras.ts"],
 			"@precificacao": ["../src/services/precificacao.ts"],
 			"@auth-policy": ["../src/services/authPolicy.ts"],
