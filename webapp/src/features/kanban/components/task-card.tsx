@@ -273,10 +273,14 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 	);
 }
 
-/** O card que segue o cursor durante o arraste. Só visual — sem hook, sem menu. */
+/**
+ * O card que segue o cursor durante o arraste. Só visual — sem hook, sem menu.
+ * `levantar` (tokens.css): ao ser pego ele cresce 1,5% na mola do drawer — o cartão
+ * "sai da mesa" na mão do dono. Só `transform`; em "Reduzir movimento" fica parado.
+ */
 export function CartaoFantasma({ cartao, coluna }: { cartao: Cartao; coluna: Coluna }) {
 	return (
-		<div className={cn(CASCA, coluna.faixa, "rotate-1 cursor-grabbing shadow-lg")}>
+		<div className={cn(CASCA, coluna.faixa, "levantar rotate-1 cursor-grabbing shadow-lg")}>
 			<div className="flex items-center gap-1.5">
 				<span className={cn(ALCA, "cursor-grabbing")} aria-hidden>
 					<GripVertical className="size-4" />

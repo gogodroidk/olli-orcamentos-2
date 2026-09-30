@@ -1,4 +1,3 @@
-import { motion, useReducedMotion } from "motion/react";
 import { Check, Copy, Info } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
@@ -50,7 +49,6 @@ export function CalculadoraDialog({
  */
 function Conteudo({ calc, cor }: { calc: CalculoOficio; cor: string }) {
 	const [valores, setValores] = useState<Record<string, string>>(() => valoresIniciais(calc));
-	const reduzir = useReducedMotion();
 	const { copyFn, copiedText } = useCopyToClipboard();
 	const Icon = iconeDe(calc.id);
 
@@ -112,7 +110,6 @@ function Conteudo({ calc, cor }: { calc: CalculoOficio; cor: string }) {
 							<ResultadoView
 								resultado={resultado}
 								cor={cor}
-								reduzir={!!reduzir}
 								onCopiar={() => resultado.resumo && copyFn(resultado.resumo)}
 								copiado={resumoCopiado}
 							/>
@@ -206,13 +203,11 @@ function CampoCalculadora({
 function ResultadoView({
 	resultado,
 	cor,
-	reduzir,
 	onCopiar,
 	copiado,
 }: {
 	resultado: ReturnType<CalculoOficio["calcular"]>;
 	cor: string;
-	reduzir: boolean;
 	onCopiar: () => void;
 	copiado: boolean;
 }) {
@@ -222,17 +217,12 @@ function ResultadoView({
 				{resultado.linhas.map((linha, i) => (
 					<div key={`${linha.label}-${i}`} className="flex items-baseline justify-between gap-3">
 						<span className="text-[13px] text-text-secondary">{linha.label}</span>
+						{/* A `key` remonta o número a cada recálculo e o `surgir` (CSS, tokens.css)
+						    marca que ele é novo — sem depender do JS do Motion para aparecer. */}
 						{linha.destaque ? (
-							<motion.span
-								key={linha.valor}
-								initial={reduzir ? false : { opacity: 0, y: 4 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.22, ease: "easeOut" }}
-								className="text-right text-lg font-bold tabular-nums"
-								style={{ color: cor }}
-							>
+							<span key={linha.valor} className="surgir text-right text-lg font-bold tabular-nums" style={{ color: cor }}>
 								{linha.valor}
-							</motion.span>
+							</span>
 						) : (
 							<span className="text-right text-sm font-semibold tabular-nums text-text-primary">{linha.valor}</span>
 						)}

@@ -1,6 +1,6 @@
-import { motion, useReducedMotion } from "motion/react";
 import { BookOpen, Calculator, ChevronRight, ExternalLink, Landmark, Search, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
+import { atrasoEscalonado } from "@/components/animate/tokens";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
 import { PACKS_OFICIO } from "@precificacao";
@@ -27,7 +27,6 @@ function categoriasPresentes(): (keyof typeof CATEGORIAS)[] {
 }
 
 export default function FerramentasPage() {
-	const reduzir = useReducedMotion();
 	const [busca, setBusca] = useState("");
 	const [filtro, setFiltro] = useState<VerticalId | "todos">("todos");
 	const [abertoId, setAbertoId] = useState<string | null>(null);
@@ -46,14 +45,6 @@ export default function FerramentasPage() {
 
 	const calcAberto = useMemo(() => CALCULOS.find((c) => c.id === abertoId) ?? null, [abertoId]);
 	const corAberto = calcAberto ? categoriaDe(calcAberto.verticais).cor : "#0B6FCE";
-
-	const containerVar = {
-		hidden: {},
-		show: { transition: { staggerChildren: reduzir ? 0 : 0.035 } },
-	};
-const itemVar = reduzir
-		? { hidden: { opacity: 1 }, show: { opacity: 1 } }
-		: { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
 
 	return (
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
@@ -101,18 +92,18 @@ const itemVar = reduzir
 				</div>
 			</div>
 
-			{/* Grade de calculadoras */}
+			{/*
+			 * Grade de calculadoras. Os cards chegam escalonados pelo `surgir` (CSS,
+			 * tokens.css). Antes era um `motion.div initial="hidden"`: dentro do LazyMotion
+			 * strict isso QUEBRAVA a tela em desenvolvimento e, em produção, deixava a
+			 * grade invisível se o chunk do Motion falhasse. Em CSS ela aparece sempre.
+			 */}
 			{lista.length > 0 ? (
-				<motion.div
-					variants={containerVar}
-					initial="hidden"
-					animate="show"
-					className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
-				>
-					{lista.map((calc) => (
-						<CardCalculadora key={calc.id} calc={calc} variants={itemVar} onOpen={() => setAbertoId(calc.id)} />
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+					{lista.map((calc, i) => (
+						<CardCalculadora key={calc.id} calc={calc} indice={i} onOpen={() => setAbertoId(calc.id)} />
 					))}
-				</motion.div>
+				</div>
 			) : (
 				<div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border p-14 text-center">
 					<div className="grid size-11 place-items-center rounded-2xl bg-muted text-text-disabled">
@@ -162,27 +153,27 @@ const RECURSOS_UTEIS = [
 
 function CardCalculadora({
 	calc,
-	variants,
+	indice,
 	onOpen,
 }: {
 	calc: CalculoOficio;
-	variants: Record<string, { opacity: number; y?: number }>;
+	/** Posição na grade — dá o atraso do escalonamento (com o teto da política). */
+	indice: number;
 	onOpen: () => void;
 }) {
 	const cat = categoriaDe(calc.verticais);
 	const Icon = iconeDe(calc.id);
-	const reduzir = useReducedMotion();
 
 	return (
-		<motion.button
+		<button
 			type="button"
 			onClick={onOpen}
-			variants={variants}
-			whileHover={reduzir ? undefined : { y: -3 }}
-			transition={{ type: "spring", stiffness: 380, damping: 26 }}
+			style={{ animationDelay: `${atrasoEscalonado(indice)}s` }}
 			className={cn(
-				"group flex items-center gap-3.5 rounded-xl border border-border bg-card p-4 text-left shadow-sm",
-				"transition-colors hover:border-text-disabled/60",
+				"surgir group flex items-center gap-3.5 rounded-xl border border-border bg-card p-4 text-left shadow-sm",
+				// Hover: sobe 2px (token `xs`) e aperta no clique — só `translate`/`scale`.
+				// Em "Reduzir movimento" os tokens zeram (tokens.css).
+				"transition-[border-color,translate,scale] duration-(--motion-duration-fast) ease-(--motion-ease-standard) hover:-translate-y-(--motion-distance-xs) hover:border-text-disabled/60 active:scale-(--motion-scale-press)",
 				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 			)}
 		>
@@ -205,7 +196,7 @@ function CardCalculadora({
 				</span>
 			</div>
 			<ChevronRight className="size-5 shrink-0 text-text-disabled transition-transform group-hover:translate-x-0.5 group-hover:text-text-secondary" />
-		</motion.button>
+		</button>
 	);
 }
 

@@ -1,7 +1,7 @@
 import { ExternalLink, FilePlus2, Search, Sparkles, Wrench, X } from "lucide-react";
-import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { atrasoEscalonado } from "@/components/animate/tokens";
 import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -204,11 +204,9 @@ function CartaoCodigo({
 	aoCriarOrcamento: (c: HvacCodigo) => void;
 }) {
 	return (
-		<motion.div
-			initial={{ opacity: 0, y: 8 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.25, delay: Math.min(indice * 0.03, 0.3) }}
-		>
+		// Resultados chegam escalonados pelo `surgir` (CSS, tokens.css): aparecem mesmo
+		// se o JS do Motion não carregar, e param em "Reduzir movimento".
+		<div className="surgir" style={{ animationDelay: `${atrasoEscalonado(indice)}s` }}>
 			<Card className="overflow-hidden p-0">
 				<div className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/40 px-4 py-3">
 					<span className="rounded-md bg-primary/15 px-2 py-0.5 font-mono text-sm font-bold text-primary-dark dark:text-primary-light">
@@ -269,7 +267,7 @@ function CartaoCodigo({
 					</div>
 				</div>
 			</Card>
-		</motion.div>
+		</div>
 	);
 }
 

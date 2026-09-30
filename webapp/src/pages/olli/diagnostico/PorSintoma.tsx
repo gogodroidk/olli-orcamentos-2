@@ -1,7 +1,7 @@
 import { FilePlus2, RefreshCw, Send, Sparkles } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { atrasoEscalonado } from "@/components/animate/tokens";
 import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -180,44 +180,40 @@ export function PorSintoma({
 						</div>
 					)}
 
-					<AnimatePresence initial={false}>
-						{mensagens.map((m, i) => (
-							<motion.div
-								key={i}
-								initial={{ opacity: 0, y: 8 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.2 }}
-								className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}
+					{/* Cada mensagem nova surge (CSS `surgir`, tokens.css) — aparece mesmo sem o
+					    JS do Motion e fica parada em "Reduzir movimento". */}
+					{mensagens.map((m, i) => (
+						<div key={i} className={cn("surgir flex", m.role === "user" ? "justify-end" : "justify-start")}>
+							<div
+								className={cn(
+									"max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm",
+									m.role === "user"
+										? "rounded-br-sm bg-primary text-primary-foreground"
+										: "rounded-bl-sm bg-muted text-text-primary",
+								)}
 							>
-								<div
-									className={cn(
-										"max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm",
-										m.role === "user"
-											? "rounded-br-sm bg-primary text-primary-foreground"
-											: "rounded-bl-sm bg-muted text-text-primary",
-									)}
-								>
-									{m.role === "assistant" && (
-										<span className="mb-1 flex items-center gap-1 text-xs font-semibold text-primary">
-											<Sparkles className="size-3" />
-											OLLI Técnica
-										</span>
-									)}
-									{m.texto}
-								</div>
-							</motion.div>
-						))}
-					</AnimatePresence>
+								{m.role === "assistant" && (
+									<span className="mb-1 flex items-center gap-1 text-xs font-semibold text-primary">
+										<Sparkles className="size-3" />
+										OLLI Técnica
+									</span>
+								)}
+								{m.texto}
+							</div>
+						</div>
+					))}
 
 					{enviando && (
 						<div className="flex justify-start">
 							<div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+								{/* "Digitando": a ÚNICA animação contínua da tela (teto da política), só
+								    opacidade, e só enquanto a resposta não chega. Parada em "Reduzir
+								    movimento" — os três pontos ficam visíveis, sem piscar. */}
 								{[0, 1, 2].map((d) => (
-									<motion.span
+									<span
 										key={d}
-										className="size-2 rounded-full bg-text-secondary"
-										animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-										transition={{ duration: 0.9, repeat: Infinity, delay: d * 0.15 }}
+										className="size-2 animate-pulse rounded-full bg-text-secondary motion-reduce:animate-none"
+										style={{ animationDelay: `${atrasoEscalonado(d, "relaxed")}s` }}
 									/>
 								))}
 							</div>

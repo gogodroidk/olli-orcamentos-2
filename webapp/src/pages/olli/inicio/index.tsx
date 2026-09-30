@@ -3,6 +3,7 @@ import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { LembreteAssinaturaFaixa } from "@/pages/olli/planos/LembreteAssinaturaFaixa";
+import { AprovadoPeloClienteCard } from "./AprovadoPeloClienteCard";
 import { AtivacaoCard } from "./AtivacaoCard";
 import { ClientesEsfriandoCard } from "./ClientesEsfriandoCard";
 import { FaixaHoje } from "./FaixaHoje";
@@ -22,6 +23,11 @@ import { RadarDinheiroCard } from "./RadarDinheiroCard";
 import { RecentOrcamentosCard } from "./RecentOrcamentosCard";
 import { StatusDonutCard } from "./StatusDonutCard";
 import { WelcomeHeader } from "./WelcomeHeader";
+
+/** "2026-09" no fuso do aparelho — o mesmo recorte de `calcularRecebidoNoMes`. */
+function chaveDoMes(ref: Date = new Date()): string {
+	return `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
+}
 
 /**
  * INÍCIO — o painel de DINHEIRO do OLLI.
@@ -62,7 +68,12 @@ export default function Inicio() {
 	// nunca chegava ao texto de cobrança.
 	const nomeEmpresa = (empresa?.nome ?? (empresaLinha?.nome as string | undefined) ?? "").trim() || undefined;
 	const orcamentosFinalizados = useMemo(
-		() => new Set((osQ.data ?? []).filter((os) => os.status === "concluida" && os.orcamento_id).map((os) => String(os.orcamento_id))),
+		() =>
+			new Set(
+				(osQ.data ?? [])
+					.filter((os) => os.status === "concluida" && os.orcamento_id)
+					.map((os) => String(os.orcamento_id)),
+			),
 		[osQ.data],
 	);
 
@@ -71,7 +82,10 @@ export default function Inicio() {
 	// MESMO dinheiro: calcular duas vezes seria criar a chance de a faixa do topo e o
 	// cartão logo abaixo discordarem sobre quanto o dono tem a receber.
 	const radarDinheiro = useMemo(
-		() => (orcQ.data && recQ.data && osQ.isSuccess ? listarDinheiroParado(orcQ.data, recQ.data, new Date(), orcamentosFinalizados) : null),
+		() =>
+			orcQ.data && recQ.data && osQ.isSuccess
+				? listarDinheiroParado(orcQ.data, recQ.data, new Date(), orcamentosFinalizados)
+				: null,
 		[orcQ.data, recQ.data, osQ.isSuccess, orcamentosFinalizados],
 	);
 	const aReceber = radarDinheiro;
@@ -108,6 +122,12 @@ export default function Inicio() {
 			 * trava o trabalho do dia. Sem dado confirmado não aparece nada.
 			 */}
 			<LembreteAssinaturaFaixa />
+
+			{/*
+			 * O cliente aprovou pelo link enquanto o dono estava fora: a notícia boa vem
+			 * antes de qualquer número, com o próximo passo (agendar) no mesmo lugar.
+			 */}
+			<AprovadoPeloClienteCard orcamentos={orcQ.data} />
 
 			{/*
 			 * ATIVAÇÃO — "Seu primeiro orçamento em 1 minuto" (exemplo do ofício, só com
@@ -193,6 +213,9 @@ export default function Inicio() {
 					isLoading={recQ.isLoading}
 					isError={recQ.isError}
 					onRetry={() => recQ.refetch()}
+					// "Dinheiro entrou": sobe do que o dono viu da última vez. A chave leva o
+					// mês — na virada, "Recebido no mês" recomeça e não conta como queda.
+					contador={{ valor: recebido?.total ?? null, chave: `recebido-mes:${chaveDoMes()}`, formatar: formatBRL }}
 				/>
 
 				<KpiDinheiroCard

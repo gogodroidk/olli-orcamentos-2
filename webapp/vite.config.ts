@@ -116,7 +116,9 @@ export default defineConfig(({ mode }) => {
 
 			isProduction &&
 				visualizer({
-					open: true,
+					// Abre o treemap só no build manual do dono. Em CI (e na medição do
+					// orçamento de bundle) não há quem olhe — e abrir janela trava o terminal.
+					open: !process.env.CI,
 					gzipSize: true,
 					brotliSize: true,
 					template: "treemap",
