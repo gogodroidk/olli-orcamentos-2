@@ -26,7 +26,7 @@ App Android ──(SDK react-native-purchases, appUserID = id do Supabase)──
   número é digitado no app para a Play.
 - Código: `src/services/playBillingRegras.ts` (catálogo único, usado pelo app e pelo worker),
   `src/services/playBilling.android.ts` (único arquivo que fala com o SDK),
-  `worker/src/revenuecat.js` (webhook), migration `20260930120000_assinaturas_revenuecat.sql`.
+  `worker/src/revenuecat.js` (webhook), migration `20260930120400_assinaturas_revenuecat.sql`.
 
 ## Catálogo — os IDs têm de ser EXATAMENTE estes
 
@@ -50,7 +50,7 @@ Qualquer outro ID não libera plano (o worker registra ALARME). Para mudar o cat
 - O PR deste recurso **mesclado na `main`** (produção só sai da `main`).
 
 ### 1. Banco — aplicar a migration (antes de tudo que gera evento)
-`supabase/migrations/20260930120000_assinaturas_revenuecat.sql` (Management API ou MCP).
+`supabase/migrations/20260930120400_assinaturas_revenuecat.sql` (Management API ou MCP).
 Conferir:
 ```sql
 select column_name from information_schema.columns
