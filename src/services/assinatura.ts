@@ -65,9 +65,12 @@ export interface ResumoAssinatura {
   ativo: boolean;
   /** Origem do acesso efetivo, sem misturar concessão manual com pagamento. */
   origem?: 'gratis' | 'pagamento' | 'admin';
-  /** true = assinatura recorrente no cartão (Stripe), que cobra sozinha. Pix (e o
-   *  12x avulso) NÃO renovam: quem pagou assim precisa pagar de novo no vencimento. */
+  /** true = assinatura recorrente que cobra sozinha: no cartão (Stripe) ou pela
+   *  Google Play. Pix (e o 12x avulso) NÃO renovam: quem pagou assim precisa pagar
+   *  de novo no vencimento. `undefined` = não deu para saber — NÃO é "Pix". */
   renovaSozinho?: boolean;
+  /** true = a assinatura é da Google Play (gerencia-se na Play Store, não na Stripe). */
+  renovaPelaPlay?: boolean;
   /** Já comprou no cartão alguma vez (há cliente na Stripe → portal com recibos). */
   temClienteStripe?: boolean;
 }
@@ -122,6 +125,19 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
     const efetivo = derivarPlanoEfetivo(data);
     const planoContratado = mapearPlano(data.plano);
 
+    // Renova sozinho? Stripe responde nesta mesma linha. Sem Stripe, um plano PAGO
+    // pode ser Pix (não renova) ou Google Play (renova pela loja) — e confundir os
+    // dois ofereceria "Renovar com Pix" a quem já é cobrado pela Play. Na dúvida
+    // (leitura falhou), `undefined`: a tela não oferece pagar de novo.
+    const temStripe = typeof data.stripe_subscription_id === 'string' && data.stripe_subscription_id.length > 0;
+    let renovaSozinho: boolean | undefined = temStripe;
+    let renovaPelaPlay = false;
+    if (!temStripe && efetivo.origem === 'pagamento' && efetivo.planoEfetivo !== 'gratis') {
+      const play = await lerProdutoPlay(user.id);
+      if (play.estado === 'indisponivel') renovaSozinho = undefined;
+      else if (play.produto) { renovaSozinho = true; renovaPelaPlay = true; }
+    }
+
     const resumo: ResumoAssinatura = {
       planoEfetivo: efetivo.planoEfetivo,
       planoContratado,
@@ -129,13 +145,67 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
       proximaCobranca,
       ativo: efetivo.planoEfetivo !== 'gratis',
       origem: efetivo.origem,
-      renovaSozinho: typeof data.stripe_subscription_id === 'string' && data.stripe_subscription_id.length > 0,
+      renovaSozinho,
+      renovaPelaPlay,
       temClienteStripe: typeof data.stripe_customer_id === 'string' && data.stripe_customer_id.length > 0,
     };
     cacheResumo = { userId, resumo };
     return resumo;
   } catch {
     return userId && cacheResumo && cacheResumo.userId === userId ? cacheResumo.resumo : gratis;
+  }
+}
+
+/** De onde vem a assinatura na Google Play, com o estado de carga explícito. */
+export type AssinaturaNaPlay =
+  | { estado: 'ok'; produto: string | null } // produto = 'olli_pro:mensal'…; null = não é da Play
+  | { estado: 'indisponivel' };
+
+/**
+ * A assinatura deste usuário foi vendida pela Google Play? (coluna
+ * `revenuecat_produto_id`, gravada pelo webhook do RevenueCat no worker.)
+ *
+ * Leitura SEPARADA de `getResumoAssinatura` de propósito: é uma coluna nova, e se a
+ * migration 20260930120000 ainda não estiver aplicada o select dela falha — isso não
+ * pode derrubar a leitura do plano. Falha aqui é 'indisponivel', nunca "não é da
+ * Play" (erro não vira vazio); a tela só mostra o atalho de gerenciar com 'ok'.
+ */
+export async function getAssinaturaNaPlay(): Promise<AssinaturaNaPlay> {
+  if (!supabase) return { estado: 'indisponivel' };
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) return { estado: 'ok', produto: null };
+    return await lerProdutoPlay(user.id);
+  } catch {
+    return { estado: 'indisponivel' };
+  }
+}
+
+/**
+ * Lê o vínculo com a Play da linha do usuário: o produto SÓ conta enquanto a
+ * vigência que a própria Play deu (`revenuecat_vigencia_ate`) não passou — uma
+ * assinatura da Play já encerrada, numa linha hoje sustentada por Pix, não é "da
+ * Play" (senão esconderia o "Renovar com Pix" de quem precisa renovar).
+ * Coluna AUSENTE (Postgres 42703: migration ainda não aplicada) é resposta, não
+ * falha: sem a coluna nenhuma venda pela Play pode ter acontecido. Qualquer outro
+ * erro é 'indisponivel'.
+ */
+async function lerProdutoPlay(userId: string): Promise<AssinaturaNaPlay> {
+  if (!supabase) return { estado: 'indisponivel' };
+  try {
+    const { data, error } = await supabase
+      .from('assinaturas')
+      .select('revenuecat_produto_id, revenuecat_vigencia_ate')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) return error.code === '42703' ? { estado: 'ok', produto: null } : { estado: 'indisponivel' };
+    const linha = data as { revenuecat_produto_id?: unknown; revenuecat_vigencia_ate?: unknown } | null;
+    const produto = typeof linha?.revenuecat_produto_id === 'string' && linha.revenuecat_produto_id ? linha.revenuecat_produto_id : null;
+    const ate = typeof linha?.revenuecat_vigencia_ate === 'string' ? Date.parse(linha.revenuecat_vigencia_ate) : Number.NaN;
+    return { estado: 'ok', produto: produto && Number.isFinite(ate) && ate > Date.now() ? produto : null };
+  } catch {
+    return { estado: 'indisponivel' };
   }
 }
 
