@@ -38,8 +38,12 @@ import { goBackOrHome } from '../navigation/safeBack';
 import {
   cancelarReservaEnvioOrcamento,
   confirmarEnvioOrcamento,
+  obterEstadoOfertaComercial,
   reservarEnvioOrcamento,
 } from '../services/cotaEnvios';
+import { avisoTrialAutomatico } from '../services/ativacao';
+import { avisar } from './desktop/dialogo';
+import { recarregarPlanoGlobal } from '../hooks/usePlano';
 import {
   mensagemBloqueioEnvio,
   type CanalEnvioOrcamento,
@@ -207,9 +211,26 @@ export default function VisualizarOrcamentoScreen() {
     return null;
   }
 
+  /**
+   * Confirma o consumo da cota e, se o SERVIDOR liberou o teste do Pro neste envio
+   * (1º envio do dono em conta elegível — migration 20260930120000), avisa com a
+   * data de término. O aviso só sai quando a leitura da oferta DEPOIS da
+   * confirmação diz "teste ativo": leitura que falhou não anuncia nada (a regra
+   * mora em `avisoTrialAutomatico`). Não é oferta de compra — vale em qualquer
+   * plataforma, inclusive nas lojas.
+   */
   async function confirmarEntrega(reserva: ReservaEnvioOrcamento): Promise<void> {
     if (!reserva.requerConfirmacao) return;
-    await confirmarEnvioOrcamento(orcamentoId, reserva.reservaToken);
+    const confirmou = await confirmarEnvioOrcamento(orcamentoId, reserva.reservaToken);
+    if (!confirmou) return;
+    const oferta = await obterEstadoOfertaComercial().catch(() => null);
+    const aviso = avisoTrialAutomatico(reserva, oferta);
+    if (!aviso) return;
+    track(Eventos.trialAutomaticoLiberado, { canal: 'app' });
+    await recarregarPlanoGlobal().catch(() => {});
+    // `avisar` (DialogoDesktopHost) e não Alert.alert: o Alert do react-native-web é
+    // mudo, e o app também roda no navegador — o aviso não pode sumir lá.
+    avisar(aviso.titulo, aviso.mensagem);
   }
 
   async function handleShare() {

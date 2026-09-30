@@ -71,9 +71,11 @@ import { cn } from "@/utils";
 import {
 	cancelarReservaEnvioOrcamento,
 	confirmarEnvioOrcamento,
+	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
 } from "@/olli/cota-envios";
 import { mensagemBloqueioEnvio } from "@limites-comerciais";
+import { avisoTrialAutomatico } from "@ativacao";
 /**
  * Contrato carregado SOB DEMANDA: ele arrasta o gerador de PDF do contrato, e
  * quem só abre a lista de orçamentos (a maioria, o tempo todo) não deve pagar
@@ -313,7 +315,7 @@ export default function OrcamentosPage() {
 	const [filtroManual, setFiltroManual] = useState(false);
 
 	/** O editor aberto. `ehNovo` decide se o número será gerado no submit. */
-	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean } | null>(null);
+	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean; exemplo?: boolean } | null>(null);
 	/** id da linha cujo PDF está sendo montado — a linha mostra isso, não fica muda. */
 	const [pdfEmCurso, setPdfEmCurso] = useState<string | null>(null);
 	/** O orçamento que virou contrato — o diálogo abre em cima do BLOB, nunca da linha. */
@@ -374,7 +376,13 @@ export default function OrcamentosPage() {
 
 		if (querNovo) {
 			const estado = location.state as
-				| { clientePreSelecionado?: Cliente; prefillItem?: PrefillItemOrcamento; prefillItems?: PrefillItemOrcamento[] }
+				| {
+						clientePreSelecionado?: Cliente;
+						prefillItem?: PrefillItemOrcamento;
+						prefillItems?: PrefillItemOrcamento[];
+						/** Orçamento de exemplo da ativação (Início → "Seu primeiro orçamento em 1 minuto"). */
+						exemploVertical?: string;
+				  }
 				| null
 				| undefined;
 			let orc = novoOrcamentoVazio(empresa);
@@ -387,7 +395,7 @@ export default function OrcamentosPage() {
 			if (estado?.prefillItems?.length) {
 				orc = orcamentoComItensPrefill(orc, estado.prefillItems);
 			}
-			setEditor({ orc, ehNovo: true });
+			setEditor({ orc, ehNovo: true, exemplo: !!estado?.exemploVertical });
 		}
 
 		const proximos = new URLSearchParams(searchParams);
@@ -455,7 +463,22 @@ export default function OrcamentosPage() {
 				} catch {
 					toast.error("O PDF abriu, mas não consegui registrar este orçamento na Central de documentos. Tente sincronizar e repetir o registro.");
 				}
-				await confirmarEnvioOrcamento(linha.id, reserva.reservaToken);
+				const confirmou = await confirmarEnvioOrcamento(linha.id, reserva.reservaToken);
+				/*
+				 * TESTE DO PRO LIBERADO NO 1º ENVIO — quem concede é o SERVIDOR (migration
+				 * 20260930120000). Aqui só relemos a oferta e, SE ela confirmar o teste
+				 * ativo, contamos ao dono com a data de término. Leitura que falha não
+				 * anuncia nada (regra em `avisoTrialAutomatico`, a mesma do app).
+				 */
+				if (confirmou && reserva.requerConfirmacao) {
+					const oferta = await obterEstadoOfertaComercial();
+					const aviso = avisoTrialAutomatico(reserva, oferta);
+					if (aviso) {
+						void qc.invalidateQueries({ queryKey: ["olli", "oferta-comercial"] });
+						void qc.invalidateQueries({ queryKey: ["olli", "assinatura", "me"] });
+						setTimeout(() => toast.success(aviso.titulo, { description: aviso.mensagem, duration: 12_000 }), 0);
+					}
+				}
 				return marca;
 			} catch (erro) {
 				if (reserva.requerConfirmacao) {
@@ -828,6 +851,7 @@ export default function OrcamentosPage() {
 					aoFechar={() => setEditor(null)}
 					inicial={editor.orc}
 					ehNovo={editor.ehNovo}
+					exemplo={editor.exemplo}
 					aoDuplicar={criarRevisao}
 				/>
 			)}

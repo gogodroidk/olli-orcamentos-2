@@ -12,6 +12,7 @@ import { useEhDesktop } from '../hooks/useEhDesktop';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { SidebarNav } from '../components/web/SidebarNav';
 import type { Recurso } from '../services/entitlements';
+import type { VerticalId } from '../services/verticais';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
@@ -94,6 +95,13 @@ export type PrefillItem = {
   descricao?: string;
   /** Quantidade pré-carregada (ex.: litros de tinta calculados). Default 1. */
   quantidade?: number;
+  /** Unidade do item (`UNIDADES`). Default 'un'. */
+  unidade?: string;
+  /**
+   * Valor de REFERÊNCIA (só o orçamento de exemplo da ativação manda). O editor
+   * continua sendo a autoridade: o prestador troca pelo preço dele.
+   */
+  precoSugerido?: number;
 };
 
 export type RootStackParamList = {
@@ -105,7 +113,9 @@ export type RootStackParamList = {
   Entrar: undefined;
   // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
   // (origem: diagnóstico / código de erro). Tudo opcional — sem isto cai no fluxo normal.
-  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[] };
+  // `exemploVertical` marca o orçamento de exemplo da ativação (services/ativacao.ts):
+  // o editor mostra o aviso "é um exemplo, troque pelos seus valores".
+  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
