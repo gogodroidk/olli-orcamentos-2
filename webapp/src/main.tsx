@@ -2,6 +2,8 @@ import "./global.css";
 import { capturarExcecao, conectarSentry } from "@sentry-captura";
 import { limparBreadcrumbSentry, limparEventoSentry } from "@sentry-scrub";
 import "./theme/theme.css";
+// Tokens de duração/easing/distância para animações CSS (ver o arquivo).
+import "./theme/motion-tokens.css";
 import "./locales/i18n";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, Outlet, RouterProvider } from "react-router";

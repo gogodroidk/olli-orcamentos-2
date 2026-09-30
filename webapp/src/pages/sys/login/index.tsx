@@ -6,6 +6,7 @@ import SettingButton from "@/layouts/components/setting-button";
 import { destinoDepoisDoLogin, lerIntencaoPlano } from "@/olli/plano-intent";
 import { useAuthHydrated, useUserToken } from "@/store/userStore";
 import BrandHero from "./components/BrandHero";
+import CodigoForm from "./codigo-form";
 import LoginForm from "./login-form";
 import { LoginProvider } from "./providers/login-provider";
 import RegisterForm from "./register-form";
@@ -54,6 +55,7 @@ function LoginPage() {
 							<LoginForm />
 							<RegisterForm />
 							<ResetForm />
+							<CodigoForm />
 						</LoginProvider>
 					</div>
 				</div>

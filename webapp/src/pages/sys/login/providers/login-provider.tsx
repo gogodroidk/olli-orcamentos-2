@@ -7,6 +7,8 @@ export enum LoginStateEnum {
 	RESET_PASSWORD = 2,
 	MOBILE = 3,
 	QR_CODE = 4,
+	/** Login sem senha: código de 6 dígitos no e-mail (codigo-form.tsx). */
+	CODIGO = 5,
 }
 
 interface LoginStateContextType {
@@ -46,6 +48,8 @@ function estadoInicial(): LoginStateEnum {
 	const p = new URLSearchParams(window.location.search);
 	const modo = (p.get("modo") ?? p.get("screen") ?? "").toLowerCase();
 	if (modo === "cadastro" || modo === "register" || modo === "signup") return LoginStateEnum.REGISTER;
+	if (modo === "codigo") return LoginStateEnum.CODIGO;
+	if (modo === "esqueci" || modo === "recuperar") return LoginStateEnum.RESET_PASSWORD;
 	return LoginStateEnum.LOGIN;
 }
 
