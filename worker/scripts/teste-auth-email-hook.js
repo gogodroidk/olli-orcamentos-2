@@ -411,7 +411,14 @@ assert.deepEqual(
   // Troca de e-mail: se UMA ponta estoura o limite, NENHUMA sai.
   let n = 0;
   const d = payload('email_change', { token: CODIGO, token_hash: HASH_NOVO, token_new: CODIGO_NOVO, token_hash_new: HASH }, { new_email: NOVO_EMAIL });
-  r = await chamar(d, { env: envBase({ AUTH_EMAIL_RL: { limit: async () => ({ success: (n += 1) === 1 }) } }) });
+  // Só a 1ª ponta passa no limitador; a 2ª é barrada.
+  const limitador = {
+    limit: async () => {
+      n += 1;
+      return { success: n === 1 };
+    },
+  };
+  r = await chamar(d, { env: envBase({ AUTH_EMAIL_RL: limitador }) });
   assert.equal(r.res.status, 429);
   assert.equal(r.chamadas.length, 0);
 
