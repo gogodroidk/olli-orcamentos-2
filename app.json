@@ -63,7 +63,7 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "package": "online.olliorcamentos.app",
-      "versionCode": 13,
+      "versionCode": 19,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
