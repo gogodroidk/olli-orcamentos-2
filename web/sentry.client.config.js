@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/astro';
+import { limparBreadcrumbSentry, limparEventoSentry } from '../src/services/sentryScrub.ts';
 
 /**
  * Sentry do CLIENTE da landing (SSG — não há runtime de servidor aqui, então não
@@ -16,6 +17,9 @@ Sentry.init({
   environment: import.meta.env.PROD ? 'production' : 'development',
   // LGPD: nada de IP/dado pessoal.
   sendDefaultPii: false,
+  beforeSend: (event) => limparEventoSentry(event),
+  beforeSendTransaction: (event) => limparEventoSentry(event),
+  beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb),
   // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
   tracesSampleRate: 0.1,
 });

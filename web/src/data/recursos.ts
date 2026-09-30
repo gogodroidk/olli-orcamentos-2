@@ -32,12 +32,13 @@
  */
 import {
 	IA_USOS_GRATIS_MES,
+	ORCAMENTOS_ENVIADOS_GRATIS_MES,
 	RECURSOS_POR_PLANO,
 	temAcessoRecurso,
 } from "../../../src/services/entitlements";
 import type { PlanoId, Recurso } from "../../../src/services/entitlements";
 
-export { IA_USOS_GRATIS_MES };
+export { IA_USOS_GRATIS_MES, ORCAMENTOS_ENVIADOS_GRATIS_MES };
 export type { PlanoId, Recurso };
 
 /** Ordem em que os planos aparecem nas colunas — do menor para o maior. */
@@ -90,7 +91,7 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
  * três colunas — o comparativo não pergunta o plano para eles.
  */
 export const RECURSOS_BASE: readonly string[] = [
-	"Orçamentos, recibos, clientes e agenda ilimitados",
+	"Rascunhos, recibos, clientes e histórico sem limite",
 	"Ordem de serviço com checklist, fotos e assinatura na tela",
 	"Link do orçamento para o cliente aprovar",
 	"Diagnóstico por código de erro (climatização)",
@@ -109,12 +110,6 @@ export function recursosAdicionais(plano: PlanoId, base: PlanoId | null): Recurs
 	return (Object.keys(ROTULO_RECURSO) as Recurso[]).filter(
 		(r) => doPlano.has(r) && !daBase.has(r),
 	);
-}
-
-/** Rótulo do recurso para bullet de cartão — com "(em breve)" quando for o caso. */
-export function rotuloBullet(r: Recurso): string {
-	const { titulo, emBreve } = ROTULO_RECURSO[r];
-	return emBreve ? `${titulo} (em breve)` : titulo;
 }
 
 /** Estado de uma célula do comparativo — três estados, nunca dois (P0 da casa). */
@@ -137,7 +132,8 @@ function todosSim(): Record<PlanoId, Celula> {
  * As LINHAS do comparativo, derivadas de `entitlements`:
  *  1. os recursos base (todos ✓);
  *  2. a IA, numa linha própria — Grátis mostra a cota (`IA_USOS_GRATIS_MES`),
- *     pagos mostram "Ilimitada";
+ *     pagos mostram "Uso justo diário" (NÃO "Ilimitada": o worker aplica cota
+ *     diária aos pagos, e os Termos §4 dizem "uso justo diário");
  *  3. uma linha por recurso gateado (menos `ia_ilimitada`, já coberta na #2),
  *     com ✓/✗/Em breve computado por `temAcessoRecurso`.
  */
@@ -151,8 +147,16 @@ export function linhasComparativo(): LinhaComparativo[] {
 		titulo: "IA de diagnóstico e voz",
 		celulas: {
 			gratis: { tipo: "texto", valor: `${IA_USOS_GRATIS_MES} usos/mês` },
-			pro: { tipo: "texto", valor: "Ilimitada" },
-			empresa: { tipo: "texto", valor: "Ilimitada" },
+			pro: { tipo: "texto", valor: "Uso justo diário" },
+			empresa: { tipo: "texto", valor: "Uso justo diário" },
+		},
+	};
+	const envios: LinhaComparativo = {
+		titulo: "Orçamentos enviados ou PDFs por mês",
+		celulas: {
+			gratis: { tipo: "texto", valor: `${ORCAMENTOS_ENVIADOS_GRATIS_MES}/mês` },
+			pro: { tipo: "texto", valor: "Sem limite mensal" },
+			empresa: { tipo: "texto", valor: "Sem limite mensal" },
 		},
 	};
 
@@ -174,5 +178,5 @@ export function linhasComparativo(): LinhaComparativo[] {
 			};
 		});
 
-	return [...base, ia, ...recursos];
+	return [...base, envios, ia, ...recursos];
 }

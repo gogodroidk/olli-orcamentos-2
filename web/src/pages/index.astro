@@ -15,6 +15,8 @@ import {
 } from "../data/oficios";
 // Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
+import { PIX_PLANO_LIGADO } from "../data/pix";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -22,13 +24,17 @@ const APP_URL = "https://app.olliorcamentos.online";
 // ?modo=cadastro). Sem isto, "Criar meu primeiro orçamento" caía na tela de
 // LOGIN e o cadastro ficava escondido atrás de um link. "Entrar" continua no APP_URL.
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
+// Link de participação exibido pelo Google Play Console na faixa fechada Alpha.
+// Não usar URL privada do Console nem anunciar disponibilidade pública: a lista
+// de testadores ainda é controlada pelo Google Play.
+const GOOGLE_PLAY_TESTE_URL = "https://play.google.com/apps/testing/online.olliorcamentos.app";
 
 const recursos = [
 	{
 		icon: "file-text",
-		titulo: "Orçamento em minutos",
+		titulo: "Orçamento profissional em minutos",
 		texto:
-			"Do áudio do cliente ao PDF pronto. Itens, fotos, desconto e link para o cliente aprovar.",
+			"Itens, quantidades, fotos, desconto e sua marca num PDF pronto, com link para o cliente aprovar.",
 	},
 	{
 		icon: "clipboard-list",
@@ -81,39 +87,37 @@ const recursos = [
 const passos = [
 	{
 		n: "01",
-		titulo: "Chega a conversa",
+		titulo: "Receba o pedido",
 		texto:
-			'O cliente manda o áudio no WhatsApp: "meu ar tá pingando e não gela".',
+			"O cliente explica o serviço pelo canal de sempre. Você organiza tudo na OLLI, sem deixar preço, foto e condição perdidos na conversa.",
 	},
 	{
-		// HONESTIDADE DO MECANISMO: a OLLI não lê o áudio do WhatsApp. Não há
-		// integração com o WhatsApp em lugar nenhum do produto, e o painel web não
-		// captura voz (grep SpeechRecognition|MediaRecorder|getUserMedia em
-		// webapp/src: zero). Quem ouve o áudio é o prestador — a OLLI entra depois,
-		// e o que ela faz de verdade (montar o orçamento, apontar defeito e peça)
-		// já é forte o bastante. Vender ingestão de áudio que não existe queimaria
-		// o primeiro cliente exatamente no primeiro uso.
 		n: "02",
-		titulo: "Você monta em minutos",
+		titulo: "Crie um orçamento profissional",
 		texto:
-			"Itens, preço e fotos no lugar — e a IA aponta o provável defeito e a peça.",
+			"Monte itens, preços, fotos e condições em minutos, com a sua marca e as ferramentas do seu serviço.",
 	},
 	{
 		n: "03",
-		titulo: "Fecha o negócio",
+		titulo: "Envie e acompanhe",
 		texto:
-			"Cliente aprova pelo link, você emite a OS e o recibo. Tudo guardado.",
+			"Compartilhe o link pelo WhatsApp. O cliente aprova, e você transforma o orçamento em OS e recibo, com tudo guardado.",
 	},
 ];
+
+/** "N de climatização, N de elétrica…" — contado pelo mesmo gate do app. */
+const CALCULADORAS_POR_OFICIO = OFICIOS.filter((o) => o.calculadoras > 0)
+	.map((o) => `${o.calculadoras} de ${o.label.toLowerCase()}`)
+	.join(", ");
 
 const faq = [
 	{
 		q: "Preciso pagar para testar?",
-		a: "Não. O plano Grátis é de verdade: orçamento, recibo, cliente e agenda sem limite. Sem cartão, sem fidelidade.",
+		a: `Não. O plano Grátis é permanente: rascunhos, recibos, clientes e histórico ficam sem limite, com até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês. Depois do primeiro envio, você pode ativar 14 dias de Pro sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Funciona no celular e no computador?",
-		a: "Sim. Hoje a OLLI roda no navegador do celular e do computador — você entra e já começa, sem instalar app nem configurar nada. O aplicativo Android está a caminho das lojas.",
+		a: "Sim. A OLLI roda no navegador do celular e do computador. O aplicativo existe somente para Android e está em teste fechado, com instalação restrita a testadores selecionados; ainda não há aplicativo para iPhone/iOS nesta versão.",
 	},
 	{
 		q: "Serve pro meu ofício?",
@@ -129,7 +133,9 @@ const faq = [
 	// as contagens saem de `data/oficios.ts`, que lê o código do app.
 	{
 		q: "Quanto custa um app de orçamento?",
-		a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês — os dois abaixo do DAS do MEI. A maioria dos sistemas de campo no Brasil nem publica preço: você fala com um consultor e paga por técnico. Aqui o preço está nesta página, e o Grátis não é teste de 7 dias.`,
+		// A comparação com o imposto mensal do MEI saiu: ele fica abaixo do preço do
+		// Empresa, então a frase era falsa para um dos dois planos que ela citava.
+		a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês, com desconto no anual. O preço está nesta página, sem consultor no meio, e o Grátis não é teste de 7 dias.`,
 	},
 	{
 		q: "Existe app grátis de ordem de serviço?",
@@ -137,7 +143,9 @@ const faq = [
 	},
 	{
 		q: "Serve pra eletricista, encanador ou pintor?",
-		a: "Serve. A OLLI tem 21 calculadoras de campo divididas por ofício — 3 de elétrica, 4 de hidráulica, 4 de pintura, 5 de climatização, 4 de jardinagem e 1 de dedetização — e mostra só as do seu. Ofício fora da lista continua usando orçamento, OS e recibo normalmente.",
+		// A contagem (total e por ofício) era digitada à mão: a primeira calculadora
+		// nova no app faria esta resposta (e o FAQPage) mentir. Agora sai da fonte.
+		a: `Serve. A OLLI tem ${TOTAL_CALCULADORAS} calculadoras de campo divididas por ofício — ${CALCULADORAS_POR_OFICIO} — e mostra só as do seu. Ofício fora da lista continua usando orçamento, OS e recibo normalmente.`,
 	},
 	{
 		q: "O que é PMOC e quem é obrigado a ter?",
@@ -145,8 +153,20 @@ const faq = [
 	},
 	{
 		q: "Funciona sem internet, no meio do serviço?",
-		a: "Funciona. O app guarda tudo no próprio celular e sincroniza quando a rede volta — você faz orçamento e OS no subsolo, no elevador ou no sítio. É raro no setor: das 25 ferramentas comparadas num benchmark de 108 recursos, só 2 operam offline de verdade.",
+		// O offline é do APP Android (banco no próprio aparelho). O painel web é
+		// online-first — e é pra ele que todo CTA desta página leva. A resposta antiga
+		// ("Funciona.") virava FAQPage no Google prometendo o que o visitante não tem.
+		a: "Depende de onde você usa. No aplicativo Android (em teste fechado), orçamento, cliente e OS ficam guardados no próprio celular e sincronizam quando a rede volta. Pelo navegador — no celular ou no computador — a OLLI precisa de internet.",
 	},
+	// Pix só entra quando o worker confirmou no build que ele está ligado (data/pix.ts).
+	...(PIX_PLANO_LIGADO
+		? [
+				{
+					q: "Posso pagar o plano com Pix?",
+					a: "Pode. O Pro e o Empresa podem ser pagos por Pix, pelo mesmo preço do cartão, por 1 mês ou 1 ano. O Pix não renova sozinho: perto do vencimento a OLLI avisa, e você paga de novo só se quiser continuar. O pagamento é feito pelo navegador, na tela de Planos.",
+				},
+			]
+		: []),
 ];
 
 /**
@@ -177,12 +197,12 @@ const schemaFaq = {
 */}
 <Layout
   titulo="App de Orçamento e Ordem de Serviço para Prestador | OLLI"
-  descricao="Monte o orçamento no celular, o cliente aprova por link e a ordem de serviço e o recibo saem do mesmo lugar. Com as calculadoras do seu ofício dentro do orçamento. Grátis para começar, sem cartão."
+  descricao="Crie orçamentos profissionais no celular ou computador, personalize com a sua marca e envie um link para o cliente aprovar. Grátis para começar, sem cartão."
   schemas={[schemaFaq]}
 >
   <a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-campo focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Pular para o conteúdo</a>
 
-  <!-- ══════════ NAV ══════════ -->
+  {/* ══════════ NAV ══════════ */}
   <Header>
     <div slot="nav" class="hidden items-center gap-8 md:flex">
       <a href="#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
@@ -190,12 +210,12 @@ const schemaFaq = {
       <a href="#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
       <a href="#planos" class="text-sm font-medium text-slate transition hover:text-ink">Planos</a>
     </div>
-    <a href={APP_URL} class="rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-    <a href={APP_CADASTRO_URL} class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+    <a href={APP_URL} class="inline-flex min-h-11 items-center rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+    <a href={APP_CADASTRO_URL} class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
   </Header>
 
   <main id="conteudo">
-  <!-- ══════════ HERO ══════════ -->
+  {/* ══════════ HERO ══════════ */}
   {/* `overflow-clip` e NÃO `overflow-hidden`: `hidden` faz esta section virar
       container de scroll, e a `animation-timeline: view()` do wrapper dos
       aparelhos passa a resolver contra ELA — um scroller que nunca rola. O
@@ -211,23 +231,18 @@ const schemaFaq = {
       <div class="absolute -left-40 top-40 h-[34rem] w-[34rem] rounded-full opacity-50 blur-3xl" style="background: radial-gradient(closest-side, rgba(11,111,206,.20), transparent)"></div>
     </div>
 
-    <!-- min-w-0 nos dois filhos: item de grid tem `min-width: auto`, ou seja, se
+    {/* min-w-0 nos dois filhos: item de grid tem `min-width: auto`, ou seja, se
          recusa a encolher abaixo do próprio conteúdo. O mockup do painel tem
          conteúdo largo, então ele esticava a coluna (446px numa tela de 390px) e
-         empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. -->
+         empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. */}
     <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
       <div class="min-w-0">
-        <span class="eyebrow"><span aria-hidden="true">●</span> Climatização · Elétrica · Hidráulica · Pintura · Dedetização · Jardinagem</span>
+        <span class="eyebrow"><span aria-hidden="true">●</span> Plataforma de orçamentos para qualquer negócio de serviço</span>
         <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
-          {/* O {" "} é obrigatório: no mobile o <br> é `hidden` (display:none) e a
-              quebra de linha do código não vira espaço — a manchete saía grudada,
-              "WhatsAppao orçamento fechado". Espaço explícito resolve nos dois
-              casos (no desktop ele cai antes da quebra e não aparece). */}
-          Do <span class="brand-text">áudio no WhatsApp</span>{" "}<br class="hidden sm:inline" />
-          ao orçamento fechado.
+          Troque o orçamento improvisado no WhatsApp por uma <span class="brand-text">plataforma com a sua marca.</span>
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
-          Você transforma a conversa do cliente em <strong class="text-ink">orçamento, ordem de serviço e recibo</strong> — no celular e no computador. Com as <strong class="text-brand-fg">ferramentas do seu ofício</strong> dentro do orçamento, não só a nota fiscal.
+          Crie <strong class="text-ink">orçamentos profissionais em minutos</strong>, personalize com a sua identidade e envie um link para o cliente aprovar — no celular ou computador, seja qual for o serviço que você vende.
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row">
           <a href={APP_CADASTRO_URL} class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
@@ -237,13 +252,36 @@ const schemaFaq = {
             Ver como funciona
           </a>
         </div>
-        <!-- Chips de ofício: a multi-verticalidade plantada acima da dobra, sem
-             mexer no H1 (que já é agnóstico). Derivados de verticais.ts. -->
+        <div id="android-em-teste" class="mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1">
+          <p class="text-sm leading-relaxed text-slate">
+            <strong class="text-ink">Aplicativo Android em teste fechado.</strong>
+            A instalação pela Google Play está restrita a testadores selecionados. Se a sua conta ainda não foi incluída, use a OLLI pelo navegador. Não há aplicativo para iPhone/iOS nesta versão.
+          </p>
+          <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <a
+              href={GOOGLE_PLAY_TESTE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Acessar o teste fechado do OLLI para Android na Google Play (abre em nova guia)"
+              class="inline-flex min-h-11 items-center justify-center rounded-acao border border-brand px-4 py-2.5 text-center text-sm font-semibold text-brand-fg transition hover:bg-brand/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              Acessar o teste na Google Play <span class="ml-1" aria-hidden="true">↗</span>
+            </a>
+            <a
+              href={APP_CADASTRO_URL}
+              class="inline-flex min-h-11 items-center justify-center rounded-acao px-4 py-2.5 text-center text-sm font-semibold text-slate underline decoration-brand/30 underline-offset-2 transition hover:text-ink hover:decoration-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              Usar pelo navegador
+            </a>
+          </div>
+        </div>
+        {/* Chips de ofício: a multi-verticalidade plantada acima da dobra, sem
+             mexer no H1 (que já é agnóstico). Derivados de verticais.ts. */}
         <div class="mt-7 flex flex-wrap gap-2">
           {OFICIOS.map((o) => (
             <a
               href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-              class="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-slate shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2"
+              class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-slate shadow-e1 transition hover:border-brand hover:text-brand-fg hover:shadow-e2"
             >
               <Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
             </a>
@@ -296,7 +334,7 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ BARRA DE CONFIANÇA ══════════ -->
+  {/* ══════════ BARRA DE CONFIANÇA ══════════ */}
   <section class="faixa-recuo">
     <div class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-6 py-10 sm:grid-cols-4">
       {/*
@@ -321,7 +359,7 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ FEITO PRO SEU OFÍCIO ══════════
+  {/* ══════════ FEITO PRO SEU OFÍCIO ══════════
        Camada 2 da arquitetura do LANDING_BRIEF: a prova por ofício, no meio da
        página. Os cards NÃO são escritos à mão — vêm de `data/oficios.ts`, que lê
        `verticais.ts` e conta as calculadoras com a MESMA função de gate do app
@@ -331,7 +369,7 @@ const schemaFaq = {
        Só entra ferramenta com `disponivel: true`. É por isso que Elétrica mostra
        "3 calculadoras" e NÃO "checklist NR-10": o checklist existe no catálogo mas
        está marcado como indisponível, e vender "(em breve)" como pronto é o erro que
-       esta landing já cometeu antes. -->
+       esta landing já cometeu antes. */}
   <section id="oficios" class="mx-auto max-w-7xl px-6 py-24">
     <div class="olli-revela mx-auto max-w-2xl text-center">
       <span class="eyebrow">Feito pro seu ofício</span>
@@ -356,11 +394,15 @@ const schemaFaq = {
           <span class="mt-3 inline-block text-sm font-semibold text-brand-fg">Ver o app pra {o.label.toLowerCase()} →</span>
         </a>
       ))}
-      <div class="olli-revela rounded-cartao border border-dashed border-line bg-paper p-6">
+      <a
+        href={`/para/${SLUG_POR_OFICIO[OFICIO_GERAL.id]}/`}
+        class="olli-revela group rounded-cartao border border-dashed border-line bg-paper p-6 transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-e2"
+      >
         <Icone nome={ICONE_POR_OFICIO[OFICIO_GERAL.id]} class="h-8 w-8" />
-        <h3 class="mt-3 text-lg font-bold text-ink">{OFICIO_GERAL.label}</h3>
+        <h3 class="mt-3 text-lg font-bold text-ink group-hover:text-brand-fg">{OFICIO_GERAL.label}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-slate">{OFICIO_GERAL.tagline}</p>
-      </div>
+        <span class="mt-3 inline-block text-sm font-semibold text-brand-fg">Ver a página para qualquer serviço →</span>
+      </a>
     </div>
 
     <p class="mx-auto mt-10 max-w-2xl text-center text-sm text-muted">
@@ -369,7 +411,7 @@ const schemaFaq = {
     </p>
   </section>
 
-  <!-- ══════════ COMO FUNCIONA ══════════ -->
+  {/* ══════════ COMO FUNCIONA ══════════ */}
   <section id="como" class="mx-auto max-w-7xl px-6 py-24">
     <div class="olli-revela mx-auto max-w-2xl text-center">
       <span class="eyebrow">Como funciona</span>
@@ -415,7 +457,7 @@ const schemaFaq = {
       EsteiraTelas.astro. Manifesto quebrado NÃO cai aqui: mata o build. */}
   <EsteiraTelas />
 
-  <!-- ══════════ RECURSOS ══════════ -->
+  {/* ══════════ RECURSOS ══════════ */}
   <section id="recursos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
       {/* Só o cabeçalho anima. Os 8 cartões NÃO — e isso é conter, não
@@ -440,7 +482,7 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ DESTAQUE IA — A ZONA FUNDA ══════════
+  {/* ══════════ DESTAQUE IA — A ZONA FUNDA ══════════
        Era um bloco navy de 1280px de largura boiando numa página branca. Agora é
        uma FAIXA que atravessa a tela inteira, com as bordas derretendo na cor da
        página (ver `.zona-funda` no global.css).
@@ -451,7 +493,7 @@ const schemaFaq = {
        e o ponto mais fundo é exatamente onde mora o argumento que nenhum
        concorrente tem. Profundidade usada para hierarquia, não para enfeite.
 
-       Custo: zero. É a mesma pintura, com outra largura. -->
+       Custo: zero. É a mesma pintura, com outra largura. */}
   <section class="zona-funda py-28 md:py-32">
     {/* `overflow-clip`: este bloco e a trilha da barra abaixo sao ancestrais da
         `.olli-barra`. Com `overflow-hidden` os dois viravam container de scroll
@@ -490,12 +532,12 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ ORIGEM — "feita por quem vive de campo" (CC-06) ══════════
+  {/* ══════════ ORIGEM — "feita por quem vive de campo" (CC-06) ══════════
        Todo concorrente abre com número (Field Control "5.000 clientes", Auvo "8.000
        empresas"). A OLLI tem 0 pagante e NÃO inventa prova social (o gate proíbe, e o
        JSON-LD não tem rating fake). O substituto honesto que existe hoje é a origem: a
        OLLI nasceu dentro de uma empresa de campo de verdade. Sem foto ainda — o texto
-       se sustenta sozinho; o slot está pronto pra foto real do Igor/equipe entrar. -->
+       se sustenta sozinho; o slot está pronto pra foto real do Igor/equipe entrar. */}
   <section class="mx-auto max-w-5xl px-6 py-20">
     <div class="rounded-bloco border border-line bg-card p-8 shadow-e2 sm:p-12">
       <span class="eyebrow">Quem faz a OLLI</span>
@@ -517,11 +559,11 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ PLANOS ══════════
+  {/* ══════════ PLANOS ══════════
        Os cartões, o alternador mensal/anual e o 12× honesto moram em
        PlanosPrecos.astro — a MESMA marcação que a página /planos usa, para o preço
        nunca divergir entre as duas. Preço vem de data/planos.ts (Stripe live) e as
-       features de entitlements.ts via data/recursos.ts: nenhum literal aqui. -->
+       features de entitlements.ts via data/recursos.ts: nenhum literal aqui. */}
   <section id="planos" class="faixa-recuo">
     <div class="mx-auto max-w-7xl px-6 py-24">
       <div class="olli-revela mx-auto max-w-2xl text-center">
@@ -533,12 +575,12 @@ const schemaFaq = {
         <PlanosPrecos />
       </div>
       <p class="mt-8 text-center text-sm">
-        <a href="/planos/" class="font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 transition hover:decoration-brand">Comparar todos os recursos, lado a lado →</a>
+        <a href="/planos/" class="inline-flex min-h-11 items-center font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 transition hover:decoration-brand">Comparar todos os recursos, lado a lado →</a>
       </p>
     </div>
   </section>
 
-  <!-- ══════════ FAQ ══════════ -->
+  {/* ══════════ FAQ ══════════ */}
   <section class="mx-auto max-w-3xl px-6 py-24">
     <div class="text-center">
       <span class="eyebrow">Perguntas</span>
@@ -565,7 +607,7 @@ const schemaFaq = {
     </div>
   </section>
 
-  <!-- ══════════ CTA FINAL ══════════ -->
+  {/* ══════════ CTA FINAL ══════════ */}
   <section class="mx-auto max-w-7xl px-6 pb-24">
     {/* Revelação sóbria: é o último pedido de conversão da página, tem que
         estar cheio e legível rápido. */}
@@ -577,10 +619,10 @@ const schemaFaq = {
   </section>
   </main>
 
-  <!-- ══════════ RODAPÉ ══════════ -->
+  {/* ══════════ RODAPÉ ══════════ */}
   <Footer />
 
-  <!-- Script local processado pelo Astro. Ele lê somente um cookie booleano e
-       envia para `/entrada`, onde a sessão real é confirmada pelo Supabase. -->
+  {/* Script local processado pelo Astro. Ele lê somente um cookie booleano e
+       envia para `/entrada`, onde a sessão real é confirmada pelo Supabase. */}
   <script src="../scripts/session-redirect.ts"></script>
 </Layout>

@@ -50,6 +50,8 @@ interface Props {
    * está presente, senão de `titulo`, senão "documento".
    */
   nomeArquivo?: string;
+  /** Chamado após a exportação real; nativo devolve a URI salva, web pode omitir. */
+  onExported?: (uri?: string) => void | Promise<void>;
 }
 
 /** Empresa mínima para a prévia funcionar mesmo sem "Meu Negócio" preenchido. */
@@ -108,7 +110,7 @@ function PreviewWeb({ html }: { html: string }) {
  * nativo / diálogo de impressão na web — reaproveitando o HTML já montado aqui
  * em vez de reconstruir o documento.
  */
-export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca, construirHtml, chave, titulo, nomeArquivo }: Props) {
+export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca, construirHtml, chave, titulo, nomeArquivo, onExported }: Props) {
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const ehDesktop = useEhDesktop();
@@ -200,13 +202,14 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
     setErroExportar(false);
     setExportando(true);
     try {
-      await exportarHtmlComoPdf(html, nomeArquivoEfetivo, { dialogTitle: dialogTituloEfetivo });
+      const uri = await exportarHtmlComoPdf(html, nomeArquivoEfetivo, { dialogTitle: dialogTituloEfetivo });
+      await onExported?.(uri);
     } catch {
       setErroExportar(true);
     } finally {
       setExportando(false);
     }
-  }, [html, exportando, nomeArquivoEfetivo, dialogTituloEfetivo]);
+  }, [html, exportando, nomeArquivoEfetivo, dialogTituloEfetivo, onExported]);
 
   const podeExportar = !!html && !erro;
 

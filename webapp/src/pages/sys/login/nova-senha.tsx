@@ -9,8 +9,9 @@ import { GLOBAL_CONFIG } from "@/global-config";
 import SettingButton from "@/layouts/components/setting-button";
 import { supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
+import { SENHA_MINIMA } from "@auth-policy";
 import { Button } from "@/ui/button";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import BrandHero from "./components/BrandHero";
 
@@ -136,11 +137,12 @@ function NovaSenhaPage() {
 										name="password"
 										rules={{
 											required: "Informe a nova senha",
-											minLength: { value: 6, message: "A senha precisa ter pelo menos 6 caracteres." },
+										minLength: { value: SENHA_MINIMA, message: `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.` },
 										}}
-										render={({ field }) => (
-											<FormItem>
-												<FormControl>
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Nova senha</FormLabel>
+											<FormControl>
 													<Input type="password" autoComplete="new-password" placeholder="Nova senha" {...field} />
 												</FormControl>
 												<FormMessage />
@@ -155,9 +157,10 @@ function NovaSenhaPage() {
 											required: "Confirme a nova senha",
 											validate: (value) => value === form.getValues("password") || "As senhas não coincidem",
 										}}
-										render={({ field }) => (
-											<FormItem>
-												<FormControl>
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Confirme a nova senha</FormLabel>
+											<FormControl>
 													<Input
 														type="password"
 														autoComplete="new-password"

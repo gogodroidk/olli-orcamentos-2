@@ -1,10 +1,14 @@
+import { novaTentativaOAuth } from "@oauth-retorno";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Icon } from "@/components/icon";
-import { supabase } from "@/lib/supabase";
+import { registrarFunilAuth, supabase } from "@/lib/supabase";
+import { guardarIntencaoOAuth } from "@/olli/plano-intent";
 import { Button } from "@/ui/button";
+import { useLoginStateContext } from "../providers/login-provider";
+import { CHAVE_TENTATIVA_OAUTH } from "../use-retorno-oauth";
 
 /**
  * Botões Google/Apple — o caminho de MENOR fricção pra entrar.
@@ -22,24 +26,40 @@ const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", 
 
 export function OAuthButtons() {
 	const { t } = useTranslation();
+	const { callbackAuthPath, intencaoPlano } = useLoginStateContext();
 	const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 
 	// Espera a resposta e avisa em pt-BR se o provider falhar (ou não estiver
-	// configurado no Supabase) — sem isso a tela parecia travada. Em sucesso, o
-	// Supabase navega o navegador inteiro pro provider; não há mais o que fazer aqui.
+	// configurado no Supabase) — sem isto a tela parecia travada. Em sucesso, o
+	// Supabase navega o navegador inteiro pro provider; a volta é tratada em
+	// `useRetornoOAuth` (tela de login), que também avisa se o login não fechar.
+	//
+	// O redirect é SEMPRE `/auth/login` sem query (ver caminhoCallbackAuth): a
+	// intenção de plano vai no sessionStorage e a tentativa ganha um id aleatório
+	// só pra ligar "iniciado" ao resultado no funil — nada que identifique a pessoa.
 	const signInWithProvider = async (provider: OAuthProvider) => {
 		setOauthLoading(provider);
+		const tentativa = novaTentativaOAuth();
+		try {
+			guardarIntencaoOAuth(window.sessionStorage, intencaoPlano);
+			window.sessionStorage.setItem(CHAVE_TENTATIVA_OAUTH, JSON.stringify({ tentativa, provedor: provider }));
+		} catch {
+			// storage bloqueado: o login segue, só perde intenção/correlação do funil
+		}
+		void registrarFunilAuth("oauth_iniciado", { plataforma: "web", provedor: provider, tentativa });
 		try {
 			const { error } = await supabase.auth.signInWithOAuth({
 				provider,
-				options: { redirectTo: window.location.origin },
+				options: { redirectTo: `${window.location.origin}${callbackAuthPath}` },
 			});
 			if (error) {
+				void registrarFunilAuth("oauth_erro", { plataforma: "web", provedor: provider, tentativa, motivo: "provedor" });
 				toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {
 					position: "top-center",
 				});
 			}
 		} catch {
+			void registrarFunilAuth("oauth_erro", { plataforma: "web", provedor: provider, tentativa, motivo: "rede" });
 			toast.error(`Não foi possível entrar com ${OAUTH_PROVIDER_LABEL[provider]}. Tente de novo.`, {
 				position: "top-center",
 			});

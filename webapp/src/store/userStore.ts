@@ -1,14 +1,36 @@
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 import type { UserInfo, UserToken } from "#/entity";
-import { StorageEnum } from "#/enum";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
 import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
 import { resetBrandColor } from "@/olli/branding";
 import { queryClient } from "./queryClient";
+import { SENHA_MINIMA } from "@auth-policy";
+
+const atividadeRegistrada = new Set<string>();
+
+// Versoes anteriores duplicavam access/refresh token em `userStore`, alem da
+// copia autoritativa do supabase-js. Remova apenas o espelho legado: a sessao
+// real (`sb-<ref>-auth-token`) continua intacta e sera hidratada abaixo.
+if (typeof window !== "undefined") window.localStorage.removeItem("userStore");
+
+async function registrarAtividade(
+	evento: "login" | "app_open",
+	session: { user?: { id?: string | null }; expires_at?: number | null } | null,
+) {
+	const userId = session?.user?.id;
+	if (!userId) return;
+	const sessao = evento === "login" ? String(session.expires_at ?? Date.now()) : "boot";
+	const chave = `${userId}:${evento}:${sessao}`;
+	if (atividadeRegistrada.has(chave)) return;
+	const { error } = await supabase.rpc("registrar_atividade_usuario", {
+		p_evento: evento,
+		p_plataforma: "web",
+	});
+	if (!error) atividadeRegistrada.add(chave);
+}
 
 /**
  * Traduz os códigos de erro do Supabase Auth (AuthApiError.code) para pt-BR.
@@ -33,7 +55,7 @@ export function mapAuthErrorMessage(err: unknown): string {
 		case "identity_already_exists":
 			return "Já existe uma conta com este e-mail.";
 		case "weak_password":
-			return "Senha fraca. Use pelo menos 6 caracteres, com letras e números.";
+			return `Senha fraca. Use pelo menos ${SENHA_MINIMA} caracteres, com letras e números.`;
 		case "user_banned":
 			return "Esta conta está temporariamente bloqueada.";
 		case "email_address_invalid":
@@ -50,44 +72,39 @@ export function mapAuthErrorMessage(err: unknown): string {
 type UserStore = {
 	userInfo: Partial<UserInfo>;
 	userToken: UserToken;
+	authHydrated: boolean;
 
 	actions: {
 		setUserInfo: (userInfo: UserInfo) => void;
 		setUserToken: (token: UserToken) => void;
+		setAuthHydrated: (hydrated: boolean) => void;
 		clearUserInfoAndToken: () => void;
 	};
 };
 
-const useUserStore = create<UserStore>()(
-	persist(
-		(set) => ({
-			userInfo: {},
-			userToken: {},
-			actions: {
-				setUserInfo: (userInfo) => {
-					set({ userInfo });
-				},
-				setUserToken: (userToken) => {
-					set({ userToken });
-				},
-				clearUserInfoAndToken() {
-					set({ userInfo: {}, userToken: {} });
-				},
-			},
-		}),
-		{
-			name: "userStore", // name of the item in the storage (must be unique)
-			storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
-			partialize: (state) => ({
-				[StorageEnum.UserInfo]: state.userInfo,
-				[StorageEnum.UserToken]: state.userToken,
-			}),
+const useUserStore = create<UserStore>()((set) => ({
+	userInfo: {},
+	userToken: {},
+	authHydrated: false,
+	actions: {
+		setUserInfo: (userInfo) => {
+			set({ userInfo });
 		},
-	),
-);
+		setUserToken: (userToken) => {
+			set({ userToken });
+		},
+		setAuthHydrated: (authHydrated) => {
+			set({ authHydrated });
+		},
+		clearUserInfoAndToken() {
+			set({ userInfo: {}, userToken: {} });
+		},
+	},
+}));
 
 export const useUserInfo = () => useUserStore((state) => state.userInfo);
 export const useUserToken = () => useUserStore((state) => state.userToken);
+export const useAuthHydrated = () => useUserStore((state) => state.authHydrated);
 export const useUserPermissions = () => useUserStore((state) => state.userInfo.permissions || []);
 export const useUserRoles = () => useUserStore((state) => state.userInfo.roles || []);
 export const useUserActions = () => useUserStore((state) => state.actions);
@@ -115,6 +132,8 @@ export const useSignIn = () => {
 				id: user?.id ?? "",
 				email: user?.email ?? "",
 				username: user?.email ?? "",
+				name: user?.user_metadata?.full_name || user?.user_metadata?.name || undefined,
+				phone: user?.user_metadata?.phone || user?.phone || undefined,
 				avatar: user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
 			marcarIndicioDeSessao();
@@ -134,7 +153,8 @@ export const useSignOut = () => {
 	const { clearUserInfoAndToken } = useUserActions();
 	return async () => {
 		try {
-			await supabase.auth.signOut();
+			// Sair deste navegador nao revoga o aplicativo nem outros aparelhos.
+			await supabase.auth.signOut({ scope: "local" });
 		} finally {
 			limparIndicioDeSessao();
 			clearUserInfoAndToken();
@@ -155,12 +175,18 @@ export const useSignOut = () => {
  * (SIGNED_OUT → limpa; SIGNED_IN/refresh → atualiza). Uma fonte de verdade só.
  */
 export function useAuthSync() {
-	const { setUserToken, setUserInfo, clearUserInfoAndToken } = useUserActions();
+	const { setUserToken, setUserInfo, setAuthHydrated, clearUserInfoAndToken } = useUserActions();
 	useEffect(() => {
 		let active = true;
+		const limparEstadoDaSessao = () => {
+			limparIndicioDeSessao();
+			clearUserInfoAndToken();
+			resetBrandColor();
+			queryClient.clear();
+		};
 		const hydrate = (session: { access_token: string; refresh_token: string; user: any } | null) => {
 			if (!session) {
-				limparIndicioDeSessao();
+				limparEstadoDaSessao();
 				return;
 			}
 			setUserToken({ accessToken: session.access_token, refreshToken: session.refresh_token });
@@ -168,29 +194,34 @@ export function useAuthSync() {
 				id: session.user?.id ?? "",
 				email: session.user?.email ?? "",
 				username: session.user?.email ?? "",
+				name: session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || undefined,
+				phone: session.user?.user_metadata?.phone || session.user?.phone || undefined,
 				avatar: session.user?.user_metadata?.avatar_url || undefined,
 			} as UserInfo);
 			marcarIndicioDeSessao();
 		};
 		supabase.auth.getSession().then(({ data }) => {
-			if (active) hydrate(data.session);
+			if (active) {
+				hydrate(data.session);
+				setAuthHydrated(true);
+				void registrarAtividade("app_open", data.session);
+			}
+		}).catch(() => {
+			// O guard sai do estado de espera mesmo quando a leitura local falha;
+			// nesse caso accessToken permanece vazio e a rota protegida redireciona.
+			if (active) {
+				limparEstadoDaSessao();
+				setAuthHydrated(true);
+			}
 		});
 		const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-			if (event === "SIGNED_OUT" || !session) {
-				limparIndicioDeSessao();
-				clearUserInfoAndToken();
-				// Volta a cor da marca pro padrão OLLI: sem isto, uma sessão que
-				// termina por expiração/token revogado (não pelo botão Sair) deixa
-				// o white-label do tenant anterior pintado até o próximo login.
-				resetBrandColor();
-				// Limpa o cache do React Query também aqui (não só no logout manual
-				// de account-dropdown.tsx): sem isto, uma sessão que termina por
-				// expiração/revogação de token (em vez do botão Sair) deixava dado
-				// em cache de um tenant vazar pro próximo login nesta mesma aba.
-				// `queryClient` é o singleton de store/queryClient.ts — resolve sem
-				// depender do QueryClientProvider (useAuthSync roda antes dele).
-				queryClient.clear();
-			} else hydrate(session);
+			setAuthHydrated(true);
+			hydrate(session);
+			// Chamadas Supabase iniciadas dentro do callback podem concorrer com
+			// o lock interno do Auth. Adie a telemetria ate o evento terminar.
+			if (session && event === "SIGNED_IN") {
+				window.setTimeout(() => void registrarAtividade("login", session), 0);
+			}
 		});
 		return () => {
 			active = false;

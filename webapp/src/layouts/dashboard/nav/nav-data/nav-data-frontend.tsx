@@ -1,6 +1,7 @@
 import {
 	Calculator,
 	Bot,
+	BookOpen,
 	Calendar,
 	ClipboardList,
 	Crown,
@@ -43,7 +44,9 @@ export const frontendNavData: NavProps["data"] = [
 			{ title: "Clientes", path: "/clientes", icon: <Users size={24} /> },
 			{ title: "Produtos", path: "/produtos", icon: <Package size={24} /> },
 			{ title: "Serviços", path: "/servicos", icon: <Wrench size={24} /> },
+			{ title: "Precificação", path: "/precificacao", icon: <Calculator size={24} /> },
 			{ title: "Recibos", path: "/recibos", icon: <Receipt size={24} /> },
+			{ title: "Documentos", path: "/documentos", icon: <FileText size={24} /> },
 			{ title: "Central de dados", path: "/dados", icon: <DatabaseBackup size={24} /> },
 		],
 	},
@@ -64,6 +67,7 @@ export const frontendNavData: NavProps["data"] = [
 		name: "Ferramentas",
 		items: [
 			{ title: "Assistente IA", path: "/assistente", icon: <Bot size={24} /> },
+			{ title: "Central de ajuda", path: "/ajuda", icon: <BookOpen size={24} /> },
 			{ title: "Ferramentas de ofício", path: "/ferramentas", icon: <Calculator size={24} /> },
 			{
 				// A base é 100% HVAC (climatização/refrigeração) — só aparece pra quem

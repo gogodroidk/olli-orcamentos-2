@@ -19,6 +19,7 @@ import {
 } from '../database/database';
 import { cancelarLembretesPmoc } from './pmocLembretes';
 import { generateId } from '../utils/id';
+import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../types';
 
 /** Todas as OS visíveis (o SELECT local já reflete o tenant/org via sync). */
@@ -118,6 +119,7 @@ export async function criarOSManual(parcial: Partial<OrdemServico>): Promise<Ord
     titulo: parcial.titulo ?? 'Ordem de serviço',
     descricao: parcial.descricao,
     status: parcial.status ?? 'aberta',
+    concluidoEm: parcial.status === 'concluida' ? concluidoEmDaTransicao(undefined, 'concluida', agora) : undefined,
     tecnicoId: parcial.tecnicoId,
     tecnicoNome: parcial.tecnicoNome,
     dataAgendada: parcial.dataAgendada,
@@ -145,6 +147,9 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
     ...atual,
     ...patch,
     id: atual.id,
+    // O marco é derivado da transição; nunca aceitamos que uma edição de
+    // formulário injete um timestamp ou preserve um marco depois de reabrir.
+    concluidoEm: concluidoEmDaTransicao(atual, patch.status ?? atual.status, new Date().toISOString()),
     atualizadoEm: new Date().toISOString(),
   };
   await saveOrdemServico(atualizada);
@@ -161,7 +166,14 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
  * nunca pode travar a mudança de status.
  */
 export async function atualizarStatusOS(id: string, status: StatusOS): Promise<void> {
-  await patchOrdem(id, { status });
+  const atualizada = await patchOrdem(id, { status });
+  if (status === 'concluida') {
+    // Registro documental é best-effort: a conclusão da OS não pode falhar por
+    // uma indisponibilidade transitória da biblioteca local.
+    void import('./documentosBiblioteca').then(({ garantirDocumentoOrdemServico }) =>
+      garantirDocumentoOrdemServico(atualizada).catch(() => {}),
+    ).catch(() => {});
+  }
   if (status === 'concluida' || status === 'cancelada') {
     void cancelarLembretesPmoc(id).catch(() => {});
   }

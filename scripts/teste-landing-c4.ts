@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8');
+const home = ler('../web/src/pages/index.astro');
+const vertical = ler('../web/src/pages/para/[oficio].astro');
+const esteira = ler('../web/src/components/EsteiraTelas.astro');
+const comparador = ler('../src/components/web/ComparadorLanding.tsx');
+const llms = ler('../web/src/pages/llms.txt.ts');
+const config = ler('../web/astro.config.mjs');
+const robots = ler('../web/public/robots.txt');
+
+assert.match(home, /para\/\$\{SLUG_POR_OFICIO\[OFICIO_GERAL\.id\]\}\//, 'home precisa levar o serviço genérico a uma página própria');
+assert.match(vertical, /\[\.\.\.VERTICAIS, VERTICAL_GERAL\]/, 'a rota dinâmica precisa incluir qualquer serviço');
+assert.match(vertical, /id === "geral" \? OFICIO_GERAL/, 'a página genérica precisa usar conteúdo seguro e não um undefined');
+assert.match(llms, /OFICIO_GERAL/, 'agentes precisam descobrir a página para qualquer serviço');
+assert.match(esteira, /capturas reais da sua operação/, 'as imagens devem ser apresentadas como produto real');
+assert.match(esteira, /tela pública do cliente nasce no link de aprovação/, 'não confundir tela interna com tela do cliente');
+assert.doesNotMatch(esteira, /É esta a tela que o seu cliente vai ver/, 'não prometer que toda captura é a tela do cliente');
+assert.match(comparador, /Orçamento no campo, mesmo sem sinal/, 'comparador deve destacar o offline que existe');
+assert.match(comparador, /Cliente aprova e assina pelo link/, 'comparador deve explicar a aprovação real');
+assert.match(comparador, /IA ajuda a montar o orçamento por voz/, 'comparador deve descrever a IA sem prometer diagnóstico');
+assert.doesNotMatch(comparador, /PMOC pronto pra fiscalização|IA que diagnostica o defeito|Equipe no mapa em tempo real/, 'comparador não pode prometer PMOC, diagnóstico ou mapa em tempo real');
+assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'\]/, 'rotas utilitárias não devem entrar no sitemap');
+assert.match(robots, /Disallow: \/admin\//, 'robots deve evitar rastreio da área administrativa');
+assert.match(home, /https:\/\/play\.google\.com\/apps\/testing\/online\.olliorcamentos\.app/, 'CTA Android deve usar o link oficial de adesão exibido pelo Play Console');
+assert.match(home, /target="_blank"[\s\S]*?rel="noopener noreferrer"/, 'link externo da Play deve abrir com isolamento da aba');
+assert.match(home, /Aplicativo Android em teste fechado/, 'landing deve informar que o Android ainda está em teste fechado');
+assert.match(home, /instalação pela Google Play está restrita a testadores selecionados/, 'landing não pode anunciar instalação pública');
+assert.match(home, /Não há aplicativo para iPhone\/iOS nesta versão/, 'landing deve deixar claro que iOS está fora desta versão');
+assert.match(home, /Usar pelo navegador/, 'landing deve manter uma alternativa imediata para quem não está no teste');
+
+console.log('OK — landing multi-vertical, rota genérica e descoberta por agentes validadas.');

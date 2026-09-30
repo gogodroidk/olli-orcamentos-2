@@ -1,0 +1,9 @@
+{
+  "name": "olli-onda-2-janela-2-6-document-kernel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/quote-kernel.test.mjs",
+    "coverage": "node --experimental-test-coverage --test tests/quote-kernel.test.mjs"
+  }
+}

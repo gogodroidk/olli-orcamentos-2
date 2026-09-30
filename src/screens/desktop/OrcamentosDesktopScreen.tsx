@@ -10,12 +10,14 @@ import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
 import { StatusBadge } from '../../components/StatusBadge';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
-import { getOrcamentos, edicaoBloqueada } from '../../database/database';
+import { getOrcamentos, getRecibos, edicaoBloqueada } from '../../database/database';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator';
-import { Orcamento, StatusOrcamento, STATUS_LABELS } from '../../types';
+import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../../types';
+import { getStatusFinanceiro } from '../../services/pagamentos';
+import { FinanceiroBadge } from '../../components/FinanceiroBadge';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<TabParamList, 'OrcamentosTab'>;
@@ -51,31 +53,43 @@ export default function OrcamentosDesktopScreen() {
   const styles = useEstilos(criarEstilos);
   const clienteId = route.params?.clienteId;
   const clienteNome = route.params?.clienteNome;
+  const recorteDaRota = route.params?.recorteInicial;
 
   const [todos, setTodos] = useState<Orcamento[]>([]);
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<StatusOrcamento | 'todos'>('todos');
+  const [recorteInicial, setRecorteInicial] = useState<typeof recorteDaRota>(recorteDaRota);
   const [carregando, setCarregando] = useState(true);
 
   const carregar = useCallback(async () => {
-    const dados = await getOrcamentos();
+    const [dados, recibosAtuais] = await Promise.all([getOrcamentos(), getRecibos()]);
     setTodos(dados);
+    setRecibos(recibosAtuais);
     setCarregando(false);
   }, []);
 
   useFocusEffect(useCallback(() => { carregar(); }, [carregar]));
   useEffect(() => onSyncAplicado(carregar), [carregar]);
+  useEffect(() => setRecorteInicial(recorteDaRota), [recorteDaRota]);
 
   const filtrados = useMemo(() => {
     let r = todos;
     if (clienteId) r = r.filter((o) => o.clienteId === clienteId);
+    if (recorteInicial === 'em_aberto') {
+      r = r.filter((o) => ['enviado', 'visualizado', 'em_negociacao', 'aguardando_assinatura'].includes(o.status));
+    } else if (recorteInicial === 'a_receber') {
+      r = r.filter((o) => ['aguardando_pagamento', 'parcial'].includes(getStatusFinanceiro(o, recibos) ?? ''));
+    } else if (recorteInicial) {
+      r = r.filter((o) => o.status === recorteInicial);
+    }
     if (statusFiltro !== 'todos') r = r.filter((o) => o.status === statusFiltro);
     if (busca.trim()) {
       const q = normalizarBusca(busca);
       r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q));
     }
     return r;
-  }, [todos, clienteId, statusFiltro, busca]);
+  }, [todos, clienteId, statusFiltro, busca, recorteInicial, recibos]);
 
   const colunas: Coluna<Orcamento>[] = useMemo(() => [
     {
@@ -113,6 +127,13 @@ export default function OrcamentosDesktopScreen() {
       render: (o) => <StatusBadge status={o.status} size="sm" />,
     },
     {
+      chave: 'financeiro',
+      titulo: 'Financeiro',
+      largura: 180,
+      valorOrdenacao: (o) => getStatusFinanceiro(o, recibos) ?? '',
+      render: (o) => <FinanceiroBadge status={getStatusFinanceiro(o, recibos)} />,
+    },
+    {
       chave: 'data',
       titulo: 'Data',
       largura: 120,
@@ -127,20 +148,19 @@ export default function OrcamentosDesktopScreen() {
       render: (o) => (
         <View style={styles.acoesLinha}>
           <AcaoIcone icone="eye-outline" rotulo="Ver" onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })} />
-          {/* Editar SOME depois que o cliente recebeu o documento — mesma regra do
-              app mobile (`OrcamentosScreen`) e do painel (`FormOrcamento`). O
-              `saveOrcamento` recusa a edição de um orçamento aceito, então este
-              lápis abria a tela inteira só para falhar no "Salvar", com o que o
-              usuário digitou indo junto. "Ver" ao lado leva à tela que tem
-              "Duplicar", que é o caminho que funciona. */}
-          {!edicaoBloqueada(o.status) && (
+          {/* Rascunho edita no lugar. Documento que o cliente já recebeu mantém o
+              original congelado e abre o detalhe, onde "Criar revisão" gera um
+              novo número ligado ao anterior. */}
+          {edicaoBloqueada(o.status) ? (
+            <AcaoIcone icone="file-document-edit-outline" rotulo="Revisar" onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })} />
+          ) : (
             <AcaoIcone icone="pencil-outline" rotulo="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: o.id })} />
           )}
           <AcaoIcone icone="receipt" rotulo="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: o.id })} />
         </View>
       ),
     },
-  ], [nav, styles]);
+  ], [nav, recibos, styles]);
 
   return (
     <LayoutDesktop
@@ -166,6 +186,13 @@ export default function OrcamentosDesktopScreen() {
       }
     >
       <View style={styles.chips}>
+        {recorteInicial && (
+          <Chip
+            label={recorteInicial === 'em_aberto' ? 'Recorte: em aberto' : recorteInicial === 'a_receber' ? 'Recorte: a receber' : `Recorte: ${STATUS_LABELS[recorteInicial as StatusOrcamento]}`}
+            ativo
+            onPress={() => setRecorteInicial(undefined)}
+          />
+        )}
         {FILTROS_STATUS.map((f) => (
           <Chip
             key={f.chave}

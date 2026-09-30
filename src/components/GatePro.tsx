@@ -126,13 +126,23 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
 
   const irParaPlanos = () => {
     track(Eventos.gateCta, { recurso, plano });
-    nav.navigate('Planos');
+    // Preserva somente a intenção allowlistada do recurso. A tela de planos usa
+    // isso para explicar o valor que trouxe a pessoa até ali; nunca inicia
+    // checkout ou trial automaticamente.
+    nav.navigate('Planos', { origem: 'gate', recurso, plano });
   };
 
   return (
     <View style={styles.wrap}>
       {/* Conteúdo real por baixo, borrado/esmaecido e NÃO interativo. */}
-      <View style={styles.previewLayer} pointerEvents="none">
+      <View
+        style={styles.previewLayer}
+        pointerEvents="none"
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        aria-hidden
+      >
         <View style={[styles.preview, estiloBorrado()]}>{children}</View>
       </View>
 

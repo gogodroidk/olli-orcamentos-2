@@ -22,6 +22,8 @@ import {
 	PRECO_PRO,
 	reais,
 } from "../data/planos";
+import { PIX_PLANO_LIGADO } from "../data/pix";
+import { IA_USOS_GRATIS_MES, ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
@@ -46,8 +48,10 @@ const doze =
 /**
  * FAQ DE DECISÃO — as perguntas que travam a assinatura, respondidas com a VERDADE
  * lida do código e dos Termos:
- *  - grátis sem prazo → entitlements (ilimitado) + Termos §4 (plano gratuito existe);
- *  - cartão só no pago → Termos §4 (pagamento pela Stripe);
+ *  - grátis sem prazo → entitlements (histórico/rascunhos sem limite, envios com
+ *    cota mensal) + Termos §4 (plano gratuito existe);
+ *  - cartão só no pago → Termos §4 (cartão pela Stripe; Pix por período, que só
+ *    aparece quando `data/pix.ts` confirmou no build que o Pix está ligado);
  *  - cancelamento → Termos §5 (portal Stripe; acesso até o fim do período pago;
  *    volta ao grátis; sem multa; arrependimento de 7 dias, CDC art. 49);
  *  - dados ao parar de pagar → Termos §5 (volta ao grátis, não apaga) + Privacidade
@@ -56,15 +60,25 @@ const doze =
 const faq = [
 	{
 		q: "O plano Grátis acaba depois de um tempo?",
-		a: "Não. O Grátis não é teste de 7 dias — é grátis sem prazo pra acabar. Orçamento, ordem de serviço, recibo, cliente e agenda ficam ilimitados, sem cartão e sem fidelidade. O único limite é a IA de diagnóstico, com 3 usos por mês.",
+		a: `Não. O Grátis é permanente: rascunhos, ordem de serviço, recibos, clientes e histórico ficam sem limite. Você pode enviar ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos por mês, e a IA tem ${IA_USOS_GRATIS_MES} usos mensais. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Preciso de cartão de crédito para começar?",
-		a: "Para o Grátis, não — você cria a conta e já usa. O cartão só entra quando você escolhe assinar o Pro ou o Empresa, e o pagamento é processado pela Stripe.",
+		a: PIX_PLANO_LIGADO
+			? "Não. Tanto o Grátis permanente quanto o teste Pro opcional de 14 dias começam sem cartão, e o teste não renova nem cobra automaticamente. Na hora de assinar um plano pago, você escolhe: cartão ou Pix."
+			: "Não. Tanto o Grátis permanente quanto o teste Pro opcional de 14 dias começam sem cartão. Só pedimos cartão quando você decide assinar um plano pago pela Stripe; o teste não renova nem cobra automaticamente.",
 	},
+	...(PIX_PLANO_LIGADO
+		? [
+				{
+					q: "Dá pra pagar com Pix?",
+					a: "Dá. O Pro e o Empresa podem ser pagos por Pix, pelo mesmo preço do cartão, por 1 mês ou por 1 ano. O Pix não renova sozinho: perto do vencimento a OLLI avisa, e você paga de novo só se quiser continuar — sem cartão cadastrado e sem nada para cancelar. O pagamento é feito pelo navegador, na tela de Planos.",
+				},
+			]
+		: []),
 	{
 		q: "Posso cancelar quando quiser?",
-		a: "Pode, a qualquer momento, pelo portal de assinatura da Stripe dentro do app — sem multa e sem falar com ninguém. Você continua com o plano pago até o fim do período que já pagou; depois a conta volta ao Grátis. Nos 7 primeiros dias vale ainda o direito de arrependimento (art. 49 do Código de Defesa do Consumidor).",
+		a: `Pode, a qualquer momento, pelo portal de assinatura da Stripe dentro do app — sem multa e sem falar com ninguém. Você continua com o plano pago até o fim do período que já pagou; depois a conta volta ao Grátis.${PIX_PLANO_LIGADO ? " Quem pagou por Pix não tem o que cancelar: o período pago termina e a conta volta ao Grátis do mesmo jeito." : ""} Nos 7 primeiros dias vale ainda o direito de arrependimento (art. 49 do Código de Defesa do Consumidor).`,
 	},
 	{
 		q: "O que acontece com meus dados se eu parar de pagar?",
@@ -114,15 +128,15 @@ const schemaBreadcrumb = {
 			<a href="/#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
 			<a href="/#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
 		</div>
-		<a href={APP_URL} class="rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-		<a href={APP_CADASTRO_URL} class="rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+		<a href={APP_URL} class="inline-flex min-h-11 items-center rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
+		<a href={APP_CADASTRO_URL} class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
 	</Header>
 
 	<main id="conteudo">
-		<!-- ══════════ HERO ══════════ -->
+		{/* ══════════ HERO ══════════ */}
 		<section class="mx-auto max-w-4xl px-6 pb-8 pt-14 text-center">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="hover:text-brand-fg">Início</a>
+				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
 				<span class="text-slate">Planos</span>
 			</nav>
@@ -136,12 +150,12 @@ const schemaBreadcrumb = {
 			</p>
 		</section>
 
-		<!-- ══════════ CARTÕES + ALTERNADOR ══════════ -->
+		{/* ══════════ CARTÕES + ALTERNADOR ══════════ */}
 		<section class="mx-auto max-w-7xl px-6 pb-8">
 			<PlanosPrecos />
 		</section>
 
-		<!-- ══════════ COMPARATIVO COMPLETO ══════════ -->
+		{/* ══════════ COMPARATIVO COMPLETO ══════════ */}
 		<section class="faixa-recuo">
 			<div class="mx-auto max-w-5xl px-6 py-20">
 				<div class="olli-revela mx-auto max-w-2xl text-center">
@@ -158,7 +172,7 @@ const schemaBreadcrumb = {
 			</div>
 		</section>
 
-		<!-- ══════════ FAQ DE DECISÃO ══════════ -->
+		{/* ══════════ FAQ DE DECISÃO ══════════ */}
 		<section class="mx-auto max-w-3xl px-6 py-20">
 			<div class="text-center">
 				<span class="eyebrow">Antes de decidir</span>
@@ -177,7 +191,7 @@ const schemaBreadcrumb = {
 			</div>
 		</section>
 
-		<!-- ══════════ CTA FINAL ══════════ -->
+		{/* ══════════ CTA FINAL ══════════ */}
 		<section class="mx-auto max-w-7xl px-6 pb-24">
 			<div class="olli-revela relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
 				<h2 class="mx-auto max-w-2xl text-[clamp(1.8rem,4vw,2.8rem)] font-extrabold leading-tight">Comece pelo Grátis. Suba quando fizer sentido.</h2>

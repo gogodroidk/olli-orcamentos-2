@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -20,7 +20,6 @@ import {
   Spectral_600SemiBold,
   Spectral_700Bold,
 } from '@expo-google-fonts/spectral';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { criarAppTheme, Colors, TemaProvider, useTema } from './src/theme';
 import { Fonts } from './src/theme/fonts';
 import { applyFontPatch } from './src/theme/aplicarFontPatch';
@@ -31,17 +30,21 @@ import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { instalarCapturaDeErro } from './src/services/errorReport';
 import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/database';
-import { onboardedKeyForUser } from './src/screens/OnboardingScreen';
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
+import { iniciarAuthAutoRefreshNativo } from './src/services/authAutoRefresh';
+import { sincronizarPagamentosPendentes } from './src/services/pagamentos';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
 import { criarLinkingConfig } from './src/navigation/linking';
 import { limparCacheTipoConta, resetarTipoConta } from './src/hooks/useTipoConta';
+import { recarregarPlanoGlobal, resetarPlano } from './src/hooks/usePlano';
 import { DESKTOP_BREAKPOINT } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 import * as Sentry from '@sentry/react-native';
+import { limparBreadcrumbSentry, limparEventoSentry } from './src/services/sentryScrub';
+import { capturarExcecao, conectarSentry } from './src/services/sentryCaptura';
 
 /**
  * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
@@ -61,9 +64,15 @@ Sentry.init({
   environment: __DEV__ ? 'development' : 'production',
   // LGPD: nada de IP/dado pessoal. Mesma regra do errorReport.
   sendDefaultPii: false,
+  beforeSend: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+  beforeSendTransaction: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+  beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb as unknown as Record<string, unknown>) as unknown as typeof breadcrumb | null,
   // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
   tracesSampleRate: 0.1,
 });
+// Exceções que o nosso código SEGURA (ErrorBoundary, catch do boot) não passam pelo
+// handler global do SDK; elas chegam ao Sentry por esta porta (sentryCaptura.ts).
+conectarSentry(Sentry);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -191,6 +200,10 @@ function AppConteudo() {
     Spectral_700Bold,
   });
 
+  // O refresh token acompanha o ciclo de vida nativo: pausa no background e
+  // religa ao voltar. Evita refresh concorrente/suspenso parecer logout.
+  useEffect(() => iniciarAuthAutoRefreshNativo(), []);
+
   // Captura global de erro de JS -> caixa de feedback (o dono ve no /admin o que
   // quebra nos aparelhos). Instala uma vez; a tela atual vem do navigationRef.
   // Best-effort e defensivo: nunca derruba o app.
@@ -273,12 +286,7 @@ function AppConteudo() {
         // Fire-and-forget best-effort: depende só do DB já aberto acima, nunca
         // bloqueia o boot e nunca lança (dynamic import + catch silencioso).
         import('./src/services/lixeira').then(m => m.purgarLixeiraAntiga()).catch(() => {});
-        const [empresa, onboarded] = await Promise.all([
-          getEmpresa(),
-          session?.user?.id
-            ? AsyncStorage.getItem(onboardedKeyForUser(session.user.id)).catch(() => null)
-            : Promise.resolve(null),
-        ]);
+        const empresa = await getEmpresa();
         if (!supabase) {
           // Build dev sem nuvem: não há login possível, entra direto nas abas.
           setInitialRoute('Tabs');
@@ -294,9 +302,6 @@ function AppConteudo() {
           const estadoRemoto = await resolverEstadoEmpresaDaSessao();
           if (estadoRemoto === 'tem') {
             setInitialRoute('Tabs');
-          } else if (estadoRemoto === 'nao_tem' && onboarded === '1') {
-            // O próprio usuário pulou o cadastro neste aparelho.
-            setInitialRoute('Tabs');
           } else {
             setInitialRoute('Onboarding');
           }
@@ -306,11 +311,19 @@ function AppConteudo() {
         // vaza stack trace ao usuário. Com sessão, a tela de verificação é mais
         // honesta que pedir login de novo; sem sessão, a porta continua fechada.
         if (__DEV__) console.error(e);
+        // Boot que falhou abre na porta certa, mas não pode falhar em silêncio: é o
+        // mesmo tipo de queda que matou o v6 no Hermes sem ninguém ver.
+        capturarExcecao(e, { origem: 'boot' });
         if (haviaSessao) setInitialRoute('Onboarding');
       } finally {
         setDbReady(true);
       }
     })();
+  }, []);
+
+  const sincronizarTudo = useCallback(async () => {
+    await syncOnLogin();
+    await sincronizarPagamentosPendentes();
   }, []);
 
   // Sincronização per-row (painel web) ao logar. Listener global central: cobre
@@ -325,9 +338,15 @@ function AppConteudo() {
   // dele para não competir por rede com o sync no exato momento do login.
   useEffect(() => {
     if (!supabase) return;
+    let usuarioDaSessao: string | null = null;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
-        void syncOnLogin().finally(() => { void maybeAutoBackup(); });
+        if (usuarioDaSessao !== session.user.id) {
+          usuarioDaSessao = session.user.id;
+          resetarPlano();
+          void recarregarPlanoGlobal();
+        }
+        void sincronizarTudo().finally(() => { void maybeAutoBackup(); });
       }
       // Guard de deep link deslogado (v4): com `linking`, a URL inicial tem
       // precedência sobre o initialRouteName — abrir /orcamentos "frio" (sem
@@ -342,6 +361,8 @@ function AppConteudo() {
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
       // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
       if (event === 'SIGNED_OUT') {
+        usuarioDaSessao = null;
+        resetarPlano();
         // O papel do usuário que saiu não pode sobreviver ao logout: o store em
         // memória e o cache em disco são compartilhados por todo o app. Num aparelho
         // usado por técnico e dono, herdar o papel anterior restringe ou promete
@@ -367,7 +388,7 @@ function AppConteudo() {
   // não re-emite quando o app volta do bolso para a frente, então o que foi
   // escrito offline ficava esperando o app ser morto e reaberto. Ver
   // services/religarSync.ts para o limite que este gatilho NÃO cobre.
-  useEffect(() => iniciarReligarSync(syncOnLogin), []);
+  useEffect(() => iniciarReligarSync(sincronizarTudo), [sincronizarTudo]);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar
   if (fontsLoaded) applyFontPatch();

@@ -44,9 +44,10 @@ import { lazyComRetry } from "@/components/lazy/carregar-chunk";
 import { useQueryClient } from "@tanstack/react-query";
 import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
+import { registrarDocumentoWeb } from "@/olli/documentos";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
-import { orcamentoComItemPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
+import { orcamentoComItensPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { BotaoAbrirLinha, getStatusVariant, linhaClicavel, NameCell } from "@/olli/components/record-list-helpers";
 import { clienteParaOrcamento } from "@/olli/components/SeletorCliente";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
@@ -67,6 +68,12 @@ import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+import {
+	cancelarReservaEnvioOrcamento,
+	confirmarEnvioOrcamento,
+	reservarEnvioOrcamento,
+} from "@/olli/cota-envios";
+import { mensagemBloqueioEnvio } from "@limites-comerciais";
 /**
  * Contrato carregado SOB DEMANDA: ele arrasta o gerador de PDF do contrato, e
  * quem só abre a lista de orçamentos (a maioria, o tempo todo) não deve pagar
@@ -74,7 +81,7 @@ import { cn } from "@/utils";
  * é prestador em 4G ruim, onde chunk que não baixa é comum e viraria tela morta.
  */
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
-import FormOrcamento, { duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
+import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
 
 /**
  * A linha como ela vem do Supabase: colunas-espelho + o BLOB. Os nomes das colunas
@@ -367,7 +374,7 @@ export default function OrcamentosPage() {
 
 		if (querNovo) {
 			const estado = location.state as
-				| { clientePreSelecionado?: Cliente; prefillItem?: PrefillItemOrcamento }
+				| { clientePreSelecionado?: Cliente; prefillItem?: PrefillItemOrcamento; prefillItems?: PrefillItemOrcamento[] }
 				| null
 				| undefined;
 			let orc = novoOrcamentoVazio(empresa);
@@ -375,7 +382,10 @@ export default function OrcamentosPage() {
 				orc = { ...orc, ...clienteParaOrcamento(estado.clientePreSelecionado) };
 			}
 			if (estado?.prefillItem) {
-				orc = orcamentoComItemPrefill(orc, estado.prefillItem);
+				orc = orcamentoComItensPrefill(orc, [estado.prefillItem]);
+			}
+			if (estado?.prefillItems?.length) {
+				orc = orcamentoComItensPrefill(orc, estado.prefillItems);
 			}
 			setEditor({ orc, ehNovo: true });
 		}
@@ -423,11 +433,37 @@ export default function OrcamentosPage() {
 		 * prestador de imprimir. Quando não dá para confirmar, o selo fica — e o
 		 * toast de sucesso conta que ficou, em vez de deixá-lo descobrir no papel.
 		 */
-		const tarefa = resolverMarcaDoDocumento(qc)
-			.then(async (marca) => {
+		const tarefa = (async () => {
+			const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
+			if (!reserva.permitido) {
+				const erro = new Error(mensagemBloqueioEnvio(reserva));
+				(erro as Error & { cotaEsgotada?: boolean }).cotaEsgotada = reserva.motivo === "cota_esgotada";
+				throw erro;
+			}
+			try {
+				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });
+				try {
+					await registrarDocumentoWeb({
+						tipo: "orcamento",
+						titulo: `Orçamento nº ${linha.numero || "sem número"}`,
+						orcamento: blob,
+						empresa,
+						dados: blob as unknown as Record<string, unknown>,
+						status: "pronto",
+					});
+				} catch {
+					toast.error("O PDF abriu, mas não consegui registrar este orçamento na Central de documentos. Tente sincronizar e repetir o registro.");
+				}
+				await confirmarEnvioOrcamento(linha.id, reserva.reservaToken);
 				return marca;
-			})
+			} catch (erro) {
+				if (reserva.requerConfirmacao) {
+					await cancelarReservaEnvioOrcamento(linha.id, reserva.reservaToken);
+				}
+				throw erro;
+			}
+		})()
 			.finally(() => setPdfEmCurso(null));
 		toast.promise(tarefa, {
 			loading: "Preparando o PDF…",
@@ -437,7 +473,16 @@ export default function OrcamentosPage() {
 					? `Abri a janela de impressão. ${aviso}`
 					: "Abri a janela de impressão — escolha “Salvar como PDF”.";
 			},
-			error: "Não consegui gerar o PDF agora. Tente de novo.",
+			error: (erro) => {
+				const falha = erro as Error & { cotaEsgotada?: boolean };
+				if (falha.cotaEsgotada) {
+					setTimeout(() => toast("Quer continuar enviando?", {
+						description: "Veja o Pro e o teste de 14 dias, sem cartão e sem cobrança automática.",
+						action: { label: "Ver planos", onClick: () => window.location.assign("/olli/planos") },
+					}), 0);
+				}
+				return falha.message || "Não consegui gerar o PDF agora. Tente de novo.";
+			},
 		});
 	};
 
@@ -477,6 +522,9 @@ export default function OrcamentosPage() {
 
 	const duplicar = (o: Orcamento) =>
 		setEditor({ orc: duplicarComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
+
+	const criarRevisao = (o: Orcamento) =>
+		setEditor({ orc: criarRevisaoComoRascunho(o, empresa?.validadeDiasPadrao), ehNovo: true });
 
 	/** Abre a confirmação de exclusão (soft delete) sobre o blob — limpa o erro da
 	 *  exclusão ANTERIOR primeiro, senão o diálogo abriria vermelho por cima de um
@@ -780,7 +828,7 @@ export default function OrcamentosPage() {
 					aoFechar={() => setEditor(null)}
 					inicial={editor.orc}
 					ehNovo={editor.ehNovo}
-					aoDuplicar={duplicar}
+					aoDuplicar={criarRevisao}
 				/>
 			)}
 

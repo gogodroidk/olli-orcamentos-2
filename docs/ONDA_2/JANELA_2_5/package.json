@@ -1,0 +1,9 @@
+{
+  "name": "olli-onda-2-janela-2-5-shadow-pilot-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "coverage": "node --test --experimental-test-coverage tests/*.test.mjs"
+  }
+}

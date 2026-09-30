@@ -45,6 +45,13 @@ create table if not exists public.ia_cota_usuario_diaria (
     references public.ia_cota_global_diaria (dia, familia)
 );
 
+-- A tabela é consultada/limpa por usuário em rotinas de manutenção e a FK de
+-- `auth.users` também precisa de um índice começando por `user_id` para deletes
+-- em cascata não varrer a tabela inteira. A PK continua sendo a chave lógica
+-- (dia, família, usuário); este índice é somente o caminho de acesso reverso.
+create index if not exists ia_cota_usuario_diaria_user_idx
+  on public.ia_cota_usuario_diaria (user_id);
+
 create table if not exists public.ia_cota_reservas (
   dia date not null,
   familia text not null,

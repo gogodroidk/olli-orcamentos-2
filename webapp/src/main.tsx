@@ -1,4 +1,6 @@
 import "./global.css";
+import { capturarExcecao, conectarSentry } from "@sentry-captura";
+import { limparBreadcrumbSentry, limparEventoSentry } from "@sentry-scrub";
 import "./theme/theme.css";
 import "./locales/i18n";
 import ReactDOM from "react-dom/client";
@@ -30,17 +32,14 @@ import { urlJoin } from "./utils";
  * quando ele chega, a fila é reenviada. Erro cedo demais para o ouvinte também
  * seria cedo demais para o Sentry síncrono. O que não pode acontecer é o erro
  * SUMIR — por isso a fila, e não simplesmente "carrega depois".
+ *
+ * A fila mora em `@sentry-captura` (src/services/sentryCaptura.ts), não aqui: o
+ * ErrorBoundary da rota e o ChunkBoundary também precisam dela — um erro que a
+ * fronteira SEGURA nunca chega a estes ouvintes, e antes sumia se viesse antes
+ * do SDK.
  */
-type ErroPendente = { valor: unknown; origem: "error" | "unhandledrejection" };
-const errosPendentes: ErroPendente[] = [];
-// Teto para o caso patológico: um loop de erro não pode virar vazamento de memória.
-const LIMITE_FILA = 20;
-
-const enfileirar = (valor: unknown, origem: ErroPendente["origem"]) => {
-	if (errosPendentes.length < LIMITE_FILA) errosPendentes.push({ valor, origem });
-};
-const aoErro = (e: ErrorEvent) => enfileirar(e.error ?? e.message, "error");
-const aoRejeitar = (e: PromiseRejectionEvent) => enfileirar(e.reason, "unhandledrejection");
+const aoErro = (e: ErrorEvent) => capturarExcecao(e.error ?? e.message, { origem: "error" });
+const aoRejeitar = (e: PromiseRejectionEvent) => capturarExcecao(e.reason, { origem: "unhandledrejection" });
 
 window.addEventListener("error", aoErro);
 window.addEventListener("unhandledrejection", aoRejeitar);
@@ -53,6 +52,11 @@ async function iniciarSentry() {
 			environment: import.meta.env.PROD ? "production" : "development",
 			// LGPD: nada de IP/dado pessoal do cliente.
 			sendDefaultPii: false,
+			beforeSend: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+			beforeSendTransaction: (event) =>
+				limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
+			beforeBreadcrumb: (breadcrumb) =>
+				limparBreadcrumbSentry(breadcrumb as unknown as Record<string, unknown>) as unknown as typeof breadcrumb | null,
 			// Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
 			tracesSampleRate: 0.1,
 		});
@@ -61,9 +65,8 @@ async function iniciarSentry() {
 		window.removeEventListener("error", aoErro);
 		window.removeEventListener("unhandledrejection", aoRejeitar);
 
-		for (const { valor } of errosPendentes.splice(0)) {
-			Sentry.captureException(valor);
-		}
+		// Despeja o que chegou antes do SDK (ouvintes acima + fronteiras de erro).
+		conectarSentry(Sentry);
 	} catch {
 		// Sentry indisponível (chunk bloqueado, rede caiu) NÃO pode derrubar o painel:
 		// o dono perde o monitoramento, nunca a tela. Os ouvintes nativos ficam de pé.

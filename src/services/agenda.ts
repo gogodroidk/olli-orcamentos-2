@@ -73,8 +73,8 @@ async function garantirCanalAndroid(): Promise<void> {
 /** true se a permissão de notificação já está concedida (sem pedir de novo). */
 export async function temPermissaoNotificacao(): Promise<boolean> {
   try {
-    const { status } = await Notifications.getPermissionsAsync();
-    return status === 'granted';
+    const permissao = await Notifications.getPermissionsAsync();
+    return permissao.granted === true;
   } catch {
     return false;
   }
@@ -88,9 +88,9 @@ export async function temPermissaoNotificacao(): Promise<boolean> {
 export async function pedirPermissaoNotificacao(): Promise<boolean> {
   try {
     const atual = await Notifications.getPermissionsAsync();
-    if (atual.status === 'granted') return true;
+    if (atual.granted === true) return true;
     const pedida = await Notifications.requestPermissionsAsync();
-    return pedida.status === 'granted';
+    return pedida.granted === true;
   } catch {
     return false;
   }

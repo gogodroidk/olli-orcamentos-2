@@ -50,17 +50,19 @@ export const JANELA_IDEM_MS = 10 * 60 * 1000;
 // quem paga não consome cota nem crédito na IA de voz.
 const PLANOS_IA_ILIMITADA = new Set(['pro', 'empresa']);
 
-// Status que contam como pagos (espelha STATUS_PAGOS em src/services/planos.ts).
-const STATUS_PAGOS = new Set(['active', 'trialing', 'past_due']);
-
-// headers de service_role — o mesmo padrão dos outros módulos (sbHeaders vive em
-// index.js; aqui recebemos `env` e montamos direto para o módulo ser autocontido).
+// Headers de acesso servidor ao Supabase. O JWT `service_role` legado pode ser
+// enviado como Bearer; a chave opaca moderna `sb_secret_...` NAO e JWT e deve ir
+// somente em `apikey` (como exige a documentacao atual do Supabase). Envia-la em
+// Authorization faz o gateway devolver `Invalid JWT` antes de chegar ao PostgREST.
 function sbHeaders(env, extra = {}) {
-  return {
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    ...extra,
-  };
+  const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string'
+    ? env.SUPABASE_SERVICE_ROLE_KEY.trim()
+    : '';
+  const headers = { apikey: serviceRole, ...extra };
+  if (!serviceRole.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceRole}`;
+  }
+  return headers;
 }
 
 /**
@@ -366,9 +368,30 @@ async function regimeIa(env, userId) {
       console.error('[olli-creditos] preauth_assinatura_json_invalido');
       return 'indeterminado';
     }
-    if (!arr.length) return 'cota'; // sem linha = nunca assinou = grátis (resposta confirmada)
-    const efetivo = derivarEntitlement(arr[0]);
-    return PLANOS_IA_ILIMITADA.has(efetivo.plano) ? 'ilimitada' : 'cota';
+    if (arr.length) {
+      const efetivo = derivarEntitlement(arr[0]);
+      if (PLANOS_IA_ILIMITADA.has(efetivo.plano)) return 'ilimitada';
+    }
+
+    // Assinatura paga não ativa: consulta o trial OLLI autoritativo. A RPC aceita
+    // user_id porque é executável SOMENTE por service_role; `userId` veio do JWT
+    // já verificado pelo Worker. Antes da migration existir, 404 volta para a cota
+    // normal — rollout aditivo, sem derrubar a IA atual.
+    try {
+      const trial = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/plano_comercial_para_usuario`, {
+        method: 'POST',
+        headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ p_user_id: userId }),
+      });
+      if (trial.ok) {
+        const planoTrial = await trial.json().catch(() => null);
+        if (PLANOS_IA_ILIMITADA.has(planoTrial)) return 'ilimitada';
+      }
+    } catch {
+      // RPC opcional durante rollout: assinatura já foi lida como não paga, então
+      // ausência/erro desta consulta mantém a cota atual em vez de virar acesso livre.
+    }
+    return 'cota';
   } catch {
     console.error('[olli-creditos] preauth_assinatura_rede');
     return 'indeterminado';
@@ -409,20 +432,24 @@ export async function preautorizarUsoIa(env, user, opts = {}) {
       `${env.SUPABASE_URL}/rest/v1/ia_uso_gratis` +
         `?user_id=eq.${encodeURIComponent(user.id)}` +
         `&periodo=eq.${encodeURIComponent(periodo)}` +
-        '&acao=eq.voz_ia&select=id&limit=1',
+        `&acao=eq.voz_ia&select=id&limit=${IA_GRATIS_MES + 1}`,
       {
-        headers: sbHeaders(env, {
-          Prefer: 'count=exact',
-          Range: '0-0',
-        }),
+        headers: sbHeaders(env, { Accept: 'application/json' }),
       },
     );
     if (!r.ok) {
       console.error('[olli-creditos] preauth_cota_status', r.status);
       return { permitido: false, motivo: 'indisponivel' };
     }
+    // O gateway novo de chaves pode omitir `Content-Range` mesmo quando o
+    // PostgREST respondeu 200. Leia também o corpo limitado: a tabela guarda
+    // no máximo a cota do mês e `limit` deixa essa leitura pequena e previsível.
     const faixa = r.headers.get('content-range') || '';
-    const total = Number(faixa.split('/')[1]);
+    const totalFaixa = Number(faixa.split('/')[1]);
+    const linhas = await r.json().catch(() => null);
+    const total = Number.isFinite(totalFaixa)
+      ? totalFaixa
+      : Array.isArray(linhas) ? linhas.length : NaN;
     if (!Number.isFinite(total)) {
       console.error('[olli-creditos] preauth_cota_sem_contagem');
       return { permitido: false, motivo: 'indisponivel' };

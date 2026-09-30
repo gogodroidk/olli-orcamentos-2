@@ -156,5 +156,7 @@ export const DOR_POR_OFICIO: Record<VerticalId, string> = {
   pintura: 'Quantos litros, quantas demãos, quanto cobrar — e o orçamento sai pronto do mesmo lugar.',
   dedetizacao: 'Certificado ANVISA, dosagem calculada e o comprovante que o cliente exige.',
   jardinagem: 'Poda, adubação e contrato mensal — orçamento e recibo sem caderninho.',
-  geral: 'Do áudio do cliente ao recibo pago, sem planilha e sem depender de escritório.',
+  // A frase antiga começava pelo áudio do cliente: a OLLI não lê áudio de WhatsApp
+  // (o llms.txt diz isso com todas as letras), e a frase dava a entender o contrário.
+  geral: 'Do pedido do cliente ao recibo pago, sem planilha e sem depender de escritório.',
 };

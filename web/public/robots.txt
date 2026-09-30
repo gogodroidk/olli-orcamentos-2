@@ -2,5 +2,7 @@
 # antes dele. O porquê e o que fazer a respeito estão documentados no repositório.
 User-agent: *
 Allow: /
+Disallow: /admin/
+Disallow: /404/
 
 Sitemap: https://olliorcamentos.online/sitemap-index.xml

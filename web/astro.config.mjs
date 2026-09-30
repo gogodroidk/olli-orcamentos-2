@@ -86,6 +86,10 @@ export default defineConfig({
        */
       filter: (pagina) => {
         const caminho = new URL(pagina).pathname;
+        // Rotas utilitárias e de redirecionamento têm noindex na página. Não
+        // adianta pedir ao crawler para indexar e depois contradizer no HTML:
+        // elas ficam fora do sitemap desde a origem.
+        if (['/admin/', '/404/', '/excluir-conta/'].includes(caminho)) return false;
         if (!caminho.startsWith('/blog/')) return true;
         const numero = caminho.match(/\/(\d+)\/$/);
         return !numero || Number(numero[1]) <= 2;

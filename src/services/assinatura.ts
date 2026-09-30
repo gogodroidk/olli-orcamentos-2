@@ -65,6 +65,11 @@ export interface ResumoAssinatura {
   ativo: boolean;
   /** Origem do acesso efetivo, sem misturar concessão manual com pagamento. */
   origem?: 'gratis' | 'pagamento' | 'admin';
+  /** true = assinatura recorrente no cartão (Stripe), que cobra sozinha. Pix (e o
+   *  12x avulso) NÃO renovam: quem pagou assim precisa pagar de novo no vencimento. */
+  renovaSozinho?: boolean;
+  /** Já comprou no cartão alguma vez (há cliente na Stripe → portal com recibos). */
+  temClienteStripe?: boolean;
 }
 
 function mapearPlano(v: unknown): PlanoId {
@@ -104,7 +109,7 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
 
     const { data, error } = await supabase
       .from('assinaturas')
-      .select('plano, status, current_period_end, admin_plano_override, admin_override_ativo, admin_override_ate')
+      .select('plano, status, current_period_end, stripe_subscription_id, stripe_customer_id, admin_plano_override, admin_override_ativo, admin_override_ate')
       .eq('user_id', user.id)
       .maybeSingle();
     // ERRO (rede/RLS/5xx) ≠ "não tem assinatura": preserva o último bom deste usuário.
@@ -124,6 +129,8 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
       proximaCobranca,
       ativo: efetivo.planoEfetivo !== 'gratis',
       origem: efetivo.origem,
+      renovaSozinho: typeof data.stripe_subscription_id === 'string' && data.stripe_subscription_id.length > 0,
+      temClienteStripe: typeof data.stripe_customer_id === 'string' && data.stripe_customer_id.length > 0,
     };
     cacheResumo = { userId, resumo };
     return resumo;

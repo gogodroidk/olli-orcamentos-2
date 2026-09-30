@@ -1,8 +1,9 @@
 import { motion, useReducedMotion } from "motion/react";
-import { Calculator, ChevronRight, Search, Wrench } from "lucide-react";
+import { BookOpen, Calculator, ChevronRight, ExternalLink, Landmark, Search, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
+import { PACKS_OFICIO } from "@precificacao";
 import { CalculadoraDialog } from "./CalculadoraDialog";
 import { CALCULOS, type CalculoOficio, type VerticalId } from "./calculos";
 import { categoriaDe, CATEGORIAS, ORDEM_CATEGORIAS, iconeDe } from "./meta";
@@ -50,7 +51,7 @@ export default function FerramentasPage() {
 		hidden: {},
 		show: { transition: { staggerChildren: reduzir ? 0 : 0.035 } },
 	};
-	const itemVar = reduzir
+const itemVar = reduzir
 		? { hidden: { opacity: 1 }, show: { opacity: 1 } }
 		: { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
 
@@ -124,6 +125,22 @@ export default function FerramentasPage() {
 				</div>
 			)}
 
+			<section className="rounded-2xl border border-border bg-card p-5 shadow-sm" aria-labelledby="recursos-uteis">
+				<div className="flex items-start gap-3">
+					<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Landmark className="size-5" /></span>
+					<div><h2 id="recursos-uteis" className="font-semibold text-text-primary">Recursos úteis para o seu negócio</h2><p className="mt-1 text-sm text-text-secondary">A OLLI organiza o trabalho; estas são fontes oficiais para obrigações, previdência e capacitação.</p></div>
+				</div>
+				<div className="mt-4 grid gap-3 md:grid-cols-3">
+					{RECURSOS_UTEIS.map((recurso) => <a key={recurso.titulo} href={recurso.href} target="_blank" rel="noreferrer" className="group rounded-xl border border-border bg-background p-4 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"><div className="flex items-center justify-between gap-2"><span className="font-medium text-text-primary group-hover:text-primary">{recurso.titulo}</span><ExternalLink className="size-4 shrink-0 text-text-disabled" /></div><p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{recurso.texto}</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">Abrir fonte oficial <ChevronRight className="size-3.5" /></span></a>)}
+				</div>
+				<p className="mt-3 text-xs text-text-disabled">Os sites externos têm regras e disponibilidade próprias. Confirme prazos e exigências no órgão responsável.</p>
+			</section>
+
+			<section className="rounded-2xl border border-border bg-card p-5 shadow-sm" aria-labelledby="packs-oficio">
+				<div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-warning/10 text-warning"><BookOpen className="size-5" /></span><div><h2 id="packs-oficio" className="font-semibold text-text-primary">Packs para começar um orçamento</h2><p className="mt-1 text-sm text-text-secondary">Estruturas prontas por serviço. Você revisa itens, custos e margem antes de enviar.</p></div></div>
+				<div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{PACKS_OFICIO.map((pack) => <div key={pack.id} className="rounded-xl border border-border bg-background p-4"><p className="font-medium text-text-primary">{pack.nome}</p><p className="mt-1 text-xs text-text-secondary">{pack.itens.join(" · ")}</p><span className="mt-3 inline-flex rounded-full bg-warning/10 px-2 py-1 text-[11px] font-semibold text-warning">Preço calculado pelos seus custos</span></div>)}</div>
+			</section>
+
 			<CalculadoraDialog
 				key={calcAberto?.id}
 				calc={calcAberto}
@@ -134,6 +151,12 @@ export default function FerramentasPage() {
 		</div>
 	);
 }
+
+const RECURSOS_UTEIS = [
+	{ titulo: "Meu INSS", texto: "Serviços e informações oficiais da Previdência Social.", href: "https://www.gov.br/inss/pt-br/assuntos/meu-inss" },
+	{ titulo: "NFS-e padrão nacional", texto: "Portal oficial para consultar orientações de emissão de nota de serviço.", href: "https://www.gov.br/nfse/pt-br" },
+	{ titulo: "Cursos Sebrae", texto: "Capacitação e gestão para pequenos negócios e profissionais autônomos.", href: "https://sebrae.com.br/sites/PortalSebrae/cursosonline" },
+] as const;
 
 /* ─────────────────────────────  Cards e chips  ───────────────────────────── */
 

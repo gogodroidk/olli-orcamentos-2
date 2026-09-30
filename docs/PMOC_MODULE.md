@@ -1,10 +1,19 @@
-# Módulo PMOC — Spec executável (fundação + mapa)
+# Módulo PMOC — estado atual, arquitetura e mapa de conclusão
 
-> **Status:** FUNDAÇÃO. Nenhuma parte deste módulo está aplicada ou implementada.
-> A migration `supabase/migrations/20260709_pmoc_fundacao.sql` é um esqueleto
-> **NÃO-aplicado** (entra no track PMOC pós-ciclo-comercial). Este doc é o mapa
-> executável: o que **nós vamos realmente construir** (não a lista crua da pesquisa),
-> em que ordem, e as regras de segurança/legais que não são negociáveis.
+> **Correção de estado — 2026-08-26:** a afirmação histórica de que nada estava
+> implementado deixou de ser verdadeira. No repositório, a **Fase 1** (inventário de
+> equipamentos, fotos, QR, ficha e sincronização) e a **Fase 2** (planos,
+> periodicidades e geração idempotente de ordens recorrentes) estão implementadas.
+> As migrations `20260709_pmoc_fundacao.sql`, `20260711_assets_fotos.sql` e
+> `20260715_pmoc_fase2.sql`, os tipos/serviços e as telas mobile/desktop são a evidência.
+> O histórico do projeto registra aplicação das migrations, mas o banco live **não foi
+> reconsultado nesta Etapa 1**; portanto isso não é uma nova certificação de produção.
+> Execução completa em campo, contratos PMOC, não conformidades, portal, qualidade do ar
+> e pacote de laudos continuam parciais ou planejados.
+>
+> As seções abaixo preservam as decisões arquiteturais da especificação original.
+> Verbos no futuro descrevem o plano de origem; a tabela da seção 5 é a fonte atual de
+> status. As regras de segurança e o limite legal continuam obrigatórios.
 
 Fontes da pesquisa (leitura de base, já decantada aqui): `PESQUISA_PMOC_COMPLETA_OLLI.md`,
 `PESQUISA_APROFUNDADA_FERRAMENTAS_OLLI_V2_PMOC.md`, `PROMPT_MESTRE_OLLI_V3_PMOC.md`.
@@ -76,9 +85,9 @@ Estas são decisões firmadas (não repetição da pesquisa):
 
 ---
 
-## 3. Entidades que VAMOS criar (fundação)
+## 3. Entidades criadas pela fundação
 
-O esqueleto `20260709_pmoc_fundacao.sql` cria exatamente estas 7 tabelas. Justificativa
+A migration `20260709_pmoc_fundacao.sql` define exatamente estas 7 tabelas. Justificativa
 de cada uma e o que fica de fora (por ora):
 
 | Tabela | Papel | O que mora aqui | O que fica em `dados`/fase futura |
@@ -142,22 +151,21 @@ A pesquisa define fases PMOC 0–8. Nós as encaixamos **depois** do que já est
 (ciclo comercial da Onda 3), respeitando a dependência real: PMOC precisa de OS e do app
 do técnico antes de virar execução de campo. Ordem adotada:
 
-| Fase PMOC | O que entrega | Depende de (nosso) | Quando |
+| Fase PMOC | O que entrega | Estado verificável no repo | Próximo aceite |
 |---|---|---|---|
-| **PMOC 0 — auditoria** | ADR PMOC, este doc, o esqueleto SQL, decisão de sync do jsonb | — | **agora (esta entrega)** |
-| **PMOC 1 — inventário + etiqueta** | `assets`+QR aplicados, `service_locations`, scanner no app, template A4 (parcial-folha), ficha do equipamento | Onda 3 (ciclo comercial) fechada | Track PMOC, sprint 1 |
-| **PMOC 2 — plano + recorrência** | `pmoc_plans`/versões aplicados, biblioteca de procedimentos, frequências (regra combinada "a cada X OU Y horas"), geração de ordens recorrentes | **OS existir** (Onda de OS) | Track PMOC, sprint 2 |
-| **PMOC 3 — execução** | checklist offline, leituras, fotos antes/depois, assinatura, materiais, relatório de visita | **App do técnico** (offline-first reforçado) | Track PMOC, sprint 3 |
-| **PMOC 4 — contrato** | `service_contracts`/versões aplicados, SLA/billing promovidos a colunas, reajuste, renovação, margem realizada | Financeiro operacional (Onda 8) | Track PMOC, sprint 4 |
-| **PMOC 5 — não conformidades** | `nonconformities`+`corrective_actions`, orçamento a partir da NC (integra com ciclo comercial) | Ciclo comercial + execução | Track PMOC, sprint 5 |
-| **PMOC 6 — portal PMOC** | cliente vê ativos/visitas/docs/NCs liberadas, aprova corretiva | Portal do cliente (Onda 3) estendido | Track PMOC, sprint 6 |
-| **PMOC 7 — qualidade do ar** | amostragem, laboratório parceiro, instrumentos+calibração, `reference_limits` versionadas | Execução + documentos | Track PMOC, sprint 7 |
-| **PMOC 8 — inteligência** | dashboards de cobertura/execução/qualidade, IA (OCR de placa, resumo), predição | Tudo acima | Track PMOC, sprint 8 |
+| **PMOC 0 — auditoria** | ADR PMOC, este doc, schema e decisão de sync | **Concluída no repo** | Manter matriz e referências atuais |
+| **PMOC 1 — inventário + QR** | `assets`, fotos, QR, ficha e telas | **Funcional no repo**; cadastro de unidades/sistemas e impressão em lote ainda parciais | Teste físico do QR, foto, sync e isolamento em dois aparelhos |
+| **PMOC 2 — plano + recorrência** | `pmoc_plans`, versões, periodicidades e OS recorrentes | **Funcional no repo** | Revalidar migrations live e executar ciclo mensal real sem duplicidade |
+| **PMOC 3 — execução** | checklist offline, leituras, fotos antes/depois, assinatura, materiais, relatório de visita | **Parcial**: reutiliza OS/checklist, mas não fecha o dossiê PMOC | Sprint de campo + teste offline real |
+| **PMOC 4 — contrato** | `service_contracts`/versões, SLA, reajuste, renovação, margem | **Fundação apenas** | Biblioteca/modelo jurídico revisado, ciclo comercial e assinatura |
+| **PMOC 5 — não conformidades** | NCs, ações corretivas e orçamento derivado | **Planejada** | Implementar depois da execução versionada |
+| **PMOC 6 — portal PMOC** | cliente vê ativos, visitas, documentos e NCs liberadas | **Planejada** | Modelo de autorização por documento e teste de privacidade |
+| **PMOC 7 — qualidade do ar** | amostragem, instrumentos, laboratório e limites versionados | **Planejada** | Revisão técnica/regulatória e integração de laboratório |
+| **PMOC 8 — inteligência** | cobertura, execução, qualidade, OCR e apoio preditivo | **Planejada** | Dados confiáveis, consentimento, métricas e confirmação humana |
 
-**Pré-requisito duro:** o PMOC roda **em paralelo/depois** da Onda 3 (guarda-chuva). Esta
-entrega é PMOC 0 — não toca nos arquivos da Onda 3 (worker/src/link.js, VisualizarOrcamento,
-clienteLink, pagamentos, EmitirRecibo, OrcamentosScreen, database.ts, types/index.ts,
-migrations `20260708_*`).
+O pré-requisito histórico de OS já foi atendido no repositório. O novo caminho crítico é
+fechar a **execução de campo** antes de ampliar contrato, portal e inteligência: sem
+evidência confiável de execução, dashboards e IA apenas amplificariam dados incompletos.
 
 ---
 
@@ -166,10 +174,19 @@ migrations `20260708_*`).
 Ancorado no §2 "Regra inegociável" da pesquisa e na regra de ouro 16.3 do prompt mestre:
 
 - **O Olli NUNCA declara conformidade legal automática.** Nenhuma coluna/estado do schema
-  significa "está de acordo com a Lei 13.589/2018", a Portaria GM/MS 3.523/1998 ou a
-  RE 9/2003 da Anvisa. `pmoc_plans.situacao` é **operacional** (rascunho/vigente/…), não
+  significa "está de acordo com a Lei 13.589/2018", a Portaria GM/MS 3.523/1998 ou
+  outra referência técnica. `pmoc_plans.situacao` é **operacional**
+  (rascunho/vigente/…), não
   jurídica. `aprovado_em`/`assinado_em` são aprovação **técnica** do responsável habilitado,
   não certificado de conformidade emitido pelo software.
+- **A RE 9/2003 não pode ser apresentada como norma vigente isolada.** A própria cópia
+  oficial da Anvisa registra sua revogação pela RDC 886, de 10/07/2024. A Lei
+  13.589/2018 continua sendo a base legal do PMOC e menciona a RE 9 e alterações
+  posteriores; a combinação de fontes vigentes, normas ABNT aplicáveis e exigências
+  locais deve ser confirmada por responsável habilitado. Fontes oficiais:
+  [Lei 13.589/2018](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13589.htm),
+  [cópia oficial da RE 9 com anotação de revogação](https://antigo.anvisa.gov.br/documents/10181/2718376/RE_09_2003_COMP.pdf/2142ffe5-88bd-4f94-910f-48d6c8a3b23a?version=1.0) e
+  [processo de consolidação da Anvisa](https://www.gov.br/anvisa/pt-br/assuntos/regulamentacao/gestao-do-estoque/consolidacao/resultados-da-avaliacao-e-consolidacao).
 - **Referências, periodicidades e limites são DADOS versionados e configuráveis**, nunca
   constantes de código. Moram em `pmoc_plan_versions.dados` (referências normativas com
   fonte/edição/vigência) e, na fase qualidade do ar, em `reference_limits` versionada
@@ -217,8 +234,10 @@ O módulo PMOC será considerado funcional quando cada item abaixo passar com ev
 | 24 | Manter auditoria | `qr_scan_events`, versões append-only, `criado_por`, triggers de imutabilidade | 1+ |
 | 25 | Não perder dados em sync | idempotência (PK text + upsert), tombstones, fila de falhas visível | todas |
 
-Critérios 1–2, 7, 10, 23, 24 já têm a **base** de banco pronta e testável nesta fundação
-(ver os testes SQL T1–T10 no rodapé da migration). O restante depende das fases.
+Os critérios 7, 8, 9 e 11 já têm fluxo de produto no repositório. Os critérios 1–2,
+10, 23 e 24 têm base de banco e código parcial. Isso **não** fecha os 25 critérios:
+execução offline em campo, pacote documental, contrato, NC, portal, rentabilidade e
+restauração/sync sob falha continuam exigindo implementação ou aceite específico.
 
 ---
 
@@ -234,5 +253,7 @@ A migration traz 10 blocos `-- TESTE: …` (T1–T10) para o integrador rodar co
   única · **T9** versão de plano aprovada é imutável · **T10** gestor vê só os scans dos
   seus ativos (órfãos de enumeração ficam ocultos).
 
-Validação de sintaxe já feita: a migration passa no parser da gramática Postgres
-(libpg_query) — 44 statements, sem erros. **Não aplicada** ainda: aguarda o track PMOC.
+Validação histórica: a migration passou no parser da gramática Postgres
+(libpg_query) — 44 statements, sem erros — e o log do projeto registra aplicação da
+fundação e da Fase 2. A Etapa 1 atual não acessou o banco de produção; antes do próximo
+release, revalidar migrations, policies e os testes com dois usuários reais de teste.

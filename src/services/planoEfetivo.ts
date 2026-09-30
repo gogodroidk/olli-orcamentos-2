@@ -19,7 +19,8 @@ export interface PlanoEfetivoDerivado {
   validoAte?: string;
 }
 
-export const STATUS_PAGOS = new Set(['active', 'trialing', 'past_due']);
+/** Sem política de carência autoritativa, `past_due` falha fechado. */
+export const STATUS_PAGOS = new Set(['active', 'trialing']);
 
 const PESO: Record<PlanoEfetivoId, number> = { gratis: 0, pro: 1, empresa: 2 };
 
@@ -47,7 +48,7 @@ export function derivarPlanoEfetivo(
   const pagamentoAtivo =
     typeof linha.status === 'string' &&
     STATUS_PAGOS.has(linha.status) &&
-    dataAindaVale(linha.current_period_end, agoraMs, true);
+    dataAindaVale(linha.current_period_end, agoraMs, false);
   const planoPago: PlanoEfetivoId = pagamentoAtivo ? planoContratado : 'gratis';
 
   const planoManual = normalizarPlano(linha.admin_plano_override);

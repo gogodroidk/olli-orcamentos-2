@@ -1,7 +1,8 @@
 # OLLI — Worker de IA (OpenRouter + Cloudflare)
 
 Backend de IA do app (diagnóstico, voz→itens, chat). O raciocínio textual usa
-modelos gratuitos e explícitos no OpenRouter; a voz é transcrita pelo binding
+modelos explícitos no OpenRouter (cadeia paga barata em allowlist, com teto de
+preço por request); a voz é transcrita pelo binding
 Workers AI antes de virar texto. As chaves ficam **só aqui** (secrets do Worker),
 nunca no app ou no APK.
 
@@ -11,7 +12,12 @@ nunca no app ou no APK.
 - `POST /voz/conversa` — conversa guiada → itens de orçamento
 - `POST /transcrever` — áudio → texto, ou áudio → texto → itens
 - `POST /chat` — assistente conversacional
-- `GET /` — health check (`{ ok:true, service:'olli-diagnostico', ia:'on'|'off' }`)
+- `POST /ia/importacao/preview` — normaliza texto de catálogo em uma prévia com
+  fontes/confiabilidade; não grava nada e exige revisão antes da Central de Dados
+- `POST /ia/autopilot/preview` — lê texto ou um PDF/imagem/CSV/JSON pequeno,
+  extrai clientes, catálogo, orçamento e documentos com evidência/confiança;
+  retorna somente uma prévia (`requiresReview=true`)
+- `GET /` — health check (`{ ok:true, service:'olli-diagnostico', ia:'on'|'off', autopilot:'on'|'off' }`)
 
 Todos os POST exigem `Authorization: Bearer <token Supabase>`.
 
@@ -52,11 +58,29 @@ EXPO_PUBLIC_DIAGNOSTICO_URL=https://olli-diagnostico.SEU-SUBDOMINIO.workers.dev
 - `AI_PROVIDER=openrouter` e `OPENROUTER_TEXT_MODELS` → públicas (em `wrangler.jsonc`).
 - `OPENROUTER_API_KEY` → **secret** (`wrangler secret put`).
 - `AI` → binding Workers AI para transcrição; não é uma chave no APK.
+- `AUTOPILOT_WORKERS_AI_ENABLED=true` → habilita no staging o modelo open-weight
+  allowlisted `@cf/google/gemma-4-26b-a4b-it` para a prévia Autopilot quando o
+  OpenRouter não estiver configurado. Mantenha desligado em produção até o gate.
 - `GEMINI_MODEL`/`GEMINI_API_KEY` existem apenas para rollback deliberado com
   `AI_PROVIDER=gemini`; não há troca silenciosa de fornecedor.
 
-Trocar os modelos: edite `OPENROUTER_TEXT_MODELS`. Só IDs explícitos terminados
-em `:free` são aceitos; `openrouter/free` e modelos pagos são recusados.
+Trocar os modelos: edite `OPENROUTER_TEXT_MODELS`. Sem `OPENROUTER_PERMITIR_PAGO="true"`
+só IDs explícitos terminados em `:free` são aceitos. Com a flag, também passam os
+modelos pagos da allowlist em código (`OPENROUTER_MODELOS_PAGOS_PERMITIDOS` em
+`src/ai.js`), cada um com teto de preço enviado como `provider.max_price`. Modelo
+fora da allowlist e `openrouter/free` são ignorados com log
+`openrouter_modelo_ignorado`. Produção roda a cadeia paga desde 29/09/2026 (os
+`:free` deixaram de responder sob `data_collection=deny`). O teto de gasto é
+`OPENROUTER_GLOBAL_DAILY_LIMIT` (custo máximo/dia documentado no `wrangler.jsonc`).
+Antes de trocar a cadeia: `npm run check:ai-models` na raiz (catálogo ao vivo +
+1 chamada real por modelo com a política de produção; precisa de
+`OPENROUTER_API_KEY` no ambiente).
+
+Saúde: `GET /` responde `ia:"on"|"degradada"|"off"` a partir das gerações reais
+do isolate (3 falhas seguidas = `degradada`) e `ia_saude` com amostra e últimos
+sucesso/falha — sem chamar o provedor. Falha total da cadeia vira o issue
+`ia_cadeia_falhou` no Sentry (só código/status/contagens, no máximo 1 a cada
+10 min por isolate).
 
 Toda chamada ao OpenRouter envia `provider.data_collection=deny`. Isso impede
 rotas que declaram coleta para treinamento, mas não equivale a ZDR garantido.
@@ -68,6 +92,11 @@ fallback offline. Os limites conservadores ficam em `wrangler.jsonc`.
 
 Sem a chave, o Worker responde `{ ok:false, motivo:'ia_nao_configurada' }` e o app
 usa o fallback offline (602 códigos) — nunca quebra.
+
+O Autopilot também falha fechado sem o binding/modelo de staging. Arquivos ficam
+limitados a 4 MiB, sem ZIP/macros/SVG/executáveis, e não são persistidos pelo
+endpoint. Para lotes maiores, use a futura fila de quarentena com Storage privado,
+Queue/Workflow, TTL e DLQ; não aumente o limite do request como atalho.
 
 ### Validação antes de publicar
 

@@ -1,15 +1,26 @@
 import type { FalhaIA, MensagemChat } from "@/pages/olli/diagnostico/chat";
-import { Bot, FilePlus2, Loader2, MessageSquareText, RotateCcw, Send, Sparkles } from "lucide-react";
+import { Bot, CheckCircle2, FilePlus2, Loader2, MessageSquareText, Mic, MicOff, RotateCcw, Send, Sparkles, Undo2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import { perguntarAoAssistente } from "@/pages/olli/diagnostico/chat";
 import type { PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
+import { AutopilotPanel } from "@/olli/components/AutopilotPanel";
+import type { AutopilotPreview } from "@/olli/iaAutopilot";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/ui/sheet";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
+import { avaliarPedidoIa, type ModoPedidoIa } from "@ia-segura";
+import {
+	cancelarAcaoIa,
+	confirmarAcaoIa,
+	reverterAcaoIa,
+	type RascunhoAcaoIaRemota,
+} from "@/olli/iaActions";
 
 const STORAGE_KEY = "olli-assistente-web-v1";
 const MAX_HISTORICO = 20;
@@ -18,6 +29,25 @@ const MAX_CORPO_BYTES = 48 * 1024;
 
 type MensagemLocal = MensagemChat & { id: string };
 type PendenteCredito = { historico: MensagemChat[]; ref: string };
+
+type ReconhecimentoNavegador = {
+	lang: string;
+	continuous: boolean;
+	interimResults: boolean;
+	onresult: ((evento: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
+	onerror: ((evento: { error?: string }) => void) | null;
+	onend: (() => void) | null;
+	start: () => void;
+	stop: () => void;
+};
+type ReconhecimentoConstrutor = new () => ReconhecimentoNavegador;
+
+declare global {
+	interface Window {
+		SpeechRecognition?: ReconhecimentoConstrutor;
+		webkitSpeechRecognition?: ReconhecimentoConstrutor;
+	}
+}
 
 const SUGESTOES = [
 	"Organize os pontos que devo confirmar antes de enviar um orçamento",
@@ -80,6 +110,7 @@ function nomeDaTela(pathname: string): string {
 export function AssistenteConversa({ className }: { className?: string }) {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const queryClient = useQueryClient();
 	const [mensagens, setMensagens] = useState<MensagemLocal[]>(carregarHistorico);
 	const [texto, setTexto] = useState("");
 	const [enviando, setEnviando] = useState(false);
@@ -87,6 +118,11 @@ export function AssistenteConversa({ className }: { className?: string }) {
 	const [pendenteCredito, setPendenteCredito] = useState<PendenteCredito | null>(null);
 	const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
 	const [creditoSemSaldo, setCreditoSemSaldo] = useState(false);
+	const [rascunhoAcao, setRascunhoAcao] = useState<RascunhoAcaoIaRemota | null>(null);
+	const [processandoAcao, setProcessandoAcao] = useState(false);
+	const [mensagemAcao, setMensagemAcao] = useState<string | null>(null);
+	const [ouvindo, setOuvindo] = useState(false);
+	const reconhecimentoRef = useRef<ReconhecimentoNavegador | null>(null);
 	const fimRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -94,15 +130,20 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		fimRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
 	}, [mensagens]);
 
+	useEffect(() => () => {
+		reconhecimentoRef.current?.stop();
+		reconhecimentoRef.current = null;
+	}, []);
+
 	const historicoApi = useMemo<MensagemChat[]>(
 		() => mensagens.slice(-MAX_HISTORICO).map(({ role, texto: conteudo }) => ({ role, texto: conteudo })),
 		[mensagens],
 	);
 
-	async function executar(historico: MensagemChat[], creditoRef: string, confirmarCredito = false) {
+	async function executar(historico: MensagemChat[], creditoRef: string, confirmarCredito = false, modo: Exclude<ModoPedidoIa, "bloqueado"> = "consulta") {
 		setFalha(null);
 		setEnviando(true);
-		const resposta = await perguntarAoAssistente(limitarHistorico(historico), { creditoRef, confirmarCredito });
+		const resposta = await perguntarAoAssistente(limitarHistorico(historico), { creditoRef, confirmarCredito, modo });
 		setEnviando(false);
 		if (!resposta.ok) {
 			setFalha(resposta.erro);
@@ -114,10 +155,16 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		}
 		setPendenteCredito(null);
 		setCreditoSemSaldo(false);
+		if (resposta.rascunho) {
+			setRascunhoAcao(resposta.rascunho);
+			setMensagemAcao(null);
+		}
 		const assistente: MensagemLocal = {
 			id: idMensagem(),
 			role: "assistant",
-			texto: resposta.resposta,
+			texto: resposta.rascunho
+				? `${resposta.resposta}\n\nPrévia segura criada. Confira o antes e depois abaixo; nenhuma alteração foi aplicada ainda.`
+				: resposta.resposta,
 		};
 		setMensagens((atuais) => [...atuais, assistente].slice(-MAX_HISTORICO));
 	}
@@ -125,6 +172,17 @@ export function AssistenteConversa({ className }: { className?: string }) {
 	async function enviar(valor = texto) {
 		const limpo = valor.trim().slice(0, MAX_TEXTO);
 		if (!limpo || enviando) return;
+		const avaliacao = avaliarPedidoIa(limpo);
+		if (avaliacao.modo === "bloqueado") {
+			setMensagens((atuais) => [
+				...atuais,
+				{ id: idMensagem(), role: "user" as const, texto: limpo },
+				{ id: idMensagem(), role: "assistant" as const, texto: avaliacao.motivo ?? "Não posso executar essa operação pelo chat." },
+			].slice(-MAX_HISTORICO));
+			setTexto("");
+			setFalha(null);
+			return;
+		}
 		const usuario: MensagemLocal = { id: idMensagem(), role: "user", texto: limpo };
 		const novoHistorico = [...historicoApi, { role: "user" as const, texto: limpo }].slice(-MAX_HISTORICO);
 		setMensagens((atuais) => [...atuais, usuario].slice(-MAX_HISTORICO));
@@ -132,13 +190,78 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		setFalha(null);
 		setPendenteCredito(null);
 		setCreditoSemSaldo(false);
-		await executar(novoHistorico, `web-chat:${crypto.randomUUID()}`);
+		await executar(novoHistorico, `web-chat:${crypto.randomUUID()}`, false, avaliacao.modo);
 	}
 
 	async function confirmarUsoDeCredito() {
 		if (!pendenteCredito || enviando) return;
 		setConfirmacaoAberta(false);
 		await executar(pendenteCredito.historico, pendenteCredito.ref, true);
+	}
+
+	async function decidirAcao(decisao: "confirmar" | "cancelar" | "reverter") {
+		if (!rascunhoAcao || processandoAcao) return;
+		setProcessandoAcao(true);
+		setMensagemAcao(null);
+		const resultado = decisao === "confirmar"
+			? await confirmarAcaoIa(rascunhoAcao)
+			: decisao === "cancelar"
+				? await cancelarAcaoIa(rascunhoAcao)
+				: await reverterAcaoIa(rascunhoAcao);
+		setProcessandoAcao(false);
+		if (!resultado.ok) {
+			setMensagemAcao(resultado.mensagem);
+			return;
+		}
+		setRascunhoAcao((atual) => atual ? { ...atual, status: resultado.status } : atual);
+		setMensagemAcao(
+			resultado.status === "aplicada"
+				? "Alteração aplicada e registrada. Você ainda pode desfazer enquanto o registro não receber outra edição."
+				: resultado.status === "revertida"
+					? "Alteração desfeita e registrada."
+					: "Prévia cancelada; nada foi alterado.",
+		);
+		if (resultado.status === "aplicada" || resultado.status === "revertida") {
+			await queryClient.invalidateQueries({ queryKey: ["olli"] });
+		}
+	}
+
+	function alternarVoz() {
+		if (ouvindo) {
+			reconhecimentoRef.current?.stop();
+			return;
+		}
+		const Construtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+		if (!Construtor) {
+			toast.error("Seu navegador não oferece voz ao vivo. Você pode colar a conversa ou anexar um arquivo no Autopilot.");
+			return;
+		}
+		const reconhecimento = new Construtor();
+		reconhecimento.lang = "pt-BR";
+		reconhecimento.continuous = false;
+		reconhecimento.interimResults = true;
+		let transcrito = "";
+		reconhecimento.onresult = (evento) => {
+			let parcial = "";
+			for (let indice = evento.resultIndex; indice < evento.results.length; indice += 1) {
+				const frase = evento.results[indice]?.[0]?.transcript?.trim() ?? "";
+				if (!frase) continue;
+				if (evento.results[indice]?.isFinal) transcrito = `${transcrito} ${frase}`.trim();
+				else parcial = `${parcial} ${frase}`.trim();
+			}
+			setTexto((atual) => `${atual.replace(/\s+$/, "")} ${transcrito || parcial}`.trim().slice(0, MAX_TEXTO));
+		};
+		reconhecimento.onerror = (evento) => {
+			setOuvindo(false);
+			if (evento.error !== "aborted" && evento.error !== "no-speech") toast.error("Não consegui ouvir agora. Você pode escrever a mensagem.");
+		};
+		reconhecimento.onend = () => {
+			setOuvindo(false);
+			reconhecimentoRef.current = null;
+		};
+		reconhecimentoRef.current = reconhecimento;
+		setOuvindo(true);
+		reconhecimento.start();
 	}
 
 	function usarNoOrcamento(mensagem: MensagemLocal) {
@@ -151,16 +274,30 @@ export function AssistenteConversa({ className }: { className?: string }) {
 		navigate("/orcamentos?novo=1", { state: { prefillItem } });
 	}
 
+	function usarAutopilotNoOrcamento(preview: AutopilotPreview) {
+		const itens = preview.candidatos.orcamento.itens.map((item) => ({
+			tipo: item.tipo, nome: item.nome, descricao: item.descricao, quantidade: item.quantidade,
+			unidade: item.unidade, precoSugerido: item.precoSugerido,
+		}));
+		if (!itens.length) return;
+		navigate("/orcamentos?novo=1", { state: { prefillItems: itens } });
+	}
+
 	function limpar() {
 		setMensagens([]);
 		setFalha(null);
 		setPendenteCredito(null);
 		setCreditoSemSaldo(false);
+		setRascunhoAcao(null);
+		setMensagemAcao(null);
 		sessionStorage.removeItem(STORAGE_KEY);
 	}
 
 	return (
 		<div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+			<div className="border-b border-border px-4 py-3">
+				<AutopilotPanel compact onUsarNoOrcamento={usarAutopilotNoOrcamento} />
+			</div>
 			<div className="border-b border-border px-4 py-2 text-xs text-text-secondary">
 				Contexto atual: <span className="font-medium text-text-primary">{nomeDaTela(location.pathname)}</span>. A OLLI não envia dados desta tela automaticamente.
 			</div>
@@ -209,6 +346,42 @@ export function AssistenteConversa({ className }: { className?: string }) {
 					</div>
 				)}
 
+				{rascunhoAcao && (
+					<Card className="border-primary/25 bg-primary/5 p-4" role="region" aria-label="Prévia de alteração pela OLLI IA">
+						<div className="flex items-start gap-3">
+							<span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+								{rascunhoAcao.status === "aplicada" ? <CheckCircle2 className="size-4" /> : rascunhoAcao.status === "revertida" || rascunhoAcao.status === "cancelada" ? <XCircle className="size-4" /> : <Sparkles className="size-4" />}
+							</span>
+							<div className="min-w-0 flex-1">
+								<p className="text-sm font-semibold text-text-primary">{rascunhoAcao.summary}</p>
+								<p className="mt-0.5 text-xs text-text-secondary">Alvo: {rascunhoAcao.targetLabel}</p>
+							</div>
+						</div>
+						<div className="mt-3 space-y-2">
+							{rascunhoAcao.changes.map((change) => (
+								<div key={change.field} className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
+									<p className="font-medium text-text-primary">{change.field}</p>
+									<p className="mt-1 break-words text-text-secondary"><span className="line-through">{String(change.before ?? "vazio")}</span> → <span className="font-medium text-text-primary">{String(change.after ?? "vazio")}</span></p>
+								</div>
+							))}
+						</div>
+						{mensagemAcao && <p className="mt-3 text-xs leading-relaxed text-text-secondary" aria-live="polite">{mensagemAcao}</p>}
+						<div className="mt-3 flex flex-wrap justify-end gap-2">
+							{rascunhoAcao.status === "aguardando_confirmacao" && (
+								<>
+									<Button type="button" size="sm" variant="outline" onClick={() => decidirAcao("cancelar")} disabled={processandoAcao}>Cancelar</Button>
+									<Button type="button" size="sm" onClick={() => decidirAcao("confirmar")} disabled={processandoAcao}>{processandoAcao ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}Confirmar alteração</Button>
+								</>
+							)}
+							{rascunhoAcao.status === "aplicada" && (
+								<Button type="button" size="sm" variant="outline" onClick={() => decidirAcao("reverter")} disabled={processandoAcao}>
+									<Undo2 className="mr-1.5 size-3.5" /> Desfazer
+								</Button>
+							)}
+						</div>
+					</Card>
+				)}
+
 				{falha && (
 					<Card className="border-warning/30 bg-warning/5 p-3">
 						<p className="text-sm font-semibold text-text-primary">{creditoSemSaldo && falha.tipo === "creditos" ? "Sem créditos disponíveis" : falha.titulo}</p>
@@ -236,15 +409,18 @@ export function AssistenteConversa({ className }: { className?: string }) {
 							}
 						}}
 						placeholder="Pergunte ou cole uma descrição do serviço…"
-						className="min-h-24 resize-none pr-12"
+						className="min-h-24 resize-none pr-24"
 						disabled={enviando}
 					/>
+					<Button type="button" size="icon" variant={ouvindo ? "destructive" : "outline"} className="absolute bottom-2 right-12 size-9" onClick={alternarVoz} disabled={enviando} aria-label={ouvindo ? "Parar voz ao vivo" : "Falar com a OLLI"} aria-pressed={ouvindo}>
+						{ouvindo ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+					</Button>
 					<Button type="button" size="icon" className="absolute bottom-2 right-2 size-9" onClick={() => enviar()} disabled={!texto.trim() || enviando} aria-label="Enviar mensagem">
 						<Send className="size-4" />
 					</Button>
 				</div>
 				<div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-text-disabled">
-					<span>Enter envia · Shift+Enter quebra a linha</span>
+					<span>{ouvindo ? "Ouvindo… toque no microfone para parar" : "Enter envia · Shift+Enter quebra a linha · microfone é push-to-talk"}</span>
 					{mensagens.length > 0 && (
 						<Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={limpar}>
 							<RotateCcw className="size-3" /> Nova conversa

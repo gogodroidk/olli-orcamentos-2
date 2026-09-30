@@ -79,6 +79,7 @@
       "output": "single"
     },
     "plugins": [
+      "./plugins/withReleaseSigningGuard",
       "expo-sqlite",
       "expo-sharing",
       [

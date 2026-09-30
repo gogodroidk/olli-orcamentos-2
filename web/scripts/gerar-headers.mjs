@@ -75,6 +75,7 @@ const csp = [
 
 const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITAR À MÃO.
 /*
+  Strict-Transport-Security: max-age=31536000
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()

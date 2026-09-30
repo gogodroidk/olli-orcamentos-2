@@ -22,6 +22,8 @@ console.log('\nPlano administrativo — sobreposição segura');
 const casos = [
   ['grátis puro', { plano: 'pro', status: 'canceled', current_period_end: PASSADO }, 'gratis'],
   ['Pro pago', { plano: 'pro', status: 'active', current_period_end: FUTURO }, 'pro'],
+  ['past_due sem carência não libera', { plano: 'empresa', status: 'past_due', current_period_end: FUTURO }, 'gratis'],
+  ['ativo sem vigência não libera', { plano: 'empresa', status: 'active', current_period_end: null }, 'gratis'],
   ['Pro manual sem assinatura', {
     plano: 'pro', status: 'canceled', current_period_end: PASSADO,
     admin_plano_override: 'pro', admin_override_ativo: true, admin_override_ate: FUTURO,

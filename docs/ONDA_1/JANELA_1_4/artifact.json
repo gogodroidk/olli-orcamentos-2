@@ -1,0 +1,180 @@
+{
+  "schemaVersion": "olli.architecture.artifact/v1",
+  "generatedAt": "2026-08-28T18:23:01-03:00",
+  "repository": "C:\\OLLI_REL",
+  "package": {
+    "id": "onda-1-janela-1-4",
+    "path": "docs/ONDA_1/JANELA_1_4",
+    "state": "architecture_complete_local_runtime_no_go",
+    "selfHashExcluded": true,
+    "selfHashExclusionReason": "O manifesto e recursivo; sua estrutura e os hashes dos demais arquivos sao verificados pelo validador versionado."
+  },
+  "protocol": {
+    "version": "3.0.0",
+    "sha256": "62a52e99a3b4b2a28bbc68f06565f43fbc50e143d4fb719761ee073869275bea",
+    "executionMode": "continuous_task_queue_with_recovery_heartbeat"
+  },
+  "sourceSnapshot": {
+    "kind": "fixture_local_no_production_proof",
+    "janela13ExecutableSnapshotSha256": "90caa6328c882320cd3eadc1ca790619017500d9593bcfe7e99aaf63e3dd57fa"
+  },
+  "decisions": [
+    {
+      "id": "ADR-001",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "organization_id e o tenant canonico V2; ator e membership sao revalidados no servidor.",
+      "blockedCapabilities": ["migration remota", "cutover real", "remocao do legado"]
+    },
+    {
+      "id": "ADR-002",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "Comando versionado, idempotencia, outbox local, reautorizacao no drain e blobs fora da fila.",
+      "blockedCapabilities": ["outbox V2 em producao", "troca de writer real"]
+    },
+    {
+      "id": "ADR-003",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "Convivencia V1/V2 por fatia, feature flag e um writer oficial por agregado.",
+      "blockedCapabilities": ["cutover real", "remocao de readers/writers V1"]
+    },
+    {
+      "id": "ADR-004",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "Kernel documental versionado, hash canonico, aceite transacional, renderer por snapshot e storage privado.",
+      "blockedCapabilities": ["storage real", "assinatura real", "dado real"]
+    },
+    {
+      "id": "ADR-005",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "Autorizacao fail-closed por sessao, membership, capability, recurso e atributos, com RLS/RPC/Storage.",
+      "blockedCapabilities": ["RLS remota", "break-glass real", "service_role fora do backend"]
+    },
+    {
+      "id": "ADR-006",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "Preco deterministico e reprodutivel por tenant; projecao publica allowlistada; analytics coletivo bloqueado.",
+      "blockedCapabilities": ["analytics cross-org", "benchmark coletivo", "decisao automatica de preco"]
+    },
+    {
+      "id": "ADR-007",
+      "status": "adopted_architecture",
+      "operationalAcceptance": false,
+      "summary": "Porta de IA server-side por caso, DTO minimo, allowlist de egress, quota, fallback e aprovacao humana.",
+      "blockedCapabilities": ["provider externo", "egress de dado real", "acao autonoma"]
+    }
+  ],
+  "gates": {
+    "allowed": [
+      "schemas machine-readable locais",
+      "fixtures sinteticas",
+      "testes executaveis locais",
+      "migration draft sem aplicacao remota",
+      "banco efemero descartavel com dados sinteticos"
+    ],
+    "blocked": [
+      "produção, deploy e publicação",
+      "dado real, credencial ou sessao",
+      "migration remota ou escrita no Supabase",
+      "storage, assinatura ou provider externo",
+      "analytics cross-org e benchmark coletivo",
+      "cobranca, contato externo, commit, push ou acao destrutiva"
+    ],
+    "human": [
+      "catalogo remoto autorizado somente leitura",
+      "matriz de capacidades validada em campo",
+      "revisao juridica, privacidade e RT",
+      "autorizacao especifica para migration, deploy, dado real e producao"
+    ]
+  },
+  "review": {
+    "type": "independent_read_only_adversarial",
+    "result": "p0_documentation_findings_incorporated_implementation_proof_pending",
+    "scope": ["documentos_storage_aceite", "rbac_abac_rls", "pricing_privacy", "ai_egress"],
+    "remainingCondition": "Os testes normativos devem virar suites executaveis e ficar verdes antes de qualquer piloto/runtime."
+  },
+  "sourceEvidence": [
+    "../JANELA_1_1/TENANCY_SYNC_INVENTORY.md",
+    "../JANELA_1_1/ADR-001-PONTE-TENANCY.md",
+    "../JANELA_1_1/ADR-002-SYNC-OUTBOX.md",
+    "../JANELA_1_1/ADR-003-CONVIVENCIA-V1-V2.md",
+    "../JANELA_1_2/DOCUMENT_CATALOG.md",
+    "../JANELA_1_2/REGULATORY_GATES.md",
+    "../JANELA_1_3/RESULTS.md",
+    "../JANELA_1_3/SECURITY_REVIEW.md",
+    "../JANELA_1_3/DECISION_JANELA_1_4.md",
+    "../../TARGET_ARCHITECTURE.md"
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 4882,
+      "sha256": "8895ad84f48c82a9588344ffe33fcfebbd611c1d814e5191e0ae90fdb3cd10ac"
+    },
+    {
+      "path": "ARCHITECTURE_CONTRACTS.md",
+      "bytes": 8629,
+      "sha256": "26799212cb18c5152ca8a972fdcb5ec63b48203e66707f92ea550e12d7d3fe17"
+    },
+    {
+      "path": "RBAC_AND_DATA_MATRIX.md",
+      "bytes": 6171,
+      "sha256": "8b6dc8b981305e29bfa1153224833095cda025fc28e13451b868d78aedf373e9"
+    },
+    {
+      "path": "MIGRATION_ROLLBACK_PLAN.md",
+      "bytes": 6362,
+      "sha256": "f266477cacc828f3f0210d14539a3f53540c8d7a7d67f9132240357c5e46d383"
+    },
+    {
+      "path": "FIRST_VERTICAL_SLICE.md",
+      "bytes": 5696,
+      "sha256": "cdd37f95f5a81e092d501cee16afdfabdb63f44f548c4cf7fb2385cdf617b226"
+    },
+    {
+      "path": "THREAT_MODEL_AND_TESTS.md",
+      "bytes": 5482,
+      "sha256": "25e60ea473343625abd0430adba7b994e5075603ab75ae6e26c11ec6672b358f"
+    },
+    {
+      "path": "ADR-004-DOCUMENT-KERNEL-STORAGE-SIGNATURE.md",
+      "bytes": 14929,
+      "sha256": "56287f807902a285843c37e1bc37acc4a9991d5bf83b7bf350a55d77b698ae4c"
+    },
+    {
+      "path": "ADR-005-AUTHORIZATION-RBAC-ABAC.md",
+      "bytes": 11340,
+      "sha256": "1ff8021bdee53b53505efbdb5a59d9bb1fafb90ae8391882e8ef03af8c986c56"
+    },
+    {
+      "path": "ADR-006-PRICING-ANALYTICS-PRIVACY.md",
+      "bytes": 11516,
+      "sha256": "e9912ccd13e3be264d9f18b10cb4fc15f0f0bfa21112b0367ac91420e6bbd751"
+    },
+    {
+      "path": "ADR-007-AI-PROVIDER-EGRESS.md",
+      "bytes": 12439,
+      "sha256": "1b6a06cd33e5d7b3a8014cf67134386ef16cfa60737d308c57d87036518e2623"
+    },
+    {
+      "path": "ADR_DECISION_REGISTER.md",
+      "bytes": 4289,
+      "sha256": "656ab4c6ad4e45d4730b7129584d913e81e34f4d91f1d3ca4348ee207c2af184"
+    },
+    {
+      "path": "GATE_DECISION.md",
+      "bytes": 3691,
+      "sha256": "9c42ab8adc6a74e6fb426ab348f8b06bbc898ed473dfa7393fcbaaac609dbf6c"
+    },
+    {
+      "path": "validate-artifact.mjs",
+      "bytes": 8952,
+      "sha256": "2eb00396727340304f682fba0929662d0652dd07561e4a178904672306063bc3"
+    }
+  ]
+}

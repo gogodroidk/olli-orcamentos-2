@@ -309,11 +309,14 @@ export default function RecibosPage() {
 										>
 											<td className="whitespace-nowrap px-4 py-3.5 font-medium tabular-nums text-text-primary">
 												{recibo?.numero ?? linha.numero ?? "—"}
-												{recibo?.pdfEmitido === false && (
-													<Badge variant="warning" className="ml-2 font-medium">
-														PDF pendente
-													</Badge>
-												)}
+													{recibo?.pdfEmitido === false && (
+														<Badge variant="warning" className="ml-2 font-medium">
+															PDF pendente
+														</Badge>
+													)}
+													{recibo?.ledgerStatus === "pendente" && (
+														<Badge variant="warning" className="ml-2 font-medium">Sync pendente</Badge>
+													)}
 											</td>
 											<td className="px-4 py-3.5">
 												<NameCell name={recibo?.clienteNome ?? linha.cliente_nome ?? "—"} />
@@ -400,11 +403,14 @@ export default function RecibosPage() {
 									)}
 								</dl>
 
-								{recibo?.pdfEmitido === false && (
-									<Badge variant="warning" className="mt-3 font-medium">
-										Pagamento registrado · PDF ainda não gerado
-									</Badge>
-								)}
+				{recibo?.pdfEmitido === false && (
+					<Badge variant="warning" className="mt-3 font-medium">
+						Pagamento registrado · PDF ainda não gerado
+					</Badge>
+				)}
+				{recibo?.ledgerStatus === "pendente" && (
+					<Badge variant="warning" className="ml-2 mt-3 font-medium">Sincronização financeira pendente</Badge>
+				)}
 							</div>
 						))}
 					</div>

@@ -1,0 +1,95 @@
+/**
+ * LEMBRETE DE ASSINATURA × REGRA DAS LOJAS — a versão do lembrete que cada
+ * plataforma pode MOSTRAR.
+ *
+ * A regra de "que lembrete esta conta vê" continua única em `lembreteAssinatura.ts`
+ * (pura, compartilhada com o painel). Este módulo só decide o que dela pode ir
+ * para a tela quando o app roda dentro de uma loja:
+ *
+ *  - iOS (Guideline 3.1.1) e Android da Google Play: este build não tem StoreKit
+ *    nem Play Billing, então NÃO pode haver botão de compra nem texto que mande
+ *    pagar por fora (preço, Pix, "renove", "assine"). Mesma decisão de
+ *    `COMPRA_NO_APP` / `BUILD_PLAY_SEM_COMPRA_EXTERNA` na PlanosScreen.
+ *    O que é INFORMAÇÃO (limite do mês, data de vencimento, fim do teste) fica;
+ *    o teste grátis do Pro fica também — não envolve pagamento nenhum.
+ *  - Web: tudo aparece como a regra escreveu.
+ *
+ * Fail-closed: qualquer plataforma que não seja explicitamente a web é tratada
+ * como loja. Módulo PURO (só `import type`) para o teste
+ * `scripts/teste-lembrete-assinatura-loja.ts` rodar sem subir tela.
+ */
+import type { AcaoLembrete, Lembrete, TipoLembrete, UrgenciaLembrete } from './lembreteAssinatura';
+
+/** O que a faixa desenha. CTAs podem sumir (loja), por isso ambos são opcionais. */
+export interface LembreteExibivel {
+  id: string;
+  tipo: TipoLembrete;
+  urgencia: UrgenciaLembrete;
+  titulo: string;
+  texto: string;
+  cta: { rotulo: string; acao: AcaoLembrete } | null;
+  ctaSecundario: { rotulo: string; acao: AcaoLembrete } | null;
+  dispensavelPorHoras: number | null;
+}
+
+/** Ações que levam a contratar/pagar — proibidas dentro das lojas. */
+const ACOES_DE_COMPRA: ReadonlySet<AcaoLembrete> = new Set<AcaoLembrete>(['planos', 'renovar_pix']);
+
+/** Só a web contrata. iOS, Android e o que mais aparecer: loja (fail-closed). */
+export function plataformaPodeVender(plataforma: string): boolean {
+  return plataforma === 'web';
+}
+
+/**
+ * Texto neutro, por tipo, para as lojas: informa o fato, não ensina a pagar.
+ * `null` = nesta plataforma o lembrete não tem o que dizer sem vender — some.
+ */
+function textoNeutro(tipo: TipoLembrete): string | null {
+  switch (tipo) {
+    case 'renovar_pix':
+      return 'Depois dessa data sua conta volta ao Grátis — seus dados continuam salvos.';
+    case 'plano_vencido':
+      return 'Você voltou ao Grátis — seus dados continuam salvos.';
+    case 'trial_acabando':
+      return 'Depois disso sua conta volta ao Grátis — seus dados continuam salvos.';
+    case 'cota_esgotada':
+    case 'cota_quase':
+      return 'O limite volta no dia 1.';
+    case 'trial_disponivel':
+      // O texto da regra já é só sobre o teste (sem preço, sem Pix): mantém.
+      return null;
+    case 'assinar':
+      // Lembrete leve cujo único propósito é "assine": sem botão e sem preço,
+      // vira faixa sem ação ocupando o topo da Home. Não aparece nas lojas.
+      return null;
+  }
+}
+
+/**
+ * Adapta o lembrete da regra à plataforma. `null` = não mostrar nada.
+ * Na web devolve o lembrete intacto.
+ */
+export function lembreteParaPlataforma(l: Lembrete, plataforma: string): LembreteExibivel | null {
+  if (plataformaPodeVender(plataforma)) {
+    return { ...l };
+  }
+
+  if (l.tipo === 'assinar') return null;
+
+  const permitido = (c: Lembrete['cta'] | null) => (c && !ACOES_DE_COMPRA.has(c.acao) ? c : null);
+  const ctas = [permitido(l.cta), permitido(l.ctaSecundario)].filter(
+    (c): c is NonNullable<typeof c> => c !== null,
+  );
+
+  return {
+    id: l.id,
+    tipo: l.tipo,
+    urgencia: l.urgencia,
+    titulo: l.titulo,
+    texto: textoNeutro(l.tipo) ?? l.texto,
+    // O teste grátis, quando era o secundário, sobe para primário.
+    cta: ctas[0] ?? null,
+    ctaSecundario: ctas[1] ?? null,
+    dispensavelPorHoras: l.dispensavelPorHoras,
+  };
+}

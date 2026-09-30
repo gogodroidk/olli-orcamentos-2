@@ -41,9 +41,9 @@ export const RECURSO_REMOVE_MARCA: Recurso = 'remove_olli_brand';
 /**
  * RECURSOS_POR_PLANO — o que cada plano libera.
  *
- * gratis: orçamentos/recibos/clientes/agenda ilimitados, diagnóstico offline e
- *   link do cliente são livres (não passam pelo mapa: nunca se gateiam). IA tem
- *   3 usos/mês (cota, não plano). Nenhum recurso Pro/Empresa.
+ * gratis: rascunhos, recibos, clientes e agenda permanecem disponíveis; o envio
+ *   ou PDF de até 5 orçamentos distintos por mês passa por cota autoritativa.
+ *   IA tem 3 usos/mês (cota, não plano). Nenhum recurso Pro/Empresa.
  * pro: toda a IA sem cota, relatórios, metas, radar, relatório do dia falado,
  *   os modelos premium de PDF e a remoção da marca OLLI do documento (D-07).
  * empresa: tudo do Pro + equipe/papéis/mapa/dashboard da empresa.
@@ -74,6 +74,23 @@ export const RECURSOS_POR_PLANO: Record<PlanoId, ReadonlySet<Recurso>> = {
 };
 
 /**
+ * Recursos já previstos no entitlement comercial, mas ainda não entregues no
+ * produto atual. Entitlement e disponibilidade são estados diferentes: esta
+ * lista impede que a tela venda como pronto algo que o runtime ainda não faz.
+ */
+export const RECURSOS_EM_BREVE: ReadonlySet<Recurso> = new Set<Recurso>([
+  'mapa_equipe',
+  'dashboard_empresa',
+]);
+
+export type DisponibilidadeRecurso = 'nao_incluido' | 'em_breve' | 'disponivel';
+
+export function disponibilidadeRecurso(plano: PlanoId, recurso: Recurso): DisponibilidadeRecurso {
+  if (!temAcessoRecurso(plano, recurso)) return 'nao_incluido';
+  return RECURSOS_EM_BREVE.has(recurso) ? 'em_breve' : 'disponivel';
+}
+
+/**
  * `true` se o `plano` dá acesso ao `recurso`. Recurso desconhecido → false
  * (nega por padrão: mais seguro do que liberar por engano). Empresa é
  * superconjunto do Pro pelo próprio mapa, então não precisa de cascata aqui.
@@ -97,3 +114,8 @@ export function temAcessoRecurso(plano: PlanoId, recurso: Recurso): boolean {
  * `getUsosIaRestantes`).
  */
 export const IA_USOS_GRATIS_MES = 3;
+
+export {
+  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  TRIAL_PRO_DIAS,
+} from './limitesComerciais.ts';

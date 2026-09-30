@@ -13,6 +13,10 @@
  *
  * 3. SOFT DELETE — excluir é carimbar `excluidoEm` (no blob) + `excluido_em` (coluna).
  *    Apagar de verdade ressuscitaria o registro no próximo sync do celular.
+ *
+ * 4. NÚMERO CONCORRENTE — quando o índice por tenant devolver 23505, orçamento/
+ *    recibo recebe o próximo número visível e é reenviado com trilha de auditoria.
+ *    Um conflito nunca vira "salvou local, sumiu do painel".
  */
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -25,6 +29,7 @@ import {
 	type TabelaOlli,
 	tabelaRemota,
 } from "./contrato";
+import { erroEhColisaoNumero } from "../../../src/utils/numeroDocumento";
 
 /* ─────────────────────────  1. Contexto de escrita (tenant)  ───────────────── */
 
@@ -224,15 +229,38 @@ export function useSalvar<T extends TabelaOlli>(tabela: T) {
 				);
 			}
 
-			const linha = PARA_LINHA[tabela](objeto);
 			const { ownerUserId } = contexto.data;
-			if (ownerUserId && TABELAS_DO_TENANT_DO_DONO.has(tabela)) {
-				linha.user_id = ownerUserId;
+			let candidato = objeto;
+			let ultimoErro: unknown = null;
+
+			for (let tentativa = 0; tentativa < 3; tentativa++) {
+				const linha = PARA_LINHA[tabela](candidato);
+				if (ownerUserId && TABELAS_DO_TENANT_DO_DONO.has(tabela)) {
+					linha.user_id = ownerUserId;
+				}
+
+				const { error } = await supabase
+					.from(tabelaRemota(tabela))
+					.upsert(linha, { onConflict: CONFLITO[tabela] });
+				if (!error) return candidato;
+				ultimoErro = error;
+
+				if (tabela !== "orcamentos" && tabela !== "recibos") throw error;
+				if (!erroEhColisaoNumero(tabela, error)) throw error;
+
+				const atual = candidato as DominioPorTabela["orcamentos"] | DominioPorTabela["recibos"];
+				const numero = await proximoNumeroDocumento(tabela === "orcamentos" ? "orcamento" : "recibo");
+				const renumeradoEm = agora();
+				candidato = {
+					...atual,
+					numero,
+					numeroAnterior: atual.numeroAnterior ?? atual.numero,
+					renumeradoEm,
+					atualizadoEm: renumeradoEm,
+				} as DominioPorTabela[T];
 			}
 
-			const { error } = await supabase.from(tabelaRemota(tabela)).upsert(linha, { onConflict: CONFLITO[tabela] });
-			if (error) throw error;
-			return objeto;
+			throw ultimoErro;
 		},
 		onSuccess: () => invalidar(tabela),
 	});

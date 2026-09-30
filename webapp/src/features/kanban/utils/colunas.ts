@@ -1,5 +1,5 @@
 /**
- * O MODELO DO QUADRO — 5 colunas cobrindo os 10 status do funil.
+ * O MODELO DO QUADRO — 6 colunas: 5 estágios comerciais + Finalizados.
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  * POR QUE UM `Record<StatusOrcamento, ColunaId>` E NÃO UM `switch`
@@ -29,13 +29,13 @@ export interface LinhaOrcamento {
 	dados: Orcamento | null;
 }
 
-export type ColunaId = "rascunho" | "enviado" | "negociacao" | "aprovado" | "perdido" | "outros";
+export type ColunaId = "rascunho" | "enviado" | "negociacao" | "aprovado" | "finalizados" | "perdido" | "outros";
 
 /**
  * Status → coluna. A ORDEM das chaves é a ordem do funil e alimenta o menu
  * "Mover para" (a lista de status de cada coluna sai daqui, não de uma 2ª cópia).
  */
-export const COLUNA_DO_STATUS: Record<StatusOrcamento, Exclude<ColunaId, "outros">> = {
+export const COLUNA_DO_STATUS: Record<StatusOrcamento, Exclude<ColunaId, "outros" | "finalizados">> = {
 	rascunho: "rascunho",
 	enviado: "enviado",
 	visualizado: "enviado",
@@ -69,7 +69,7 @@ export interface Coluna {
 	faixa: string;
 }
 
-function statusDaColuna(id: Exclude<ColunaId, "outros">): StatusOrcamento[] {
+function statusDaColuna(id: Exclude<ColunaId, "outros" | "finalizados">): StatusOrcamento[] {
 	return TODOS_OS_STATUS.filter((s) => COLUNA_DO_STATUS[s] === id);
 }
 
@@ -78,6 +78,7 @@ const CORES: Record<ColunaId, { ponto: string; faixa: string }> = {
 	enviado: { ponto: "bg-info", faixa: "border-l-info" },
 	negociacao: { ponto: "bg-warning", faixa: "border-l-warning" },
 	aprovado: { ponto: "bg-success", faixa: "border-l-success" },
+	finalizados: { ponto: "bg-primary", faixa: "border-l-primary" },
 	perdido: { ponto: "bg-error", faixa: "border-l-error" },
 	outros: { ponto: "bg-muted-foreground/50", faixa: "border-l-muted-foreground/40" },
 };
@@ -87,21 +88,23 @@ const TITULOS: Record<ColunaId, string> = {
 	enviado: "Enviado",
 	negociacao: "Em negociação",
 	aprovado: "Aprovado",
+	finalizados: "Finalizados",
 	perdido: "Perdido",
 	outros: "Outros",
 };
 
-function montar(id: Exclude<ColunaId, "outros">): Coluna {
+function montar(id: Exclude<ColunaId, "outros" | "finalizados">): Coluna {
 	const status = statusDaColuna(id);
 	return { id, titulo: TITULOS[id], status, destino: status[0], ...CORES[id] };
 }
 
-/** As 5 colunas reais — as únicas que aceitam drop e aparecem no menu "Mover para". */
+/** As colunas comerciais + Finalizados. Finalizados é informativa: a origem da conclusão é a OS. */
 export const COLUNAS: Coluna[] = [
 	montar("rascunho"),
 	montar("enviado"),
 	montar("negociacao"),
 	montar("aprovado"),
+	{ id: "finalizados", titulo: TITULOS.finalizados, status: [], destino: null, ...CORES.finalizados },
 	montar("perdido"),
 ];
 
@@ -203,13 +206,13 @@ export interface ColunaMontada {
 }
 
 /** Agrupa as linhas nas colunas. "Outros" só entra no resultado se tiver card. */
-export function montarColunas(linhas: LinhaOrcamento[]): ColunaMontada[] {
+export function montarColunas(linhas: LinhaOrcamento[], orcamentosFinalizados: ReadonlySet<string> = new Set()): ColunaMontada[] {
 	const cartoes = linhas.map(linhaParaCartao);
 	const todas: Coluna[] = [...COLUNAS, COLUNA_OUTROS];
 
 	return todas
 		.map((coluna) => {
-			const meus = cartoes.filter((c) => c.colunaId === coluna.id);
+			const meus = cartoes.filter((c) => orcamentosFinalizados.has(c.id) ? coluna.id === "finalizados" : c.colunaId === coluna.id);
 			return {
 				coluna,
 				cartoes: meus,

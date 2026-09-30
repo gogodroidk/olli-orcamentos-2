@@ -1,0 +1,14 @@
+-- SUPERSEDED — NÃO APLICAR ESTE ARQUIVO.
+--
+-- Este rascunho documental foi substituído pela migration canônica e revisada:
+--   supabase/migrations/20260904205858_email_welcome_outbox.sql
+-- e pelo complemento de índices:
+--   supabase/migrations/20260904211012_email_welcome_tenant_indexes.sql
+--
+-- As versões remotas aplicadas no projeto yiaeplqinnnnniyvwtls são:
+--   20260904210942_email_welcome_outbox
+--   20260904211038_email_welcome_tenant_indexes
+--
+-- O conteúdo executável antigo foi removido deste caminho para impedir que um
+-- rascunho obsoleto, com decisões de segurança anteriores à revisão, seja
+-- confundido com a migration de produção.

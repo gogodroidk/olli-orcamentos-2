@@ -62,6 +62,28 @@ function definir(parcial: Partial<EstadoPlano>): void {
 // Evita revalidações concorrentes: se já há uma leitura em andamento,
 // reutiliza a mesma Promise em vez de disparar outra.
 let leituraEmAndamento: Promise<void> | null = null;
+let revisaoSessao = 0;
+
+function estadoInicial(): EstadoPlano {
+  return {
+    plano: 'gratis',
+    usosIaRestantes: IA_USOS_GRATIS_MES,
+    carregando: true,
+    atualizadoEm: 0,
+  };
+}
+
+/**
+ * Invalida todo estado em memória na troca de sessão. A revisão impede que uma
+ * leitura iniciada pela conta anterior termine depois do logout e republique o
+ * plano antigo para a conta nova.
+ */
+export function resetarPlano(): void {
+  revisaoSessao += 1;
+  leituraEmAndamento = null;
+  estado = estadoInicial();
+  emitir();
+}
 
 /**
  * Relê plano + cota de IA da fonte de verdade e propaga a todos os ouvintes.
@@ -72,28 +94,40 @@ let leituraEmAndamento: Promise<void> | null = null;
 async function revalidar(): Promise<void> {
   if (leituraEmAndamento) return leituraEmAndamento;
 
-  leituraEmAndamento = (async () => {
+  const minhaRevisao = revisaoSessao;
+  const execucao = (async () => {
     // Cold start: semeia com o plano do cache local ANTES da leitura de rede,
     // para não piscar o muro Pro (nem "3 de 3 usos") para quem paga.
     if (estado.atualizadoEm === 0) {
       const cacheado = await getPlanoCacheado();
+      if (minhaRevisao !== revisaoSessao) return;
       if (cacheado && cacheado !== estado.plano) definir({ plano: cacheado });
     }
+    if (minhaRevisao !== revisaoSessao) return;
     definir({ carregando: true });
     try {
       const { plano } = await getPlanoAtual();
       const usos = await getUsosIaRestantes(plano);
+      if (minhaRevisao !== revisaoSessao) return;
       definir({ plano, usosIaRestantes: usos, carregando: false, atualizadoEm: Date.now() });
     } catch {
       // getPlanoAtual/getUsosIaRestantes já são à prova de falha; se algo
       // escapar, apenas encerramos o carregando mantendo o último estado bom.
-      definir({ carregando: false });
-    } finally {
-      leituraEmAndamento = null;
+      if (minhaRevisao === revisaoSessao) definir({ carregando: false });
     }
   })();
+  leituraEmAndamento = execucao;
 
-  return leituraEmAndamento;
+  try {
+    await execucao;
+  } finally {
+    if (leituraEmAndamento === execucao) leituraEmAndamento = null;
+  }
+}
+
+/** Revalidação global usada pelo listener central depois de um novo login. */
+export function recarregarPlanoGlobal(): Promise<void> {
+  return revalidar();
 }
 
 // Revalida quando o app volta do background (ex.: retorno do checkout no
@@ -124,7 +158,7 @@ export interface UsePlano {
   temAcesso: (recurso: PlanoRecurso) => boolean;
   /** Usos de IA restantes no mês. `Infinity` em planos com IA ilimitada. */
   usosIaRestantes: number;
-  /** Registra 1 uso de IA e atualiza a cota exibida. No-op em plano ilimitado. */
+  /** Atualiza a cota otimista e a reconcilia com o servidor. No-op no ilimitado. */
   consumirUsoIa: () => Promise<void>;
   /** Força uma releitura de plano + cota (invalida cache). Útil ao voltar do checkout. */
   recarregar: () => Promise<void>;
@@ -156,9 +190,12 @@ export function usePlano(): UsePlano {
   const consumirUsoIa = useCallback(async () => {
     // Plano com IA ilimitada não tem cota para consumir.
     if (temAcessoRecurso(estado.plano, 'ia_ilimitada')) return;
-    await consumirUsoIaStorage();
-    const usos = await getUsosIaRestantes(estado.plano);
-    definir({ usosIaRestantes: usos });
+    const usosLocais = await consumirUsoIaStorage();
+    // Atualização otimista: evita mostrar o mesmo número enquanto a linha que o
+    // Worker acabou de gravar chega à leitura. Em seguida a autoridade remota
+    // corrige qualquer divergência (outro aparelho, retry idempotente, crédito).
+    definir({ usosIaRestantes: Math.max(0, IA_USOS_GRATIS_MES - usosLocais) });
+    await revalidar();
   }, []);
 
   const recarregar = useCallback(() => revalidar(), []);

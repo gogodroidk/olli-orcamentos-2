@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, type Cores } from '../../theme';
+import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, corCategoriaEmChip, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
 import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
@@ -395,10 +395,11 @@ export default function EquipamentosDesktopScreen() {
 function SituacaoChip({ situacao }: { situacao: SituacaoEquipamento }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = STATUS_EQUIP_CORES[situacao] ?? cores.onSurfaceVariant;
+  const corBase = STATUS_EQUIP_CORES[situacao] ?? cores.onSurfaceVariant;
+  const cor = corCategoriaEmChip(corBase, cores.surface);
   return (
-    <View style={[styles.situacaoChip, { backgroundColor: comAlfa(cor, 0.14), borderColor: comAlfa(cor, 0.4) }]}>
-      <View style={[styles.situacaoDot, { backgroundColor: cor }]} />
+    <View style={[styles.situacaoChip, { backgroundColor: comAlfa(corBase, 0.14), borderColor: comAlfa(corBase, 0.4) }]}>
+      <View style={[styles.situacaoDot, { backgroundColor: corBase }]} />
       <Text style={[styles.situacaoTexto, { color: cor }]} numberOfLines={1}>{STATUS_EQUIP_LABELS[situacao]}</Text>
     </View>
   );

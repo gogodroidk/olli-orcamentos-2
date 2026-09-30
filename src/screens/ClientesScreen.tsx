@@ -33,6 +33,7 @@ import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { usePermissao } from '../hooks/usePermissao';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -85,6 +86,7 @@ interface LinhaClienteProps {
   onLongPress: (item: Cliente) => void;
   onEditar: (item: Cliente) => void;
   onExcluir: (item: Cliente) => void;
+  podeGerenciar: boolean;
 }
 
 /**
@@ -104,6 +106,7 @@ function LinhaClienteBase({
   onLongPress,
   onEditar,
   onExcluir,
+  podeGerenciar,
 }: LinhaClienteProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -138,10 +141,26 @@ function LinhaClienteBase({
       </View>
       {!selecionando && (
         <View style={styles.cardActions}>
-          <TouchableOpacity onPress={() => onEditar(c)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Editar ${c.nome}`}>
+          <TouchableOpacity
+            onPress={() => onEditar(c)}
+            disabled={!podeGerenciar}
+            style={!podeGerenciar && { opacity: 0.45 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !podeGerenciar }}
+            accessibilityLabel={podeGerenciar ? `Editar ${c.nome}` : `Editar ${c.nome} (acesso restrito)`}
+          >
             <MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onExcluir(c)} disabled={excluindo} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={`Excluir ${c.nome}`}>
+          <TouchableOpacity
+            onPress={() => onExcluir(c)}
+            disabled={excluindo || !podeGerenciar}
+            style={!podeGerenciar && { opacity: 0.45 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: excluindo || !podeGerenciar }}
+            accessibilityLabel={podeGerenciar ? `Excluir ${c.nome}` : `Excluir ${c.nome} (acesso restrito)`}
+          >
             {excluindo
               ? <ActivityIndicator size="small" color={cores.danger} />
               : <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />}
@@ -165,6 +184,8 @@ export default function ClientesScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
+  const { pode, carregando: carregandoPermissao } = usePermissao();
+  const podeGerenciarClientes = !carregandoPermissao && pode('gerenciar_clientes');
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filtered, setFiltered] = useState<Cliente[]>([]);
   const [query, setQuery] = useState('');
@@ -285,6 +306,10 @@ export default function ClientesScreen() {
 
   async function handleSave() {
     if (!editing?.nome?.trim()) return;
+    if (!isNew && !podeGerenciarClientes) {
+      Alert.alert('Acesso restrito', 'Só o gestor da conta pode editar o cadastro deste cliente.');
+      return;
+    }
 
     const nextErrors: { cpf?: string; cnpj?: string; telefone?: string } = {};
     const cpfDigits = (editing.cpf ?? '').replace(/\D/g, '');
@@ -330,6 +355,10 @@ export default function ClientesScreen() {
   }
 
   const handleDelete = useCallback(async (c: Cliente) => {
+    if (!podeGerenciarClientes) {
+      Alert.alert('Acesso restrito', 'Só o gestor da conta pode excluir clientes.');
+      return;
+    }
     // Avisa se há orçamentos/agendamentos vinculados antes de confirmar a exclusão.
     let orcamentosVinculados = 0;
     let agendamentosVinculados = 0;
@@ -366,7 +395,7 @@ export default function ClientesScreen() {
         }
       },
     ]);
-  }, [load]);
+  }, [load, podeGerenciarClientes]);
 
   // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
   const entrarSelecao = useCallback((inicialId?: string) => {
@@ -394,7 +423,7 @@ export default function ClientesScreen() {
 
   function handleExcluirSelecionados() {
     const ids = Array.from(selecionados);
-    if (!ids.length) return;
+    if (!ids.length || !podeGerenciarClientes) return;
     Alert.alert(
       'Excluir selecionados',
       `${ids.length} cliente${ids.length === 1 ? '' : 's'} ${ids.length === 1 ? 'vai' : 'vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
@@ -465,6 +494,10 @@ export default function ClientesScreen() {
   }
 
   function editarCliente(c: Cliente) {
+    if (!podeGerenciarClientes) {
+      Alert.alert('Acesso restrito', 'Só o gestor da conta pode editar o cadastro deste cliente.');
+      return;
+    }
     setAcoes(null);
     setEditing({ ...c });
     setIsNew(false);
@@ -481,15 +514,17 @@ export default function ClientesScreen() {
   }, [selecionando, alternarSelecao]);
 
   const onLongPressLinha = useCallback((c: Cliente) => {
+    if (!podeGerenciarClientes) return;
     Haptics.selectionAsync().catch(() => {});
     entrarSelecao(c.id);
-  }, [entrarSelecao]);
+  }, [entrarSelecao, podeGerenciarClientes]);
 
   const onEditarLinha = useCallback((c: Cliente) => {
+    if (!podeGerenciarClientes) return;
     setEditing({ ...c });
     setIsNew(false);
     setErrors({});
-  }, []);
+  }, [podeGerenciarClientes]);
 
   const onExcluirLinha = useCallback((c: Cliente) => { handleDelete(c); }, [handleDelete]);
 
@@ -505,8 +540,9 @@ export default function ClientesScreen() {
       onLongPress={onLongPressLinha}
       onEditar={onEditarLinha}
       onExcluir={onExcluirLinha}
+      podeGerenciar={podeGerenciarClientes}
     />
-  ), [selecionando, selecionados, radarMeses, excluindoId, onPressLinha, onLongPressLinha, onEditarLinha, onExcluirLinha]);
+  ), [selecionando, selecionados, radarMeses, excluindoId, podeGerenciarClientes, onPressLinha, onLongPressLinha, onEditarLinha, onExcluirLinha]);
 
   const keyExtractor = useCallback((c: Cliente) => c.id, []);
 
@@ -577,12 +613,12 @@ export default function ClientesScreen() {
                     <Text style={styles.selAll}>Selecionar todos</Text>
                   </TouchableOpacity>
                 </>
-              ) : (
+              ) : podeGerenciarClientes ? (
                 <TouchableOpacity style={styles.selEnter} onPress={() => entrarSelecao()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Selecionar para excluir vários">
                   <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={cores.accentLight} />
                   <Text style={styles.selEnterLabel}>Selecionar</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
           ) : null
         }
@@ -597,7 +633,7 @@ export default function ClientesScreen() {
       )}
 
       {/* BARRA DE AÇÃO — excluir selecionados (vai para a Lixeira) */}
-      {selecionando && selecionados.size > 0 && (
+      {selecionando && podeGerenciarClientes && selecionados.size > 0 && (
         <View style={[styles.bulkBar, { paddingBottom: insets.bottom + 16 }]}>
           <OlliButton
             label={`Excluir ${selecionados.size} para a Lixeira`}
@@ -680,7 +716,14 @@ export default function ClientesScreen() {
                 />
                 <SheetAction icon="whatsapp" color={cores.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
                 <SheetAction icon="phone" color={cores.success} label="Ligar" desc="Chamada direta" onPress={() => chamarTelefone(acoes)} />
-                <SheetAction icon="pencil-outline" color={cores.onSurfaceVariant} label="Editar cadastro" desc="Dados do cliente" onPress={() => editarCliente(acoes)} />
+                 <SheetAction
+                   icon="pencil-outline"
+                   color={cores.onSurfaceVariant}
+                   label="Editar cadastro"
+                   desc={podeGerenciarClientes ? 'Dados do cliente' : 'Acesso restrito ao gestor da conta'}
+                   disabled={!podeGerenciarClientes}
+                   onPress={() => editarCliente(acoes)}
+                 />
               </>
             )}
           </TouchableOpacity>
@@ -690,11 +733,11 @@ export default function ClientesScreen() {
   );
 }
 
-function SheetAction({ icon, color, iconColor, label, desc, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; iconColor?: string; label: string; desc: string; onPress: () => void }) {
+function SheetAction({ icon, color, iconColor, label, desc, onPress, disabled = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; iconColor?: string; label: string; desc: string; onPress: () => void; disabled?: boolean }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   return (
-    <TouchableOpacity style={styles.sheetItem} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={[styles.sheetItem, disabled && { opacity: 0.5 }]} onPress={onPress} disabled={disabled} activeOpacity={0.8} accessibilityState={{ disabled }}>
       <View style={[styles.sheetIcon, { backgroundColor: color + '1E', borderColor: color + '3A' }]}>
         {/* `color` pinta a tinta/borda do chip (fundo — não se toca). O glifo pode precisar
             de um tom mais escuro para passar contraste sobre esse chip claro: `iconColor`. */}

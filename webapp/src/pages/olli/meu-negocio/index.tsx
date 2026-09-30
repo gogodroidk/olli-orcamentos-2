@@ -47,15 +47,20 @@ import {
 	Lock,
 	RotateCw,
 	Save,
+	Sparkles,
 	Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useBlocker } from "react-router";
+import { useBlocker, useLocation, useNavigate } from "react-router";
+import { VERTICAL_PARA_SEGMENTO } from "@vertical-segmento";
+import { ferramentasSugeridas, VERTICAIS, VERTICAL_GERAL, type VerticalId } from "@verticais";
 import { supabase } from "@/lib/supabase";
 import { applyBrandColor } from "@/olli/branding";
 import { Campo, CampoMascarado, cnpjValido, cpfValido } from "@/olli/components/campos";
 import { useMinhaEmpresa } from "@/olli/data";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
+import { camposPendentesPerfil, perfilOperacionalCompleto, ROTULO_CAMPO_PERFIL } from "@/olli/onboarding";
+import { useUserInfo } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
@@ -72,6 +77,11 @@ import {
 	VALIDADES_PADRAO,
 } from "./constantes";
 import { arquivoParaLogoDataUri, LOGO_TIPOS_ACEITOS } from "./logoUpload";
+import {
+	consultarCnpjWeb,
+	sugerirMarcaWeb,
+	type SugestaoMarcaWeb,
+} from "./assistentes";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,12 +93,34 @@ interface LinhaEmpresa {
 }
 
 /** Erros de validação, por campo. */
-type Erros = Partial<Record<"nome" | "cnpj" | "cpf" | "email", string>>;
+type Erros = Partial<Record<
+	| "tipoNegocio"
+	| "nome"
+	| "nomePrestador"
+	| "telefone"
+	| "especialidade"
+	| "verticais"
+	| "cidade"
+	| "estado"
+	| "cnpj"
+	| "cpf"
+	| "email",
+	string
+>>;
 
 function validar(f: Empresa): Erros {
 	const e: Erros = {};
+	if (f.tipoNegocio !== "autonomo" && f.tipoNegocio !== "empresa") e.tipoNegocio = "Escolha como você trabalha.";
 	if (!f.nome.trim()) e.nome = "O nome da empresa aparece no topo de todo orçamento. Preencha.";
-	// Documento é OPCIONAL (MEI/informal) — mas, se preenchido, precisa ser real.
+	if (!f.nomePrestador.trim()) e.nomePrestador = "Informe o nome de quem responde pelo serviço.";
+	const telefone = (f.telefone || f.whatsapp || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+	if (telefone.length < 10 || telefone.length > 11) e.telefone = "Informe um telefone com DDD.";
+	if (!f.especialidade.trim()) e.especialidade = "Descreva sua especialidade principal.";
+	if (!f.verticais?.length) e.verticais = "Escolha ao menos um tipo de serviço.";
+	if (!f.cidade.trim()) e.cidade = "Informe a cidade onde você atende.";
+	if (!/^[A-Z]{2}$/i.test(f.estado.trim())) e.estado = "Informe a UF com duas letras.";
+	// CNPJ é obrigatório apenas para quem declara empresa; para autônomos continua opcional.
+	if (f.tipoNegocio === "empresa" && !f.cnpj.trim()) e.cnpj = "Informe o CNPJ da empresa.";
 	if (f.cnpj.trim() && !cnpjValido(f.cnpj)) e.cnpj = "Esse CNPJ não existe (dígito verificador). Confira os números.";
 	if (f.cpf.trim() && !cpfValido(f.cpf)) e.cpf = "Esse CPF não existe (dígito verificador). Confira os números.";
 	if (f.email.trim() && !EMAIL.test(f.email.trim())) e.email = "E-mail inválido.";
@@ -107,10 +139,33 @@ function opcional(valor: string | undefined, base: string | undefined): string |
 	return base === undefined ? undefined : "";
 }
 
+function telefoneNacional(valor: string | undefined): string {
+	const digitos = (valor ?? "").replace(/\D/g, "");
+	return digitos.replace(/^55(?=\d{10,11}$)/, "").slice(0, 11);
+}
+
+function retornoSeguro(valor: string | null): string {
+	if (!valor) return "/inicio";
+	try {
+		const decodificado = decodeURIComponent(valor);
+		return decodificado.startsWith("/") && !decodificado.startsWith("//") && !decodificado.startsWith("/meu-negocio")
+			? decodificado
+			: "/inicio";
+	} catch {
+		return "/inicio";
+	}
+}
+
 export default function MeuNegocio() {
 	const empresaQ = useMinhaEmpresa();
 	const contexto = useContextoDeEscrita();
 	const qc = useQueryClient();
+	const usuario = useUserInfo();
+	const location = useLocation();
+	const navigate = useNavigate();
+	const parametros = useMemo(() => new URLSearchParams(location.search), [location.search]);
+	const modoOnboarding = parametros.get("onboarding") === "1";
+	const destinoAposOnboarding = retornoSeguro(parametros.get("retorno"));
 
 	const linha = empresaQ.data as LinhaEmpresa | null | undefined;
 	const carregadoEm = linha?.atualizado_em ?? null;
@@ -125,6 +180,14 @@ export default function MeuNegocio() {
 	const [erroLogo, setErroLogo] = useState<string | null>(null);
 	const [processandoLogo, setProcessandoLogo] = useState(false);
 	const inputLogoRef = useRef<HTMLInputElement | null>(null);
+	const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+	const [cnpjInfo, setCnpjInfo] = useState<string | null>(null);
+	const [assistenteAberto, setAssistenteAberto] = useState(false);
+	const [pedidoMarca, setPedidoMarca] = useState("");
+	const [gerandoMarca, setGerandoMarca] = useState(false);
+	const [erroMarca, setErroMarca] = useState<string | null>(null);
+	const [sugestaoMarca, setSugestaoMarca] = useState<SugestaoMarcaWeb | null>(null);
+	const finalizandoOnboardingRef = useRef(false);
 
 	// Semeia o formulário com o blob REAL (e o mantém alinhado quando a linha
 	// recarrega). `empresaEmBranco()` embaixo garante que nenhuma string obrigatória
@@ -135,10 +198,17 @@ export default function MeuNegocio() {
 		setForm((atual) => {
 			// Nunca sobrescreve o que o usuário está digitando: se já há rascunho, mantém.
 			if (atual) return atual;
-			return { ...empresaEmBranco(), ...(linha?.dados ?? {}) };
+			const base = { ...empresaEmBranco(), ...(linha?.dados ?? {}) };
+			return {
+				...base,
+				nomePrestador: base.nomePrestador || usuario.name || "",
+				telefone: base.telefone || telefoneNacional(usuario.phone),
+				whatsapp: base.whatsapp || telefoneNacional(usuario.phone),
+				email: base.email || usuario.email || "",
+			};
 		});
 		setSemeadoEm((s) => s ?? carregadoEm ?? "novo");
-	}, [empresaQ.isLoading, empresaQ.isError, linha, carregadoEm]);
+	}, [empresaQ.isLoading, empresaQ.isError, linha, carregadoEm, usuario.email, usuario.name, usuario.phone]);
 
 	const cor = (form?.corMarca ?? "").trim();
 
@@ -174,7 +244,8 @@ export default function MeuNegocio() {
 	// react-router) não passa por lá, e o rascunho some sem aviso nenhum. `useBlocker`
 	// intercepta a troca de rota dentro do próprio app.
 	const bloqueador = useBlocker(
-		({ currentLocation, nextLocation }) => sujo && currentLocation.pathname !== nextLocation.pathname,
+		({ currentLocation, nextLocation }) =>
+			sujo && !finalizandoOnboardingRef.current && currentLocation.pathname !== nextLocation.pathname,
 	);
 	useEffect(() => {
 		if (bloqueador.state !== "blocked") return;
@@ -224,6 +295,10 @@ export default function MeuNegocio() {
 			const base: Empresa = { ...empresaEmBranco(), ...(atual?.dados ?? {}) };
 			const dados: Empresa = {
 				...base,
+				tipoNegocio: f.tipoNegocio,
+				segmento: f.segmento,
+				verticais: f.verticais,
+				ferramentasAtivas: f.ferramentasAtivas,
 				nome: f.nome.trim(),
 				nomePrestador: f.nomePrestador.trim(),
 				especialidade: f.especialidade.trim(),
@@ -276,6 +351,21 @@ export default function MeuNegocio() {
 			// "Salvar" seguido acusaria conflito com a própria escrita anterior.
 			const nova = (qc.getQueryData(["olli", "empresa", "me"]) as LinhaEmpresa | null)?.atualizado_em ?? null;
 			setSemeadoEm(nova ?? "novo");
+
+			// Mantém nome e telefone de contato disponíveis na sessão, inclusive para
+			// cadastro social. Isso NÃO significa telefone verificado por SMS.
+			await supabase.auth.updateUser({
+				data: {
+					full_name: dados.nomePrestador,
+					name: dados.nomePrestador,
+					phone: dados.telefone ? `+55${telefoneNacional(dados.telefone)}` : undefined,
+				},
+			});
+
+			if (modoOnboarding && perfilOperacionalCompleto(dados)) {
+				finalizandoOnboardingRef.current = true;
+				navigate(destinoAposOnboarding, { replace: true });
+			}
 		},
 	});
 
@@ -313,6 +403,97 @@ export default function MeuNegocio() {
 			return proximo;
 		});
 	};
+
+	function alternarVertical(id: VerticalId) {
+		setForm((atual) => {
+			if (!atual) return atual;
+			const existentes = atual.verticais ?? [];
+			const proximas = existentes.includes(id)
+				? existentes.length > 1
+					? existentes.filter((vertical) => vertical !== id)
+					: existentes
+				: [...existentes, id];
+			return {
+				...atual,
+				verticais: proximas,
+				segmento: VERTICAL_PARA_SEGMENTO[proximas[0] ?? "geral"],
+				ferramentasAtivas: ferramentasSugeridas(proximas),
+			};
+		});
+		setErros((atuais) => ({ ...atuais, verticais: undefined }));
+	}
+
+	async function preencherPeloCnpj() {
+		if (!form || bloqueado || buscandoCnpj) return;
+		if (form.cnpj.replace(/\D/g, "").length !== 14) {
+			setCnpjInfo("Informe o CNPJ completo, com 14 dígitos, para buscar.");
+			return;
+		}
+		setBuscandoCnpj(true);
+		setCnpjInfo(null);
+		try {
+			const resultado = await consultarCnpjWeb(form.cnpj);
+			if (resultado.estado === "ok") {
+				const e = resultado.empresa;
+				const nome = e.nomeFantasia || e.razaoSocial;
+				const endereco = [e.logradouro, e.bairro].filter(Boolean).join(", ");
+				setForm((atual) => atual ? {
+					...atual,
+					tipoNegocio: "empresa",
+					nome: atual.nome.trim() || nome,
+					especialidade: atual.especialidade.trim() || e.cnaePrincipal.descricao,
+					endereco: atual.endereco.trim() || endereco,
+					cidade: atual.cidade.trim() || e.municipio,
+					estado: atual.estado.trim() || e.uf,
+				} : atual);
+				setCnpjInfo(`Achei ${nome}. Completei somente os campos vazios — confira antes de salvar.`);
+			} else if (resultado.estado === "nao_encontrado") {
+				setCnpjInfo("Não achei esse CNPJ. Confira o número ou preencha manualmente.");
+			} else if (resultado.estado === "invalido") {
+				setCnpjInfo("O CNPJ precisa ter 14 dígitos.");
+			} else {
+				setCnpjInfo("A busca está indisponível agora. Nenhum dado foi alterado.");
+			}
+		} finally {
+			setBuscandoCnpj(false);
+		}
+	}
+
+	async function gerarMarca() {
+		if (!form || bloqueado || gerandoMarca) return;
+		if (!pedidoMarca.trim()) {
+			setErroMarca("Conte como você quer que sua empresa seja percebida.");
+			return;
+		}
+		setGerandoMarca(true);
+		setErroMarca(null);
+		setSugestaoMarca(null);
+		try {
+			const vertical = form.verticais?.[0];
+			const resultado = await sugerirMarcaWeb({
+				nomeEmpresa: form.nome,
+				segmento: form.segmento || vertical,
+				especialidadeAtual: form.especialidade,
+				sloganAtual: form.slogan,
+				pedido: pedidoMarca,
+				vertical,
+			});
+			if (resultado.estado === "ok") setSugestaoMarca(resultado.sugestao);
+			else setErroMarca(resultado.mensagem);
+		} finally {
+			setGerandoMarca(false);
+		}
+	}
+
+	function aplicarMarca() {
+		if (!sugestaoMarca) return;
+		setForm((atual) => atual ? {
+			...atual,
+			especialidade: sugestaoMarca.especialidade,
+			slogan: sugestaoMarca.slogan,
+		} : atual);
+		setAssistenteAberto(false);
+	}
 
 	/** Arquivo escolhido → data URI compacta no RASCUNHO (só persiste no Salvar). */
 	async function aoEscolherLogo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -375,10 +556,37 @@ export default function MeuNegocio() {
 	const logo = logoExibivel(form.logoUri);
 	const temLogoNaoExibivel = !!form.logoUri && !logo;
 	const validadeAtiva = form.validadeDiasPadrao ?? VALIDADE_DIAS_DEFAULT;
+	const pendentesAtuais = camposPendentesPerfil(form);
 
 	return (
-		<Pagina>
+		<Pagina
+			titulo={modoOnboarding ? "Prepare seu negócio" : "Meu negócio"}
+			descricao={
+				modoOnboarding
+					? "Complete os dados essenciais uma vez. Depois, a OLLI usa tudo nos seus orçamentos e documentos."
+					: undefined
+			}
+		>
 			<form id="form-meu-negocio" onSubmit={aoSubmeter} className="space-y-5 pb-28">
+				{modoOnboarding && (
+					<div className="rounded-2xl border border-primary/25 bg-primary/5 p-5" aria-live="polite">
+						<div className="flex items-start gap-3">
+							<div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white">
+								{pendentesAtuais.length ? <Sparkles className="size-5" /> : <CheckCircle2 className="size-5" />}
+							</div>
+							<div className="min-w-0">
+								<p className="font-semibold text-text-primary">
+									{pendentesAtuais.length ? "Falta pouco para começar" : "Cadastro essencial completo"}
+								</p>
+								<p className="mt-1 text-sm leading-relaxed text-text-secondary">
+									{pendentesAtuais.length
+										? `Preencha: ${pendentesAtuais.map((campo) => ROTULO_CAMPO_PERFIL[campo]).join(", ")}. Você poderá ajustar marca e padrões depois.`
+										: "Salve para entrar na plataforma. Nenhum orçamento será enviado sem sua confirmação."}
+								</p>
+							</div>
+						</div>
+					</div>
+				)}
 				{/* Aviso de permissão — honesto sobre POR QUE está travado. */}
 				{somenteLeitura && (
 					<Aviso tom="info" Icone={Lock}>
@@ -420,6 +628,118 @@ export default function MeuNegocio() {
 					titulo="Identidade"
 					descricao="É o que aparece no cabeçalho do orçamento, do recibo e da OS que o cliente recebe."
 				>
+					<div className="mb-5 grid gap-4 rounded-xl border border-border bg-bg-neutral/25 p-4">
+						<div data-erro={erros.tipoNegocio ? "1" : undefined}>
+							<p className="text-sm font-medium text-text-primary">
+								Como você trabalha? <span className="text-error">*</span>
+							</p>
+							<p className="mb-2 mt-1 text-xs text-text-secondary">
+								A escolha define quais dados fiscais são necessários; você pode alterar depois.
+							</p>
+							<div className="flex flex-wrap gap-2">
+								<Chip ativo={form.tipoNegocio === "autonomo"} disabled={bloqueado} onClick={() => set("tipoNegocio", "autonomo")}>
+									Autônomo / pessoa física
+								</Chip>
+								<Chip ativo={form.tipoNegocio === "empresa"} disabled={bloqueado} onClick={() => set("tipoNegocio", "empresa")}>
+									Empresa com CNPJ
+								</Chip>
+							</div>
+							{erros.tipoNegocio && <p className="mt-2 text-xs font-medium text-error">{erros.tipoNegocio}</p>}
+						</div>
+
+						<div data-erro={erros.verticais ? "1" : undefined}>
+							<p className="text-sm font-medium text-text-primary">
+								Que tipo de serviço você orça? <span className="text-error">*</span>
+							</p>
+							<p className="mb-2 mt-1 text-xs text-text-secondary">
+								Escolha um ou mais. A primeira opção selecionada orienta os atalhos e ferramentas iniciais.
+							</p>
+							<div className="flex flex-wrap gap-2">
+								{[...VERTICAIS, VERTICAL_GERAL].map((vertical) => (
+									<Chip
+										key={vertical.id}
+										ativo={form.verticais?.includes(vertical.id) ?? false}
+										disabled={bloqueado}
+										onClick={() => alternarVertical(vertical.id)}
+									>
+										{vertical.emoji} {vertical.label}
+									</Chip>
+								))}
+							</div>
+							{erros.verticais && <p className="mt-2 text-xs font-medium text-error">{erros.verticais}</p>}
+						</div>
+					</div>
+
+					<div className="mb-4 rounded-xl border border-brand/25 bg-brand/5 p-4">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<div className="flex items-start gap-3">
+								<div className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-white">
+									<Sparkles className="size-5" />
+								</div>
+								<div>
+									<p className="font-semibold text-text-primary">Criar especialidade e slogan com a OLLI</p>
+									<p className="mt-1 text-sm text-text-secondary">
+										Explique o posicionamento desejado; a IA propõe e você revisa antes de aplicar.
+									</p>
+								</div>
+							</div>
+							<Button
+								type="button"
+								variant="outline"
+								disabled={bloqueado}
+								onClick={() => { setAssistenteAberto((v) => !v); setErroMarca(null); setSugestaoMarca(null); }}
+							>
+								<Sparkles className="size-4" />
+								{assistenteAberto ? "Fechar" : "Criar com IA"}
+							</Button>
+						</div>
+
+						{assistenteAberto && (
+							<div className="mt-4 space-y-3 border-t border-border pt-4">
+								<Campo
+									rotulo="Como você quer posicionar a empresa?"
+									dica="Não inclua dados pessoais, senhas nem informações de clientes."
+								>
+									<Textarea
+										disabled={bloqueado || gerandoMarca}
+										value={pedidoMarca}
+										maxLength={700}
+										onChange={(e) => { setPedidoMarca(e.target.value); setErroMarca(null); setSugestaoMarca(null); }}
+										placeholder="Ex.: Quero transmitir confiança e rapidez para famílias e pequenos comércios, sem parecer uma empresa cara."
+									/>
+								</Campo>
+								<Button type="button" disabled={bloqueado || gerandoMarca || !pedidoMarca.trim()} onClick={gerarMarca}>
+									{gerandoMarca ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+									{gerandoMarca ? "Gerando…" : "Gerar sugestões"}
+								</Button>
+
+								{erroMarca && (
+									<div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-text-secondary">
+										<strong className="text-text-primary">Não consegui gerar agora.</strong> {erroMarca}
+									</div>
+								)}
+
+								{sugestaoMarca && (
+									<div className="space-y-3 rounded-xl border border-success/35 bg-success/5 p-4">
+										<div>
+											<p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Especialidade</p>
+											<p className="mt-1 font-medium text-text-primary">{sugestaoMarca.especialidade}</p>
+										</div>
+										<div>
+											<p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Slogan</p>
+											<p className="mt-1 font-medium text-text-primary">{sugestaoMarca.slogan}</p>
+										</div>
+										{sugestaoMarca.explicacao && <p className="text-sm text-text-secondary">{sugestaoMarca.explicacao}</p>}
+										<Button type="button" onClick={aplicarMarca}>
+											<Check className="size-4" />
+											Usar estas sugestões
+										</Button>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+
 					<div className="grid gap-4 sm:grid-cols-2">
 						<Campo rotulo="Nome da empresa" obrigatorio erro={erros.nome} className="sm:col-span-2">
 							<Input
@@ -431,8 +751,9 @@ export default function MeuNegocio() {
 							/>
 						</Campo>
 
-						<Campo rotulo="Nome do prestador" dica="Quem assina o serviço.">
+						<Campo rotulo="Nome do prestador" obrigatorio erro={erros.nomePrestador} dica="Quem assina o serviço.">
 							<Input
+								data-erro={erros.nomePrestador ? "1" : undefined}
 								disabled={bloqueado}
 								value={form.nomePrestador}
 								onChange={(e) => set("nomePrestador", e.target.value)}
@@ -440,8 +761,9 @@ export default function MeuNegocio() {
 							/>
 						</Campo>
 
-						<Campo rotulo="Especialidade">
+						<Campo rotulo="Especialidade" obrigatorio erro={erros.especialidade}>
 							<Input
+								data-erro={erros.especialidade ? "1" : undefined}
 								disabled={bloqueado}
 								value={form.especialidade}
 								onChange={(e) => set("especialidade", e.target.value)}
@@ -463,8 +785,24 @@ export default function MeuNegocio() {
 						    data-erro vai no <div> wrapper, e o foco/scroll de erro busca o
 						    <input> ali dentro (ver aoSubmeter). */}
 						<div data-erro={erros.cnpj ? "1" : undefined}>
-							<Campo rotulo="CNPJ" erro={erros.cnpj} dica="Opcional — deixe em branco se você não tem CNPJ.">
+							<Campo
+								rotulo="CNPJ"
+								obrigatorio={form.tipoNegocio === "empresa"}
+								erro={erros.cnpj}
+								dica={form.tipoNegocio === "empresa" ? "Necessário para a empresa declarada." : "Opcional para autônomos."}
+							>
 								<CampoMascarado tipo="cnpj" disabled={bloqueado} valor={form.cnpj} aoMudar={(v) => set("cnpj", v)} />
+								<Button
+									type="button"
+									variant="outline"
+									className="mt-2 w-full"
+									disabled={bloqueado || buscandoCnpj}
+									onClick={preencherPeloCnpj}
+								>
+									{buscandoCnpj ? <Loader2 className="size-4 animate-spin" /> : <RotateCw className="size-4" />}
+									{buscandoCnpj ? "Buscando…" : "Preencher dados pelo CNPJ"}
+								</Button>
+								{cnpjInfo && <p className="mt-2 text-xs leading-relaxed text-text-secondary">{cnpjInfo}</p>}
 							</Campo>
 						</div>
 
@@ -483,12 +821,13 @@ export default function MeuNegocio() {
 							/>
 						</Campo>
 
-						<Campo rotulo="Cidade">
-							<Input disabled={bloqueado} value={form.cidade} onChange={(e) => set("cidade", e.target.value)} />
+						<Campo rotulo="Cidade" obrigatorio erro={erros.cidade}>
+							<Input data-erro={erros.cidade ? "1" : undefined} disabled={bloqueado} value={form.cidade} onChange={(e) => set("cidade", e.target.value)} />
 						</Campo>
 
-						<Campo rotulo="UF">
+						<Campo rotulo="UF" obrigatorio erro={erros.estado}>
 							<Input
+								data-erro={erros.estado ? "1" : undefined}
 								disabled={bloqueado}
 								value={form.estado}
 								maxLength={2}
@@ -620,17 +959,19 @@ export default function MeuNegocio() {
 					</div>
 				</Bloco>
 
-				{/* ───────────────  CONTATO E PIX  ─────────────── */}
-				<Bloco titulo="Contato e Pix" descricao="Como o cliente fala com você — e como ele te paga.">
+				{/* ───────────────  CONTATO  ─────────────── */}
+				<Bloco titulo="Contato" descricao="Como o cliente encontra e fala com a sua empresa.">
 					<div className="grid gap-4 sm:grid-cols-2">
-						<Campo rotulo="Telefone">
-							<CampoMascarado
-								tipo="telefone"
-								disabled={bloqueado}
-								valor={form.telefone}
-								aoMudar={(v) => set("telefone", v)}
-							/>
-						</Campo>
+						<div data-erro={erros.telefone ? "1" : undefined}>
+							<Campo rotulo="Telefone" obrigatorio erro={erros.telefone} dica="Usado para contato operacional; marketing exige consentimento separado.">
+								<CampoMascarado
+									tipo="telefone"
+									disabled={bloqueado}
+									valor={form.telefone}
+									aoMudar={(v) => set("telefone", v)}
+								/>
+							</Campo>
+						</div>
 
 						<Campo rotulo="WhatsApp" dica="É por onde o orçamento é enviado.">
 							<CampoMascarado
@@ -662,8 +1003,8 @@ export default function MeuNegocio() {
 						</Campo>
 
 						<Campo
-							rotulo="Chave Pix"
-							dica="Sai no orçamento e no recibo para o cliente pagar. Pode ser CPF/CNPJ, telefone, e-mail ou chave aleatória."
+							rotulo="Chave Pix (somente recibos)"
+							dica="Não aparece em orçamentos. O cliente combina e paga diretamente à sua empresa."
 							className="sm:col-span-2"
 						>
 							<Input
@@ -692,7 +1033,7 @@ export default function MeuNegocio() {
 				{/* ───────────────  PADRÕES  ─────────────── */}
 				<Bloco
 					titulo="Padrões que saem em todo orçamento"
-					descricao="Pré-preenchem cada orçamento novo. Você ainda pode mudar tudo caso a caso, sem alterar estes padrões."
+					descricao="Pré-preenchem cada orçamento novo. Modelo, cor e logo são centralizados em Modelos de documento; condições comerciais continuam ajustáveis quando necessário."
 				>
 					<div className="space-y-5">
 						<div>
@@ -739,7 +1080,7 @@ export default function MeuNegocio() {
 							</Campo>
 						</div>
 
-						<Campo rotulo="Condições de pagamento">
+						<Campo rotulo="Condições comerciais">
 							<Textarea
 								rows={2}
 								disabled={bloqueado}
@@ -830,14 +1171,20 @@ export default function MeuNegocio() {
 
 /* ────────────────────────────  Peças da tela  ─────────────────────────────── */
 
-function Pagina({ children }: { children: React.ReactNode }) {
+function Pagina({
+	children,
+	titulo = "Meu negócio",
+	descricao = "Estes dados saem em todo orçamento, recibo e ordem de serviço — no app e aqui.",
+}: {
+	children: React.ReactNode;
+	titulo?: string;
+	descricao?: string;
+}) {
 	return (
 		<div className="mx-auto w-full max-w-5xl p-4 md:p-6">
 			<header className="mb-5">
-				<h1 className="text-2xl font-bold tracking-tight text-text-primary">Meu negócio</h1>
-				<p className="mt-1 text-sm text-text-secondary">
-					Estes dados saem em todo orçamento, recibo e ordem de serviço — no app e aqui.
-				</p>
+				<h1 className="text-2xl font-bold tracking-tight text-text-primary">{titulo}</h1>
+				<p className="mt-1 text-sm text-text-secondary">{descricao}</p>
 			</header>
 			{children}
 		</div>

@@ -45,6 +45,8 @@ const SOBRECARGA =
   'A OLLI está muito requisitada agora. Tente de novo em alguns segundos.';
 const ERRO_SERVIDOR =
   'A OLLI teve um problema para responder agora. Tente de novo em instantes.';
+const LIMITE_INDISPONIVEL =
+  'A OLLI está validando o limite de uso agora. Nada foi cobrado; tente novamente em instantes.';
 const PRECISA_LOGIN =
   'Sua sessão expirou. Toque em Conta e entre de novo para usar a OLLI.';
 const MUITAS_REQUISICOES =
@@ -72,6 +74,7 @@ async function accessTokenAtual(): Promise<string | null> {
 }
 
 function mensagemPorStatus(status: number, fallback: string, codigo?: unknown): string {
+  if (codigo === 'limite_indisponivel') return LIMITE_INDISPONIVEL;
   const limite = mensagemLimiteIA(codigo);
   if (limite) return limite;
   if (status === 401) return PRECISA_LOGIN;
@@ -83,6 +86,7 @@ function mensagemPorStatus(status: number, fallback: string, codigo?: unknown): 
 
 function mensagemErroIA(erro: unknown, fallback: string): string {
   const s = typeof erro === 'string' ? erro : '';
+  if (s === 'limite_indisponivel') return LIMITE_INDISPONIVEL;
   const limite = mensagemLimiteIA(s);
   if (limite) return limite;
   if (/nao_autorizado|n[ãa]o_autorizado|401/i.test(s)) return PRECISA_LOGIN;

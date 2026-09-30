@@ -21,7 +21,9 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		{ path: "clientes", element: Component("/pages/olli/clientes") },
 		{ path: "produtos", element: Component("/pages/olli/catalogo/produtos") },
 		{ path: "servicos", element: Component("/pages/olli/catalogo/servicos") },
+		{ path: "precificacao", element: Component("/pages/olli/precificacao") },
 		{ path: "recibos", element: Component("/pages/olli/recibos") },
+		{ path: "documentos", element: Component("/pages/olli/documentos") },
 		{ path: "dados", element: Component("/pages/olli/dados") },
 
 		// ─── Operação ───────────────────────────────────────────
@@ -35,6 +37,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		{ path: "ferramentas", element: Component("/pages/olli/ferramentas") },
 		{ path: "diagnostico", element: Component("/pages/olli/diagnostico") },
 		{ path: "assistente", element: Component("/pages/olli/assistente") },
+		{ path: "ajuda", element: Component("/pages/olli/ajuda") },
 
 		// ─── Conta ──────────────────────────────────────────────
 		{ path: "meu-negocio", element: Component("/pages/olli/meu-negocio") },

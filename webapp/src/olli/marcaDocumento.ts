@@ -17,10 +17,32 @@ import { supabase } from "@/lib/supabase";
 import { derivar, type LinhaAssinatura, type ResumoAssinatura, SEM_ASSINATURA } from "@/pages/olli/planos/tipos";
 import { derivarMarca, type Marca } from "./marcaRegra";
 import { opcoesContextoDeEscrita } from "./mutacoes";
+import { obterEstadoOfertaComercial } from "./cota-envios";
 
 export { avisoDaMarca, type Marca, type MotivoIndeterminado } from "./marcaRegra";
 
 /* ─────────────────────────  A leitura da assinatura  ───────────────────────── */
+
+/**
+ * Lê SÓ os vínculos com a Stripe, numa consulta à parte: se essa leitura falhar (rede, coluna
+ * sem grant), o plano acima continua valendo e o painel mostra a tela de sempre. Devolve `{}`
+ * na falha — o resumo fica com `renovaSozinho` indefinido, nunca com um palpite.
+ */
+async function lerVinculoStripe(meuId: string): Promise<Pick<ResumoAssinatura, "renovaSozinho" | "temClienteStripe">> {
+	const { data, error } = await supabase
+		.from("assinaturas")
+		.select("stripe_subscription_id, stripe_customer_id")
+		.eq("user_id", meuId)
+		.maybeSingle();
+	if (error || !data) return {};
+	const vinculo = data as { stripe_subscription_id?: string | null; stripe_customer_id?: string | null };
+	// `undefined` (coluna ausente na resposta) ≠ `null` (afirmado: sem assinatura na Stripe).
+	if (vinculo.stripe_subscription_id === undefined) return {};
+	return {
+		renovaSozinho: typeof vinculo.stripe_subscription_id === "string" && vinculo.stripe_subscription_id.trim() !== "",
+		temClienteStripe: typeof vinculo.stripe_customer_id === "string" && vinculo.stripe_customer_id.trim() !== "",
+	};
+}
 
 /**
  * A query da MINHA assinatura. Mora aqui (e não na tela de Planos) porque agora tem
@@ -46,7 +68,24 @@ export const opcoesAssinatura = queryOptions({
 		// "falhou" de "não tem assinatura". Engolir aqui recriaria o bug crônico.
 		if (error) throw error;
 
-		return data ? derivar(data as LinhaAssinatura) : SEM_ASSINATURA;
+		const resumo = data ? derivar(data as LinhaAssinatura) : SEM_ASSINATURA;
+		if (resumo.planoEfetivo !== "gratis") {
+			// Só o plano PAGO precisa saber se renova sozinho (Stripe) ou se veio de um Pix.
+			return resumo.origem === "pagamento" ? { ...resumo, ...(await lerVinculoStripe(meuId)) } : resumo;
+		}
+		const oferta = await obterEstadoOfertaComercial();
+		if (oferta?.trialEstado === "active" && oferta.planoEfetivo === "pro" && oferta.trialTerminaEm) {
+			return {
+				planoEfetivo: "pro",
+				planoContratado: "gratis",
+				status: "trialing",
+				proximaCobranca: oferta.trialTerminaEm,
+				ativo: true,
+				pagamentoFalhou: false,
+				origem: "trial",
+			};
+		}
+		return resumo;
 	},
 	staleTime: 60_000,
 	retry: 1,

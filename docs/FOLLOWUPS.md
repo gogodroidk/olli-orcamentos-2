@@ -29,10 +29,11 @@ arquivos: **estes dois vencem**.
 > DE DADOS na camada de identidade/conta — atacar antes do resto (o dono pediu "login perfeito").
 
 **P0 — integridade de dados (fazer primeiro):**
-- [ ] **Login não pode gravar empresa em branco.** `EntrarScreen.tsx:129-151`: distinguir 3 estados
-  (`tem`/`não tem`/`não sei`); `não sei` (erro de rede) → tela de retry, NUNCA Onboarding. E o Onboarding
-  (`salvarTudo`) faz MERGE, nunca overwrite de campo já preenchido remotamente. `empresaNuvemMudouDesdeUltimoPull`
-  deve falhar FECHADO (não empurrar) quando não há carimbo local e a origem foi o Onboarding pós-login.
+- [x] **Login não pode gravar empresa em branco — FEITO (2026-09-08).** `EntrarScreen.tsx` e
+  `OnboardingScreen.tsx` usam os três estados (`tem`/`nao_tem`/`nao_sei`), bloqueiam o
+  formulário em erro de rede e confirmam a ausência imediatamente antes da escrita.
+  `cloudSync.ts` também faz o push falhar fechado sem carimbo local ou quando a nuvem já
+  tem uma empresa; `test:contexto-equipe`, `test:particao` e `npm test` cobrem a regressão.
 - [x] **Logout "Sair e manter dados" não pode contaminar o próximo usuário.** **FEITO (2026-07-16, O0-2,
   commit `6f10eee`)** — resolvido por PARTIÇÃO (melhor que exigir "apagar dados": o usuário A mantém os
   dados dele, como o botão promete, e B nunca os vê). `src/database/particao.ts`: cada usuário abre o SEU
@@ -50,11 +51,17 @@ arquivos: **estes dois vencem**.
   nuvem, mas o arquivo de backup do técnico contém dados da empresa — decisão de produto pendente.)
 
 **P1 — dinheiro, segurança, entrega ao cliente:**
-- [ ] **Paywall do plano Empresa** (worker `handleConvite` checa plano do owner + `GatePro` nas rotas de Equipe).
-  Ver `olli-paywall-empresa-ausente`. **DEPENDE de decisão do dono.**
-- [ ] **XSS em `modeloPdf`** do orçamento (`pdfGenerator.ts`) — mesma blindagem `modeloSeguro()` do recibo.
-- [ ] **`/stripe/webhook` e `/transcrever`**: teto de payload + rate-limit por IP ANTES de bufferizar o corpo;
-  `/transcrever` deve validar plano/cota mensal (hoje só client-side).
+- [x] **Paywall do plano Empresa — FEITO (2026-09-08).** `handleConvite` consulta
+  o entitlement do owner com estados `sim`/`nao`/`erro`, falha fechado em erro e
+  retorna `402` sem Empresa; mobile e desktop usam `GateEquipe`/`GatePro`, com
+  grandfathering explícito para organizações antigas. Cobertura em
+  `test:entitlement-equipe`, C7 e testes do worker.
+- [x] **XSS em `modeloPdf`** do orçamento — **FEITO (2026-09-08)**: `pdfGenerator.ts` aplica whitelist estrita de modelos antes de montar a classe HTML; `test:c5-orcamentos-financeiro` e `npm test` continuam verdes.
+- [x] **`/stripe/webhook` e `/transcrever` — FEITO (2026-09-08).** O webhook Stripe agora
+  aplica o `STRIPE_RL` por IP antes de ler o corpo, além do teto HMAC de 128 KiB; 429 faz a
+  Stripe reenviar sem consumir o stream. `/transcrever` já tinha teto incremental de 4 MiB,
+  `TRANSCREVER_RL` antes do buffer e reserva server-side de neurônios/créditos. Cobertura em
+  `test:stripe-webhook-gate`, `test:body-limit`, `test:creditos-voz` e Worker dry-run.
 - [x] **`contextoEquipeOwner` com 3 estados** — **FEITO (2026-07-16, O0-4, commit `9d8e849`)**. Agora usa
   `carregarMinhaOrganizacao` (3 estados); `erro` vira `desconhecido` e o push das 8 tabelas de tenant é ADIADO
   (fail-closed) — nada se perde, o SQLite local é a fonte da verdade e o próximo sync empurra. A decisão pura
@@ -62,20 +69,43 @@ arquivos: **estes dois vencem**.
   relatado: `atualizarContextoEquipe()` só rodava no `syncOnLogin`, mas `pushRow` dispara a CADA escrita local
   (`database.ts:21`) e o restore chama `pushAllLocal` fora dele — esses caminhos usavam o contexto que
   sobrasse. Resolvido com `garantirContextoEquipe()` (resolve sob demanda) + reset no logout.
-- [ ] **Gate de papel na UI de clientes** (edição/exclusão do técnico não pode falhar em silêncio) + **tombstone
-  `exclusoes` multi-tenant** + **query de `OrdensDesktopScreen` fail-closed** enquanto o papel resolve.
-- [ ] **Sinal (R$ + data) e Laudo técnico no PDF** (`Step3Detalhes`/`pdfGenerator` — hoje somem na entrega).
-- [ ] **`NovoOrcamentoScreen`**: trocar `window.alert/confirm` pelo `ConfirmDialog` temático.
-- [ ] **reduced-motion**: `OlliSkeleton` (shimmer), pulso do mic (`OlliVozScreen`), "digitando" (`OlliChatScreen`),
-  container do wizard (`NovoOrcamentoScreen`).
-- [ ] **Handler de toque na notificação** (`addNotificationResponseReceivedListener` → navega pra OS/agenda) +
-  **teto de lembretes PMOC** + **cancelar lembretes no logout "manter dados"** (hoje vazam nome/endereço).
-- [ ] **Badges PMOC** via `corCategoriaEmChip` (contraste — 2 telas).
-- [ ] **Copy que mente**: `public/index.html` estático + `ComparadorLanding` ("assinatura", "equipe no mapa").
+- [x] **Gate de papel na UI de clientes e tombstones — FEITO (2026-09-08).** Técnicos
+  continuam podendo consultar/criar clientes, mas editar/excluir e exclusão em lote
+  ficam desabilitados com explicação acessível; `gerenciar_clientes` entrou na matriz.
+  `cloudSync.ts` resolve o tenant do tombstone por papel/tabela, e `OrdensDesktopScreen`
+  mantém carregamento/ações fail-closed enquanto o papel resolve. `test:c6-config-equipe`,
+  `test:contexto-equipe` e `test:tenant-escrita` cobrem os contratos.
+- [x] **Sinal (R$ + data) e Laudo técnico no PDF — FEITO (2026-09-08).**
+  `Step3Detalhes` já captura os campos; `pdfGenerator.ts` agora imprime laudo,
+  entrada limitada ao total, percentual/data quando configurados e saldo restante,
+  sempre escapados.
+- [x] **`NovoOrcamentoScreen` — FEITO (2026-09-08).** O wizard usa `avisar`/`confirmar` e
+  `DialogoDesktopHost` para o caminho web/desktop; não há `window.alert/confirm` na tela.
+- [x] **reduced-motion — FEITO (2026-09-08).** `OlliSkeleton`, pulso do mic, estado
+  "digitando" e container do wizard consultam `useReducedMotion`; o caminho reduzido é
+  estático ou sem transição.
+- [x] **Handler de toque na notificação — FEITO (2026-09-08).** `App.tsx` registra
+  `addNotificationResponseReceivedListener`, recupera o toque a frio com
+  `getLastNotificationResponseAsync` e segura o payload até a navegação estar pronta;
+  OS/agenda/ritual recebem a área correta. Restam apenas parâmetros de detalhe por id.
+  **Teto de lembretes PMOC** e **cancelamento no logout** seguem como itens separados de
+  operação, não são declarados concluídos por este handler.
+- [x] **Badges PMOC — FEITO (2026-09-08).** Situação do equipamento no app e no
+  desktop agora deriva o texto por `corCategoriaEmChip`; o teste C10 prende os dois
+  clientes ao mesmo contrato de contraste.
+- [x] **Copy que mente — FEITO (2026-09-08).** `ComparadorLanding` agora fala de orçamento offline,
+  aprovação/assinatura por link, IA para montar orçamento por voz e equipe com permissões no plano
+  Empresa; removeu promessas de PMOC pronto para fiscalização, diagnóstico automático e mapa em tempo
+  real. `test:landing-c4` cobre os textos proibidos e os benefícios reais.
 
 **P2/P3 — perf, higiene, código morto:**
-- [ ] `codigos_erro.json` (365KB) fora do import estático do boot (carregar sob demanda / só no seed).
-- [ ] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) e KPIs de recibos → dashboard-agregado em SQL.
+- [x] `codigos_erro.json` fora do import estático do boot — **FEITO (2026-09-08)**: seed lazy
+  via `require` só quando a tabela precisa ser povoada.
+- [x] `HojeScreen` + radares (`radarClientes`/`radarCobranca`) — **FEITO (2026-09-08)** para
+  os sinais exibidos nesta tela: aguardando assinatura usa `getOrcamentosAgregadoPorStatus`
+  e movimento recente usa apenas `getOrcamentosDatasCriacao`; o blob inteiro não é mais
+  carregado para os KPIs. O painel desktop já usava os agregados. A lista detalhada de
+  follow-up continua sendo carregada pelo radar, como antes.
 - [ ] `useCallback` nas telas que usam `TabelaDados`; ícone android 990KB comprimido; cache de ETA com origem.
 - [ ] `code-splitting` web (landing não baixa o ERP); `_headers` com CSP; `ErrorBoundary` com "ir para o início".
 - [ ] Higiene: exports mortos do worker; `tsconfig noUnusedLocals`/linter mínimo; fotos `file://` (decisão: subir
@@ -83,12 +113,11 @@ arquivos: **estes dois vencem**.
 
 ## Pendentes (27)
 
-1. **Badge financeiro na tabela desktop de orçamentos**
-   - `src/screens/desktop/OrcamentosDesktopScreen.tsx` não recebeu o badge de estado
-     financeiro (Pago / Recibo emitido / Aguardando) nem o atalho "Registrar pagamento"
-     que o mobile (`OrcamentosScreen`) ganhou na Onda 3. Portar `getStatusFinanceiro` +
-     `BadgeFinanceiroPill` de `src/services/pagamentos.ts` (carregar `getRecibos` junto
-     de `getOrcamentos`). Paridade desktop, não elo quebrado.
+1. [x] **Badge financeiro na tabela desktop de orçamentos — FEITO (2026-09-08)**
+   - `OrcamentosDesktopScreen` agora carrega recibos junto dos orçamentos, deriva o
+     mesmo estado financeiro do domínio (`Aguardando pagamento`, `Pago`, `Recibo emitido`)
+     e renderiza `FinanceiroBadge` com acessibilidade. O atalho de recibo existente
+     permanece separado para não transformar uma leitura em cobrança.
 
 2. **Limpar versões órfãs de orçamento na nuvem ao excluir**
    - `src/database/database.ts` `deleteOrcamento` apaga versões locais + tombstone do
@@ -105,19 +134,15 @@ arquivos: **estes dois vencem**.
      (migration aditiva + local + cloudSync como as demais colunas de OS), e filtrar por
      `noMesAtual(o.concluidoEm)`.
 
-4. **KPIs do dashboard abrem lista já filtrada**
-   - No `InicioDesktopScreen`, "Em aberto" e "Contas a receber" navegam para `OrcamentosTab`
-     SEM filtro → abrem a lista completa (enganoso). Estender o param de `OrcamentosTab`
-     (`AppNavigator` TabParamList) com um recorte inicial (ex.: `recorteInicial?: 'em_aberto'
-     | 'a_receber' | StatusOrcamento`) e `OrcamentosDesktopScreen` inicializar o filtro a
-     partir dele (recortes derivados via `propostaJaEnviada`/`getReciboDoOrcamento`).
+4. [x] **KPIs do dashboard abrem lista já filtrada — FEITO (2026-09-08)**
+   - `InicioDesktopScreen` envia `em_aberto`/`a_receber` tipado para `OrcamentosTab`;
+     `OrcamentosDesktopScreen` aplica o recorte antes dos filtros manuais e exibe um
+     chip removível para deixar o contexto visível.
 
-5. **Role de checkbox no `OlliPressable` (acessibilidade)**
-   - O toggle de checklist (`CheckRow` em `src/screens/HojeScreen.tsx`) usa `OlliPressable`,
-     que hardcoda `accessibilityRole="button"` e não expõe `accessibilityRole/State`. Para
-     leitor de tela soa como "botão", não "caixa marcada/desmarcada". Estender
-     `src/components/OlliPressable.tsx` para repassar `accessibilityRole`+`accessibilityState`
-     e usar `role="checkbox"` + `{checked: item.feito}` no CheckRow.
+5. [x] **Role de checkbox no `OlliPressable` — FEITO (2026-09-08)**
+   - `OlliPressable` já repassava `accessibilityRole`/`accessibilityState`; `CheckRow`
+     agora anuncia `checkbox` e `{checked: item.feito}`. `test:acessibilidade-checklist`
+     cobre o contrato.
 
 ---
 
@@ -285,14 +310,15 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     verdadeira). Restam ideias futuras: mais modelos, e um `modeloRecibo` por-recibo (hoje é só padrão
     global).
 
-29. **~~A mesma borda "erro → tenant errado" em `clienteLink.ts`~~ — METADE FEITA (2026-07-17).** O
+29. ~~**A mesma borda "erro → tenant errado" em `clienteLink.ts`** — **FEITO (2026-09-08).**~~ O
     `espelharVersaoNuvem` agora usa os 3 estados (`garantirContextoEquipe` + `decidirEscritaEquipe`):
     tenant desconhecido **não espelha**, em vez de gravar no tenant errado. É estritamente melhor que
     antes — o erro deixou de CRIAR linha errada (órfã, invisível ao dono, poluindo o tenant do
-    técnico); agora não cria nada e o SQLite local segue com a versão. **AINDA FALTA o retry**, que é
-    o motivo de o item continuar aberto (detalhe abaixo). `localizacaoEquipe.ts` segue intocado.
+    técnico); agora não cria nada e o SQLite local segue com a versão. A versão também fica marcada
+    em uma outbox SQLite (`espelho_pendente`) e é tentada novamente no `syncOnLogin`/retorno ao app;
+    só uma confirmação do Supabase limpa a marca. `localizacaoEquipe.ts` segue intocado.
 
-    ~~Texto original:~~
+    ~~Texto original (superado pela outbox de 2026-09-08):~~
     Achado ao fechar o O0-4 (que corrigiu só o `cloudSync.ts`, escopo do item na FILA).
     `espelharVersaoNuvem` (`clienteLink.ts:446`) resolve o dono com `getMinhaOrganizacao()`, que
     colapsa erro em `null` — e o comentário no código racionaliza: *"o pior caso de falha é gravar
@@ -302,8 +328,8 @@ Nenhum é bloqueante; todos saíram dos dois gates e foram deliberadamente adiad
     dono. Não foi corrigido junto porque o remédio do `cloudSync` (fail-closed: adiar o espelho)
     **não serve aqui**: `orcamento_versoes` NÃO é `SyncTable`, logo não há `pushAllLocal` que tente
     de novo — `espelharVersaoNuvem` é tiro único (`database.ts:1351`). Adiar ali = nunca espelhar.
-    O conserto certo exige primeiro dar retry à versão (entrar no pipeline de sync ou ganhar fila
-    própria) e só então aplicar `classificarContextoEquipe`. `localizacaoEquipe.ts:149,182` usa o
+    O conserto adotado foi uma fila própria local, limitada por fatia e isolada pela partição; o
+    teste `test:versoes-espelho` prova a marca, a migration e o dreno no sync. `localizacaoEquipe.ts:149,182` usa o
     mesmo `getMinhaOrganizacao()` para achar o `org_id` — avaliar se um erro de rede ali vira
     "sem equipe" em silêncio. A primitiva de 3 estados já existe e está testada:
     `src/services/contextoEquipe.ts` (+ `npm run test:contexto-equipe`).

@@ -38,8 +38,8 @@ export function safeFileName(s: string): string {
  * diálogo de impressão. O iframe é removido em seguida (com folga para o
  * navegador abrir o diálogo, que em alguns browsers é síncrono).
  */
-function imprimirHtmlWeb(html: string, opcoes?: OpcoesCompartilhar): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
+function imprimirHtmlWeb(html: string, opcoes?: OpcoesCompartilhar): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolve, reject) => {
     try {
       const doc: any = typeof document !== 'undefined' ? document : undefined;
       if (!doc || !doc.body) {
@@ -81,7 +81,7 @@ function imprimirHtmlWeb(html: string, opcoes?: OpcoesCompartilhar): Promise<voi
           safetyTimer = undefined;
         }
         setTimeout(cleanup, 1500);
-        resolve();
+        resolve(undefined);
       };
 
       // Rede de segurança: se o onload do iframe NUNCA disparar (e o conteúdo
@@ -93,7 +93,7 @@ function imprimirHtmlWeb(html: string, opcoes?: OpcoesCompartilhar): Promise<voi
         if (done) return;
         done = true;
         cleanup();
-        resolve();
+        resolve(undefined);
       }, 10000);
 
       const onLoad = () => {
@@ -152,7 +152,7 @@ async function exportarHtmlNativo(
   html: string,
   nomeArquivo: string,
   opcoes?: OpcoesCompartilhar,
-): Promise<void> {
+): Promise<string> {
   // require dentro do ramo nativo: estes módulos NUNCA são avaliados na web.
   const Print = require('expo-print');
   const Sharing = require('expo-sharing');
@@ -178,6 +178,7 @@ async function exportarHtmlNativo(
     mimeType: 'application/pdf',
     dialogTitle: opcoes?.dialogTitle ?? fileName,
   });
+  return dest;
 }
 
 /* ─── API pública ──────────────────────────────────────────────────── */
@@ -195,12 +196,11 @@ export async function exportarHtmlComoPdf(
   html: string,
   nomeArquivo: string,
   opcoes?: OpcoesCompartilhar,
-): Promise<void> {
+): Promise<string | undefined> {
   if (isWeb) {
-    await imprimirHtmlWeb(html, opcoes);
-    return;
+    return imprimirHtmlWeb(html, opcoes);
   }
-  await exportarHtmlNativo(html, nomeArquivo, opcoes);
+  return exportarHtmlNativo(html, nomeArquivo, opcoes);
 }
 
 /**

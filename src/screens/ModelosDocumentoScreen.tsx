@@ -61,8 +61,8 @@ function orcamentoDeExemplo(modelo: ModeloPdfId, corMarca?: string): Orcamento {
     laudoTecnico: 'Equipamento com baixa performance de refrigeração; recomendada higienização e recarga de gás.',
     dataEmissao: todayISO(),
     garantia: '90 dias sobre o serviço executado',
-    condicoesPagamento: 'À vista no PIX ou em até 3x no cartão.',
-    formasPagamento: { credito: true, debito: false, dinheiro: true, pix: true },
+    condicoesPagamento: 'Início após aprovação e disponibilidade de agenda.',
+    formasPagamento: { credito: false, debito: false, dinheiro: false, pix: false },
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
     exibirAprovacao: true,
@@ -87,7 +87,7 @@ const RECIBO_MODELS: Array<{ id: ModeloReciboId; nome: string; desc: string; col
 const EMPRESA_EXEMPLO: Empresa = {
   id: 'preview', nome: 'Sua empresa', especialidade: 'Refrigeração e Climatização', slogan: '',
   cnpj: '00.000.000/0001-00', cpf: '', endereco: '', cidade: 'São Paulo', estado: 'SP',
-  telefone: '(11) 90000-0000', whatsapp: '', site: '', email: '', chavePix: 'sua-chave@pix.com',
+  telefone: '(11) 90000-0000', whatsapp: '', site: '', email: '', chavePix: '',
   normas: '', nomePrestador: 'Responsável Técnico',
 };
 
@@ -247,11 +247,29 @@ export default function ModelosDocumentoScreen() {
           <View style={styles.intro}>
             <MaterialCommunityIcons name="palette-swatch-outline" size={18} color={cores.accentLight} />
             <Text style={styles.introText}>
-              Escolha os modelos <Text style={styles.introForte}>padrão</Text> dos seus documentos. No orçamento você ainda
-              pode trocar na hora de criar. A <Text style={styles.introForte}>sua cor de marca e logo</Text> (em
-              Meu Negócio) valem em todos eles.
+              Este é o centro de personalização. Escolha uma vez o modelo <Text style={styles.introForte}>padrão</Text>;
+              sua cor, logo e assinatura passam a valer nos documentos novos sem repetir a configuração em cada orçamento.
             </Text>
           </View>
+        </AnimatedEntrance>
+
+        <AnimatedEntrance index={1}>
+          <TouchableOpacity
+            style={styles.identityCard}
+            onPress={() => nav.navigate('MeuNegocio')}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel="Editar logo, cor e assinatura da empresa"
+          >
+            <View style={[styles.iconChip, { backgroundColor: comAlfa(empresa?.corMarca ?? cores.primary, 0.16) }]}>
+              <MaterialCommunityIcons name="image-edit-outline" size={24} color={empresa?.corMarca ?? cores.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nome}>Logo, cor e assinatura</Text>
+              <Text style={styles.desc}>Identidade única usada em orçamento, recibo, contrato e termos</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
+          </TouchableOpacity>
         </AnimatedEntrance>
 
         <View style={styles.divisor}>
@@ -493,6 +511,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   introText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 19 },
   introForte: { fontWeight: '800', color: c.onSurface },
 
+  identityCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   iconChip: { width: 48, height: 48, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center' },
   nomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

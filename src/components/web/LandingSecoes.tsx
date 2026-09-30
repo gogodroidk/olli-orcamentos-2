@@ -17,6 +17,7 @@ import { Parallax } from './Parallax';
 import { useDefinirLimiarLanding, useLandingScrollY, useLimiarLandingRef } from './LandingScroll';
 import { abrirWhatsApp } from '../../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE } from '../../config';
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from '../../services/entitlements';
 
 const useNativeAnimations = Platform.OS !== 'web';
 
@@ -402,7 +403,7 @@ const PLANOS_PREVIEW: PlanoPreview[] = [
     periodo: '',
     tagline: 'Tudo pra começar a fechar negócio.',
     icone: 'rocket-launch-outline',
-    bullets: ['Orçamentos e recibos ilimitados', 'Clientes e agenda', 'Diagnóstico offline por código de erro', 'Link do orçamento para o cliente'],
+    bullets: [`${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`, 'Rascunhos, recibos, clientes e histórico sem limite', 'Diagnóstico offline por código de erro', 'Link do orçamento dentro da cota mensal'],
   },
   {
     id: 'pro',
@@ -541,7 +542,7 @@ export function ProvaLanding() {
 export const FAQ_LANDING: readonly { pergunta: string; resposta: string }[] = [
   {
     pergunta: 'O OLLI é pago?',
-    resposta: 'Não. O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados, sem cartão de crédito e sem prazo de teste. Os planos Pro e Empresa liberam relatórios, metas e outros recursos avançados, mas o essencial do dia a dia é gratuito para sempre.',
+    resposta: `Não. O plano Grátis é permanente: rascunhos, recibos, clientes e histórico ficam sem limite, com ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês. Depois do primeiro envio, você pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática.`,
   },
   {
     pergunta: 'Serve pra quem não é de refrigeração?',

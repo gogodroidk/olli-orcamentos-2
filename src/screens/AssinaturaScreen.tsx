@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl, TouchableOpacity, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,6 +14,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { formatDate } from '../utils/date';
 import type { PlanoId } from '../services/planos';
+import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
+import { PixPlanoModal } from '../components/PixPlanoModal';
+import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 import {
   getResumoAssinatura,
   getFaturas,
@@ -148,6 +151,17 @@ export default function AssinaturaScreen() {
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [abrindoPortal, setAbrindoPortal] = useState(false);
+  // Renovar por Pix (quem pagou no Pix não tem cobrança automática).
+  const [pixLigado, setPixLigado] = useState(false);
+  const [cobrancaPix, setCobrancaPix] = useState<CobrancaPixPlano | null>(null);
+  const [gerandoPix, setGerandoPix] = useState<'mensal' | 'anual' | null>(null);
+
+  useEffect(() => {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
+    let vivo = true;
+    pixPlanoDisponivel().then((ok) => { if (vivo) setPixLigado(ok); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
 
   const carregar = useCallback(async (opts?: { forcar?: boolean }) => {
     if (!opts?.forcar && cacheAssinatura && Date.now() - cacheAssinatura.ts < CACHE_TTL_MS) {
@@ -212,6 +226,27 @@ export default function AssinaturaScreen() {
     }
   }
 
+  async function renovarComPix(plano: 'pro' | 'empresa', periodo: 'mensal' | 'anual') {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixLigado || gerandoPix) return;
+    Haptics.selectionAsync().catch(() => {});
+    setGerandoPix(periodo);
+    try {
+      const c = await criarPixPlano(chavePixPlano(plano, periodo));
+      if (!c) {
+        Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
+        return;
+      }
+      setCobrancaPix(c);
+    } finally {
+      setGerandoPix(null);
+    }
+  }
+
+  const aoPixPago = useCallback(() => {
+    cacheAssinatura = null;
+    void carregar({ forcar: true });
+  }, [carregar]);
+
   async function abrirRecibo(f: Fatura) {
     if (!f.recibo) {
       Alert.alert('Recibo', 'Esta fatura ainda não tem um recibo disponível.');
@@ -241,6 +276,14 @@ export default function AssinaturaScreen() {
         ? 'R$ 0'
         : `Plano ${PLANO_LABEL[planoEfetivo]}`;
   const precoSufixo = ultimaFatura && ultimaFatura.valorCentavos > 0 ? sufixoIntervalo(ultimaFatura.intervalo) : '';
+
+  // Pago sem cobrança automática (Pix / 12x): renova-se pagando de novo.
+  const planoPago = planoEfetivo === 'pro' || planoEfetivo === 'empresa' ? planoEfetivo : null;
+  const semRenovacao = !!planoPago && resumo?.origem === 'pagamento' && resumo?.renovaSozinho === false;
+  const mostraRenovarPix = semRenovacao && pixLigado && COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;
+  const precoPlano = planoPago === 'empresa' ? PRECO_EMPRESA : PRECO_PRO;
+  // Sem assinatura nem cliente na Stripe, o portal não tem o que mostrar.
+  const mostraPortal = !semRenovacao || resumo?.temClienteStripe === true;
 
   const subtituloHeader = ehPagante ? `Plano ${PLANO_LABEL[planoEfetivo]}` : 'Seu plano e cobranças';
 
@@ -318,7 +361,36 @@ export default function AssinaturaScreen() {
                   </View>
                 </AnimatedEntrance>
 
-                <AnimatedEntrance index={2}>
+                {mostraRenovarPix && planoPago ? (
+                  <AnimatedEntrance index={2}>
+                    <View style={[styles.card, { marginTop: Spacing.base }]}>
+                      <Text style={styles.cardTitle}>Renovar com Pix</Text>
+                      <Text style={styles.gerenciarHint}>
+                        O pagamento por Pix não renova sozinho. Renove antes do vencimento — os dias que faltam não se perdem.
+                      </Text>
+                      <OlliButton
+                        label={`Renovar 1 mês — ${reais(precoPlano.mensalCentavos)}`}
+                        variant="gradient"
+                        fullWidth
+                        loading={gerandoPix === 'mensal'}
+                        onPress={() => { void renovarComPix(planoPago, 'mensal'); }}
+                        icon={<MaterialCommunityIcons name="qrcode" size={18} color="#fff" />}
+                        style={{ marginTop: Spacing.base }}
+                      />
+                      <OlliButton
+                        label={`Renovar 1 ano — ${reais(precoPlano.anualCentavos)}`}
+                        variant="outline"
+                        fullWidth
+                        loading={gerandoPix === 'anual'}
+                        onPress={() => { void renovarComPix(planoPago, 'anual'); }}
+                        style={{ marginTop: Spacing.sm }}
+                      />
+                    </View>
+                  </AnimatedEntrance>
+                ) : null}
+
+                {mostraPortal ? (
+                <AnimatedEntrance index={3}>
                   {BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
                     <View style={styles.avisoCard}>
                       <MaterialCommunityIcons name="information-outline" size={20} color={cores.accentLight} />
@@ -346,6 +418,7 @@ export default function AssinaturaScreen() {
                   </>
                   )}
                 </AnimatedEntrance>
+                ) : null}
               </>
             ) : (
               /* GRÁTIS: explica o que ganha assinando + CTA para Planos */
@@ -437,6 +510,16 @@ export default function AssinaturaScreen() {
           </>
         )}
       </ScrollView>
+      <PixPlanoModal
+        cobranca={cobrancaPix}
+        aoFechar={() => { setCobrancaPix(null); cacheAssinatura = null; void carregar({ forcar: true }); }}
+        aoPago={aoPixPago}
+        aoGerarNovo={() => {
+          const atual = cobrancaPix;
+          setCobrancaPix(null);
+          if (atual && planoPago) void renovarComPix(planoPago, atual.plano.meses >= 12 ? 'anual' : 'mensal');
+        }}
+      />
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator, Platform } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,8 +15,17 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE, PAGAMENTOS_URL } from '../config';
 import { supabase } from '../services/supabase';
-import { getPlanoAtual, getPlanoCacheado, PlanoId } from '../services/planos';
-import { temAcessoRecurso, IA_USOS_GRATIS_MES, type Recurso } from '../services/entitlements';
+import { getPlanoAtual, getPlanoCacheado, PlanoId, type PlanoAtual } from '../services/planos';
+import {
+  temAcessoRecurso,
+  disponibilidadeRecurso,
+  IA_USOS_GRATIS_MES,
+  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  TRIAL_PRO_DIAS,
+  type Recurso,
+} from '../services/entitlements';
+import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
+import type { EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
   PRECO_PRO,
   PRECO_EMPRESA,
@@ -26,6 +35,8 @@ import {
   type PeriodoCobranca,
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
+import { PixPlanoModal } from '../components/PixPlanoModal';
+import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -104,7 +115,8 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     icon: 'rocket-launch-outline',
     cta: 'Seu plano atual',
     beneficios: [
-      'Orçamentos e recibos ilimitados',
+      `Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
+      'Rascunhos, recibos, clientes e histórico sem limite',
       'Catálogo de serviços e produtos',
       'Clientes e agenda',
       'Diagnóstico por código de erro (offline)',
@@ -138,8 +150,8 @@ const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
     beneficios: [
       'Tudo do plano Pro',
       'Vários técnicos e permissões por papel',
-      'Equipe ao vivo no mapa',
-      'Painel de gestão da empresa',
+      'Equipe ao vivo no mapa (em breve)',
+      'Painel de gestão da empresa (em breve)',
       'Suporte prioritário',
     ],
   },
@@ -160,7 +172,8 @@ interface LinhaComparativo {
 
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
-  { rotulo: 'Orçamentos e recibos ilimitados', gratis: true, pro: true, empresa: true },
+  { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
+  { rotulo: 'Orçamentos enviados ou PDFs por mês', gratis: `${ORCAMENTOS_ENVIADOS_GRATIS_MES}/mês`, pro: 'Sem limite mensal', empresa: 'Sem limite mensal' },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },
   { rotulo: 'Link do orçamento para o cliente', gratis: true, pro: true, empresa: true },
@@ -207,9 +220,9 @@ function montarLinhasComparativo(): LinhaComparativo[] {
   };
   const gateadas = RECURSOS_GATEADOS.map<LinhaComparativo>((r) => ({
     rotulo: RECURSO_LABEL[r],
-    gratis: temAcessoRecurso('gratis', r),
-    pro: temAcessoRecurso('pro', r),
-    empresa: temAcessoRecurso('empresa', r),
+    gratis: disponibilidadeRecurso('gratis', r) === 'disponivel',
+    pro: disponibilidadeRecurso('pro', r) === 'em_breve' ? 'Em breve' : disponibilidadeRecurso('pro', r) === 'disponivel',
+    empresa: disponibilidadeRecurso('empresa', r) === 'em_breve' ? 'Em breve' : disponibilidadeRecurso('empresa', r) === 'disponivel',
   }));
   return [...LINHAS_BASE, ia, ...gateadas];
 }
@@ -243,6 +256,7 @@ function mensagemErroPagamento(status: number | null, offline: boolean): string 
 
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Planos'>>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // Sem isto, a tela renderiza o layout mobile (coluna única) esticado no
@@ -260,7 +274,7 @@ export default function PlanosScreen() {
     aplicarSeo({
       titulo: 'Planos e preços — OLLI Orçamentos',
       descricao:
-        `Comece grátis, com orçamentos e recibos ilimitados, catálogo, clientes e agenda. ` +
+        `Comece grátis, com rascunhos, recibos, clientes e histórico sem limite e até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. ` +
         `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual) ` +
         `acrescenta IA com uso justo diário, relatórios de faturamento e conversão, metas de vendas e suporte prioritário.`,
       caminho: '/planos',
@@ -269,11 +283,27 @@ export default function PlanosScreen() {
 
   const [periodo, setPeriodo] = useState<Periodo>('mensal');
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
+  const [origemPlano, setOrigemPlano] = useState<'gratis' | 'pagamento' | 'admin' | 'trial' | undefined>('gratis');
+  const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
+  const [iniciandoTrial, setIniciandoTrial] = useState(false);
   const [carregandoPlano, setCarregandoPlano] = useState(true);
   // 3 estados explícitos (nunca colapsar erro em vazio): `planoErro` só vira
   // true numa falha de rede real; o plano exibido some do cache/última leitura.
   const [planoErro, setPlanoErro] = useState(false);
+  const [fontePlano, setFontePlano] = useState<PlanoAtual['fonte']>('indisponivel');
   const [acaoEmAndamento, setAcaoEmAndamento] = useState<PlanoId | null>(null);
+  // Pix do plano (AbacatePay). `pixLigado` só vira true quando o worker confirma
+  // que o Pix está ligado DE VERDADE — sem isso, nenhum botão de Pix aparece.
+  const [pixLigado, setPixLigado] = useState(false);
+  const [cobrancaPix, setCobrancaPix] = useState<CobrancaPixPlano | null>(null);
+  const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
+
+  useEffect(() => {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
+    let vivo = true;
+    pixPlanoDisponivel().then((ok) => { if (vivo) setPixLigado(ok); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
 
   // Semeia com o plano do cache local ANTES da leitura de rede, para NÃO piscar
   // a página de venda para quem já é pagante (a "conta limpa" da Frente 2).
@@ -290,7 +320,13 @@ export default function PlanosScreen() {
     try {
       const resultado = await getPlanoAtual();
       setPlanoAtualId(resultado.plano);
+      setOrigemPlano(resultado.origem);
+      setFontePlano(resultado.fonte);
+      const confirmadoNoServidor = resultado.fonte === 'servidor';
+      setPlanoErro(resultado.fonte === 'cache_mesmo_usuario' || resultado.fonte === 'indisponivel');
+      setOferta(confirmadoNoServidor ? await obterEstadoOfertaComercial() : null);
     } catch {
+      setFontePlano('indisponivel');
       setPlanoErro(true);
     } finally {
       setCarregandoPlano(false);
@@ -305,12 +341,23 @@ export default function PlanosScreen() {
     }, [carregarPlano]),
   );
 
-  const planos: Plano[] = PLANOS_BASE.map((p) => ({ ...p, atual: p.id === planoAtualId }));
+  const planoConhecido = fontePlano === 'servidor' || fontePlano === 'cache_mesmo_usuario';
+  const acoesPlanoDisponiveis = fontePlano === 'servidor' || fontePlano === 'sessao_ausente';
+  const planos: Plano[] = PLANOS_BASE.map((p) => ({ ...p, atual: planoConhecido && p.id === planoAtualId }));
   // Conta limpa (Frente 2): quem já paga não vê discurso de venda. Vê um card
   // discreto "Sua assinatura" que leva à AssinaturaScreen (faturas, cobrança,
   // trocar de plano/cartão e cancelar ficam lá, no portal seguro da Stripe).
-  const ehPagante = planoAtualId !== 'gratis';
+  const ehTrial = origemPlano === 'trial';
+  const ehPagante = planoAtualId !== 'gratis' && !ehTrial;
   const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
+  const contextoGate = route.params?.origem === 'gate'
+    && Object.prototype.hasOwnProperty.call(RECURSO_LABEL, route.params.recurso)
+    && (route.params.plano === 'pro' || route.params.plano === 'empresa')
+      ? {
+          recurso: RECURSO_LABEL[route.params.recurso],
+          plano: route.params.plano === 'empresa' ? 'Empresa' : 'Pro',
+        }
+      : null;
 
   async function abrirUrlPagamento(body?: object) {
     if (!PAGAMENTOS_URL) {
@@ -369,6 +416,10 @@ export default function PlanosScreen() {
     // 3.1.1 proíbe o link-out de checkout dentro do app.
     if (!COMPRA_NO_APP) return;
     if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
+    if (!acoesPlanoDisponiveis) {
+      Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
+      return;
+    }
     if (!supabase) {
       Alert.alert('Ainda não disponível', 'Login ainda não está configurado neste app.');
       return;
@@ -418,6 +469,10 @@ export default function PlanosScreen() {
 
   function escolher(p: Plano) {
     if (p.atual) return;
+    if (p.id === 'gratis') {
+      if (acoesPlanoDisponiveis) nav.navigate('Entrar');
+      return;
+    }
     Haptics.selectionAsync().catch(() => {});
     // Pro e Empresa são ambos assináveis via Stripe Checkout.
     if (p.id === 'pro' || p.id === 'empresa') {
@@ -425,11 +480,80 @@ export default function PlanosScreen() {
     }
   }
 
+  // Pix (AbacatePay): paga o período da aba (1 ou 12 meses), sem renovação
+  // automática. Mesmas guardas de loja e de sessão do cartão.
+  async function pagarComPix(p: Plano) {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixLigado) return;
+    if (p.id !== 'pro' && p.id !== 'empresa') return;
+    if (!acoesPlanoDisponiveis) {
+      Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
+      return;
+    }
+    const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
+    if (!sessao) {
+      Alert.alert('Faça login primeiro', `Para assinar o plano ${p.nome}, entre com sua conta OLLI.`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+      ]);
+      return;
+    }
+    Haptics.selectionAsync().catch(() => {});
+    setPixEmAndamento(p.id);
+    try {
+      const c = await criarPixPlano(chavePixPlano(p.id, periodo));
+      if (!c) {
+        Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
+        return;
+      }
+      setCobrancaPix(c);
+    } finally {
+      setPixEmAndamento(null);
+    }
+  }
+
+  const aoPixPago = useCallback(() => { void carregarPlano(); }, [carregarPlano]);
+
+  async function gerarNovoPix() {
+    const atual = cobrancaPix;
+    setCobrancaPix(null);
+    if (!atual) return;
+    const c = await criarPixPlano(atual.plano.id);
+    if (!c) {
+      Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
+      return;
+    }
+    setCobrancaPix(c);
+  }
+
   // 12× no cartão: só o Pro tem produto avulso. Força o checkout 'pro_12x'
   // (valor cheio do ano), independentemente da aba mensal/anual selecionada.
   function pagar12x(p: Plano) {
     Haptics.selectionAsync().catch(() => {});
     assinarPlano(p, 'pro_12x');
+  }
+
+  function pedirInicioTrial() {
+    Alert.alert(
+      `Experimentar o Pro por ${TRIAL_PRO_DIAS} dias`,
+      'Você não precisa informar cartão e não haverá cobrança automática. Ao terminar, sua conta volta ao Grátis e seus dados continuam salvos.',
+      [
+        { text: 'Agora não', style: 'cancel' },
+        { text: 'Começar teste', onPress: () => { void executarInicioTrial(); } },
+      ],
+    );
+  }
+
+  async function executarInicioTrial() {
+    setIniciandoTrial(true);
+    const inicio = await iniciarTrialPro();
+    if (!inicio) {
+      setIniciandoTrial(false);
+      Alert.alert('Não foi possível iniciar', 'Confirme sua conexão e tente novamente. O teste não foi consumido.');
+      return;
+    }
+    await carregarPlano();
+    setIniciandoTrial(false);
+    Alert.alert('Pro liberado', `Seu teste vai até ${new Date(inicio.terminaEm).toLocaleDateString('pt-BR')}. Não haverá cobrança automática.`);
   }
 
   return (
@@ -440,10 +564,47 @@ export default function PlanosScreen() {
         {planoErro ? (
           <View style={styles.cobrancaAviso}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-            <Text style={styles.cobrancaAvisoTexto}>Não deu para atualizar seu plano agora. O que está na tela pode estar desatualizado.</Text>
+            <Text style={styles.cobrancaAvisoTexto}>Não deu para confirmar seu plano agora. O estado exibido pode estar desatualizado e nenhuma nova contratação será iniciada até você tentar de novo.</Text>
             <TouchableOpacity onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
               <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
             </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {contextoGate ? (
+          <View style={styles.contextoGateCard} accessibilityRole="summary">
+            <MaterialCommunityIcons name="lightbulb-on-outline" size={21} color={cores.accentLight} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.contextoGateTitle}>Você veio por “{contextoGate.recurso}”</Text>
+              <Text style={styles.contextoGateText}>
+                Esse recurso faz parte do {contextoGate.plano}. Compare o que já está disponível e confirme a contratação somente se fizer sentido para o seu trabalho.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {ehTrial ? (
+          <View style={styles.trialCard}>
+            <MaterialCommunityIcons name="creation" size={22} color={cores.accentLight} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trialTitle}>Seu teste Pro está ativo</Text>
+              <Text style={styles.trialText}>
+                {oferta?.trialTerminaEm
+                  ? `Você tem os recursos Pro até ${new Date(oferta.trialTerminaEm).toLocaleDateString('pt-BR')}.`
+                  : `Você está usando o Pro por ${TRIAL_PRO_DIAS} dias.`} Sem cartão e sem cobrança automática; seus dados permanecem salvos depois.
+              </Text>
+            </View>
+          </View>
+        ) : oferta?.trialEstado === 'eligible' && planoAtualId === 'gratis' ? (
+          <View style={styles.trialCard}>
+            <MaterialCommunityIcons name="creation" size={22} color={cores.accentLight} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trialTitle}>Quer experimentar tudo do Pro?</Text>
+              <Text style={styles.trialText}>{TRIAL_PRO_DIAS} dias sem cartão, sem cobrança automática e sem apagar seus dados ao terminar.</Text>
+              <TouchableOpacity style={styles.trialButton} onPress={pedirInicioTrial} disabled={iniciandoTrial} accessibilityRole="button">
+                {iniciandoTrial ? <ActivityIndicator size="small" color={cores.onPrimary} /> : <Text style={styles.trialButtonText}>Começar teste grátis</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -482,10 +643,10 @@ export default function PlanosScreen() {
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
             <Text style={styles.introSub}>
               {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
-                ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.'
+                ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
                 : Platform.OS === 'android'
-                  ? 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.'
-                  : 'O plano Grátis já traz orçamentos, recibos, clientes e agenda ilimitados — sem fidelidade e sem surpresa. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.'}
+                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.`
+                  : `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -531,10 +692,14 @@ export default function PlanosScreen() {
                 periodo={periodo}
                 ehDesktop={ehDesktop}
                 carregandoPlano={carregandoPlano}
+                acoesDisponiveis={acoesPlanoDisponiveis}
                 carregandoAcao={acaoEmAndamento === p.id}
                 onPress={() => escolher(p)}
                 onFalarSuporte={() => falarComSuporte(p)}
                 onPagar12x={() => pagar12x(p)}
+                pixLigado={pixLigado}
+                carregandoPix={pixEmAndamento === p.id}
+                onPagarPix={() => { void pagarComPix(p); }}
               />
             );
             // Desktop: cada card numa célula flex (larguras iguais). Sem a entrada
@@ -552,7 +717,9 @@ export default function PlanosScreen() {
             (assinatura que renova, 12x no cartão) que este aparelho não faz;
             mantido sem alteração no Android/web, onde a compra é real. */}
         {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
-        <Text style={styles.rodape}>Plano se paga no cartão, no ambiente seguro da Stripe. Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. (O Pix do OLLI é só para recarregar créditos, em Conta → Créditos.) 💙</Text>
+        <Text style={styles.rodape}>{pixLigado
+          ? 'No cartão (Stripe), mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. No Pix, você paga 1 mês ou 1 ano de uma vez, sem renovação automática: perto do vencimento, paga de novo. 💙'
+          : 'Plano se paga no cartão, no ambiente seguro da Stripe. Mensal e anual são assinaturas que renovam automaticamente — cancele quando quiser no "Gerenciar assinatura". O 12x sem juros é um pagamento único parcelado no cartão que libera o Pro por 12 meses. 💙'}</Text>
         )}
         </>
         )}
@@ -561,6 +728,12 @@ export default function PlanosScreen() {
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
         <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} />
       </ScrollView>
+      <PixPlanoModal
+        cobranca={cobrancaPix}
+        aoFechar={() => { setCobrancaPix(null); void carregarPlano(); }}
+        aoPago={aoPixPago}
+        aoGerarNovo={() => { void gerarNovoPix(); }}
+      />
     </View>
   );
 }
@@ -570,24 +743,32 @@ function PlanoCard({
   periodo,
   ehDesktop,
   carregandoPlano,
+  acoesDisponiveis,
   carregandoAcao,
   onPress,
   onFalarSuporte,
   onPagar12x,
+  pixLigado,
+  carregandoPix,
+  onPagarPix,
 }: {
   plano: Plano;
   periodo: Periodo;
   ehDesktop?: boolean;
   carregandoPlano: boolean;
+  acoesDisponiveis: boolean;
   carregandoAcao: boolean;
   onPress: () => void;
   onFalarSuporte: () => void;
   onPagar12x: () => void;
+  pixLigado: boolean;
+  carregandoPix: boolean;
+  onPagarPix: () => void;
 }) {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
-  // Ink de contraste sobre `accentLight` (ícone/badge do plano "mais popular").
+  // Ink de contraste sobre `accentLight` (ícone/badge do plano recomendado).
   const textoSobreAccent = textoSobre(cores.accentLight);
   // Preço exibido — sempre da fonte. No iOS a aba fica escondida, então `periodo`
   // permanece 'mensal' e o card mostra o mensal; o anual aparece na linha "no
@@ -627,7 +808,7 @@ function PlanoCard({
           <View style={styles.cardNameRow}>
             <Text style={styles.cardName}>{plano.nome}</Text>
             {plano.destaque && (
-              <View style={styles.popular}><Text style={styles.popularText}>MAIS POPULAR</Text></View>
+              <View style={styles.popular}><Text style={styles.popularText}>RECOMENDADO</Text></View>
             )}
             {plano.atual && (
               <View style={styles.atualPill}>
@@ -698,8 +879,8 @@ function PlanoCard({
           <Text style={styles.ctaIndisponivelText}>Contratação não disponível neste aplicativo Android</Text>
         </View>
       ) : plano.destaque ? (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano}>
-          <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan]}>
+        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
+          <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan, !acoesDisponiveis && styles.ctaDisabled]}>
             {carregandoAcao ? (
               <ActivityIndicator size="small" color={gradientes.sobreBrand} />
             ) : (
@@ -711,7 +892,7 @@ function PlanoCard({
           </LinearGradient>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={styles.ctaOutline} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao}>
+        <TouchableOpacity style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           {carregandoAcao ? (
             <ActivityIndicator size="small" color={cores.primaryLight} />
           ) : (
@@ -723,11 +904,29 @@ function PlanoCard({
         </TouchableOpacity>
       )}
 
+      {/* Pix (AbacatePay): paga o período da aba de uma vez, sem renovação
+          automática. Só aparece com o Pix ligado de verdade no worker e onde há
+          compra (web) — iPhone e Android da Play seguem sem compra no app. */}
+      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && pixLigado && !plano.atual && (plano.id === 'pro' || plano.id === 'empresa') && preco ? (
+        <TouchableOpacity style={[styles.ctaOutline, styles.ctaPix, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagarPix} activeOpacity={0.85} disabled={carregandoPix || carregandoPlano || !acoesDisponiveis} accessibilityRole="button" accessibilityState={{ disabled: carregandoPix || carregandoPlano || !acoesDisponiveis }}>
+          {carregandoPix ? (
+            <ActivityIndicator size="small" color={cores.primaryLight} />
+          ) : (
+            <>
+              <MaterialCommunityIcons name="qrcode" size={17} color={cores.primaryLight} />
+              <Text style={styles.ctaOutlineText}>
+                {periodo === 'anual' ? `Pagar com Pix — ${reais(preco.anualCentavos)} (1 ano)` : `Pagar com Pix — ${reais(preco.mensalCentavos)} (1 mês)`}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : null}
+
       {/* Pro: pagar em 12× no cartão. iOS: escondido (é compra). Fica DEPOIS do
           CTA principal e é claramente secundário — a verdade sobre o custo já
           está na linha acima, então aqui é só o caminho, não a promessa. */}
       {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && !plano.atual && plano.id === 'pro' && linha12x ? (
-        <TouchableOpacity style={styles.ctaSecundario} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao}>
+        <TouchableOpacity style={[styles.ctaSecundario, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || !acoesDisponiveis }}>
           <MaterialCommunityIcons name="credit-card-outline" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Pagar em 12x no cartão</Text>
         </TouchableOpacity>
@@ -850,6 +1049,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardPlainDesktop: { flex: 1, marginBottom: 0 },
   cardBodyDesktop: { flex: 1 },
   ctaSpacer: { flex: 1, minHeight: Spacing.base },
+  ctaDisabled: { opacity: 0.45 },
 
   // Aviso de erro (mesmo padrão visual do cobrancaAviso em HomeScreen.tsx).
   cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
@@ -857,6 +1057,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
   // Alvo de toque de 44px no "Tentar de novo" (o texto sozinho é baixo demais).
   avisoAcaoHit: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+  trialCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.35), backgroundColor: comAlfa(c.accentLight, 0.08), borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
+  trialTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  trialText: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant, marginTop: 3 },
+  trialButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, marginTop: 10, borderRadius: BorderRadius.md, backgroundColor: c.primary },
+  trialButtonText: { color: c.onPrimary, fontSize: 13.5, fontWeight: '800' },
+  contextoGateCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.35), backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
+  contextoGateTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface },
+  contextoGateText: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant, marginTop: 3 },
 
   intro: { alignItems: 'center', paddingVertical: Spacing.base },
   // Era '#fff' fixo sobre o fundo da PÁGINA (c.background) — ilegível no claro.
@@ -933,6 +1141,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ctaGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 14, marginTop: Spacing.lg },
   ctaGradText: { fontSize: 15, fontWeight: '800' },
   ctaOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, borderWidth: 1.5, borderColor: c.primaryLight, backgroundColor: comAlfa(c.primaryLight, 0.10) },
+  ctaPix: { marginTop: Spacing.sm },
   ctaOutlineText: { fontSize: 14.5, fontWeight: '800', color: c.primaryLight },
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: c.successLight, borderWidth: 1, borderColor: comAlfa(c.success, 0.3) },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: c.success },

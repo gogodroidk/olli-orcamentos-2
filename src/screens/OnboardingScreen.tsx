@@ -22,17 +22,19 @@ import { saveEmpresa, saveServico } from '../database/database';
 import { Empresa, ServicoItem, Segmento, SEGMENTOS } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
-import { isValidCPF } from '../utils/masks';
+import { isValidCNPJ, isValidCPF } from '../utils/masks';
 import { useCepLookup } from '../services/cep';
 import { AvisoCep } from '../components/AvisoCep';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId } from '../services/verticais';
-import { VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
+import { SEGMENTO_PARA_VERTICAL, VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
+import { camposPendentesPerfil, perfilOperacionalCompleto } from '../services/perfilOperacional';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY } from '../services/onboarding';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
@@ -82,7 +84,7 @@ function montarEndereco(e: EnderecoForm): string {
 }
 
 // Etapas do cadastro completo. Rótulos curtos para o StepIndicator.
-const STEPS = ['Empresa', 'Você', 'Endereço', 'PIX', 'Visual', 'Serviço'];
+const STEPS = ['Empresa', 'Você', 'Endereço', 'Visual', 'Serviço'];
 const ULTIMO = STEPS.length - 1;
 
 type Errors = Partial<Record<string, string>>;
@@ -102,6 +104,7 @@ export default function OnboardingScreen() {
 
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [imagemProcessando, setImagemProcessando] = useState<'logoUri' | 'assinaturaUri' | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const scrollRef = useRef<ScrollView>(null);
   const [acessoCadastro, setAcessoCadastro] = useState<'verificando' | 'liberado' | 'bloqueado'>('verificando');
@@ -115,8 +118,11 @@ export default function OnboardingScreen() {
     (async () => {
       try {
         const u = await getCurrentUser();
-        const tel = (u?.user_metadata as { telefone?: string } | undefined)?.telefone ?? '';
+        const meta = u?.user_metadata as { telefone?: string; phone?: string; full_name?: string; name?: string } | undefined;
+        const tel = meta?.telefone ?? meta?.phone ?? '';
+        const nome = meta?.full_name ?? meta?.name ?? '';
         if (tel) setEmp(p2 => (p2.whatsapp?.trim() ? p2 : { ...p2, whatsapp: tel, telefone: p2.telefone || tel }));
+        if (nome) setEmp(p2 => (p2.nomePrestador?.trim() ? p2 : { ...p2, nomePrestador: nome }));
       } catch { /* sem sessao/erro: segue vazio */ }
     })();
   }, []);
@@ -169,7 +175,14 @@ export default function OnboardingScreen() {
 
   function chooseSegmento(id: Segmento) {
     Haptics.selectionAsync().catch(() => {});
-    setEmp(p => ({ ...p, segmento: id }));
+    const vertical = SEGMENTO_PARA_VERTICAL[id];
+    setEmp(p => ({
+      ...p,
+      segmento: id,
+      verticais: [vertical],
+      ferramentasAtivas: ferramentasSugeridas([vertical]),
+    }));
+    clearError('segmento');
   }
 
   // ─── CEP: busca automática ao completar 8 dígitos ──────────────
@@ -247,6 +260,7 @@ export default function OnboardingScreen() {
       const nomeEmpresa = e.nomeFantasia || e.razaoSocial;
       setEmp(p => ({
         ...p,
+        tipoNegocio: 'empresa',
         nome: p.nome.trim() || nomeEmpresa,
         segmento: p.segmento ?? VERTICAL_PARA_SEGMENTO[principal] ?? 'outro',
         // Persiste a vertical deduzida (F1 do SISTEMA_SUPERIOR): vira o "ofício" da
@@ -292,7 +306,7 @@ export default function OnboardingScreen() {
    * em 1º ORÇAMENTO ENVIADO", com 5 minutos até o primeiro — e a ativação do produto é
    * definida como "orçamento real enviado em até 7 dias". Terminar o cadastro e largar
    * a pessoa na home das abas deixa justamente o passo que ATIVA por conta dela: ela
-   * acabou de dizer o nome do negócio, o PIX e até um serviço, e a recompensa disso é
+   * acabou de dizer o nome do negócio e até um serviço, e a recompensa disso é
    * uma tela de menu. O caminho mais curto entre "configurei" e "vi valor" é o
    * orçamento — então é nele que o onboarding desemboca.
    *
@@ -365,39 +379,27 @@ export default function OnboardingScreen() {
     return false;
   }
 
-  // "Pular": só marca concluído DEPOIS que os dados parciais foram persistidos.
-  // Se qualquer etapa falhar, permanece aqui e explica; nunca engole o erro.
-  async function pular() {
-    if (saving) return;
-    Haptics.selectionAsync().catch(() => {});
-    setSaving(true);
-    try {
-      if (!(await confirmarAusenciaAntesDeSalvar())) return;
-      await salvarTudo();
-      await marcarConcluido();
-      track(Eventos.onboardingSkipped, { step });
-      irParaApp();
-    } catch {
-      Alert.alert('Não foi possível pular agora', 'Seus dados não foram marcados como concluídos. Tente novamente.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   /** Valida a etapa atual; preenche `errors` e retorna se pode avançar. */
   function validarEtapa(): boolean {
     const e: Errors = {};
     if (step === 0) {
+      if (emp.tipoNegocio !== 'autonomo' && emp.tipoNegocio !== 'empresa') e.tipoNegocio = 'Escolha como você trabalha.';
       if (!emp.nome.trim()) e.nome = 'Conte o nome do seu negócio.';
-      // CNPJ ou CPF: opcionais, mas se preenchidos precisam ser válidos.
+      if (!emp.segmento) e.segmento = 'Escolha o tipo principal de serviço.';
+      if (!emp.especialidade.trim()) e.especialidade = 'Descreva sua especialidade.';
+      // CNPJ é obrigatório só para empresa; CPF continua opcional para autônomo.
       const cnpjDigits = emp.cnpj.replace(/\D/g, '');
       const cpfDigits = emp.cpf.replace(/\D/g, '');
-      if (cnpjDigits.length > 0 && cnpjDigits.length !== 14) e.cnpj = 'CNPJ deve ter 14 dígitos.';
+      if (emp.tipoNegocio === 'empresa' && cnpjDigits.length === 0) e.cnpj = 'Informe o CNPJ da empresa.';
+      if (cnpjDigits.length > 0 && !isValidCNPJ(cnpjDigits)) e.cnpj = 'CNPJ inválido.';
       if (cpfDigits.length > 0 && !isValidCPF(cpfDigits)) e.cpf = 'CPF inválido.';
     } else if (step === 1) {
       if (!emp.nomePrestador.trim()) e.nomePrestador = 'Diga seu nome.';
-      const tel = emp.whatsapp.replace(/\D/g, '');
-      if (tel.length !== 11) e.whatsapp = 'Informe um WhatsApp com DDD + 9 dígitos (ex: 11 99999-9999).';
+      const tel = emp.whatsapp.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+      if (tel.length < 10 || tel.length > 11) e.whatsapp = 'Informe um telefone com DDD (10 ou 11 dígitos).';
+    } else if (step === 2) {
+      if (!emp.cidade.trim()) e.cidade = 'Informe sua cidade de atendimento.';
+      if (!/^[A-Z]{2}$/i.test(emp.estado.trim())) e.estado = 'Informe a UF com duas letras.';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -422,8 +424,19 @@ export default function OnboardingScreen() {
   }
 
   async function concluir() {
-    // revalida tudo o que é obrigatório antes de gravar (segurança extra)
-    if (!emp.nome.trim()) { setStep(0); setErrors({ nome: 'Conte o nome do seu negócio.' }); return; }
+    if (saving || imagemProcessando) return;
+    // Revalida o perfil inteiro imediatamente antes da escrita. O wizard não
+    // aceita mais ser "concluído" com campos operacionais vazios.
+    const empresaFinal = montarEmpresa();
+    if (!perfilOperacionalCompleto(empresaFinal)) {
+      const pendentes = camposPendentesPerfil(empresaFinal);
+      const primeiro = pendentes[0];
+      const etapa = primeiro === 'nomePrestador' || primeiro === 'telefone' ? 1
+        : primeiro === 'cidade' || primeiro === 'estado' ? 2 : 0;
+      setStep(etapa);
+      setErrors({ [primeiro]: 'Este dado é necessário para começar a usar a OLLI.' });
+      return;
+    }
     setSaving(true);
     try {
       if (!(await confirmarAusenciaAntesDeSalvar())) return;
@@ -432,9 +445,6 @@ export default function OnboardingScreen() {
       track(Eventos.onboardingCompleted, { comServico: !!servNome.trim() });
       await marcarConcluido();
       // Concluiu = quer usar: cai no wizard do primeiro orçamento (ver irParaApp).
-      // Quem PULOU não passa por aqui de propósito — ele disse que não queria
-      // configurar agora, e empurrar um wizard seria ignorar o que ele acabou de
-      // dizer. O "pular" segue direto para as abas.
       irParaApp(true);
     } catch {
       Alert.alert('Ops', 'Não consegui salvar agora. Tente novamente.');
@@ -444,13 +454,23 @@ export default function OnboardingScreen() {
   }
 
   async function pickImage(field: 'logoUri' | 'assinaturaUri') {
-    // mesmo padrão da MeuNegocioScreen (funciona no app e na web)
+    if (imagemProcessando) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permissão', 'Permita o acesso às fotos.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.9 });
     if (!r.canceled) {
-      setEmp(p => ({ ...p, [field]: r.assets[0].uri }));
-      Haptics.selectionAsync().catch(() => {});
+      setImagemProcessando(field);
+      try {
+        const resultado = await imagemEscolhidaParaDataUri(r.assets[0]);
+        if (!resultado.ok) {
+          Alert.alert('Imagem não adicionada', resultado.erro);
+          return;
+        }
+        setEmp(p => ({ ...p, [field]: resultado.dataUri }));
+        Haptics.selectionAsync().catch(() => {});
+      } finally {
+        setImagemProcessando(null);
+      }
     }
   }
 
@@ -511,9 +531,6 @@ export default function OnboardingScreen() {
               <Text style={[styles.brandSub, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
             </View>
           </View>
-          <TouchableOpacity disabled={saving} onPress={pular} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Pular configuração">
-            <Text style={[styles.skip, { color: gradientes.sobreHeader }]}>{saving ? 'Salvando…' : 'Pular'}</Text>
-          </TouchableOpacity>
         </View>
         <StepIndicator steps={STEPS} current={step} />
       </LinearGradient>
@@ -531,12 +548,35 @@ export default function OnboardingScreen() {
             <Text style={styles.hint}>Isso aparece no cabeçalho dos seus orçamentos, recibos e no link do cliente.</Text>
 
             <View style={styles.card}>
+              <Text style={styles.segLabel}>Como você trabalha? *</Text>
+              <View style={styles.segRow} accessibilityRole="radiogroup">
+                {([
+                  { id: 'autonomo' as const, label: 'Autônomo / pessoa física', icon: 'account-hard-hat' },
+                  { id: 'empresa' as const, label: 'Empresa com CNPJ', icon: 'domain' },
+                ]).map(opcao => {
+                  const active = emp.tipoNegocio === opcao.id;
+                  return (
+                    <TouchableOpacity
+                      key={opcao.id}
+                      style={[styles.segChip, active && styles.segChipActive]}
+                      onPress={() => { setField('tipoNegocio', opcao.id); clearError('tipoNegocio'); }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
+                    >
+                      <MaterialCommunityIcons name={opcao.icon as any} size={16} color={active ? textoSobreAccent : cores.onSurfaceVariant} />
+                      <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{opcao.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {errors.tipoNegocio ? <Text style={styles.fieldError}>{errors.tipoNegocio}</Text> : null}
+
               <OlliInput label="Nome do negócio" required value={emp.nome} error={errors.nome}
                 onChangeText={v => { setField('nome', v); clearError('nome'); }}
                 placeholder="Ex: Clima Frio Refrigeração" leftIcon="store" />
 
               <View style={styles.rowFields}>
-                <OlliInput label="CNPJ" mask="cnpj" value={emp.cnpj} error={errors.cnpj}
+                <OlliInput label="CNPJ" required={emp.tipoNegocio === 'empresa'} mask="cnpj" value={emp.cnpj} error={errors.cnpj}
                   onChangeText={v => { setField('cnpj', v); clearError('cnpj'); }}
                   placeholder="00.000.000/0001-00" containerStyle={{ flex: 1, marginRight: 10 }} />
                 <OlliInput label="CPF" mask="cpf" value={emp.cpf} error={errors.cpf}
@@ -568,7 +608,7 @@ export default function OnboardingScreen() {
               </TouchableOpacity>
               {cnpjInfo ? <Text style={styles.hint}>{cnpjInfo}</Text> : null}
 
-              <Text style={styles.segLabel}>Qual o seu segmento?</Text>
+              <Text style={styles.segLabel}>Qual o seu segmento? *</Text>
               <View style={styles.segRow}>
                 {SEGMENTOS.map(s => {
                   const active = emp.segmento === s.id;
@@ -580,8 +620,9 @@ export default function OnboardingScreen() {
                   );
                 })}
               </View>
+              {errors.segmento ? <Text style={styles.fieldError}>{errors.segmento}</Text> : null}
 
-              <OlliInput label="Especialidade" value={emp.especialidade} onChangeText={v => setField('especialidade', v)} placeholder="Ex: Assistência técnica de ar condicionado" leftIcon="star-outline" />
+              <OlliInput label="Especialidade" required value={emp.especialidade} error={errors.especialidade} onChangeText={v => { setField('especialidade', v); clearError('especialidade'); }} placeholder="Ex: Assistência técnica de ar condicionado" leftIcon="star-outline" />
               <OlliInput label="Slogan" value={emp.slogan} onChangeText={v => setField('slogan', v)} placeholder="Frase da sua marca" leftIcon="format-quote-close" containerStyle={{ marginBottom: 0 }} />
             </View>
 
@@ -634,8 +675,8 @@ export default function OnboardingScreen() {
               </View>
               <OlliInput label="Bairro" value={end.bairro} onChangeText={v => setEnd(p => ({ ...p, bairro: v }))} placeholder="Centro" leftIcon="home-group" />
               <View style={styles.rowFields}>
-                <OlliInput label="Cidade" value={emp.cidade} onChangeText={v => setField('cidade', v)} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10, marginBottom: 0 }} />
-                <OlliInput label="UF" value={emp.estado} onChangeText={v => setField('estado', v.toUpperCase().slice(0, 2))} autoCapitalize="characters" maxLength={2} placeholder="SP" containerStyle={{ flex: 1, marginBottom: 0 }} />
+                <OlliInput label="Cidade" required error={errors.cidade} value={emp.cidade} onChangeText={v => { setField('cidade', v); clearError('cidade'); }} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10, marginBottom: 0 }} />
+                <OlliInput label="UF" required error={errors.estado} value={emp.estado} onChangeText={v => { setField('estado', v.toUpperCase().slice(0, 2)); clearError('estado'); }} autoCapitalize="characters" maxLength={2} placeholder="SP" containerStyle={{ flex: 1, marginBottom: 0 }} />
               </View>
             </View>
 
@@ -643,23 +684,8 @@ export default function OnboardingScreen() {
           </AnimatedEntrance>
         )}
 
-        {/* ─── 4. RECEBIMENTO (PIX) ───────────────────────── */}
+        {/* ─── 4. IDENTIDADE VISUAL (logo + assinatura) ───── */}
         {step === 3 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Recebimento</Text>
-            <Text style={styles.hint}>Sua chave PIX aparece nos orçamentos e recibos para o cliente te pagar rápido.</Text>
-
-            <View style={styles.card}>
-              <OlliInput label="Chave PIX" value={emp.chavePix} onChangeText={v => setField('chavePix', v)}
-                placeholder="CPF/CNPJ, e-mail, telefone ou aleatória" leftIcon="key-variant" autoCapitalize="none" containerStyle={{ marginBottom: 0 }} />
-            </View>
-
-            <Assure icon="cash-fast" text="Sem pressa: dá para configurar depois em “Meu Negócio”." />
-          </AnimatedEntrance>
-        )}
-
-        {/* ─── 5. IDENTIDADE VISUAL (logo + assinatura) ───── */}
-        {step === 4 && (
           <AnimatedEntrance index={0}>
             <Text style={styles.title}>Identidade visual</Text>
             <Text style={styles.hint}>Sua logo e assinatura deixam cada documento com a sua cara.</Text>
@@ -667,16 +693,16 @@ export default function OnboardingScreen() {
             <View style={styles.card}>
               <View style={styles.brandPickRow}>
                 <View style={styles.brandItem}>
-                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} activeOpacity={0.8}>
-                    {emp.logoUri ? <Image source={{ uri: emp.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
+                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
+                    {imagemProcessando === 'logoUri' ? <ActivityIndicator color={cores.primary} /> : emp.logoUri ? <Image source={{ uri: emp.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
                       <><MaterialCommunityIcons name="image-plus" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Logo</Text></>
                     )}
                   </TouchableOpacity>
                   <Text style={styles.brandLabel}>Logotipo</Text>
                 </View>
                 <View style={styles.brandItem}>
-                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} activeOpacity={0.8}>
-                    {emp.assinaturaUri ? <Image source={{ uri: emp.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
+                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
+                    {imagemProcessando === 'assinaturaUri' ? <ActivityIndicator color={cores.primary} /> : emp.assinaturaUri ? <Image source={{ uri: emp.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
                       <><MaterialCommunityIcons name="draw" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Assinatura</Text></>
                     )}
                   </TouchableOpacity>
@@ -689,8 +715,8 @@ export default function OnboardingScreen() {
           </AnimatedEntrance>
         )}
 
-        {/* ─── 6. PRIMEIRO SERVIÇO (opcional) ─────────────── */}
-        {step === 5 && (
+        {/* ─── 5. PRIMEIRO SERVIÇO (opcional) ─────────────── */}
+        {step === 4 && (
           <AnimatedEntrance index={0}>
             <Text style={styles.title}>Primeiro serviço</Text>
             <Text style={styles.hint}>Com um serviço no catálogo, você monta orçamentos em segundos. (Opcional)</Text>
@@ -723,6 +749,7 @@ export default function OnboardingScreen() {
                   label={servNome.trim() ? 'Concluir e começar' : 'Concluir cadastro'}
                   variant="gradient" size="lg" fullWidth
                   loading={saving}
+                  disabled={saving || !!imagemProcessando}
                   onPress={concluir}
                   icon={<MaterialCommunityIcons name="check-circle" size={20} color={gradientes.sobreBrand} />}
                 />
@@ -731,6 +758,7 @@ export default function OnboardingScreen() {
                   label="Continuar"
                   variant="gradient" size="lg" fullWidth
                   onPress={avancar}
+                  disabled={!!imagemProcessando}
                   icon={<MaterialCommunityIcons name="arrow-right" size={20} color={gradientes.sobreBrand} />}
                 />
               )}
@@ -781,7 +809,7 @@ function BoasVindas({ onStart, insets }: {
           <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
           <WcFeature icon="link-variant" text="O cliente aprova ou recusa pelo link, sem instalar nada" />
           <WcFeature icon="toolbox-outline" text="Ordens de serviço e equipe organizadas em campo" />
-          <WcFeature icon="wifi-off" text="Cadastros já baixados funcionam offline; links, IA, pagamentos e sincronização precisam de internet" />
+          <WcFeature icon="wifi-off" text="Cadastros já baixados funcionam offline; links, IA e sincronização precisam de internet" />
         </View>
       </View>
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>
@@ -871,6 +899,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   segChipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
   segChipTextActive: { color: textoSobre(c.accentLight) },
+  fieldError: { color: c.danger, fontSize: 12, fontWeight: '600', marginTop: -8, marginBottom: Spacing.md },
 
   // (o spinner e o texto único do CEP viraram estados do <AvisoCep>)
 

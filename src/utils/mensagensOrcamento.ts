@@ -19,7 +19,7 @@ function dadosComerciais(orc: Orcamento): string[] {
     `Total: ${formatCurrency(orc.valorTotal)}`,
     orc.validadeOrcamento ? `Validade: até ${formatDateBR(orc.validadeOrcamento)}` : '',
     orc.garantia ? `Garantia: ${orc.garantia}` : '',
-    orc.condicoesPagamento ? `Pagamento: ${orc.condicoesPagamento}` : '',
+    orc.condicoesPagamento ? `Condições comerciais: ${orc.condicoesPagamento}` : '',
   ];
   return linhas.filter(Boolean);
 }
@@ -30,7 +30,9 @@ export function montarMensagemEnvioOrcamento(orc: Orcamento, empresa?: Empresa |
   const linhas = [
     `Olá, ${primeiroNome(orc.clienteNome)}!`,
     '',
-    `Preparei o orçamento nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}.`,
+    orc.revisaoDeNumero
+      ? `Preparei o orçamento atualizado nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}, revisão do nº ${orc.revisaoDeNumero}.`
+      : `Preparei o orçamento nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}.`,
     itens ? `Inclui: ${itens}.` : '',
     ...dadosComerciais(orc),
     '',
@@ -44,7 +46,9 @@ export function montarMensagemLinkOrcamento(orc: Orcamento, empresa: Empresa | n
   const linhas = [
     `Olá, ${primeiroNome(orc.clienteNome)}!`,
     '',
-    `Segue o orçamento nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}:`,
+    orc.revisaoDeNumero
+      ? `Segue o orçamento atualizado nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}, revisão do nº ${orc.revisaoDeNumero}:`
+      : `Segue o orçamento nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}:`,
     url,
     '',
     ...dadosComerciais(orc),

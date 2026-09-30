@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada } from '../types';
+import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOrcamento, Depoimento, CodigoErro, CasoErro, Agendamento, OrcamentoVersao, OrdemServico, ItemChecklist, StatusOS, Equipamento, SituacaoEquipamento, CriticidadeEquipamento, PmocPlano, PmocPlanoVersao, PmocOrdemGerada, StatusOrcamento, propostaJaEnviada, DocumentoBibliotecaRegistro, DocumentoBibliotecaVersao } from '../types';
 // codigos_erro.json (~365 KB) é carregado SOB DEMANDA em seedCodigosErro (lazy
 // require), não como import estático — assim o boot não paga o parse quando o
 // seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
@@ -245,7 +245,10 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       orcamento_id TEXT NOT NULL,
       numero_versao INTEGER NOT NULL,
       dados TEXT NOT NULL,
-      criado_em TEXT NOT NULL
+      criado_em TEXT NOT NULL,
+      -- Outbox local: 1 até o espelho do Supabase confirmar. A coluna é local;
+      -- nunca é enviada para public.orcamento_versoes.
+      espelho_pendente INTEGER NOT NULL DEFAULT 1
     );
     CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_orc ON orcamento_versoes (orcamento_id, numero_versao);
 
@@ -259,6 +262,46 @@ async function initDb(database: SQLite.SQLiteDatabase) {
     -- página de orçamentos (getRecibosPorOrcamentoIds), sem carregar tudo.
     CREATE INDEX IF NOT EXISTS idx_recibos_orcamento ON recibos (json_extract(data, '$.orcamentoId'));
     CREATE INDEX IF NOT EXISTS idx_recibos_excluido ON recibos (json_extract(data, '$.excluidoEm'));
+
+    -- Biblioteca versionada de documentos. dados guarda o snapshot atual;
+    -- documento_versoes é append-only e nunca é sobrescrito por uma edição.
+    CREATE TABLE IF NOT EXISTS documentos (
+      id TEXT PRIMARY KEY,
+      tipo TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'rascunho',
+      titulo TEXT NOT NULL,
+      cliente_id TEXT,
+      cliente_nome TEXT NOT NULL DEFAULT '',
+      origem_tipo TEXT NOT NULL,
+      origem_id TEXT,
+      origem_numero TEXT,
+      versao_atual INTEGER NOT NULL DEFAULT 1,
+      dados TEXT NOT NULL DEFAULT '{}',
+      arquivo_uri TEXT,
+      arquivo_chave TEXT,
+      arquivo_hash TEXT,
+      criado_em TEXT NOT NULL,
+      atualizado_em TEXT NOT NULL,
+      enviado_em TEXT,
+      assinado_em TEXT,
+      excluido_em TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_documentos_atualizado ON documentos (atualizado_em DESC);
+    CREATE INDEX IF NOT EXISTS idx_documentos_origem ON documentos (origem_tipo, origem_id);
+    CREATE INDEX IF NOT EXISTS idx_documentos_cliente ON documentos (cliente_id, atualizado_em DESC);
+    CREATE TABLE IF NOT EXISTS documento_versoes (
+      id TEXT PRIMARY KEY,
+      documento_id TEXT NOT NULL,
+      numero_versao INTEGER NOT NULL,
+      dados TEXT NOT NULL DEFAULT '{}',
+      arquivo_uri TEXT,
+      arquivo_chave TEXT,
+      arquivo_hash TEXT,
+      criado_em TEXT NOT NULL,
+      criado_por TEXT,
+      UNIQUE (documento_id, numero_versao)
+    );
+    CREATE INDEX IF NOT EXISTS idx_documento_versoes_documento ON documento_versoes (documento_id, numero_versao DESC);
 
     CREATE TABLE IF NOT EXISTS modelos (
       id TEXT PRIMARY KEY,
@@ -377,6 +420,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       titulo TEXT NOT NULL,
       descricao TEXT,
       status TEXT NOT NULL DEFAULT 'aberta',
+      concluido_em TEXT,
       tecnico_id TEXT,
       tecnico_nome TEXT,
       data_agendada TEXT,
@@ -491,6 +535,15 @@ async function initDb(database: SQLite.SQLiteDatabase) {
   `);
 
   await runMigrations(database);
+  // Este índice depende da coluna adicionada na migration v4. Ele fica depois
+  // do migrador para que uma instalação antiga não falhe na abertura antes de
+  // `addColumnIfMissing` ter tido a chance de criar `espelho_pendente`.
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_pendente ON orcamento_versoes (espelho_pendente, criado_em)',
+  );
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_ordens_servico_concluido ON ordens_servico (concluido_em) WHERE status = \'concluida\' AND concluido_em IS NOT NULL',
+  );
   await seedCodigosErro(database);
 
   // Sem dados-semente falsos: instalações novas começam SEM empresa e SEM
@@ -502,7 +555,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 6;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -559,6 +612,29 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
         `UPDATE ${tabela} SET atualizado_em = criado_em WHERE atualizado_em IS NULL`,
       );
     }
+  }
+
+  // v < 4 — OUTBOX DO HISTÓRICO: versões congeladas precisam sobreviver a uma
+  // falha transitória de rede/contexto. Bancos antigos entram como pendentes de
+  // propósito: o upsert remoto é idempotente por id e confirma o que já subiu;
+  // o que nunca subiu ganha a primeira tentativa no próximo sync.
+  if (v < 4) {
+    await addColumnIfMissing(database, 'orcamento_versoes', 'espelho_pendente', 'INTEGER NOT NULL DEFAULT 1');
+  }
+
+  // v < 5 — marco imutável da transição da OS para concluída. Sem backfill:
+  // instalações antigas não têm como distinguir conclusão de uma edição
+  // posterior, então o campo só passa a existir para novas transições.
+  if (v < 5) {
+    await addColumnIfMissing(database, 'ordens_servico', 'concluido_em', 'TEXT');
+  }
+
+  // v < 6 — chave estável do Storage privado para artefatos de documento.
+  // A URI assinada expira; a chave permite que outro aparelho gere uma nova URL
+  // sem copiar PDF para o JSON ou depender do caminho local do dispositivo.
+  if (v < 6) {
+    await addColumnIfMissing(database, 'documentos', 'arquivo_chave', 'TEXT');
+    await addColumnIfMissing(database, 'documento_versoes', 'arquivo_chave', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -943,6 +1019,30 @@ export async function getOrcamentosAgregadoPorStatus(
   return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
 }
 
+/**
+ * Mesmo agregado acima, limitado por `dataEmissao` (ou `criadoEm` em registros
+ * antigos). `fimExclusivoYmd` evita conta de horário/fuso: [início, fim).
+ */
+export async function getOrcamentosAgregadoPorStatusNoPeriodo(
+  statuses: readonly StatusOrcamento[],
+  inicioYmd: string,
+  fimExclusivoYmd: string,
+): Promise<{ contagem: number; valorTotal: number }> {
+  if (statuses.length === 0) return { contagem: 0, valorTotal: 0 };
+  const db = await getDb();
+  const placeholders = statuses.map(() => '?').join(',');
+  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
+    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma
+     FROM orcamentos
+     WHERE json_extract(data, '$.excluidoEm') IS NULL
+       AND json_extract(data, '$.status') IN (${placeholders})
+       AND substr(COALESCE(json_extract(data, '$.dataEmissao'), json_extract(data, '$.criadoEm')), 1, 10) >= ?
+       AND substr(COALESCE(json_extract(data, '$.dataEmissao'), json_extract(data, '$.criadoEm')), 1, 10) < ?`,
+    [...statuses, inicioYmd, fimExclusivoYmd],
+  );
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+}
+
 /** Total de orçamentos ATIVOS (qualquer status) — denominador de taxas (ex.: conversão). */
 export async function getOrcamentosTotalAtivos(): Promise<number> {
   const db = await getDb();
@@ -1253,7 +1353,7 @@ export function acordoAceito(status: StatusOrcamento): boolean {
  * documento em mãos. Gêmea de `edicaoBloqueada` em
  * `webapp/src/pages/olli/orcamentos/FormOrcamento.tsx`: o MESMO documento tinha
  * duas regras conforme o usuário abrisse no celular ou no painel. O caminho
- * honesto nos dois é DUPLICAR como novo rascunho — o original continua valendo.
+ * honesto nos dois é CRIAR REVISÃO como novo rascunho — o original continua valendo.
  *
  * Mora aqui, e não em `src/types` ao lado de `propostaJaEnviada`, que seria o
  * lugar natural — mover é uma unificação pendente, sem mudança de comportamento.
@@ -1268,52 +1368,35 @@ export function edicaoBloqueada(status: StatusOrcamento): boolean {
 /**
  * Recusa de gravação por regra comercial — NÃO é falha técnica. Tipada para que a
  * UI possa distinguir "tente de novo em instantes" (transitório) de "isto não vai
- * funcionar nunca, use Duplicar" (permanente).
+ * funcionar nunca, use Criar revisão" (permanente).
  *
- * COMO CONSUMIR: prefira `e?.codigo === 'ORCAMENTO_ACEITO'` a `instanceof` — o
+ * COMO CONSUMIR: prefira `e?.codigo === 'ORCAMENTO_PROTEGIDO'` a `instanceof` — o
  * campo `codigo` sobrevive ao serializar/reconstruir o erro através de camadas
  * (bridge, sync, re-throw), e não obriga a tela a importar esta classe. É o que
  * `NovoOrcamentoScreen.tsx` (handleSave/handleRascunho) faz: nesta recusa mostra
- * "duplique como novo rascunho" em vez de "tente novamente em instantes", porque
+ * "crie uma revisão" em vez de "tente novamente em instantes", porque
  * tentar de novo nunca vai funcionar. Tratar isto como falha transitória é
  * mandar o usuário repetir para sempre um caminho fechado, perdendo o que digitou.
  */
-export class OrcamentoAceitoError extends Error {
-  readonly codigo = 'ORCAMENTO_ACEITO' as const;
+export class OrcamentoProtegidoError extends Error {
+  readonly codigo = 'ORCAMENTO_PROTEGIDO' as const;
   constructor(public readonly status: StatusOrcamento) {
     super(
-      'Este orçamento já foi aceito pelo cliente. Para mudar valores ou itens, duplique como novo rascunho.',
+      'Este orçamento já foi enviado ou aceito pelo cliente. Para mudar valores ou itens, crie uma revisão.',
     );
-    this.name = 'OrcamentoAceitoError';
+    this.name = 'OrcamentoProtegidoError';
   }
 }
 
 /**
- * Salva o orçamento. Duas regras, ambas sobre o estado JÁ PERSISTIDO:
+ * Salva o orçamento preservando o estado JÁ PERSISTIDO:
  *
- * 1. ACEITO NÃO SE REESCREVE. Se o anterior está em `acordoAceito` (aprovado/
- *    convertido) e a impressão COMERCIAL muda, recusamos. Antes daqui, o app
- *    sobrescrevia calado um documento aprovado — e sem nem gerar versão, porque o
- *    versionamento abaixo só cobre `propostaJaEnviada`. O painel já recusava a
- *    mesma edição, então o mesmo orçamento tinha duas regras.
- * 2. PROPOSTA ENVIADA GERA VERSÃO (mestre 13.5). Enviado/visualizado/
- *    em_negociacao/aguardando_assinatura: a edição passa, mas congelamos o estado
- *    anterior como VERSÃO antes de sobrescrever — o que o cliente viu nunca some.
- *
- *    POR QUE A REGRA 2 QUASE NUNCA DISPARA, e ainda assim fica. As telas que
- *    levam ao editor (`OrcamentosScreen`, `VisualizarOrcamentoScreen` e a tabela
- *    de `desktop/OrcamentosDesktopScreen`) escondem "Editar" para todo status em
- *    `edicaoBloqueada` — que COBRE `propostaJaEnviada` inteiro —, e o próprio
- *    editor (`NovoOrcamentoScreen`) recusa abrir em modo edição nesses status,
- *    o que fecha também o deep link `orcamentos/:id/editar` (`linking.ts`), que
- *    não passa por tela nenhuma. Quem chega ao editor está em rascunho/recusado/
- *    expirado/cancelado: sem conteúdo protegido a versionar.
- *
- *    Manter a regra 2 NÃO é indecisão — é a rede para o caminho que ninguém
- *    previu. Um gate de UI é uma linha que some num refactor; esta é a única
- *    trava que fica entre um `saveOrcamento` qualquer e a sobrescrita do que o
- *    cliente já viu. `scripts/teste-numero-web.ts` guarda os gates acima para que
- *    sumir deles seja falha de teste, não descoberta em produção.
+ * ENVIADO OU ACEITO NÃO SE REESCREVE. Se o documento anterior está em qualquer
+ * status de `edicaoBloqueada` e a impressão COMERCIAL muda, recusamos. A interface
+ * cria outro orçamento como revisão ligada ao original; esta guarda cobre também
+ * caminhos internos, deep links ou futuros refactors que tentem chamar o save
+ * diretamente. Assim o ID/link que o cliente recebeu continua apontando para o
+ * conteúdo imutável que ele viu.
  *
  *    Fora do alcance destas duas regras, de propósito: o PULL da nuvem grava por
  *    `localUpsertOrcamento` (INSERT OR REPLACE cru), não por aqui. Mudança que
@@ -1323,7 +1406,7 @@ export class OrcamentoAceitoError extends Error {
  *    qualquer forma: ela lista também o que a nuvem/painel gerou
  *    (`clienteLink.ts`), não só o que este `saveOrcamento` congela.
  *
- * As duas comparam `impressaoComercial`, que ignora os campos voláteis: trocar SÓ
+ * A guarda compara `impressaoComercial`, que ignora os campos voláteis: trocar SÓ
  * o status (o link marcou "visualizado", o cliente aprovou, o dono converteu),
  * assinar ou mandar para a lixeira passa em qualquer status. É por isso que a
  * recusa não trava o funil nem o sync do link — só a edição de conteúdo.
@@ -1337,23 +1420,14 @@ export async function saveOrcamento(o: Orcamento): Promise<void> {
   // silêncio. Na prática só quebra com o SQLite quebrado, que derrubaria o INSERT
   // logo abaixo de qualquer jeito.
   const anterior = await getOrcamento(o.id);
-  // A comparação só importa nos status que travam ou versionam. Fora deles (o caso
+  // A comparação só importa nos status que travam. Fora deles (o caso
   // comum: rascunho sendo editado) nem serializamos — a impressão comercial percorre
   // o objeto INTEIRO, fotos inclusive, e não vale pagar isso a cada tecla salva.
   const mudouConteudoProtegido =
     !!anterior && edicaoBloqueada(anterior.status) && impressaoComercial(anterior) !== impressaoComercial(o);
 
-  if (anterior && mudouConteudoProtegido && acordoAceito(anterior.status)) {
-    throw new OrcamentoAceitoError(anterior.status);
-  }
-
-  // Snapshot da versão anterior, quando aplicável (best-effort: nunca impede o save).
-  try {
-    if (anterior && mudouConteudoProtegido && propostaJaEnviada(anterior.status)) {
-      await congelarVersaoOrcamento(anterior);
-    }
-  } catch {
-    // versionamento é aditivo: uma falha aqui jamais bloqueia salvar o orçamento
+  if (anterior && mudouConteudoProtegido) {
+    throw new OrcamentoProtegidoError(anterior.status);
   }
 
   await db.runAsync(
@@ -1448,7 +1522,8 @@ export async function proximoNumeroVersao(orcamentoId: string): Promise<number> 
 
 /**
  * Congela um SNAPSHOT do orçamento como uma versão nova (append-only). Grava local
- * e espelha na nuvem (fire-and-forget). Recebe o estado a preservar (normalmente o
+ * e agenda o espelho na outbox (o upload é background, mas a confirmação fica
+ * persistida). Recebe o estado a preservar (normalmente o
  * orçamento ANTES da edição). Idempotência prática: cada chamada cria uma versão
  * nova — quem decide QUANDO chamar é o `saveOrcamento` (só quando o conteúdo mudou).
  */
@@ -1463,7 +1538,7 @@ export async function congelarVersaoOrcamento(snapshot: Orcamento): Promise<Orca
     criadoEm: new Date().toISOString(),
   };
   await db.runAsync(
-    'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+    'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em, espelho_pendente) VALUES (?,?,?,?,?,1)',
     [versao.id, versao.orcamentoId, versao.numeroVersao, JSON.stringify(versao.dados), versao.criadoEm],
   );
   mirrorVersaoNuvem(versao);
@@ -1506,6 +1581,36 @@ export async function countVersoesOrcamento(orcamentoId: string): Promise<number
 }
 
 /**
+ * Lê o outbox local do histórico. A seleção é limitada para que uma conta com
+ * muitas versões antigas não congele o sync de login; a próxima retomada pega o
+ * restante. Os dados continuam na partição SQLite do usuário atual.
+ */
+export async function getVersoesPendentesEspelho(limite = 20): Promise<OrcamentoVersao[]> {
+  try {
+    const db = await getDb();
+    const n = Number.isInteger(limite) ? Math.max(1, Math.min(limite, 100)) : 20;
+    const rows = await db.getAllAsync<any>(
+      'SELECT * FROM orcamento_versoes WHERE espelho_pendente = 1 ORDER BY criado_em ASC LIMIT ?',
+      [n],
+    );
+    return rows.map(rowToVersao);
+  } catch {
+    return [];
+  }
+}
+
+/** Marca uma versão como confirmada no espelho remoto. Nunca lança. */
+export async function marcarVersaoEspelhoConcluido(id: string): Promise<void> {
+  try {
+    if (!id) return;
+    const db = await getDb();
+    await db.runAsync('UPDATE orcamento_versoes SET espelho_pendente = 0 WHERE id = ?', [id]);
+  } catch {
+    // Se a marca local falhar, a próxima tentativa repete o upsert idempotente.
+  }
+}
+
+/**
  * Upsert SILENCIOSO de uma versão vinda da nuvem no SQLite local (sem re-espelhar
  * para a nuvem — evita loop). Usado pelo pull downstream (clienteLink.puxarVersoes
  * NuvemParaOrcamento), para as versões criadas em OUTRO aparelho aparecerem aqui.
@@ -1519,7 +1624,7 @@ export async function upsertVersaoLocalSilencioso(versao: OrcamentoVersao): Prom
       ? (versao.dados as unknown as string)
       : JSON.stringify(versao.dados);
     await db.runAsync(
-      'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em) VALUES (?,?,?,?,?)',
+      'INSERT OR REPLACE INTO orcamento_versoes (id, orcamento_id, numero_versao, dados, criado_em, espelho_pendente) VALUES (?,?,?,?,?,0)',
       [versao.id, versao.orcamentoId, versao.numeroVersao, dadosStr, versao.criadoEm ?? new Date().toISOString()],
     );
   } catch {
@@ -1528,9 +1633,9 @@ export async function upsertVersaoLocalSilencioso(versao: OrcamentoVersao): Prom
 }
 
 /**
- * Espelha UMA versão na nuvem (public.orcamento_versoes). Fire-and-forget e
- * import DINÂMICO de clienteLink (evita aresta estática database↔services e
- * mantém o padrão do módulo). Nunca afeta o save local: offline/deslogado = no-op.
+ * Tenta UMA versão na nuvem (public.orcamento_versoes). É import DINÂMICO de
+ * clienteLink (evita aresta estática database↔services e mantém o padrão do
+ * módulo). Se falhar, a mesma linha pendente será encontrada no próximo sync.
  */
 function mirrorVersaoNuvem(versao: OrcamentoVersao): void {
   try {
@@ -1616,12 +1721,11 @@ async function maiorSequenciaDocumento(tabela: TabelaNumerada): Promise<number> 
  * segue no 005 — divergência sem colisão, porque o contador só fica À FRENTE dos
  * documentos, nunca atrás.
  *
- * O QUE ISTO **NÃO** RESOLVE: dois aparelhos criando ao mesmo tempo, um deles sem
- * rede. Aí os dois leem o mesmo piso e emitem o mesmo número, e só o banco pode
- * arbitrar — ver `supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente`
- * (UNIQUE + renumeração no push), que é passo humano. A extensão `.pendente` é de
- * propósito: o índice NÃO pode entrar antes de `mirrorPush` tratar o 23505 (o
- * arquivo explica), e `.sql` puro seria aplicado por qualquer varredura.
+ * O QUE ISTO **NÃO** RESOLVE sozinho: dois aparelhos criando ao mesmo tempo, um
+ * deles offline. O handler de 23505 já vive em `cloudSync.ts`, mas quem arbitra
+ * é o índice de `20260727_numero_unico_por_tenant.sql.pendente`. Ele continua
+ * pendente até a auditoria humana de duplicatas em produção; renomear/aplicar é
+ * mudança de banco, não efeito automático de ter o cliente preparado.
  */
 async function proximoNaSequencia(chave: string, tabela: TabelaNumerada): Promise<number> {
   const db = await getDb();
@@ -1679,6 +1783,7 @@ function rowToOrdemServico(r: any): OrdemServico {
     titulo: r.titulo,
     descricao: r.descricao ?? undefined,
     status: r.status as StatusOS,
+    concluidoEm: r.concluido_em ?? undefined,
     tecnicoId: r.tecnico_id ?? undefined,
     tecnicoNome: r.tecnico_nome ?? undefined,
     dataAgendada: r.data_agendada ?? undefined,
@@ -1701,6 +1806,18 @@ export async function getOrdensServico(): Promise<OrdemServico[]> {
   return rows.map(rowToOrdemServico);
 }
 
+/** Página recente para dashboards/bibliotecas; evita carregar toda a OS no boot. */
+export async function getOrdensServicoPagina(limite = 40, offset = 0): Promise<OrdemServico[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(100, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM ordens_servico WHERE excluido_em IS NULL ORDER BY atualizado_em DESC, numero DESC LIMIT ? OFFSET ?',
+    [n, o],
+  );
+  return rows.map(rowToOrdemServico);
+}
+
 // Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getOrdemServico(id: string): Promise<OrdemServico | null> {
   const db = await getDb();
@@ -1712,12 +1829,12 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
-       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+       (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
         criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
-     os.titulo, os.descricao ?? null, os.status, os.tecnicoId ?? null, os.tecnicoNome ?? null,
+     os.titulo, os.descricao ?? null, os.status, os.concluidoEm ?? null, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
      os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null],
   );
@@ -1901,6 +2018,169 @@ export async function getRecibos(): Promise<Recibo[]> {
     "SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
   );
   return rows.map(r => JSON.parse(r.data));
+}
+
+/** Página recente para a biblioteca de documentos; o histórico completo fica na tela própria. */
+export async function getRecibosPagina(limite = 40, offset = 0): Promise<Recibo[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(100, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    "SELECT * FROM recibos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC LIMIT ? OFFSET ?",
+    [n, o],
+  );
+  return rows.map(r => JSON.parse(r.data));
+}
+
+// ─── BIBLIOTECA DE DOCUMENTOS (registro + versões) ─────────────────────────
+function rowToDocumentoBiblioteca(r: any): DocumentoBibliotecaRegistro {
+  let dados: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(r.dados ?? '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) dados = parsed;
+  } catch { /* snapshot ilegível não derruba a biblioteca */ }
+  return {
+    id: r.id,
+    tipo: r.tipo,
+    status: r.status,
+    titulo: r.titulo,
+    clienteId: r.cliente_id ?? undefined,
+    clienteNome: r.cliente_nome ?? '',
+    origemTipo: r.origem_tipo,
+    origemId: r.origem_id ?? undefined,
+    origemNumero: r.origem_numero ?? undefined,
+    versaoAtual: Number(r.versao_atual ?? 1),
+    dados,
+    arquivoUri: r.arquivo_uri ?? undefined,
+    arquivoChave: r.arquivo_chave ?? undefined,
+    arquivoHash: r.arquivo_hash ?? undefined,
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em,
+    enviadoEm: r.enviado_em ?? undefined,
+    assinadoEm: r.assinado_em ?? undefined,
+    excluidoEm: r.excluido_em ?? undefined,
+  };
+}
+
+export async function getDocumentosBiblioteca(limite = 100, offset = 0): Promise<DocumentoBibliotecaRegistro[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(500, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM documentos WHERE excluido_em IS NULL ORDER BY atualizado_em DESC LIMIT ? OFFSET ?',
+    [n, o],
+  );
+  return rows.map(rowToDocumentoBiblioteca);
+}
+
+export async function getDocumentoBiblioteca(id: string): Promise<DocumentoBibliotecaRegistro | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM documentos WHERE id = ?', [id]);
+  return row ? rowToDocumentoBiblioteca(row) : null;
+}
+
+export async function getDocumentoBibliotecaPorOrigem(
+  tipo: DocumentoBibliotecaRegistro['tipo'],
+  origemTipo: DocumentoBibliotecaRegistro['origemTipo'],
+  origemId: string,
+): Promise<DocumentoBibliotecaRegistro | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>(
+    'SELECT * FROM documentos WHERE tipo = ? AND origem_tipo = ? AND origem_id = ? AND excluido_em IS NULL ORDER BY versao_atual DESC LIMIT 1',
+    [tipo, origemTipo, origemId],
+  );
+  return row ? rowToDocumentoBiblioteca(row) : null;
+}
+
+export async function saveDocumentoBiblioteca(documento: DocumentoBibliotecaRegistro): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO documentos
+      (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+       origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
+       atualizado_em, enviado_em, assinado_em, excluido_em)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [documento.id, documento.tipo, documento.status, documento.titulo, documento.clienteId ?? null,
+     documento.clienteNome, documento.origemTipo, documento.origemId ?? null, documento.origemNumero ?? null,
+     documento.versaoAtual, JSON.stringify(documento.dados ?? {}), documento.arquivoUri ?? null,
+     documento.arquivoChave ?? null, documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm, documento.enviadoEm ?? null,
+     documento.assinadoEm ?? null, documento.excluidoEm ?? null],
+  );
+  mirrorPush('documentos', documento);
+}
+
+export async function saveDocumentoBibliotecaVersao(versao: DocumentoBibliotecaVersao): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR IGNORE INTO documento_versoes
+      (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [versao.id, versao.documentoId, versao.numeroVersao, JSON.stringify(versao.dados ?? {}),
+     versao.arquivoUri ?? null, versao.arquivoChave ?? null, versao.arquivoHash ?? null, versao.criadoEm, versao.criadoPor ?? null],
+  );
+  mirrorPush('documento_versoes', versao);
+}
+
+/**
+ * Persiste pai + snapshot em uma única transação SQLite. A versão é inserida
+ * antes do espelho remoto somente depois do commit local; assim uma queda entre
+ * as duas escritas não deixa um documento sem sua versão correspondente.
+ */
+export async function saveDocumentoBibliotecaComVersao(
+  documento: DocumentoBibliotecaRegistro,
+  versao: DocumentoBibliotecaVersao,
+): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO documentos
+        (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+         origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
+         atualizado_em, enviado_em, assinado_em, excluido_em)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [documento.id, documento.tipo, documento.status, documento.titulo, documento.clienteId ?? null,
+       documento.clienteNome, documento.origemTipo, documento.origemId ?? null, documento.origemNumero ?? null,
+       documento.versaoAtual, JSON.stringify(documento.dados ?? {}), documento.arquivoUri ?? null,
+       documento.arquivoChave ?? null, documento.arquivoHash ?? null, documento.criadoEm, documento.atualizadoEm,
+       documento.enviadoEm ?? null, documento.assinadoEm ?? null, documento.excluidoEm ?? null],
+    );
+    await db.runAsync(
+      `INSERT OR IGNORE INTO documento_versoes
+        (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [versao.id, versao.documentoId, versao.numeroVersao, JSON.stringify(versao.dados ?? {}),
+       versao.arquivoUri ?? null, versao.arquivoChave ?? null, versao.arquivoHash ?? null,
+       versao.criadoEm, versao.criadoPor ?? null],
+    );
+  });
+  mirrorPush('documentos', documento);
+  mirrorPush('documento_versoes', versao);
+}
+
+export async function getDocumentoBibliotecaVersoes(documentoId: string): Promise<DocumentoBibliotecaVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM documento_versoes WHERE documento_id = ? ORDER BY numero_versao DESC',
+    [documentoId],
+  );
+  return rows.map((r) => {
+    let dados: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(r.dados ?? '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) dados = parsed;
+    } catch { /* snapshot ilegível não derruba o histórico */ }
+    return {
+      id: r.id,
+      documentoId: r.documento_id,
+      numeroVersao: Number(r.numero_versao),
+      dados,
+      arquivoUri: r.arquivo_uri ?? undefined,
+      arquivoChave: r.arquivo_chave ?? undefined,
+      arquivoHash: r.arquivo_hash ?? undefined,
+      criadoEm: r.criado_em,
+      criadoPor: r.criado_por ?? undefined,
+    } satisfies DocumentoBibliotecaVersao;
+  });
 }
 
 // Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
@@ -2378,6 +2658,9 @@ export interface BackupSnapshot {
   ordensServico?: OrdemServico[];
   /** Equipamentos HVAC / inventário PMOC (opcional — snapshots antigos não têm). */
   equipamentos?: Equipamento[];
+  /** Biblioteca versionada de documentos (opcional — snapshots antigos não têm). */
+  documentos?: DocumentoBibliotecaRegistro[];
+  documentoVersoes?: DocumentoBibliotecaVersao[];
 }
 
 /** Lê todas as versões de orçamento (para o backup levar o histórico completo). */
@@ -2398,15 +2681,39 @@ async function getContadoresForBackup(): Promise<Record<string, number>> {
   return out;
 }
 
+async function getDocumentosForBackup(): Promise<DocumentoBibliotecaRegistro[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM documentos WHERE excluido_em IS NULL ORDER BY atualizado_em ASC');
+  return rows.map(rowToDocumentoBiblioteca);
+}
+
+async function getDocumentoVersoesForBackup(): Promise<DocumentoBibliotecaVersao[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>('SELECT * FROM documento_versoes ORDER BY documento_id ASC, numero_versao ASC');
+  return rows.map((r) => {
+    let dados: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(r.dados ?? '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) dados = parsed;
+    } catch { /* snapshot ilegível fica vazio, sem derrubar o backup */ }
+    return {
+      id: r.id, documentoId: r.documento_id, numeroVersao: Number(r.numero_versao), dados,
+      arquivoUri: r.arquivo_uri ?? undefined, arquivoHash: r.arquivo_hash ?? undefined,
+      arquivoChave: r.arquivo_chave ?? undefined,
+      criadoEm: r.criado_em, criadoPor: r.criado_por ?? undefined,
+    } satisfies DocumentoBibliotecaVersao;
+  });
+}
+
 export async function exportAllData(): Promise<BackupSnapshot> {
-  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos] = await Promise.all([
+  const [empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos, documentos, documentoVersoes] = await Promise.all([
     getEmpresa(), getClientes(), getServicos(), getProdutos(),
     getOrcamentos(), getRecibos(), getModelos(), getDepoimentos(), getAgendamentosForBackup(), getContadoresForBackup(),
-    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(), getEquipamentosForBackup(),
+    getRelatoriosDiasForBackup(), getVersoesForBackup(), getOrdensServicoForBackup(), getEquipamentosForBackup(), getDocumentosForBackup(), getDocumentoVersoesForBackup(),
   ]);
   return {
     version: 2, exportedAt: new Date().toISOString(),
-    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos,
+    empresa, clientes, servicos, produtos, orcamentos, recibos, modelos, depoimentos, agendamentos, contadores, relatoriosDiarios, orcamentoVersoes, ordensServico, equipamentos, documentos, documentoVersoes,
   };
 }
 
@@ -2433,6 +2740,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const orcamentoVersoes = asArray<OrcamentoVersao>(data.orcamentoVersoes);
   const ordensServico = asArray<OrdemServico>(data.ordensServico);
   const equipamentos = asArray<Equipamento>(data.equipamentos);
+  const documentos = asArray<DocumentoBibliotecaRegistro>(data.documentos);
+  const documentoVersoes = asArray<DocumentoBibliotecaVersao>(data.documentoVersoes);
 
   // GUARDA ANTI-PERDA: um backup corrompido/parcial que vira `{}` passa pela checagem
   // de objeto lá em cima e, SEM isto, apagaria todas as tabelas e inseriria nada
@@ -2441,7 +2750,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
   const totalItens =
     clientes.length + servicos.length + produtos.length + orcamentos.length +
     recibos.length + modelos.length + depoimentos.length + agendamentos.length +
-    relatoriosDiarios.length + orcamentoVersoes.length + ordensServico.length + equipamentos.length;
+    relatoriosDiarios.length + orcamentoVersoes.length + ordensServico.length + equipamentos.length + documentos.length + documentoVersoes.length;
   if (totalItens === 0 && !data.empresa) {
     throw new Error('Backup vazio ou inválido — nada para restaurar. Seus dados não foram alterados.');
   }
@@ -2459,6 +2768,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     ...agendamentos.map((a) => ({ tabela: 'agendamentos', itemId: a.id })),
     ...ordensServico.map((os) => ({ tabela: 'ordens_servico', itemId: os.id })),
     ...equipamentos.map((e) => ({ tabela: 'equipamentos', itemId: e.id })),
+    ...documentos.map((d) => ({ tabela: 'documentos', itemId: d.id })),
   ];
 
   // QUEM está restaurando (O0-3). Resolvido ANTES da transação: dentro dela uma
@@ -2480,6 +2790,7 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       DELETE FROM clientes; DELETE FROM servicos; DELETE FROM produtos;
       DELETE FROM orcamentos; DELETE FROM orcamento_versoes; DELETE FROM recibos; DELETE FROM modelos; DELETE FROM depoimentos;
       DELETE FROM agendamentos; DELETE FROM ordens_servico; DELETE FROM equipamentos;
+      DELETE FROM documentos; DELETE FROM documento_versoes;
     `);
     if (data.empresa) {
       await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
@@ -2563,12 +2874,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       if (!os || !os.id) continue;
       await db.runAsync(
         `INSERT OR REPLACE INTO ordens_servico
-           (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status,
+           (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
             tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
             criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [os.id, os.numero ?? '', os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome ?? '',
-         os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.tecnicoId ?? null,
+         os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.concluidoEm ?? null, os.tecnicoId ?? null,
          os.tecnicoNome ?? null, os.dataAgendada ?? null,
          JSON.stringify(Array.isArray(os.checklist) ? os.checklist : []),
          JSON.stringify(Array.isArray(os.fotos) ? os.fotos : []),
@@ -2591,6 +2902,30 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          e.situacao ?? 'ativo', e.criticidade ?? null, e.qrToken ?? '', e.qrRevogadoEm ?? null,
          JSON.stringify(Array.isArray(e.fotos) ? e.fotos : []),
          e.criadoEm ?? new Date().toISOString(), e.atualizadoEm ?? new Date().toISOString()],
+      );
+    }
+    for (const d of documentos) {
+      if (!d || !d.id) continue;
+      await db.runAsync(
+        `INSERT OR REPLACE INTO documentos
+          (id, tipo, status, titulo, cliente_id, cliente_nome, origem_tipo, origem_id,
+           origem_numero, versao_atual, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em,
+           atualizado_em, enviado_em, assinado_em, excluido_em)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [d.id, d.tipo, d.status, d.titulo, d.clienteId ?? null, d.clienteNome ?? '', d.origemTipo,
+         d.origemId ?? null, d.origemNumero ?? null, d.versaoAtual ?? 1, JSON.stringify(d.dados ?? {}),
+         d.arquivoUri ?? null, d.arquivoChave ?? null, d.arquivoHash ?? null, d.criadoEm, d.atualizadoEm,
+         d.enviadoEm ?? null, d.assinadoEm ?? null, d.excluidoEm ?? null],
+      );
+    }
+    for (const v of documentoVersoes) {
+      if (!v || !v.id || !v.documentoId) continue;
+      await db.runAsync(
+        `INSERT OR IGNORE INTO documento_versoes
+          (id, documento_id, numero_versao, dados, arquivo_uri, arquivo_chave, arquivo_hash, criado_em, criado_por)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [v.id, v.documentoId, v.numeroVersao, JSON.stringify(v.dados ?? {}), v.arquivoUri ?? null,
+         v.arquivoChave ?? null, v.arquivoHash ?? null, v.criadoEm, v.criadoPor ?? null],
       );
     }
     // Relatórios diários: MERGE (não apaga o histórico local existente) — é um
@@ -2685,6 +3020,7 @@ const USER_DATA_TABLES = [
   // PMOC/HVAC — estavam de FORA e vazavam entre contas no aparelho compartilhado (equipamentos,
   // planos de manutenção e ordens geradas do usuário anterior sobreviviam ao logout).
   'equipamentos', 'pmoc_planos', 'pmoc_plano_versoes', 'pmoc_ordens_geradas',
+  'documentos', 'documento_versoes',
 ];
 
 /**
@@ -2791,6 +3127,18 @@ export async function getPmocPlanos(): Promise<PmocPlano[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM pmoc_planos WHERE excluido_em IS NULL ORDER BY criado_em DESC',
+  );
+  return rows.map(rowToPmocPlanoDb);
+}
+
+/** Página recente de planos PMOC para telas de entrada; não substitui a lista completa. */
+export async function getPmocPlanosPagina(limite = 40, offset = 0): Promise<PmocPlano[]> {
+  const db = await getDb();
+  const n = Math.max(1, Math.min(100, Math.floor(limite)));
+  const o = Math.max(0, Math.floor(offset));
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_planos WHERE excluido_em IS NULL ORDER BY atualizado_em DESC, criado_em DESC LIMIT ? OFFSET ?',
+    [n, o],
   );
   return rows.map(rowToPmocPlanoDb);
 }

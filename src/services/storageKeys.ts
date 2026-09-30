@@ -139,6 +139,16 @@ export const SAIDA_CACHE_KEY = 'olli.saida.cache';
 export const SAIDA_AVISO_KEY = 'olli.saida.aviso';
 
 /**
+ * Cache do entitlement/plano confirmado pelo servidor.
+ *
+ * É dado de CONTA e precisa desaparecer no logout. O payload também carrega o
+ * `ownerUserId` e é validado contra a sessão atual (defesa principal), mas a
+ * remoção explícita reduz a janela de exposição e evita que lixo de uma conta
+ * anterior permaneça no aparelho.
+ */
+export const PLANO_CACHE_KEY = 'olli.plano.cache.v2';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -164,4 +174,5 @@ export const APP_DATA_STORAGE_KEYS = [
   FORMAS_PAGAMENTO_PADRAO_KEY,
   SAIDA_CACHE_KEY,
   SAIDA_AVISO_KEY,
+  PLANO_CACHE_KEY,
 ];

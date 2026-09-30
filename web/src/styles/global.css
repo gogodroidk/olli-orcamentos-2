@@ -263,6 +263,14 @@ body {
 	overflow-x: clip;
 }
 
+.site-header > div a {
+	display: inline-flex;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: center;
+}
+
 /* Números com aparência de dado (tabular). */
 .tnum {
 	font-variant-numeric: tabular-nums;
@@ -507,6 +515,9 @@ body {
 .preco-anual {
 	display: none;
 }
+.cta-anual {
+	display: none;
+}
 .nota-anual {
 	display: none;
 }
@@ -515,6 +526,12 @@ body {
 }
 .planos-precos:has(#periodo-anual:checked) .preco-anual {
 	display: inline-flex;
+}
+.planos-precos:has(#periodo-anual:checked) .cta-mensal {
+	display: none;
+}
+.planos-precos:has(#periodo-anual:checked) .cta-anual {
+	display: block;
 }
 .planos-precos:has(#periodo-anual:checked) .nota-anual {
 	display: block;

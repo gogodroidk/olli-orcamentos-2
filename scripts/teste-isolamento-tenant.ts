@@ -388,7 +388,10 @@ fingirSupabase({ owner_user_id: 'uid-dono', equipe_grandfathered: false });
 const r2 = await handleConvite(pedido(), env);
 checar('org NOVA sem plano Empresa: 402 (é quem o paywall cobra)', r2.status, 402);
 
-fingirSupabase({ owner_user_id: 'uid-dono', equipe_grandfathered: false }, { plano: 'empresa', status: 'active' });
+fingirSupabase(
+  { owner_user_id: 'uid-dono', equipe_grandfathered: false },
+  { plano: 'empresa', status: 'active', current_period_end: '2099-01-01T00:00:00.000Z' },
+);
 const r3 = await handleConvite(pedido(), env);
 checar('org NOVA com Empresa ativo: passa', r3.status, 200);
 

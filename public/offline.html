@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0A2547" />
+    <title>OLLI Orçamentos — sem conexão</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #071b31; color: #fff; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+      main { width: min(100%, 440px); padding: 28px; border: 1px solid #28445f; border-radius: 20px; background: #0a2547; }
+      h1 { margin: 0 0 12px; font-size: clamp(24px, 7vw, 36px); }
+      p { margin: 0 0 20px; color: #d7e7f5; line-height: 1.6; }
+      button { min-height: 48px; padding: 0 18px; border: 0; border-radius: 12px; color: #0a2547; background: #fff; font: 700 16px system-ui, sans-serif; cursor: pointer; }
+      button:focus-visible { outline: 3px solid #8ed8ff; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Você está sem conexão</h1>
+      <p>Se o OLLI já foi aberto neste aparelho, volte e tente novamente. Seus dados locais não são apagados.</p>
+      <button type="button" onclick="location.reload()">Tentar novamente</button>
+    </main>
+  </body>
+</html>

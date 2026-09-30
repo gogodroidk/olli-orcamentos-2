@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { normalizarRascunhoAcaoIa, type RascunhoAcaoIaRemota } from "@/olli/iaActions";
 
 /**
  * Diagnóstico por SINTOMA — conversa com a OLLI Técnica no Worker de IA
@@ -35,6 +36,8 @@ export type TipoErroIA =
 	| "creditos"
 	| "auth"
 	| "naoConfigurada"
+	| "indisponivel"
+	| "resposta"
 	| "desconhecido";
 
 export interface FalhaIA {
@@ -104,6 +107,20 @@ export function mapearFalhaIA(tipo: TipoErroIA): FalhaIA {
 				mensagem: "Enquanto isso, a busca por código funciona 100% — ela não depende de IA.",
 				acao: "Ir para Por código",
 			};
+		case "indisponivel":
+			return {
+				tipo,
+				titulo: "A OLLI está validando sua conta",
+				mensagem: "A resposta não foi gerada porque a validação de uso da IA não terminou. Nada foi cobrado; tente novamente em instantes.",
+				acao: "Tentar de novo",
+			};
+		case "resposta":
+			return {
+				tipo,
+				titulo: "A IA não devolveu uma resposta válida",
+				mensagem: "Nenhuma alteração foi feita. Tente reformular a pergunta ou enviar novamente.",
+				acao: "Tentar de novo",
+			};
 		default:
 			return {
 				tipo,
@@ -119,7 +136,7 @@ export interface MensagemChat {
 	texto: string;
 }
 
-export type RespostaChat = { ok: true; resposta: string } | { ok: false; erro: FalhaIA };
+export type RespostaChat = { ok: true; resposta: string; rascunho?: RascunhoAcaoIaRemota } | { ok: false; erro: FalhaIA };
 
 export interface OpcoesAssistente {
 	/** Ofício/vertical, quando a tela conhece. Vazio mantém o modo geral do Worker. */
@@ -127,6 +144,8 @@ export interface OpcoesAssistente {
 	/** Só telas com confirmação explícita de gasto devem enviar true. */
 	confirmarCredito?: boolean;
 	creditoRef?: string;
+	/** Solicita saída estruturada e persistida; nunca executa a mudança. */
+	modo?: "consulta" | "rascunho_acao";
 }
 
 /**
@@ -157,15 +176,17 @@ export async function perguntarAoAssistente(
 				vertical: opcoes.vertical,
 				confirmarCredito: opcoes.confirmarCredito === true,
 				creditoRef: opcoes.creditoRef,
+				modo: opcoes.modo,
 			}),
 			signal: controller.signal,
 		});
 
 		const data: unknown = await r.json().catch(() => null);
-		const obj = (data ?? {}) as { ok?: boolean; resposta?: unknown; motivo?: string; erro?: string };
+		const obj = (data ?? {}) as { ok?: boolean; resposta?: unknown; rascunho?: unknown; motivo?: string; erro?: string };
 
 		if (obj.ok && typeof obj.resposta === "string" && obj.resposta.trim()) {
-			return { ok: true, resposta: obj.resposta.trim() };
+			const rascunho = normalizarRascunhoAcaoIa(obj.rascunho);
+			return { ok: true, resposta: obj.resposta.trim(), ...(rascunho ? { rascunho } : {}) };
 		}
 		// O motivo vem antes do status: 429 também representa cota DIÁRIA. Dizer
 		// "espere alguns segundos" nesse caso incentivaria retries inúteis.
@@ -176,6 +197,14 @@ export async function perguntarAoAssistente(
 		if (obj.motivo === "ia_nao_configurada") return { ok: false, erro: mapearFalhaIA("naoConfigurada") };
 		if (obj.motivo === "nao_autorizado") return { ok: false, erro: mapearFalhaIA("auth") };
 		if (obj.erro === "muitas_requisicoes") return { ok: false, erro: mapearFalhaIA("limite") };
+		if (obj.erro === "limite_indisponivel") {
+			const falha = mapearFalhaIA("indisponivel");
+			const diagnostico = typeof (obj as { diagnostico?: unknown }).diagnostico === "string"
+				? String((obj as { diagnostico: string }).diagnostico).slice(0, 48)
+				: "";
+			return { ok: false, erro: diagnostico ? { ...falha, mensagem: `${falha.mensagem} Código técnico: ${diagnostico}.` } : falha };
+		}
+		if (obj.erro === "resposta_vazia" || obj.erro === "resposta_invalida") return { ok: false, erro: mapearFalhaIA("resposta") };
 		if (obj.erro === "sobrecarregado") return { ok: false, erro: mapearFalhaIA("servidor") };
 		if (r.status === 401) return { ok: false, erro: mapearFalhaIA("auth") };
 		if (r.status === 429) return { ok: false, erro: mapearFalhaIA("limite") };

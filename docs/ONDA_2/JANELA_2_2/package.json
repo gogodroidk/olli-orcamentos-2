@@ -1,0 +1,12 @@
+{
+  "name": "olli-onda-2-janela-2-2-postgres-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "validate": "node scripts/validate-static.mjs",
+    "validate:sql-syntax": "python scripts/validate-postgres-syntax.py",
+    "plan": "node scripts/run-local-postgres.mjs --database-url postgresql://localhost/olli_ephemeral --plan"
+  }
+}

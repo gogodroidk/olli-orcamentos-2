@@ -1,5 +1,6 @@
 /**
- * OLLI — Worker de IA: OpenRouter gratuito para raciocínio e Workers AI para voz.
+ * OLLI — Worker de IA: OpenRouter (cadeia paga barata em allowlist, com teto de
+ * preço) para raciocínio e Workers AI para voz.
  *
  * Endpoints (o app chama exatamente estes):
  *   POST /            → diagnóstico técnico (OLLI Técnica)
@@ -7,7 +8,10 @@
  *   POST /voz/conversa → mesmo Tier B acima, rota dedicada (alias de /voz com conversa[])
  *   POST /transcrever → voz na nuvem: áudio → transcrição ou itens de orçamento
  *   POST /chat        → assistente conversacional
+ *   POST /ia/importacao/preview → prévia estruturada de catálogo (sem escrita)
+ *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
+ *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *
  * Segurança:
  *   - OPENROUTER_API_KEY é SECRET do Worker (nunca vai pro app/APK e nunca é
@@ -18,6 +22,9 @@
  *     toda rota autenticada usa Bearer token, nunca cookie.
  *   - Toda rota de IA valida content-length (413 se exceder) e trunca/sanitiza
  *     cada campo antes de montar o prompt (proteção de custo + prompt injection).
+ *   - Autopilot aceita somente um arquivo pequeno em base64, valida magic bytes
+ *     e usa `toMarkdown` sem persistir o conteúdo; jobs grandes ficam na fila
+ *     isolada planejada para a próxima fase.
  *
  * O diagnóstico (POST '/') é ATERRADO na base oficial HVAC (hvac_codigos +
  * hvac_chunks via full-text search no Supabase) antes de chamar a IA — ver
@@ -41,10 +48,15 @@
  */
 
 import * as Sentry from '@sentry/cloudflare';
+import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
+import { capturarExcecao, conectarSentry } from '../../src/services/sentryCaptura.ts';
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
+import { handleAbacate } from './abacate.js';
+import { handleResendWebhook } from './resendWebhook.js';
+import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
@@ -52,7 +64,15 @@ import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
-import { aiConfigurada, gerarIA, provedorIA, transcreverAudio } from './ai.js';
+import {
+  aiConfigurada,
+  definirAlertaFalhaIA,
+  gerarIA,
+  pagamentoOpenRouterPermitido,
+  provedorIA,
+  saudeIA,
+  transcreverAudio,
+} from './ai.js';
 import {
   FAMILIAS_COTA_IA,
   criarGateTentativasOpenRouter,
@@ -61,7 +81,13 @@ import {
 } from './iaQuota.js';
 import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
+import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
+import { processarLembretesEmail } from './emailLembretesJob.js';
+import { handleDescadastroEmail } from './emailDescadastro.js';
+import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
+import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
+import { withSecurityHeaders } from './securityHeaders.js';
 import {
   rotuloVertical,
   vozSystem,
@@ -98,6 +124,11 @@ const MAX_BODY_BYTES = 65536;
 // precisa de um teto bem maior que o das rotas de texto. 4MB cobre alguns
 // minutos de fala num codec compacto (aac/ogg) com folga.
 const MAX_AUDIO_BODY_BYTES = 4_194_304;
+
+// Autopilot recebe uma fonte codificada em base64 para a prévia pequena. O
+// arquivo decodificado continua limitado a 4 MiB pelo módulo; o teto de corpo
+// inclui a expansão base64 + JSON e impede bufferizações arbitrárias.
+const MAX_AUTOPILOT_BODY_BYTES = Math.ceil(IA_AUTOPILOT_MAX_BYTES / 3) * 4 + 32 * 1024;
 
 // /eta e /geocodificar recebem só coordenadas/endereço — corpo minúsculo por
 // natureza. Mesmo teto (4KB) das outras rotas de payload pequeno (equipe.js, link.js).
@@ -165,7 +196,18 @@ async function getUser(request, env) {
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever']);
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview', '/ia/autopilot/preview']);
+
+function autopilotWorkersAiConfigurada(env, pathname) {
+  return pathname === '/ia/autopilot/preview'
+    && env?.AUTOPILOT_WORKERS_AI_ENABLED === 'true'
+    && env?.AI && typeof env.AI.run === 'function';
+}
+
+function autopilotConfigurado(env, pathname) {
+  return pathname === '/ia/autopilot/preview'
+    && (aiConfigurada(env) || autopilotWorkersAiConfigurada(env, pathname));
+}
 
 // ─── DIAGNÓSTICO ─────────────────────────────────────────────
 const DIAG_SYSTEM = `Você é a OLLI Técnica, especialista sênior em diagnóstico de ar-condicionado (split, multi-split, VRF) para técnicos de campo no Brasil.
@@ -224,7 +266,8 @@ function erroDaReservaCota(reserva) {
   if (reserva && reserva.estado === 'ja_reservado') {
     return json({ ok: false, erro: 'requisicao_repetida' }, 409);
   }
-  return json({ ok: false, erro: 'limite_indisponivel' }, 503);
+  const diagnostico = typeof reserva?.detalhe === 'string' ? reserva.detalhe : undefined;
+  return json({ ok: false, erro: 'limite_indisponivel', ...(diagnostico ? { diagnostico } : {}) }, 503);
 }
 
 function listaSaida(valor, maxItens, maxTexto) {
@@ -263,11 +306,23 @@ function sanitizarParaFiltro(v) {
   return encodeURIComponent(String(v || '').replace(/[,()*]/g, ''));
 }
 
+/** Headers server-side compatíveis com service_role legado e sb_secret moderno. */
+function supabaseServerHeaders(env, extra = {}) {
+  const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string'
+    ? env.SUPABASE_SERVICE_ROLE_KEY.trim()
+    : '';
+  const headers = { apikey: serviceRole, ...extra };
+  if (!serviceRole.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceRole}`;
+  }
+  return headers;
+}
+
 /** GET autenticado (service role) na REST do Supabase. [] em qualquer falha — nunca lança. */
 async function supabaseRest(env, path, signal) {
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
-      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+      headers: supabaseServerHeaders(env),
       signal,
     });
     if (!r.ok) return [];
@@ -616,7 +671,7 @@ const CNPJ_CACHE_V = 2;
 
 // Headers de service_role para o cache de CNPJ (mesmo padrão inline do resto do worker).
 function cnpjCacheHeaders(env, extra) {
-  return { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, ...(extra || {}) };
+  return supabaseServerHeaders(env, extra || {});
 }
 
 // Lê o cache (public.cnpj_cache): devolve os `dados` se houver linha com < 30 dias;
@@ -824,19 +879,74 @@ function chatSystem(vertical) {
 // custo de inferência ilimitado por request.
 const CHAT_MAX = { mensagens: 40, texto: 4000 };
 
+const IA_ACTION_DRAFT_SCHEMA = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['resposta', 'pronto', 'escopo', 'alvo', 'resumo', 'mudancas'],
+  properties: {
+    resposta: { type: 'string', maxLength: 800 },
+    pronto: { type: 'boolean' },
+    escopo: {
+      type: 'string',
+      enum: ['nenhum', 'orcamento', 'cliente', 'produto', 'servico', 'agenda', 'empresa', 'equipe'],
+    },
+    alvo: { type: 'string', maxLength: 160 },
+    resumo: { type: 'string', maxLength: 240 },
+    mudancas: {
+      type: 'array',
+      maxItems: 6,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['campo', 'proposto'],
+        properties: {
+          campo: { type: 'string', maxLength: 80 },
+          proposto: { type: ['string', 'number', 'boolean', 'null'] },
+        },
+      },
+    },
+  },
+});
+
+function chatActionSystem(vertical) {
+  return `${chatSystem(vertical)}\n\nVocê está preparando uma alteração auditável no sistema. Nunca execute, apague, envie, cobre ou confirme nada. Retorne SOMENTE o JSON do schema. Se faltar um alvo único ou o valor novo, use pronto=false, escopo="nenhum", alvo="", mudancas=[] e faça uma pergunta curta em resposta. Escopos e campos permitidos: orcamento(status, validadeOrcamento, condicoesPagamento, garantia, informacoesAdicionais, laudoTecnico); cliente(nome, telefone, endereco, complemento, cidade, estado, cep); produto(nome, descricao, preco, custo, unidade, marca, modelo); servico(nome, descricao, preco, custo, unidade); agenda(titulo, inicio, fim, status, observacao, endereco); empresa(nome, telefone, whatsapp, email, endereco, cidade, estado, site, especialidade, slogan, corMarca); equipe(papel, ativo). O alvo deve ser o número do orçamento, o nome exato do registro, o e-mail exato do membro ou um UUID. Não proponha senha, exclusão, cobrança, envio, arquivo, logo ou campo fora dessa lista.`;
+}
+
+function actionFailureMessage(reason) {
+  if (reason === 'target_not_found') return 'Não encontrei esse registro na sua empresa. Diga o número ou o nome exato.';
+  if (reason === 'target_ambiguous') return 'Encontrei mais de um registro com esse nome. Informe um alvo mais específico.';
+  if (reason === 'role_not_allowed' || reason === 'owner_protected') return 'Seu papel atual não permite preparar essa alteração.';
+  if (reason === 'no_change') return 'O registro já está com esse valor; nenhuma alteração foi preparada.';
+  if (reason === 'field_not_allowed' || reason === 'value_invalid' || reason === 'proposal_invalid') return 'A mudança pedida não cabe nos campos seguros. Diga exatamente o campo e o novo valor.';
+  return 'Não consegui confirmar o registro e as permissões agora. Nada foi alterado; tente novamente em instantes.';
+}
+
 async function handleChat(bodyText, env, user) {
   const raw = parseJsonBody(bodyText);
   const { mensagens, vertical } = raw;
+  const actionMode = raw && raw.modo === 'rascunho_acao';
   if (!Array.isArray(mensagens) || mensagens.length === 0) return json({ ok: false, erro: 'sem_mensagens' });
   const contents = mensagens
     .slice(-CHAT_MAX.mensagens)
-    .filter((m) => m && typeof m.texto === 'string' && m.texto.trim())
-    .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: cortar(m.texto, CHAT_MAX.texto) }] }));
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.texto === 'string' && m.texto.trim())
+    // O histórico chega do cliente e não é assinado pelo servidor. Portanto,
+    // uma bolha que se declara `assistant` nunca pode ganhar o papel privilegiado
+    // de `model` no provider: ela entra como dado de usuário delimitado. Isso
+    // preserva contexto para consulta sem permitir que um cliente forje uma
+    // instrução anterior da OLLI, sobretudo no modo de ação.
+    .map((m) => ({
+      role: 'user',
+      parts: [{ text: m.role === 'assistant'
+        ? `<HISTORICO_ASSISTENTE_NAO_CONFIAVEL>${cortar(m.texto, CHAT_MAX.texto)}</HISTORICO_ASSISTENTE_NAO_CONFIAVEL>`
+        : cortar(m.texto, CHAT_MAX.texto) }],
+    }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
   const text = await gerarIA(env, {
-    system: chatSystem(vertical),
+    system: actionMode ? chatActionSystem(vertical) : chatSystem(vertical),
     user: contents,
-    temperature: 0.6,
+    wantJson: actionMode,
+    jsonSchema: actionMode ? IA_ACTION_DRAFT_SCHEMA : undefined,
+    temperature: actionMode ? 0.1 : 0.6,
     beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
   });
   if (!text) return json({ ok: false, erro: 'resposta_vazia' });
@@ -846,10 +956,38 @@ async function handleChat(bodyText, env, user) {
     conteudo: bodyText,
   });
   if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
-  return json({ ok: true, resposta: text });
+
+  if (!actionMode) return json({ ok: true, resposta: text });
+  const parsed = parseJsonLoose(text);
+  if (!parsed || typeof parsed.resposta !== 'string' || typeof parsed.pronto !== 'boolean') {
+    return json({ ok: false, erro: 'resposta_invalida' });
+  }
+  const answer = cortar(parsed.resposta, 800) || 'Preciso de mais detalhes para preparar a alteração.';
+  if (!parsed.pronto) return json({ ok: true, resposta: answer });
+
+  const persisted = await createPersistedAiActionDraft(env, user, {
+    escopo: parsed.escopo,
+    alvo: parsed.alvo,
+    resumo: parsed.resumo,
+    mudancas: parsed.mudancas,
+  });
+  if (!persisted.ok) return json({ ok: true, resposta: actionFailureMessage(persisted.reason) });
+  return json({ ok: true, resposta: answer, rascunho: persisted.draft });
 }
 
 const handler = {
+  scheduled(controller, env, ctx) {
+    // Dispatch da outbox (boas-vindas + lembretes): fail-closed pelo
+    // WELCOME_DISPATCH_MODE; em simulator o consumer só aceita o endereço de
+    // teste oficial. A Promise fica registrada no ciclo de vida do evento.
+    ctx.waitUntil(processarWelcomeOutbox(env));
+    // Seleção de lembretes: uma vez por hora cheia, 8h–20h de Brasília, só com
+    // EMAIL_LEMBRETES_MODE=production. Enfileira; quem envia é a linha de cima,
+    // no minuto seguinte. Relógio = horário agendado, não o de execução.
+    const agendado = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
+    ctx.waitUntil(processarLembretesEmail(env, { now: () => agendado }));
+  },
+
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
@@ -869,6 +1007,25 @@ const handler = {
       return handleStripe(request, env, url);
     }
 
+    // ── AÇÕES DA IA (confirmar/cancelar/reverter; nunca por texto livre) ──
+    if (url.pathname.startsWith('/ia/acoes/')) {
+      return handleIaActions(request, env, url);
+    }
+
+    // ── EVENTOS RESEND (assinatura Svix + idempotência no Supabase) ──
+    // Endpoint servidor-a-servidor: não aceita JWT, corpo é validado pela
+    // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
+    if (url.pathname === '/resend/webhook') {
+      return handleResendWebhook(request, env);
+    }
+
+    // ── DESCADASTRO DE LEMBRETES (link assinado no rodapé + List-Unsubscribe) ──
+    // Público e sem JWT: a autenticação é a assinatura HMAC do link. GET só
+    // mostra a confirmação; quem grava é o POST (botão ou one-click RFC 8058).
+    if (url.pathname === '/email/descadastrar') {
+      return handleDescadastroEmail(request, env);
+    }
+
     // ── PAGAMENTOS PIX MERCADO PAGO (créditos por Pix; planos por Pix) ──
     // O PIX do OLLI é só aqui — decisão do dono: cartão na Stripe (acima), Pix no
     // Mercado Pago. O AbacatePay, terceiro provedor de Pix que já roteou nesta
@@ -881,6 +1038,15 @@ const handler = {
     // x-signature (HMAC) e confirma o pagamento via GET, as demais rotas validam o JWT.
     if (url.pathname.startsWith('/mp/')) {
       return handleMercadoPago(request, env, url);
+    }
+
+    // ── PLANO POR PIX — AbacatePay (decisão do dono, 29/09/2026) ──
+    // Vende PERÍODO de plano por Pix (avulso, 1 ou 12 meses). Mesmo perfil do MP:
+    // fora do gate da IA; o webhook autentica pelo ?webhookSecret= e RE-CONSULTA a
+    // cobrança na AbacatePay antes de liberar; as demais rotas validam o JWT.
+    // Com chave de dev em produção a rota fica DESLIGADA (nunca modo demo).
+    if (url.pathname.startsWith('/abacate/')) {
+      return handleAbacate(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──
@@ -1010,11 +1176,25 @@ const handler = {
 
     // Health check público (abrir no navegador mostra que está online). GET '/'
     // NUNCA exige auth; só o POST '/' (diagnóstico) passa pelo gate de IA abaixo.
+    // `ia` reflete as gerações REAIS deste isolate ('degradada' após falhas
+    // seguidas — ver saudeIA em ai.js); não chama o provedor a cada GET.
+    // `ia_saude.amostra:0` = isolate novo, ainda sem evidência nem de sucesso
+    // nem de falha. Nunca expõe código de erro nem modelo aqui (rota pública).
     if (request.method === 'GET' && url.pathname === '/') {
+      const saude = saudeIA(env);
       return json({
         ok: true,
         service: 'olli-diagnostico',
-        ia: aiConfigurada(env) ? 'on' : 'off',
+        ia: saude.ia,
+        ia_saude: {
+          amostra: saude.amostra,
+          falhas_seguidas: saude.falhasSeguidas,
+          ultimo_sucesso: saude.ultimoSucessoEm,
+          ultima_falha: saude.ultimaFalhaEm,
+          escopo: 'isolate',
+        },
+        ia_pago: pagamentoOpenRouterPermitido(env) ? 'on' : 'off',
+        autopilot: autopilotConfigurado(env, '/ia/autopilot/preview') ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
       });
@@ -1054,13 +1234,19 @@ const handler = {
     // esse header (Number(null)=0) e escaparia da 1ª camada sozinha. Evita gastar
     // 1 validação de token ou 1 dos 20 tokens/min do usuário com um body que nem
     // vamos processar.
-    const maxBodyIa = url.pathname === '/transcrever' ? MAX_AUDIO_BODY_BYTES : MAX_BODY_BYTES;
+    const maxBodyIa = url.pathname === '/transcrever'
+      ? MAX_AUDIO_BODY_BYTES
+      : url.pathname === '/ia/autopilot/preview'
+        ? MAX_AUTOPILOT_BODY_BYTES
+        : MAX_BODY_BYTES;
     if (!cabeNoTeto(request, maxBodyIa).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
     const corpoIa = await bodyMuitoGrande(request, maxBodyIa);
     if (corpoIa.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
 
     // Sem chave → o app cai no fallback offline (não é erro fatal).
-    if (!aiConfigurada(env)) return json({ ok: false, motivo: 'ia_nao_configurada' });
+    if (!aiConfigurada(env) && !autopilotWorkersAiConfigurada(env, url.pathname)) {
+      return json({ ok: false, motivo: 'ia_nao_configurada' });
+    }
 
     // Exige login (protege a cota da IA).
     const user = await getUser(request, env);
@@ -1120,16 +1306,79 @@ const handler = {
       if (url.pathname === '/voz/conversa') return await handleVozConversa(corpoIa.raw, env, user);
       if (url.pathname === '/transcrever') return await handleTranscrever(corpoIa.raw, env, user);
       if (url.pathname === '/chat') return await handleChat(corpoIa.raw, env, user);
+      if (url.pathname === '/ia/importacao/preview') {
+        const previa = await prepararPreviaImportacaoIa(corpoIa.raw, env, user, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaImportacaoIa(previa.erro) }, 422);
+        return json(previa);
+      }
+      if (url.pathname === '/ia/autopilot/preview') {
+        const previa = await prepararPreviaAutopilot(corpoIa.raw, env, user, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!previa.ok) return json({ ok: false, erro: previa.erro, mensagem: textoDaFalhaAutopilot(previa.erro) }, 422);
+        // A pré-autorização acima só evita inferência quando a conta já está
+        // sem acesso. A contagem/cobrança definitiva acontece depois de uma
+        // prévia válida, como no chat e na voz, e usa a mesma janela de
+        // idempotência de IA para não cobrar retry duas vezes.
+        const cobranca = await cobrarCreditoVoz(env, user, {
+          confirmarCredito: corpoAutorizacao && corpoAutorizacao.confirmarCredito === true,
+          creditoRef: corpoAutorizacao && corpoAutorizacao.creditoRef,
+          conteudo: corpoIa.raw,
+        });
+        if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
+        return json(previa);
+      }
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {
       const reservaNegada = reservaCotaDoErro(e);
       if (reservaNegada) return erroDaReservaCota(reservaNegada);
       const overloaded = !!(e && e.overloaded);
-      if (!overloaded) console.error('[olli-worker] falha_ia:', e && e.message ? e.message : 'erro_desconhecido');
+      if (!overloaded) {
+        console.error('[olli-worker] falha_ia:', e && e.message ? e.message : 'erro_desconhecido');
+        // Este catch vira 502 — o withSentry lá embaixo nunca vê a exceção. Era por
+        // isso que "a IA caiu" não chegava a ninguém. Sobrecarga (503) é esperada e
+        // fica de fora; cota negada já saiu acima. PII: beforeSend (sentryScrub).
+        capturarExcecao(e, { origem: 'ia', rota: url.pathname });
+      }
       return json({ ok: false, erro: overloaded ? 'sobrecarregado' : 'falha_ia' }, overloaded ? 503 : 502);
     }
   },
 };
+
+const secureHandler = {
+  scheduled: handler.scheduled,
+  async fetch(request, env, ctx) {
+    return withSecurityHeaders(await handler.fetch(request, env, ctx));
+  },
+};
+
+// Falha TOTAL da cadeia de IA (todos os modelos, ou erro definitivo) vira
+// evento no Sentry — antes ela só virava 502 + console.error e a IA ficou dias
+// fora do ar sem ninguém saber. `info` já chega saneado de ai.js (código,
+// status HTTP, contagens); o limite de 1 alerta/10 min por isolate também fica
+// lá. Mensagem fixa + fingerprint fixo = um único issue agrupado no Sentry.
+// Tudo vai em `tags`: o limparEventoSentry apaga `extra`/`contexts` inteiros.
+definirAlertaFalhaIA((info) => {
+  const tag = (valor) => (valor === null || valor === undefined ? 'n/d' : String(valor));
+  Sentry.captureMessage('ia_cadeia_falhou', {
+    level: 'error',
+    fingerprint: ['ia_cadeia_falhou'],
+    tags: {
+      ia_provedor: tag(info.provedor),
+      ia_codigo: tag(info.codigo),
+      ia_status: tag(info.status),
+      ia_tentativas: tag(info.tentativas),
+      ia_modelos: tag(info.modelos),
+      ia_falhas_seguidas: tag(info.falhasSeguidas),
+    },
+  });
+});
 
 /**
  * Sentry — crash reporting do worker.
@@ -1150,14 +1399,22 @@ const handler = {
  * webhook de pagamento e prompt de cliente: corpo é dado pessoal (LGPD) e
  * assinatura HMAC. Só metadado vai.
  */
+// Exceção que um catch nosso SEGURA (IA → 502, webhook Stripe → 500) não chega ao
+// withSentry; ela vai pela porta `capturarExcecao` (src/services/sentryCaptura.ts),
+// que chama o SDK dentro do escopo da requisição corrente.
+conectarSentry(Sentry);
+
 export default Sentry.withSentry(
   () => ({
     dsn: 'https://b015159326e49e2534d36452c334611f@o4511745793327104.ingest.us.sentry.io/4511745841889280',
     environment: 'production',
     sendDefaultPii: false,
+    beforeSend: (event) => limparEventoSentry(event),
+    beforeSendTransaction: (event) => limparEventoSentry(event),
+    beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb),
     dataCollection: { httpBodies: [] },
     // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
     tracesSampleRate: 0.1,
   }),
-  handler,
+  secureHandler,
 );

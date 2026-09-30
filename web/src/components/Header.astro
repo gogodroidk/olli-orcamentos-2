@@ -32,8 +32,8 @@ const { class: containerClass = "max-w-7xl" } = Astro.props;
     ficaria mais claro que o próprio cartão e inverteria a ordem da escada — é o
     mesmo cuidado que TEMA_CLARO.md §7.6 registrou para o `surfaceGlass` do app. */}
 <header class="sticky top-0 z-50 border-b border-line/70 bg-card/85 backdrop-blur-lg">
-  <nav class={`mx-auto flex ${containerClass} items-center justify-between px-6 py-3.5`}>
-    <a href="/" aria-label="OLLI — início"><OlliLogo /></a>
+  <nav class={`site-header mx-auto flex ${containerClass} items-center justify-between px-6 py-3.5`}>
+    <a href="/" aria-label="OLLI — início" class="inline-flex min-h-11 items-center"><OlliLogo /></a>
     <slot name="nav" />
     <div class="flex items-center gap-2">
       <slot />

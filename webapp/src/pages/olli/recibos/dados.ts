@@ -2,24 +2,20 @@
  * LEITURA DOS RECIBOS — e a coluna que não se pode ler.
  *
  * ═══════════════════════════════════════════════════════════════════════════════
- * ⚠️ `recibos.data_recebimento` ESTÁ CORROMPIDA NO BANCO. NÃO LEIA DELA.
+ * ⚠️ `recibos.data_recebimento` PODE ESTAR CORROMPIDA EM LINHAS HISTÓRICAS.
  * ═══════════════════════════════════════════════════════════════════════════════
- * O app do celular joga a string 'DD/MM/AAAA' do blob DIRETO nessa coluna, que é
- * `timestamptz`. O Postgres do projeto está em DateStyle=ISO,MDY, então "10/07/2026"
- * (10 de julho) foi gravado como 7 de OUTUBRO — dia e mês trocados. Toda linha antiga
- * está assim. Ler a coluna e mostrar na tela entregaria ao dono uma data errada num
- * documento financeiro, com cara de verdade.
+ * Versões antigas do app jogavam a string 'DD/MM/AAAA' do blob diretamente nessa
+ * coluna `timestamptz`. Em DateStyle=ISO,MDY, "10/07/2026" (10 de julho) podia ser
+ * gravado como 7 de outubro. O app atual já envia ISO, mas o acervo anterior ainda
+ * não passou por correção auditada; portanto a tela não usa a coluna como verdade.
  *
  * A VERDADE É O BLOB (`dados.dataRecebimento`, em DD/MM/AAAA). É de lá que a tela lê.
- * (Escrever é outra história: `contrato.ts` já converte para ISO ao gravar a coluna —
- * o que a gente grava daqui pra frente fica certo.)
+ * Tanto `contrato.ts` quanto o sync móvel atual convertem para ISO ao escrever.
  *
  * O blob também é a única fonte dos `itens` — as colunas nem os têm.
  */
 
 import type { Orcamento, Recibo } from "@dominio";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
 import { useOlliList } from "@/olli/data";
 
 /**
@@ -35,7 +31,7 @@ export interface LinhaRecibo {
 	cliente_nome: string | null;
 	valor_recebido: number | null;
 	forma_pagamento: string | null;
-	/** ⚠️ CORROMPIDA. Nunca use. Existe para documentar o perigo. */
+	/** ⚠️ Pode estar corrompida no legado. Não use como fonte da data civil. */
 	data_recebimento: string | null;
 	dados: Recibo | null;
 	criado_em: string;
@@ -76,28 +72,15 @@ export function useRecibos() {
 /**
  * Todos os orçamentos ativos — para o seletor "receber de um orçamento".
  *
- * NÃO usa `useOlliList` (que não tem `enabled`): o `FormRecibo` fica montado o tempo
- * todo (para a animação de fechar do diálogo funcionar), então sem `enabled` este
- * hook baixaria o blob inteiro de TODOS os orçamentos toda vez que a tela /recibos
- * abrisse — mesmo que o formulário nunca fosse aberto. `enabled: aberto` faz a busca
- * só acontecer quando o formulário está de fato na tela. A query replica exatamente
- * o que `useOlliList("orcamentos", …)` faria (mesma chave de cache, mesmo filtro de
- * lixeira, mesma ordenação) para não divergir do resto do painel.
+ * O `FormRecibo` fica montado o tempo todo (para a animação de fechar do diálogo
+ * funcionar), então `enabled: aberto` faz a busca só acontecer quando o formulário
+ * está de fato na tela. O hook compartilhado também pagina a resposta, evitando o
+ * cap silencioso de ~1000 linhas do PostgREST em contas com histórico grande.
  */
 export function useOrcamentos(opts?: { enabled?: boolean }) {
-	const orderOpts = { orderBy: "criado_em", ascending: false } as const;
-	return useQuery({
-		queryKey: ["olli", "orcamentos", orderOpts],
-		queryFn: async (): Promise<LinhaOrcamento[]> => {
-			const { data, error } = await supabase
-				.from("orcamentos")
-				.select("*")
-				.is("excluido_em", null)
-				.order("criado_em", { ascending: false });
-			if (error) throw error;
-			return (data ?? []) as LinhaOrcamento[];
-		},
-		staleTime: 30_000,
+	return useOlliList<LinhaOrcamento>("orcamentos", {
+		orderBy: "criado_em",
+		ascending: false,
 		enabled: opts?.enabled ?? true,
 	});
 }

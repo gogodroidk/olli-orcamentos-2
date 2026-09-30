@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -28,10 +29,12 @@ import { useOlliList } from "@/olli/data";
 import { LIMITE_ARQUIVO_BYTES, type LinhaBruta, criarCsv, normalizarCabecalho, normalizarChave, numeroBr } from "@/olli/importacao/parser";
 import { lerArquivoTabular } from "@/olli/importacao/arquivo";
 import { extrairOrcamentosOlli } from "@/olli/importacao/orcamento";
-import { useContextoDeEscrita, useSalvar } from "@/olli/mutacoes";
+import { useContextoDeEscrita, useExcluir, useSalvar } from "@/olli/mutacoes";
 import { type LinhaCatalogo, linhaParaItem } from "@/pages/olli/catalogo/FormItemCatalogo";
 import { type LinhaCliente, linhaParaCliente } from "@/pages/olli/clientes/FormCliente";
 import { type LinhaAsset } from "@/pages/olli/equipamentos/equipamento";
+import { AutopilotPanel } from "@/olli/components/AutopilotPanel";
+import type { AutopilotPreview } from "@/olli/iaAutopilot";
 
 type TipoImportacao = "clientes" | "produtos" | "servicos" | "orcamentos" | "fornecedor";
 type CampoImportacao = "nome" | "telefone" | "cpf" | "cnpj" | "endereco" | "cidade" | "estado" | "cep" | "descricao" | "marca" | "modelo" | "unidade" | "preco" | "custo";
@@ -126,6 +129,7 @@ function podeEditarCatalogo(papel?: string) {
 }
 
 export default function CentralDeDadosPage() {
+	const navigate = useNavigate();
 	const arquivoRef = useRef<HTMLInputElement>(null);
 	const [tipo, setTipo] = useState<TipoImportacao>("clientes");
 	const [linhasImportadas, setLinhasImportadas] = useState<LinhaBruta[]>([]);
@@ -148,6 +152,10 @@ export default function CentralDeDadosPage() {
 	const salvarProduto = useSalvar("produtos");
 	const salvarServico = useSalvar("servicos");
 	const salvarOrcamento = useSalvar("orcamentos");
+	const excluirCliente = useExcluir("clientes");
+	const excluirProduto = useExcluir("produtos");
+	const excluirServico = useExcluir("servicos");
+	const excluirOrcamento = useExcluir("orcamentos");
 
 	const cabecalhos = useMemo(() => Object.keys(linhasImportadas[0] ?? {}), [linhasImportadas]);
 	const consultas = [clientes, produtos, servicos, equipamentos, orcamentos, recibos, agendamentos, ordens];
@@ -240,6 +248,95 @@ export default function CentralDeDadosPage() {
 	const aplicaveis = propostas.filter((p) => p.acao === "inserir" || p.acao === "atualizar");
 	const temImportacao = linhasImportadas.length > 0 || orcamentosImportados.length > 0;
 
+	function levarAutopilotAoOrcamento(preview: AutopilotPreview) {
+		const itens = preview.candidatos.orcamento.itens.map((item) => ({
+			tipo: item.tipo, nome: item.nome, descricao: item.descricao, quantidade: item.quantidade,
+			unidade: item.unidade, precoSugerido: item.precoSugerido,
+		}));
+		if (!itens.length) return;
+		navigate("/orcamentos?novo=1", { state: { prefillItems: itens } });
+	}
+
+	/** Confirma apenas inclusões novas; duplicidade e preço zero ficam para revisão manual. */
+	async function confirmarAutopilotCatalogo(preview: AutopilotPreview) {
+		if (!catalogoPermitido) throw new Error("Somente o dono ou a conta pessoal pode confirmar cadastros de catálogo.");
+		const agoraIso = agora();
+		const clientesAtuais = (clientes.data ?? []).map(linhaParaCliente);
+		const produtosAtuais = produtos.data ?? [];
+		const servicosAtuais = servicos.data ?? [];
+		const criados: Array<{ tabela: "clientes" | "produtos" | "servicos"; objeto: Cliente | ProdutoItem | ServicoItem }> = [];
+		let ignorados = 0;
+		try {
+			for (const candidato of preview.candidatos.clientes) {
+				const telefone = candidato.telefone.replace(/\D/g, "");
+				const documento = candidato.documento.replace(/\D/g, "");
+				const duplicado = clientesAtuais.some((atual) => {
+					const mesmoDocumento = documento && [atual.cpf, atual.cnpj].some((valor) => valor?.replace(/\D/g, "") === documento);
+					const mesmoTelefone = telefone && atual.telefone.replace(/\D/g, "") === telefone;
+					return Boolean(mesmoDocumento || (mesmoTelefone && normalizarChave(atual.nome) === normalizarChave(candidato.nome)));
+				});
+				if (duplicado) { ignorados += 1; continue; }
+				const objeto: Cliente = {
+					id: novoId(), nome: candidato.nome, telefone: candidato.telefone, criadoEm: agoraIso, atualizadoEm: agoraIso,
+					cpf: candidato.documento && candidato.documento.replace(/\D/g, "").length === 11 ? candidato.documento : undefined,
+					cnpj: candidato.documento && candidato.documento.replace(/\D/g, "").length === 14 ? candidato.documento : undefined,
+					endereco: candidato.endereco || undefined, cidade: candidato.cidade || undefined,
+					estado: candidato.estado || undefined, cep: candidato.cep || undefined,
+				};
+				await salvarCliente.mutateAsync(objeto);
+				criados.push({ tabela: "clientes", objeto });
+				clientesAtuais.push(objeto);
+			}
+
+			for (const [tipo, listaAtual, candidatos] of [
+				["produtos", produtosAtuais, preview.candidatos.produtos] as const,
+				["servicos", servicosAtuais, preview.candidatos.servicos] as const,
+			]) {
+				for (const candidato of candidatos) {
+					if (candidato.precoSugerido <= 0) { ignorados += 1; continue; }
+					const duplicado = listaAtual.some((atual) => tipo === "produtos"
+						? normalizarChave(atual.nome) === normalizarChave(candidato.nome)
+							&& normalizarChave((atual as LinhaCatalogo & { marca?: string }).marca ?? "") === normalizarChave(candidato.marca)
+							&& normalizarChave((atual as LinhaCatalogo & { modelo?: string }).modelo ?? "") === normalizarChave(candidato.modelo)
+						: normalizarChave(atual.nome) === normalizarChave(candidato.nome)
+							&& normalizarChave(atual.unidade ?? "un") === normalizarChave(candidato.unidade));
+					if (duplicado) { ignorados += 1; continue; }
+					const base = {
+						id: novoId(), nome: candidato.nome, descricao: candidato.descricao || undefined,
+						preco: candidato.precoSugerido, custo: candidato.custoSugerido > 0 ? candidato.custoSugerido : undefined,
+						unidade: candidato.unidade || "un", criadoEm: agoraIso, atualizadoEm: agoraIso,
+					};
+					const objeto = tipo === "produtos"
+						? { ...base, marca: candidato.marca || undefined, modelo: candidato.modelo || undefined } as ProdutoItem
+						: base as ServicoItem;
+					if (tipo === "produtos") await salvarProduto.mutateAsync(objeto as ProdutoItem);
+					else await salvarServico.mutateAsync(objeto as ServicoItem);
+					criados.push({ tabela: tipo, objeto });
+					listaAtual.push(objeto as unknown as LinhaCatalogo);
+				}
+			}
+			if (!criados.length) throw new Error("Nenhum item novo com preço positivo foi encontrado; nada foi alterado.");
+			if (ignorados) toast.info(`${ignorados} candidato(s) foram preservados sem duplicar registros ou publicar preço zero.`);
+		} catch (error) {
+			if (!criados.length) throw error;
+			let falhasRollback = 0;
+			for (const criado of [...criados].reverse()) {
+				try {
+					if (criado.tabela === "clientes") await excluirCliente.mutateAsync(criado.objeto as Cliente);
+					if (criado.tabela === "produtos") await excluirProduto.mutateAsync(criado.objeto as ProdutoItem);
+					if (criado.tabela === "servicos") await excluirServico.mutateAsync(criado.objeto as ServicoItem);
+				} catch { falhasRollback += 1; }
+			}
+			if (falhasRollback) throw new Error(`O cadastro falhou; ${falhasRollback} compensação(ões) ficaram pendentes. Confira a lixeira antes de repetir.`);
+			throw new Error(`O cadastro falhou e ${criados.length} inclusão(ões) foram compensadas. ${(error as Error).message || "Tente novamente."}`);
+		}
+	}
+
+	const referenciasAutopilot = useMemo(() => [
+		...(produtos.data ?? []).slice(0, 25).map((item) => ({ tipo: "produto" as const, nome: item.nome, descricao: item.descricao ?? undefined, unidade: item.unidade ?? undefined, preco: item.preco ?? undefined, custo: item.custo ?? undefined })),
+		...(servicos.data ?? []).slice(0, 25).map((item) => ({ tipo: "servico" as const, nome: item.nome, descricao: item.descricao ?? undefined, unidade: item.unidade ?? undefined, preco: item.preco ?? undefined, custo: item.custo ?? undefined })),
+	], [produtos.data, servicos.data]);
+
 	async function aoEscolherArquivo(evento: ChangeEvent<HTMLInputElement>) {
 		const arquivo = evento.target.files?.[0];
 		if (!arquivo) return;
@@ -308,23 +405,71 @@ export default function CentralDeDadosPage() {
 		if (!pronto || contexto.isError) { toast.error("A base não foi carregada por completo. Nada foi alterado."); return; }
 		if ((tipo === "produtos" || tipo === "servicos" || tipo === "orcamentos" || tipo === "fornecedor") && !catalogoPermitido) { toast.error("Permissão de proprietário não confirmada. A importação foi bloqueada."); return; }
 		setAplicando(true);
+		const tabela = tipo === "clientes" ? "clientes" : tipo === "servicos" ? "servicos" : tipo === "orcamentos" ? "orcamentos" : "produtos";
+		type OperacaoAplicada = { objeto: unknown; anterior?: unknown };
+		const operacoes: OperacaoAplicada[] = [];
+		const anteriorPorId = (id: string): unknown => {
+			if (tabela === "clientes") {
+				const linha = (clientes.data ?? []).find((item) => item.id === id);
+				return linha ? linhaParaCliente(linha) : undefined;
+			}
+			if (tabela === "orcamentos") {
+				const linha = (orcamentos.data ?? []).find((item) => item.id === id);
+				if (!linha) return undefined;
+				return linha.dados && typeof linha.dados === "object" ? linha.dados as Orcamento : linha as unknown as Orcamento;
+			}
+			const lista = tabela === "produtos" ? produtos.data ?? [] : servicos.data ?? [];
+			const linha = lista.find((item) => item.id === id);
+			return linha ? linhaParaItem(tabela === "produtos" ? "produto" : "servico", linha) : undefined;
+		};
+		const desfazer = async (operacao: OperacaoAplicada) => {
+			if (tabela === "clientes") {
+				if (operacao.anterior) await salvarCliente.mutateAsync(operacao.anterior as Cliente);
+				else await excluirCliente.mutateAsync(operacao.objeto as Cliente);
+			} else if (tabela === "servicos") {
+				if (operacao.anterior) await salvarServico.mutateAsync(operacao.anterior as ServicoItem);
+				else await excluirServico.mutateAsync(operacao.objeto as ServicoItem);
+			} else if (tabela === "orcamentos") {
+				if (operacao.anterior) await salvarOrcamento.mutateAsync(operacao.anterior as Orcamento);
+				else await excluirOrcamento.mutateAsync(operacao.objeto as Orcamento);
+			} else if (operacao.anterior) {
+				await salvarProduto.mutateAsync(operacao.anterior as ProdutoItem);
+			} else {
+				await excluirProduto.mutateAsync(operacao.objeto as ProdutoItem);
+			}
+		};
 		try {
-			// Salvar o backup antes é responsabilidade do usuário; a ação deixa isso explícito no botão.
+			// O pacote operacional continua sendo o backup recomendado. Como cada
+			// linha é uma mutation independente, registramos o estado anterior antes
+			// de cada chamada para poder fazer compensação reversível se a rede falhar.
 			for (const proposta of aplicaveis) {
 				if (!proposta.objeto) continue;
+				const operacao = { objeto: proposta.objeto, anterior: anteriorPorId(proposta.objeto.id) };
+				operacoes.push(operacao);
 				if (tipo === "clientes") await salvarCliente.mutateAsync(proposta.objeto as Cliente);
 				else if (tipo === "servicos") await salvarServico.mutateAsync(proposta.objeto as ServicoItem);
 				else if (tipo === "orcamentos") await salvarOrcamento.mutateAsync(proposta.objeto as Orcamento);
 				else await salvarProduto.mutateAsync(proposta.objeto as ProdutoItem);
 			}
-			toast.success(`${aplicaveis.length} registro${aplicaveis.length === 1 ? "" : "s"} aplicado${aplicaveis.length === 1 ? "" : "s"}.`);
+			toast.success(`${aplicaveis.length} registro${aplicaveis.length === 1 ? "" : "s"} aplicado${aplicaveis.length === 1 ? "" : "s"}. Se precisar, use a lixeira para desfazer uma inclusão.`);
 			setLinhasImportadas([]); setOrcamentosImportados([]); setMapeamento({});
-		} catch (erro) { toast.error((erro as Error).message || "A importação parou. Nenhum registro restante foi aplicado."); }
+		} catch (erro) {
+			let falhasRollback = 0;
+			for (const operacao of [...operacoes].reverse()) {
+				try { await desfazer(operacao); } catch { falhasRollback += 1; }
+			}
+			if (falhasRollback === 0) {
+				toast.error(`A importação falhou e ${operacoes.length} alteração${operacoes.length === 1 ? " foi" : "ões foram"} revertida${operacoes.length === 1 ? "" : "s"}. ${ (erro as Error).message || "Tente novamente." }`);
+			} else {
+				toast.error(`A importação falhou; ${falhasRollback} reversão${falhasRollback === 1 ? " ficou" : "ões ficaram"} pendente${falhasRollback === 1 ? "" : "s"}. Não repita o arquivo: confira a lixeira e o pacote operacional antes de tentar novamente.`);
+			}
+		}
 		finally { setAplicando(false); }
 	}
 
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+			<AutopilotPanel referencias={referenciasAutopilot} onUsarNoOrcamento={levarAutopilotAoOrcamento} onConfirmarCatalogo={confirmarAutopilotCatalogo} />
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 				<div><h1 className="text-2xl font-bold tracking-tight text-text-primary">Central de dados</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Leve seu cadastro com você. Importações passam por prévia e nunca apagam registros ou reprecificam orçamentos já emitidos.</p></div>
 				<Button variant="outline" onClick={exportarPacoteOperacional} disabled={!pronto || !exportacaoPermitida}><PackageOpen /> Baixar pacote operacional</Button>
@@ -355,7 +500,7 @@ export default function CentralDeDadosPage() {
 							<div className="mb-4 flex flex-wrap gap-2">{(["inserir", "atualizar", "ignorar", "ambiguo", "erro"] as AcaoPreview[]).map((acao) => <Badge key={acao} variant={statusVariant(acao)}>{totais[acao]} {acao}</Badge>)}</div>
 							<div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-muted/50 text-xs uppercase tracking-wide text-text-secondary"><tr><th className="px-3 py-2">Linha</th><th className="px-3 py-2">Ação</th><th className="px-3 py-2">Motivo</th></tr></thead><tbody>{propostas.slice(0, MAX_AMOSTRA).map((p) => <tr key={p.linha} className="border-t"><td className="px-3 py-2 tabular-nums">{p.linha}</td><td className="px-3 py-2"><Badge variant={statusVariant(p.acao)}>{p.acao}</Badge></td><td className="px-3 py-2 text-text-secondary">{p.motivo}</td></tr>)}</tbody></table></div>
 							{propostas.length > MAX_AMOSTRA && <p className="mt-2 text-xs text-text-secondary">Mostrando {MAX_AMOSTRA} de {propostas.length} linhas. Os totais acima incluem o arquivo inteiro.</p>}
-							<div className="mt-5 flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-2 text-sm text-text-secondary"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-darker" /><span>Antes de confirmar, baixe o pacote operacional. A aplicação só insere/atualiza as linhas aprovadas; não há exclusão nesta operação.</span></div><Button onClick={aplicarImportacao} disabled={!aplicaveis.length || aplicando || contexto.isLoading || contexto.isError || !pronto}>{aplicando ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Confirmar {aplicaveis.length} alteração{aplicaveis.length === 1 ? "" : "ões"}</Button></div>
+							<div className="mt-5 flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-2 text-sm text-text-secondary"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-darker" /><span>Antes de confirmar, baixe o pacote operacional. Se uma gravação falhar no meio, o OLLI tenta reverter as linhas desta execução com a lixeira e os valores anteriores.</span></div><Button onClick={aplicarImportacao} disabled={!aplicaveis.length || aplicando || contexto.isLoading || contexto.isError || !pronto}>{aplicando ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Confirmar {aplicaveis.length} alteração{aplicaveis.length === 1 ? "" : "ões"}</Button></div>
 						</CardContent></Card>
 					</>}
 				</TabsContent>

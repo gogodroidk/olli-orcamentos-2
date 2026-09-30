@@ -81,10 +81,13 @@ Regras: "tipo" é "servico" ou "peca". Se não der pra estimar o preço, use nul
 // de prompt injection direto no prompt.
 export const VOZ_MAX = { transcript: 4000, catalogoItens: 100, nome: 120 };
 
+// `strict:true` da OpenAI exige TODA propriedade em `required` (o opcional é
+// expresso por `null` no tipo). Com só `itens` aqui, o gpt-4.1-nano recusava o
+// schema inteiro com 400 — medido ao vivo em 29/09/2026.
 export const ORCAMENTO_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['itens'],
+  required: ['titulo', 'clienteNome', 'itens', 'observacao'],
   properties: {
     titulo: { type: ['string', 'null'], maxLength: 160 },
     clienteNome: { type: ['string', 'null'], maxLength: 160 },

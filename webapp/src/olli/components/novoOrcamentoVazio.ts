@@ -3,9 +3,8 @@
  * (`src/screens/NovoOrcamentoScreen.tsx`, ~linha 61).
  *
  * Não é "um objeto com os campos zerados": os defaults são REGRA DE NEGÓCIO. O app
- * do celular já nasce com Pix ligado, assinatura visível, aprovação/recusa no PDF e
- * validade de 15 dias — se o painel criar um orçamento sem isso, o MESMO cliente
- * recebe dois documentos diferentes conforme quem digitou. Daí a cópia literal.
+ * do celular e o painel precisam nascer com os mesmos padrões: sem cobrança
+ * embutida, assinatura visível, aprovação/recusa no PDF e validade de 15 dias.
  *
  * ⚠️ `numero` NASCE VAZIO, de propósito. O número só pode ser gerado NA HORA DE
  * SALVAR (`proximoNumeroDocumento('orcamento')` de `@/olli/mutacoes`): gerar ao abrir
@@ -20,8 +19,8 @@ import type { Empresa, Orcamento } from "@dominio";
 import { novoId } from "../contrato";
 import { agoraIso, emDiasBr, hojeYmd } from "../datas";
 
-/** Padrão do app: só Pix marcado (`defaultFormas`, NovoOrcamentoScreen ~linha 37). */
-const FORMAS_PADRAO = { credito: false, debito: false, dinheiro: false, pix: true } as const;
+/** Campo legado preservado no blob, mas cobrança no orçamento fica desativada. */
+const FORMAS_PADRAO = { credito: false, debito: false, dinheiro: false, pix: false } as const;
 
 /** Validade padrão quando a empresa não configurou a dela. */
 const VALIDADE_DIAS_PADRAO = 15;
@@ -73,7 +72,6 @@ export function novoOrcamentoVazio(empresa?: Empresa | null): Orcamento {
 	if (empresa?.garantiaPadrao) orcamento.garantia = empresa.garantiaPadrao;
 	if (empresa?.condicoesPagamentoPadrao) orcamento.condicoesPagamento = empresa.condicoesPagamentoPadrao;
 	if (empresa?.observacoesPadrao) orcamento.informacoesAdicionais = empresa.observacoesPadrao;
-	if (empresa?.chavePix) orcamento.chavePix = empresa.chavePix;
 	if (empresa?.corMarca) orcamento.corMarca = empresa.corMarca;
 	if (empresa?.modeloPdfPadrao) orcamento.modeloPdf = empresa.modeloPdfPadrao;
 

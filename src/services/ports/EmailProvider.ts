@@ -39,6 +39,8 @@ export interface EnviarEmailInput {
   para: string;
   assunto: string;
   template: TemplateEmail;
+  /** Chave estável do evento; evita duplicação em retries do outbox/provider. */
+  idempotencyKey?: string;
   /** Variáveis do template (nome do cliente, número do orçamento, link…). */
   dados: Record<string, string | number>;
   /** Nome de exibição do remetente (ex.: o nome do negócio do prestador). */

@@ -35,6 +35,7 @@ import {
   reais,
   precoNoPeriodo,
 } from '../src/services/precosPlanos.ts';
+import { disponibilidadeRecurso } from '../src/services/entitlements.ts';
 
 let falhas = 0;
 let passes = 0;
@@ -56,6 +57,8 @@ function ler(caminho: string): string {
 }
 
 const tela = ler('../src/screens/PlanosScreen.tsx');
+const gatePro = ler('../src/components/GatePro.tsx');
+const painelPlanos = ler('../webapp/src/pages/olli/planos/index.tsx');
 
 // Regra do revisor: nenhum "39"/"99" (nem "R$ 39"/"R$ 99") solto na tela.
 const REGEX_LITERAL_PRECO = /R\$\s?39\b|R\$\s?99\b|\b39\b|\b99\b/;
@@ -107,13 +110,29 @@ checar('linha 12x só onde há compra e nunca no Android Play', tela.includes('C
 // O comparativo (info) NÃO é gateado por plataforma — fica completo no iOS.
 checar('comparativo renderiza sem guarda de plataforma', tela.includes('<ComparativoTabela planoAtualId={planoAtualId}'), true);
 
+console.log('\n6) VERDADE COMERCIAL, RECUPERAÇÃO E ACESSIBILIDADE');
+checar('mapa Empresa está marcado em breve', disponibilidadeRecurso('empresa', 'mapa_equipe'), 'em_breve');
+checar('dashboard Empresa está marcado em breve', disponibilidadeRecurso('empresa', 'dashboard_empresa'), 'em_breve');
+checar('app não vende mapa como pronto', tela.includes('Equipe ao vivo no mapa (em breve)'), true);
+checar('app não vende dashboard como pronto', tela.includes('Painel de gestão da empresa (em breve)'), true);
+checar('comparativo possui estado Em breve', tela.includes("? 'Em breve'"), true);
+checar('app usa rótulo neutro Recomendado', tela.includes('RECOMENDADO') && !tela.includes('MAIS POPULAR'), true);
+checar('painel usa rótulo neutro Recomendado', painelPlanos.includes('Recomendado') && !painelPlanos.includes('Mais escolhido'), true);
+checar('GatePro esconde preview da árvore iOS', gatePro.includes('accessibilityElementsHidden'), true);
+checar('GatePro esconde descendentes no Android', gatePro.includes('importantForAccessibility="no-hide-descendants"'), true);
+checar('GatePro esconde preview no accessibility tree web', gatePro.includes('aria-hidden'), true);
+checar('estado de plano distingue servidor/cache/indisponível', tela.includes("useState<PlanoAtual['fonte']>"), true);
+checar('compra é bloqueada sem confirmação', tela.includes('if (!acoesPlanoDisponiveis)'), true);
+checar('GatePro preserva intenção sem iniciar checkout', gatePro.includes("nav.navigate('Planos', { origem: 'gate', recurso, plano })"), true);
+checar('tela explica o recurso que motivou a visita', tela.includes('Você veio por “{contextoGate.recurso}”'), true);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SEÇÃO DE MUTAÇÃO — reintroduz cada violação e confirma que a asserção CAI.
 // Cada mutação é (nome, entrada quebrada, predicado que DEVERIA reprovar). Se o
 // predicado ainda aprova a entrada quebrada, a asserção é frouxa: isso conta
 // como falha (a rede de segurança tem um furo).
 // ─────────────────────────────────────────────────────────────────────────────
-console.log('\n6) MUTAÇÃO — cada violação reintroduzida deve DERRUBAR uma asserção');
+console.log('\n7) MUTAÇÃO — cada violação reintroduzida deve DERRUBAR uma asserção');
 
 interface Mutacao {
   nome: string;

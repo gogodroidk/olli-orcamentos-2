@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:olli:schema:increment-a-command:v1",
+  "title": "OLLI Increment A Command Envelope v1",
+  "$comment": "Schema estrutural. A política executável urn:olli:validation-policy:increment-a-command:v1 também é obrigatória e falha fechado para autoridade, segredo, URL/blob e regras de contexto.",
+  "x-olli-validation-policy": "urn:olli:validation-policy:increment-a-command:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "command_id",
+    "idempotency_key",
+    "protocol_version",
+    "schema_version",
+    "organization_id",
+    "aggregate_type",
+    "aggregate_id",
+    "expected_version",
+    "operation",
+    "payload",
+    "created_at_local",
+    "device_id"
+  ],
+  "properties": {
+    "command_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "idempotency_key": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "protocol_version": { "const": 1 },
+    "schema_version": { "const": 1 },
+    "organization_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "aggregate_type": { "enum": ["client", "location"] },
+    "aggregate_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+    "expected_version": { "type": "integer", "minimum": 0 },
+    "operation": { "enum": ["create_client", "update_client", "create_location", "update_location"] },
+    "payload": { "type": "object" },
+    "created_at_local": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "device_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "operation": { "const": "create_client" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "aggregate_type": { "const": "client" },
+          "expected_version": { "const": 0 },
+          "payload": { "$ref": "#/$defs/createClientPayload" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "update_client" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "aggregate_type": { "const": "client" },
+          "expected_version": { "type": "integer", "minimum": 1 },
+          "payload": { "$ref": "#/$defs/updateClientPayload" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "create_location" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "aggregate_type": { "const": "location" },
+          "expected_version": { "const": 0 },
+          "payload": { "$ref": "#/$defs/createLocationPayload" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "update_location" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "aggregate_type": { "const": "location" },
+          "expected_version": { "type": "integer", "minimum": 1 },
+          "payload": { "$ref": "#/$defs/updateLocationPayload" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "createClientPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display_name", "status"],
+      "properties": {
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "enum": ["active", "inactive"] }
+      }
+    },
+    "updateClientPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "enum": ["active", "inactive"] }
+      }
+    },
+    "createLocationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_id", "label", "status"],
+      "properties": {
+        "client_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "enum": ["active", "inactive"] }
+      }
+    },
+    "updateLocationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "enum": ["active", "inactive"] }
+      }
+    }
+  }
+}

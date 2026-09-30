@@ -20,17 +20,19 @@
  *
  * ═══ CHECKOUT DE VERDADE ═══
  * Pro e Empresa, mensal ou anual, abrem o Stripe Checkout pelo worker (`checkout.ts`).
- * CARTÃO → STRIPE. PIX → MERCADO PAGO (e, hoje, Pix só existe para recarregar créditos,
- * na tela de Créditos do app — o painel não vende Pix). Decisão do dono, textual: "deixe
- * os pagamentos do CARTÃO no STRIPE, e os pagamentos PIX no MERCADO PAGO". O OLLI não
- * vende assinatura por cartão no Mercado Pago (`/mp/plano/assinatura`): se aparecer um
- * botão daqui apontando para `/mp/`, é regressão e o gate
- * `scripts/teste-roteamento-pagamento.ts` reprova. Mapa: docs/ENXAME/PAGAMENTOS_ROTEAMENTO.md.
+ * CARTÃO → STRIPE (`checkout.ts`). PIX DO PLANO → `/abacate/*` (`pix.ts` + `DialogPix.tsx`),
+ * decisão do dono de 29/09/2026: o checkout só de cartão perdeu um cliente real. O botão
+ * "Pagar com Pix" só aparece quando `/abacate/config` diz `pix:true` — nunca há Pix de
+ * mentira. O Pix não renova sozinho (paga-se 1 mês ou 12 meses e, no vencimento, de novo).
+ * O OLLI não vende assinatura por cartão no Mercado Pago (`/mp/plano/assinatura`): se
+ * aparecer um botão daqui apontando para `/mp/`, é regressão. A recarga de créditos por Pix
+ * continua na tela de Créditos do app. Mapa: docs/ENXAME/PAGAMENTOS_ROTEAMENTO.md.
  * Qualquer falha vira um estado honesto com "Tentar de novo" e o WhatsApp como
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
-import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, RotateCw, Sparkles, Users } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { paraBr } from "@/olli/datas";
 // A leitura da assinatura saiu daqui para `olli/marcaDocumento`: ela ganhou um
 // SEGUNDO leitor (o gerador de documentos, que decide se o selo OLLI sai) e duas
@@ -46,6 +48,8 @@ import { Skeleton } from "@/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { cn } from "@/utils";
 import { type FalhaCheckout, iniciarCheckout, type PlanoCheckout } from "./checkout";
+import { DialogPix } from "./DialogPix";
+import { type PlanoPix, pixDisponivel } from "./pix";
 import { nomeDoPlano, type PlanoBase, PLANOS_BASE } from "./planos-base";
 import {
 	DESCONTO_ANUAL_ROTULO,
@@ -56,7 +60,11 @@ import {
 } from "./precos";
 import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
-import { BotaoPortalStripe } from "./portal";
+import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
+import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from "@limites-comerciais";
+import { lerIntencaoPlano } from "@/olli/plano-intent";
+import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
+import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -78,6 +86,27 @@ function idCheckout(plano: "pro" | "empresa", periodo: PeriodoCobranca): PlanoCh
 	return periodo === "anual" ? "empresa_anual" : "empresa";
 }
 
+/** Resolve (plano + período) na chave do catálogo de Pix do worker (`PLANO_PIX`). */
+function idPix(plano: "pro" | "empresa", periodo: PeriodoCobranca): PlanoPix {
+	return `${plano}_${periodo === "anual" ? "anual" : "mensal"}`;
+}
+
+/**
+ * Plano PAGO, vigente, sem assinatura na Stripe = acesso comprado por Pix (não renova sozinho).
+ * Só `renovaSozinho === false` afirma isso; `undefined` (não consegui ler) cai na tela de sempre.
+ * O tipo estreita o plano para pro/empresa, os únicos que têm Pix.
+ */
+function acessoPorPix(
+	resumo: ResumoAssinatura,
+): resumo is ResumoAssinatura & { planoEfetivo: "pro" | "empresa"; renovaSozinho: false } {
+	return (
+		resumo.ativo &&
+		resumo.origem === "pagamento" &&
+		resumo.renovaSozinho === false &&
+		(resumo.planoEfetivo === "pro" || resumo.planoEfetivo === "empresa")
+	);
+}
+
 /** Estado do checkout em andamento — um por vez, com erro visível (nunca silencioso). */
 interface EstadoCheckout {
 	plano: PlanoId | null;
@@ -86,9 +115,30 @@ interface EstadoCheckout {
 }
 
 export default function Planos() {
+	const intencao = useMemo(() => lerIntencaoPlano(window.location.search), []);
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
-	const [periodo, setPeriodo] = useState<PeriodoCobranca>("mensal");
+	const [periodo, setPeriodo] = useState<PeriodoCobranca>(() => intencao?.periodo ?? "mensal");
 	const [checkout, setCheckout] = useState<EstadoCheckout>({ plano: null, carregando: false, erro: null });
+	// Mesma query do lembrete de assinatura: iniciar o teste aqui atualiza a faixa junto.
+	const ofertaQ = useQuery(opcoesOfertaComercial);
+	const oferta = ofertaQ.data ?? null;
+	const [iniciandoTrial, setIniciandoTrial] = useState(false);
+	// Pix só aparece quando o worker CONFIRMA que está ligado; até lá (e se falhar), nada de Pix.
+	const [pixLigado, setPixLigado] = useState(false);
+	// Pix aberto: o período fica congelado no clique (mexer no seletor atrás do diálogo não troca o valor).
+	const [pixAberto, setPixAberto] = useState<{ plano: "pro" | "empresa"; periodo: PeriodoCobranca } | null>(null);
+
+	const carregarOferta = () => ofertaQ.refetch();
+
+	useEffect(() => {
+		let ativo = true;
+		void pixDisponivel().then((ligado) => {
+			if (ativo) setPixLigado(ligado);
+		});
+		return () => {
+			ativo = false;
+		};
+	}, []);
 
 	// A tabela `assinaturas` é lida pelo MEU user_id — mas quem é membro não-dono
 	// (técnico/gestor) não tem linha própria: a assinatura pertence ao DONO da
@@ -102,6 +152,15 @@ export default function Planos() {
 	// OLLI sai do documento (olli/marcaRegra.ts): a regra de quem é dono da conta
 	// mora num lugar só.
 	const membroNaoDono = !contexto.isLoading && !contexto.isError && ehMembroNaoDono(contexto.data?.papel);
+	const consultarStatusStripe = !membroNaoDono && !!resumo && resumo.planoContratado !== "gratis";
+	const statusStripe = useQuery({
+		queryKey: ["olli", "stripe", "status"],
+		queryFn: obterStatusPortalStripe,
+		enabled: consultarStatusStripe,
+		staleTime: 60_000,
+		retry: 1,
+	});
+	const acessoAdministrativo = statusStripe.isSuccess && statusStripe.data.origem === "administrativa";
 
 	// Sem leitura confiável, NENHUM plano é marcado como atual: marcar "Grátis" por
 	// padrão seria exatamente o rebaixamento que esta tela existe para evitar.
@@ -120,12 +179,87 @@ export default function Planos() {
 		setCheckout({ plano, carregando: false, erro: r.erro });
 	}
 
+	async function comecarTrial() {
+		setIniciandoTrial(true);
+		await comecarTesteProComAviso(() => Promise.all([refetch(), carregarOferta()]));
+		setIniciandoTrial(false);
+	}
+
+	// Plano que o Pix renova: o vigente comprado por Pix ou o que venceu (voltou ao Grátis).
+	const planoParaRenovarPix: "pro" | "empresa" | null =
+		!resumo || isError || membroNaoDono
+			? null
+			: acessoPorPix(resumo)
+				? resumo.planoEfetivo
+				: resumo.planoEfetivo === "gratis" && resumo.planoContratado !== "gratis"
+					? resumo.planoContratado
+					: null;
+	const cardRenovarPixVisivel = !!resumo && !isError && !membroNaoDono && acessoPorPix(resumo) && pixLigado;
+	const cardTrialVisivel = !membroNaoDono && oferta?.trialEstado === "eligible" && resumo?.planoEfetivo === "gratis";
+
+	function irParaCatalogo() {
+		document.getElementById("escolha-seu-plano")?.scrollIntoView({ behavior: "smooth", block: "start" });
+	}
+
+	function renovarComPix() {
+		if (planoParaRenovarPix && pixLigado) setPixAberto({ plano: planoParaRenovarPix, periodo: "mensal" });
+		else irParaCatalogo();
+	}
+
+	// `?renovar=pix` (vindo do lembrete de outra tela): abre o Pix do plano atual assim
+	// que assinatura e Pix estiverem confirmados. Uma vez só — e o parâmetro sai da URL
+	// para recarregar a página não reabrir a cobrança.
+	const [pedidoRenovarPix, setPedidoRenovarPix] = useState(
+		() => new URLSearchParams(window.location.search).get(PARAM_RENOVAR_PIX) === "pix",
+	);
+	useEffect(() => {
+		if (!pedidoRenovarPix || !pixLigado || !planoParaRenovarPix) return;
+		setPedidoRenovarPix(false);
+		setPixAberto({ plano: planoParaRenovarPix, periodo: "mensal" });
+		const url = new URL(window.location.href);
+		url.searchParams.delete(PARAM_RENOVAR_PIX);
+		window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+	}, [pedidoRenovarPix, pixLigado, planoParaRenovarPix]);
+
 	return (
 		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">
 			<header className="mb-5">
 				<h1 className="text-2xl font-bold tracking-tight text-text-primary">Planos</h1>
 				<p className="mt-1 text-sm text-text-secondary">Sua assinatura e o que cada plano libera.</p>
 			</header>
+
+			{intencao ? (
+				<Card className="mb-5 border-brand/30 bg-brand/5 p-4" role="status">
+					<div className="flex items-start gap-3">
+						<Sparkles className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+						<div>
+							<p className="font-semibold text-text-primary">
+								Você escolheu revisar o {nomeDoPlano(intencao.plano)} {intencao.periodo}
+							</p>
+							<p className="mt-1 text-sm text-text-secondary">
+								Confira recursos, preço, renovação e cancelamento abaixo. Nenhuma cobrança começa sem seu clique e a confirmação final no checkout seguro.
+							</p>
+						</div>
+					</div>
+				</Card>
+			) : null}
+
+			{/*
+			 * Lembrete de assinar/renovar (mesma regra do app). Some quando esta tela já
+			 * mostra o mesmo estado: o card "Renovar com Pix", o card do teste grátis, o
+			 * status de plano vencido e o convite genérico (a tela inteira já é o convite).
+			 */}
+			<LembreteAssinaturaFaixa
+				className="mb-5"
+				aoIrParaPlanos={irParaCatalogo}
+				aoRenovarPix={renovarComPix}
+				ocultar={(l) =>
+					l.tipo === "assinar" ||
+					l.tipo === "plano_vencido" ||
+					(l.tipo === "renovar_pix" && cardRenovarPixVisivel) ||
+					(l.tipo === "trial_disponivel" && cardTrialVisivel)
+				}
+			/>
 
 			{/* ─── 1. O SEU ESTADO (o mais importante da tela) ─── */}
 			{contexto.isLoading ? (
@@ -138,13 +272,53 @@ export default function Planos() {
 				<CardErro mensagem={(error as Error)?.message} aoTentar={() => refetch()} tentando={isFetching} />
 			) : resumo ? (
 				<div className="space-y-3">
-					<CardStatus resumo={resumo} />
-					{resumo.planoContratado !== "gratis" && <BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />}
+					<CardStatus resumo={resumo} acessoAdministrativo={acessoAdministrativo} />
+					{acessoPorPix(resumo) ? (
+						<>
+							{pixLigado && (
+								<CardRenovarPix
+									plano={resumo.planoEfetivo}
+									aoRenovar={(periodoRenovacao) => setPixAberto({ plano: resumo.planoEfetivo, periodo: periodoRenovacao })}
+								/>
+							)}
+							{/* Sem cliente na Stripe não há o que gerenciar nem cancelar: Pix não tem assinatura. */}
+							{resumo.temClienteStripe && <BotaoPortalStripe rotulo="Ver faturas no Portal da Stripe" />}
+						</>
+					) : consultarStatusStripe && statusStripe.isLoading ? (
+						<Skeleton className="h-10 w-80 rounded-lg" />
+					) : statusStripe.data?.gerenciavel ? (
+						<BotaoPortalStripe rotulo="Gerenciar, atualizar cartão ou cancelar" />
+					) : null}
 				</div>
 			) : null}
 
+			{cardTrialVisivel ? (
+				<Card className="mt-4 gap-0 border-primary/35 bg-primary/5 p-5">
+					<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+						<div className="flex items-start gap-3">
+							<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+								<Sparkles className="size-5" aria-hidden />
+							</span>
+							<div>
+								<p className="font-semibold text-text-primary">Experimente tudo do Pro por {TRIAL_PRO_DIAS} dias</p>
+								<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">
+									Sem cartão e sem cobrança automática. Quando terminar, a conta volta ao Grátis e seus dados continuam salvos.
+								</p>
+							</div>
+						</div>
+						<Button onClick={() => void comecarTrial()} disabled={iniciandoTrial} className="min-h-[44px] shrink-0">
+							{iniciandoTrial ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Sparkles className="size-4" aria-hidden />}
+							Começar teste grátis
+						</Button>
+					</div>
+				</Card>
+			) : null}
+
 			{/* ─── 2. O CATÁLOGO ─── */}
-			<div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+			<div
+				id="escolha-seu-plano"
+				className="mt-8 flex scroll-mt-4 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+			>
 				<h2 className="text-base font-semibold text-text-primary">Escolha seu plano</h2>
 				<SeletorPeriodo periodo={periodo} aoMudar={setPeriodo} />
 			</div>
@@ -162,9 +336,26 @@ export default function Planos() {
 						aoAssinar={() => {
 							if (p.id === "pro" || p.id === "empresa") assinar(p.id);
 						}}
+						pixDisponivel={pixLigado}
+						aoPagarComPix={() => {
+							if (p.id === "pro" || p.id === "empresa") setPixAberto({ plano: p.id, periodo });
+						}}
 					/>
 				))}
 			</div>
+
+			{pixAberto ? (
+				<DialogPix
+					// `key` = uma cobrança nova por abertura (nunca reaproveita QR de outra escolha).
+					key={`${pixAberto.plano}-${pixAberto.periodo}`}
+					plano={idPix(pixAberto.plano, pixAberto.periodo)}
+					nomePlano={nomeDoPlano(pixAberto.plano)}
+					aoFechar={() => setPixAberto(null)}
+					// O servidor já liberou o plano: relê a assinatura e a oferta (some o trial, marca "plano atual").
+					aoPago={() => void Promise.all([refetch(), carregarOferta()])}
+					linkWhatsApp={linkWhatsApp}
+				/>
+			) : null}
 
 			{/* ─── 3. O COMPARATIVO (a verdade linha a linha) ─── */}
 			<h2 className="mb-3 mt-10 text-base font-semibold text-text-primary">Comparar recurso a recurso</h2>
@@ -173,7 +364,15 @@ export default function Planos() {
 			<p className="mt-6 text-xs text-text-secondary">
 				Pro e Empresa você assina agora, direto por aqui: escolha mensal ou anual (o anual sai {DESCONTO_ANUAL_ROTULO}{" "}
 				mais barato) e o pagamento <strong>no cartão</strong> abre em seguida, no ambiente seguro da Stripe — renova
-				automaticamente e você cancela quando quiser pelo Portal da Stripe. Se precisar de ajuda, o WhatsApp continua disponível.
+				automaticamente e você cancela quando quiser pelo Portal da Stripe.
+				{pixLigado ? (
+					<>
+						{" "}
+						Prefere <strong>Pix</strong>? Use "Pagar com Pix": ele libera 1 mês (ou 12, no anual) e não renova sozinho —
+						perto do vencimento você paga de novo.
+					</>
+				) : null}{" "}
+				Se precisar de ajuda, o WhatsApp continua disponível.
 			</p>
 		</div>
 	);
@@ -226,9 +425,34 @@ function CardMembro() {
 	);
 }
 
-function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
-	const nome = nomeDoPlano(resumo.planoContratado);
+function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAssinatura; acessoAdministrativo?: boolean }) {
+	const nome = resumo.origem === "trial" ? "Pro" : nomeDoPlano(resumo.planoContratado);
 	const quando = dataBr(resumo.proximaCobranca);
+
+	if (resumo.origem === "trial") {
+		return (
+			<Faixa
+				tom="success"
+				titulo="Seu teste Pro está ativo"
+				texto={`${quando ? `Você tem os recursos Pro até ${quando}. ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
+			/>
+		);
+	}
+
+	if (resumo.origem === "admin" || acessoAdministrativo) {
+		return (
+			<Faixa
+				tom="success"
+				titulo={`${nome} liberado administrativamente`}
+				texto={`${quando ? `Acesso liberado até ${quando}. ` : ""}Esta conta não possui cobrança automática nem assinatura Stripe para cancelar.`}
+				acao={{
+					rotulo: "Falar sobre meu acesso",
+					href: linkWhatsApp(`Olá! Quero falar sobre o acesso administrativo ao plano ${nome} no OLLI.`),
+					discreta: true,
+				}}
+			/>
+		);
+	}
 
 	// PAGAMENTO FALHOU (past_due) — o acesso continua durante a retentativa, mas a
 	// pessoa PRECISA saber, e agora. Se a tela dissesse só "Pro ativo", ela descobriria
@@ -246,6 +470,23 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 				acao={{
 					rotulo: "Resolver pagamento",
 					href: linkWhatsApp(`Olá! O pagamento do meu plano ${nome} no OLLI falhou e eu quero regularizar.`),
+				}}
+			/>
+		);
+	}
+
+	// ATIVO POR PIX — não há renovação automática nem cancelamento: dizer "renova
+	// automaticamente" aqui seria mentira.
+	if (acessoPorPix(resumo)) {
+		return (
+			<Faixa
+				tom="success"
+				titulo={`${nome} ativo`}
+				texto={`${quando ? `Acesso até ${quando}. ` : ""}Pagamento por Pix não renova sozinho.`}
+				acao={{
+					rotulo: "Falar sobre minha assinatura",
+					href: linkWhatsApp(`Olá! Quero falar sobre a minha assinatura do plano ${nome} no OLLI.`),
+					discreta: true,
 				}}
 			/>
 		);
@@ -301,12 +542,49 @@ function CardStatus({ resumo }: { resumo: ResumoAssinatura }) {
 		<Faixa
 			tom="neutro"
 			titulo="Você está no plano Grátis"
-			texto="Orçamentos, recibos, clientes e agenda são ilimitados aqui — sem prazo e sem cartão. O Pro entra quando você quiser relatórios, metas e uma franquia maior de IA."
+			texto={`Rascunhos, recibos, clientes e histórico ficam sem limite; você pode enviar ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos por mês. Sem prazo e sem cartão.`}
 			acao={{
 				rotulo: "Quero assinar o Pro",
 				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
 			}}
 		/>
+	);
+}
+
+/** Renovar o plano atual por Pix. Os preços vêm da mesma fonte do catálogo (`precoDoPlano`). */
+function CardRenovarPix({
+	plano,
+	aoRenovar,
+}: {
+	plano: "pro" | "empresa";
+	aoRenovar: (periodo: PeriodoCobranca) => void;
+}) {
+	const preco = precoDoPlano(plano);
+	if (!preco) return null;
+	return (
+		<Card className="gap-0 border-border p-5">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+				<div className="flex items-start gap-3">
+					<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+						<QrCode className="size-5" aria-hidden />
+					</span>
+					<div>
+						<p className="font-semibold text-text-primary">Renovar com Pix</p>
+						<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">
+							Os dias que faltam não se perdem: a renovação começa quando o seu acesso atual termina.
+						</p>
+					</div>
+				</div>
+				<div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+					<Button variant="outline" className="min-h-[44px]" onClick={() => aoRenovar("mensal")}>
+						Renovar 1 mês com Pix — {reais(preco.mensalCentavos)}
+					</Button>
+					<Button className="min-h-[44px]" onClick={() => aoRenovar("anual")}>
+						Renovar 1 ano com Pix — {reais(preco.anualCentavos)}
+					</Button>
+				</div>
+			</div>
+		</Card>
 	);
 }
 
@@ -319,7 +597,7 @@ function Faixa({
 	tom: "success" | "warning" | "neutro";
 	titulo: string;
 	texto: string;
-	acao: { rotulo: string; href: string; discreta?: boolean };
+	acao?: { rotulo: string; href: string; discreta?: boolean };
 }) {
 	const cores = {
 		success: { card: "border-success/30 bg-success/5", tile: "bg-success/10 text-success" },
@@ -339,12 +617,14 @@ function Faixa({
 						<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">{texto}</p>
 					</div>
 				</div>
-				<Button asChild variant={acao.discreta ? "outline" : "default"} className="shrink-0 self-start sm:self-auto">
-					<a href={acao.href} target="_blank" rel="noreferrer noopener">
-						<MessageCircle className="size-4" aria-hidden />
-						{acao.rotulo}
-					</a>
-				</Button>
+				{acao ? (
+					<Button asChild variant={acao.discreta ? "outline" : "default"} className="shrink-0 self-start sm:self-auto">
+						<a href={acao.href} target="_blank" rel="noreferrer noopener">
+							<MessageCircle className="size-4" aria-hidden />
+							{acao.rotulo}
+						</a>
+					</Button>
+				) : null}
 			</div>
 		</Card>
 	);
@@ -393,6 +673,8 @@ function CardPlano({
 	carregando,
 	erro,
 	aoAssinar,
+	pixDisponivel,
+	aoPagarComPix,
 }: {
 	plano: PlanoBase;
 	periodo: PeriodoCobranca;
@@ -403,6 +685,9 @@ function CardPlano({
 	carregando: boolean;
 	erro: FalhaCheckout | null;
 	aoAssinar: () => void;
+	/** O worker confirmou que o Pix está ligado. Sem isso, nenhum botão de Pix. */
+	pixDisponivel: boolean;
+	aoPagarComPix: () => void;
 }) {
 	const ehAtual = atual === true;
 	const preco = precoDoPlano(plano.id);
@@ -432,7 +717,7 @@ function CardPlano({
 					<Badge variant="success">Seu plano atual</Badge>
 				) : plano.destaque ? (
 					<Badge variant="default">
-						<Sparkles className="size-3" aria-hidden /> Mais escolhido
+						<Sparkles className="size-3" aria-hidden /> Recomendado
 					</Badge>
 				) : null}
 			</div>
@@ -482,6 +767,18 @@ function CardPlano({
 								`Assinar ${plano.nome}`
 							)}
 						</Button>
+
+						{pixDisponivel && (
+							<Button
+								variant="secondary"
+								className="mt-2 min-h-[44px] w-full"
+								onClick={aoPagarComPix}
+								disabled={carregando}
+							>
+								<QrCode className="size-4" aria-hidden />
+								Pagar com Pix
+							</Button>
+						)}
 
 						{erro && (
 							<div

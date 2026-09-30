@@ -11,9 +11,15 @@
       content="OLLI é o sistema para quem presta serviço em campo: orçamento que o cliente aprova online, ordem de serviço com fotos e assinatura, agenda, equipe e financeiro num só lugar. Comece grátis."
     />
     <meta name="theme-color" content="#0A2547" />
+    <meta name="application-name" content="OLLI Orçamentos" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="OLLI" />
     <link rel="canonical" href="https://olliorcamentos.online/" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -156,6 +162,81 @@
         height: 100%;
         flex: 1;
       }
+
+      .pwa-action {
+        position: fixed;
+        z-index: 2147483647;
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        left: max(16px, env(safe-area-inset-left));
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: 560px;
+        margin-inline: auto;
+        padding: 12px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 16px;
+        color: #fff;
+        background: #0a2547;
+        box-shadow: 0 14px 40px rgba(5, 20, 38, 0.28);
+        font: 500 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .pwa-action__message {
+        flex: 1;
+      }
+
+      .pwa-action__button {
+        min-height: 44px;
+        padding: 0 16px;
+        border: 0;
+        border-radius: 12px;
+        color: #0a2547;
+        background: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .pwa-action__dismiss {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        color: #fff;
+        background: transparent;
+        font: 700 22px/1 system-ui, sans-serif;
+        cursor: pointer;
+      }
+
+      .pwa-action__button:focus-visible,
+      .pwa-action__dismiss:focus-visible {
+        outline: 3px solid #8ed8ff;
+        outline-offset: 3px;
+      }
+
+      @media (max-width: 520px) {
+        .pwa-action {
+          flex-wrap: wrap;
+        }
+
+        .pwa-action__message {
+          flex-basis: calc(100% - 56px);
+        }
+
+        .pwa-action__button {
+          flex: 1 0 100%;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .pwa-action,
+        .pwa-action * {
+          scroll-behavior: auto !important;
+          transition: none !important;
+        }
+      }
     </style>
   </head>
 
@@ -166,5 +247,6 @@
     </noscript>
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
+    <script src="/pwa-register.js" defer></script>
   </body>
 </html>

@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
@@ -100,9 +100,10 @@ function formatarBtu(v?: number): string {
 function SituacaoBadge({ situacao }: { situacao: SituacaoEquipamento }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const cor = STATUS_EQUIP_CORES[situacao] ?? cores.onSurfaceVariant;
+  const corBase = STATUS_EQUIP_CORES[situacao] ?? cores.onSurfaceVariant;
+  const cor = corCategoriaEmChip(corBase, cores.surface);
   return (
-    <View style={[styles.statusBadge, { backgroundColor: cor + '22', borderColor: cor + '66' }]}>
+    <View style={[styles.statusBadge, { backgroundColor: corBase + '22', borderColor: corBase + '66' }]}>
       <Text style={[styles.statusBadgeText, { color: cor }]}>
         {STATUS_EQUIP_LABELS[situacao] ?? situacao}
       </Text>

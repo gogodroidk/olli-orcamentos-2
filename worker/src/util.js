@@ -39,9 +39,14 @@ const METODOS_POR_ROTA = new Map([
   ['/voz/conversa', 'POST'],
   ['/chat', 'POST'],
   ['/transcrever', 'POST'],
+  ['/ia/importacao/preview', 'POST'],
+  ['/ia/autopilot/preview', 'POST'],
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
+  ['/resend/webhook', 'POST'],
+  // Descadastro de lembretes: GET mostra a confirmação, POST grava.
+  ['/email/descadastrar', 'GET, POST'],
 ]);
 
 /**
@@ -51,6 +56,7 @@ const METODOS_POR_ROTA = new Map([
  * certo no corpo; o roteador só decide se o VERBO cabe.
  */
 const METODOS_POR_PREFIXO = [
+  ['/ia/acoes/', 'POST'],
   ['/cep/', 'GET'],
   ['/cnpj/', 'GET'],
   ['/feriados/', 'GET'],

@@ -7,7 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Spacing, useCores, useEstilos, comAlfa, textoSobre, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, comAlfa, textoSobre, type Cores } from '../theme';
 import { Motion, useReducedMotion } from '../theme/motion';
 import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
@@ -22,7 +22,6 @@ import { formatCurrency } from '../utils/currency';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { track, Eventos } from '../services/analytics';
-import { getUltimasFormasPagamento, salvarUltimasFormasPagamento } from '../services/formasPagamentoPadrao';
 
 // Steps
 import Step1Cliente from '../steps/Step1Cliente';
@@ -33,10 +32,14 @@ import Step4Personalizacao from '../steps/Step4Personalizacao';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'NovoOrcamento'>;
 
-const STEPS = ['Cliente', 'Itens', 'Detalhes', 'Personalizar'];
+const STEPS = ['Cliente', 'Itens', 'Detalhes', 'Revisar'];
 const useNativeAnimations = Platform.OS !== 'web';
 
-const defaultFormas: FormaPagamento = { credito: false, debito: false, dinheiro: false, pix: true };
+// Compatibilidade: o domínio ainda mantém o campo para abrir backups/documentos
+// antigos, mas orçamentos novos não anunciam nem processam forma de pagamento.
+// O acerto financeiro acontece diretamente entre cliente e empresa; o OLLI só
+// registra recibos depois, em fluxo próprio.
+const defaultFormas: FormaPagamento = { credito: false, debito: false, dinheiro: false, pix: false };
 const PDF_MODEL_LABELS: Record<string, string> = {
   editorial: 'Editorial',
   minimalista: 'Minimalista',
@@ -57,10 +60,11 @@ function validadeEmDias(days: number): string {
 /**
  * Orçamento em branco, já com os padrões de negócio da empresa (quando
  * cadastrados em "Meu Negócio" > Personalização) para o técnico não precisar
- * redigitar validade/garantia/condições/observações/PIX em todo orçamento
- * novo — ele ainda pode sobrescrever qualquer campo nos passos seguintes.
+ * redigitar validade/garantia/condições/observações em todo orçamento novo.
+ * Aparência e identidade vêm do padrão central da empresa; cobrança/Pix não
+ * fazem parte do documento comercial nesta versão.
  */
-function emptyOrcamento(numero: string, empresa: Empresa | null, formasPagamentoPadrao?: FormaPagamento): Orcamento {
+function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
   const validadeDias = empresa?.validadeDiasPadrao ?? 15;
   return {
     id: generateId(),
@@ -83,15 +87,11 @@ function emptyOrcamento(numero: string, empresa: Empresa | null, formasPagamento
     garantia: empresa?.garantiaPadrao || undefined,
     condicoesPagamento: empresa?.condicoesPagamentoPadrao || undefined,
     informacoesAdicionais: empresa?.observacoesPadrao || undefined,
-    chavePix: empresa?.chavePix || undefined,
     corMarca: empresa?.corMarca || undefined,
     // Modelo de PDF padrão escolhido em Conta → Modelos de documento (o técnico
     // ainda troca por orçamento em Step4). Sem padrão, Step4 assume 'editorial'.
     modeloPdf: empresa?.modeloPdfPadrao || undefined,
-    // Smart default: última combinação que a empresa realmente usou (ver
-    // services/formasPagamentoPadrao) — cai no PIX-só estático quando ainda
-    // não há nenhuma salva (empresa nova).
-    formasPagamento: formasPagamentoPadrao ?? defaultFormas,
+    formasPagamento: defaultFormas,
     exibirAssinatura: true,
     solicitarAssinaturaCliente: false,
     exibirAprovacao: true,
@@ -156,6 +156,9 @@ export default function NovoOrcamentoScreen() {
   const prefillClienteId = (route.params as any)?.clienteId as string | undefined;
   const prefillItem = (route.params as any)?.prefillItem as
     | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }
+    | undefined;
+  const prefillItems = (route.params as any)?.prefillItems as
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number }[]
     | undefined;
 
   const [step, setStep] = useState(0);
@@ -231,7 +234,7 @@ export default function NovoOrcamentoScreen() {
           if (edicaoBloqueada(existing.status)) {
             avisar(
               'Este orçamento não pode mais ser editado',
-              'O cliente já recebeu este documento. Para mudar valores ou itens, use "Duplicar" — nasce um rascunho novo e o orçamento original continua valendo.',
+              'O cliente já recebeu este documento. Para mudar valores ou itens, use “Criar revisão” — nasce um rascunho novo ligado ao original, que continua preservado.',
             );
             goBackOrHome(nav);
             return;
@@ -248,8 +251,7 @@ export default function NovoOrcamentoScreen() {
         }
       }
       const numero = await getNextOrcamentoNumber();
-      const formasPagamentoPadrao = await getUltimasFormasPagamento(emp?.id);
-      let base = emptyOrcamento(numero, emp, formasPagamentoPadrao ?? undefined);
+      let base = emptyOrcamento(numero, emp);
 
       // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
       if (prefillClienteId) {
@@ -257,25 +259,19 @@ export default function NovoOrcamentoScreen() {
         if (cliente) base = { ...base, ...clienteParaOrc(cliente) };
       }
 
-      // Pré-carrega 1 item (descrição de diagnóstico/código) para o usuário só ajustar preço.
-      if (prefillItem?.nome?.trim()) {
-        const qtdPrefill =
-          typeof prefillItem.quantidade === 'number' && prefillItem.quantidade > 0
-            ? prefillItem.quantidade
-            : 1;
-        const item: ItemOrcamento = {
-          id: generateId(),
-          tipo: prefillItem.tipo,
-          catalogoId: '',
-          nome: prefillItem.nome.trim(),
-          descricao: prefillItem.descricao?.trim() || undefined,
-          preco: 0,
-          quantidade: qtdPrefill,
-          unidade: 'un',
-          subtotal: 0,
-        };
-        base = calcTotais({ ...base, itens: [item] });
-      }
+      // Pré-carrega itens de diagnóstico/Autopilot para o usuário só ajustar
+      // preço e quantidade. Preço não é inventado aqui: a origem pode trazer
+      // somente descrição e o editor continua sendo a autoridade.
+      const itensPrefill = [
+        ...(prefillItem ? [prefillItem] : []),
+        ...(Array.isArray(prefillItems) ? prefillItems : []),
+      ].filter((item) => item?.nome?.trim()).map((item): ItemOrcamento => ({
+        id: generateId(), tipo: item.tipo, catalogoId: '', nome: item.nome.trim(),
+        descricao: item.descricao?.trim() || undefined, preco: 0,
+        quantidade: typeof item.quantidade === 'number' && item.quantidade > 0 ? item.quantidade : 1,
+        unidade: 'un', subtotal: 0,
+      }));
+      if (itensPrefill.length) base = calcTotais({ ...base, itens: itensPrefill });
 
       setOrc(base);
     }
@@ -318,16 +314,16 @@ export default function NovoOrcamentoScreen() {
 
   /**
    * Uma falha de save não é uma só. `saveOrcamento` recusa por REGRA COMERCIAL
-   * (orçamento já aceito pelo cliente) com `codigo: 'ORCAMENTO_ACEITO'`, e isso é
+   * (orçamento já enviado ou aceito) com `codigo: 'ORCAMENTO_PROTEGIDO'`, e isso é
    * PERMANENTE: "tente novamente em instantes" manda o usuário repetir para
    * sempre um caminho que nunca vai abrir, e o trabalho digitado some junto.
    * Lemos o `codigo` em vez de `instanceof` — sobrevive ao erro cruzar camadas.
    */
   function avisarFalhaSalvar(e: unknown) {
-    if ((e as { codigo?: string } | null)?.codigo === 'ORCAMENTO_ACEITO') {
+    if ((e as { codigo?: string } | null)?.codigo === 'ORCAMENTO_PROTEGIDO') {
       avisar(
-        'Este orçamento já foi aceito',
-        'O cliente aceitou este orçamento, então ele não muda mais. Volte e use "Duplicar" para criar um rascunho novo com estas alterações — o original continua valendo.',
+        'Este orçamento está protegido',
+        'O cliente já recebeu ou aceitou este orçamento. Volte e use “Criar revisão” para gerar um novo rascunho ligado ao original.',
       );
       return;
     }
@@ -338,16 +334,14 @@ export default function NovoOrcamentoScreen() {
     if (!orc) return;
     setSaving(true);
     try {
+      const agora = nowISO();
       const toSave: Orcamento = {
         ...orc,
         ...(finalOrc ?? {}),
-        atualizadoEm: nowISO(),
+        atualizadoEm: agora,
+        ...(isEdit ? { editadoEm: agora } : {}),
       };
       await saveOrcamento(calcTotais(toSave));
-      // Smart default (fire-and-forget): o que o técnico realmente marcou
-      // aqui vira o próximo padrão desta empresa — não precisa esperar nem
-      // pode travar a navegação abaixo se falhar.
-      void salvarUltimasFormasPagamento(empresa?.id, toSave.formasPagamento);
       // Celebração só na criação (editar um orçamento existente não repete a
       // festa) — o overlay dispara e a navegação real acontece no onDone dele,
       // pra dar tempo do usuário ver a animação antes de trocar de tela.
@@ -369,8 +363,12 @@ export default function NovoOrcamentoScreen() {
     if (!orc) return;
     setSaving(true);
     try {
-      await saveOrcamento(calcTotais({ ...orc, atualizadoEm: nowISO() }));
-      void salvarUltimasFormasPagamento(empresa?.id, orc.formasPagamento);
+      const agora = nowISO();
+      await saveOrcamento(calcTotais({
+        ...orc,
+        atualizadoEm: agora,
+        ...(isEdit ? { editadoEm: agora } : {}),
+      }));
       if (!isEdit) track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
@@ -441,6 +439,14 @@ export default function NovoOrcamentoScreen() {
           </TouchableOpacity>
         }
       >
+        {orc.revisaoDeNumero ? (
+          <View style={styles.revisionBanner} accessible accessibilityRole="summary">
+            <MaterialCommunityIcons name="file-document-edit-outline" size={17} color="#fff" />
+            <Text style={styles.revisionBannerText}>
+              Revisão do nº {orc.revisaoDeNumero}: o original está preservado. Salve e envie este novo orçamento.
+            </Text>
+          </View>
+        ) : null}
         <StepIndicator steps={STEPS} current={step} />
         <View style={styles.progressTrack}>
           <Animated.View
@@ -542,6 +548,14 @@ export default function NovoOrcamentoScreen() {
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { flex: 1 },
+  revisionBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    marginBottom: 10, paddingHorizontal: 11, paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  revisionBannerText: { flex: 1, color: '#fff', fontSize: 11.5, fontWeight: '700', lineHeight: 16 },
   progressTrack: {
     height: 4,
     borderRadius: 2,

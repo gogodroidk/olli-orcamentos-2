@@ -12,22 +12,72 @@
   // Antes do primeiro deploy com esta flag, confira que as rotas de pagamento
   // continuam respondendo (ver README).
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
   "observability": { "enabled": true },
+  // Estes domínios já pertencem ao Worker em produção. Mantê-los no arquivo
+  // evita que um deploy por Wrangler apague configuração criada no Dashboard.
+  "routes": [
+    {
+      "pattern": "diagnostico.olliorcamentos.online",
+      "zone_name": "olliorcamentos.online",
+      "custom_domain": true
+    },
+    {
+      "pattern": "link.olliorcamentos.online",
+      "zone_name": "olliorcamentos.online",
+      "custom_domain": true
+    }
+  ],
+  // Cron de minuto: consumer da outbox (boas-vindas + lembretes) a cada minuto;
+  // a seleção de lembretes só age na hora cheia, 8h–20h de Brasília.
+  "triggers": { "crons": ["* * * * *"] },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put OPENROUTER_API_KEY
   //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)
   //   npx wrangler secret put STRIPE_WEBHOOK_SECRET   (whsec_..., do endpoint do webhook)
+  //   npx wrangler secret put RESEND_WEBHOOK_SECRET   (whsec_..., do endpoint Svix do Resend)
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_", // gitleaks:allow — chave publicável, protegida por RLS
+    // E-mail REAL ligado (dono autorizou em 29/09/2026). Só linhas novas da
+    // outbox nascem scope=production (config no banco, migration 20260929200000);
+    // as boas-vindas antigas presas em hold foram descartadas sem envio.
+    "WELCOME_DISPATCH_MODE": "production",
+    // Envio sequencial por minuto; folga grande sob o limite de taxa da Resend.
+    "WELCOME_BATCH_LIMIT": "3",
+    "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
+    "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
+    "WELCOME_APP_URL": "https://app.olliorcamentos.online",
+    "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
+    "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
+    // Lembretes por e-mail (ativação D+3/D+7 e assinatura). Tetos conservadores:
+    // 3 por rodada horária, 40 por dia no total, ativação só até 30 dias de conta.
+    "EMAIL_LEMBRETES_MODE": "production",
+    "EMAIL_LEMBRETES_MAX_POR_RODADA": "3",
+    "EMAIL_LEMBRETES_TETO_DIARIO": "40",
+    "EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS": "30",
+    "EMAIL_DESCADASTRO_URL": "https://diagnostico.olliorcamentos.online/email/descadastrar",
     "AI_PROVIDER": "openrouter",
-    "OPENROUTER_TEXT_MODELS": "google/gemma-4-26b-a4b-it:free,openai/gpt-oss-20b:free,google/gemma-4-31b-it:free,nvidia/nemotron-nano-9b-v2:free",
+    // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
+    // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
+    // com cada ID na allowlist de worker/src/ai.js, que também manda o teto de
+    // preço (max_price) em toda request. Mesma ordem de OPENROUTER_MODELOS_PADRAO
+    // — `npm run check:ai-models` (raiz) exige igualdade e valida ao vivo.
+    "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,google/gemini-2.5-flash-lite,mistralai/mistral-small-24b-instruct-2501",
+    "OPENROUTER_PERMITIR_PAGO": "true",
     "OPENROUTER_SITE_URL": "https://olliorcamentos.online",
     "OPENROUTER_APP_NAME": "OLLI Orcamentos",
     // Reservas diárias pessimistas: uma tentativa enviada ao provedor conta
     // mesmo se terminar em timeout/429. Há margem para outras automações.
-    "OPENROUTER_GLOBAL_DAILY_LIMIT": "40",
-    "OPENROUTER_USER_DAILY_LIMIT": "10",
+    // Estes tetos SÃO o teto de gasto da IA paga (cada tentativa = 1 unidade):
+    //   típico  (~1,5k tokens in / 400 out): ~US$ 0,0003 × 500 ≈ US$ 0,15/dia
+    //   pior caso (32k in / 4.096 out, no teto de preço 0,12/0,48 por milhão):
+    //            ~US$ 0,0058 × 500 ≈ US$ 2,90/dia (~US$ 87/mês)
+    // Subir o GLOBAL sobe esse teto na mesma proporção. Recomendado também um
+    // limite de crédito na própria chave do OpenRouter (painel), como 2ª trava.
+    "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
+    "OPENROUTER_USER_DAILY_LIMIT": "100",
     // Whisper é contado em neurônios estimados, não em requests. 46,63/min;
     // 8.000 ≈ 171 min/dia e 940 ≈ 20 min/dia por usuário.
     "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
@@ -41,7 +91,64 @@
     "STRIPE_PRICE_PRO_ANUAL": "price_1TqUVb4zjAI9pGd7fGSU4b4v",
     "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
     "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
-    "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn"
+    "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
+    "MP_WEBHOOK_REQUIRE_SIGNATURE": "true"
+  },
+  // Staging is a separate Worker with no production custom domains. It inherits
+  // the bindings/rate-limit shape above but overrides all environment identity
+  // and Supabase routing. Secrets are provisioned separately with
+  // `wrangler secret put --env staging`; no production secret is inherited.
+  "env": {
+    "staging": {
+      "name": "olli-diagnostico-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      "routes": [],
+      "vars": {
+        "SUPABASE_URL": "https://sbpkutknpywezeagioon.supabase.co",
+        "SUPABASE_ANON_KEY": "sb_publishable_4QaDViGbT45F72jQ5GINug_UN-4alDT", // gitleaks:allow — chave publicável, protegida por RLS
+        "WELCOME_DISPATCH_MODE": "off",
+        "WELCOME_BATCH_LIMIT": "1",
+        "EMAIL_LEMBRETES_MODE": "off",
+        "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
+        "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
+        "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",
+        "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
+        "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
+        "AI_PROVIDER": "openrouter",
+        "AUTOPILOT_WORKERS_AI_ENABLED": "true",
+        "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,google/gemini-2.5-flash-lite,mistralai/mistral-small-24b-instruct-2501",
+        "OPENROUTER_PERMITIR_PAGO": "true",
+        "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
+        "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",
+        "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
+        "OPENROUTER_USER_DAILY_LIMIT": "100",
+        "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
+        "WHISPER_USER_DAILY_LIMIT": "940",
+        "GEMINI_MODEL": "gemini-2.5-flash",
+        "STRIPE_PRICE_PRO": "price_1TqUOA4zjAI9pGd77ZyOCYcQ",
+        "STRIPE_PRICE_PRO_ANUAL": "price_1TqUVb4zjAI9pGd7fGSU4b4v",
+        "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
+        "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
+        "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
+        "MP_WEBHOOK_REQUIRE_SIGNATURE": "true"
+      },
+      "ai": { "binding": "AI" },
+      "ratelimits": [
+        { "name": "IA_RL", "namespace_id": "2001", "simple": { "limit": 20, "period": 60 } },
+        { "name": "LINK_RL", "namespace_id": "2002", "simple": { "limit": 12, "period": 60 } },
+        { "name": "STRIPE_RL", "namespace_id": "2003", "simple": { "limit": 10, "period": 60 } },
+        { "name": "ADMIN_RL", "namespace_id": "2004", "simple": { "limit": 30, "period": 60 } },
+        { "name": "ETA_RL", "namespace_id": "2005", "simple": { "limit": 20, "period": 60 } },
+        { "name": "CNPJ_RL", "namespace_id": "2006", "simple": { "limit": 20, "period": 60 } },
+        { "name": "MP_RL", "namespace_id": "2008", "simple": { "limit": 12, "period": 60 } },
+        { "name": "TRANSCREVER_RL", "namespace_id": "2009", "simple": { "limit": 20, "period": 60 } },
+        { "name": "MPHOOK_RL", "namespace_id": "2010", "simple": { "limit": 120, "period": 60 } },
+        { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } },
+        { "name": "ABACATE_RL", "namespace_id": "2012", "simple": { "limit": 12, "period": 60 } },
+        { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } }
+      ]
+    }
   },
   // O áudio fica na Cloudflare; somente a transcrição textual segue ao
   // OpenRouter quando o modo solicitado é orçamento.
@@ -90,6 +197,14 @@
     // devolve `indisponivel` e a rota SEGUE (política `sensivel:false`), porque
     // derrubar cadastro de cliente por causa de limitador ausente seria pior que
     // o abuso que ele previne. /feriados não tem binding: não chama ninguém.
-    { "name": "CEP_RL", "namespace_id": "1011", "simple": { "limit": 30, "period": 60 } }
+    { "name": "CEP_RL", "namespace_id": "1011", "simple": { "limit": 30, "period": 60 } },
+    // Pix de plano AbacatePay (criar cobrança/status) por usuário. Id novo de
+    // propósito: o 1007 foi do ABACATE_RL antigo e não se reaproveita.
+    { "name": "ABACATE_RL", "namespace_id": "1012", "simple": { "limit": 12, "period": 60 } },
+    // /abacate/webhook por IP, conferido ANTES do `?webhookSecret=`: barra
+    // tentativa de adivinhar o segredo e a amplificação se ele vazar. Teto alto de
+    // propósito (volume real: unidades por dia); 429 só faz a AbacatePay reenviar.
+    // Id novo (1013): não reaproveita o 1007.
+    { "name": "ABACATEHOOK_RL", "namespace_id": "1013", "simple": { "limit": 60, "period": 60 } }
   ]
 }

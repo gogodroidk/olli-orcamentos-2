@@ -5,6 +5,7 @@ import { useApplyBranding } from "@/olli/branding";
 import { useSettings } from "@/store/settingStore";
 import Header from "./header";
 import Main from "./main";
+import AssistenteFlutuante from "../components/assistente-flutuante";
 import { NavHorizontalLayout, NavMobileLayout, NavVerticalLayout, useFilteredNavData } from "./nav";
 
 export default function DashboardLayout() {
@@ -26,6 +27,7 @@ export default function DashboardLayout() {
 		<div data-slot="slash-layout-root" className="w-full min-h-screen bg-background text-foreground">
 			<PularParaConteudo />
 			{isMobile ? <MobileLayout /> : <PcLayout />}
+			<AssistenteFlutuante />
 		</div>
 	);
 }

@@ -52,7 +52,17 @@ export interface ResumoAssinatura {
 	ativo: boolean;
 	/** Pago, porém a última cobrança FALHOU (past_due) — acesso mantido, mas tem que resolver. */
 	pagamentoFalhou: boolean;
-	origem?: "gratis" | "pagamento" | "admin";
+	origem?: "gratis" | "pagamento" | "admin" | "trial";
+	/**
+	 * Só preenchido para plano PAGO (`origem === "pagamento"`), lido de `stripe_subscription_id`:
+	 *  - `false` → sem assinatura na Stripe = acesso comprado por Pix, que NÃO renova sozinho;
+	 *  - `true`  → há assinatura recorrente na Stripe;
+	 *  - `undefined` → não deu para ler. NÃO é "Pix": quem chega aqui vê a tela de sempre
+	 *    (erro ≠ vazio — "não sei" nunca vira "não renova").
+	 */
+	renovaSozinho?: boolean;
+	/** Há cliente na Stripe (compra antiga no cartão) — o Portal ainda serve para ver faturas. */
+	temClienteStripe?: boolean;
 }
 
 function mapearPlano(v: unknown): PlanoId {

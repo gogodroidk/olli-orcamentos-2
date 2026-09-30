@@ -17,12 +17,12 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
   titulo="Central de Ajuda — OLLI"
   descricao="Guias diretos pra usar a OLLI no dia a dia: orçamentos, link do cliente, ordens de serviço, equipe, planos, backup, offline e privacidade."
 >
-  <!-- ══════════ CABEÇALHO ══════════ -->
+  {/* ══════════ CABEÇALHO ══════════ */}
   <Header>
-    <a href="/" class="text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
+    <a href="/" class="inline-flex min-h-11 items-center text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
   </Header>
 
-  <!-- ══════════ HERO ══════════ -->
+  {/* ══════════ HERO ══════════ */}
   <section class="mx-auto max-w-4xl px-6 pt-14 sm:pt-20">
     <span class="eyebrow">Central de Ajuda</span>
     <h1 class="mt-4 text-[clamp(2rem,4vw,3rem)] font-extrabold tracking-tight text-ink">
@@ -32,12 +32,12 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
       Guias diretos pra usar a OLLI no dia a dia — cada artigo descreve o que o app realmente faz.
     </p>
 
-    <!-- Índice das categorias -->
+    {/* Índice das categorias */}
     <nav class="mt-8 flex flex-wrap gap-2.5">
       {categorias.map((cat) => (
         <a
           href={`#${cat.id}`}
-          class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
+          class="inline-flex min-h-11 items-center rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
         >
           {cat.titulo}
         </a>
@@ -45,7 +45,7 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
     </nav>
   </section>
 
-  <!-- ══════════ CATEGORIAS + ARTIGOS ══════════ -->
+  {/* ══════════ CATEGORIAS + ARTIGOS ══════════ */}
   <main class="mx-auto max-w-4xl px-6 py-16">
     <div class="space-y-16">
       {categorias.map((cat) => (
@@ -95,6 +95,6 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
     </div>
   </main>
 
-  <!-- ══════════ RODAPÉ ══════════ -->
+  {/* ══════════ RODAPÉ ══════════ */}
   <Footer class="max-w-4xl" />
 </Layout>

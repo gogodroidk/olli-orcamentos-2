@@ -5,13 +5,14 @@
  * Exit 0 = passou; 1 = falhou. O exit code é a prova.
  *
  * ═══ O QUE ESTÁ SENDO TRANCADO ═══
- * Decisão do dono, textual e final: "deixe os pagamentos do CARTÃO no STRIPE, e os
- * pagamentos PIX no MERCADO PAGO." Traduzido em invariante de código:
+ * Decisões do dono: "deixe os pagamentos do CARTÃO no STRIPE, e os pagamentos PIX
+ * no MERCADO PAGO" (jul/2026) e, em 29/09/2026, "vamos utilizar o AbacatePay para
+ * fazer os pagamentos através do Pix" — para o PLANO. Invariante de código:
  *
- *   CARTÃO  → `/stripe/*`      (checkout, portal, faturas, método)
- *   PIX     → `/mp/*`          (hoje: só recarga de créditos)
- *   NADA    → `/mp/plano/assinatura` (assinatura recorrente por CARTÃO no MP) e
- *             `/abacate/*` (terceiro gateway de Pix, morto)
+ *   CARTÃO        → `/stripe/*`   (checkout, portal, faturas, método)
+ *   PIX CRÉDITOS  → `/mp/*`       (recarga de créditos, arquivo dono único)
+ *   PIX DO PLANO  → `/abacate/*`  (período de plano, arquivo dono único)
+ *   NADA          → `/mp/plano/*` (plano no MP — o Pix de plano é da AbacatePay)
  *
  * Este script NÃO testa comportamento em runtime — ele tranca o DESTINO das chamadas.
  * É a rede que pega "alguém colou um botão que cobra pelo provedor errado", que é o
@@ -98,6 +99,10 @@ interface Alvo {
   donoDoPix: string | null;
   /** Arquivos que podem falar com a Stripe. */
   donosDoCartao: string[];
+  /** Arquivo único que pode chamar `/abacate/*` (Pix do plano), ou null. */
+  donoDoPixPlano: string | null;
+  /** Arquivos que podem CITAR a AbacatePay (o dono + a UI do Pix do plano). */
+  citamAbacate: string[];
 }
 
 const ALVOS: Alvo[] = [
@@ -105,6 +110,9 @@ const ALVOS: Alvo[] = [
     rotulo: 'APP (src/)',
     dir: 'src',
     esperadas: [
+      '/abacate/config',
+      '/abacate/plano/pix',
+      '/abacate/status',
       '/mp/pacotes',
       '/mp/pix',
       '/mp/status',
@@ -115,15 +123,42 @@ const ALVOS: Alvo[] = [
     ],
     donoDoPix: 'src/services/pixCreditos.ts',
     donosDoCartao: ['src/screens/PlanosScreen.tsx', 'src/services/assinatura.ts'],
+    donoDoPixPlano: 'src/services/pixPlano.ts',
+    // Além do código do Pix do plano, os TEXTOS ao usuário que precisam nomear o
+    // provedor: Termos §4 e Privacidade §5 (LGPD: operador que recebe dado de
+    // pagamento) e o artigo de Planos da Central de Ajuda. Texto, não rota.
+    citamAbacate: [
+      'src/components/PixPlanoModal.tsx',
+      'src/content/ajuda/index.ts',
+      'src/content/legal/privacidade.ts',
+      'src/content/legal/termos.ts',
+      'src/screens/PlanosScreen.tsx',
+      'src/services/pixPlano.ts',
+    ],
   },
   {
 		rotulo: 'PAINEL (webapp/src/)',
 		dir: 'webapp/src',
-		esperadas: ['/stripe/checkout', '/stripe/faturas', '/stripe/metodo', '/stripe/portal'],
+		esperadas: [
+			'/abacate/config',
+			'/abacate/plano/pix',
+			'/abacate/status',
+			'/stripe/checkout',
+			'/stripe/faturas',
+			'/stripe/metodo',
+			'/stripe/portal',
+			'/stripe/status',
+		],
 		donoDoPix: null,
 		donosDoCartao: [
 			'webapp/src/pages/olli/planos/checkout.ts',
 			'webapp/src/pages/olli/planos/portal.tsx',
+		],
+		donoDoPixPlano: 'webapp/src/pages/olli/planos/pix.ts',
+		citamAbacate: [
+			'webapp/src/pages/olli/planos/DialogPix.tsx',
+			'webapp/src/pages/olli/planos/index.tsx',
+			'webapp/src/pages/olli/planos/pix.ts',
 		],
   },
 ];
@@ -138,7 +173,6 @@ for (const alvo of ALVOS) {
 
   const proibidos: Record<string, string[]> = {
     '/mp/plano': [],       // plano no MP: o Pix de plano está dormente e o cartão saiu
-    '/abacate': [],        // gateway morto
     'mercadopago.com': [], // o cliente NUNCA fala direto com o gateway
     'preapproval': [],     // assinatura recorrente por cartão no MP
   };
@@ -157,20 +191,22 @@ for (const alvo of ALVOS) {
     checar(`nenhum arquivo chama "${termo}"`, arqs, []);
   }
 
-  // "abacate" é a ÚNICA palavra proibida também em COMENTÁRIO: o gateway saiu do
-  // produto, então o cliente não tem por que citá-lo — e o comentário que dizia
-  // "recarga por Pix (AbacatePay)" em AppNavigator.tsx sobreviveu meses depois da
-  // migração para o Mercado Pago, mandando o próximo leitor procurar no lugar errado.
+  // "abacate" é conferido também em COMENTÁRIO: só os arquivos do Pix do plano o
+  // citam. Já houve um "recarga por Pix (AbacatePay)" em AppNavigator.tsx que
+  // sobreviveu meses à troca de provedor e mandava o leitor ao lugar errado.
   const citamAbacate = arquivos.filter((rel) =>
     readFileSync(join(RAIZ, rel), 'utf8').toLowerCase().includes('abacate'),
-  );
-  checar('ninguém cita o AbacatePay (nem em comentário)', citamAbacate, []);
+  ).sort();
+  checar('só os arquivos do Pix do plano citam a AbacatePay', citamAbacate, [...alvo.citamAbacate].sort());
 
   const todas = [...new Set([...porArquivo.values()].flat())].sort();
   checar('inventário FECHADO de rotas de gateway', todas, [...alvo.esperadas].sort());
 
   const comPix = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/mp/'))).map(([f]) => f);
   checar('Pix (/mp/*) só no arquivo dono', comPix, alvo.donoDoPix ? [alvo.donoDoPix] : []);
+
+  const comPixPlano = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/abacate/'))).map(([f]) => f);
+  checar('Pix do plano (/abacate/*) só no arquivo dono', comPixPlano, alvo.donoDoPixPlano ? [alvo.donoDoPixPlano] : []);
 
   const comStripe = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/stripe/'))).map(([f]) => f).sort();
   checar('cartão (/stripe/*) só nos arquivos donos', comStripe, [...alvo.donosDoCartao].sort());

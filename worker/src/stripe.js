@@ -16,6 +16,7 @@
  * Escrita no Supabase é sempre via SERVICE_ROLE (bypassa RLS) — o usuário só tem
  * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
  */
+import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 
@@ -44,6 +45,14 @@ const LOOKUP_PARA_PLANO = {
  */
 const NIVEL_PLANO = { gratis: 0, pro: 1, empresa: 2 };
 
+function customerIdStripe(valor) {
+  return typeof valor === 'string' && /^cus_[A-Za-z0-9]+$/.test(valor) ? valor : null;
+}
+
+function subscriptionIdStripe(valor) {
+  return typeof valor === 'string' && /^sub_[A-Za-z0-9]+$/.test(valor) ? valor : null;
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
@@ -57,6 +66,7 @@ export const STRIPE_ROUTES = new Set([
   '/stripe/checkout',
   '/stripe/webhook',
   '/stripe/portal',
+  '/stripe/status',
   '/stripe/faturas',
   '/stripe/metodo',
   '/stripe/sucesso',
@@ -382,9 +392,29 @@ export async function handlePortal(request, env) {
 
   const assinatura = await getAssinatura(env, user.id);
   if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
-  const customerId = assinatura ? assinatura.stripe_customer_id : null;
+  let customerId = customerIdStripe(assinatura && assinatura.stripe_customer_id);
+  // Registros antigos podem ter a subscription persistida sem o espelho do
+  // customer. A Stripe continua sendo a fonte autoritativa para recuperar o
+  // customer; sem este fallback o assinante vê "sem assinatura" e nunca chega
+  // ao portal para trocar cartão ou cancelar.
+  const subscriptionId = subscriptionIdStripe(assinatura && assinatura.stripe_subscription_id);
+  if (!customerId && subscriptionId) {
+    const subscription = await stripeGet(
+      env,
+      `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+    );
+    const customer = subscription.ok && subscription.data ? subscription.data.customer : null;
+    customerId = customerIdStripe(typeof customer === 'string' ? customer : customer && customer.id);
+    if (customerId) {
+      await upsertAssinatura(env, user.id, { stripe_customer_id: customerId });
+    }
+  }
   // Sem assinatura/cliente Stripe não há o que gerenciar → 404 amigável.
-  if (!customerId) return json({ erro: 'sem_assinatura' }, 404);
+  if (!customerId) {
+    return assinatura
+      ? json({ ok: false, erro: 'assinatura_nao_stripe' }, 409)
+      : json({ ok: false, erro: 'sem_assinatura' }, 404);
+  }
 
   const { ok, data } = await stripePost(env, '/billing_portal/sessions', {
     customer: customerId,
@@ -392,6 +422,22 @@ export async function handlePortal(request, env) {
   });
   if (!ok || !data || !data.url) return json({ ok: false, erro: 'falha_portal' }, 502);
   return json({ ok: true, url: data.url });
+}
+
+/**
+ * Informa se a linha do usuário representa uma assinatura Stripe gerenciável.
+ * Não devolve IDs do provedor e não chama a Stripe: serve para a interface não
+ * oferecer cancelamento/cartão em concessões administrativas legadas.
+ */
+export async function handleStripeStatus(request, env) {
+  const user = await getUser(request, env);
+  if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
+  if (!(await rateOk(env, chaveLeitura(user.id)))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+  const assinatura = await getAssinatura(env, user.id);
+  if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (!assinatura) return json({ ok: true, gerenciavel: false, origem: 'nenhuma' });
+  const gerenciavel = Boolean(customerIdStripe(assinatura.stripe_customer_id));
+  return json({ ok: true, gerenciavel, origem: gerenciavel ? 'stripe' : 'administrativa' });
 }
 
 // ─── GET /stripe/faturas — histórico de faturas do usuário ───────────────────
@@ -425,7 +471,7 @@ export async function handleFaturas(request, env) {
 
   const assinatura = await getAssinatura(env, user.id);
   if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
-  const customerId = assinatura ? assinatura.stripe_customer_id : null;
+  const customerId = customerIdStripe(assinatura && assinatura.stripe_customer_id);
   if (!customerId) return json({ ok: true, faturas: [] });
 
   const { ok, data } = await stripeGet(
@@ -475,7 +521,7 @@ export async function handleMetodo(request, env) {
 
   const assinatura = await getAssinatura(env, user.id);
   if (assinatura && assinatura.error) return json({ ok: false, erro: 'indisponivel' }, 503);
-  const customerId = assinatura ? assinatura.stripe_customer_id : null;
+  const customerId = customerIdStripe(assinatura && assinatura.stripe_customer_id);
   if (!customerId) return json({ ok: true, metodo: null });
 
   let card = null;
@@ -836,6 +882,9 @@ export async function handleWebhook(request, env) {
     // Eventos não tratados: 200 (a Stripe só precisa saber que recebemos).
   } catch (e) {
     console.error('[olli-stripe] webhook falhou:', e && (e.message || e));
+    // O 500 abaixo SEGURA a exceção: sem isto o withSentry nunca a vê e um webhook
+    // de pagamento quebrando em loop passaria calado. Corpo/assinatura não vão.
+    capturarExcecao(e, { origem: 'webhook', rota: '/stripe/webhook' });
     // 500 → a Stripe reenvia. Upserts são idempotentes, então reenvio é seguro.
     // NÃO marca como processado: queremos que o reenvio da Stripe seja tentado de novo.
     // Marca 'falhou' só para a trilha: `reivindicarEvento` trata 'falhou' e
@@ -963,7 +1012,20 @@ export async function handleStripe(request, env, url) {
   }
   if (path === '/stripe/webhook') {
     // Sem OPTIONS/CORS: a Stripe fala servidor-a-servidor, não browser.
-    if (request.method === 'POST') return handleWebhook(request, env);
+    if (request.method === 'POST') {
+      // O HMAC continua sendo a autenticação autoritativa, mas o limite por IP
+      // vem antes de ler/bufferizar o corpo. Um emissor abusivo não consegue
+      // gastar memória do isolate com assinaturas inválidas; 429 faz a Stripe
+      // reenviar legitimamente quando o balde voltar a abrir.
+      const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+      if (!(await rateOk(env, `webhook:${ip}`))) return json({ erro: 'muitas_requisicoes' }, 429);
+      return handleWebhook(request, env);
+    }
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
+  if (path === '/stripe/status') {
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (request.method === 'GET') return handleStripeStatus(request, env);
     return json({ erro: 'metodo_nao_suportado' }, 405);
   }
 

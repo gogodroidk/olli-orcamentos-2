@@ -10,14 +10,15 @@
  *   validadeOrcamento, dataVisitaTecnica,
  *   agendamentoServico, dataRecebimento ..... 'DD/MM/AAAA'      (22/07/2026)
  *
- * ⚠️ BUG VIVO NO APP (achado em 14/07/2026, confirmado no banco de produção):
- * `reciboToRow` do app joga a string 'DD/MM/AAAA' DIRETO na coluna timestamptz
+ * ⚠️ DÍVIDA HISTÓRICA (achada em 14/07/2026 e confirmada no banco): versões
+ * antigas do app enviavam 'DD/MM/AAAA' diretamente para a coluna timestamptz
  * `recibos.data_recebimento`. O Postgres do projeto está em DateStyle=ISO,MDY:
  *   • "10/07/2026" (10 de julho) vira 2026-10-07 → 7 de OUTUBRO. Dia e mês trocados.
  *   • Dia > 12 (ex.: "20/07/2026") o Postgres REJEITA — e como o sync do app engole
- *     o erro, o recibo simplesmente NUNCA sobe. Some.
- * Por isso, aqui: a coluna recebe ISO de verdade (via `brParaIso`), e o BLOB
- * continua em DD/MM/AAAA (que é o que o app sabe ler). A verdade é o blob.
+ *     o erro, o recibo simplesmente não subia.
+ * O app móvel atual e o painel já enviam ISO de verdade; este módulo permanece
+ * tolerante porque as linhas antigas ainda não foram corrigidas em produção.
+ * O BLOB continua em DD/MM/AAAA e é a fonte da data civil do documento.
  */
 
 const doisDigitos = (n: number) => String(n).padStart(2, "0");
@@ -60,7 +61,12 @@ export function brParaIso(br: string | null | undefined): string | null {
 	const ymd = brParaYmd(br);
 	if (!ymd) return null;
 	const d = new Date(`${ymd}T12:00:00Z`); // meio-dia UTC: imune a virada de fuso
-	return Number.isNaN(d.getTime()) ? null : d.toISOString();
+	if (Number.isNaN(d.getTime())) return null;
+	// `new Date('2026-02-31')` não falha: normaliza silenciosamente para março.
+	// Confere a volta para impedir que uma data impossível vire outra data válida.
+	const [ano, mes, dia] = ymd.split('-').map(Number);
+	if (d.getUTCFullYear() !== ano || d.getUTCMonth() + 1 !== mes || d.getUTCDate() !== dia) return null;
+	return d.toISOString();
 }
 
 /** Data + hora local → ISO (para `agendamentos.inicio`, que é timestamptz de verdade). */
