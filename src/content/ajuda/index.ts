@@ -7,7 +7,12 @@
  * senão a Central de Ajuda começa a mentir pro usuário.
  */
 
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from '../../services/entitlements';
+import {
+  IA_USOS_GRATIS_MES,
+  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  TRIAL_PRO_DIAS,
+} from '../../services/entitlements';
+import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos';
 
 /** Tipo de bloco do corpo de um artigo. */
 export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
@@ -19,6 +24,15 @@ export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
 export interface AjudaBloco {
   tipo: AjudaBlocoTipo;
   conteudo: string | string[];
+  /**
+   * Bloco que ensina a PAGAR (Pix, provedor do Pix): só aparece onde o OLLI pode
+   * vender — a web. Este conteúdo também roda no app das lojas (iOS e Android da
+   * Google Play), que não tem compra nem pode mandar pagar por fora — mesma regra
+   * de `lembreteAssinaturaLoja.ts` e da AssinaturaScreen. Lá a tela de Planos NÃO
+   * mostra "Pagar com Pix", então o texto também seria falso. Filtre com
+   * `corpoVisivel()`.
+   */
+  soNaWeb?: boolean;
 }
 
 export interface AjudaCategoria {
@@ -65,7 +79,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          'O OLLI acompanha o ciclo inteiro do seu serviço: você monta o orçamento, o cliente aprova pelo próprio celular (sem instalar nada), você organiza a execução em campo e fecha com o recibo. Tudo funciona offline — o app sincroniza sozinho quando a internet volta.',
+          'O OLLI acompanha o ciclo inteiro do seu serviço: você monta o orçamento, o cliente aprova pelo próprio celular (sem instalar nada), você organiza a execução em campo e fecha com o recibo. No aplicativo Android, o essencial funciona offline e sincroniza sozinho quando a internet volta; pelo navegador, o OLLI precisa de conexão.',
       },
       {
         tipo: 'passos',
@@ -246,7 +260,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
           'No orçamento aprovado, toque em "Criar ordem de serviço" (ou crie uma manual em Ordens de serviço).',
           'Atribua um técnico da equipe — ele passa a ver essa OS no aparelho dele.',
           'A OS caminha pelos status Aberta → Agendada → Em execução → Concluída (ou Pausada/Cancelada quando necessário).',
-          'O técnico marca o checklist item a item e anexa fotos direto pelo celular, mesmo sem internet no local.',
+          'O técnico marca o checklist item a item e anexa fotos direto pelo celular — no aplicativo Android, mesmo sem internet no local.',
         ],
       },
       {
@@ -421,9 +435,12 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'passos',
         conteudo: [
-          'Grátis (R$ 0) — tudo do essencial, mais 3 usos de IA por mês.',
-          'Pro (R$ 39/mês) — IA incluída com uso justo diário, relatórios, metas, radar de clientes, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.',
-          'Empresa (R$ 99/mês) — tudo do Pro, mais equipe com papéis, mapa da equipe ao vivo e o painel de gestão da empresa.',
+          // Preços e cota vêm da fonte (precosPlanos/entitlements), não digitados.
+          `Grátis (${reais(0)}) — tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
+          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — IA incluída com uso justo diário, relatórios, metas, radar de clientes, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.`,
+          // Mapa ao vivo e painel de gestão são concedidos, mas ainda não entregues
+          // (ver `emBreve` em web/src/data/recursos.ts) — aqui também dizem "em breve".
+          `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais equipe com papéis e permissões. Mapa da equipe ao vivo e painel de gestão da empresa: em breve.`,
         ],
       },
       {
@@ -434,8 +451,15 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         ],
       },
       {
+        // Só na web: no app das lojas não há Pix nem pode haver texto mandando pagar.
+        tipo: 'paragrafo',
+        soNaWeb: true,
+        conteudo:
+          'Prefere Pix? Quando o Pix estiver disponível, a tela de Planos mostra "Pagar com Pix": você paga 1 mês ou 1 ano, pelo mesmo preço, e ele não renova sozinho — perto do vencimento o OLLI avisa para renovar. O Pix é processado pela AbacatePay.',
+      },
+      {
         tipo: 'aviso',
-        conteudo: 'A cobrança é feita por um provedor de pagamento (Stripe). O OLLI nunca guarda o número do seu cartão.',
+        conteudo: 'O cartão é cobrado pela Stripe. O OLLI nunca guarda o número do seu cartão nem os seus dados bancários.',
       },
     ],
   },
@@ -516,13 +540,13 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
     id: 'offline-como-funciona',
     categoriaId: 'dados',
     titulo: 'Offline: como funciona',
-    resumo: 'Por que o OLLI funciona sem internet — e o que realmente precisa de conexão.',
+    resumo: 'Por que o aplicativo Android funciona sem internet — e o que realmente precisa de conexão.',
     tags: ['sem internet', 'sem sinal', 'campo'],
     corpo: [
       {
         tipo: 'paragrafo',
         conteudo:
-          'O OLLI foi pensado pra quem trabalha em campo, muitas vezes sem sinal. Todo o essencial roda 100% local, no banco de dados do próprio aparelho — nada trava por falta de internet.',
+          'O aplicativo Android do OLLI foi pensado pra quem trabalha em campo, muitas vezes sem sinal. Todo o essencial roda 100% local, no banco de dados do próprio aparelho — nada trava por falta de internet. Pelo navegador (no celular ou no computador), o OLLI precisa de internet.',
       },
       {
         tipo: 'passos',
@@ -595,6 +619,15 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Os blocos que ESTA plataforma pode mostrar. `podeVender` = `plataformaPodeVender`
+ * (`services/lembreteAssinaturaLoja.ts`): só a web. Nas lojas somem os blocos
+ * `soNaWeb` (Pix e provedor do Pix).
+ */
+export function corpoVisivel(artigo: AjudaArtigo, podeVender: boolean): AjudaBloco[] {
+  return podeVender ? artigo.corpo : artigo.corpo.filter((b) => !b.soNaWeb);
+}
 
 export function getCategoria(id: string): AjudaCategoria | undefined {
   return CATEGORIAS_AJUDA.find(c => c.id === id);

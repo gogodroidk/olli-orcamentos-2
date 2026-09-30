@@ -22,6 +22,7 @@ const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.me
 const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
 const lembreteAssinaturaFonte = fileURLToPath(new URL("../src/services/lembreteAssinatura.ts", import.meta.url));
 const sentryScrubFonte = fileURLToPath(new URL("../src/services/sentryScrub.ts", import.meta.url));
+const sentryCapturaFonte = fileURLToPath(new URL("../src/services/sentryCaptura.ts", import.meta.url));
 const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
 const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesComerciais.ts", import.meta.url));
@@ -74,6 +75,7 @@ export default defineConfig(({ mode }) => {
 				"@entitlements": entitlementsFonte,
 				"@lembreteAssinatura": lembreteAssinaturaFonte,
 				"@sentry-scrub": sentryScrubFonte,
+				"@sentry-captura": sentryCapturaFonte,
 				"@verticais": verticaisFonte,
 				"@vertical-segmento": verticalSegmentoFonte,
 				"@limites-comerciais": limitesComerciaisFonte,

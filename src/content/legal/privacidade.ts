@@ -48,9 +48,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '17 de agosto de 2026',
+  atualizadoEm: '29 de setembro de 2026',
   aviso:
-    'Documento atualizado em 17 de agosto de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 29 de setembro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -131,8 +131,8 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Legítimo interesse do empregador/contratante na gestão operacional da equipe em campo (art. 7º, IX), com uso restrito à finalidade de coordenação de rota/expediente. Você pode se opor a este tratamento a qualquer momento pelos canais de atendimento.',
         },
         {
-          dado: 'Dados de assinatura (via Stripe)',
-          finalidade: 'Processar pagamento, controlar o seu plano e emitir cobranças. O OLLI NÃO armazena o número do seu cartão.',
+          dado: 'Dados de assinatura e de pagamento (via Stripe ou AbacatePay)',
+          finalidade: 'Processar pagamento no cartão ou no Pix, controlar o seu plano e emitir cobranças. O OLLI NÃO armazena o número do seu cartão nem os seus dados bancários.',
           base: 'Execução de contrato e cumprimento de obrigação legal/fiscal (art. 7º, V e II).',
         },
         {
@@ -188,6 +188,9 @@ export const PRIVACIDADE: LegalDoc = {
         'Mercado Pago — processamento das cobranças Pix usadas para recarregar créditos ' +
           'nos canais em que essa recarga estiver disponível. Recebe os dados necessários para gerar e confirmar o pagamento; ' +
           'o OLLI não tem acesso aos seus dados bancários.',
+        'AbacatePay — processamento das cobranças Pix usadas para pagar um período do plano Pro ' +
+          'ou Empresa, nos canais em que esse pagamento estiver disponível. Recebe os dados necessários ' +
+          'para gerar e confirmar o Pix; o OLLI não tem acesso aos seus dados bancários.',
         'OpenRouter e provedores de inferência selecionados — roteamento e processamento dos ' +
           'pedidos de IA em texto. Exigimos rotas que declarem não usar o conteúdo para treinamento; ' +
           'o modelo e o provedor efetivamente disponíveis podem variar dentro da lista gratuita configurada.',

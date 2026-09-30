@@ -63,6 +63,7 @@
 			"@auth-policy": ["../src/services/authPolicy.ts"],
 			"@oauth-retorno": ["../src/services/oauthRetorno.ts"],
 			"@sentry-scrub": ["../src/services/sentryScrub.ts"],
+			"@sentry-captura": ["../src/services/sentryCaptura.ts"],
 			"@ajuda": ["../src/content/ajuda/index.ts"]
 		}
 	},

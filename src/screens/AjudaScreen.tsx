@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  Modal, Linking, Alert,
+  Modal, Linking, Alert, Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,8 +21,9 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { aplicarSeo } from '../utils/seoWeb';
 import {
   CATEGORIAS_AJUDA, ARTIGOS_AJUDA, getCategoria, getArtigo, getArtigosDaCategoria,
-  buscarArtigos, type AjudaArtigo, type AjudaBloco,
+  buscarArtigos, corpoVisivel, type AjudaArtigo, type AjudaBloco,
 } from '../content/ajuda';
+import { plataformaPodeVender } from '../services/lembreteAssinaturaLoja';
 
 /**
  * Params aceitos por esta tela. Copie esta linha para `RootStackParamList` (em
@@ -372,7 +373,7 @@ export default function AjudaScreen() {
 
             <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }}>
               <Text style={styles.modalResumo}>{artigo.resumo}</Text>
-              {artigo.corpo.map((b, i) => <Bloco key={i} bloco={b} />)}
+              {corpoVisivel(artigo, plataformaPodeVender(Platform.OS)).map((b, i) => <Bloco key={i} bloco={b} />)}
 
               <View style={styles.duvidaBox}>
                 <Text style={styles.duvidaTitle}>Ainda com dúvida?</Text>
