@@ -63,7 +63,7 @@ import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
-import { handleEtaSaida } from './etaSaida.js';
+import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
@@ -505,77 +505,9 @@ async function handleDiag(bodyText, env, user) {
 }
 
 // ─── ETA COM TRÂNSITO (Routes API) ───────────────────────────
-// Recebe {origem:{lat,lng}, destino:{lat,lng}} e devolve os minutos com trânsito
-// e a distância. A "chegada" é calculada no APP (fuso do aparelho), não aqui. A
-// chave é secret do Worker (OLLI_ROUTES_API_KEY), restrita ao Routes API.
-function coordOk(p) {
-  return p && Number.isFinite(p.lat) && Number.isFinite(p.lng)
-    && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
-}
-async function handleEta(request, env) {
-  const user = await getUser(request, env);
-  if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
-  if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
-
-  // Teto de payload ANTES do parse — corpo minúsculo por natureza (2 coordenadas).
-  const corpo = await bodyMuitoGrande(request, MAX_ETA_BODY_BYTES);
-  if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
-
-  // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
-  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta).
-  //
-  // FAIL-CLOSED (`sensivel: true`), igual ao /eta/saida (etaSaida.js:570), que
-  // chama a MESMA API com a MESMA chave. Antes daqui morava o padrão gracioso
-  // (`if (env.ETA_RL) { try … } catch {}`): limiter ausente ou mudo virava
-  // permissão, calado. Não é hipótese — o docblock de rateLimit.js registra que
-  // um build por Git já apagou os 5 rate limiters em produção, e "sem limiter" é
-  // indistinguível de "dentro do limite" para quem chama. A conta que sobra é do
-  // dono, na Google. Recusar um pedido legítimo é mais barato que deixar a porta
-  // paga aberta sem vigia — e é o que a rota irmã já fazia.
-  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
-  if (!deixaPassar(estadoLimite, { sensivel: true })) {
-    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
-  }
-
-  const raw = parseJsonBody(corpo.raw);
-  const origem = raw && raw.origem;
-  const destino = raw && raw.destino;
-  if (!coordOk(origem) || !coordOk(destino)) {
-    return json({ ok: false, erro: 'coordenadas_invalidas' }, 400);
-  }
-  try {
-    const resp = await fetch(
-      'https://routes.googleapis.com/directions/v2:computeRoutes?key=' + env.OLLI_ROUTES_API_KEY,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
-        },
-        body: JSON.stringify({
-          origin: { location: { latLng: { latitude: origem.lat, longitude: origem.lng } } },
-          destination: { location: { latLng: { latitude: destino.lat, longitude: destino.lng } } },
-          travelMode: 'DRIVE',
-          routingPreference: 'TRAFFIC_AWARE',
-          languageCode: 'pt-BR',
-          units: 'METRIC',
-        }),
-      },
-    );
-    if (!resp.ok) return json({ ok: false, erro: 'rota_indisponivel' }, 502);
-    const data = await resp.json().catch(() => ({}));
-    const rota = data && Array.isArray(data.routes) ? data.routes[0] : null;
-    if (!rota || !rota.duration) return json({ ok: false, erro: 'sem_rota' });
-    const seg = parseInt(String(rota.duration).replace('s', ''), 10) || 0;
-    const minutos = Math.max(1, Math.round(seg / 60));
-    const distanciaKm = Number.isFinite(rota.distanceMeters)
-      ? Math.round(rota.distanceMeters / 100) / 10
-      : null;
-    return json({ ok: true, minutos, distanciaKm, comTransito: true });
-  } catch (e) {
-    return json({ ok: false, erro: 'eta_falhou' });
-  }
-}
+// POST /eta mora em etaSaida.js (`handleEtaAgora`), junto do /eta/saida: a
+// mesma chamada à Routes API, a mesma sanidade de distância e o motivo de a
+// rota continuar TRAFFIC_AWARE (SKU Pro) documentado num lugar só.
 
 // Consulta de CNPJ (BrasilAPI) para o CADASTRO MÁGICO do Onboarding: o app manda
 // só os 14 dígitos, o worker consulta a BrasilAPI (grátis, sem chave) e devolve a
@@ -1168,7 +1100,7 @@ const handler = {
     }
 
     if (url.pathname === '/eta' && request.method === 'POST') {
-      return handleEta(request, env);
+      return handleEtaAgora(request, env);
     }
 
     // "A que horas eu preciso SAIR pra chegar às 15h" (docs/ENXAME/IDEIA_ETA_TRANSITO.md).
