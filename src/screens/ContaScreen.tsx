@@ -163,6 +163,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
+    { key: 'contratos', icon: 'calendar-sync-outline', label: 'Contratos recorrentes', desc: 'Visitas e cobrança todo mês', color: c.success, route: 'Contratos', ocultarTecnico: true },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: '#F7B23B', route: 'CalculadoraTinta', vertical: 'pintura' },
     { key: 'anvisa', icon: 'file-certificate-outline', label: 'Comprovante de controle de pragas', desc: 'Dedetização · RDC 622/2022, art. 19', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },

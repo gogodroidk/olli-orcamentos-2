@@ -402,7 +402,12 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       observacao TEXT,
       criado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL,
-      excluido_em TEXT
+      excluido_em TEXT,
+      responsavel_id TEXT,
+      responsavel_nome TEXT,
+      recorrencia TEXT,
+      recorrencia_ate TEXT,
+      contrato_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
 
@@ -555,7 +560,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -635,6 +640,16 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   if (v < 6) {
     await addColumnIfMissing(database, 'documentos', 'arquivo_chave', 'TEXT');
     await addColumnIfMissing(database, 'documento_versoes', 'arquivo_chave', 'TEXT');
+  }
+
+  // v < 7 — agenda por técnico, recorrência e visita de contrato recorrente
+  // (espelha a migration da nuvem 20260930130500). Sem backfill: tudo nulo =
+  // "sem responsável, acontece uma vez, não veio de contrato", que é a verdade
+  // de todo agendamento criado antes desta versão.
+  if (v < 7) {
+    for (const coluna of ['responsavel_id', 'responsavel_nome', 'recorrencia', 'recorrencia_ate', 'contrato_id']) {
+      await addColumnIfMissing(database, 'agendamentos', coluna, 'TEXT');
+    }
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -2536,6 +2551,11 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     orcamentoId: r.orcamento_id ?? undefined, observacao: r.observacao ?? undefined,
     criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
     excluidoEm: r.excluido_em ?? undefined,
+    responsavelId: r.responsavel_id ?? undefined,
+    responsavelNome: r.responsavel_nome ?? undefined,
+    recorrencia: r.recorrencia ?? undefined,
+    recorrenciaAte: r.recorrencia_ate ?? undefined,
+    contratoId: r.contrato_id ?? undefined,
   };
 }
 
@@ -2862,11 +2882,14 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     for (const a of agendamentos) {
       await db.runAsync(
         `INSERT OR REPLACE INTO agendamentos
-           (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em,
+            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
          a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
-         a.observacao ?? null, a.criadoEm, a.atualizadoEm],
+         a.observacao ?? null, a.criadoEm, a.atualizadoEm,
+         a.responsavelId ?? null, a.responsavelNome ?? null, a.recorrencia ?? null,
+         a.recorrenciaAte ?? null, a.contratoId ?? null],
       );
     }
     for (const os of ordensServico) {

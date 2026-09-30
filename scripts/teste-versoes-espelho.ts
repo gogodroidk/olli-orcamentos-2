@@ -21,7 +21,9 @@ function checar(nome: string, condicao: unknown) {
 }
 
 console.log('\nOutbox local — espelho do histórico de versões');
-checar('schema local subiu para v6', /const SCHEMA_VERSION = 6/.test(db));
+// ">= 6" e não "= 6": versões seguintes (v7 = agenda por técnico/contrato) não
+// desfazem a outbox — só um schema ANTERIOR a ela seria regressão.
+checar('schema local está em v6 ou depois', Number(/const SCHEMA_VERSION = (\d+)/.exec(db)?.[1] ?? 0) >= 6);
 checar('tabela nova carrega a marca pendente', /espelho_pendente INTEGER NOT NULL DEFAULT 1/.test(db));
 checar('bancos existentes recebem migration aditiva', /if \(v < 4\)[\s\S]{0,260}addColumnIfMissing\(database, 'orcamento_versoes', 'espelho_pendente'/.test(db));
 checar('índice da outbox só nasce depois da migration', /await runMigrations\(database\);[\s\S]{0,400}idx_orcamento_versoes_pendente/.test(db) && !/idx_orcamento_versoes_pendente[\s\S]{0,80}await runMigrations/.test(db));

@@ -157,7 +157,7 @@ do técnico antes de virar execução de campo. Ordem adotada:
 | **PMOC 1 — inventário + QR** | `assets`, fotos, QR, ficha e telas | **Funcional no repo**; cadastro de unidades/sistemas e impressão em lote ainda parciais | Teste físico do QR, foto, sync e isolamento em dois aparelhos |
 | **PMOC 2 — plano + recorrência** | `pmoc_plans`, versões, periodicidades e OS recorrentes | **Funcional no repo** | Revalidar migrations live e executar ciclo mensal real sem duplicidade |
 | **PMOC 3 — execução** | checklist offline, leituras, fotos antes/depois, assinatura, materiais, relatório de visita | **Parcial**: reutiliza OS/checklist, mas não fecha o dossiê PMOC | Sprint de campo + teste offline real |
-| **PMOC 4 — contrato** | `service_contracts`/versões, SLA, reajuste, renovação, margem | **Fundação apenas** | Biblioteca/modelo jurídico revisado, ciclo comercial e assinatura |
+| **PMOC 4 — contrato** | `service_contracts`/versões, SLA, reajuste, renovação, margem | **Contrato recorrente por ativo no repo (30/09)**: cliente + ativos + periodicidade + valor, visitas geradas sem duplicar (`contrato_visitas`), agenda por técnico. Versões/SLA/reajuste seguem só fundação | Aplicar a migration 20260930130500, ligar o cron e rodar um ciclo mensal real; modelo jurídico revisado |
 | **PMOC 5 — não conformidades** | NCs, ações corretivas e orçamento derivado | **Planejada** | Implementar depois da execução versionada |
 | **PMOC 6 — portal PMOC** | cliente vê ativos, visitas, documentos e NCs liberadas | **Planejada** | Modelo de autorização por documento e teste de privacidade |
 | **PMOC 7 — qualidade do ar** | amostragem, instrumentos, laboratório e limites versionados | **Planejada** | Revisão técnica/regulatória e integração de laboratório |
@@ -257,3 +257,29 @@ Validação histórica: a migration passou no parser da gramática Postgres
 (libpg_query) — 44 statements, sem erros — e o log do projeto registra aplicação da
 fundação e da Fase 2. A Etapa 1 atual não acessou o banco de produção; antes do próximo
 release, revalidar migrations, policies e os testes com dois usuários reais de teste.
+
+---
+
+## 9. Contrato recorrente por ativo — o PMOC como caso particular (30/09/2026)
+
+O motor genérico mora em `src/utils/contratoRecorrente.ts` (regras puras) e
+`src/utils/contratoRecorrenteGeracao.ts` (reserve → construa → confirme). App, painel e o
+cron do worker (`worker/src/contratosJob.js`) chamam as MESMAS funções.
+
+- **Contrato** = `service_contracts` estendida: cliente, ativos (`[{id, nome, assetId?}]` —
+  equipamento do inventário OU ativo em texto: piscina, caixa d'água, imóvel), periodicidade
+  (mesmo vocabulário do PMOC, `FREQUENCIAS_PMOC`), horário, atividades, valor por mês ou por
+  visita, técnico responsável. Escrita só da gestão (RLS).
+- **Diferença de âncora**: o PMOC alinha períodos ao calendário ("3º trimestre"); o contrato
+  ancora no dia combinado (dia 31 → último dia dos meses curtos, sem escorregar).
+- **Idempotência**: uma visita por (tenant, contrato, mês) em `contrato_visitas` + ids
+  determinísticos (`cv_/os_cv_/ag_cv_<contrato>_<YYYY-MM>`). Reserva sem `ordem_criada_em` é
+  órfã e é reconstruída; reserva confirmada nunca ressuscita uma OS apagada.
+- **Janela**: nasce o que cai entre max(início, cadastro, hoje−45 dias) e hoje+31 dias, no
+  fuso de Brasília (UTC−3 fixo), nunca depois do fim do contrato.
+- **Cobrança**: mensagem de WhatsApp com o Pix do PRESTADOR (fail-closed como a cobrança
+  com 1 toque). O OLLI não intermedeia dinheiro.
+- **Agenda**: `agendamentos` ganhou `responsavel_id` (visão por técnico), `recorrencia`
+  (ocorrências projetadas na tela, não materializadas) e `contrato_id`.
+- Testes: `scripts/teste-contrato-recorrente.ts` (motor), `scripts/teste-contrato-recorrente-sql.ts`
+  (migration + RLS + motor sob RLS em PGlite) e `worker/scripts/teste-contratos-job.js` (cron).

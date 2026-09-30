@@ -27,13 +27,19 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { ChipsFiltro, ItemChipFiltro } from '../components/web/ChipsFiltro';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  getAgendamentosRange, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
+  getAgendamentosExpandidos, getAgendamento, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
   pedirPermissaoNotificacao, temPermissaoNotificacao, MINUTOS_ANTECEDENCIA_LEMBRETE,
 } from '../services/agenda';
+import { SeletorResponsavel, CamposRecorrencia } from '../components/agenda/CamposEquipeRecorrencia';
+import { useEquipeResponsaveis } from '../hooks/useEquipeResponsaveis';
+import {
+  filtrarPorResponsavel, idBaseDaOcorrencia, rotuloRecorrencia, type FiltroResponsavel, type OcorrenciaAgendamento,
+} from '../utils/contratoRecorrente';
+import { isoToBR, brToISO } from '../utils/masks';
 import { getClientes } from '../database/database';
 import {
   Agendamento, Cliente, TipoAgendamento, StatusAgendamento, TIPOS_AGENDAMENTO,
-  TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS,
+  TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS, type RecorrenciaAgendamento,
 } from '../types';
 import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
@@ -119,8 +125,12 @@ export default function AgendaScreen() {
 
   const [modo, setModo] = useState<Modo>('semana');
   const [ref, setRef] = useState<Date>(new Date());
-  const [itens, setItens] = useState<Agendamento[]>([]);
+  const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  // VISÃO POR TÉCNICO — filtro por responsável (a equipe vem em 3 estados; o
+  // filtro só aparece quando ela carregou e existe).
+  const equipe = useEquipeResponsaveis();
+  const [filtroTecnico, setFiltroTecnico] = useState<FiltroResponsavel>('todos');
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
@@ -143,7 +153,8 @@ export default function AgendaScreen() {
     setCarregandoErro(false);
     try {
       const [data, cls] = await Promise.all([
-        getAgendamentosRange(inicio.toISOString(), endOfDay(fim).toISOString()),
+        // Inclui as ocorrências das séries recorrentes que caem no período.
+        getAgendamentosExpandidos(inicio.toISOString(), endOfDay(fim).toISOString()),
         getClientes(),
       ]);
       setItens(data);
@@ -223,10 +234,23 @@ export default function AgendaScreen() {
     { chave: 'cancelado', rotulo: STATUS_AGENDAMENTO_LABELS.cancelado, cor: cores.danger, contagem: itens.filter(a => a.status === 'cancelado').length },
   ], [itens, cores]);
 
-  const itensFiltrados = useMemo(() => itens.filter(a =>
+  const chipsTecnico: ItemChipFiltro<FiltroResponsavel>[] = useMemo(() => {
+    if (equipe.estado.status !== 'ok' || equipe.estado.semEquipe) return [];
+    return [
+      { chave: 'todos', rotulo: 'Toda a equipe', contagem: itens.length },
+      { chave: 'sem', rotulo: 'Sem responsável', contagem: filtrarPorResponsavel(itens, 'sem').length },
+      ...equipe.estado.membros.map(m => ({
+        chave: m.userId,
+        rotulo: m.nome,
+        contagem: filtrarPorResponsavel(itens, m.userId).length,
+      })),
+    ];
+  }, [itens, equipe.estado]);
+
+  const itensFiltrados = useMemo(() => filtrarPorResponsavel(itens, filtroTecnico).filter(a =>
     (filtroTipo === 'todos' || a.tipo === filtroTipo) &&
     (filtroStatus === 'todos' || a.status === filtroStatus)
-  ), [itens, filtroTipo, filtroStatus]);
+  ), [itens, filtroTipo, filtroStatus, filtroTecnico]);
 
   const diasSemana = useMemo(() => eachDayOfInterval({
     start: startOfWeek(ref, { weekStartsOn: 1 }),
@@ -293,6 +317,7 @@ export default function AgendaScreen() {
       horaFim: '',
       endereco: '',
       observacao: '',
+      recorrenciaAteBR: '',
       ...prefill,
     });
   }
@@ -328,6 +353,19 @@ export default function AgendaScreen() {
     return isNaN(d.getTime()) ? '' : format(d, 'HH:mm');
   }
 
+  // Ocorrência projetada de uma série: edita a BASE (a série inteira). Se a base
+  // não puder ser lida, avisa em vez de abrir um formulário com dado de outro dia.
+  async function abrirItem(a: OcorrenciaAgendamento) {
+    if (!a.ocorrenciaDe) { abrirEdicao(a); return; }
+    try {
+      const base = await getAgendamento(idBaseDaOcorrencia(a.id));
+      if (base) abrirEdicao(base);
+      else Alert.alert('Não encontrado', 'Não achei o compromisso original desta repetição.');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir este compromisso agora.');
+    }
+  }
+
   function abrirEdicao(a: Agendamento) {
     const iniRaw = new Date(a.inicio);
     // Se o início vier inválido/nulo da nuvem, cai para hoje (evita RangeError no format).
@@ -346,6 +384,11 @@ export default function AgendaScreen() {
       status: a.status,
       orcamentoId: a.orcamentoId,
       criadoEm: a.criadoEm,
+      responsavelId: a.responsavelId,
+      responsavelNome: a.responsavelNome,
+      recorrencia: a.recorrencia,
+      recorrenciaAteBR: a.recorrenciaAte ? isoToBR(a.recorrenciaAte) : '',
+      contratoId: a.contratoId,
     });
   }
 
@@ -392,6 +435,11 @@ export default function AgendaScreen() {
       Alert.alert('Horário inválido', 'O horário de fim deve ser depois do horário de início.');
       return;
     }
+    const recorrenciaAte = e.recorrencia && e.recorrenciaAteBR.trim() ? brToISO(e.recorrenciaAteBR) : '';
+    if (e.recorrencia && e.recorrenciaAteBR.trim() && !recorrenciaAte) {
+      Alert.alert('Data inválida', 'Confira a data de "Repetir até" (dd/mm/aaaa) ou deixe em branco.');
+      return;
+    }
     const a: Agendamento = {
       id: e.id ?? generateId(),
       clienteId: e.clienteId,
@@ -406,6 +454,11 @@ export default function AgendaScreen() {
       observacao: e.observacao.trim() || undefined,
       criadoEm: e.criadoEm ?? nowISO(),
       atualizadoEm: nowISO(),
+      responsavelId: e.responsavelId,
+      responsavelNome: e.responsavelId ? e.responsavelNome : undefined,
+      recorrencia: e.contratoId ? undefined : e.recorrencia,
+      recorrenciaAte: !e.contratoId && e.recorrencia && recorrenciaAte ? recorrenciaAte : undefined,
+      contratoId: e.contratoId,
     };
     setSalvando(true);
     try {
@@ -622,6 +675,9 @@ export default function AgendaScreen() {
           Só aparece quando há algo pra filtrar (período com agendamentos). */}
       {!carregando && !carregandoErro && !semAgendamentosNoPeriodo && (
         <View style={{ paddingHorizontal: Spacing.base }}>
+          {chipsTecnico.length > 0 && (
+            <ChipsFiltro<FiltroResponsavel> itens={chipsTecnico} selecionado={filtroTecnico} aoSelecionar={setFiltroTecnico} />
+          )}
           <ChipsFiltro<FiltroTipoAgenda> itens={chipsTipo} selecionado={filtroTipo} aoSelecionar={setFiltroTipo} />
           <ChipsFiltro<FiltroStatusAgenda> itens={chipsStatus} selecionado={filtroStatus} aoSelecionar={setFiltroStatus} />
         </View>
@@ -673,7 +729,7 @@ export default function AgendaScreen() {
             title="Nada com esse filtro"
             subtitle="Ajuste os filtros acima para ver os compromissos deste dia."
             actionLabel="Limpar filtros"
-            onAction={() => { setFiltroTipo('todos'); setFiltroStatus('todos'); }}
+            onAction={() => { setFiltroTipo('todos'); setFiltroStatus('todos'); setFiltroTecnico('todos'); }}
           />
         </View>
       ) : (
@@ -694,7 +750,7 @@ export default function AgendaScreen() {
             // key inclui o dia selecionado: ao tocar na semana, a lista remonta e
             // a transição deixa clara a mudança de contexto sem movimento excessivo.
             <AnimatedEntrance key={`${periodoKey}:${a.id}`} index={index + 1}>
-              <AgendaItem item={a} onPress={() => abrirEdicao(a)} />
+              <AgendaItem item={a} onPress={() => { void abrirItem(a); }} />
             </AnimatedEntrance>
           ))}
         </ScrollView>
@@ -742,7 +798,7 @@ function hhmm(iso?: string | null): string {
 }
 
 // ─── ITEM DA LISTA ──────────────────────────────────────────
-function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void }) {
+function AgendaItem({ item, onPress }: { item: OcorrenciaAgendamento; onPress: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // O matiz identifica o tipo; a luminosidade cede contra o fundo REAL do chip
@@ -773,6 +829,14 @@ function AgendaItem({ item, onPress }: { item: Agendamento; onPress: () => void 
             </View>
           ) : null}
         </View>
+        {(item.responsavelNome || item.recorrencia || item.contratoId) ? (
+          <Text style={styles.itemClient} numberOfLines={1}>
+            {[
+              item.responsavelNome ? `Com ${item.responsavelNome}` : null,
+              item.contratoId ? 'Visita de contrato' : item.recorrencia ? `Repete ${rotuloRecorrencia(item.recorrencia)}` : null,
+            ].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
         {item.status !== 'agendado' && (
           <Text style={[styles.statusText, item.status === 'concluido' ? { color: cores.success } : { color: cores.danger }]}>
             {STATUS_AGENDAMENTO_LABELS[item.status]}
@@ -811,6 +875,12 @@ interface EditState {
   status?: Agendamento['status'];
   orcamentoId?: string;
   criadoEm?: string;
+  responsavelId?: string;
+  responsavelNome?: string;
+  recorrencia?: RecorrenciaAgendamento;
+  /** 'dd/mm/aaaa' digitado (ou ''). */
+  recorrenciaAteBR: string;
+  contratoId?: string;
 }
 
 function combinarDataHora(data: Date, hora: string): Date {
@@ -1038,14 +1108,36 @@ function AgendamentoForm({
           }}
         />
 
-        {/* ENDEREÇO */}
-        <OlliInput
-          label="Endereço"
-          value={state.endereco}
-          onChangeText={v => set({ endereco: v })}
-          placeholder="Rua, número, bairro"
-          leftIcon="map-marker"
+        {/* RESPONSÁVEL (técnico da equipe) e REPETIÇÃO — a visita de contrato
+            repete pelo contrato, não por aqui. */}
+        <SeletorResponsavel
+          responsavelId={state.responsavelId}
+          responsavelNome={state.responsavelNome}
+          onChange={r => set(r)}
         />
+        {state.contratoId ? (
+          <Text style={[styles.fieldLabel, { marginTop: Spacing.base }]}>Visita gerada por um contrato recorrente — a repetição vem do contrato.</Text>
+        ) : (
+          <CamposRecorrencia
+            recorrencia={state.recorrencia}
+            recorrenciaAteBR={state.recorrenciaAteBR}
+            onChange={r => set({
+              ...(('recorrencia' in r) ? { recorrencia: r.recorrencia } : {}),
+              ...(r.recorrenciaAteBR !== undefined ? { recorrenciaAteBR: r.recorrenciaAteBR } : {}),
+            })}
+          />
+        )}
+
+        {/* ENDEREÇO */}
+        <View style={{ marginTop: Spacing.base }}>
+          <OlliInput
+            label="Endereço"
+            value={state.endereco}
+            onChangeText={v => set({ endereco: v })}
+            placeholder="Rua, número, bairro"
+            leftIcon="map-marker"
+          />
+        </View>
 
         {/* OBSERVAÇÃO */}
         <OlliInput
@@ -1086,7 +1178,7 @@ function AgendamentoForm({
         {onDelete && (
           <TouchableOpacity style={[styles.deleteBtn, salvando && { opacity: 0.5 }]} onPress={onDelete} activeOpacity={0.8} disabled={salvando}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color={cores.danger} />
-            <Text style={styles.deleteText}>Excluir agendamento</Text>
+            <Text style={styles.deleteText}>{state.recorrencia ? 'Excluir a série inteira' : 'Excluir agendamento'}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

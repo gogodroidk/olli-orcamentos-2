@@ -88,6 +88,7 @@ import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
 import { processarResumoDinheiro } from './resumoDinheiroJob.js';
+import { processarContratos } from './contratosJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
@@ -926,6 +927,9 @@ const handler = {
     // Resumo diário do dinheiro parado: 7h00–7h50 de Brasília (de 10 em 10 min),
     // segunda a sábado, só com EMAIL_RESUMO_MODE=production. Também só enfileira.
     ctx.waitUntil(processarResumoDinheiro(env, { now: () => agendado }));
+    // Contratos recorrentes: gera as visitas devidas às 06:05, 12:05 e 18:05 de
+    // Brasília, só com CONTRATOS_MOTOR_MODE=production (depois da migration).
+    ctx.waitUntil(processarContratos(env, { now: () => agendado }));
   },
 
   async fetch(request, env) {

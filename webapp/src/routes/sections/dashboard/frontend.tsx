@@ -31,6 +31,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		// ─── Operação ───────────────────────────────────────────
 		{ path: "ordens-servico", element: Component("/pages/olli/ordens-servico") },
 		{ path: "agenda", element: Component("/pages/olli/agenda") },
+		{ path: "contratos", element: Component("/pages/olli/contratos") },
 		{ path: "equipamentos", element: Component("/pages/olli/equipamentos") },
 
 		{ path: "equipe", element: Component("/pages/olli/equipe") },
