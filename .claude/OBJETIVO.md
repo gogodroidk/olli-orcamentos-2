@@ -4,53 +4,39 @@
 > Ele existe para eu (Igor) nunca mais re-explicar o estado do projeto.
 > **Atualize 2–5 linhas ao fim do dia.** Custa ~300 tokens injetados e mata ~2.000 de re-explicação por chat.
 
-- **FASE:** Onda 0 (confiança). Nada de Onda 5 antes das Ondas 0–3.
-  O gargalo do OLLI é **negócio/caixa, não engenharia** (~88–90% pronto, zero pagantes).
+- **FASE (30/09/2026):** Onda A da auditoria de 29/09 **concluída e no ar**. Próximo = **Onda B: conversão
+  e receita** (ativação até o 1º orçamento, primeiros pagantes). Nada de módulo novo (Onda D) antes de
+  5–10 prestadores ativos e o 1º Pix pago. O gargalo é **negócio/caixa, não engenharia**:
+  60 contas, 0 pagantes, 47 nunca criaram orçamento.
 
-- **FONTE DE VERDADE DE ESTADO:** `docs/EXECUTION_LOG.md` + `docs/FOLLOWUPS.md`.
-  O plano-mestre (`Entregas Claude\OLLI-Plano-Mestre\`) é **síntese**, não inventário.
-  O bundle `C:\ollx\h` e o kit `olli-program` são **aspiracionais** — não use como estado.
+- **FONTE DE VERDADE:** relatório `Entregas Claude\OLLI\2026-09-29-auditoria-ecossistema\RELATORIO-MESTRE.md`
+  (notas por área, top 15, plano em ondas, decisões pendentes) + `docs/ESTADO-2026-09-30.md` (o que está no ar).
 
-- **PRÓXIMO ITEM:** a FILA zerou (16/07) e o **Plano-Mestre inteiro foi varrido** (17/07).
-  Tudo em `claude/piloto-p0` (29 commits, **não pushado** — o merge é ato do dono).
-  Ler o **RESUMO FINAL 2** em `docs/PILOTO/LEDGER.md`: tabela das 16 prioridades com o estado real.
-  **Prontas:** 3,5,6,7,9,11,13,14,15 + as partes codáveis da 4. **Restam só as que exigem você**
-  (ver bloqueios abaixo) e a 16, que o próprio plano manda congelar.
-  Gate de verdade agora existe: `npm test` (134 asserts, 8 arquivos) + `npm run typecheck` (exit 0).
+- **FLUXO DE CÓDIGO (novo, 30/09):** a `main` é a verdade e **produção só sai de commit mesclado na main**.
+  Trabalho = branch `claude/<tarefa>` ou `codex/<tarefa>` → PR → CI verde → merge → deploy.
+  `C:\OLLI_REL` está no branch `codex/base-main` (= main 3f3326a), limpo. A automação do Codex
+  "meta de perfeição" está **PAUSADA**; ao religar, ela deve seguir este fluxo (nunca mais árvore suja em produção).
+  Repo `gogodroidk/olli-orcamentos-2` é **privado** desde 29/09.
 
-- **F0d — DECIDIDO em 17/07 (não é mais bloqueio):** grandfathering por flag. Org que já existia
-  mantém Equipe; org NOVA precisa do Empresa. Motivo: sob incerteza escolhe-se o **reversível**
-  (desfaz com 1 `UPDATE`; usuário cortado churna e não volta). Revogar:
-  `update public.organizacoes set equipe_grandfathered = false;`. Detalhe no EXECUTION_LOG.
+- **NO AR (30/09):** IA com cadeia paga barata (gpt-4.1-nano → gemini-2.5-flash-lite → mistral-small, teto
+  de preço por request e teto diário) · Pix do plano via AbacatePay (produção, webhook ok, cobrança consumida
+  uma vez só) · lembretes de assinatura no app/painel · **e-mail real ligado** (boas-vindas + lembretes de
+  ativação e de assinatura, com descadastro) · funil do login Google medido (`auth_funil_eventos`) ·
+  Sentry em app/painel/worker · landing sem bastidores e com Pix.
 
-- **BLOQUEADO EM HUMANO (não tente, só reporte):**
-  **3 migrations a rodar ANTES de publicar o worker** (`20260724_webhook_events`,
-  `20260725_equipe_grandfathering`, `20260726_credit_ledger_imutavel` — fora de ordem: 500/503) ·
-  `MP_WEBHOOK_SECRET` (o `MP_ACCESS_TOKEN` já está lá) ·
-  **emulador `olli_phone`** — única prova que falta da Onda 0 (O0-1/O0-2/O0-3 codados e provados em
-  lógica; os testes de login/troca de conta exigem digitar senha, que o piloto não faz) ·
-  **decisão do O2-19** (numeração: 4 opções em FOLLOWUPS #31 — a "opção 4" tem furo, ver o item) ·
-  **decisão do preço de CRÉDITO** (worker cobra R$0,25-0,498/cr; rascunho propõe R$0,10-0,15 — hoje
-  não há tela de compra, então não há mentira publicada: decida ANTES de existir copy de crédito) ·
-  chave do PostHog · chave do Resend + **verificar o domínio** (sem isso o e-mail falha calado) ·
-  Stripe (Installments + 3 Prices) · TOTP admin · rotacionar senha da demo GR Tech ·
-  contas Play/Apple + IAP iOS (não codado) · `pg_dump` baseline das 13 tabelas legadas.
+- **PENDENTE COM O DONO:** GitHub Pro (proteção da main em repo privado) · Supabase Pro (bloqueio de senha
+  vazada) · limite de crédito da chave OpenRouter · trocar `gemini-2.5-flash-lite` antes de **20/10/2026**
+  (sai do catálogo) · novo APK/AAB com Pix, lembretes e login Google (testar no emulador `olli_phone`) ·
+  primeiro Pix real · preço/limite do grátis · webhook da Resend assinando bounced/complained.
 
 - **DOMÍNIO:** decisão do dono, **não mexer** — ele compra o canônico depois e a troca é feita então.
-  `astro.config.mjs` segue em `olliorcamentos.online` (17/07).
-
-- **APRENDIDO EM 16/07 (não repita):**
-  **A própria FILA estava velha.** 5 itens (O3-25..29) já tinham sido corrigidos por `e9a4efe`, e o DoD
-  do O2-19 pedia uma coluna (`organizacao_id`) que **não existe** no schema. Confira no repo vivo se o
-  item ainda é verdade ANTES de codar. Agora há gate de verdade: `npm test` (89 asserts, 5 arquivos) e
-  `npm run typecheck` (exit 0 — vivia vermelho com 854 erros que não eram bugs, era o tsconfig raiz
-  compilando o `webapp/` com o compilador do app).
 
 - **ARMADILHAS (P0, não são sugestão):**
   1. **Erro nunca vira vazio** — todo gate de plano/permissão/vertical exige **3 estados** (carregando | erro | valor).
   2. **Copy/preço/feature só derivada da fonte** (`PLANOS_BASE`, types, Stripe live) — nunca de memória (já mentiu 5x).
-  3. Wrangler: use `env -u CLOUDFLARE_API_TOKEN` — o token do `.env` é fraco e sabota o deploy.
-  4. PowerShell não roda comando começando com dígito; MCP no Windows exige `setx` + reiniciar.
+  3. Antes de publicar: conferir que o que vai ao ar é o commit mesclado (diff do bundle contra produção se houver dúvida).
+  4. Modelos `:free` do OpenRouter NÃO servem com `data_collection:'deny'` (LGPD) — use a allowlist paga.
+  5. PowerShell não roda comando começando com dígito; MCP no Windows exige `setx` + reiniciar.
 
 - **ROTEAMENTO (skill `roteador-de-modelos`):** braçal em lote → `swarm` (grátis) · braçal com tool-use → `haiku` ·
   análise → `sonnet` · **síntese, decisão e escrita sensível → Opus, nunca abaixo**. Fable só horizonte longo.
