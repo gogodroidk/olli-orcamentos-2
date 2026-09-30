@@ -62,6 +62,7 @@
 			"@precificacao": ["../src/services/precificacao.ts"],
 			"@auth-policy": ["../src/services/authPolicy.ts"],
 			"@sentry-scrub": ["../src/services/sentryScrub.ts"],
+			"@sentry-captura": ["../src/services/sentryCaptura.ts"],
 			"@ajuda": ["../src/content/ajuda/index.ts"]
 		}
 	},

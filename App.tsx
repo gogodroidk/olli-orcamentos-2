@@ -44,6 +44,7 @@ import { DESKTOP_BREAKPOINT } from './src/hooks/useEhDesktop';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 import * as Sentry from '@sentry/react-native';
 import { limparBreadcrumbSentry, limparEventoSentry } from './src/services/sentryScrub';
+import { capturarExcecao, conectarSentry } from './src/services/sentryCaptura';
 
 /**
  * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
@@ -69,6 +70,9 @@ Sentry.init({
   // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
   tracesSampleRate: 0.1,
 });
+// Exceções que o nosso código SEGURA (ErrorBoundary, catch do boot) não passam pelo
+// handler global do SDK; elas chegam ao Sentry por esta porta (sentryCaptura.ts).
+conectarSentry(Sentry);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -307,6 +311,9 @@ function AppConteudo() {
         // vaza stack trace ao usuário. Com sessão, a tela de verificação é mais
         // honesta que pedir login de novo; sem sessão, a porta continua fechada.
         if (__DEV__) console.error(e);
+        // Boot que falhou abre na porta certa, mas não pode falhar em silêncio: é o
+        // mesmo tipo de queda que matou o v6 no Hermes sem ninguém ver.
+        capturarExcecao(e, { origem: 'boot' });
         if (haviaSessao) setInitialRoute('Onboarding');
       } finally {
         setDbReady(true);
