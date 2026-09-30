@@ -28,8 +28,11 @@ import pt_BR from "./lang/pt_BR";
 const LNG = LocalEnum.pt_BR as string;
 
 // Marca o idioma no HTML. Sem isto o Chrome oferece "traduzir esta página"
-// quando o idioma do sistema é outro.
-document.documentElement.lang = LNG;
+// quando o idioma do sistema é outro. Em BCP 47 ("pt-BR", com hífen), igual ao
+// index.html: o `LNG` do i18next é "pt_BR" (sublinhado), que NÃO é uma tag de
+// idioma válida — gravado aqui, sobrescrevia o `lang` certo do HTML depois do
+// boot e o leitor de tela/tradutor passava a não reconhecer o idioma.
+document.documentElement.lang = "pt-BR";
 
 i18n.use(initReactI18next).init({
 	debug: false,

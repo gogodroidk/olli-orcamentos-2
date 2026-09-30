@@ -5,8 +5,6 @@ export enum LoginStateEnum {
 	LOGIN = 0,
 	REGISTER = 1,
 	RESET_PASSWORD = 2,
-	MOBILE = 3,
-	QR_CODE = 4,
 }
 
 interface LoginStateContextType {
