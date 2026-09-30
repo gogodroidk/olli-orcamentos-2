@@ -160,6 +160,10 @@ export function normalizarChavePix(bruta: string | null | undefined): ChavePixNo
   }
   if (d.length === 14) return cnpjValido(d) ? { chave: d, tipo: 'cnpj' } : null;
   if (d.length === 11 && !s.includes('(') && cpfValido(d)) return { chave: d, tipo: 'cpf' };
+  // Ponto só aparece na máscara de CPF ("129.456.789-00"), nunca na de celular: CPF
+  // mascarado com dígito errado é CPF digitado errado — não pode virar o celular
+  // +55 12 94567-8900 de um desconhecido só porque o 3º dígito é 9.
+  if (d.length === 11 && s.includes('.')) return null;
   if (d.length === 11 && d[2] === '9') return { chave: `+55${d}`, tipo: 'telefone' };
   if (d.length === 13 && d.startsWith('55') && d[4] === '9') return { chave: `+${d}`, tipo: 'telefone' };
   return null;

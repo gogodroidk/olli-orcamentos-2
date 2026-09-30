@@ -72,7 +72,7 @@ caso('chave Pix: CPF, CNPJ, e-mail, celular e aleatória viram o formato do DICT
 });
 
 caso('chave Pix duvidosa NÃO é reconhecida (fail-closed)', () => {
-  for (const ruim of ['', '   ', '123', '111.111.111-11', '11.111.111/1111-11', 'pix do joão', 'joao@', '<script>', '+1 555 1234567']) {
+  for (const ruim of ['', '   ', '123', '111.111.111-11', '11.111.111/1111-11', 'pix do joão', 'joao@', '<script>', '+1 555 1234567', '129.456.789-00']) {
     assert.equal(normalizarChavePix(ruim), null, `deveria recusar: ${JSON.stringify(ruim)}`);
   }
 });

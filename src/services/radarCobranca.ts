@@ -64,6 +64,23 @@ export interface OrcamentoParaCobrar {
   pagamentoInformadoEm: string | null;
 }
 
+/**
+ * Teto para a leitura dos avisos "Já paguei" (rede). O radar de cobrança é LOCAL
+ * (SQLite) e aparece na hora; o aviso do cliente é só um rótulo. Sem teto, uma rede
+ * ruim (o supabase-js não tem timeout próprio) seguraria o card do dinheiro parado
+ * em "carregando" até a requisição desistir.
+ */
+const PRAZO_AVISOS_MS = 4000;
+
+function avisosDoClienteComPrazo(): Promise<Map<string, string>> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(new Map()), PRAZO_AVISOS_MS);
+    pagamentosInformadosPeloCliente()
+      .then(mapa => { clearTimeout(timer); resolve(mapa); })
+      .catch(() => { clearTimeout(timer); resolve(new Map()); });
+  });
+}
+
 /** Data (ISO) usada como proxy de "quando este orçamento foi aprovado". */
 function dataAprovacao(o: Orcamento): string {
   return o.atualizadoEm || o.criadoEm;
@@ -88,7 +105,7 @@ export async function orcamentosParaCobrar(): Promise<OrcamentoParaCobrar[]> {
     // Os dois abaixo só ROTULAM/REORDENAM ("cobrado hoje", "cliente avisou que
     // pagou") e nunca lançam: falha = mapa vazio = o item aparece sem rótulo. A lista
     // em si (o dinheiro parado) depende só das leituras locais acima.
-    lerCobrancasEnviadas(), pagamentosInformadosPeloCliente(),
+    lerCobrancasEnviadas(), avisosDoClienteComPrazo(),
   ]);
   const clientesPorId = new Map(clientes.map(c => [c.id, c] as const));
   const agora = new Date();

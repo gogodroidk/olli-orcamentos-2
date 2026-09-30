@@ -94,7 +94,15 @@ export function useRegistroEnvios(chave: ChaveRegistroEnvio) {
 
 	const mutacao = useMutation({
 		mutationFn: async (id: string): Promise<MapaEnvios> => {
-			const { data } = await supabase.from("extras_sync").select("dados").eq("chave", chave).maybeSingle();
+			// A releitura PRECISA dar certo antes do upsert: se ela falhasse e seguíssemos
+			// com `data` nulo, gravaríamos um mapa só com este envio — apagando na nuvem
+			// (e, pelo LWW, no celular no próximo sync) todos os outros registros.
+			const { data, error: erroLeitura } = await supabase
+				.from("extras_sync")
+				.select("dados")
+				.eq("chave", chave)
+				.maybeSingle();
+			if (erroLeitura) throw erroLeitura;
 			const mapa = registrarEnvio(lerMapaEnvios((data as { dados?: unknown } | null)?.dados), id);
 			const { error } = await supabase
 				.from("extras_sync")
