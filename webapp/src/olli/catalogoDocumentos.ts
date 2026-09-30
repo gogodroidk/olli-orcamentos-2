@@ -19,5 +19,5 @@ export const CATALOGO_DOCUMENTOS: readonly CatalogoDocumento[] = [
 	{ tipo: "conclusao", titulo: "Termo de conclusão", descricao: "Entrega, aceite, observações e assinatura.", acao: "Criar termo", status: "disponivel" },
 	{ tipo: "laudo", titulo: "Laudo técnico", descricao: "Achados, evidências, recomendações e responsável.", acao: "Criar laudo", status: "disponivel" },
 	{ tipo: "checklist", titulo: "Checklist", descricao: "Lista operacional editável para sua equipe.", acao: "Criar checklist", status: "disponivel" },
-	{ tipo: "certificado", titulo: "Certificado", descricao: "Modelo de certificado para revisar antes de emitir.", acao: "Criar certificado", status: "disponivel" },
+	{ tipo: "certificado", titulo: "Certificado", descricao: "Comprovante de controle de pragas, certificado de caixa d'água ou modelo livre, para revisar antes de emitir.", acao: "Criar certificado", status: "disponivel" },
 ];

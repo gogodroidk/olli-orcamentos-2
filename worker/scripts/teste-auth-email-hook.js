@@ -179,7 +179,7 @@ for (const [acao, e] of Object.entries(esperados)) {
   assert.equal(`${link.origin}${link.pathname}`, CONFIRM, `${acao}: link do contrato`);
   assert.equal(link.searchParams.get('token_hash'), HASH, acao);
   assert.equal(link.searchParams.get('type'), e.type, acao);
-  assert.equal(link.searchParams.get('next'), acao === 'recovery' ? '/auth/nova-senha' : '/painel', `${acao}: next`);
+  assert.equal(link.searchParams.get('next'), acao === 'recovery' ? NEXT_RECUPERACAO : '/painel', `${acao}: next`);
 
   const { res, json, chamadas, linhas } = await chamar(payload(acao));
   assert.equal(res.status, 200, `${acao}: status`);

@@ -18,15 +18,15 @@
   "meta de perfeição" está **PAUSADA**; ao religar, ela deve seguir este fluxo (nunca mais árvore suja em produção).
   Repo `gogodroidk/olli-orcamentos-2` é **privado** desde 29/09.
 
-- **NO AR (30/09):** IA com cadeia paga barata (gpt-4.1-nano → gemini-2.5-flash-lite → mistral-small, teto
+- **NO AR (30/09):** IA com cadeia paga barata (gpt-4.1-nano → gpt-4o-mini → mistral-small, teto
   de preço por request e teto diário) · Pix do plano via AbacatePay (produção, webhook ok, cobrança consumida
   uma vez só) · lembretes de assinatura no app/painel · **e-mail real ligado** (boas-vindas + lembretes de
   ativação e de assinatura, com descadastro) · funil do login Google medido (`auth_funil_eventos`) ·
   Sentry em app/painel/worker · landing sem bastidores e com Pix.
 
 - **PENDENTE COM O DONO:** GitHub Pro (proteção da main em repo privado) · Supabase Pro (bloqueio de senha
-  vazada) · limite de crédito da chave OpenRouter · trocar `gemini-2.5-flash-lite` antes de **20/10/2026**
-  (sai do catálogo) · novo APK/AAB com Pix, lembretes e login Google (testar no emulador `olli_phone`) ·
+  vazada) · limite de crédito da chave OpenRouter ·
+  deploy do worker com o 2º elo novo (`gpt-4o-mini`; o `gemini-2.5-flash-lite` sai do catálogo em 20/10) · novo APK/AAB com Pix, lembretes e login Google (testar no emulador `olli_phone`) ·
   primeiro Pix real · preço/limite do grátis · webhook da Resend assinando bounced/complained.
 
 - **DOMÍNIO:** decisão do dono, **não mexer** — ele compra o canônico depois e a troca é feita então.

@@ -113,9 +113,9 @@ export function cortar(v, max) {
  * MEI". É o bug recorrente da casa (`olli-gate-erro-vira-vazio`) na sua versão
  * de uma linha só.
  *
- * Deixou de ser detalhe em 1º de setembro de 2026: pela Resolução CGSN nº
- * 189/2026 o regime de NFS-e do cliente depende justamente de ser MEI/ME/EPP do
- * Simples. Afirmar "não é" sem saber manda o prestador pro caminho fiscal errado.
+ * Deixa de ser detalhe com a NFS-e nacional: o MEI já é obrigado desde 01/09/2023
+ * (CGSN 169/2022) e ME/EPP do Simples a partir de 01/11/2026 (CGSN 191/2026). O
+ * regime de NFS-e do cliente depende justamente de ser MEI/ME/EPP do Simples. Afirmar "não é" sem saber manda o prestador pro caminho fiscal errado.
  */
 export function tresEstados(v) {
   if (v === true) return 'sim';

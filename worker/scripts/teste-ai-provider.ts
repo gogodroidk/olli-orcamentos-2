@@ -20,6 +20,7 @@ import {
   pagamentoOpenRouterPermitido,
   reiniciarSaudeIA,
   saudeIA,
+  tetoPrecoOpenRouter,
   transcreverAudio,
 } from '../src/ai.js';
 import { ORCAMENTO_SCHEMA } from '../src/voz.js';
@@ -366,17 +367,20 @@ console.warn = (...args) => avisos.push(args);
 
 checar('allowlist tem exatamente a cadeia de produção', OPENROUTER_MODELOS_PADRAO, [
   'openai/gpt-4.1-nano',
-  'google/gemini-2.5-flash-lite',
+  'openai/gpt-4o-mini',
   'mistralai/mistral-small-24b-instruct-2501',
 ]);
 checar('allowlist é imutável', Object.isFrozen(OPENROUTER_MODELOS_PAGOS_PERMITIDOS), true);
+// Sai do catálogo do OpenRouter em 20/10/2026: não pode voltar para a
+// allowlist por engano (um ID removido vira 404 em toda request).
+checar('gemini-2.5-flash-lite fora da allowlist', tetoPrecoOpenRouter('google/gemini-2.5-flash-lite'), null);
 checar('flag ausente = pago desligado', pagamentoOpenRouterPermitido({}), false);
 checar('flag "1" não liga pago', pagamentoOpenRouterPermitido({ OPENROUTER_PERMITIR_PAGO: '1' }), false);
 checar('flag "yes" não liga pago', pagamentoOpenRouterPermitido({ OPENROUTER_PERMITIR_PAGO: 'yes' }), false);
 checar('flag "true" liga pago', pagamentoOpenRouterPermitido({ OPENROUTER_PERMITIR_PAGO: ' TRUE ' }), true);
 
 const cadeiaMista = [
-  'google/gemini-2.5-flash-lite',
+  'openai/gpt-4o-mini',
   'x-ai/grok-4', // pago FORA da allowlist (ainda não avisado neste isolate)
   'openai/gpt-4.1-nano',
   'openrouter/free',
@@ -397,7 +401,7 @@ checar('sem flag: só o :free foi chamado', corposSemFlag.map((c) => c.model), [
 checar('sem flag: :free não recebe max_price', corposSemFlag[0].provider.max_price, undefined);
 checar('sem flag: pago da allowlist gera aviso', avisos.some(([tag, info]) =>
   tag === '[olli-worker] openrouter_modelo_ignorado'
-  && info.model === 'google/gemini-2.5-flash-lite'
+  && info.model === 'openai/gpt-4o-mini'
   && info.motivo === 'pago_nao_liberado'), true);
 
 // Com a flag: allowlist passa (com teto), fora da allowlist continua fora.
@@ -422,12 +426,12 @@ const respostaPaga = await gerarIA(envPago, {
 });
 checar('com flag: resposta do terceiro elo', respostaPaga, 'resposta paga');
 checar('com flag: ordem preservada, fora da allowlist e router removidos', corposPago.map((c) => c.model), [
-  'google/gemini-2.5-flash-lite',
+  'openai/gpt-4o-mini',
   'openai/gpt-4.1-nano',
   'google/gemma-4-26b-a4b-it:free',
 ]);
 checar('com flag: cada tentativa reservou cota', callbacksPago.map((c) => [c.tentativa, c.total]), [[1, 3], [2, 3], [3, 3]]);
-checar('com flag: gemini leva teto de preço da allowlist', corposPago[0].provider.max_price, { prompt: 0.12, completion: 0.48 });
+checar('com flag: 4o-mini leva teto de preço da allowlist', corposPago[0].provider.max_price, { prompt: 0.18, completion: 0.72 });
 checar('com flag: nano leva teto de preço da allowlist', corposPago[1].provider.max_price, { prompt: 0.12, completion: 0.48 });
 checar('com flag: :free não leva max_price', corposPago[2].provider.max_price, undefined);
 checar('com flag: data_collection continua deny em todas', corposPago.map((c) => c.provider.data_collection), ['deny', 'deny', 'deny']);
@@ -465,7 +469,7 @@ const resposta400 = await gerarIA({ AI_PROVIDER: 'openrouter', OPENROUTER_API_KE
 checar('400 com json_schema passa ao próximo modelo', resposta400, '{"ok":true}');
 checar('400 com json_schema: cada modelo reservou a sua cota', callbacks400, [
   'openai/gpt-4.1-nano',
-  'google/gemini-2.5-flash-lite',
+  'openai/gpt-4o-mini',
 ]);
 let chamadas400SemSchema = 0;
 globalThis.fetch = async () => {

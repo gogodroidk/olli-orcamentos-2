@@ -1,23 +1,9 @@
 import { AlertTriangle, PieChart, RotateCw } from "lucide-react";
-import { Suspense, useMemo } from "react";
-import { useChart } from "@/components/chart/useChart";
-import { lazyComRetry } from "@/components/lazy/carregar-chunk";
-import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
-import { useVisivelUmaVez } from "@/hooks/use-visivel-uma-vez";
+import { useMemo } from "react";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
+import { fatiasDonut } from "./donut";
 import { agruparPorStatus, formatInt, type OrcamentoRow } from "./helpers";
-
-// Import PREGUIÇOSO: react-apexcharts (~157KB gzip) só entra no bundle quando este
-// card realmente renderiza o gráfico — a rota padrão do painel (Início) não pode
-// esperar essa dependência inteira baixar por causa de UM donut. `useChart` (acima)
-// não puxa a lib de verdade — só o tipo `ApexOptions` (import type, apagado no build).
-//
-// E o download só COMEÇA quando o donut encosta na tela (ver useVisivelUmaVez logo
-// abaixo). No celular ele nasce bem abaixo da dobra: antes disto, todo mundo que
-// tinha ao menos um orçamento pagava a biblioteca inteira ao abrir o Início, mesmo
-// sem rolar até ela. Quem abre o gráfico paga o gráfico; quem não abre, não paga.
-const Chart = lazyComRetry(() => import("@/components/chart/chart").then((m) => ({ default: m.Chart })));
 
 interface Props {
 	rows: OrcamentoRow[] | undefined;
@@ -26,51 +12,25 @@ interface Props {
 	onRetry: () => void;
 }
 
+/** Raio e espessura no viewBox 120×120: anel interno ≈ 74% do externo, como antes. */
+const RAIO = 48;
+const ESPESSURA = 14;
+
 /**
  * Card grande com DONUT "Orçamentos por status" — dados REAIS agrupados pelo
  * campo `status`. Cores da marca (ver helpers). 3 estados: skeleton, erro (com
- * "Tentar de novo") e vazio bonito. Legenda própria à direita (nº + %). Sem
- * animação em loop: o donut só anima 1x na montagem (perfil do projeto proíbe
- * loop contínuo).
+ * "Tentar de novo") e vazio bonito. Legenda própria à direita (nº + %).
+ *
+ * O anel é SVG puro (ver ./donut.ts): até 30/09/2026 era ApexCharts, ~150 KB
+ * gzip baixados só para este desenho. Sem animação: o número que decide está
+ * na legenda e aparece na hora — nada de movimento escondendo carregamento.
+ * O SVG é `aria-hidden` porque a legenda ao lado já diz o mesmo em texto; o
+ * `<title>` de cada fatia dá o valor no hover do mouse.
  */
 export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
-	const { ref: areaGrafico, visivel: graficoNaTela } = useVisivelUmaVez<HTMLDivElement>();
 	const grupos = useMemo(() => (rows ? agruparPorStatus(rows) : []), [rows]);
 	const total = useMemo(() => grupos.reduce((s, g) => s + g.total, 0), [grupos]);
-
-	const labels = grupos.map((g) => g.meta.label);
-	const series = grupos.map((g) => g.total);
-	const colors = grupos.map((g) => g.meta.color);
-
-	const chartOptions = useChart({
-		chart: { type: "donut" },
-		labels,
-		colors,
-		stroke: { width: 0 },
-		legend: { show: false },
-		dataLabels: { enabled: false },
-		tooltip: {
-			y: { formatter: (v: number) => `${formatInt(v)} orçamento${v === 1 ? "" : "s"}` },
-		},
-		plotOptions: {
-			pie: {
-				expandOnClick: false,
-				donut: {
-					size: "74%",
-					labels: {
-						show: true,
-						value: { fontSize: "26px", fontWeight: 700, offsetY: 6, formatter: (v: string) => formatInt(Number(v)) },
-						total: {
-							show: true,
-							label: "Total",
-							fontSize: "13px",
-							formatter: () => formatInt(total),
-						},
-					},
-				},
-			},
-		},
-	});
+	const fatias = useMemo(() => fatiasDonut(grupos.map((g) => g.total)), [grupos]);
 
 	return (
 		<Card className="h-full gap-0 overflow-hidden p-0 shadow-sm">
@@ -122,24 +82,45 @@ export function StatusDonutCard({ rows, isLoading, isError, onRetry }: Props) {
 					</div>
 				) : (
 					<div className="grid items-center gap-6 md:grid-cols-[minmax(0,210px)_1fr]">
-						<div ref={areaGrafico} className="mx-auto w-full max-w-[240px]">
-							{graficoNaTela ? (
-								// A fronteira é INLINE: se a biblioteca do gráfico não baixar, quem
-								// some é o donut — a legenda ao lado (número e % por status, que é
-								// o dado que decide) continua na tela. Derrubar o card inteiro por
-								// causa do desenho seria perder a informação junto com o enfeite.
-								<ChunkBoundary variante="inline" oQue="o gráfico">
-									<Suspense fallback={<Skeleton className="mx-auto size-[200px] rounded-full" />}>
-										<Chart type="donut" series={series} options={chartOptions} height={230} />
-									</Suspense>
-								</ChunkBoundary>
-							) : (
-								<Skeleton className="mx-auto size-[200px] rounded-full" />
-							)}
+						<div className="relative mx-auto aspect-square w-full max-w-[210px]">
+							<svg viewBox="0 0 120 120" className="size-full -rotate-90" aria-hidden="true">
+								<circle
+									cx="60"
+									cy="60"
+									r={RAIO}
+									fill="none"
+									strokeWidth={ESPESSURA}
+									className="stroke-bg-neutral"
+								/>
+								{grupos.map((g, i) => {
+									const f = fatias[i];
+									if (!f || f.traco <= 0) return null;
+									return (
+										<circle
+											key={g.slug}
+											cx="60"
+											cy="60"
+											r={RAIO}
+											fill="none"
+											stroke={g.meta.color}
+											strokeWidth={ESPESSURA}
+											pathLength={100}
+											strokeDasharray={`${f.traco} ${100 - f.traco}`}
+											strokeDashoffset={f.deslocamento}
+										>
+											<title>{`${g.meta.label}: ${formatInt(g.total)} orçamento${g.total === 1 ? "" : "s"} (${f.pct}%)`}</title>
+										</circle>
+									);
+								})}
+							</svg>
+							<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+								<span className="text-[26px] font-bold leading-none text-text-primary tabular-nums">{formatInt(total)}</span>
+								<span className="mt-1 text-[13px] text-text-secondary">Total</span>
+							</div>
 						</div>
 						<ul className="grid gap-2.5">
-							{grupos.map((g) => {
-								const pct = total ? Math.round((g.total / total) * 100) : 0;
+							{grupos.map((g, i) => {
+								const pct = fatias[i]?.pct ?? 0;
 								return (
 									<li key={g.slug} className="flex items-center gap-3">
 										<span

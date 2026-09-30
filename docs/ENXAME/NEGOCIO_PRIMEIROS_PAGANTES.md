@@ -77,7 +77,7 @@ sua cidade ou região metropolitana.** Características que o tornam O cliente:
 
 - **Tem CNPJ** (MEI ou ME) — o cadastro mágico por CNPJ já funciona para ele
   (`OnboardingScreen.tsx:179`), e é ele que a obrigação da NFS-e nacional
-  alcança em 01/09/2026 ([Resolução CGSN 189/2026](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)).
+  alcança em 01/11/2026 se for ME/EPP ([Resolução CGSN 191/2026](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026), que substituiu a data de 01/09/2026 da [Resolução CGSN 189/2026](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)).
   O Brasil tem mais de 15 milhões de MEIs ativos e eles são 78% das empresas
   novas abertas em 2026 ([Agência Sebrae](https://agenciasebrae.com.br/dados/meis-lideram-abertura-de-empresas-no-pais-e-ja-representam-78-dos-novos-negocios-em-2026/)) — o perfil não é nicho, é a regra.
 - **Atende residência E pequeno comércio** — padaria, farmácia, clínica,
@@ -402,7 +402,8 @@ público ou produto, comprada por R$ 0 de mídia. É exatamente para isso que os
 
 ## Fontes
 
-- [Resolução CGSN 189/2026 — NFS-e nacional obrigatória p/ Simples em 01/09/2026 (Receita Federal)](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)
+- [Resolução CGSN 191/2026 — NFS-e nacional obrigatória p/ ME/EPP em 01/11/2026 (Receita Federal)](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026)
+- [Resolução CGSN 189/2026 — data original de 01/09/2026, substituída (Receita Federal)](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)
 - [Lei 13.589/2018 — PMOC (Planalto)](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13589.htm) · [multas e fiscalização (Ambientec)](https://ambientec.com/lei-13-589-2018-pmoc-torna-se-obrigatoria-manutencao-de-sistemas-de-ar-condicionado/)
 - [MEIs = 78% das empresas novas em 2026 (Agência Sebrae)](https://agenciasebrae.com.br/dados/meis-lideram-abertura-de-empresas-no-pais-e-ja-representam-78-dos-novos-negocios-em-2026/)
 - [Grupo "Refrigeração" ~100 mil membros (Blog do Frio)](https://blogdofrio.com.br/grupo-refrigeracao-ja-reune-quase-100-mil-membros/) · ["Refrigeristas do Brasil" 50 mil+ (Blog do Frio)](https://blogdofrio.com.br/grupo-refrigeristas-do-brasil-facebook/)
