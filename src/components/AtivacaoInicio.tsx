@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, type ViewStyle } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,6 +10,7 @@ import { AnimatedEntrance } from './AnimatedEntrance';
 import {
   getEmpresa, saveEmpresa, getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getRecibosPagina,
 } from '../database/database';
+import { onSyncAplicado } from '../services/cloudSync';
 import { recarregarVerticais } from '../hooks/useVerticais';
 import { usePermissao } from '../hooks/usePermissao';
 import {
@@ -93,6 +94,12 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   }, []);
 
   useFocusEffect(useCallback(() => { void carregar(); }, [carregar]));
+  // O app é local-first: num aparelho novo (ou logo depois do login) o SQLite ainda
+  // está vazio quando o Início abre, e só o pull da nuvem traz os orçamentos, a
+  // empresa e os recibos. Sem reler aqui, o cartão "Seu primeiro orçamento" e o
+  // checklist "0 de 4" ficavam na tela de quem já tem 40 orçamentos até trocar de
+  // aba — o mesmo "vazio que não é vazio" que o Início já trata com onSyncAplicado.
+  useEffect(() => onSyncAplicado(() => { void carregar(); }), [carregar]);
 
   const abrirExemplo = useCallback((vertical: VerticalId) => {
     const exemplo = exemploOrcamentoPara(vertical);

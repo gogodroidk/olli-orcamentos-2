@@ -168,6 +168,7 @@ const componenteApp = ler('../src/components/AtivacaoInicio.tsx');
 assert.match(componenteApp, /from '\.\.\/services\/ativacao'/, 'app usa a regra única');
 assert.match(componenteApp, /pode\('gerenciar_faturamento'\)/, 'só o dono vê a ativação no app');
 assert.match(componenteApp, /leitura\.estado !== 'pronto'\) return null/, 'app não desenha enquanto lê ou com erro');
+assert.match(componenteApp, /onSyncAplicado\(/, 'app relê a ativação quando o pull da nuvem grava (SQLite vazio no 1º login não é conta vazia)');
 assert.doesNotMatch(componenteApp, /navigate\('Planos'|navigate\('Assinatura'/, 'regra das lojas: a ativação não leva a compra');
 assert.match(ler('../src/screens/HomeScreen.tsx'), /<AtivacaoInicio\b/, 'Início do celular mostra a ativação');
 assert.match(ler('../src/screens/desktop/InicioDesktopScreen.tsx'), /<AtivacaoInicio\b/, 'Início do desktop mostra a ativação');
