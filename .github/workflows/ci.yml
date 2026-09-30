@@ -80,6 +80,11 @@ jobs:
       - name: Testes do painel
         run: pnpm run test:importacao
 
+      # Orçamento de bundle: mede o gzip do JS/CSS crítico e do JS total do build
+      # acima e falha se passar do teto em webapp/orcamento-bundle.json.
+      - name: Orçamento de bundle do painel
+        run: pnpm run test:bundle
+
   # 3) Landing (web/): astro check (type-check) + build.
   landing:
     name: landing

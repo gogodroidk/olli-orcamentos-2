@@ -24,6 +24,10 @@
 /* import tailwind */
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Tokens de movimento (duração, curva, mola) + "Reduzir movimento" global. Depois do
+   tw-animate-css de propósito: a rede de segurança dos overlays sobrescreve as
+   variáveis dele. */
+@import "./components/animate/tokens.css";
 
 /* config  tailwind */
 @config "../tailwind.config.ts";

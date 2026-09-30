@@ -1,5 +1,7 @@
 import { AlertTriangle, ArrowUpRight, type LucideIcon, RotateCw } from "lucide-react";
 import { Link } from "react-router";
+import { ContadorDinheiro } from "@/components/animate/contador-dinheiro";
+import { useValorVistoAntes } from "@/components/animate/use-valor-visto";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 
@@ -18,6 +20,13 @@ export interface KpiDinheiroProps {
 	isLoading: boolean;
 	isError: boolean;
 	onRetry: () => void;
+	/**
+	 * "Dinheiro entrou": o valor NUMÉRICO por trás de `valor`, para o número subir do
+	 * que o dono viu da última vez até o de agora. `chave` identifica o número (e o
+	 * período — "recebido-mes:2026-09" — para a virada do mês não contar como queda).
+	 * `valor: null` = ainda não sei (carregando/erro): nada conta.
+	 */
+	contador?: { valor: number | null; chave: string; formatar: (n: number) => string };
 }
 
 /**
@@ -32,7 +41,12 @@ export interface KpiDinheiroProps {
  * aninhada — quebra teclado e leitor de tela) e vira um card com o botão de retry.
  */
 export function KpiDinheiroCard(props: KpiDinheiroProps) {
-	const { label, valor, detalhe, aviso, to, Icon, color, isLoading, isError, onRetry } = props;
+	const { label, valor, detalhe, aviso, to, Icon, color, isLoading, isError, onRetry, contador } = props;
+	// Antes dos retornos (regra dos hooks). Só grava um valor CONFIRMADO: carregando ou
+	// erro nunca viram "o dono viu R$ 0".
+	const numero = contador && !isLoading && !isError ? contador.valor : null;
+	const antes = useValorVistoAntes(contador?.chave ?? null, numero);
+	const entrou = numero !== null && antes !== null && numero > antes ? numero - antes : null;
 
 	const tile = (
 		<span
@@ -50,7 +64,7 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 					{tile}
 					<AlertTriangle className="size-4 text-warning" aria-hidden />
 				</div>
-				<div className="mt-4">
+				<div className="surgir mt-4">
 					<div className="text-sm font-semibold text-text-primary">Não foi possível calcular</div>
 					<div className="mt-0.5 text-sm font-medium text-text-secondary">{label}</div>
 					<button
@@ -99,17 +113,28 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 				</div>
 				<div className="relative mt-4">
 					<div className="text-sm font-medium text-text-secondary">{label}</div>
+					{/* `surgir`: o valor chega no lugar do esqueleto com um fade curto (tokens.css). */}
 					{isLoading ? (
 						<Skeleton className="mt-1.5 h-8 w-32" />
 					) : (
-						<div className="mt-1 truncate text-[26px] font-bold leading-tight tracking-tight text-text-primary tabular-nums font-serif">
-							{valor}
+						<div className="surgir mt-1 truncate text-[26px] font-bold leading-tight tracking-tight text-text-primary tabular-nums font-serif">
+							{contador && numero !== null ? (
+								<ContadorDinheiro valor={numero} desde={antes} formatar={contador.formatar} />
+							) : (
+								valor
+							)}
 						</div>
 					)}
 					{isLoading ? (
 						<Skeleton className="mt-2 h-3 w-24" />
 					) : (
-						<div className="mt-1.5 text-xs text-text-secondary">{detalhe}</div>
+						<div className="surgir mt-1.5 text-xs text-text-secondary">{detalhe}</div>
+					)}
+					{/* O quanto ENTROU desde a última vez que ele olhou — o motivo da contagem. */}
+					{entrou !== null && contador && (
+						<div className="surgir mt-2 inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success-darker tabular-nums dark:text-success-light">
+							+{contador.formatar(entrou)} desde a sua última visita
+						</div>
 					)}
 					{!isLoading && aviso && (
 						<div className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning-darker dark:text-warning">

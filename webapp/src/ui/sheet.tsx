@@ -54,10 +54,14 @@ function SheetContent({
   return (
     <SheetPortal>
       <SheetOverlay />
+      {/* Gaveta com a MOLA dos tokens (`drawer`), em CSS: a curva `linear()` gerada
+          de stiffness/damping/mass abre em ~430ms e assenta sem quicar; fecha no
+          `fast` com a curva de saída — sair nunca demora mais que entrar. Em
+          "Reduzir movimento" o deslize zera (tokens.css) e sobra só o fade. */}
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "text-text-primary bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+          "text-text-primary bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg data-[state=open]:duration-(--motion-duration-spring-drawer) data-[state=open]:ease-(--motion-ease-spring-drawer) data-[state=closed]:duration-(--motion-duration-fast) data-[state=closed]:ease-(--motion-ease-exit)",
           side === "right" &&
             "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
           side === "left" &&

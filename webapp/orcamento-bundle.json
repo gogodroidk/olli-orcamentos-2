@@ -1,0 +1,7 @@
+{
+  "motivo": "Tetos medidos em 30/09/2026 no build da branch claude/momentos-uau-web (JS critico 363,9 KB, CSS critico 24,3 KB, JS total 1112,1 KB, gzip) com folga de ~6 KB no critico — o limite do plano para biblioteca nova no caminho critico e 5 KB. A meta do plano (secao 7.2) e 250 KB de JS critico: cada corte (supabase so auth+postgrest, antd aos poucos) deve DESCER o teto no mesmo PR. Subir exige motivo escrito aqui.",
+  "jsCriticoGzipKb": 370,
+  "cssCriticoGzipKb": 26,
+  "jsTotalGzipKb": 1135,
+  "metaJsCriticoGzipKb": 250
+}

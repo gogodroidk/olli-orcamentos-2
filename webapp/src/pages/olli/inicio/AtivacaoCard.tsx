@@ -14,7 +14,9 @@ import {
 } from "@ativacao";
 import { VERTICAIS, VERTICAL_GERAL, type VerticalId } from "@verticais";
 import { CheckCircle2, ChevronRight, Circle, FileText, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { useValorVistoAntes } from "@/components/animate/use-valor-visto";
 import { ehDonoDaConta } from "@/olli/papel";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
@@ -104,7 +106,7 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 	return (
 		<div className="space-y-4">
 			{mostrarPrimeiro && (
-				<Card className="gap-0 overflow-hidden p-0 shadow-sm">
+				<Card className="surgir gap-0 overflow-hidden p-0 shadow-sm">
 					<div className="flex items-start gap-3 px-5 py-4">
 						<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
 							<Zap className="size-5" strokeWidth={2.2} />
@@ -150,7 +152,7 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 			)}
 
 			{checklist.estado === "pendente" && (
-				<Card className="gap-0 overflow-hidden p-0 shadow-sm">
+				<Card className="surgir gap-0 overflow-hidden p-0 shadow-sm">
 					<div className="flex items-center justify-between gap-3 px-5 pt-4">
 						<h2 className="text-base font-semibold text-text-primary">Deixe o OLLI pronto para trabalhar</h2>
 						<span className="text-xs font-semibold text-text-secondary">
@@ -158,19 +160,7 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 						</span>
 					</div>
 					<div className="px-5 pt-3">
-						<div
-							className="h-1.5 overflow-hidden rounded-full bg-border"
-							role="progressbar"
-							aria-valuemin={0}
-							aria-valuemax={checklist.total}
-							aria-valuenow={checklist.feitos}
-							aria-label="Progresso da ativação"
-						>
-							<div
-								className="h-full rounded-full bg-success transition-all"
-								style={{ width: `${(checklist.feitos / checklist.total) * 100}%` }}
-							/>
-						</div>
+						<BarraAtivacao feitos={checklist.feitos} total={checklist.total} />
 					</div>
 					<ul className="divide-y divide-border/60 px-2 py-2">
 						{checklist.passos.map((p) => (
@@ -202,6 +192,43 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 					</ul>
 				</Card>
 			)}
+		</div>
+	);
+}
+
+/**
+ * A barra do checklist cresce A PARTIR do que o dono viu da última vez: cadastrou o
+ * Pix, voltou ao Início — a barra anda de 1/4 para 2/4 na frente dele. É o "você
+ * avançou" que faltava no onboarding, sem texto a mais.
+ *
+ * `scaleX` (compositor) no lugar de `width` (que refaz o layout a cada quadro), com
+ * duração/curva dos tokens; em "Reduzir movimento" a duração vira 1ms (tokens.css).
+ */
+function BarraAtivacao({ feitos, total }: { feitos: number; total: number }) {
+	const antes = useValorVistoAntes("ativacao-feitos", feitos);
+	const alvo = total > 0 ? feitos / total : 0;
+	const [fracao, setFracao] = useState(() => (antes !== null && antes < feitos && total > 0 ? antes / total : alvo));
+
+	useEffect(() => {
+		// Um quadro depois da pintura: a posição de partida precisa estar NA TELA para a
+		// transição ter de onde sair.
+		const quadro = requestAnimationFrame(() => setFracao(alvo));
+		return () => cancelAnimationFrame(quadro);
+	}, [alvo]);
+
+	return (
+		<div
+			className="h-1.5 overflow-hidden rounded-full bg-border"
+			role="progressbar"
+			aria-valuemin={0}
+			aria-valuemax={total}
+			aria-valuenow={feitos}
+			aria-label="Progresso da ativação"
+		>
+			<div
+				className="h-full origin-left rounded-full bg-success transition-transform duration-(--motion-duration-slow) ease-(--motion-ease-enter)"
+				style={{ transform: `scaleX(${fracao})` }}
+			/>
 		</div>
 	);
 }

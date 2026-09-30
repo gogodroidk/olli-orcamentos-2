@@ -76,7 +76,17 @@ const Main = () => {
 				 */}
 				<ChunkBoundary key={pathname} oQue="esta tela">
 					<Suspense fallback={<LineLoading />}>
-						<Outlet />
+						{/*
+						 * Troca de tela: a nova página surge em opacidade (160ms, token `fast`).
+						 * CSS e não Motion: se o chunk das features do Motion falhar, um
+						 * `m.div initial={{opacity:0}}` deixaria a tela INVISÍVEL; a animação CSS
+						 * não depende de JS nenhum. Só opacidade — ver `surgir-pagina` em
+						 * tokens.css. A `key` remonta o bloco a cada rota (a fronteira acima já
+						 * remonta a árvore pelo mesmo `pathname`, então nenhum estado muda).
+						 */}
+						<div key={pathname} className="surgir-pagina flex flex-auto flex-col">
+							<Outlet />
+						</div>
 						<ScrollRestoration />
 					</Suspense>
 				</ChunkBoundary>

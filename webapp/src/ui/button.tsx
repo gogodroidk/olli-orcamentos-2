@@ -9,7 +9,11 @@ const buttonVariants = cva(
   // Era `ring-1` colado na borda — em botão `ghost` (fundo igual ao da tela) e sob
   // sol, 1px na cor primária some. O afastamento é o que garante o contorno visível
   // mesmo quando o botão tem fundo da mesma família de cor do anel.
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  //
+  // Aperto: o botão cede 2% (`--motion-scale-press`) no `active`, em 100ms, e volta.
+  // É a confirmação tátil de "peguei o clique" antes da resposta chegar — só
+  // `scale` (compositor), e em "Reduzir movimento" o token vale 1 (tokens.css).
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-duration-micro) ease-(--motion-ease-standard) active:scale-(--motion-scale-press) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {

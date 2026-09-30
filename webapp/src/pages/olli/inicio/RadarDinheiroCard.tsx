@@ -1,6 +1,9 @@
 import type { Empresa } from "@dominio";
 import { AlertTriangle, CheckCircle2, MessageCircle, PhoneOff, RotateCw, Wallet } from "lucide-react";
+import { AnimatePresence, m } from "motion/react";
 import { Link } from "react-router";
+import { atrasoEscalonado, TOKENS_MOTION } from "@/components/animate/tokens";
+import { useMovimento } from "@/components/animate/use-movimento";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { paramStatus, type RadarDinheiro, STATUS_A_RECEBER, WHATSAPP_TEXTO, WHATSAPP_VERDE } from "./financeiro";
@@ -43,15 +46,23 @@ const MOSTRAR = 3;
  *   e admite que não dá para somar, em vez de garantir que não há nada (ver `Calmo`).
  * • ALERTA ..... o número grande, o tempo e os botões.
  *
- * MOVIMENTO: nenhuma animação de entrada. O que se move é só `transform`/`opacity` no
- * hover/foco dos botões, e desliga em `prefers-reduced-motion`. Um valor em dinheiro
- * não precisa de encenação para ser notado — e animação aqui atrasaria a leitura de
- * quem abriu o painel com o cliente esperando.
+ * MOVIMENTO (tokens em components/animate): o NÚMERO não se mexe — um valor em
+ * dinheiro não precisa de encenação, e animá-lo atrasaria a leitura de quem abriu o
+ * painel com o cliente esperando. Quem se move são as LINHAS, e só para contar o que
+ * aconteceu:
+ *  • chegam escalonadas (`surgir`, 25 ms entre elas, no máx. 3 linhas = < 300 ms), em
+ *    CSS — se o JS do Motion falhar, a linha aparece do mesmo jeito;
+ *  • quando uma sai (o pagamento foi lançado no celular e o painel releu ao voltar o
+ *    foco), ela desliza para fora e as de baixo sobem (`exit` + `layout` do Motion).
+ *    É o "radar fechando": o dono VÊ a cobrança sumir, em vez de achar que piscou.
+ * Tudo em transform/opacity; "Reduzir movimento" troca direto (useMovimento +
+ * MotionConfig).
  */
 export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa }: Props) {
 	// "Cobrado hoje" — o MESMO registro do celular. Leitura que falha = mapa vazio (o
 	// item aparece sem rótulo: de mais, nunca de menos). Hook antes dos retornos.
 	const cobrancas = useRegistroEnvios("cobranca.enviadas");
+	const { t } = useMovimento();
 
 	if (isLoading) return <Carregando />;
 	if (isError) return <Erro onRetry={onRetry} />;
@@ -72,7 +83,7 @@ export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa 
 	const aviso = semPix ? avisoPix(semPix) : null;
 
 	return (
-		<Card className="gap-0 overflow-hidden border-warning/30 p-0 shadow-sm">
+		<Card className="surgir gap-0 overflow-hidden border-warning/30 p-0 shadow-sm">
 			<div className="flex flex-col gap-5 bg-warning/5 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:px-6">
 				<div className="min-w-0">
 					<h2 className="flex items-center gap-2 text-sm font-semibold text-text-secondary">
@@ -108,49 +119,60 @@ export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa 
 				</div>
 
 				{/* As linhas: quem, quanto, há quanto tempo — e o botão que cobra dali mesmo. */}
-				<ul className="flex w-full shrink-0 flex-col gap-2 sm:max-w-[24rem]">
-					{visiveis.map((item) => {
-						const url = linkCobranca(item, empresa);
-						return (
-							<li
-								key={item.id}
-								className="flex items-center gap-3 rounded-xl border border-border/60 bg-background px-3 py-2"
-							>
-								<div className="min-w-0 flex-1">
-									<div className="truncate font-medium text-sm text-text-primary">{item.cliente}</div>
-									<div className="mt-0.5 truncate text-text-secondary text-xs tabular-nums">
-										{formatBRL(item.saldo)}
-										{frasePeriodo(item.dias) ? ` · ${frasePeriodo(item.dias)}` : ""}
-										{cobradoHoje(item.id) ? " · cobrado hoje" : ""}
+				{/* `relative`: o `popLayout` tira a linha que sai do fluxo (absoluta) para as de
+				    baixo já subirem enquanto ela desliza. */}
+				<ul className="relative flex w-full shrink-0 flex-col gap-2 sm:max-w-[24rem]">
+					<AnimatePresence mode="popLayout" initial={false}>
+						{visiveis.map((item, i) => {
+							const url = linkCobranca(item, empresa);
+							return (
+								<m.li
+									key={item.id}
+									layout="position"
+									// `initial={false}`: a ENTRADA é o `surgir` do CSS (nunca depende do JS
+									// para a linha ficar visível); o Motion só cuida da saída e da subida.
+									initial={false}
+									exit={{ opacity: 0, x: TOKENS_MOTION.distancia.lg, transition: t("sair") }}
+									transition={t("layout")}
+									style={{ animationDelay: `${atrasoEscalonado(i)}s` }}
+									className="surgir flex items-center gap-3 rounded-xl border border-border/60 bg-background px-3 py-2"
+								>
+									<div className="min-w-0 flex-1">
+										<div className="truncate font-medium text-sm text-text-primary">{item.cliente}</div>
+										<div className="mt-0.5 truncate text-text-secondary text-xs tabular-nums">
+											{formatBRL(item.saldo)}
+											{frasePeriodo(item.dias) ? ` · ${frasePeriodo(item.dias)}` : ""}
+											{cobradoHoje(item.id) ? " · cobrado hoje" : ""}
+										</div>
 									</div>
-								</div>
 
-								{url ? (
-									<a
-										href={url}
-										target="_blank"
-										rel="noopener noreferrer"
-										// Registra o envio: "cobrado hoje" aqui e no celular.
-										onClick={() => cobrancas.registrar(item.id)}
-										aria-label={`${cobradoHoje(item.id) ? "Cobrar de novo" : "Cobrar"} ${item.cliente} pelo WhatsApp — ${formatBRL(item.saldo)}`}
-										style={{ backgroundColor: WHATSAPP_VERDE, color: WHATSAPP_TEXTO }}
-										className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 font-semibold text-sm shadow-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60"
-									>
-										<MessageCircle className="size-4" />
-										Cobrar
-									</a>
-								) : (
-									<span
-										className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 font-medium text-text-disabled text-xs"
-										title="Sem telefone válido no cadastro deste orçamento"
-									>
-										<PhoneOff className="size-3.5" />
-										Sem telefone
-									</span>
-								)}
-							</li>
-						);
-					})}
+									{url ? (
+										<a
+											href={url}
+											target="_blank"
+											rel="noopener noreferrer"
+											// Registra o envio: "cobrado hoje" aqui e no celular.
+											onClick={() => cobrancas.registrar(item.id)}
+											aria-label={`${cobradoHoje(item.id) ? "Cobrar de novo" : "Cobrar"} ${item.cliente} pelo WhatsApp — ${formatBRL(item.saldo)}`}
+											style={{ backgroundColor: WHATSAPP_VERDE, color: WHATSAPP_TEXTO }}
+											className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 font-semibold text-sm shadow-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60"
+										>
+											<MessageCircle className="size-4" />
+											Cobrar
+										</a>
+									) : (
+										<span
+											className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 font-medium text-text-disabled text-xs"
+											title="Sem telefone válido no cadastro deste orçamento"
+										>
+											<PhoneOff className="size-3.5" />
+											Sem telefone
+										</span>
+									)}
+								</m.li>
+							);
+						})}
+					</AnimatePresence>
 
 					{/* Sem chave (ou chave que não reconhecemos) a cobrança vai SEM Pix — nunca
 					    com Pix vazio — e o aviso leva direto ao cadastro, em 1 clique. */}
@@ -203,7 +225,7 @@ function Carregando() {
 
 function Erro({ onRetry }: { onRetry: () => void }) {
 	return (
-		<Card className="gap-0 overflow-hidden border-warning/40 p-0 shadow-sm">
+		<Card className="surgir gap-0 overflow-hidden border-warning/40 p-0 shadow-sm">
 			<div className="flex flex-col gap-3 bg-warning/5 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
 				<div className="flex items-start gap-3">
 					<span className="grid size-9 shrink-0 place-items-center rounded-lg bg-warning/15 text-warning">
@@ -247,7 +269,7 @@ function Erro({ onRetry }: { onRetry: () => void }) {
 function Calmo({ semValor }: { semValor: number }) {
 	if (semValor > 0) {
 		return (
-			<Card className="gap-0 overflow-hidden border-warning/30 p-0 shadow-sm">
+			<Card className="surgir gap-0 overflow-hidden border-warning/30 p-0 shadow-sm">
 				<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-warning/5 px-5 py-3.5 sm:px-6">
 					<span className="grid size-8 shrink-0 place-items-center rounded-lg bg-warning/15 text-warning">
 						<AlertTriangle className="size-[18px]" />
@@ -263,7 +285,7 @@ function Calmo({ semValor }: { semValor: number }) {
 	}
 
 	return (
-		<Card className="gap-0 overflow-hidden p-0 shadow-sm">
+		<Card className="surgir gap-0 overflow-hidden p-0 shadow-sm">
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-3.5 sm:px-6">
 				<span className="grid size-8 shrink-0 place-items-center rounded-lg bg-success/10 text-success">
 					<CheckCircle2 className="size-[18px]" />

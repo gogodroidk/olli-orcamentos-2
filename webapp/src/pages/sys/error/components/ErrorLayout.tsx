@@ -1,10 +1,8 @@
-import MotionContainer from "@/components/animate/motion-container";
-import { varBounce } from "@/components/animate/variants/bounce";
+import { atrasoEscalonado } from "@/components/animate/tokens";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { useTituloDaAba } from "@/hooks/use-titulo-da-aba";
 import { Button } from "@/ui/button";
 import { Text, Title } from "@/ui/typography";
-import { m } from "motion/react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router";
 
@@ -34,20 +32,30 @@ export default function ErrorLayout({
 	return (
 		<>
 			<main className="m-auto max-w-[400px] flex items-center justify-center h-full">
-				<MotionContainer className="flex flex-col items-center justify-center px-2 w-full gap-2">
-					<m.div variants={varBounce().in}>
+				{/*
+				 * Tela de erro com entrada em CSS (`surgir`, tokens.css), escalonada. Era o
+				 * `varBounce` do Motion com `initial` invisível: justo na tela de ERRO — que
+				 * aparece quando algo não carregou — o texto dependia de mais um chunk de JS
+				 * para ficar visível. Em CSS ele aparece de qualquer jeito.
+				 */}
+				<div className="flex flex-col items-center justify-center px-2 w-full gap-2">
+					<div className="surgir">
 						<Title as="h1" className="text-center">
 							{title}
 						</Title>
-					</m.div>
+					</div>
 					{desc && (
-						<m.div variants={varBounce().in}>
+						<div className="surgir" style={{ animationDelay: `${atrasoEscalonado(1, "relaxed")}s` }}>
 							<Text variant="subTitle1" color="secondary" align="center">
 								{desc}
 							</Text>
-						</m.div>
+						</div>
 					)}
-					{svg && <m.div variants={varBounce().in}>{svg}</m.div>}
+					{svg && (
+						<div className="surgir" style={{ animationDelay: `${atrasoEscalonado(2, "relaxed")}s` }}>
+							{svg}
+						</div>
+					)}
 
 					{/* Slots: footer */}
 					{slots.footer ? (
@@ -59,7 +67,7 @@ export default function ErrorLayout({
 							</Button>
 						</NavLink>
 					)}
-				</MotionContainer>
+				</div>
 			</main>
 		</>
 	);
