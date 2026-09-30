@@ -22,6 +22,7 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import { supabase } from "@/lib/supabase";
 import {
 	agora,
+	COLUNAS_AGENDA_EQUIPE,
 	CONFLITO,
 	type DominioPorTabela,
 	PARA_LINHA,
@@ -239,9 +240,15 @@ export function useSalvar<T extends TabelaOlli>(tabela: T) {
 					linha.user_id = ownerUserId;
 				}
 
-				const { error } = await supabase
+				let { error } = await supabase
 					.from(tabelaRemota(tabela))
 					.upsert(linha, { onConflict: CONFLITO[tabela] });
+				if (error && tabela === "agendamentos" && (error.code === "42703" || error.code === "PGRST204")) {
+					// Servidor ainda sem a migration da agenda por técnico: grava sem as
+					// colunas novas em vez de recusar o agendamento inteiro.
+					for (const c of COLUNAS_AGENDA_EQUIPE) delete linha[c];
+					({ error } = await supabase.from(tabelaRemota(tabela)).upsert(linha, { onConflict: CONFLITO[tabela] }));
+				}
 				if (!error) return candidato;
 				ultimoErro = error;
 

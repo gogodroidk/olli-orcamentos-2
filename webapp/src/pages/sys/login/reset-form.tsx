@@ -1,49 +1,40 @@
-import { Loader2 } from "lucide-react";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { CAMINHO_NOVA_SENHA, TAMANHO_CODIGO, TEXTO_RECUPERACAO_ENVIADA, urlRecuperacaoSenha } from "@acesso-codigo";
+import { useNavigate } from "react-router";
 import { Icon } from "@/components/icon";
 import { supabase } from "@/lib/supabase";
-import { mapAuthErrorMessage } from "@/store/userStore";
-import { Button } from "@/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
-import { Input } from "@/ui/input";
 import { ReturnButton } from "./components/ReturnButton";
+import { TrilhoCodigo } from "./components/TrilhoCodigo";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
+import { useAcessoCodigo } from "./use-acesso-codigo";
 
-interface ResetFormValues {
-	email: string;
-}
-
+/**
+ * "Esqueci a senha" do painel. O e-mail traz DOIS caminhos para a mesma coisa:
+ *  - o link `/auth/confirm?token_hash=…&type=recovery` (confirmar.tsx), que funciona
+ *    em QUALQUER aparelho — não depende do code_verifier do PKCE deste navegador,
+ *    que era o motivo de o link antigo falhar quando aberto no celular;
+ *  - o código de 6 dígitos, digitado aqui mesmo.
+ * Os dois terminam em /auth/nova-senha com uma sessão de recuperação.
+ *
+ * O Supabase responde sucesso para e-mail sem conta; a tela diz sempre "se houver
+ * uma conta" (anti-enumeração) e o reenvio espera o tempo do servidor.
+ */
 function ResetForm() {
-	const { t } = useTranslation();
+	const navigate = useNavigate();
 	const { loginState, backToLogin } = useLoginStateContext();
-	const [loading, setLoading] = useState(false);
-	const [sent, setSent] = useState(false);
 
-	const form = useForm<ResetFormValues>({ defaultValues: { email: "" } });
-
-	const onFinish = async (values: ResetFormValues) => {
-		if (loading) return;
-		setLoading(true);
-		try {
-			const { error } = await supabase.auth.resetPasswordForEmail(values.email.trim(), {
-				redirectTo: `${window.location.origin}/nova-senha`,
-			});
-			if (error) throw error;
-			setSent(true);
-			toast.success("Se este e-mail tiver uma conta, enviamos um link para redefinir a senha.", {
-				position: "top-center",
-			});
-		} catch (err) {
-			toast.error(mapAuthErrorMessage(err), {
-				position: "top-center",
-			});
-		} finally {
-			setLoading(false);
-		}
-	};
+	const trilho = useAcessoCodigo({
+		textoEnviado: TEXTO_RECUPERACAO_ENVIADA,
+		pedir: async (email) => {
+			const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: urlRecuperacaoSenha() });
+			return { error };
+		},
+		conferir: async (email, codigo) => {
+			const { data, error } = await supabase.auth.verifyOtp({ email, token: codigo, type: "recovery" });
+			if (!error && !data?.session) return { ok: false, error: new Error("sem_sessao") };
+			return { ok: !error, error };
+		},
+		aoConfirmar: () => navigate(CAMINHO_NOVA_SENHA, { replace: true }),
+	});
 
 	if (loginState !== LoginStateEnum.RESET_PASSWORD) return null;
 
@@ -52,42 +43,22 @@ function ResetForm() {
 			<div className="mb-8 text-center">
 				<Icon icon="local:ic-reset-password" size="100" className="text-primary!" />
 			</div>
-			<Form {...form}>
-				<form onSubmit={form.handleSubmit(onFinish)} className="space-y-4">
-					<div className="flex flex-col items-center gap-2 text-center">
-						<h1 className="text-2xl font-bold">{t("sys.login.forgetFormTitle")}</h1>
-						<p className="text-balance text-sm text-muted-foreground">{t("sys.login.forgetFormSecondTitle")}</p>
-					</div>
-
-					<FormField
-						control={form.control}
-						name="email"
-						rules={{
-							required: t("sys.login.emaildPlaceholder"),
-							pattern: { value: /^\S+@\S+\.\S+$/, message: t("sys.login.emaildPlaceholder") },
-						}}
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>E-mail</FormLabel>
-								<FormControl>
-									<Input type="email" autoComplete="email" placeholder={t("sys.login.email")} {...field} />
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
-						{loading && <Loader2 className="animate-spin mr-2" size={16} />}
-						{t("sys.login.sendEmailButton")}
-					</Button>
-					{sent && (
-						<output className="block text-center text-sm text-success-dark dark:text-success">
-							E-mail enviado. Confira também a caixa de spam.
-						</output>
-					)}
-					<ReturnButton onClick={backToLogin} />
-				</form>
-			</Form>
+			<div className="flex flex-col gap-4">
+				<TrilhoCodigo
+					trilho={trilho}
+					titulo="Esqueceu a senha?"
+					descricao={`Enviamos um link e um código de ${TAMANHO_CODIGO} dígitos. Use o que for mais fácil, em qualquer aparelho.`}
+					rotuloEnviar="Enviar link e código"
+					textoSucesso="Código confirmado. Agora crie a senha nova…"
+					rodape={
+						<p className="text-center text-xs text-muted-foreground">
+							Entrou com o Google ou a Apple? Você não precisa de senha: volte e toque no botão do Google ou da
+							Apple. Se quiser, crie uma senha por aqui também.
+						</p>
+					}
+				/>
+				<ReturnButton onClick={backToLogin} />
+			</div>
 		</>
 	);
 }

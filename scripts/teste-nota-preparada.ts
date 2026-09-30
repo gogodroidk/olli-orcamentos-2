@@ -78,6 +78,9 @@ await caso('cada ofício com regra sugere o código esperado, com explicação e
     hidraulica: '070202',
     pintura: '070501',
     dedetizacao: '071301',
+    caixa_dagua: '071002',
+    piscina: '071002',
+    extintores: '140101',
     jardinagem: '071102',
   };
   for (const [oficio, cod] of Object.entries(esperado)) {

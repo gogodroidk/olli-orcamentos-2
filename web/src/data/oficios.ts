@@ -16,8 +16,9 @@
  * O QUE NÃO É VENDIDO AQUI, e por quê:
  *  - As `ferramentas` de `verticais.ts` têm flag `disponivel`. Hoje `checklist_nr10`,
  *    `laudo_eletrico`, `laudo_estanqueidade`, `calculadora_tinta` e
- *    `contrato_recorrente` são **false** — só Refrigeração (PMOC + Etiqueta QR) e
- *    Dedetização (Certificado ANVISA) têm documento pronto. Anunciar "laudo de
+ *    `contrato_recorrente` são **false** — só Refrigeração (PMOC + Etiqueta QR),
+ *    Dedetização (comprovante de controle de pragas) e Caixa d'água (certificado de
+ *    limpeza) têm documento pronto. Anunciar "laudo de
  *    estanqueidade" para encanador repetiria o erro que a landing já cometeu com
  *    "equipe no mapa em tempo real": vender o "(em breve)" como pronto.
  *  - "Montagem de móveis" e "Marido de aluguel" estavam no briefing como cards, mas
@@ -107,6 +108,9 @@ export const ICONE_POR_OFICIO: Record<VerticalId, string> = {
   hidraulica: 'droplet',
   pintura: 'paint-roller',
   dedetizacao: 'bug',
+  caixa_dagua: 'cylinder',
+  piscina: 'waves',
+  extintores: 'fire-extinguisher',
   jardinagem: 'leaf',
   geral: 'wrench',
 };
@@ -128,6 +132,9 @@ export const SLUG_POR_OFICIO: Record<VerticalId, string> = {
   hidraulica: 'encanador',
   pintura: 'pintor',
   dedetizacao: 'dedetizadora',
+  caixa_dagua: 'limpeza-de-caixa-dagua',
+  piscina: 'piscineiro',
+  extintores: 'recarga-de-extintores',
   jardinagem: 'jardinagem',
   geral: 'prestador-de-servico',
 };
@@ -139,6 +146,9 @@ export const PROFISSAO_POR_OFICIO: Record<VerticalId, string> = {
   hidraulica: 'encanador',
   pintura: 'pintor',
   dedetizacao: 'dedetizadora',
+  caixa_dagua: "limpeza de caixa d'água",
+  piscina: 'piscineiro',
+  extintores: 'recarga de extintores',
   jardinagem: 'jardinagem e paisagismo',
   geral: 'prestador de serviço',
 };
@@ -154,7 +164,10 @@ export const DOR_POR_OFICIO: Record<VerticalId, string> = {
   eletrica: 'Orçamento de quadro, circuito e ponto — com o cálculo feito no celular, sem app de terceiro.',
   hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a OS assinada na tela.',
   pintura: 'Quantos litros, quantas demãos, quanto cobrar — e o orçamento sai pronto do mesmo lugar.',
-  dedetizacao: 'Certificado ANVISA, dosagem calculada e o comprovante que o cliente exige.',
+  dedetizacao: 'Comprovante de controle de pragas com os campos da RDC 622, dosagem calculada e o lembrete da reaplicação.',
+  caixa_dagua: "Certificado de limpeza com lacre e validade, e o lembrete da próxima limpeza no tempo certo.",
+  piscina: 'Visitas do mês no orçamento, produtos na conta e o lembrete de quem saiu da rotina.',
+  extintores: 'Recarga e inspeção no orçamento, recibo na hora e o lembrete da próxima manutenção.',
   jardinagem: 'Poda, adubação e contrato mensal — orçamento e recibo sem caderninho.',
   // A frase antiga começava pelo áudio do cliente: a OLLI não lê áudio de WhatsApp
   // (o llms.txt diz isso com todas as letras), e a frase dava a entender o contrário.

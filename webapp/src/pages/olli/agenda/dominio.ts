@@ -36,6 +36,12 @@ export interface LinhaAgendamento {
 	criado_em: string;
 	atualizado_em: string | null;
 	excluido_em: string | null;
+	// Migration 20260930130500 — opcionais: antes dela a coluna nem vem.
+	responsavel_id?: string | null;
+	responsavel_nome?: string | null;
+	recorrencia?: Agendamento["recorrencia"] | null;
+	recorrencia_ate?: string | null;
+	contrato_id?: string | null;
 }
 
 /**
@@ -63,6 +69,11 @@ export function linhaParaAgendamento(r: LinhaAgendamento): Agendamento {
 	if (r.orcamento_id) a.orcamentoId = r.orcamento_id;
 	if (r.observacao) a.observacao = r.observacao;
 	if (r.excluido_em) a.excluidoEm = r.excluido_em;
+	if (r.responsavel_id) a.responsavelId = r.responsavel_id;
+	if (r.responsavel_nome) a.responsavelNome = r.responsavel_nome;
+	if (r.recorrencia) a.recorrencia = r.recorrencia;
+	if (r.recorrencia_ate) a.recorrenciaAte = r.recorrencia_ate;
+	if (r.contrato_id) a.contratoId = r.contrato_id;
 	return a;
 }
 

@@ -16,12 +16,18 @@ import { OlliInput } from '../../components/OlliInput';
 import { OlliButton } from '../../components/OlliButton';
 import { OlliSkeleton } from '../../components/OlliSkeleton';
 import {
-  getAgendamentosRange, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
+  getAgendamentosExpandidos, getAgendamento, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
 } from '../../services/agenda';
 import {
   Agendamento, TipoAgendamento, StatusAgendamento, TIPOS_AGENDAMENTO,
-  TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS,
+  TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS, type RecorrenciaAgendamento,
 } from '../../types';
+import { SeletorResponsavel, CamposRecorrencia } from '../../components/agenda/CamposEquipeRecorrencia';
+import { useEquipeResponsaveis } from '../../hooks/useEquipeResponsaveis';
+import {
+  filtrarPorResponsavel, idBaseDaOcorrencia, rotuloRecorrencia, type FiltroResponsavel, type OcorrenciaAgendamento,
+} from '../../utils/contratoRecorrente';
+import { isoToBR, brToISO } from '../../utils/masks';
 import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator';
 import { generateId } from '../../utils/id';
 import { nowISO, capitalizeFirst, parseHoraHHMM, formatHoraHHMM } from '../../utils/date';
@@ -66,6 +72,12 @@ interface EditState {
   status?: Agendamento['status'];
   orcamentoId?: string;
   criadoEm?: string;
+  responsavelId?: string;
+  responsavelNome?: string;
+  recorrencia?: RecorrenciaAgendamento;
+  /** 'dd/mm/aaaa' digitado (ou ''). */
+  recorrenciaAteBR: string;
+  contratoId?: string;
 }
 
 /**
@@ -82,9 +94,12 @@ export default function AgendaDesktopScreen() {
   const styles = useEstilos(criarEstilos);
 
   const [semanaRef, setSemanaRef] = useState(new Date());
-  const [itens, setItens] = useState<Agendamento[]>([]);
+  const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [detalhe, setDetalhe] = useState<Agendamento | null>(null);
+  const [detalhe, setDetalhe] = useState<OcorrenciaAgendamento | null>(null);
+  // VISÃO POR TÉCNICO (mesma regra do celular).
+  const equipe = useEquipeResponsaveis();
+  const [filtroTecnico, setFiltroTecnico] = useState<FiltroResponsavel>('todos');
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipoAgenda>('todos');
@@ -117,10 +132,19 @@ export default function AgendaDesktopScreen() {
     { chave: 'cancelado', rotulo: STATUS_AGENDAMENTO_LABELS.cancelado, cor: cores.danger, contagem: itens.filter(a => a.status === 'cancelado').length },
   ], [itens, cores]);
 
-  const itensFiltrados = useMemo(() => itens.filter(a =>
+  const chipsTecnico: ItemChipFiltro<FiltroResponsavel>[] = useMemo(() => {
+    if (equipe.estado.status !== 'ok' || equipe.estado.semEquipe) return [];
+    return [
+      { chave: 'todos', rotulo: 'Toda a equipe', contagem: itens.length },
+      { chave: 'sem', rotulo: 'Sem responsável', contagem: filtrarPorResponsavel(itens, 'sem').length },
+      ...equipe.estado.membros.map(m => ({ chave: m.userId, rotulo: m.nome, contagem: filtrarPorResponsavel(itens, m.userId).length })),
+    ];
+  }, [itens, equipe.estado]);
+
+  const itensFiltrados = useMemo(() => filtrarPorResponsavel(itens, filtroTecnico).filter(a =>
     (filtroTipo === 'todos' || a.tipo === filtroTipo) &&
     (filtroStatus === 'todos' || a.status === filtroStatus)
-  ), [itens, filtroTipo, filtroStatus]);
+  ), [itens, filtroTipo, filtroStatus, filtroTecnico]);
 
   // SOBREPOSIÇÃO (1.5) — aviso NÃO-BLOQUEANTE, contra `itens` (não o filtrado:
   // o conflito vale mesmo que o outro compromisso esteja escondido pelo filtro).
@@ -139,7 +163,8 @@ export default function AgendaDesktopScreen() {
   }, [inicioSemana, fimSemana]);
 
   const load = useCallback(async () => {
-    const data = await getAgendamentosRange(inicioSemana.toISOString(), addDays(fimSemana, 1).toISOString());
+    // Inclui as ocorrências projetadas das séries recorrentes.
+    const data = await getAgendamentosExpandidos(inicioSemana.toISOString(), addDays(fimSemana, 1).toISOString());
     setItens(data);
     setCarregando(false);
   }, [inicioSemana.getTime(), fimSemana.getTime()]);
@@ -161,6 +186,7 @@ export default function AgendaDesktopScreen() {
       horaFim: '',
       endereco: '',
       observacao: '',
+      recorrenciaAteBR: '',
       ...prefill,
     });
   }
@@ -189,6 +215,18 @@ export default function AgendaDesktopScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params]));
 
+  // Repetição projetada de uma série: edita a BASE (a série inteira).
+  async function editarItem(a: OcorrenciaAgendamento) {
+    if (!a.ocorrenciaDe) { abrirEdicao(a); return; }
+    try {
+      const base = await getAgendamento(idBaseDaOcorrencia(a.id));
+      if (base) abrirEdicao(base);
+      else avisar('Não encontrado', 'Não achei o compromisso original desta repetição.');
+    } catch {
+      avisar('Erro', 'Não foi possível abrir este compromisso agora.');
+    }
+  }
+
   function abrirEdicao(a: Agendamento) {
     const iniRaw = new Date(a.inicio);
     const ini = isNaN(iniRaw.getTime()) ? new Date() : iniRaw;
@@ -207,6 +245,11 @@ export default function AgendaDesktopScreen() {
       status: a.status,
       orcamentoId: a.orcamentoId,
       criadoEm: a.criadoEm,
+      responsavelId: a.responsavelId,
+      responsavelNome: a.responsavelNome,
+      recorrencia: a.recorrencia,
+      recorrenciaAteBR: a.recorrenciaAte ? isoToBR(a.recorrenciaAte) : '',
+      contratoId: a.contratoId,
     });
   }
 
@@ -215,6 +258,11 @@ export default function AgendaDesktopScreen() {
     const fimDt = e.horaFim ? combinarDataHora(e.data, e.horaFim) : undefined;
     if (fimDt && fimDt <= ini) {
       avisar('Horário inválido', 'O horário de fim deve ser depois do horário de início.');
+      return;
+    }
+    const recorrenciaAte = e.recorrencia && e.recorrenciaAteBR.trim() ? brToISO(e.recorrenciaAteBR) : '';
+    if (e.recorrencia && e.recorrenciaAteBR.trim() && !recorrenciaAte) {
+      avisar('Data inválida', 'Confira a data de "Repetir até" (dd/mm/aaaa) ou deixe em branco.');
       return;
     }
     const a: Agendamento = {
@@ -231,6 +279,11 @@ export default function AgendaDesktopScreen() {
       observacao: e.observacao.trim() || undefined,
       criadoEm: e.criadoEm ?? nowISO(),
       atualizadoEm: nowISO(),
+      responsavelId: e.responsavelId,
+      responsavelNome: e.responsavelId ? e.responsavelNome : undefined,
+      recorrencia: e.contratoId ? undefined : e.recorrencia,
+      recorrenciaAte: !e.contratoId && e.recorrencia && recorrenciaAte ? recorrenciaAte : undefined,
+      contratoId: e.contratoId,
     };
     setSalvando(true);
     try {
@@ -271,11 +324,15 @@ export default function AgendaDesktopScreen() {
     }
   }
 
-  async function remover(id: string) {
-    if (!(await confirmar('Excluir agendamento', 'Essa ação não pode ser desfeita.'))) return;
+  async function remover(id: string, serie = false) {
+    const titulo = serie ? 'Excluir a série inteira' : 'Excluir agendamento';
+    const texto = serie
+      ? 'Todas as repetições deste compromisso saem da agenda. Ele vai para a Lixeira.'
+      : 'O agendamento vai para a Lixeira.';
+    if (!(await confirmar(titulo, texto))) return;
     setSalvando(true);
     try {
-      await deleteAgendamento(id);
+      await deleteAgendamento(idBaseDaOcorrencia(id));
       setEditing(null);
       setDetalhe(null);
       await load();
@@ -326,6 +383,9 @@ export default function AgendaDesktopScreen() {
           Só aparece quando há algo pra filtrar. */}
       {!carregando && itens.length > 0 && (
         <View style={{ marginBottom: Spacing.sm }}>
+          {chipsTecnico.length > 0 && (
+            <ChipsFiltro<FiltroResponsavel> itens={chipsTecnico} selecionado={filtroTecnico} aoSelecionar={setFiltroTecnico} />
+          )}
           <ChipsFiltro<FiltroTipoAgenda> itens={chipsTipo} selecionado={filtroTipo} aoSelecionar={setFiltroTipo} />
           <ChipsFiltro<FiltroStatusAgenda> itens={chipsStatus} selecionado={filtroStatus} aoSelecionar={setFiltroStatus} />
         </View>
@@ -415,6 +475,22 @@ export default function AgendaDesktopScreen() {
                   <Text style={styles.modalLinhaTexto}>{detalhe.observacao}</Text>
                 </View>
               ) : null}
+              {detalhe.responsavelNome ? (
+                <View style={styles.modalLinha}>
+                  <MaterialCommunityIcons name="account-hard-hat-outline" size={16} color={cores.onSurfaceMuted} />
+                  <Text style={styles.modalLinhaTexto}>Responsável: {detalhe.responsavelNome}</Text>
+                </View>
+              ) : null}
+              {(detalhe.recorrencia || detalhe.contratoId) ? (
+                <View style={styles.modalLinha}>
+                  <MaterialCommunityIcons name="repeat" size={16} color={cores.onSurfaceMuted} />
+                  <Text style={styles.modalLinhaTexto}>
+                    {detalhe.contratoId
+                      ? 'Visita gerada por um contrato recorrente'
+                      : `Repete ${rotuloRecorrencia(detalhe.recorrencia)}${detalhe.recorrenciaAte ? ` até ${isoToBR(detalhe.recorrenciaAte)}` : ''}${detalhe.ocorrenciaDe ? ' — esta é uma repetição; editar muda a série inteira' : ''}`}
+                  </Text>
+                </View>
+              ) : null}
 
               {detalhe.status !== 'agendado' && (
                 <Text style={[styles.modalStatus, detalhe.status === 'concluido' ? { color: cores.success } : { color: cores.danger }]}>
@@ -444,7 +520,9 @@ export default function AgendaDesktopScreen() {
               </View>
 
               <View style={styles.modalBotoes}>
-                {detalhe.status === 'agendado' && (
+                {/* Concluir/cancelar valem para UMA visita real; uma repetição projetada
+                    não é linha própria (mudaria a série inteira) — edite a série. */}
+                {detalhe.status === 'agendado' && !detalhe.ocorrenciaDe && (
                   <>
                     <OlliButton
                       label="Concluir"
@@ -466,14 +544,14 @@ export default function AgendaDesktopScreen() {
                   </>
                 )}
                 <Pressable
-                  onPress={() => abrirEdicao(detalhe)}
+                  onPress={() => { void editarItem(detalhe); }}
                   style={({ hovered }: PressableWebState) => [styles.modalIconBtn, hovered && styles.modalIconBtnHover]}
-                  accessibilityLabel="Editar"
+                  accessibilityLabel={detalhe.recorrencia ? 'Editar a série' : 'Editar'}
                 >
                   <MaterialCommunityIcons name="pencil-outline" size={18} color={cores.onSurface} />
                 </Pressable>
                 <Pressable
-                  onPress={() => remover(detalhe.id)}
+                  onPress={() => remover(detalhe.id, !!detalhe.recorrencia)}
                   style={({ hovered }: PressableWebState) => [styles.modalIconBtn, hovered && styles.modalIconBtnHover]}
                   accessibilityLabel="Excluir"
                   disabled={salvando}
@@ -598,13 +676,35 @@ export default function AgendaDesktopScreen() {
                   }}
                 />
 
-                <OlliInput
-                  label="Endereço"
-                  value={editing.endereco}
-                  onChangeText={(v) => setEditing({ ...editing, endereco: v })}
-                  placeholder="Rua, número, bairro"
-                  leftIcon="map-marker"
+                <SeletorResponsavel
+                  responsavelId={editing.responsavelId}
+                  responsavelNome={editing.responsavelNome}
+                  onChange={(r) => setEditing({ ...editing, ...r })}
+                  equipe={equipe}
                 />
+                {editing.contratoId ? (
+                  <Text style={[styles.fieldLabel, { marginTop: Spacing.base }]}>Visita gerada por um contrato recorrente — a repetição vem do contrato.</Text>
+                ) : (
+                  <CamposRecorrencia
+                    recorrencia={editing.recorrencia}
+                    recorrenciaAteBR={editing.recorrenciaAteBR}
+                    onChange={(r) => setEditing({
+                      ...editing,
+                      ...(('recorrencia' in r) ? { recorrencia: r.recorrencia } : {}),
+                      ...(r.recorrenciaAteBR !== undefined ? { recorrenciaAteBR: r.recorrenciaAteBR } : {}),
+                    })}
+                  />
+                )}
+
+                <View style={{ marginTop: Spacing.base }}>
+                  <OlliInput
+                    label="Endereço"
+                    value={editing.endereco}
+                    onChangeText={(v) => setEditing({ ...editing, endereco: v })}
+                    placeholder="Rua, número, bairro"
+                    leftIcon="map-marker"
+                  />
+                </View>
 
                 <OlliInput
                   label="Observação"
@@ -650,6 +750,11 @@ function CardAgendamento({ item, onPress }: { item: Agendamento; onPress: () => 
       <Text style={styles.cardHora}>{hhmm(item.inicio)}</Text>
       <Text style={[styles.cardTitulo, cancelado && styles.strike]} numberOfLines={1}>{item.titulo}</Text>
       <Text style={styles.cardCliente} numberOfLines={1}>{item.clienteNome}</Text>
+      {(item.responsavelNome || item.recorrencia || item.contratoId) ? (
+        <Text style={styles.cardCliente} numberOfLines={1}>
+          {[item.responsavelNome, item.contratoId ? 'Contrato' : item.recorrencia ? 'Repete' : null].filter(Boolean).join(' · ')}
+        </Text>
+      ) : null}
       {(cancelado || concluido) && (
         <Text style={[styles.cardStatus, concluido ? { color: cores.success } : { color: cores.danger }]}>
           {STATUS_AGENDAMENTO_LABELS[item.status]}

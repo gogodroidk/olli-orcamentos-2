@@ -2,10 +2,12 @@ import { Loader2 } from "lucide-react";
 import { Navigate } from "react-router";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
+import { useTituloDaAba } from "@/hooks/use-titulo-da-aba";
 import SettingButton from "@/layouts/components/setting-button";
 import { destinoDepoisDoLogin, lerIntencaoPlano } from "@/olli/plano-intent";
 import { useAuthHydrated, useUserToken } from "@/store/userStore";
 import BrandHero from "./components/BrandHero";
+import CodigoForm from "./codigo-form";
 import LoginForm from "./login-form";
 import { LoginProvider } from "./providers/login-provider";
 import RegisterForm from "./register-form";
@@ -15,17 +17,20 @@ import { destinoDepoisDoOAuth, useRetornoOAuth } from "./use-retorno-oauth";
 function LoginPage() {
 	const token = useUserToken();
 	const authHydrated = useAuthHydrated();
+	useTituloDaAba("Entrar");
 	// Volta do Google/Apple: avisa se o login não fechou e mede o funil (sem PII).
 	useRetornoOAuth();
 
 	if (!authHydrated) {
 		return (
-			<div className="grid min-h-svh place-items-center bg-background" role="status" aria-live="polite">
-				<div className="flex items-center gap-3 text-sm text-muted-foreground">
+			// `role="status"` fica no filho: no próprio <main> ele trocaria o papel do
+			// elemento e a página perderia o landmark que este <main> existe para dar.
+			<main className="grid min-h-svh place-items-center bg-background">
+				<div className="flex items-center gap-3 text-sm text-muted-foreground" role="status" aria-live="polite">
 					<Loader2 className="size-5 animate-spin" aria-hidden />
 					Verificando sua sessão…
 				</div>
-			</div>
+			</main>
 		);
 	}
 
@@ -48,15 +53,18 @@ function LoginPage() {
 						<span>{GLOBAL_CONFIG.appName}</span>
 					</div>
 				</div>
-				<div className="flex flex-1 items-center justify-center">
+				{/* Landmark `<main>`: o formulário é o conteúdo principal da página (leitor
+				    de tela pula direto para cá; Lighthouse cobra a ausência). */}
+				<main className="flex flex-1 items-center justify-center">
 					<div className="w-full max-w-xs">
 						<LoginProvider>
 							<LoginForm />
 							<RegisterForm />
 							<ResetForm />
+							<CodigoForm />
 						</LoginProvider>
 					</div>
-				</div>
+				</main>
 			</div>
 
 			<BrandHero />

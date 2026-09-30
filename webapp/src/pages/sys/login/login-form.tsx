@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -118,6 +118,18 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 					<Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
 						{loading && <Loader2 className="animate-spin mr-2" />}
 						{t("sys.login.loginButton")}
+					</Button>
+
+					{/* Login sem senha: código de 6 dígitos no e-mail (codigo-form.tsx). */}
+					<Button
+						type="button"
+						variant="outline"
+						className="w-full"
+						disabled={loading}
+						onClick={() => setLoginState(LoginStateEnum.CODIGO)}
+					>
+						<Mail className="mr-2" size={16} aria-hidden />
+						Entrar com código por e-mail
 					</Button>
 
 					{/* Login por celular/QR do template ficam escondidos até terem backend real. */}

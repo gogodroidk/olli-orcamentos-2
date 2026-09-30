@@ -151,7 +151,10 @@ da mesma semana — mas se só elas entrarem, nada mudou de verdade.
 
 ### Aposta 3 — A nota fiscal pronta antes de 1º de setembro
 
-Em **01/09/2026**, MEI, ME e EPP do Simples — ou seja, o público inteiro do
+> Correção (30/09/2026, ver `ALERTA_NFSE_DATA.md`): o MEI já é obrigado desde 01/09/2023 e ME/EPP
+> passam a ser em **01/11/2026** (Resolução CGSN 191/2026, https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026).
+
+Texto original: em **01/09/2026**, MEI, ME e EPP do Simples — ou seja, o público inteiro do
 OLLI — passam a ser obrigados a emitir NFS-e pelo Emissor Nacional (Resolução
 CGSN 189/2026;
 https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional).
@@ -323,7 +326,8 @@ coincidir com o maior deploy da história do produto. Fatiar não é burocracia;
    azul em 32 telas), e paridade vendida como mágica.
 3. Três apostas: **ligar o caixa** (quase tudo passo humano seu), **a tela que
    mostra dinheiro** (radares com palco + preço do histórico + assinatura), e
-   **NFS-e pronta antes de 01/09** (prazo legal virando marketing).
+   **NFS-e pronta antes de 01/11/2026** (prazo legal de ME/EPP pela CGSN 191/2026,
+   virando marketing; era 01/09 antes do adiamento).
 4. Recusar agora: ETA completo, clima até outubro, WhatsApp API, roteirização,
    app do cliente, emissão fiscal direta, ícones G, StoreKit, animação, IA sem
    dado — e decidir o plano Empresa em vez de deixá-lo no muro.

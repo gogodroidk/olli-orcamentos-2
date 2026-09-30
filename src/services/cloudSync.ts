@@ -247,8 +247,22 @@ function depoimentoToRow(d: Depoimento): Record<string, unknown> {
   };
 }
 
+/**
+ * Colunas da agenda por técnico/recorrência/contrato (migration 20260930130500).
+ * Enquanto o servidor não tiver a migration, um upsert com elas é recusado INTEIRO
+ * (coluna desconhecida) — e a agenda pararia de sincronizar. Por isso, ao primeiro
+ * erro de coluna, o push passa a ir sem elas (a linha continua sincronizando; o
+ * responsável e a recorrência ficam só neste aparelho até a migration existir).
+ */
+const COLUNAS_AGENDA_EQUIPE = ['responsavel_id', 'responsavel_nome', 'recorrencia', 'recorrencia_ate', 'contrato_id'] as const;
+let agendaSemColunasEquipe = false;
+
+function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '42703' || error?.code === 'PGRST204';
+}
+
 function agendamentoToRow(a: Agendamento): Record<string, unknown> {
-  return {
+  const row: Record<string, unknown> = {
     id: a.id,
     cliente_id: a.clienteId ?? null,
     cliente_nome: a.clienteNome,
@@ -265,6 +279,14 @@ function agendamentoToRow(a: Agendamento): Record<string, unknown> {
     // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
     excluido_em: a.excluidoEm ?? null,
   };
+  if (!agendaSemColunasEquipe) {
+    row.responsavel_id = a.responsavelId ?? null;
+    row.responsavel_nome = a.responsavelId ? (a.responsavelNome ?? null) : null;
+    row.recorrencia = a.recorrencia ?? null;
+    row.recorrencia_ate = a.recorrencia ? (a.recorrenciaAte ?? null) : null;
+    row.contrato_id = a.contratoId ?? null;
+  }
+  return row;
 }
 
 // Ordem de Serviço (Onda 4): colunas explícitas (não jsonb-`dados`); checklist/fotos
@@ -432,6 +454,11 @@ function rowToAgendamento(row: any): Agendamento {
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
     // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
     excluidoEm: row.excluido_em ?? undefined,
+    responsavelId: row.responsavel_id ?? undefined,
+    responsavelNome: row.responsavel_nome ?? undefined,
+    recorrencia: row.recorrencia ?? undefined,
+    recorrenciaAte: row.recorrencia_ate ?? undefined,
+    contratoId: row.contrato_id ?? undefined,
   };
 }
 
@@ -959,9 +986,16 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
         if (tsMaisNovo(tsRemoto, (row as any).atualizado_em)) return;
       }
     }
-    const { error } = await supabase
+    let { error } = await supabase
       .from(remoteNome(table))
       .upsert(row, { onConflict: ON_CONFLICT[table] });
+    if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {
+      // Servidor ainda sem a migration da agenda por técnico: reenvia sem as colunas
+      // novas e segue assim até o próximo boot (ver COLUNAS_AGENDA_EQUIPE).
+      agendaSemColunasEquipe = true;
+      for (const c of COLUNAS_AGENDA_EQUIPE) delete (row as Record<string, unknown>)[c];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
     if (error) {
       if (tabelaDocumentoNumerado(table)) {
         await tentarRenumerarDocumento(table, objLocal, row, error);
@@ -1348,11 +1382,14 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO agendamentos
-       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
-     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null],
+     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
+     a.responsavelId ?? null, a.responsavelNome ?? null, a.recorrencia ?? null,
+     a.recorrenciaAte ?? null, a.contratoId ?? null],
   );
 }
 
@@ -2206,6 +2243,12 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
     // Sem isso, agendamentoToRow mandaria excluido_em=null e apagaria o soft-delete na nuvem.
     excluidoEm: r.excluido_em ?? undefined,
+    // Idem: sem estes, o push apagaria na nuvem o técnico/recorrência definidos no painel.
+    responsavelId: r.responsavel_id ?? undefined,
+    responsavelNome: r.responsavel_nome ?? undefined,
+    recorrencia: r.recorrencia ?? undefined,
+    recorrenciaAte: r.recorrencia_ate ?? undefined,
+    contratoId: r.contrato_id ?? undefined,
   };
 }
 
@@ -2632,6 +2675,14 @@ export async function syncOnLogin(): Promise<void> {
     // Releitura forçada (não `garantir...`): no login o contexto pode ser de outra
     // conta. Se falhar, fica `desconhecido` e o push das tabelas de tenant é adiado.
     await atualizarContextoEquipe();
+    // Contratos recorrentes: gera as visitas devidas (OS + agendamento) no servidor
+    // ANTES do pull, para elas descerem já neste ciclo. Só gestão gera; nunca lança
+    // e tem teto de tempo — uma rede ruim aqui não pode segurar o sync inteiro.
+    await Promise.race([
+      import('./contratos').then(m => m.gerarVisitasAutomatico()).catch(() => null),
+      new Promise(resolve => setTimeout(resolve, 15_000)),
+    ]);
+    if (syncAbortado(geracao)) return;
     await pullAll(geracao);
     if (syncAbortado(geracao)) return;
     await pushLocalTombstones(geracao);

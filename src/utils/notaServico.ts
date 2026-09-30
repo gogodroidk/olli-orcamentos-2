@@ -148,6 +148,24 @@ const REGRAS_POR_OFICIO: Partial<Record<VerticalId, RegraOficio>> = {
     explicacao:
       'Dedetização, desinsetização, desratização e higienização têm subitem próprio na LC 116: 7.13.',
   },
+  caixa_dagua: {
+    principal: '071002',
+    alternativas: ['071301'],
+    explicacao:
+      'Limpeza de caixa d’água é limpeza e conservação de imóvel, subitem 7.10 da LC 116 (desdobramento 02 na tabela nacional). Se o serviço vendido foi só a desinfecção/higienização do reservatório, o subitem próprio é o 7.13.',
+  },
+  piscina: {
+    principal: '071002',
+    alternativas: ['140101'],
+    explicacao:
+      'Limpeza, manutenção e tratamento de piscina estão no subitem 7.10 da LC 116, que cita piscinas pelo nome (desdobramento 02 na tabela nacional). Conserto só do equipamento (bomba, filtro, aquecedor) vai no 14.01.',
+  },
+  extintores: {
+    principal: '140101',
+    alternativas: ['140601', '070202'],
+    explicacao:
+      'Recarga, inspeção e manutenção de extintor entram no subitem 14.01 da LC 116 ("carga e recarga, conserto… manutenção de aparelhos e equipamentos"). Instalação de equipamento com material do cliente é o 14.06; sistema de prevenção instalado com obra (hidrantes, tubulação), 7.02.',
+  },
   jardinagem: {
     principal: '071102',
     alternativas: ['071101'],

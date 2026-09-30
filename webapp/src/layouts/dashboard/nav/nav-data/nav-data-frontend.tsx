@@ -6,6 +6,7 @@ import {
 	ClipboardList,
 	Crown,
 	DatabaseBackup,
+	FileSignature,
 	FileText,
 	Home,
 	Kanban,
@@ -55,6 +56,8 @@ export const frontendNavData: NavProps["data"] = [
 		items: [
 			{ title: "Ordens de serviço", path: "/ordens-servico", icon: <ClipboardList size={24} /> },
 			{ title: "Agenda", path: "/agenda", icon: <Calendar size={24} /> },
+			// Contrato recorrente por ativo: gera cada visita na agenda (qualquer ofício).
+			{ title: "Contratos", path: "/contratos", icon: <FileSignature size={24} /> },
 			{ title: "Equipe", path: "/equipe", icon: <UsersRound size={24} /> },
 			// Era `mdi:air-conditioner` (Iconify) — antes disso, `solar:cpu-bolt-bold-duotone`,
 			// um CHIP DE PROCESSADOR que não dizia nada sobre equipamento de campo. Os

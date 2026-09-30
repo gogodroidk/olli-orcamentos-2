@@ -104,6 +104,10 @@ export function criarLinkingConfig(
         // 'pmoc/:id' (detalhe) — o segmento fixo vem antes do parametrizado.
         Pmoc: 'pmoc',
         PmocPlano: 'pmoc/:id',
+        // Contratos recorrentes por ativo. Mesma ordem: lista antes do detalhe; o
+        // detalhe sem id (contrato novo) é /contrato.
+        Contratos: 'contratos',
+        Contrato: 'contrato/:id?',
 
         // ─── Frentes novas ──────────────────────────────────────────────
         Ajuda: 'ajuda',

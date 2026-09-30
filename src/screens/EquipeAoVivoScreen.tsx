@@ -78,7 +78,7 @@ export default function EquipeAoVivoScreen() {
   return (
     <GateEquipe
       recurso="mapa_equipe"
-      beneficio="Veja onde cada técnico está agora e quem chega primeiro no chamado."
+      beneficio="Veja a última localização que cada técnico compartilhou. No app, a localização ainda não está disponível."
     >
       <GuardaPapel acao="ver_agenda_equipe" area="Equipe ao vivo">
         <EquipeAoVivoConteudo />
@@ -161,11 +161,10 @@ function EquipeAoVivoConteudo() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
       >
         {/* Compartilhar minha localização — na web usa navigator.geolocation e
-            funciona de verdade hoje (dá vida à tela sem esperar a Onda 8). No
-            nativo, a captura de GPS ainda depende do prebuild com
-            expo-location (Onda 8): o cartão avisa isso em vez de prometer uma
-            ação que hoje não faz nada, e a lista de técnicos + deep-link do
-            mapa abaixo já funciona plenamente de qualquer forma. */}
+            funciona de verdade hoje. No nativo o `expo-location` NÃO está
+            instalado: o cartão diz "ainda não disponível" em vez de prometer
+            uma atualização que não tem data (o GPS contínuo está fora do
+            plano; o que vem é check-in por evento da OS). */}
         {Platform.OS === 'web' ? (
           <TouchableOpacity
             style={styles.shareCard}
@@ -194,8 +193,8 @@ function EquipeAoVivoConteudo() {
               <MaterialCommunityIcons name="crosshairs-gps" size={20} color={cores.onSurfaceMuted} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.shareTitle}>Compartilhamento automático de localização</Text>
-              <Text style={styles.shareHint}>Ative a localização no próximo update para aparecer aqui automaticamente. Por enquanto, use a lista abaixo com a rota de cada técnico.</Text>
+              <Text style={styles.shareTitle}>Localização pelo app: ainda não disponível</Text>
+              <Text style={styles.shareHint}>O OLLI ainda não usa o GPS do celular, então ninguém aparece aqui pelo app. Para ir até um cliente, use o botão de rota da visita na agenda.</Text>
             </View>
           </View>
         )}
@@ -216,7 +215,9 @@ function EquipeAoVivoConteudo() {
           <EmptyState
             icon="map-marker-radius-outline"
             title="Ninguém compartilhou a localização ainda"
-            subtitle="Peça para a equipe abrir esta tela pelo computador/navegador e tocar em 'Compartilhar minha localização agora'."
+            subtitle={Platform.OS === 'web'
+              ? "Peça para a equipe abrir esta tela pelo navegador e tocar em 'Compartilhar minha localização agora'."
+              : 'A localização da equipe ainda não está disponível no app.'}
           />
         ) : (
           itens.map((m, i) => (

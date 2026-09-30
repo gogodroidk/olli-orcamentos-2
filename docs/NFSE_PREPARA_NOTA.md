@@ -23,7 +23,7 @@ A partir de um recibo, ele monta os dados da NFS-e para o prestador copiar no
   A 191/2026 revogou a 189/2026 (que dizia 01/09/2026).
 - Código de tributação nacional (cTribNac, 6 dígitos): [tabela oficial](https://www.gov.br/nfse/pt-br/mei-e-demais-empresas/codigos-de-tributacao-nacional-nbs).
   Sugestão por ofício: refrigeração 14.01.01 · elétrica e hidráulica 07.02.02 · pintura 07.05.01 ·
-  dedetização 07.13.01 · jardinagem 07.11.02 (com alternativas e explicação na tela). Sem ofício/"Serviços em Geral": sem sugestão.
+  dedetização 07.13.01 · caixa d'água e piscina 07.10.02 · extintores 14.01.01 · jardinagem 07.11.02 (com alternativas e explicação na tela). Sem ofício/"Serviços em Geral": sem sugestão.
 - Onde o ISS é devido: LC 116/2003, art. 3º (7.02, 7.05, 7.10 e 7.11 no local do serviço; o resto no estabelecimento do prestador).
 - Retenção por tomador pessoa jurídica: LC 116, art. 6º, §2º, II (7.02, 7.05, 7.10 entre os do app). MEI não sofre retenção (LC 123, art. 21, §4º, IV).
 - NBS: o emissor oferece os NBS ligados ao código escolhido — o OLLI não chuta, o checklist manda escolher lá.

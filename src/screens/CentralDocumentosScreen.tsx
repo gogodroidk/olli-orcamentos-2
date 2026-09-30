@@ -23,6 +23,7 @@ import { atualizarStatusDocumentoBiblioteca } from '../services/documentosBiblio
 import { supabaseStorageProvider } from '../services/adapters/SupabaseStorageProvider';
 import type { DocumentoBibliotecaRegistro, DocumentoBibliotecaVersao } from '../types';
 import { CATALOGO_DOCUMENTOS } from '../services/catalogoDocumentos';
+import { useVerticais } from '../hooks/useVerticais';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -37,6 +38,13 @@ export default function CentralDocumentosScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Documento de ofício (comprovante de pragas, certificado de caixa d'água) só para o
+  // ofício dele; sem ofício definido, aparece tudo (backward-compat do gate).
+  const { mostraVertical } = useVerticais();
+  const catalogo = useMemo(
+    () => CATALOGO_DOCUMENTOS.filter((item) => !item.vertical || mostraVertical(item.vertical)),
+    [mostraVertical],
+  );
   const [documentos, setDocumentos] = useState<DocumentoBiblioteca[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<DocumentoBibliotecaStatus | 'todos'>('todos');
@@ -212,8 +220,8 @@ export default function CentralDocumentosScreen() {
         <Text style={styles.secao}>Catálogo de documentos</Text>
         <Text style={styles.catalogoDica}>Escolha um tipo para abrir o fluxo oficial. Uma alteração em documento enviado cria revisão; não sobrescreve o original.</Text>
         <View style={styles.catalogoGrid}>
-          {CATALOGO_DOCUMENTOS.map((item, index) => (
-            <AnimatedEntrance key={item.tipo} index={index + 1}>
+          {catalogo.map((item, index) => (
+            <AnimatedEntrance key={`${item.tipo}:${item.destino}`} index={index + 1}>
               <OlliCard style={styles.catalogoCard} onPress={() => nav.navigate(item.destino as never)}>
                 <View style={styles.cardLinha}>
                   <View style={[styles.cardIcon, { backgroundColor: cores.primaryLight + '1A', borderColor: cores.primaryLight + '44' }]}>

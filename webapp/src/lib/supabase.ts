@@ -26,6 +26,14 @@ const SUPABASE_ANON_KEY =
 export const retornoOAuthInicial: RetornoOAuth =
 	typeof window === "undefined" ? { tipo: "nenhum" } : lerRetornoOAuth(window.location.href);
 
+/**
+ * A URL com que o painel abriu, guardada ANTES do client existir pelo mesmo motivo
+ * acima: o supabase-js apaga o `?code=` assim que a troca PKCE dá certo. O
+ * /auth/confirm é carregado sob demanda e pode montar DEPOIS disso; sem esta cópia
+ * ele leria a URL já sem o code e mostraria "Link incompleto" com a sessão criada.
+ */
+export const urlDeEntrada: string = typeof window === "undefined" ? "" : window.location.href;
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 	auth: {
 		persistSession: true,

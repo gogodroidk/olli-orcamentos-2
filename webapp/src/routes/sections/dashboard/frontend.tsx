@@ -8,7 +8,9 @@ import { Component } from "./utils";
  * SÓ DE LEITURA. Era por isso que "não dava para adicionar nada": não existia tela
  * de criação. Agora cada domínio tem sua própria página, com CRUD.
  *
- * `/pages/olli/list` continua existindo para o que ainda é só consulta (Equipe).
+ * `/pages/olli/list` e `/pages/olli/placeholder` saíram em 30/09/2026: nenhuma rota
+ * apontava mais para eles, mas o `import.meta.glob` de utils.tsx ainda os emitia
+ * como arquivo do build. Toda página em `src/pages` vira chunk — apague a que morrer.
  */
 export function getFrontendDashboardRoutes(): RouteObject[] {
 	const frontendDashboardRoutes: RouteObject[] = [
@@ -29,6 +31,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		// ─── Operação ───────────────────────────────────────────
 		{ path: "ordens-servico", element: Component("/pages/olli/ordens-servico") },
 		{ path: "agenda", element: Component("/pages/olli/agenda") },
+		{ path: "contratos", element: Component("/pages/olli/contratos") },
 		{ path: "equipamentos", element: Component("/pages/olli/equipamentos") },
 
 		{ path: "equipe", element: Component("/pages/olli/equipe") },
