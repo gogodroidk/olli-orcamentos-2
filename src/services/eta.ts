@@ -2,7 +2,7 @@
  * ETA com trânsito — app-side.
  *
  * Contrato do endpoint (worker `olli-diagnostico`, rota `POST /eta` — ver
- * `worker/src/index.js` → `handleEta`): mesmo padrão de auth de
+ * `worker/src/etaSaida.js` → `handleEtaAgora`): mesmo padrão de auth de
  * `services/olliIA.ts` (token do Supabase no header `Authorization`, URL
  * base em `DIAGNOSTICO_URL`).
  *

@@ -6,6 +6,7 @@ import { Agendamento } from '../types';
 import { pushRow } from './cloudSync';
 import { cancelarAvisoSaida } from './avisoSaida';
 import { LEMBRETE_MAP_KEY } from './storageKeys';
+import { expandirRecorrencia, type OcorrenciaAgendamento } from '../utils/contratoRecorrente';
 
 /**
  * CRUD da Agenda (Fase 2). Mesmo padrão do database.ts: SQLite local,
@@ -247,6 +248,11 @@ function rowToAgendamento(r: any): Agendamento {
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
     excluidoEm: r.excluido_em ?? undefined,
+    responsavelId: r.responsavel_id ?? undefined,
+    responsavelNome: r.responsavel_nome ?? undefined,
+    recorrencia: r.recorrencia ?? undefined,
+    recorrenciaAte: r.recorrencia_ate ?? undefined,
+    contratoId: r.contrato_id ?? undefined,
   };
 }
 
@@ -270,6 +276,28 @@ export async function getAgendamentosRange(inicioISO: string, fimISO: string): P
     [inicioISO, fimISO]
   );
   return rows.map(rowToAgendamento);
+}
+
+/**
+ * Agendamentos do intervalo [inicioISO, fimISO) COM as ocorrências projetadas das
+ * séries recorrentes (que começaram antes do intervalo e ainda valem nele). A
+ * ocorrência projetada tem id `<base>@<dia>` e `ocorrenciaDe` = base — quem edita
+ * abre a base (`idBaseDaOcorrencia`). Só a agenda usa: Home/lembretes seguem com
+ * as linhas reais.
+ */
+export async function getAgendamentosExpandidos(inicioISO: string, fimISO: string): Promise<OcorrenciaAgendamento[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    `SELECT * FROM agendamentos WHERE excluido_em IS NULL AND (
+       (inicio >= ? AND inicio < ?)
+       OR (recorrencia IS NOT NULL AND inicio < ? AND (recorrencia_ate IS NULL OR recorrencia_ate >= ?))
+     ) ORDER BY inicio ASC`,
+    [inicioISO, fimISO, fimISO, inicioISO.slice(0, 10)],
+  );
+  return rows
+    .map(rowToAgendamento)
+    .flatMap((a) => expandirRecorrencia(a, inicioISO, fimISO))
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
 }
 
 /** Agendamentos do dia informado (Date local). Default: hoje. */
@@ -302,21 +330,30 @@ export async function getAgendamento(id: string): Promise<Agendamento | null> {
   return row ? rowToAgendamento(row) : null;
 }
 
+/**
+ * A linha INTEIRA do agendamento (INSERT OR REPLACE reescreve tudo).
+ * `excluido_em` PRECISA entrar: sem a coluna, um save sobre um item que está na
+ * LIXEIRA o RESSUSCITARIA (getAgendamento(id) não filtra de propósito —
+ * detalhe/restauração o alcançam). Item ativo tem `excluidoEm` undefined → grava
+ * null, que é exatamente o correto. Mesma lógica para responsável/recorrência/contrato.
+ */
+const SQL_SALVAR_AGENDAMENTO = `INSERT OR REPLACE INTO agendamentos
+       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+
+function valoresDoAgendamento(a: Agendamento): (string | null)[] {
+  return [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
+    a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
+    a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
+    a.responsavelId ?? null, a.responsavelId ? (a.responsavelNome ?? null) : null,
+    a.recorrencia ?? null, a.recorrencia ? (a.recorrenciaAte ?? null) : null, a.contratoId ?? null];
+}
+
 /** Cria ou atualiza (upsert) um agendamento. */
 export async function saveAgendamento(a: Agendamento): Promise<void> {
   const db = await getDb();
-  await db.runAsync(
-    `INSERT OR REPLACE INTO agendamentos
-       (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    // `excluido_em` PRECISA entrar aqui: INSERT OR REPLACE reescreve a linha INTEIRA,
-    // e sem a coluna um save sobre um item que está na LIXEIRA o RESSUSCITARIA
-    // (getAgendamento(id) não filtra de propósito — detalhe/restauração o alcançam).
-    // Item ativo tem `excluidoEm` undefined → grava null, que é exatamente o correto.
-    [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
-     a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
-     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null]
-  );
+  await db.runAsync(SQL_SALVAR_AGENDAMENTO, valoresDoAgendamento(a));
   // Espelha na nuvem em background (fire-and-forget; no-op se offline/deslogado).
   try { void pushRow('agendamentos', a).catch(() => {}); } catch {}
   // Reagenda o lembrete local (cancela o anterior e cria um novo, se aplicável).

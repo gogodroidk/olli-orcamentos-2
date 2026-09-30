@@ -109,7 +109,9 @@ lido em 21/07/2026). A Resolução CGSN nº 189/2026, publicada em **28/04/2026*
 a que estende a obrigação a **ME e EPP a partir de 01/09/2026**
 ([Receita Federal](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional) ·
 [Portal NFS-e](https://www.gov.br/nfse/pt-br/noticias/nfs-e-e-simples-nacional-obrigatoriedade-de-emissao-atraves-do-emissor-nacional),
-ambos lidos em 21/07/2026). **Não achei nenhuma notícia de adiamento.**
+ambos lidos em 21/07/2026). **Atualização de 30/09/2026:** houve adiamento. A Resolução CGSN
+nº 191/2026 (04/08/2026) passou a data de ME e EPP para **01/11/2026**
+([Receita Federal](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026)).
 
 **O que isso muda, e é para melhor:**
 
@@ -514,7 +516,8 @@ posicionamento (esforço **P**, custo **R$ 0**), não de produto.
 ### Fontes conferidas por mim em 21/07/2026 (as demais estão nos três documentos de origem)
 
 - NFS-e / MEI desde 2023 — https://www.gov.br/nfse/pt-br/mei-prestadores-de-servico-de-todo-o-pais-estao-obrigados-a-emitir-nfs-e
-- NFS-e / ME e EPP em 01/09/2026 — https://www.gov.br/nfse/pt-br/noticias/nfs-e-e-simples-nacional-obrigatoriedade-de-emissao-atraves-do-emissor-nacional · https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional
+- NFS-e / ME e EPP em 01/11/2026 (CGSN 191/2026) — https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026
+- NFS-e / ME e EPP, data original de 01/09/2026 (substituída) — https://www.gov.br/nfse/pt-br/noticias/nfs-e-e-simples-nacional-obrigatoriedade-de-emissao-atraves-do-emissor-nacional · https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional
 - Gemini — preços por 1M de tokens — https://ai.google.dev/gemini-api/docs/pricing · tokenização de áudio (32 tokens/s) — https://ai.google.dev/gemini-api/docs/audio
 - Visual Crossing — plano grátis, 1.000 registros/dia, uso comercial permitido — https://www.visualcrossing.com/resources/documentation/visual-crossing-weather-free-plan-free-weather-data-for-analysts-and-api-developers/
 - gitleaks-action — licença proprietária desde a v2.0.0, chave grátis exigida para organizações — https://github.com/gitleaks/gitleaks-action

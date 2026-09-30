@@ -8,7 +8,15 @@
  */
 import { Archive, ExternalLink, FileCheck2, FileText, Inbox, Loader2, Lock, Pencil, Plus, Printer, RotateCw, Save, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useOlliList } from "@/olli/data";
+import { useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { useVerticaisPainel } from "@/olli/verticais";
+import {
+	AVISO_REVISAO_TECNICA,
+	MODELOS_DOCUMENTO_OFICIO,
+	textoModeloDocumentoOficio,
+	type EmpresaParaModelo,
+	type ModeloDocumentoOficio,
+} from "@documentos-oficio";
 import { buscarDocumentoWeb, criarDocumentoManual, editarDocumentoWeb, type DocumentoWebEditavel, type TipoDocumentoWeb } from "@/olli/documentos";
 import { supabase } from "@/lib/supabase";
 import { Badge } from "@/ui/badge";
@@ -118,6 +126,22 @@ export default function DocumentosPage() {
 		texto: "",
 	});
 	const clientesQ = useOlliList<{ id: string; nome: string }>("clientes", { orderBy: "nome", ascending: true, colunas: "id,nome", limit: 500, enabled: novoAberto });
+	// Modelos de documento de ofício (comprovante de pragas, certificado de caixa d'água):
+	// só os do ofício da empresa; sem ofício definido (ou lendo), o gate mostra todos.
+	const { mostraVertical } = useVerticaisPainel();
+	const empresaQ = useMinhaEmpresa();
+	const modelosOficio = useMemo(() => MODELOS_DOCUMENTO_OFICIO.filter((m) => mostraVertical(m.vertical)), [mostraVertical]);
+	const [modeloOficio, setModeloOficio] = useState<ModeloDocumentoOficio | "">("");
+
+	function aplicarModeloOficio(modelo: ModeloDocumentoOficio | "") {
+		setModeloOficio(modelo);
+		if (!modelo) return;
+		const dadosEmpresa = (empresaQ.data?.dados ?? null) as EmpresaParaModelo | null;
+		setNovo((atual) => {
+			const { titulo, texto } = textoModeloDocumentoOficio(modelo, dadosEmpresa, atual.cliente);
+			return { ...atual, titulo, texto };
+		});
+	}
 
 	useEffect(() => {
 		if (editor) setBlocos(blocosDoEditor(editor));
@@ -130,6 +154,7 @@ export default function DocumentosPage() {
 			return;
 		}
 		setNovo((atual) => ({ ...atual, tipo, titulo: "", texto: "" }));
+		setModeloOficio("");
 		setNovoAberto(true);
 	}
 
@@ -226,6 +251,7 @@ export default function DocumentosPage() {
 			});
 			setNovoAberto(false);
 			setNovo({ tipo: "contrato", titulo: "", clienteId: "", cliente: "", texto: "" });
+			setModeloOficio("");
 			await refetch();
 			toast.success(`Documento criado como rascunho (versão ${criado.versao}).`);
 		} catch (erro) {
@@ -358,11 +384,24 @@ export default function DocumentosPage() {
 					</DialogHeader>
 					<div className="grid gap-4 py-2">
 						<label className="grid gap-1.5 text-sm font-medium text-text-primary" htmlFor="novo-documento-tipo">Tipo
-							<Select value={novo.tipo} onValueChange={(valor) => setNovo((atual) => ({ ...atual, tipo: valor as TipoDocumentoWeb }))}>
+							<Select value={novo.tipo} onValueChange={(valor) => { setModeloOficio(""); setNovo((atual) => ({ ...atual, tipo: valor as TipoDocumentoWeb })); }}>
 								<SelectTrigger id="novo-documento-tipo"><SelectValue /></SelectTrigger>
 						<SelectContent>{(["contrato", "ordem_servico", "pmoc", "recibo", "garantia", "conclusao", "laudo", "checklist", "certificado"] as TipoDocumentoWeb[]).map((valor) => <SelectItem key={valor} value={valor}>{TIPOS[valor] ?? valor}</SelectItem>)}</SelectContent>
 							</Select>
 						</label>
+						{novo.tipo === "certificado" && modelosOficio.length > 0 && (
+							<div className="grid gap-1.5">
+								<label className="text-sm font-medium text-text-primary" htmlFor="novo-documento-modelo">Modelo do ofício</label>
+								<Select value={modeloOficio || "branco"} onValueChange={(valor) => aplicarModeloOficio(valor === "branco" ? "" : (valor as ModeloDocumentoOficio))}>
+									<SelectTrigger id="novo-documento-modelo"><SelectValue /></SelectTrigger>
+									<SelectContent>
+										<SelectItem value="branco">Em branco</SelectItem>
+										{modelosOficio.map((m) => <SelectItem key={m.id} value={m.id}>{m.titulo}</SelectItem>)}
+									</SelectContent>
+								</Select>
+								{modeloOficio && <p className="text-xs leading-5 text-warning">{AVISO_REVISAO_TECNICA} Complete as lacunas “____” antes de imprimir.</p>}
+							</div>
+						)}
 						<label className="grid gap-1.5 text-sm font-medium text-text-primary" htmlFor="novo-documento-titulo">Título<input id="novo-documento-titulo" value={novo.titulo} onChange={(e) => setNovo((atual) => ({ ...atual, titulo: e.target.value }))} maxLength={240} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-normal outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring" placeholder="Ex.: Contrato de manutenção anual" /></label>
 						<div className="grid gap-2"><label className="text-sm font-medium text-text-primary" htmlFor="novo-documento-cliente">Cliente (opcional)</label><Select value={novo.clienteId || "manual"} onValueChange={(valor) => { const cliente = clientesQ.data?.find((item) => item.id === valor); setNovo((atual) => ({ ...atual, clienteId: valor === "manual" ? "" : valor, cliente: cliente?.nome ?? "" })); }}><SelectTrigger id="novo-documento-cliente"><SelectValue placeholder="Escolha um cliente" /></SelectTrigger><SelectContent><SelectItem value="manual">Digitar outro nome</SelectItem>{(clientesQ.data ?? []).map((cliente) => <SelectItem key={cliente.id} value={cliente.id}>{cliente.nome}</SelectItem>)}</SelectContent></Select>{!novo.clienteId && <input aria-label="Nome do cliente" value={novo.cliente} onChange={(e) => setNovo((atual) => ({ ...atual, cliente: e.target.value }))} maxLength={180} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder="Nome do cliente, se não estiver cadastrado" />}</div>
 						<label className="grid gap-1.5 text-sm font-medium text-text-primary" htmlFor="novo-documento-texto">Conteúdo inicial / observações<Textarea id="novo-documento-texto" value={novo.texto} onChange={(e) => setNovo((atual) => ({ ...atual, texto: e.target.value }))} maxLength={MAX_EDITOR_CHARS} rows={10} className="min-h-40 resize-y text-sm leading-6" placeholder="Comece o texto do contrato, laudo ou checklist…" /></label>

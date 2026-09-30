@@ -80,13 +80,26 @@ export type Segmento =
   | 'eletrica'
   | 'hidraulica'
   | 'pintura'
+  | 'dedetizacao'
+  | 'caixa-dagua'
+  | 'piscina'
+  | 'extintores'
   | 'outro';
 
+/**
+ * Chips de segmento (onboarding e "Meu negócio"). Os ofícios recorrentes (dedetização,
+ * caixa d'água, piscina, extintores) têm chip próprio: antes caíam em "Outro" → vertical
+ * 'geral', que ESCONDE o documento de ofício de quem mais precisa dele.
+ */
 export const SEGMENTOS: { id: Segmento; label: string; icon: string }[] = [
   { id: 'ar-condicionado', label: 'Ar-condicionado', icon: 'air-conditioner' },
   { id: 'eletrica', label: 'Elétrica', icon: 'flash' },
   { id: 'hidraulica', label: 'Hidráulica', icon: 'water-pump' },
   { id: 'pintura', label: 'Pintura', icon: 'format-paint' },
+  { id: 'dedetizacao', label: 'Dedetização', icon: 'bug-outline' },
+  { id: 'caixa-dagua', label: "Caixa d'água", icon: 'water-outline' },
+  { id: 'piscina', label: 'Piscina', icon: 'pool' },
+  { id: 'extintores', label: 'Extintores', icon: 'fire-extinguisher' },
   { id: 'outro', label: 'Outro', icon: 'dots-horizontal' },
 ];
 
@@ -149,14 +162,18 @@ export interface Empresa {
   condicoesPagamentoPadrao?: string;
   observacoesPadrao?: string;
 
-  // DEDETIZAÇÃO (RDC 52/2009 art. 19 · RDC 622/2022) — dados de compliance da
-  // imunizadora usados no Certificado ANVISA. Preenchidos 1x (na 1ª emissão) e
-  // reaproveitados. Schema-less (SQLite id + JSON) → sem migração. Ver
-  // src/utils/certificadoAnvisaPdf.ts e CertificadoAnvisaScreen.
+  // DEDETIZAÇÃO (RDC 622/2022, art. 19, que revogou a RDC 52/2009) — dados de
+  // compliance da empresa usados no comprovante de controle de pragas. Preenchidos 1x
+  // (na 1ª emissão) e reaproveitados. Schema-less (SQLite id + JSON) → sem migração. Ver
+  // src/services/documentosOficio.ts e CertificadoAnvisaScreen.
   licencaSanitaria?: string;
+  licencaSanitariaValidade?: string;
   licencaAmbiental?: string;
+  licencaAmbientalValidade?: string;
   responsavelTecnico?: string;
   responsavelTecnicoRegistro?: string;
+  /** Telefone do Centro de Informação Toxicológica da região (art. 19, X). */
+  telefoneCit?: string;
   /**
    * Cláusulas padrão do CONTRATO de prestação de serviço, ajustadas uma vez em
    * Conta → Modelos de documento e reaproveitadas em todo contrato novo. Tudo
@@ -552,7 +569,42 @@ export interface Agendamento {
   atualizadoEm: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
   excluidoEm?: string;
+  /** Técnico da equipe que vai (auth user id). Ausente = sem responsável definido. */
+  responsavelId?: string;
+  /** Nome do responsável, gravado junto para o celular do técnico não depender da view de perfis. */
+  responsavelNome?: string;
+  /**
+   * Regra de repetição do compromisso. Ausente = acontece uma vez só. As
+   * ocorrências futuras NÃO viram linhas: são projetadas na hora pela agenda
+   * (`utils/contratoRecorrente.ts:expandirRecorrencia`), então editar a base muda
+   * a série inteira e apagar a base apaga a série.
+   */
+  recorrencia?: RecorrenciaAgendamento;
+  /** Último dia (ISO curta 'YYYY-MM-DD') em que a série ainda se repete. Ausente = sem fim. */
+  recorrenciaAte?: string;
+  /** Visita nascida de um contrato recorrente (`ContratoRecorrente.id`). */
+  contratoId?: string;
 }
+
+/** Repetições que a agenda sabe projetar. As mensais em diante são as mesmas do contrato. */
+export type RecorrenciaAgendamento =
+  | 'semanal'
+  | 'quinzenal'
+  | 'mensal'
+  | 'bimestral'
+  | 'trimestral'
+  | 'semestral'
+  | 'anual';
+
+export const RECORRENCIAS_AGENDAMENTO: ReadonlyArray<{ id: RecorrenciaAgendamento; label: string }> = [
+  { id: 'semanal', label: 'Toda semana' },
+  { id: 'quinzenal', label: 'A cada 15 dias' },
+  { id: 'mensal', label: 'Todo mês' },
+  { id: 'bimestral', label: 'A cada 2 meses' },
+  { id: 'trimestral', label: 'A cada 3 meses' },
+  { id: 'semestral', label: 'A cada 6 meses' },
+  { id: 'anual', label: 'Todo ano' },
+];
 
 /**
  * Matizes de CATEGORIA. São DADOS, não cores de texto: `#2BD787` significa "limpeza".
@@ -997,5 +1049,68 @@ export interface PmocOrdemGerada {
   vencimento?: string;
   criadoEm: string;
   atualizadoEm?: string;
+  excluidoEm?: string;
+}
+
+// ─── CONTRATO RECORRENTE POR ATIVO (Onda D — ação 6) ──────────────────────────
+//
+// O contrato liga CLIENTE + ATIVO(S) + PERIODICIDADE + VALOR. O sistema gera
+// sozinho a próxima visita (OS + agendamento) sem duplicar; o PMOC é um caso
+// particular (mesmo vocabulário de periodicidade, `FREQUENCIAS_PMOC`, e o plano
+// PMOC continua apontando para o contrato por `pmoc_plans.contract_id`).
+// Mora na tabela `service_contracts` (fundação PMOC), estendida pela migration
+// 20260930130500. Regras puras em `utils/contratoRecorrente.ts`.
+
+/**
+ * Situação OPERACIONAL do contrato (subconjunto do CHECK de `service_contracts`).
+ * Só `vigente` gera visita. Nada aqui é afirmação de conformidade legal.
+ */
+export type SituacaoContrato = 'rascunho' | 'vigente' | 'suspenso' | 'encerrado' | 'cancelado';
+
+/**
+ * O que é atendido: um equipamento do inventário (`assetId` → `assets.id`) OU um
+ * ativo descrito em texto (piscina, caixa d'água, imóvel…) — nem todo ofício tem
+ * equipamento com etiqueta, e obrigar o cadastro HVAC para uma piscina seria mentir.
+ */
+export interface AtivoContrato {
+  id: string;
+  nome: string;
+  assetId?: string;
+}
+
+/** Como o valor do contrato é cobrado: por mês ou a cada visita feita. */
+export type ModoCobrancaContrato = 'mensal' | 'por_visita';
+
+export interface ContratoRecorrente {
+  id: string;
+  /** Dono do tenant (somente leitura: vem do banco; nunca é escolhido pela tela). */
+  userId?: string;
+  numero?: string;
+  titulo: string;
+  clienteId?: string;
+  /** Cópia do nome para listar sem depender do cadastro local (o telefone é lido na hora de cobrar). */
+  clienteNome?: string;
+  endereco?: string;
+  situacao: SituacaoContrato;
+  /** 'mensal' | 'bimestral' | 'trimestral' | 'semestral' | 'anual' (FREQUENCIAS_PMOC). */
+  periodicidade: string;
+  /** Primeira visita, ISO curta 'YYYY-MM-DD'. O dia do mês vira a âncora das próximas. */
+  dataInicio: string;
+  /** Última data coberta pelo contrato (inclusive). Ausente = por prazo indeterminado. */
+  dataFim?: string;
+  renovacao?: 'manual' | 'automatica';
+  /** Horário da visita no fuso do Brasil, 'HH:MM'. */
+  horarioVisita: string;
+  ativos: AtivoContrato[];
+  /** O que se faz em cada visita — vira o checklist da OS (por ativo). */
+  atividades: string[];
+  modoCobranca: ModoCobrancaContrato;
+  /** Valor em reais: por mês (`mensal`) ou por visita (`por_visita`). */
+  valor: number;
+  responsavelId?: string;
+  responsavelNome?: string;
+  observacoes?: string;
+  criadoEm: string;
+  atualizadoEm: string;
   excluidoEm?: string;
 }

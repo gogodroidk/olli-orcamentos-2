@@ -16,8 +16,8 @@
  * 3. CONFLITO É AVISO, NÃO BLOQUEIO. O dono pode ter dois técnicos, ou pode estar
  *    remarcando de propósito. A tela informa e deixa ele decidir.
  */
-import type { Agendamento, StatusAgendamento, TipoAgendamento } from "@dominio";
-import { STATUS_AGENDAMENTO_LABELS, TIPOS_AGENDAMENTO } from "@dominio";
+import type { Agendamento, RecorrenciaAgendamento, StatusAgendamento, TipoAgendamento } from "@dominio";
+import { RECORRENCIAS_AGENDAMENTO, STATUS_AGENDAMENTO_LABELS, TIPOS_AGENDAMENTO } from "@dominio";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "@/components/icon/icon";
@@ -30,6 +30,7 @@ import { useSalvar } from "@/olli/mutacoes";
 import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Textarea } from "@/ui/textarea";
+import { PAPEL_ROTULO, useTecnicos } from "../ordens-servico/useTecnicos";
 import {
 	duracaoEstimadaMin,
 	encontrarConflito,
@@ -66,7 +67,16 @@ interface Rascunho {
 	endereco: string;
 	status: StatusAgendamento;
 	observacao: string;
+	/** Técnico da equipe (user id) — '' = ninguém ainda. */
+	responsavelId: string;
+	responsavelNome: string;
+	/** '' = não repete. */
+	recorrencia: RecorrenciaAgendamento | "";
+	/** 'YYYY-MM-DD' ou ''. */
+	recorrenciaAte: string;
 }
+
+const SEM = "__nenhum__";
 
 /** Novo agendamento nasce no horário clicado — ou às 09:00, como no app. */
 function rascunhoNovo(inicioSugerido?: Date | null): Rascunho {
@@ -81,6 +91,10 @@ function rascunhoNovo(inicioSugerido?: Date | null): Rascunho {
 		endereco: "",
 		status: "agendado",
 		observacao: "",
+		responsavelId: "",
+		responsavelNome: "",
+		recorrencia: "",
+		recorrenciaAte: "",
 	};
 }
 
@@ -95,12 +109,18 @@ function rascunhoDe(a: Agendamento): Rascunho {
 		endereco: a.endereco ?? "",
 		status: a.status,
 		observacao: a.observacao ?? "",
+		responsavelId: a.responsavelId ?? "",
+		responsavelNome: a.responsavelNome ?? "",
+		recorrencia: a.recorrencia ?? "",
+		recorrenciaAte: a.recorrenciaAte ?? "",
 	};
 }
 
 export default function FormAgendamento({ aberto, aoFechar, agendamento, inicioSugerido, todos, aoSalvar }: Props) {
 	const formId = useId();
 	const salvar = useSalvar("agendamentos");
+	// Equipe em 3 estados: erro NÃO vira "sem equipe" (ver useTecnicos).
+	const equipe = useTecnicos();
 
 	const [r, setR] = useState<Rascunho>(() => rascunhoNovo(inicioSugerido));
 	const [erros, setErros] = useState<Record<string, string>>({});
@@ -147,6 +167,9 @@ export default function FormAgendamento({ aberto, aoFechar, agendamento, inicioS
 			else if (iniIso && new Date(fimIso) <= new Date(iniIso)) {
 				e.fim = "O término precisa ser depois do início.";
 			}
+		}
+		if (r.recorrencia && r.recorrenciaAte && iniIso && r.recorrenciaAte < iniIso.slice(0, 10)) {
+			e.recorrenciaAte = "O fim da repetição precisa ser depois do primeiro dia.";
 		}
 		setErros(e);
 		return Object.keys(e).length === 0;
@@ -203,6 +226,24 @@ export default function FormAgendamento({ aberto, aoFechar, agendamento, inicioS
 
 		if (r.observacao.trim()) obj.observacao = r.observacao.trim();
 		else delete obj.observacao;
+
+		if (r.responsavelId) {
+			obj.responsavelId = r.responsavelId;
+			obj.responsavelNome = r.responsavelNome || undefined;
+		} else {
+			delete obj.responsavelId;
+			delete obj.responsavelNome;
+		}
+
+		// Visita de contrato repete pelo contrato, não por aqui.
+		if (r.recorrencia && !obj.contratoId) {
+			obj.recorrencia = r.recorrencia;
+			if (r.recorrenciaAte) obj.recorrenciaAte = r.recorrenciaAte;
+			else delete obj.recorrenciaAte;
+		} else {
+			delete obj.recorrencia;
+			delete obj.recorrenciaAte;
+		}
 
 		await salvar.mutateAsync(obj);
 		aoSalvar?.(obj);
@@ -326,6 +367,80 @@ export default function FormAgendamento({ aberto, aoFechar, agendamento, inicioS
 							{faixaDeHorario(conflito)}). Dá para salvar assim mesmo — só confira se é isso mesmo.
 						</span>
 					</p>
+				)}
+
+				{/* ─── Responsável (técnico da equipe) ─── */}
+				{equipe.isError ? (
+					<p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-text-primary">
+						Não consegui carregar a equipe
+						{r.responsavelNome ? ` (responsável atual: ${r.responsavelNome})` : ""}.{" "}
+						<button type="button" className="font-semibold underline" onClick={() => equipe.refetch()}>
+							Tentar de novo
+						</button>
+					</p>
+				) : equipe.isLoading ? (
+					<p className="text-sm text-text-secondary">Carregando equipe…</p>
+				) : (equipe.data?.length ?? 0) > 0 || r.responsavelId ? (
+					<Campo rotulo="Responsável" dica="Quem da equipe vai. A agenda filtra por técnico.">
+						<Select
+							value={r.responsavelId || SEM}
+							onValueChange={(v) => {
+								const m = equipe.data?.find((x) => x.userId === v);
+								set(v === SEM ? { responsavelId: "", responsavelNome: "" } : { responsavelId: v, responsavelNome: m?.nome ?? r.responsavelNome });
+							}}
+						>
+							<SelectTrigger className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={SEM}>Ninguém ainda</SelectItem>
+								{(equipe.data ?? []).map((m) => (
+									<SelectItem key={m.userId} value={m.userId}>
+										{m.nome} · {PAPEL_ROTULO[m.papel] ?? m.papel}
+									</SelectItem>
+								))}
+								{r.responsavelId && !(equipe.data ?? []).some((m) => m.userId === r.responsavelId) ? (
+									<SelectItem value={r.responsavelId}>{r.responsavelNome || "Membro"} · fora da equipe</SelectItem>
+								) : null}
+							</SelectContent>
+						</Select>
+					</Campo>
+				) : null}
+
+				{/* ─── Repetição ─── */}
+				{agendamento?.contratoId ? (
+					<p className="text-sm text-text-secondary">Visita gerada por um contrato recorrente — a repetição vem do contrato.</p>
+				) : (
+					<div className="grid gap-4 sm:grid-cols-2">
+						<Campo rotulo="Repetir" dica="As próximas aparecem sozinhas na agenda. Editar muda a série inteira.">
+							<Select
+								value={r.recorrencia || SEM}
+								onValueChange={(v) => set({ recorrencia: v === SEM ? "" : (v as RecorrenciaAgendamento) })}
+							>
+								<SelectTrigger className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={SEM}>Não repete</SelectItem>
+									{RECORRENCIAS_AGENDAMENTO.map((x) => (
+										<SelectItem key={x.id} value={x.id}>
+											{x.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Campo>
+						{r.recorrencia ? (
+							<Campo rotulo="Repetir até" erro={erros.recorrenciaAte} dica="Em branco = sem fim.">
+								<Input
+									type="date"
+									aria-label="Repetir até"
+									value={r.recorrenciaAte}
+									onChange={(e) => set({ recorrenciaAte: e.target.value })}
+								/>
+							</Campo>
+						) : null}
+					</div>
 				)}
 
 				{/* ─── Endereço ─── */}

@@ -30,22 +30,28 @@ export const OPENROUTER_MODELOS_GRATUITOS_PADRAO = Object.freeze([
 // tokens, no formato do `provider.max_price` do OpenRouter — enviados em cada
 // request, então um endpoint mais caro (tier "priority", região cara, aumento
 // de preço do catálogo) é recusado pelo próprio OpenRouter em vez de cobrado.
-// Todos anunciam `response_format` + `structured_outputs` e foram testados em
-// 29/09/2026 com o MESMO corpo do Worker (json_schema strict,
-// require_parameters, data_collection:'deny') contra os 5 schemas reais:
-//   gpt-4.1-nano           aceita os 5; 1–5 s   (catálogo US$ 0,10/0,40 por M)
-//   gemini-2.5-flash-lite  400 "too many states" em orçamento, importação e
-//                          autopilot (maxLength/maxItems longos); ok em chat,
-//                          diagnóstico e rascunho; ~1 s. EXPIRA 20/10/2026.
-//   mistral-small-2501     aceita os 5, mas 9–68 s nos schemas grandes (cabe
-//                          no prazo de 25 s só nos pequenos) (US$ 0,05/0,08)
-// Por isso a ORDEM é nano → gemini → mistral, e um 400 em request com
-// json_schema passa ao próximo modelo (incompatibilidade é do modelo, não do
-// pedido). Os tetos dão ~20% de folga sobre o catálogo. Mudar um preço aqui é
-// decisão de custo: rode `npm run check:ai-models` antes (catálogo ao vivo).
+// Todos anunciam `response_format` + `structured_outputs` e foram testados
+// com o MESMO corpo do Worker (json_schema strict, require_parameters,
+// data_collection:'deny') contra os 6 schemas reais (mínimo, diagnóstico,
+// rascunho de ação, orçamento por voz, importação e autopilot):
+//   gpt-4.1-nano   aceita os 6; 1–5 s (catálogo US$ 0,10/0,40 por M) — 29/09
+//   gpt-4o-mini    aceita os 6; 1–6 s, 3 rodadas seguidas; OpenAI e Azure
+//                  servem (US$ 0,15/0,60; um endpoint Azure a 0,165/0,66) — 30/09
+//   mistral-small-2501  aceita os 5 de 29/09, mas 9–68 s nos schemas grandes
+//                  (cabe no prazo de 25 s só nos pequenos) (US$ 0,05/0,08)
+// O gemini-2.5-flash-lite (2º elo até 30/09) sai do catálogo em 20/10/2026 e
+// já recusava orçamento, importação e autopilot com 400 "too many states". Na
+// troca, em 30/09/2026, foram medidos e descartados: gemini-3.1-flash-lite (o
+// mesmo 400 e 2,5× o preço), gemma-4-26b-a4b-it (6/6, mas autopilot de 7 s a
+// timeout de 45 s entre rodadas), llama-4-scout (autopilot 35 s), qwen3-235b
+// (429), mistral-small-3.2 (autopilot em timeout) e deepseek-v4-flash
+// (timeouts). Por isso a ORDEM é nano → 4o-mini → mistral, e um 400 em request
+// com json_schema passa ao próximo modelo (incompatibilidade é do modelo, não
+// do pedido). Os tetos dão ~20% de folga sobre o catálogo. Mudar um preço aqui
+// é decisão de custo: rode `npm run check:ai-models` antes (catálogo ao vivo).
 export const OPENROUTER_MODELOS_PAGOS_PERMITIDOS = Object.freeze({
   'openai/gpt-4.1-nano': Object.freeze({ prompt: 0.12, completion: 0.48 }),
-  'google/gemini-2.5-flash-lite': Object.freeze({ prompt: 0.12, completion: 0.48 }),
+  'openai/gpt-4o-mini': Object.freeze({ prompt: 0.18, completion: 0.72 }),
   'mistralai/mistral-small-24b-instruct-2501': Object.freeze({ prompt: 0.06, completion: 0.1 }),
 });
 

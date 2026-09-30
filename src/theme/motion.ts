@@ -22,6 +22,12 @@ export const Motion = {
   stagger: 55,
   maxStagger: 12,
   /**
+   * Tremida de "código errado" (campo de 6 dígitos): ±6px, 3 idas e voltas, dentro
+   * de `dur.base`. Só translateX — nunca mexe em layout. Com "Reduzir movimento",
+   * não treme: a cor e o texto do erro contam a mesma coisa.
+   */
+  tremida: { distancia: 6, ciclos: 3 },
+  /**
    * Tokens dos efeitos WEB-ONLY (CSS transform via `Element.animate`/DOM, ver
    * Tilt3D.web.tsx) — Flutuar, Parallax e a CTA fixa da landing consomem daqui,
    * nunca número solto. `easingCss` é string CSS (não `Easing` do RN), porque

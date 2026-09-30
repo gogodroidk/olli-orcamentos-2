@@ -197,6 +197,10 @@ export default function RecibosDesktopScreen() {
     nav.navigate('VisualizarOrcamento', { orcamentoId: r.orcamentoId });
   }, [nav]);
 
+  const prepararNota = useCallback((r: Recibo) => {
+    nav.navigate('PrepararNota', { reciboId: r.id });
+  }, [nav]);
+
   const novoRecibo = useCallback(() => {
     nav.navigate('EmitirRecibo', {});
   }, [nav]);
@@ -268,7 +272,7 @@ export default function RecibosDesktopScreen() {
     {
       chave: 'acoes',
       titulo: 'Ações',
-      largura: 180,
+      largura: 220,
       render: (r) => (
         <View style={styles.acoesLinha}>
           <AcaoIcone
@@ -283,10 +287,14 @@ export default function RecibosDesktopScreen() {
           {!!linkAvaliacao && (
             <AcaoIcone icone="google-maps" rotulo="Pedir avaliação" onPress={() => handlePedirAvaliacao(r)} />
           )}
+          {/* Recibo estornado não vira nota (mesma regra do celular). */}
+          {!r.estornadoEm && (
+            <AcaoIcone icone="file-certificate-outline" rotulo="Preparar nota fiscal" onPress={() => prepararNota(r)} />
+          )}
         </View>
       ),
     },
-  ], [styles, handleGerarOuReenviar, verOrcamento, processandoId, linkAvaliacao, handlePedirAvaliacao]);
+  ], [styles, handleGerarOuReenviar, verOrcamento, processandoId, linkAvaliacao, handlePedirAvaliacao, prepararNota]);
 
   return (
     <LayoutDesktop

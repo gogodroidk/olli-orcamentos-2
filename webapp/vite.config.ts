@@ -29,10 +29,14 @@ const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", imp
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
 const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesComerciais.ts", import.meta.url));
 const ativacaoFonte = fileURLToPath(new URL("../src/services/ativacao.ts", import.meta.url));
+const documentosOficioFonte = fileURLToPath(new URL("../src/services/documentosOficio.ts", import.meta.url));
 const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts", import.meta.url));
 const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
 const oauthRetornoFonte = fileURLToPath(new URL("../src/services/oauthRetorno.ts", import.meta.url));
+// Acesso por código/link de e-mail: contrato do /auth/confirm, anti-enumeração e reenvio,
+// as MESMAS regras do app (src/services/acessoCodigo.ts). Módulo puro, zero imports.
+const acessoCodigoFonte = fileURLToPath(new URL("../src/services/acessoCodigo.ts", import.meta.url));
 const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
 // Assinatura pela Google Play: o MESMO catálogo/URL de gerenciar que o app usa. Módulo puro.
 const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
@@ -87,10 +91,12 @@ export default defineConfig(({ mode }) => {
 				"@vertical-segmento": verticalSegmentoFonte,
 				"@limites-comerciais": limitesComerciaisFonte,
 				"@ativacao": ativacaoFonte,
+				"@documentos-oficio": documentosOficioFonte,
 				"@ia-segura": iaSeguraFonte,
 				"@precificacao": precificacaoFonte,
 				"@auth-policy": authPolicyFonte,
 				"@oauth-retorno": oauthRetornoFonte,
+				"@acesso-codigo": acessoCodigoFonte,
 				"@ajuda": ajudaFonte,
 				"@play-billing-regras": playBillingRegrasFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
@@ -182,7 +188,6 @@ export default defineConfig(({ mode }) => {
 						"vendor-core": ["react", "react-dom", "react-router"],
 						"vendor-ui": ["antd", "@ant-design/cssinjs", "styled-components"],
 						"vendor-utils": ["dayjs", "i18next", "zustand", "@iconify/react"],
-						"vendor-charts": ["apexcharts", "react-apexcharts"],
 						// Sentry só chega por import() (ver main.tsx). Isolar aqui impede que
 						// o rollup o funda no chunk das features do motion: sem isso, a
 						// animação da primeira tela puxava o SDK de crash junto, ~160 KB gzip

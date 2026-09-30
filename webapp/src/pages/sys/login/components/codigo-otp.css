@@ -1,0 +1,106 @@
+/* CAMPO DO CÓDIGO DE 6 DÍGITOS (CodigoOtp.tsx) — o "momento 1" do plano de motion.
+ *
+ * Toda animação aqui termina numa ação e mexe SÓ em transform/opacity:
+ *  - casas acendem em sequência na entrada (opacity + scale, stagger curto);
+ *  - cada dígito entra subindo 2px;
+ *  - código errado = tremida curta em translateX (3 idas e voltas);
+ *  - sucesso = check aparecendo (a cor verde da borda vem das classes do slot).
+ * Tempo, curva e distância vêm dos tokens --motion-* (theme/motion-tokens.css).
+ * Com "Reduzir movimento", nada se move: a cor, o ícone e o texto dizem o mesmo. */
+
+.codigo-otp__casa {
+	animation: codigo-otp-acender var(--motion-duration-fast) var(--motion-ease-enter) both;
+	animation-delay: calc(var(--codigo-otp-i, 0) * var(--motion-stagger-tight));
+}
+
+.codigo-otp__digito {
+	display: inline-block;
+	animation: codigo-otp-digito var(--motion-duration-micro) var(--motion-ease-enter) both;
+}
+
+/* Duas cópias da tremida: trocar o nome da animação é o que a faz rodar de novo a
+ * cada erro, sem remontar o campo (remontar tiraria o foco do teclado). */
+.codigo-otp__tremida[data-tremida="a"] {
+	animation: codigo-otp-tremida-a var(--motion-duration-base) var(--motion-ease-standard) 1;
+}
+.codigo-otp__tremida[data-tremida="b"] {
+	animation: codigo-otp-tremida-b var(--motion-duration-base) var(--motion-ease-standard) 1;
+}
+
+.codigo-otp__check {
+	animation: codigo-otp-sucesso var(--motion-duration-slow) var(--motion-ease-enter) both;
+}
+
+@keyframes codigo-otp-acender {
+	from {
+		opacity: 0;
+		transform: scale(var(--motion-scale-enter));
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes codigo-otp-digito {
+	from {
+		opacity: 0;
+		transform: translateY(var(--motion-distance-xs));
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes codigo-otp-tremida-a {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	17%,
+	50%,
+	83% {
+		transform: translateX(calc(-1 * var(--motion-distance-sm)));
+	}
+	33%,
+	67% {
+		transform: translateX(var(--motion-distance-sm));
+	}
+}
+
+@keyframes codigo-otp-tremida-b {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	17%,
+	50%,
+	83% {
+		transform: translateX(calc(-1 * var(--motion-distance-sm)));
+	}
+	33%,
+	67% {
+		transform: translateX(var(--motion-distance-sm));
+	}
+}
+
+@keyframes codigo-otp-sucesso {
+	from {
+		opacity: 0;
+		transform: scale(var(--motion-scale-enter));
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.codigo-otp__casa,
+	.codigo-otp__digito,
+	.codigo-otp__tremida[data-tremida],
+	.codigo-otp__check {
+		animation: none;
+	}
+}

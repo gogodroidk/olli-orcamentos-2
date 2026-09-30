@@ -1,9 +1,9 @@
 import { atrasoEscalonado } from "@/components/animate/tokens";
 import { GLOBAL_CONFIG } from "@/global-config";
+import { useTituloDaAba } from "@/hooks/use-titulo-da-aba";
 import { Button } from "@/ui/button";
 import { Text, Title } from "@/ui/typography";
 import type { ReactNode } from "react";
-import { Helmet } from "react-helmet-async";
 import { NavLink } from "react-router";
 
 interface ErrorLayoutProps {
@@ -27,14 +27,11 @@ export default function ErrorLayout({
 	buttonText = "Voltar ao início",
 	slots = {},
 }: ErrorLayoutProps) {
+	// Era <Helmet>, que não aplica nada sob o React 19 (ver o hook).
+	useTituloDaAba(helmetTitle);
 	return (
 		<>
-			{helmetTitle && (
-				<Helmet>
-					<title>{helmetTitle}</title>
-				</Helmet>
-			)}
-			<div className="m-auto max-w-[400px] flex items-center justify-center h-full">
+			<main className="m-auto max-w-[400px] flex items-center justify-center h-full">
 				{/*
 				 * Tela de erro com entrada em CSS (`surgir`, tokens.css), escalonada. Era o
 				 * `varBounce` do Motion com `initial` invisível: justo na tela de ERRO — que
@@ -43,7 +40,7 @@ export default function ErrorLayout({
 				 */}
 				<div className="flex flex-col items-center justify-center px-2 w-full gap-2">
 					<div className="surgir">
-						<Title as="h2" className="text-center">
+						<Title as="h1" className="text-center">
 							{title}
 						</Title>
 					</div>
@@ -71,7 +68,7 @@ export default function ErrorLayout({
 						</NavLink>
 					)}
 				</div>
-			</div>
+			</main>
 		</>
 	);
 }

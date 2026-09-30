@@ -72,3 +72,10 @@ When using these icons with our Icon component:
 <Icon icon="local:ic-dashboard" />
 <Icon icon="local:logo-company" />
 ```
+## Peso (OLLI, 30/09/2026)
+
+Todo SVG desta pasta entra no JavaScript da PRIMEIRA tela (o `import.meta.glob`
+de `register-icons.ts` é `eager`), inclusive os que ninguém usa. Os ícones de
+demonstração do template (arquivos, bandeiras, menu de exemplo) foram apagados:
+ficaram só os que o painel referencia com `local:`. Antes de adicionar um SVG
+aqui, confirme o uso; ao remover o último uso, apague o arquivo.

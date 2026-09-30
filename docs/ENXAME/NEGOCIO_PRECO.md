@@ -329,7 +329,8 @@ Mecânica prática (já compatível com o código):
    é assim que o grandfathering de preço funciona de fábrica. (No MP Preapproval, idem:
    não tocar no `preapproval` vigente.)
 2. **Suba amarrado a valor visível, nunca "porque sim".** O momento natural já está no
-   calendário da operação: **setembro/2026, NFS-e obrigatória** (Aposta 3 do VISAO_FABLE).
+   calendário da operação: **01/11/2026, NFS-e obrigatória para ME/EPP** (Aposta 3 do VISAO_FABLE;
+   data corrigida pela Resolução CGSN 191/2026, ver `ALERTA_NFSE_DATA.md`).
    "O OLLI agora deixa sua nota pronta — para novos assinantes, o Pro passa a R$ 49" é um
    reajuste que se explica sozinho. Reajuste sem feature nova é o que gera Reclame Aqui.
 3. **Avise antes, por escrito.** 30+ dias, e-mail + aviso no app, mesmo quando só afeta

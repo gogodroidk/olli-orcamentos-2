@@ -74,7 +74,8 @@ código — outra onda que faça, eu sou read-only.
 
 O brief me pediu para "dizer a verdade sobre a dificuldade" da NFS-e. A verdade mudou:
 
-- **Resolução CGSN nº 189/2026** (publicada 28/04/2026): a partir de **1º de setembro de 2026**,
+- **Resolução CGSN nº 189/2026** (publicada 28/04/2026), **alterada pela CGSN nº 191/2026** (04/08/2026,
+  [Receita](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026)): a partir de **1º de novembro de 2026** (a data original era 01/09/2026),
   ME e EPP optantes do Simples Nacional **são obrigadas** a emitir NFS-e de **padrão nacional**,
   exclusivamente pelo **Emissor Nacional** (web **ou API**). Sistema municipal próprio deixa de
   ser opção para o Simples.
@@ -330,7 +331,7 @@ bloqueio **B3**. **Custo: zero.** Não é decisão de engenharia, é 10 minutos 
 | **BrasilAPI — CNPJ** | ✅ | grátis, sem chave, fair-use | — | **JÁ ESTÁ** (`worker/src/index.js:444`) |
 | **ViaCEP** | ✅ | grátis, sem chave | — | **JÁ ESTÁ** (`src/services/cep.ts`) |
 | **Clima (Open-Meteo comercial)** | 💰 | **US$29/mês fixo**, 1M chamadas | **M** | 🟢 **ENTRA JÁ** |
-| **NFS-e Nacional (deep-link preparado)** | ✅ | grátis (API do governo) | **M** | 🟢 **ENTRA JÁ** — prazo 01/09/2026 |
+| **NFS-e Nacional (deep-link preparado)** | ✅ | grátis (API do governo) | **M** | 🟢 **ENTRA JÁ** — prazo 01/11/2026 para ME/EPP (CGSN 191/2026); MEI desde 2023 |
 | **NFS-e Nacional (emissão direta pelo OLLI)** | ✅ API | grátis, mas exige custódia de certificado | **G** | 🔴 **NÃO ENTRA AINDA** (risco, não custo) |
 | **Avaliação no Google (link direto, sem API)** | ✅ | **R$ 0** | **P** | 🟢 **ENTRA JÁ** |
 | **Google Business Profile API** | ✅ | grátis, mas **quota 0 até aprovação manual** | G | 🟡 **ENTRA DEPOIS** |
@@ -745,7 +746,8 @@ mei: !!d.opcao_pelo_mei,   // ← estava assim
 A BrasilAPI devolve `opcao_pelo_mei: null` quando a Receita não informou — **confirmado ao
 vivo num CNPJ real, existente e ativo**. `!!null` é `false`: "não sei se é MEI" chegava na
 tela como **"não é MEI"**. É `olli-gate-erro-vira-vazio` em uma linha, e deixa de ser
-detalhe em **1º de setembro de 2026** — pela Resolução CGSN nº 189/2026 o regime de NFS-e
+detalhe em **1º de novembro de 2026** — pela Resolução CGSN nº 189/2026, com a data alterada
+pela CGSN nº 191/2026, o regime de NFS-e
 do cliente depende justamente de ser MEI/ME/EPP do Simples (§2.2 e §5.6).
 
 O campo legado `mei` **foi mantido** (o `src/services/cnpj.ts` lê ele, e `src/` é de outro

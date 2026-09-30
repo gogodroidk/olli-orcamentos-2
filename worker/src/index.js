@@ -12,6 +12,7 @@
  *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
+ *   POST /auth/email-hook → Send Email Hook do Supabase Auth (Standard Webhooks, sem JWT)
  *   POST /revenuecat/webhook → assinatura da Google Play (Authorization secreto, sem JWT)
  *
  * Segurança:
@@ -58,12 +59,13 @@ import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { handleRevenueCat } from './revenuecat.js';
 import { handleResendWebhook } from './resendWebhook.js';
+import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
-import { handleEtaSaida } from './etaSaida.js';
+import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
@@ -86,6 +88,7 @@ import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
 import { processarResumoDinheiro } from './resumoDinheiroJob.js';
+import { processarContratos } from './contratosJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
@@ -505,77 +508,9 @@ async function handleDiag(bodyText, env, user) {
 }
 
 // ─── ETA COM TRÂNSITO (Routes API) ───────────────────────────
-// Recebe {origem:{lat,lng}, destino:{lat,lng}} e devolve os minutos com trânsito
-// e a distância. A "chegada" é calculada no APP (fuso do aparelho), não aqui. A
-// chave é secret do Worker (OLLI_ROUTES_API_KEY), restrita ao Routes API.
-function coordOk(p) {
-  return p && Number.isFinite(p.lat) && Number.isFinite(p.lng)
-    && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
-}
-async function handleEta(request, env) {
-  const user = await getUser(request, env);
-  if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
-  if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
-
-  // Teto de payload ANTES do parse — corpo minúsculo por natureza (2 coordenadas).
-  const corpo = await bodyMuitoGrande(request, MAX_ETA_BODY_BYTES);
-  if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
-
-  // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
-  // pode custar 1 chamada à Routes API (paga, sem isto ilimitada por conta).
-  //
-  // FAIL-CLOSED (`sensivel: true`), igual ao /eta/saida (etaSaida.js:570), que
-  // chama a MESMA API com a MESMA chave. Antes daqui morava o padrão gracioso
-  // (`if (env.ETA_RL) { try … } catch {}`): limiter ausente ou mudo virava
-  // permissão, calado. Não é hipótese — o docblock de rateLimit.js registra que
-  // um build por Git já apagou os 5 rate limiters em produção, e "sem limiter" é
-  // indistinguível de "dentro do limite" para quem chama. A conta que sobra é do
-  // dono, na Google. Recusar um pedido legítimo é mais barato que deixar a porta
-  // paga aberta sem vigia — e é o que a rota irmã já fazia.
-  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
-  if (!deixaPassar(estadoLimite, { sensivel: true })) {
-    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
-  }
-
-  const raw = parseJsonBody(corpo.raw);
-  const origem = raw && raw.origem;
-  const destino = raw && raw.destino;
-  if (!coordOk(origem) || !coordOk(destino)) {
-    return json({ ok: false, erro: 'coordenadas_invalidas' }, 400);
-  }
-  try {
-    const resp = await fetch(
-      'https://routes.googleapis.com/directions/v2:computeRoutes?key=' + env.OLLI_ROUTES_API_KEY,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
-        },
-        body: JSON.stringify({
-          origin: { location: { latLng: { latitude: origem.lat, longitude: origem.lng } } },
-          destination: { location: { latLng: { latitude: destino.lat, longitude: destino.lng } } },
-          travelMode: 'DRIVE',
-          routingPreference: 'TRAFFIC_AWARE',
-          languageCode: 'pt-BR',
-          units: 'METRIC',
-        }),
-      },
-    );
-    if (!resp.ok) return json({ ok: false, erro: 'rota_indisponivel' }, 502);
-    const data = await resp.json().catch(() => ({}));
-    const rota = data && Array.isArray(data.routes) ? data.routes[0] : null;
-    if (!rota || !rota.duration) return json({ ok: false, erro: 'sem_rota' });
-    const seg = parseInt(String(rota.duration).replace('s', ''), 10) || 0;
-    const minutos = Math.max(1, Math.round(seg / 60));
-    const distanciaKm = Number.isFinite(rota.distanceMeters)
-      ? Math.round(rota.distanceMeters / 100) / 10
-      : null;
-    return json({ ok: true, minutos, distanciaKm, comTransito: true });
-  } catch (e) {
-    return json({ ok: false, erro: 'eta_falhou' });
-  }
-}
+// POST /eta mora em etaSaida.js (`handleEtaAgora`), junto do /eta/saida: a
+// mesma chamada à Routes API, a mesma sanidade de distância e o motivo de a
+// rota continuar TRAFFIC_AWARE (SKU Pro) documentado num lugar só.
 
 // Consulta de CNPJ (BrasilAPI) para o CADASTRO MÁGICO do Onboarding: o app manda
 // só os 14 dígitos, o worker consulta a BrasilAPI (grátis, sem chave) e devolve a
@@ -641,9 +576,9 @@ async function handleCnpj(cnpjBruto, request, env) {
       // decidir alguma coisa deve usar `meiEstado` abaixo, nunca este.
       mei: !!d.opcao_pelo_mei,
       // ─── Os três estados, honestos (usar ESTES) ───
-      // Isto deixa de ser detalhe burocrático em 1º de setembro de 2026: pela
-      // Resolução CGSN nº 189/2026, MEI/ME/EPP do Simples passam a emitir NFS-e
-      // só pelo Emissor Nacional. Um app que "acha" que o cliente não é MEI
+      // Isto deixa de ser detalhe burocrático: o MEI já emite NFS-e só pelo
+      // Emissor Nacional desde 01/09/2023 (CGSN 169/2022) e ME/EPP do Simples
+      // passam a emitir em 01/11/2026 (CGSN 191/2026). Um app que "acha" que o cliente não é MEI
       // porque a API não respondeu manda o prestador pro caminho fiscal errado.
       meiEstado: tresEstados(d.opcao_pelo_mei),
       simplesEstado: tresEstados(d.opcao_pelo_simples),
@@ -729,7 +664,7 @@ async function handleGeocode(request, env) {
   // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
   // pode custar 1 chamada à Geocoding API (paga). Mesmo binding do /eta — as duas
   // rotas alimentam o mesmo fluxo (endereço → coordenada → rota) — e, agora,
-  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver /eta acima).
+  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver `handleEtaAgora` em etaSaida.js).
   const estadoLimite = await checarLimite(env.ETA_RL, user.id);
   if (!deixaPassar(estadoLimite, { sensivel: true })) {
     return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
@@ -992,6 +927,9 @@ const handler = {
     // Resumo diário do dinheiro parado: 7h00–7h50 de Brasília (de 10 em 10 min),
     // segunda a sábado, só com EMAIL_RESUMO_MODE=production. Também só enfileira.
     ctx.waitUntil(processarResumoDinheiro(env, { now: () => agendado }));
+    // Contratos recorrentes: gera as visitas devidas às 06:05, 12:05 e 18:05 de
+    // Brasília, só com CONTRATOS_MOTOR_MODE=production (depois da migration).
+    ctx.waitUntil(processarContratos(env, { now: () => agendado }));
   },
 
   async fetch(request, env) {
@@ -1023,6 +961,14 @@ const handler = {
     // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
     if (url.pathname === '/resend/webhook') {
       return handleResendWebhook(request, env);
+    }
+
+    // ── E-MAILS DE AUTENTICAÇÃO (Send Email Hook do Supabase → Resend) ──
+    // Servidor-a-servidor: o Supabase Auth chama esta rota no lugar do SMTP.
+    // Autentica pela assinatura Standard Webhooks (SEND_EMAIL_HOOK_SECRET) e fica
+    // DESLIGADA (503) sem ela ou sem a RESEND_API_KEY. Ver worker/src/authEmailHook.js.
+    if (url.pathname === '/auth/email-hook') {
+      return handleAuthEmailHook(request, env);
     }
 
     // ── DESCADASTRO DE LEMBRETES (link assinado no rodapé + List-Unsubscribe) ──
@@ -1168,7 +1114,7 @@ const handler = {
     }
 
     if (url.pathname === '/eta' && request.method === 'POST') {
-      return handleEta(request, env);
+      return handleEtaAgora(request, env);
     }
 
     // "A que horas eu preciso SAIR pra chegar às 15h" (docs/ENXAME/IDEIA_ETA_TRANSITO.md).

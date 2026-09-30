@@ -222,8 +222,21 @@ function agendamentoToRow(a: Agendamento): Record<string, unknown> {
 		criado_em: a.criadoEm,
 		atualizado_em: a.atualizadoEm,
 		excluido_em: a.excluidoEm ?? null,
+		// Agenda por técnico, recorrência e visita de contrato (migration 20260930130500).
+		responsavel_id: a.responsavelId ?? null,
+		responsavel_nome: a.responsavelId ? (a.responsavelNome ?? null) : null,
+		recorrencia: a.recorrencia ?? null,
+		recorrencia_ate: a.recorrencia ? (a.recorrenciaAte ?? null) : null,
+		contrato_id: a.contratoId ?? null,
 	};
 }
+
+/**
+ * As colunas acima que só existem depois da migration 20260930130500. Enquanto o
+ * servidor não a tiver, o upsert com elas é recusado inteiro — `useSalvar` reenvia
+ * sem elas (mesma regra do celular, `cloudSync.ts`).
+ */
+export const COLUNAS_AGENDA_EQUIPE = ["responsavel_id", "responsavel_nome", "recorrencia", "recorrencia_ate", "contrato_id"] as const;
 
 function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
 	return {

@@ -36,6 +36,8 @@ import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
+import PrepararNotaScreen from '../screens/PrepararNotaScreen';
+import CertificadoCaixaDaguaScreen from '../screens/CertificadoCaixaDaguaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
@@ -50,6 +52,8 @@ import EquipamentoScreen from '../screens/EquipamentoScreen';
 import EscanearQrScreen from '../screens/EscanearQrScreen';
 import PmocPlanosScreen from '../screens/PmocPlanosScreen';
 import PmocPlanoScreen from '../screens/PmocPlanoScreen';
+import ContratosScreen from '../screens/ContratosScreen';
+import ContratoScreen from '../screens/ContratoScreen';
 // Frentes novas — landing pública, lixeira, assinatura, ajuda/suporte, legal
 // (Privacidade/Termos = mesmo componente) e o shell do técnico (Home dele).
 import LandingScreen from '../screens/LandingScreen';
@@ -124,6 +128,8 @@ export type RootStackParamList = {
   Servicos: undefined;
   Produtos: undefined;
   EmitirRecibo: { orcamentoId?: string };
+  // "OLLI prepara a nota": dados da NFS-e de um recibo para copiar no Emissor Nacional.
+  PrepararNota: { reciboId: string };
   Conta: undefined;
   MeuNegocio: undefined;
   ModelosDocumento: undefined;
@@ -136,8 +142,10 @@ export type RootStackParamList = {
   Autopilot: undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
-  // Ferramenta ÚNICA do ofício de dedetização (gate `vertical: 'dedetizacao'`).
+  // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).
   CertificadoAnvisa: undefined;
+  // Certificado de limpeza de caixa d'água (gate `vertical: 'caixa_dagua'`).
+  CertificadoCaixaDagua: undefined;
   // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
   FerramentasOficio: undefined;
   // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
@@ -168,6 +176,9 @@ export type RootStackParamList = {
   // que gera as ordens de serviço recorrentes. `PmocPlano` recebe o id do plano.
   Pmoc: undefined;
   PmocPlano: { id: string };
+  // Contratos recorrentes por ativo (lista + criar/editar). Sem id = contrato novo.
+  Contratos: undefined;
+  Contrato: { id?: string } | undefined;
   // ─── Frentes novas ────────────────────────────────────────────────────────
   // Landing pública (web deslogado) — full-bleed, sem wrap desktop nem path.
   Landing: undefined;
@@ -209,6 +220,7 @@ export type TabParamList = {
   RecibosTab?: undefined;
   OrdensTab?: undefined;
   PmocTab?: undefined;
+  ContratosTab?: undefined;
   LixeiraTab?: undefined;
   EquipeTab?: undefined;
   AjudaTab?: undefined;
@@ -316,6 +328,8 @@ const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
 const CalculadoraTintaCentro = comCentroDesktop(CalculadoraTintaScreen);
 const CertificadoAnvisaCentro = comCentroDesktop(CertificadoAnvisaScreen);
+const PrepararNotaCentro = comCentroDesktop(PrepararNotaScreen);
+const CertificadoCaixaDaguaCentro = comCentroDesktop(CertificadoCaixaDaguaScreen);
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
@@ -327,6 +341,8 @@ const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
 const EquipamentoCentro = comCentroDesktop(EquipamentoScreen);
 const PmocCentro = comCentroDesktop(PmocPlanosScreen);
 const PmocPlanoCentro = comCentroDesktop(PmocPlanoScreen);
+const ContratosCentro = comCentroDesktop(ContratosScreen);
+const ContratoCentro = comCentroDesktop(ContratoScreen);
 // Frentes novas: telas mobile-like centralizadas no desktop (pass-through no
 // nativo). Landing e TecnicoHome NÃO entram aqui — são full-bleed por conta
 // própria. Privacidade e Termos compartilham o LegalCentro (mesmo componente).
@@ -536,6 +552,7 @@ function TabNavigator() {
           <Tab.Screen name="RecibosTab" component={RecibosDesktopScreen} options={{ tabBarLabel: 'Recibos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="receipt" color={color} size={size} />) }} />
           <Tab.Screen name="OrdensTab" component={OrdensDesktopScreen} options={{ tabBarLabel: 'Ordens de serviço', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="clipboard-check-outline" color={color} size={size} />) }} />
           <Tab.Screen name="PmocTab" component={PmocDesktopScreen} options={{ tabBarLabel: 'Planos PMOC', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="calendar-sync-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="ContratosTab" component={ContratosCentro} options={{ tabBarLabel: 'Contratos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="file-sign" color={color} size={size} />) }} />
           <Tab.Screen name="EquipeTab" component={EquipeDesktopScreen} options={{ tabBarLabel: 'Equipe', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="account-multiple-outline" color={color} size={size} />) }} />
           <Tab.Screen name="LixeiraTab" component={LixeiraDesktopScreen} options={{ tabBarLabel: 'Lixeira', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="delete-outline" color={color} size={size} />) }} />
           <Tab.Screen name="AjudaTab" component={AjudaDesktopScreen} options={{ tabBarLabel: 'Ajuda', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="help-circle-outline" color={color} size={size} />) }} />
@@ -618,6 +635,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Servicos" component={ServicosCentro} />
       <Stack.Screen name="Produtos" component={ProdutosCentro} />
       <Stack.Screen name="EmitirRecibo" component={EmitirReciboCentro} />
+      <Stack.Screen name="PrepararNota" component={PrepararNotaCentro} />
       <Stack.Screen name="Conta" component={ContaCentro} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioCentro} />
       <Stack.Screen name="ModelosDocumento" component={ModelosDocumentoCentro} />
@@ -629,6 +647,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
+      <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
       <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
@@ -646,6 +665,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* PMOC Fase 2 — planos de manutenção (/pmoc) e o detalhe (/pmoc/:id). */}
       <Stack.Screen name="Pmoc" component={PmocCentro} />
       <Stack.Screen name="PmocPlano" component={PmocPlanoCentro} />
+      <Stack.Screen name="Contratos" component={ContratosCentro} />
+      <Stack.Screen name="Contrato" component={ContratoCentro} />
       {/* ─── Frentes novas ──────────────────────────────────────────────────
           Lixeira e Assinatura (gestão), Ajuda/suporte e os documentos legais.
           Privacidade e Termos apontam para o MESMO LegalCentro — a tela decide
