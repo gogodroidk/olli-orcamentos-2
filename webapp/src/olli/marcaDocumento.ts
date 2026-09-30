@@ -24,11 +24,34 @@ export { avisoDaMarca, type Marca, type MotivoIndeterminado } from "./marcaRegra
 /* ─────────────────────────  A leitura da assinatura  ───────────────────────── */
 
 /**
- * Lê SÓ os vínculos com a Stripe, numa consulta à parte: se essa leitura falhar (rede, coluna
- * sem grant), o plano acima continua valendo e o painel mostra a tela de sempre. Devolve `{}`
- * na falha — o resumo fica com `renovaSozinho` indefinido, nunca com um palpite.
+ * Sem Stripe, o plano pago pode ser Pix (não renova) OU Google Play (renova pela loja).
+ * Consulta à parte, como a da Stripe. O produto só conta enquanto a vigência que a própria
+ * Play deu não passou. Coluna AUSENTE (Postgres 42703: migration 20260930120000 ainda não
+ * aplicada) é resposta — sem ela nenhuma venda pela Play pode ter acontecido —; qualquer
+ * outro erro é `undefined` ("não sei"), nunca "não é da Play".
  */
-async function lerVinculoStripe(meuId: string): Promise<Pick<ResumoAssinatura, "renovaSozinho" | "temClienteStripe">> {
+async function lerVinculoPlay(meuId: string): Promise<string | null | undefined> {
+	const { data, error } = await supabase
+		.from("assinaturas")
+		.select("revenuecat_produto_id, revenuecat_vigencia_ate")
+		.eq("user_id", meuId)
+		.maybeSingle();
+	if (error) return error.code === "42703" ? null : undefined;
+	const linha = data as { revenuecat_produto_id?: string | null; revenuecat_vigencia_ate?: string | null } | null;
+	const produto = typeof linha?.revenuecat_produto_id === "string" && linha.revenuecat_produto_id ? linha.revenuecat_produto_id : null;
+	const ate = typeof linha?.revenuecat_vigencia_ate === "string" ? Date.parse(linha.revenuecat_vigencia_ate) : Number.NaN;
+	return produto && Number.isFinite(ate) && ate > Date.now() ? produto : null;
+}
+
+/**
+ * Lê SÓ os vínculos com a Stripe (e, sem Stripe, com a Google Play), numa consulta à parte:
+ * se essa leitura falhar (rede, coluna sem grant), o plano acima continua valendo e o painel
+ * mostra a tela de sempre. Devolve `{}` na falha — o resumo fica com `renovaSozinho`
+ * indefinido, nunca com um palpite.
+ */
+async function lerVinculoStripe(
+	meuId: string,
+): Promise<Pick<ResumoAssinatura, "renovaSozinho" | "temClienteStripe" | "renovaPelaPlay" | "produtoPlay">> {
 	const { data, error } = await supabase
 		.from("assinaturas")
 		.select("stripe_subscription_id, stripe_customer_id")
@@ -38,10 +61,13 @@ async function lerVinculoStripe(meuId: string): Promise<Pick<ResumoAssinatura, "
 	const vinculo = data as { stripe_subscription_id?: string | null; stripe_customer_id?: string | null };
 	// `undefined` (coluna ausente na resposta) ≠ `null` (afirmado: sem assinatura na Stripe).
 	if (vinculo.stripe_subscription_id === undefined) return {};
-	return {
-		renovaSozinho: typeof vinculo.stripe_subscription_id === "string" && vinculo.stripe_subscription_id.trim() !== "",
-		temClienteStripe: typeof vinculo.stripe_customer_id === "string" && vinculo.stripe_customer_id.trim() !== "",
-	};
+	const temStripe = typeof vinculo.stripe_subscription_id === "string" && vinculo.stripe_subscription_id.trim() !== "";
+	const temClienteStripe = typeof vinculo.stripe_customer_id === "string" && vinculo.stripe_customer_id.trim() !== "";
+	if (temStripe) return { renovaSozinho: true, temClienteStripe };
+	const produtoPlay = await lerVinculoPlay(meuId);
+	if (produtoPlay === undefined) return { temClienteStripe }; // não sei se é Pix ou Play
+	if (produtoPlay) return { renovaSozinho: true, renovaPelaPlay: true, produtoPlay, temClienteStripe };
+	return { renovaSozinho: false, temClienteStripe };
 }
 
 /**

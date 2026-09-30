@@ -115,7 +115,7 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // (`=== '/admin'` para a tela e `startsWith('/admin/')` para a API), e foi
   // isto que a primeira versão desta seção deixou passar.
   const DELEGADAS_EXATAS = ['/admin'];
-  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/equipe/', '/conta/', '/o/', '/q/'];
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/revenuecat/', '/equipe/', '/conta/', '/o/', '/q/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(

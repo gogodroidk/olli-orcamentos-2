@@ -32,6 +32,8 @@ const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
 const oauthRetornoFonte = fileURLToPath(new URL("../src/services/oauthRetorno.ts", import.meta.url));
 const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
+// Assinatura pela Google Play: o MESMO catálogo/URL de gerenciar que o app usa. Módulo puro.
+const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -86,6 +88,7 @@ export default defineConfig(({ mode }) => {
 				"@auth-policy": authPolicyFonte,
 				"@oauth-retorno": oauthRetornoFonte,
 				"@ajuda": ajudaFonte,
+				"@play-billing-regras": playBillingRegrasFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

@@ -895,7 +895,9 @@ export default function ContaDesktopScreen() {
                         </View>
                       ))}
                       <Text style={styles.excluirNota}>
-                        Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta.
+                        Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta.
+                        Assinatura feita pela Google Play (no app Android) não é cancelada pela exclusão: cancele antes em
+                        Play Store › Pagamentos e assinaturas, senão a cobrança continua.
                       </Text>
                       <OlliInput
                         label="Para confirmar, digite EXCLUIR"
