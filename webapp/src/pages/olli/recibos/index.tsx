@@ -14,6 +14,7 @@
 import type { Recibo } from "@dominio";
 import {
 	AlertTriangle,
+	FileCheck2,
 	FileWarning,
 	Inbox,
 	Lock,
@@ -38,6 +39,7 @@ import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import { type LinhaRecibo, reais, reciboDaLinha, useRecibos } from "./dados";
 import FormRecibo from "./FormRecibo";
+import PrepararNota from "./PrepararNota";
 
 const ESQUELETOS = ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6"];
 
@@ -86,6 +88,7 @@ export default function RecibosPage() {
 	const [emEdicao, setEmEdicao] = useState<Recibo | null>(null);
 	const [aExcluir, setAExcluir] = useState<Recibo | null>(null);
 	const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+	const [aPrepararNota, setAPrepararNota] = useState<Recibo | null>(null);
 
 	const itens: ItemLista[] = useMemo(
 		() => (data ?? []).map((linha) => ({ linha, recibo: reciboDaLinha(linha) })),
@@ -339,6 +342,7 @@ export default function RecibosPage() {
 													recibo={recibo}
 													podeEscrever={escritaLiberada}
 													aoEditar={abrirEdicao}
+													aoPrepararNota={setAPrepararNota}
 													aoExcluir={(r) => {
 														setErroExclusao(null);
 														setAExcluir(r);
@@ -374,6 +378,7 @@ export default function RecibosPage() {
 											recibo={recibo}
 											podeEscrever={escritaLiberada}
 											aoEditar={abrirEdicao}
+											aoPrepararNota={setAPrepararNota}
 											aoExcluir={(r) => {
 												setErroExclusao(null);
 												setAExcluir(r);
@@ -427,6 +432,9 @@ export default function RecibosPage() {
 			{/* ────────────────────────────  Formulário  ───────────────────────────── */}
 			<FormRecibo aberto={formAberto} aoFechar={() => setFormAberto(false)} recibo={emEdicao} />
 
+			{/* Nota fiscal: o OLLI prepara os dados para o Emissor Nacional (não emite). */}
+			<PrepararNota recibo={aPrepararNota} aoFechar={() => setAPrepararNota(null)} />
+
 			{/* ───────────────────────  Exclusão (soft delete)  ─────────────────────── */}
 			<ConfirmarExclusao
 				aberto={!!aExcluir}
@@ -464,11 +472,13 @@ function AcoesRecibo({
 	recibo,
 	podeEscrever,
 	aoEditar,
+	aoPrepararNota,
 	aoExcluir,
 }: {
 	recibo: Recibo | null;
 	podeEscrever: boolean;
 	aoEditar: (r: Recibo) => void;
+	aoPrepararNota: (r: Recibo) => void;
 	aoExcluir: (r: Recibo) => void;
 }) {
 	if (!recibo) {
@@ -507,6 +517,10 @@ function AcoesRecibo({
 				<DropdownMenuItem onSelect={() => aoEditar(recibo)}>
 					<Pencil aria-hidden="true" className="mr-2 size-4" />
 					Editar
+				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => aoPrepararNota(recibo)}>
+					<FileCheck2 aria-hidden="true" className="mr-2 size-4" />
+					Preparar nota fiscal
 				</DropdownMenuItem>
 				<DropdownMenuItem
 					onSelect={() => aoExcluir(recibo)}

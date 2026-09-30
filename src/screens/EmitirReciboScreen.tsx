@@ -602,6 +602,19 @@ function EmitirReciboConteudo() {
                 </Text>
               </TouchableOpacity>
 
+              {/* NFS-e: o OLLI prepara os dados para o Emissor Nacional (não emite). */}
+              {!item.estornadoEm && (
+                <TouchableOpacity
+                  style={styles.avaliacaoBtn}
+                  onPress={() => nav.navigate('PrepararNota', { reciboId: item.id })}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                >
+                  <MaterialCommunityIcons name="file-certificate-outline" size={16} color={cores.primary} />
+                  <Text style={styles.reenviarBtnText}>Preparar nota fiscal</Text>
+                </TouchableOpacity>
+              )}
+
               {/* Só aparece com o link do Google cadastrado em Meu Negócio. */}
               {!!linkAvaliacao && (
                 <TouchableOpacity

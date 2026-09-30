@@ -970,7 +970,22 @@ export default function VisualizarOrcamentoScreen() {
               style={{ marginTop: Spacing.sm }}
             />
           )}
-          {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
+          {/* NOTA FISCAL: o OLLI prepara os dados de cada recibo para o Emissor Nacional
+              (não emite). Estornado não vira nota. */}
+          {recibos
+            .filter((recibo) => recibo.orcamentoId === orc.id && !recibo.estornadoEm)
+            .map((recibo) => (
+              <OlliButton
+                key={`nota-${recibo.id}`}
+                label={`Preparar nota fiscal · recibo ${recibo.numero}`}
+                variant="outline"
+                size="sm"
+                onPress={() => nav.navigate('PrepararNota', { reciboId: recibo.id })}
+                icon={<MaterialCommunityIcons name="file-certificate-outline" size={17} color={cores.primary} />}
+                style={{ marginTop: Spacing.sm }}
+              />
+            ))}
+          {orc.subtotalServicos > 0 &&<Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
           {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
           {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
           <View style={styles.totalRow}>

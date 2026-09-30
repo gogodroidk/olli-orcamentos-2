@@ -36,6 +36,7 @@ import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
+import PrepararNotaScreen from '../screens/PrepararNotaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
@@ -124,6 +125,8 @@ export type RootStackParamList = {
   Servicos: undefined;
   Produtos: undefined;
   EmitirRecibo: { orcamentoId?: string };
+  // "OLLI prepara a nota": dados da NFS-e de um recibo para copiar no Emissor Nacional.
+  PrepararNota: { reciboId: string };
   Conta: undefined;
   MeuNegocio: undefined;
   ModelosDocumento: undefined;
@@ -316,6 +319,7 @@ const OlliVozCentro = comCentroDesktop(OlliVozScreen);
 const OlliChatCentro = comCentroDesktop(OlliChatScreen);
 const CalculadoraTintaCentro = comCentroDesktop(CalculadoraTintaScreen);
 const CertificadoAnvisaCentro = comCentroDesktop(CertificadoAnvisaScreen);
+const PrepararNotaCentro = comCentroDesktop(PrepararNotaScreen);
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
@@ -618,6 +622,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Servicos" component={ServicosCentro} />
       <Stack.Screen name="Produtos" component={ProdutosCentro} />
       <Stack.Screen name="EmitirRecibo" component={EmitirReciboCentro} />
+      <Stack.Screen name="PrepararNota" component={PrepararNotaCentro} />
       <Stack.Screen name="Conta" component={ContaCentro} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioCentro} />
       <Stack.Screen name="ModelosDocumento" component={ModelosDocumentoCentro} />

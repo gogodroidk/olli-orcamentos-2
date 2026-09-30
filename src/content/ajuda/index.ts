@@ -314,10 +314,11 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'passos',
         conteudo: [
-          'Abra o serviço oficial: https://www.gov.br/pt-br/servicos/emitir-nota-fiscal-de-servico-eletronica.',
+          'No OLLI, abra o recibo do pagamento e toque em "Preparar nota fiscal": cliente, descrição, código de serviço sugerido pelo seu ofício, valor e município já vêm prontos para copiar, com um checklist do que conferir.',
+          'Abra o Emissor Nacional: https://www.nfse.gov.br/EmissorNacional (orientações em https://www.gov.br/pt-br/servicos/emitir-nota-fiscal-de-servico-eletronica).',
           'Entre com sua conta gov.br ou certificado, conforme o município e o perfil do prestador.',
           'Confira cliente, serviço, retenções e valores antes de transmitir.',
-          'Guarde o número/protocolo e anexe a cópia da nota ao documento do cliente quando essa integração estiver disponível.',
+          'Depois de emitir, volte ao OLLI e anote o número da NFS-e na nota preparada.',
         ],
       },
       {
