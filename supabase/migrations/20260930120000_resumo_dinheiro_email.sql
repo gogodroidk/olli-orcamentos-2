@@ -284,6 +284,67 @@ revoke all on function public.desligar_resumo_dinheiro_email_servico(uuid, text)
 grant execute on function public.desligar_resumo_dinheiro_email_servico(uuid, text)
   to service_role;
 
+-- Descadastro de lembretes REPETIDO também é a última palavra da pessoa.
+--
+-- `resumo_dinheiro_estado` compara a data do descadastro com a do "ligar o resumo".
+-- Na 20260929200000, `registrar_supressao_email` grava com `on conflict do nothing`:
+-- quem descadastrou (T1), religou o resumo no app (T2) e clicou de novo em "Parar de
+-- receber lembretes" num e-mail antigo (T3) ficava com o descadastro em T1 < T2 — a
+-- página dizia "você deixará de receber … o resumo diário" e o resumo continuava
+-- saindo. Aqui o descadastro renova a data a cada pedido (bounce/reclamação seguem
+-- como estavam: bloqueiam tudo de qualquer jeito). Mesmo corpo da função original,
+-- só muda o `on conflict`.
+create or replace function public.registrar_supressao_email(
+  p_user_id uuid,
+  p_motivo  text,
+  p_origem  text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_cancelados bigint := 0;
+begin
+  if p_user_id is null
+     or p_motivo is null or p_motivo not in ('descadastro', 'hard_bounce', 'complaint')
+     or p_origem is null or p_origem not in ('link_email', 'one_click', 'resend_webhook')
+  then
+    raise exception 'supressao_argumentos_invalidos';
+  end if;
+
+  if not exists (select 1 from auth.users u where u.id = p_user_id) then
+    return pg_catalog.jsonb_build_object('registrado', false, 'cancelados', 0);
+  end if;
+
+  insert into public.email_supressoes (user_id, motivo, origem, criado_em)
+  values (p_user_id, p_motivo, p_origem, pg_catalog.clock_timestamp())
+  on conflict (user_id, motivo) do update
+    set criado_em = excluded.criado_em,
+        origem = excluded.origem
+    where public.email_supressoes.motivo = 'descadastro';
+
+  -- Descadastro cancela só lembretes (e o resumo); bounce/reclamação cancelam tudo.
+  update public.email_outbox o
+     set status = 'dead_letter',
+         error_code = 'suprimido_antes_do_envio',
+         next_attempt_at = null,
+         updated_at = pg_catalog.now()
+   where o.user_id = p_user_id
+     and o.status in ('pending', 'failed')
+     and (p_motivo <> 'descadastro' or o.template <> 'boas_vindas');
+  get diagnostics v_cancelados = row_count;
+
+  return pg_catalog.jsonb_build_object('registrado', true, 'cancelados', v_cancelados);
+end;
+$$;
+
+revoke all on function public.registrar_supressao_email(uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.registrar_supressao_email(uuid, text, text)
+  to service_role;
+
 -- ─── 4. Candidatos (pré-filtro barato; a conta é do Worker) ─────────────────
 --
 -- Devolve só ids. Fora: conta indisponível, resumo desligado/bloqueado, quem não é

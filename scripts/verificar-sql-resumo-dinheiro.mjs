@@ -181,8 +181,15 @@ assert.deepEqual(estado, { ativo: false, padrao: true, bloqueio: 'descadastro', 
 estado = (await one(`select public.definir_resumo_dinheiro_email(true, 'app') as e`)).e;
 assert.equal(estado.ativo, true);
 assert.deepEqual(await cand(), [U(1), U(5), U(7)]);
-// Novo descadastro DEPOIS do "ligar" vence de novo.
-await q(`update public.email_supressoes set criado_em = clock_timestamp() + interval '1 second' where user_id = $1`, [U(5)]);
+// Novo descadastro DEPOIS do "ligar" vence de novo — pelo caminho REAL (a rota do
+// link chama `registrar_supressao_email`; a linha de descadastro já existe desde 01/09).
+const redescad = await one(`select public.registrar_supressao_email($1, 'descadastro', 'link_email') as r`, [U(5)]);
+assert.equal(redescad.r.registrado, true);
+assert.equal((await one('select public.meu_resumo_dinheiro_email() as e')).e.ativo, false);
+assert.equal((await one('select count(*)::int n from public.email_supressoes where user_id = $1', [U(5)])).n, 1);
+// E religar depois disso vale de novo (a última palavra é sempre a mais nova).
+assert.equal((await one(`select public.definir_resumo_dinheiro_email(true, 'app') as e`)).e.ativo, true);
+await q(`select public.registrar_supressao_email($1, 'descadastro', 'one_click')`, [U(5)]);
 assert.equal((await one('select public.meu_resumo_dinheiro_email() as e')).e.ativo, false);
 await q(`select set_config('teste.uid', $1, false)`, [U(3)]);
 assert.equal((await one('select public.meu_resumo_dinheiro_email() as e')).e.elegivel, false);
