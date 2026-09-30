@@ -82,7 +82,7 @@ checar('migration não apaga tabela nem dados (sem DROP TABLE/TRUNCATE/DELETE fo
 checar('não há segredo literal nos novos arquivos', !/(sb_secret_|service_role_key\s*=|re_[A-Za-z0-9]{20,})/.test(sql + consumer + wrangler));
 
 console.log('\nOLLI — resumo diário do dinheiro parado (20260930120000)');
-const resumo = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260930120000_resumo_dinheiro_email.sql'), 'utf8');
+const resumo = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260930120200_resumo_dinheiro_email.sql'), 'utf8');
 const resumoSql = resumo.replace(/\r\n/g, '\n').replace(/--[^\n]*/g, '');
 const resumoJob = fs.readFileSync(path.join(root, 'worker', 'src', 'resumoDinheiroJob.js'), 'utf8');
 checar('catálogo inclui resumo_dinheiro sem perder os modelos antigos', /'boas_vindas', 'boas_vindas\.v1', 'account_onboarding'[\s\S]*'lembrete_ativacao'[\s\S]*'lembrete_assinatura'[\s\S]*'resumo_dinheiro', 'resumo_dinheiro\.v1', 'money_digest'/.test(resumoSql));

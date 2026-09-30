@@ -76,7 +76,7 @@ const anterior = fs.readFileSync(path.join(WT, 'supabase', 'migrations', '202609
 await db.exec(anterior);
 // created_at do INSERT do enqueue usa o default now(): amarra ao relógio de teste.
 await db.exec(`alter table public.email_outbox alter column created_at set default teste.agora();`);
-const nova = fs.readFileSync(path.join(WT, 'supabase', 'migrations', '20260930120000_resumo_dinheiro_email.sql'), 'utf8')
+const nova = fs.readFileSync(path.join(WT, 'supabase', 'migrations', '20260930120200_resumo_dinheiro_email.sql'), 'utf8')
   .replaceAll('pg_catalog.now()', 'teste.agora()');
 await db.exec(nova);
 console.log('migrations aplicadas');
