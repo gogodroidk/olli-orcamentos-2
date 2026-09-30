@@ -14,7 +14,10 @@
 -- Tenant = user_id do DONO da conta (mesmo modelo de `recibos`):
 --   * leitura: dono e membros ativos da organização (public.donos_visiveis());
 --   * escrita: só o dono (auth.uid() = user_id), igual a recibos — membro de
---     equipe não emite recibo, então também não prepara a nota do dono.
+--     equipe não emite recibo, então também não prepara a nota do dono. O INSERT
+--     exige que o recibo exista em public.recibos e seja do próprio auth.uid():
+--     sem isso, um membro gravaria no PRÓPRIO tenant uma cópia dos dados do
+--     cliente do dono (CPF/CNPJ, endereço) que sobreviveria à saída dele da equipe.
 --   * sem DELETE: nota preparada/emitida é registro fiscal do prestador.
 --
 -- Coerência no banco (não só na tela):
@@ -97,7 +100,14 @@ drop policy if exists notas_preparadas_insert on public.notas_preparadas;
 create policy notas_preparadas_insert
   on public.notas_preparadas
   as permissive for insert to authenticated
-  with check ((select auth.uid()) = user_id);
+  with check (
+    (select auth.uid()) = user_id
+    and exists (
+      select 1 from public.recibos r
+      where r.id = notas_preparadas.recibo_id
+        and r.user_id = (select auth.uid())
+    )
+  );
 
 drop policy if exists notas_preparadas_update on public.notas_preparadas;
 create policy notas_preparadas_update

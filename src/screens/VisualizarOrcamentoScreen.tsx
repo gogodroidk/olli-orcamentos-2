@@ -985,7 +985,7 @@ export default function VisualizarOrcamentoScreen() {
                 style={{ marginTop: Spacing.sm }}
               />
             ))}
-          {orc.subtotalServicos > 0 &&<Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
+          {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
           {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
           {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
           <View style={styles.totalRow}>

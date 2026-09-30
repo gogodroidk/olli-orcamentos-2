@@ -518,10 +518,13 @@ function AcoesRecibo({
 					<Pencil aria-hidden="true" className="mr-2 size-4" />
 					Editar
 				</DropdownMenuItem>
-				<DropdownMenuItem onSelect={() => aoPrepararNota(recibo)}>
-					<FileCheck2 aria-hidden="true" className="mr-2 size-4" />
-					Preparar nota fiscal
-				</DropdownMenuItem>
+				{/* Recibo estornado não vira nota (mesma regra do app). */}
+				{!recibo.estornadoEm && (
+					<DropdownMenuItem onSelect={() => aoPrepararNota(recibo)}>
+						<FileCheck2 aria-hidden="true" className="mr-2 size-4" />
+						Preparar nota fiscal
+					</DropdownMenuItem>
+				)}
 				<DropdownMenuItem
 					onSelect={() => aoExcluir(recibo)}
 					className="text-error-dark focus:text-error-dark dark:text-error dark:focus:text-error"

@@ -405,7 +405,7 @@ function Conteudo({ recibo }: { recibo: Recibo }) {
 													{c.id === "descricao" && !emitida ? (
 														<>
 															<Textarea
-																value={dados.servico.descricao}
+																value={descricao ?? dados.servico.descricao}
 																onChange={(e) => setDescricao(e.target.value)}
 																maxLength={LIMITE_DESCRICAO}
 																rows={6}

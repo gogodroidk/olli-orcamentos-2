@@ -287,7 +287,10 @@ export default function RecibosDesktopScreen() {
           {!!linkAvaliacao && (
             <AcaoIcone icone="google-maps" rotulo="Pedir avaliação" onPress={() => handlePedirAvaliacao(r)} />
           )}
-          <AcaoIcone icone="file-certificate-outline" rotulo="Preparar nota fiscal" onPress={() => prepararNota(r)} />
+          {/* Recibo estornado não vira nota (mesma regra do celular). */}
+          {!r.estornadoEm && (
+            <AcaoIcone icone="file-certificate-outline" rotulo="Preparar nota fiscal" onPress={() => prepararNota(r)} />
+          )}
         </View>
       ),
     },

@@ -368,6 +368,8 @@ await db.exec(`
   grant usage on schema public to authenticated, anon;
   create table public.organizacoes (id uuid primary key, owner_user_id uuid not null references auth.users(id));
   create table public.organizacao_membros (org_id uuid not null, user_id uuid not null, papel text not null, ativo boolean not null default true);
+  create table public.recibos (id text primary key, user_id uuid not null references auth.users(id));
+  grant select on public.recibos to authenticated;
 `);
 await db.exec(sqlHelpers);
 await db.exec(sqlNova);
@@ -381,6 +383,7 @@ await db.exec(`
   insert into auth.users values ('${DONO_A}'), ('${TECNICO_A}'), ('${DONO_B}');
   insert into public.organizacoes values ('${ORG_A}', '${DONO_A}');
   insert into public.organizacao_membros values ('${ORG_A}', '${DONO_A}', 'owner', true), ('${ORG_A}', '${TECNICO_A}', 'tecnico', true);
+  insert into public.recibos values ('r1', '${DONO_A}'), ('r2', '${DONO_A}'), ('r3', '${DONO_A}'), ('rb', '${DONO_B}');
 `);
 
 const DADOS = JSON.stringify(prepararDadosNota({ recibo: RECIBO, cliente: CLIENTE, empresa: EMPRESA }));
@@ -450,6 +453,18 @@ await caso('técnico da equipe LÊ a nota do dono, mas não grava nem altera', a
   await falha(TECNICO_A, `insert into public.notas_preparadas (user_id, recibo_id, dados) values ($1, 'r2', $2::jsonb)`, [DONO_A, DADOS], /row-level security/);
   const up = await como<{ id: string }>(TECNICO_A, `update public.notas_preparadas set status = 'emitida', numero_nota = '1', emitida_em = now() returning id`);
   assert.equal(up.rows.length, 0);
+});
+
+await caso('técnico não copia a nota do recibo do dono para o PRÓPRIO tenant (caminho real do upsert)', async () => {
+  // O app/painel faz upsert SEM user_id: o default seria o auth.uid() do técnico.
+  await falha(TECNICO_A, `insert into public.notas_preparadas (recibo_id, dados) values ('r2', $1::jsonb)`, [DADOS], /row-level security/);
+  const r = await como<{ n: number }>(DONO_A, `select count(*)::int as n from public.notas_preparadas where recibo_id = 'r2'`);
+  assert.equal(r.rows[0].n, 0);
+});
+
+await caso('nota só de recibo que existe e é do próprio dono', async () => {
+  await falha(DONO_A, `insert into public.notas_preparadas (recibo_id, dados) values ('nao-existe', $1::jsonb)`, [DADOS], /row-level security/);
+  await falha(DONO_A, `insert into public.notas_preparadas (recibo_id, dados) values ('rb', $1::jsonb)`, [DADOS], /row-level security/);
 });
 
 await caso('ninguém apaga (sem DELETE para authenticated)', async () => {

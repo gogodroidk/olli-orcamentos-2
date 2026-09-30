@@ -344,7 +344,7 @@ export default function PrepararNotaScreen() {
                           {c.id === 'descricao' && !emitida ? (
                             <OlliInput
                               label="Descrição (pode editar)"
-                              value={dados.servico.descricao}
+                              value={descricao ?? dados.servico.descricao}
                               onChangeText={setDescricao}
                               multiline
                               maxLength={LIMITE_DESCRICAO}
