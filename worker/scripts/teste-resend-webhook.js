@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import {
   RESEND_WEBHOOK_CLOCK_SKEW_SECONDS,
   handleResendWebhook,
+  motivoSupressaoResend,
   normalizarEventoResend,
   verificarAssinaturaResend,
 } from '../src/resendWebhook.js';
@@ -105,4 +106,61 @@ const invalidResponse = await handleResendWebhook(
 );
 assert.equal(invalidResponse.status, 400);
 
-console.log('PASSOU: webhook Resend — Svix, replay, idempotência e remoção de PII');
+// ─── Supressão: bounce permanente, reclamação e suprimido tiram a conta da lista ───
+assert.equal(motivoSupressaoResend({ type: 'email.bounced', data: { bounce: { type: 'Permanent' } } }), 'hard_bounce');
+assert.equal(motivoSupressaoResend({ type: 'email.bounced', data: { bounce: { type: 'Transient' } } }), null);
+assert.equal(motivoSupressaoResend({ type: 'email.bounced', data: {} }), null);
+assert.equal(motivoSupressaoResend({ type: 'email.complained', data: {} }), 'complaint');
+assert.equal(motivoSupressaoResend({ type: 'email.suppressed', data: {} }), 'hard_bounce');
+assert.equal(motivoSupressaoResend({ type: 'email.delivered', data: {} }), null);
+
+async function webhookCom(evento, id, rpcStatus = 200) {
+  const raw = JSON.stringify(evento);
+  const chamadas = [];
+  const fetchImpl = async (url, init = {}) => {
+    chamadas.push({ url: String(url), init });
+    if (String(url).endsWith('/rpc/registrar_supressao_email_por_provider')) {
+      return Response.json({ registrado: true, cancelados: 0 }, { status: rpcStatus });
+    }
+    if (String(url).endsWith('/webhook_events')) return new Response(null, { status: 201 });
+    if (String(url).includes('/webhook_events?') && init.method === 'PATCH') return new Response(null, { status: 204 });
+    throw new Error(`url_inesperada:${url}`);
+  };
+  const anterior = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  try {
+    const r = await handleResendWebhook(
+      new Request('https://diagnostico.olliorcamentos.online/resend/webhook', { method: 'POST', headers: headersFor(raw, id), body: raw }),
+      { RESEND_WEBHOOK_SECRET: SECRET, SUPABASE_URL: 'https://project.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service-role-test-only' },
+      { fetchImpl },
+    );
+    return { status: r.status, chamadas };
+  } finally {
+    globalThis.fetch = anterior;
+  }
+}
+
+{
+  const bounce = { type: 'email.bounced', created_at: event.created_at, data: { email_id: 're_olli_09', to: ['x@example.com'], bounce: { type: 'Permanent' } } };
+  const r = await webhookCom(bounce, 'msg_olli_09');
+  assert.equal(r.status, 200);
+  const rpc = r.chamadas.find((c) => c.url.endsWith('/rpc/registrar_supressao_email_por_provider'));
+  assert.deepEqual(JSON.parse(rpc.init.body), { p_provider_id: 're_olli_09', p_motivo: 'hard_bounce' });
+  assert.equal(rpc.init.body.includes('x@example.com'), false);
+}
+{
+  const temporario = { type: 'email.bounced', created_at: event.created_at, data: { email_id: 're_olli_10', bounce: { type: 'Transient' } } };
+  const r = await webhookCom(temporario, 'msg_olli_10');
+  assert.equal(r.status, 200);
+  assert.equal(r.chamadas.some((c) => c.url.includes('/rpc/')), false);
+}
+{
+  const reclamacao = { type: 'email.complained', created_at: event.created_at, data: { email_id: 're_olli_11' } };
+  const r = await webhookCom(reclamacao, 'msg_olli_11', 500);
+  // Supressão falhou: 500 para a Resend reenviar, e o evento NÃO fica processado.
+  assert.equal(r.status, 500);
+  const patch = r.chamadas.find((c) => c.init.method === 'PATCH');
+  assert.equal(JSON.parse(patch.init.body).status, 'falhou');
+}
+
+console.log('PASSOU: webhook Resend — Svix, replay, idempotência, remoção de PII e supressão por bounce/reclamação');

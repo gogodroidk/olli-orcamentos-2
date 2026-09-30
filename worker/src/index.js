@@ -82,6 +82,8 @@ import {
 import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
+import { processarLembretesEmail } from './emailLembretesJob.js';
+import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
@@ -975,10 +977,15 @@ async function handleChat(bodyText, env, user) {
 
 const handler = {
   scheduled(controller, env, ctx) {
-    // O modo de dispatch é fail-closed. Nesta janela o config usa somente
-    // `simulator`, e o consumer ainda confere o destinatário exato antes da
-    // chamada externa. A Promise fica registrada no ciclo de vida do evento.
+    // Dispatch da outbox (boas-vindas + lembretes): fail-closed pelo
+    // WELCOME_DISPATCH_MODE; em simulator o consumer só aceita o endereço de
+    // teste oficial. A Promise fica registrada no ciclo de vida do evento.
     ctx.waitUntil(processarWelcomeOutbox(env));
+    // Seleção de lembretes: uma vez por hora cheia, 8h–20h de Brasília, só com
+    // EMAIL_LEMBRETES_MODE=production. Enfileira; quem envia é a linha de cima,
+    // no minuto seguinte. Relógio = horário agendado, não o de execução.
+    const agendado = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
+    ctx.waitUntil(processarLembretesEmail(env, { now: () => agendado }));
   },
 
   async fetch(request, env) {
@@ -1010,6 +1017,13 @@ const handler = {
     // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
     if (url.pathname === '/resend/webhook') {
       return handleResendWebhook(request, env);
+    }
+
+    // ── DESCADASTRO DE LEMBRETES (link assinado no rodapé + List-Unsubscribe) ──
+    // Público e sem JWT: a autenticação é a assinatura HMAC do link. GET só
+    // mostra a confirmação; quem grava é o POST (botão ou one-click RFC 8058).
+    if (url.pathname === '/email/descadastrar') {
+      return handleDescadastroEmail(request, env);
     }
 
     // ── PAGAMENTOS PIX MERCADO PAGO (créditos por Pix; planos por Pix) ──

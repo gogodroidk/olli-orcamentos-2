@@ -29,8 +29,8 @@
       "custom_domain": true
     }
   ],
-  // Consumer transacional: roda a cada minuto, mas a primeira publicação é
-  // travada no simulador oficial. Confirmações normais ficam scope=hold.
+  // Cron de minuto: consumer da outbox (boas-vindas + lembretes) a cada minuto;
+  // a seleção de lembretes só age na hora cheia, 8h–20h de Brasília.
   "triggers": { "crons": ["* * * * *"] },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put OPENROUTER_API_KEY
@@ -40,13 +40,24 @@
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_", // gitleaks:allow — chave publicável, protegida por RLS
-    "WELCOME_DISPATCH_MODE": "simulator",
-    "WELCOME_BATCH_LIMIT": "1",
+    // E-mail REAL ligado (dono autorizou em 29/09/2026). Só linhas novas da
+    // outbox nascem scope=production (config no banco, migration 20260929200000);
+    // as boas-vindas antigas presas em hold foram descartadas sem envio.
+    "WELCOME_DISPATCH_MODE": "production",
+    // Envio sequencial por minuto; folga grande sob o limite de taxa da Resend.
+    "WELCOME_BATCH_LIMIT": "3",
     "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
     "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
     "WELCOME_APP_URL": "https://app.olliorcamentos.online",
     "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
     "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
+    // Lembretes por e-mail (ativação D+3/D+7 e assinatura). Tetos conservadores:
+    // 3 por rodada horária, 40 por dia no total, ativação só até 30 dias de conta.
+    "EMAIL_LEMBRETES_MODE": "production",
+    "EMAIL_LEMBRETES_MAX_POR_RODADA": "3",
+    "EMAIL_LEMBRETES_TETO_DIARIO": "40",
+    "EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS": "30",
+    "EMAIL_DESCADASTRO_URL": "https://diagnostico.olliorcamentos.online/email/descadastrar",
     "AI_PROVIDER": "openrouter",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
     // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
@@ -98,6 +109,7 @@
         "SUPABASE_ANON_KEY": "sb_publishable_4QaDViGbT45F72jQ5GINug_UN-4alDT", // gitleaks:allow — chave publicável, protegida por RLS
         "WELCOME_DISPATCH_MODE": "off",
         "WELCOME_BATCH_LIMIT": "1",
+        "EMAIL_LEMBRETES_MODE": "off",
         "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
         "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
         "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",
