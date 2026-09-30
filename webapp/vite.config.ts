@@ -34,6 +34,9 @@ const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts
 const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
 const oauthRetornoFonte = fileURLToPath(new URL("../src/services/oauthRetorno.ts", import.meta.url));
+// Acesso por código/link de e-mail: contrato do /auth/confirm, anti-enumeração e reenvio,
+// as MESMAS regras do app (src/services/acessoCodigo.ts). Módulo puro, zero imports.
+const acessoCodigoFonte = fileURLToPath(new URL("../src/services/acessoCodigo.ts", import.meta.url));
 const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
 // Assinatura pela Google Play: o MESMO catálogo/URL de gerenciar que o app usa. Módulo puro.
 const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
@@ -93,6 +96,7 @@ export default defineConfig(({ mode }) => {
 				"@precificacao": precificacaoFonte,
 				"@auth-policy": authPolicyFonte,
 				"@oauth-retorno": oauthRetornoFonte,
+				"@acesso-codigo": acessoCodigoFonte,
 				"@ajuda": ajudaFonte,
 				"@play-billing-regras": playBillingRegrasFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"

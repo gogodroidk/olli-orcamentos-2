@@ -1,0 +1,44 @@
+/* TOKENS DE MOVIMENTO do painel — copiados do motion-os do dono
+ * (CONFIG CLAUDE\motion-3d-ux\motion-os\tokens\motion.css + motion.tokens.json).
+ * Toda animação CSS nova consome daqui: nada de "120ms" solto num componente.
+ *
+ * Só as variáveis. A regra global do motion-os que força `animation-iteration-count: 1`
+ * em TODO elemento com "Reduzir movimento" NÃO veio: ela congelaria os spinners de
+ * carregamento que já existem, e um spinner parado parece travamento. Cada
+ * componente decide o próprio caminho sem movimento (ver codigo-otp.css). */
+:root {
+	--motion-duration-instant: 0ms;
+	--motion-duration-micro: 100ms;
+	--motion-duration-fast: 160ms;
+	--motion-duration-base: 220ms;
+	--motion-duration-slow: 320ms;
+	--motion-duration-page: 400ms;
+	--motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+	--motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+	--motion-distance-xs: 2px;
+	--motion-distance-sm: 6px;
+	--motion-distance-md: 12px;
+	--motion-distance-lg: 20px;
+	--motion-scale-press: 0.98;
+	--motion-scale-enter: 0.985;
+	--motion-stagger-tight: 25ms;
+	--motion-stagger-base: 45ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--motion-duration-micro: 1ms;
+		--motion-duration-fast: 1ms;
+		--motion-duration-base: 1ms;
+		--motion-duration-slow: 1ms;
+		--motion-duration-page: 1ms;
+		--motion-distance-xs: 0px;
+		--motion-distance-sm: 0px;
+		--motion-distance-md: 0px;
+		--motion-distance-lg: 0px;
+		--motion-scale-enter: 1;
+		--motion-stagger-tight: 0ms;
+		--motion-stagger-base: 0ms;
+	}
+}

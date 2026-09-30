@@ -12,6 +12,7 @@ import {
   normalizarPlataforma,
   novaTentativaOAuth,
 } from './oauthRetorno';
+import { urlRecuperacaoSenha } from './acessoCodigo';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -78,6 +79,64 @@ export async function signIn(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw error;
   return data;
+}
+
+// ─── Acesso por código (e-mail) ────────────────────────────────
+// Regras e textos em acessoCodigo.ts (os mesmos do painel). Estas funções só
+// falam com o Supabase e devolvem o erro cru — quem decide a mensagem é a tela,
+// passando pelo `resultadoDoEnvio`, que aplica a regra anti-enumeração.
+
+/**
+ * Pede um código de login por e-mail. `shouldCreateUser: false` de propósito: o
+ * cadastro do OLLI pede nome e WhatsApp (e é por ele que o funil mede o signup);
+ * um código digitado num e-mail com erro de digitação criaria uma conta fantasma
+ * sem nada disso. Quem não tem conta recebe a MESMA resposta na tela (ver
+ * `ehErroDeContaInexistente`) e é convidado a criar conta.
+ */
+export async function enviarCodigoLogin(email: string): Promise<{ error: unknown }> {
+  if (!supabase) return { error: new Error('Backup na nuvem não configurado.') };
+  const { error } = await supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: { shouldCreateUser: false },
+  });
+  return { error };
+}
+
+/**
+ * "Esqueci a senha": o e-mail traz o link (resolvido pelo painel, em qualquer
+ * aparelho) e o código de 6 dígitos (digitado aqui mesmo).
+ */
+export async function pedirRecuperacaoSenha(email: string): Promise<{ error: unknown }> {
+  if (!supabase) return { error: new Error('Backup na nuvem não configurado.') };
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: urlRecuperacaoSenha(),
+  });
+  return { error };
+}
+
+/**
+ * Confirma o código de 6 dígitos. `email` = login por código; `recovery` = esqueci
+ * a senha (a sessão criada aqui só serve para definir a senha nova em seguida).
+ */
+export async function confirmarCodigoEmail(
+  email: string,
+  codigo: string,
+  tipo: 'email' | 'recovery',
+): Promise<{ ok: boolean; error: unknown }> {
+  if (!supabase) return { ok: false, error: new Error('Backup na nuvem não configurado.') };
+  const { data, error } = tipo === 'recovery'
+    ? await supabase.auth.verifyOtp({ email: email.trim(), token: codigo, type: 'recovery' })
+    : await supabase.auth.verifyOtp({ email: email.trim(), token: codigo, type: 'email' });
+  // Sem erro e sem sessão = "não sei": não deixa passar como se tivesse entrado.
+  if (!error && !data?.session) return { ok: false, error: new Error('sem_sessao') };
+  return { ok: !error, error };
+}
+
+/** Define a senha nova da conta com sessão ativa (depois do código de recuperação). */
+export async function definirNovaSenha(senha: string): Promise<void> {
+  if (!supabase) throw new Error('Backup na nuvem não configurado.');
+  const { error } = await supabase.auth.updateUser({ password: senha });
+  if (error) throw error;
 }
 
 export async function signOut() {

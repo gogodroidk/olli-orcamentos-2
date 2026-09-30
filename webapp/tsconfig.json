@@ -75,6 +75,7 @@
 			"@precificacao": ["../src/services/precificacao.ts"],
 			"@auth-policy": ["../src/services/authPolicy.ts"],
 			"@oauth-retorno": ["../src/services/oauthRetorno.ts"],
+			"@acesso-codigo": ["../src/services/acessoCodigo.ts"],
 			"@sentry-scrub": ["../src/services/sentryScrub.ts"],
 			"@sentry-captura": ["../src/services/sentryCaptura.ts"],
 			"@ajuda": ["../src/content/ajuda/index.ts"],

@@ -22,7 +22,7 @@ import { AuroraBackground } from '../components/AuroraBackground';
 import { LandingHero } from '../components/web/LandingHero';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import {
-  isSupabaseConfigured, signIn, signUp, signInWithGoogle, supabase,
+  isSupabaseConfigured, signIn, signUp, signInWithGoogle,
   normalizarTelefoneBR, temDadosLocais, getCurrentUser,
 } from '../services/supabase';
 import { abrirParticaoDoUsuario, getEmpresa, saveEmpresa } from '../database/database';
@@ -33,6 +33,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
 import { mensagemErroOAuth } from '../services/oauthRetorno';
 import { SENHA_MINIMA } from '../services/authPolicy';
+import { AcessoPorCodigo, type FluxoCodigo } from '../components/auth/AcessoPorCodigo';
 
 // Fecha uma sessão de autenticação pendente (retorno do OAuth) caso o app
 // tenha sido reaberto no meio do fluxo. Idempotente e seguro na web e no nativo.
@@ -44,8 +45,9 @@ type Modo = 'login' | 'signup';
 
 /**
  * Tela "Entrar" — a CAPA e a ÚNICA porta do app (v3: login obrigatório). Sem
- * sessão, é aqui que o usuário sempre cai. Suporta e-mail/senha e Google, além
- * de recuperar senha. Após a sessão criada, decide entre Onboarding (1ª vez) e
+ * sessão, é aqui que o usuário sempre cai. Suporta e-mail/senha, Google/Apple,
+ * login por código de 6 dígitos no e-mail e "esqueci a senha" pelo mesmo código
+ * (funciona mesmo se o e-mail for aberto em outro aparelho — AcessoPorCodigo). Após a sessão criada, decide entre Onboarding (1ª vez) e
  * as Tabs, e semeia o telefone do cadastro na empresa local.
  */
 export default function EntrarScreen() {
@@ -58,6 +60,8 @@ export default function EntrarScreen() {
   const styles = useEstilos(criarEstilos);
 
   const [modo, setModo] = useState<Modo>('login');
+  // Login por código / recuperação de senha: substitui o formulário enquanto ativo.
+  const [fluxoCodigo, setFluxoCodigo] = useState<FluxoCodigo | null>(null);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
@@ -273,20 +277,14 @@ export default function EntrarScreen() {
     setAppleBusy(false);
   }
 
-  /** Recuperar senha: envia o e-mail de redefinição do Supabase. */
-  async function recuperarSenha() {
+  /** "Esqueci a senha" e "Entrar com código": o mesmo trilho de código por e-mail. */
+  function abrirFluxoCodigo(fluxo: FluxoCodigo) {
     Haptics.selectionAsync().catch(() => {});
-    const e = email.trim();
-    if (!e) { Alert.alert('Recuperar senha', 'Digite seu e-mail no campo acima primeiro.'); return; }
-    if (!supabase) { Alert.alert('Indisponível', 'O backup na nuvem não está configurado.'); return; }
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(e);
-      if (error) throw error;
-      Alert.alert('Verifique seu e-mail', `Se existir uma conta para ${e}, enviamos um link para redefinir a senha.`);
-    } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
+    if (!configured) {
+      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      return;
     }
+    setFluxoCodigo(fluxo);
   }
 
   const anyBusy = busy || googleBusy || appleBusy;
@@ -348,7 +346,7 @@ export default function EntrarScreen() {
       )}
 
       {modo === 'login' && (
-        <TouchableOpacity onPress={recuperarSenha} style={styles.forgotWrap}>
+        <TouchableOpacity onPress={() => abrirFluxoCodigo('recuperar')} disabled={anyBusy} style={styles.forgotWrap} accessibilityRole="button">
           <Text style={styles.forgot}>Esqueci a senha</Text>
         </TouchableOpacity>
       )}
@@ -359,6 +357,16 @@ export default function EntrarScreen() {
         icon={<MaterialCommunityIcons name={modo === 'login' ? 'login' : 'account-plus'} size={20} color={gradientes.sobreBrand} />}
         style={{ marginTop: modo === 'login' ? 4 : 8 }}
       />
+
+      {/* LOGIN SEM SENHA — código de 6 dígitos no e-mail (não cria conta). */}
+      {modo === 'login' && (
+        <OlliButton
+          label="Entrar com código por e-mail"
+          variant="ghost" size="md" fullWidth disabled={anyBusy} onPress={() => abrirFluxoCodigo('entrar')}
+          icon={<MaterialCommunityIcons name="email-lock" size={18} color={cores.accentLight} />}
+          style={{ marginTop: 8 }}
+        />
+      )}
 
       {/* SEPARADOR "ou" */}
       <View style={styles.divider}>
@@ -393,6 +401,19 @@ export default function EntrarScreen() {
 
   const tituloCard = modo === 'login' ? 'Que bom te ver de novo 👋' : 'Vamos criar a sua conta';
 
+  // Com o trilho de código aberto, ele ocupa o lugar do formulário (mesmo card,
+  // mobile e desktop). O título do card fica com o próprio componente.
+  const conteudoCard = fluxoCodigo ? (
+    <AcessoPorCodigo
+      key={fluxoCodigo}
+      fluxo={fluxoCodigo}
+      emailInicial={email}
+      onEntrou={entrarNoApp}
+      onVoltar={() => setFluxoCodigo(null)}
+      onCriarConta={() => { setFluxoCodigo(null); setModo('signup'); }}
+    />
+  ) : formularioAuth;
+
   // DESKTOP (web ≥ 1024px): "parece um produto" — duas colunas. À esquerda a
   // proposta de valor (LandingHero, apresentacional); à direita o MESMO card de
   // login num painel rolável. Nada da lógica de auth muda — só a apresentação.
@@ -409,8 +430,8 @@ export default function EntrarScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.desktopCard}>
-              <Text style={styles.desktopCardTitle}>{tituloCard}</Text>
-              {formularioAuth}
+              {!fluxoCodigo && <Text style={styles.desktopCardTitle}>{tituloCard}</Text>}
+              {conteudoCard}
             </View>
           </ScrollView>
         </View>
@@ -445,8 +466,8 @@ export default function EntrarScreen() {
 
         {/* CARD sobrepondo o hero */}
         <View style={styles.body}>
-          <Text style={styles.cardTitle}>{tituloCard}</Text>
-          {formularioAuth}
+          {!fluxoCodigo && <Text style={styles.cardTitle}>{tituloCard}</Text>}
+          {conteudoCard}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
