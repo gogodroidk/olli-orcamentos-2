@@ -81,6 +81,7 @@ export function criarLinkingConfig(
         Servicos: 'servicos',
         Produtos: 'produtos',
         EmitirRecibo: 'recibo',
+        PrepararNota: 'nota-fiscal/:reciboId',
         MeuNegocio: 'meu-negocio',
         Diagnostico: 'diagnostico',
         DiagnosticoIA: 'diagnostico-ia',
