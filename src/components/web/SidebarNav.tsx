@@ -86,6 +86,8 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   // Planos PMOC (Fase 2): manutenção programada. Ação de gestão/dono — gateada por
   // 'ver_valores_agregados', então o técnico (que não gera nem edita plano) não a vê.
   { rota: 'PmocTab', label: 'Planos PMOC', icon: 'calendar-sync-outline', acao: 'ver_valores_agregados', verticalHvac: true },
+  // Contratos recorrentes por ativo (qualquer ofício): valores → mesmo gate do PMOC.
+  { rota: 'ContratosTab', label: 'Contratos', icon: 'file-sign', acao: 'ver_valores_agregados' },
   // Recibos (financeiro). Técnico não emite recibos no menu enxuto → oculto.
   { rota: 'RecibosTab', label: 'Recibos', icon: 'receipt', acao: 'criar_orcamento', ocultarTecnico: true },
   // Relatórios: permissão (ver_relatorios) + recurso pago (relatorios → cadeado).

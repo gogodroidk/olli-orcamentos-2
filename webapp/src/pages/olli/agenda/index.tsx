@@ -68,8 +68,17 @@ import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Input } from "@/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+import {
+	expandirRecorrencia,
+	type FiltroResponsavel,
+	filtrarPorResponsavel,
+	type OcorrenciaAgendamento,
+	rotuloRecorrencia,
+} from "../../../../../src/utils/contratoRecorrente";
+import { useTecnicos } from "../ordens-servico/useTecnicos";
 import "./agenda.css";
 import {
 	corDeFundo,
@@ -133,6 +142,31 @@ export default function AgendaPage() {
 
 	const itens = useMemo<Agendamento[]>(() => (data ?? []).map(linhaParaAgendamento), [data]);
 
+	/* ────────────  Recorrência (projetada) e visão por técnico  ──────── */
+	// Faixa visível do calendário: as séries recorrentes são PROJETADAS só nela (não
+	// viram linhas no banco). Sem faixa ainda (1º render), mostra as linhas reais.
+	const [faixa, setFaixa] = useState<{ inicio: string; fim: string } | null>(null);
+	const [filtroTecnico, setFiltroTecnico] = useState<FiltroResponsavel>("todos");
+	const equipe = useTecnicos();
+
+	const itensExpandidos = useMemo<OcorrenciaAgendamento[]>(
+		() =>
+			itens.flatMap((a) =>
+				a.recorrencia && faixa ? expandirRecorrencia(a, faixa.inicio, faixa.fim) : [a as OcorrenciaAgendamento],
+			),
+		[itens, faixa],
+	);
+	const itensVisiveis = useMemo(() => filtrarPorResponsavel(itensExpandidos, filtroTecnico), [itensExpandidos, filtroTecnico]);
+
+	/** Repetição projetada → a linha real (a série). A própria linha, se não for repetição. */
+	const baseDe = useCallback(
+		(ag: Agendamento): Agendamento => {
+			const de = (ag as OcorrenciaAgendamento).ocorrenciaDe;
+			return de ? (itens.find((i) => i.id === de) ?? ag) : ag;
+		},
+		[itens],
+	);
+
 	/* ──────────────────────────  Estado da tela  ────────────────────── */
 	const [vistaEscolhida, setVistaEscolhida] = useState<Vista | null>(null);
 	// MÊS é o padrão do desktop: é a visão que dá o panorama do compromisso — a
@@ -191,13 +225,17 @@ export default function AgendaPage() {
 	/* ───────────────────  Eventos do calendário (o mapa)  ───────────── */
 	const eventos = useMemo<EventInput[]>(
 		() =>
-			itens.map((a) => {
+			itensVisiveis.map((a) => {
 				const info = INFO_TIPO[a.tipo];
 				const semHora = semHoraMarcada(a);
 				// "Estimado" = tem hora de início, mas ninguém marcou o fim. O bloco usa a
 				// duração do TIPO só para ter altura; a borda tracejada conta a verdade.
 				const estimado = !a.fim && !semHora;
+				// Repetição projetada não é linha própria: arrastá-la moveria a série
+				// inteira sem o dono perceber. Ela se edita pela série ("Editar").
+				const repeticao = !!a.ocorrenciaDe;
 				return {
+					...(repeticao ? { startEditable: false, durationEditable: false } : {}),
 					id: a.id,
 					title: a.titulo,
 					start: a.inicio,
@@ -211,7 +249,7 @@ export default function AgendaPage() {
 					extendedProps: { ag: a, estimado, cor: info.color },
 				} satisfies EventInput;
 			}),
-		[itens],
+		[itensVisiveis],
 	);
 
 	/* ──────────────  REAGENDAR — o coração, e o caminho único  ──────── */
@@ -289,7 +327,7 @@ export default function AgendaPage() {
 		if ((arg.jsEvent.target as HTMLElement | null)?.closest("[data-menu-evento]")) return;
 		const ag = arg.event.extendedProps.ag as Agendamento;
 		setInicioSugerido(null);
-		setEditando(ag);
+		setEditando(baseDe(ag)); // repetição abre a série
 		setFormAberto(true);
 	};
 
@@ -389,6 +427,8 @@ export default function AgendaPage() {
 						{emLista && ag.fim && ` · até ${hhmm(ag.fim)}`}
 						{estimado && ` · ≈ ${rotuloDuracao(duracaoEstimadaMin(ag.tipo))}`}
 						{ag.status === "cancelado" && " · cancelado"}
+						{ag.responsavelNome && ` · ${ag.responsavelNome}`}
+						{ag.contratoId ? " · contrato" : ag.recorrencia ? ` · repete ${rotuloRecorrencia(ag.recorrencia)}` : ""}
 					</div>
 				</div>
 
@@ -413,6 +453,7 @@ export default function AgendaPage() {
 	/* ──────────────────────────────  Render  ────────────────────────── */
 
 	const vazio = !isLoading && !isError && itens.length === 0;
+	const membros = equipe.data ?? [];
 
 	return (
 		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
@@ -457,6 +498,27 @@ export default function AgendaPage() {
 					</Button>
 					<span className="ml-2 text-sm font-semibold capitalize text-text-primary md:text-base">{periodo}</span>
 				</div>
+
+				{/* VISÃO POR TÉCNICO — só quando a equipe carregou e existe. Falha na leitura
+				    da equipe NÃO some com o filtro em silêncio: diz que falhou. */}
+				{equipe.isError ? (
+					<span className="text-xs text-text-secondary">Não consegui carregar a equipe para filtrar por técnico.</span>
+				) : membros.length > 0 ? (
+					<Select value={filtroTecnico} onValueChange={(v) => setFiltroTecnico(v)}>
+						<SelectTrigger className="h-8 w-56" aria-label="Filtrar por técnico">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="todos">Toda a equipe</SelectItem>
+							<SelectItem value="sem">Sem responsável</SelectItem>
+							{membros.map((m) => (
+								<SelectItem key={m.userId} value={m.userId}>
+									{m.nome}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				) : null}
 
 				{/* Seletor de visão — semana/mês/dia no desktop; roteiro/semana/mês no celular.
 				    `<fieldset>` (e não uma `div role="group"`): é o elemento que o HTML já tem
@@ -560,7 +622,10 @@ export default function AgendaPage() {
 							headerToolbar={false} /* a barra é a nossa, acima — usa os componentes do painel */
 							height={ehLista(vista) || ehCelular ? "auto" : 680}
 							events={eventos}
-							datesSet={(arg) => setPeriodo(arg.view.title)}
+							datesSet={(arg) => {
+								setPeriodo(arg.view.title);
+								setFaixa({ inicio: arg.start.toISOString(), fim: arg.end.toISOString() });
+							}}
 							/* ── Grade ── */
 							nowIndicator
 							scrollTime="07:00:00"
@@ -623,7 +688,7 @@ export default function AgendaPage() {
 				aoFechar={() => setFormAberto(false)}
 				agendamento={editando}
 				inicioSugerido={inicioSugerido}
-				todos={itens}
+				todos={itensExpandidos}
 			/>
 
 			<MenuDoEvento
@@ -634,7 +699,7 @@ export default function AgendaPage() {
 				}}
 				aoEditar={(ag) => {
 					setMenuDe(null);
-					setEditando(ag);
+					setEditando(baseDe(ag));
 					setInicioSugerido(null);
 					setFormAberto(true);
 				}}
@@ -645,7 +710,7 @@ export default function AgendaPage() {
 				aoAlternarConclusao={alternarConclusao}
 				aoExcluir={(ag) => {
 					setMenuDe(null);
-					setExcluindo(ag);
+					setExcluindo(baseDe(ag)); // repetição: exclui a série (o diálogo diz o nome)
 				}}
 				salvando={salvar.isPending}
 				erro={erroMenu}
@@ -654,7 +719,7 @@ export default function AgendaPage() {
 			<DialogReagendar
 				agendamento={reagendando}
 				aoFechar={() => setReagendando(null)}
-				todos={itens}
+				todos={itensExpandidos}
 				aoConfirmar={async (ag, inicio, fim, semHora) => {
 					await mover(ag, inicio, fim, semHora);
 					setReagendando(null);
@@ -666,7 +731,11 @@ export default function AgendaPage() {
 				aberto={!!excluindo}
 				aoFechar={() => setExcluindo(null)}
 				aoConfirmar={confirmarExclusao}
-				nome={excluindo ? `${excluindo.titulo} — ${faixaDeHorario(excluindo)}` : ""}
+				nome={
+					excluindo
+						? `${excluindo.titulo} — ${excluindo.recorrencia ? `a série inteira (repete ${rotuloRecorrencia(excluindo.recorrencia)})` : faixaDeHorario(excluindo)}`
+						: ""
+				}
 				tipo="agendamento"
 				excluindo={excluir.isPending}
 				erro={excluir.isError ? mensagemDeErro(excluir.error, "Não foi possível excluir.") : null}
@@ -708,6 +777,9 @@ function MenuDoEvento({
 	const info = INFO_TIPO[ag.tipo];
 	const concluido = ag.status === "concluido";
 	const semHora = semHoraMarcada(ag);
+	// Repetição projetada de uma série: reagendar/concluir UMA ocorrência não existe
+	// (não é linha própria). Editar e excluir agem na série inteira.
+	const repeticao = !!(ag as OcorrenciaAgendamento).ocorrenciaDe;
 	const abrirNoGoogle = () => {
 		const url = criarUrlGoogleAgenda(ag, semHora);
 		if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -750,6 +822,15 @@ function MenuDoEvento({
 					{ag.observacao && (
 						<p className="rounded-lg bg-bg-neutral/50 px-3 py-2 text-xs text-text-secondary">{ag.observacao}</p>
 					)}
+					{ag.responsavelNome && <p className="text-text-secondary">Responsável: {ag.responsavelNome}</p>}
+					{ag.contratoId ? (
+						<p className="text-text-secondary">Visita gerada por um contrato recorrente.</p>
+					) : ag.recorrencia ? (
+						<p className="text-text-secondary">
+							Repete {rotuloRecorrencia(ag.recorrencia)}
+							{repeticao ? " — esta é uma repetição; editar ou excluir muda a série inteira." : "."}
+						</p>
+					) : null}
 				</div>
 
 				{erro && (
@@ -777,29 +858,33 @@ function MenuDoEvento({
 					</Button>
 					{/* REAGENDAR em destaque: é a ação que o arrasto faz — e a única que o
 					    teclado e o celular não conseguiriam fazer sem ela. */}
-					<Button onClick={() => aoReagendar(ag)} className="justify-start gap-2" disabled={salvando}>
-						<Clock className="size-4" aria-hidden="true" />
-						Reagendar…
-					</Button>
+					{!repeticao && (
+						<Button onClick={() => aoReagendar(ag)} className="justify-start gap-2" disabled={salvando}>
+							<Clock className="size-4" aria-hidden="true" />
+							Reagendar…
+						</Button>
+					)}
 					<Button variant="outline" onClick={() => aoEditar(ag)} className="justify-start gap-2" disabled={salvando}>
 						<Pencil className="size-4" aria-hidden="true" />
-						Editar detalhes
+						{repeticao ? "Editar a série" : "Editar detalhes"}
 					</Button>
-					<Button
-						variant="outline"
-						onClick={() => aoAlternarConclusao(ag)}
-						className="justify-start gap-2"
-						disabled={salvando}
-					>
-						{salvando ? (
-							<Loader2 className="size-4 animate-spin" aria-hidden="true" />
-						) : concluido ? (
-							<RotateCcw className="size-4" aria-hidden="true" />
-						) : (
-							<Check className="size-4" aria-hidden="true" />
-						)}
-						{concluido ? "Reabrir (voltar para agendado)" : "Marcar como concluído"}
-					</Button>
+					{!repeticao && (
+						<Button
+							variant="outline"
+							onClick={() => aoAlternarConclusao(ag)}
+							className="justify-start gap-2"
+							disabled={salvando}
+						>
+							{salvando ? (
+								<Loader2 className="size-4 animate-spin" aria-hidden="true" />
+							) : concluido ? (
+								<RotateCcw className="size-4" aria-hidden="true" />
+							) : (
+								<Check className="size-4" aria-hidden="true" />
+							)}
+							{concluido ? "Reabrir (voltar para agendado)" : "Marcar como concluído"}
+						</Button>
+					)}
 					<Button
 						variant="outline"
 						onClick={() => aoExcluir(ag)}
@@ -807,7 +892,7 @@ function MenuDoEvento({
 						disabled={salvando}
 					>
 						<Trash2 className="size-4" aria-hidden="true" />
-						Excluir
+						{ag.recorrencia ? "Excluir a série" : "Excluir"}
 					</Button>
 				</div>
 			</DialogContent>

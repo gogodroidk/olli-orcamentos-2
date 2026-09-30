@@ -69,6 +69,13 @@
     "EMAIL_RESUMO_MAX_POR_RODADA": "8",
     "EMAIL_RESUMO_MAX_AVALIACOES": "15",
     "EMAIL_RESUMO_TETO_DIARIO": "100",
+    // Motor de contrato recorrente (cron 06:05/12:05/18:05 de Brasília): gera as
+    // visitas devidas mesmo sem ninguém abrir o app. DESLIGADO até a migration
+    // 20260930130500 estar aplicada; aí trocar para "production". 10 visitas por
+    // rodada (~4 requisições cada) cabem folgadas no limite de subrequests.
+    "CONTRATOS_MOTOR_MODE": "off",
+    "CONTRATOS_MOTOR_MAX_CONTRATOS": "200",
+    "CONTRATOS_MOTOR_MAX_VISITAS": "10",
     "AI_PROVIDER": "openrouter",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
     // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
@@ -122,6 +129,7 @@
         "WELCOME_BATCH_LIMIT": "1",
         "EMAIL_LEMBRETES_MODE": "off",
         "EMAIL_RESUMO_MODE": "off",
+        "CONTRATOS_MOTOR_MODE": "off",
         "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
         "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
         "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",

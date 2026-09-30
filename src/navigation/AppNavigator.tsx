@@ -50,6 +50,8 @@ import EquipamentoScreen from '../screens/EquipamentoScreen';
 import EscanearQrScreen from '../screens/EscanearQrScreen';
 import PmocPlanosScreen from '../screens/PmocPlanosScreen';
 import PmocPlanoScreen from '../screens/PmocPlanoScreen';
+import ContratosScreen from '../screens/ContratosScreen';
+import ContratoScreen from '../screens/ContratoScreen';
 // Frentes novas — landing pública, lixeira, assinatura, ajuda/suporte, legal
 // (Privacidade/Termos = mesmo componente) e o shell do técnico (Home dele).
 import LandingScreen from '../screens/LandingScreen';
@@ -168,6 +170,9 @@ export type RootStackParamList = {
   // que gera as ordens de serviço recorrentes. `PmocPlano` recebe o id do plano.
   Pmoc: undefined;
   PmocPlano: { id: string };
+  // Contratos recorrentes por ativo (lista + criar/editar). Sem id = contrato novo.
+  Contratos: undefined;
+  Contrato: { id?: string } | undefined;
   // ─── Frentes novas ────────────────────────────────────────────────────────
   // Landing pública (web deslogado) — full-bleed, sem wrap desktop nem path.
   Landing: undefined;
@@ -209,6 +214,7 @@ export type TabParamList = {
   RecibosTab?: undefined;
   OrdensTab?: undefined;
   PmocTab?: undefined;
+  ContratosTab?: undefined;
   LixeiraTab?: undefined;
   EquipeTab?: undefined;
   AjudaTab?: undefined;
@@ -327,6 +333,8 @@ const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
 const EquipamentoCentro = comCentroDesktop(EquipamentoScreen);
 const PmocCentro = comCentroDesktop(PmocPlanosScreen);
 const PmocPlanoCentro = comCentroDesktop(PmocPlanoScreen);
+const ContratosCentro = comCentroDesktop(ContratosScreen);
+const ContratoCentro = comCentroDesktop(ContratoScreen);
 // Frentes novas: telas mobile-like centralizadas no desktop (pass-through no
 // nativo). Landing e TecnicoHome NÃO entram aqui — são full-bleed por conta
 // própria. Privacidade e Termos compartilham o LegalCentro (mesmo componente).
@@ -536,6 +544,7 @@ function TabNavigator() {
           <Tab.Screen name="RecibosTab" component={RecibosDesktopScreen} options={{ tabBarLabel: 'Recibos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="receipt" color={color} size={size} />) }} />
           <Tab.Screen name="OrdensTab" component={OrdensDesktopScreen} options={{ tabBarLabel: 'Ordens de serviço', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="clipboard-check-outline" color={color} size={size} />) }} />
           <Tab.Screen name="PmocTab" component={PmocDesktopScreen} options={{ tabBarLabel: 'Planos PMOC', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="calendar-sync-outline" color={color} size={size} />) }} />
+          <Tab.Screen name="ContratosTab" component={ContratosCentro} options={{ tabBarLabel: 'Contratos', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="file-sign" color={color} size={size} />) }} />
           <Tab.Screen name="EquipeTab" component={EquipeDesktopScreen} options={{ tabBarLabel: 'Equipe', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="account-multiple-outline" color={color} size={size} />) }} />
           <Tab.Screen name="LixeiraTab" component={LixeiraDesktopScreen} options={{ tabBarLabel: 'Lixeira', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="delete-outline" color={color} size={size} />) }} />
           <Tab.Screen name="AjudaTab" component={AjudaDesktopScreen} options={{ tabBarLabel: 'Ajuda', tabBarIcon: ({ color, size }) => (<MaterialCommunityIcons name="help-circle-outline" color={color} size={size} />) }} />
@@ -646,6 +655,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* PMOC Fase 2 — planos de manutenção (/pmoc) e o detalhe (/pmoc/:id). */}
       <Stack.Screen name="Pmoc" component={PmocCentro} />
       <Stack.Screen name="PmocPlano" component={PmocPlanoCentro} />
+      <Stack.Screen name="Contratos" component={ContratosCentro} />
+      <Stack.Screen name="Contrato" component={ContratoCentro} />
       {/* ─── Frentes novas ──────────────────────────────────────────────────
           Lixeira e Assinatura (gestão), Ajuda/suporte e os documentos legais.
           Privacidade e Termos apontam para o MESMO LegalCentro — a tela decide
