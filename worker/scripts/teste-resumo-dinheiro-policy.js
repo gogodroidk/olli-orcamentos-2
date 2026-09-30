@@ -10,7 +10,10 @@
  *     Worker calcula em cima da projeção mínima do banco (`dados_resumo_dinheiro`)
  *     é IGUAL ao que o painel calcula em cima das linhas completas que ele lê
  *     (`useOlliList`: todos os status, com nome, telefone e blob inteiro);
- *   - "não sei" nunca vira e-mail: resposta torta ou truncada = sem resumo;
+ *   - "Clientes para lembrar" do e-mail = os do cartão do painel (MESMA regra de
+ *     pós-venda: ofício da empresa, lembrete recente, recibo estornado, adiamento);
+ *   - "não sei" nunca vira e-mail: resposta torta, truncada ou de RPC antiga (sem os
+ *     campos do pós-venda) = sem resumo;
  *   - nada acionável = sem resumo; `template_dados` pequeno e sem PII.
  */
 import assert from 'node:assert/strict';
@@ -60,7 +63,7 @@ function comoBanco(conta, maxLinhas = 2000) {
     dados: {
       orcamentoId: campo(r.dados, 'orcamentoId'), valorRecebido: campo(r.dados, 'valorRecebido'),
       dataRecebimento: campo(r.dados, 'dataRecebimento'), clienteId: campo(r.dados, 'clienteId'),
-      criadoEm: campo(r.dados, 'criadoEm'),
+      criadoEm: campo(r.dados, 'criadoEm'), estornadoEm: campo(r.dados, 'estornadoEm'),
     },
   }));
   const clientes = vivos(conta.clientes).map((c) => c.id);
@@ -72,16 +75,22 @@ function comoBanco(conta, maxLinhas = 2000) {
   return JSON.parse(JSON.stringify({
     orcamentos, recibos, clientes, agendamentos, osConcluidas,
     adiados: conta.snooze && typeof conta.snooze === 'object' && !Array.isArray(conta.snooze) ? conta.snooze : {},
+    lembrados: conta.lembrados && typeof conta.lembrados === 'object' && !Array.isArray(conta.lembrados) ? conta.lembrados : {},
+    verticais: Array.isArray(conta.empresa?.verticais) ? conta.empresa.verticais : null,
     truncado: n > maxLinhas,
   }));
 }
 
-/** O que o PAINEL faz com as linhas completas (index.tsx + useRadarSnooze + cards). */
+/** O que o PAINEL faz com as linhas completas (index.tsx + useRadarSnooze + useRegistroEnvios + cards). */
 function comoPainel(conta) {
   const vivos = (xs) => xs.filter((x) => !x.excluido_em);
   const adiados = {};
   if (conta.snooze && typeof conta.snooze === 'object' && !Array.isArray(conta.snooze)) {
     for (const [id, ate] of Object.entries(conta.snooze)) if (typeof ate === 'string' && ate) adiados[id] = ate;
+  }
+  const lembrados = {};
+  if (conta.lembrados && typeof conta.lembrados === 'object' && !Array.isArray(conta.lembrados)) {
+    for (const [id, iso] of Object.entries(conta.lembrados)) if (typeof iso === 'string' && iso) lembrados[id] = iso;
   }
   return resumirDinheiroParado({
     orcamentos: vivos(conta.orcamentos),
@@ -89,6 +98,8 @@ function comoPainel(conta) {
     clientes: vivos(conta.clientes),
     agendamentos: vivos(conta.agendamentos),
     adiados,
+    lembrados,
+    verticais: conta.empresa?.verticais, // o card lê `empresa?.verticais` direto do blob
     orcamentosFinalizados: new Set(vivos(conta.os).filter((s) => s.status === 'concluida' && s.orcamento_id).map((s) => String(s.orcamento_id))),
   }, AGORA);
 }
@@ -136,7 +147,7 @@ function gerarConta(r) {
     orcamento_id: r() < 0.7 && orcamentos.length ? `o${Math.floor(r() * orcamentos.length)}` : undefined,
     cliente_id: cid(), valor_recebido: talvez(Math.round(r() * 300000) / 100, 0.7),
     criado_em: talvez(dataIso(), 0.8), excluido_em: talvez('2026-09-01T00:00:00Z', 0.1),
-    dados: r() < 0.8 ? { valorRecebido: talvez(Math.round(r() * 300000) / 100), dataRecebimento: talvez(r() < 0.1 ? '31/02/xx' : dataBr(), 0.7), orcamentoId: talvez(orcamentos.length ? `o${Math.floor(r() * orcamentos.length)}` : undefined, 0.3), clienteId: cid(), criadoEm: talvez(dataIso()) } : undefined,
+    dados: r() < 0.8 ? { valorRecebido: talvez(Math.round(r() * 300000) / 100), dataRecebimento: talvez(r() < 0.1 ? '31/02/xx' : dataBr(), 0.7), orcamentoId: talvez(orcamentos.length ? `o${Math.floor(r() * orcamentos.length)}` : undefined, 0.3), clienteId: cid(), criadoEm: talvez(dataIso()), estornadoEm: talvez(dataIso(), 0.1) } : undefined,
   }));
   const agendamentos = Array.from({ length: Math.floor(r() * 5) }, () => ({
     cliente_id: cid(), status: pick(['concluido', 'agendado', ' Concluido']), inicio: talvez(dataIso(), 0.9), fim: talvez(dataIso(), 0.6),
@@ -146,7 +157,16 @@ function gerarConta(r) {
     orcamento_id: orcamentos.length ? `o${Math.floor(r() * orcamentos.length)}` : null, status: pick(['concluida', 'aberta', 'agendada']),
   }));
   const snooze = r() < 0.3 && nCli ? { [`c${Math.floor(r() * nCli)}`]: new Date(AGORA.getTime() + 10 * D).toISOString(), lixo: 5 } : null;
-  return { orcamentos, recibos, clientes, agendamentos, os, snooze };
+  // Lembretes do pós-venda: recentes (seguram o cliente fora) e antigos (não seguram).
+  const lembrados = r() < 0.4 && nCli
+    ? { [`c${Math.floor(r() * nCli)}`]: new Date(AGORA.getTime() - Math.floor(r() * 60) * D).toISOString(), lixo: 7 }
+    : null;
+  // Ofício da empresa (define o intervalo): sem empresa, sem ofício, 1 ou 2 ofícios.
+  const empresa = pick([
+    null, {}, { verticais: [] }, { verticais: ['hvac'] }, { verticais: ['eletrica'] },
+    { verticais: ['jardinagem', 'hvac'] }, { verticais: ['pintura'] }, { verticais: ['dedetizacao'] },
+  ]);
+  return { orcamentos, recibos, clientes, agendamentos, os, snooze, lembrados, empresa };
 }
 
 // ─── Casos ───────────────────────────────────────────────────────────────────
@@ -170,6 +190,7 @@ caso('dia e chave no calendário de Brasília', () => {
 caso('PARIDADE: 500 contas ao acaso — servidor (projeção do banco) = painel (linhas completas)', () => {
   const r = prng(20260930);
   let acionaveis = 0;
+  let comLembrar = 0;
   for (let i = 0; i < 500; i++) {
     const conta = gerarConta(r);
     const painel = comoPainel(conta);
@@ -187,23 +208,25 @@ caso('PARIDADE: 500 contas ao acaso — servidor (projeção do banco) = painel 
       diasMaisAntigo: painel.aReceber.itens > 0 ? painel.aReceber.diasMaisAntigo : null,
       semValor: painel.aReceber.semValor,
       propostasParadas: painel.propostasParadas,
-      clientesSumidos: painel.clientesSumidos,
+      clientesParaLembrar: painel.clientesParaLembrar,
     }, `conta ${i}`);
+    if (painel.clientesParaLembrar > 0) comLembrar += 1;
   }
   assert.ok(acionaveis > 100 && acionaveis < 500, `amostra pouco variada: ${acionaveis}`);
+  assert.ok(comLembrar > 30, `amostra sem clientes para lembrar: ${comLembrar}`);
 });
 
 caso('pedido: chave por conta + dia, dados pequenos e sem PII', () => {
   const conta = {
     orcamentos: [{ id: 'a', status: 'aprovado', valor_total: 850, atualizado_em: new Date(AGORA - 12 * D).toISOString(), cliente_nome: 'Maria Silva', dados: { clienteTelefone: '11987654321', clienteNome: 'Maria Silva' } }],
-    recibos: [], clientes: [], agendamentos: [], os: [], snooze: null,
+    recibos: [], clientes: [], agendamentos: [], os: [], snooze: null, lembrados: null, empresa: null,
   };
   const d = decidirResumo(U1, comoBanco(conta), { agora: AGORA });
   assert.equal(d.enfileirar, true);
   assert.equal(d.pedido.idempotencyKey, `resumo:dinheiro:${U1}:2026-09-30`);
   assert.deepEqual({ ...d.pedido.dados }, {
     data: '2026-09-30', aReceberCentavos: 85000, aReceberItens: 1, diasMaisAntigo: 12,
-    semValor: 0, propostasParadas: 0, clientesSumidos: 0,
+    semValor: 0, propostasParadas: 0, clientesParaLembrar: 0,
   });
   const json = JSON.stringify(d.pedido.dados);
   assert.ok(new TextEncoder().encode(json).length < 300);
@@ -212,14 +235,14 @@ caso('pedido: chave por conta + dia, dados pequenos e sem PII', () => {
 });
 
 caso('nada acionável = sem resumo (inclusive só "aprovado sem valor")', () => {
-  const vazio = { orcamentos: [], recibos: [], clientes: [], agendamentos: [], osConcluidas: [], adiados: {}, truncado: false };
+  const vazio = { orcamentos: [], recibos: [], clientes: [], agendamentos: [], osConcluidas: [], adiados: {}, lembrados: {}, verticais: null, truncado: false };
   assert.equal(decidirResumo(U1, vazio, { agora: AGORA }).motivo, 'nada_acionavel');
   const semValor = { ...vazio, orcamentos: [{ id: 'x', status: 'aprovado', dados: {} }] };
   assert.equal(decidirResumo(U1, semValor, { agora: AGORA }).motivo, 'nada_acionavel');
 });
 
 caso('"não sei" nunca vira e-mail: resposta torta ou truncada', () => {
-  const base = { orcamentos: [{ id: 'a', status: 'aprovado', valor_total: 10, atualizado_em: AGORA.toISOString() }], recibos: [], clientes: [], agendamentos: [], osConcluidas: [], adiados: {}, truncado: false };
+  const base = { orcamentos: [{ id: 'a', status: 'aprovado', valor_total: 10, atualizado_em: AGORA.toISOString() }], recibos: [], clientes: [], agendamentos: [], osConcluidas: [], adiados: {}, lembrados: {}, verticais: null, truncado: false };
   assert.equal(decidirResumo(U1, base, { agora: AGORA }).enfileirar, true);
   assert.equal(decidirResumo(U1, { ...base, truncado: true }, { agora: AGORA }).motivo, 'dados_truncados');
   assert.equal(decidirResumo(U1, { ...base, recibos: null }, { agora: AGORA }).motivo, 'dados_invalidos');
@@ -228,6 +251,46 @@ caso('"não sei" nunca vira e-mail: resposta torta ou truncada', () => {
   assert.equal(decidirResumo(U1, [], { agora: AGORA }).motivo, 'dados_invalidos');
   assert.equal(decidirResumo('nao-e-uuid', base, { agora: AGORA }).motivo, 'conta_invalida');
   assert.equal(decidirResumo(U1, base, { agora: new Date('x') }).motivo, 'agora_invalido');
+  // RPC antiga (antes da 20260930120500): sem `verticais`/`lembrados` não dá para
+  // contar os clientes para lembrar com a regra da tela — nenhum e-mail.
+  const { verticais: _v, lembrados: _l, ...antiga } = base;
+  assert.equal(decidirResumo(U1, antiga, { agora: AGORA }).motivo, 'dados_sem_posvenda');
+  assert.equal(decidirResumo(U1, { ...base, lembrados: null, verticais: 'lixo' }, { agora: AGORA }).motivo, 'acionavel');
+});
+
+caso('clientes para lembrar: ofício define o intervalo; lembrete recente e recibo estornado seguram', () => {
+  const mesesAtras = (m) => new Date(AGORA.getTime() - m * 30.5 * D).toISOString();
+  const resposta = (extra) => ({
+    orcamentos: [], recibos: [], agendamentos: [], osConcluidas: [], adiados: {}, lembrados: {}, verticais: null, truncado: false,
+    clientes: ['ana', 'bia', 'caio', 'duda'],
+    ...extra,
+  });
+  const conta = (extra) => {
+    const d = decidirResumo(U1, resposta(extra), { agora: AGORA });
+    return d.enfileirar ? d.pedido.dados.clientesParaLembrar : 0;
+  };
+  const servicos = {
+    orcamentos: [
+      // ana: aprovado há 4 meses e já pago — jardim (3 meses) lembra, ar (6 meses) ainda não
+      { id: 'o1', status: 'aprovado', cliente_id: 'ana', valor_total: 100, atualizado_em: mesesAtras(4) },
+      // bia: proposta só enviada — lead, nunca pós-venda
+      { id: 'o2', status: 'enviado', cliente_id: 'bia', atualizado_em: mesesAtras(20) },
+    ],
+    recibos: [
+      { orcamento_id: 'o1', cliente_id: 'ana', valor_recebido: 100, criado_em: mesesAtras(4) },
+      // caio: recibo há 13 meses — vence em qualquer ofício até 12 meses
+      { cliente_id: 'caio', valor_recebido: 50, criado_em: mesesAtras(13) },
+      // duda: recibo estornado não prova serviço
+      { cliente_id: 'duda', valor_recebido: 50, criado_em: mesesAtras(13), dados: { estornadoEm: mesesAtras(12) } },
+    ],
+  };
+  assert.equal(conta({ ...servicos, verticais: ['hvac'] }), 1); // caio
+  assert.equal(conta({ ...servicos, verticais: ['jardinagem'] }), 2); // ana + caio
+  assert.equal(conta({ ...servicos, verticais: ['pintura'] }), 0); // 24 meses: ninguém
+  assert.equal(conta({ ...servicos, verticais: null }), 1); // genérico = 6 meses
+  // Lembrado há 10 dias (celular ou painel): sai; lembrado há 40 dias: volta.
+  assert.equal(conta({ ...servicos, verticais: ['hvac'], lembrados: { caio: new Date(AGORA - 10 * D).toISOString() } }), 0);
+  assert.equal(conta({ ...servicos, verticais: ['hvac'], lembrados: { caio: new Date(AGORA - 40 * D).toISOString() } }), 1);
 });
 
 caso('entrada do banco: adiamento só string→string; OS concluída tira do radar', () => {

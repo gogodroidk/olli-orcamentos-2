@@ -149,6 +149,21 @@ export const SAIDA_AVISO_KEY = 'olli.saida.aviso';
 export const PLANO_CACHE_KEY = 'olli.plano.cache.v2';
 
 /**
+ * Mapa orcamentoId→ISO da última COBRANÇA enviada pelo WhatsApp (services/registroEnvios).
+ * É o que faz o radar de cobrança não insistir no mesmo cliente no mesmo dia.
+ * Sincroniza via extras_sync ('cobranca.enviadas') para o painel ver o mesmo "cobrado
+ * hoje". Dado de CONTA → entra em APP_DATA_STORAGE_KEYS (com o carimbo lateral).
+ */
+export const COBRANCAS_ENVIADAS_KEY = 'olli.cobranca.enviadas';
+export const COBRANCAS_ENVIADAS_STAMP_KEY = 'olli.cobranca.enviadas.stamp';
+/**
+ * Mapa clienteId→ISO do último LEMBRETE de pós-venda enviado ("Clientes para lembrar").
+ * Sincroniza via extras_sync ('posvenda.lembrados'). Dado de CONTA.
+ */
+export const LEMBRETES_ENVIADOS_KEY = 'olli.posvenda.lembrados';
+export const LEMBRETES_ENVIADOS_STAMP_KEY = 'olli.posvenda.lembrados.stamp';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -175,4 +190,8 @@ export const APP_DATA_STORAGE_KEYS = [
   SAIDA_CACHE_KEY,
   SAIDA_AVISO_KEY,
   PLANO_CACHE_KEY,
+  COBRANCAS_ENVIADAS_KEY,
+  COBRANCAS_ENVIADAS_STAMP_KEY,
+  LEMBRETES_ENVIADOS_KEY,
+  LEMBRETES_ENVIADOS_STAMP_KEY,
 ];

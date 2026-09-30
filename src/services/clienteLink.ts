@@ -12,6 +12,8 @@ import {
   marcarVersaoEspelhoConcluido,
 } from '../database/database';
 import { nowISO } from '../utils/date';
+import { normalizarChavePix } from '../utils/pixBrCode';
+import { chavePixDoOrcamento } from '../utils/cobrancaCliente';
 
 const TABLE = 'orcamentos_publicos';
 const TABLE_VERSOES = 'orcamento_versoes';
@@ -115,6 +117,25 @@ function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
     condicoesPagamento: orc.condicoesPagamento ?? '',
     // "Prazo" para o mini-card (agendamento / prestação do serviço, se houver).
     prazo: orc.agendamentoServico ?? orc.dataPrestacaoServico ?? '',
+    // "Pagar com Pix" na página do cliente — só aparece DEPOIS da aprovação, e o BR
+    // Code (com o valor) é montado no worker a partir destes três campos. Só vai a
+    // chave que reconhecemos (`normalizarChavePix`): chave duvidosa não sai do
+    // aparelho, e a página cai no "combine o pagamento com o prestador".
+    pix: pixPublico(orc, empresa),
+  };
+}
+
+/**
+ * Os dados do Pix do PRESTADOR para a página pública (pagamento do serviço dele,
+ * direto na conta dele — o OLLI não intermedeia). `null` sem chave válida.
+ */
+function pixPublico(orc: Orcamento, empresa: Empresa | null): { chave: string; nome: string; cidade: string } | null {
+  const chave = normalizarChavePix(chavePixDoOrcamento(orc, empresa));
+  if (!chave) return null;
+  return {
+    chave: chave.chave,
+    nome: empresa?.nome || empresa?.nomePrestador || '',
+    cidade: empresa?.cidade || '',
   };
 }
 
@@ -195,6 +216,7 @@ export async function statusDoLink(orcamentoId: string): Promise<{
   respondidoEm?: string;
   visualizadoEm?: string;
   motivo?: string;
+  pagamentoInformadoEm?: string;
 } | null> {
   try {
     if (!supabase) return null;
@@ -207,6 +229,7 @@ export async function statusDoLink(orcamentoId: string): Promise<{
       respondidoEm: row.respondidoEm,
       visualizadoEm: row.visualizadoEm,
       motivo: row.motivo,
+      pagamentoInformadoEm: row.pagamentoInformadoEm,
     };
   } catch {
     return null;
@@ -222,6 +245,8 @@ interface LinkRow {
   respondidoEm?: string;
   visualizadoEm?: string;
   motivo?: string;
+  /** Quando o cliente tocou "Já paguei" no link (aviso, não confirmação). */
+  pagamentoInformadoEm?: string;
 }
 
 /**
@@ -232,6 +257,21 @@ interface LinkRow {
  */
 async function lerLinkRow(orcamentoId: string, userId: string): Promise<LinkRow | null> {
   if (!supabase) return null;
+  // 0ª tentativa: com pagamento_informado_em ("Já paguei" do cliente, migration
+  // 20260930120300). Sem a coluna (42703), segue a escada antiga abaixo.
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('status, respondido_em, resposta_cliente, visualizado_em, pagamento_informado_em')
+      .eq('orcamento_id', orcamentoId)
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+    if (!error) return data ? normalizarLinkRow(data) : null;
+    if ((error as any)?.code && (error as any).code !== '42703') return null;
+  } catch {
+    // cai para a escada antiga
+  }
   // 1ª tentativa: com visualizado_em.
   try {
     const { data, error } = await supabase
@@ -269,6 +309,7 @@ function normalizarLinkRow(data: any): LinkRow {
     // resposta_cliente do worker = mensagem/motivo do cliente (LGPD: texto livre
     // que o próprio cliente digitou; não logamos, só exibimos para o dono).
     motivo: data.resposta_cliente ?? undefined,
+    pagamentoInformadoEm: data.pagamento_informado_em ?? undefined,
   };
 }
 
@@ -327,6 +368,31 @@ export async function sincronizarStatusLinks(): Promise<number> {
   }
 }
 
+/**
+ * orcamentoId → ISO de quando o cliente tocou "Já paguei" no link público.
+ *
+ * É AVISO do cliente, nunca confirmação: o radar de cobrança mostra "cliente avisou
+ * que pagou — confira" e quem registra o pagamento é o prestador, depois de ver o
+ * dinheiro no banco. Por isso esta leitura NÃO muda status nem cria recibo.
+ *
+ * NUNCA lança. Falha/offline/banco sem a coluna = mapa vazio: o radar só deixa de
+ * mostrar o aviso (o orçamento continua na lista de cobrança — nenhum dinheiro some).
+ */
+export async function pagamentosInformadosPeloCliente(): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  try {
+    if (!supabase) return mapa;
+    const user = await getCurrentUser();
+    if (!user) return mapa;
+    for (const row of await lerLinksDoDono(user.id)) {
+      if (row.orcamentoId && row.pagamentoInformadoEm) mapa.set(row.orcamentoId, row.pagamentoInformadoEm);
+    }
+  } catch {
+    // aviso é best-effort
+  }
+  return mapa;
+}
+
 /** Linha de link do dono, já normalizada, para o batch de sincronização. */
 interface LinkDonoRow extends LinkRow {
   orcamentoId?: string;
@@ -341,6 +407,18 @@ async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
   if (!supabase) return [];
   const mapear = (arr: any[]): LinkDonoRow[] =>
     arr.map((r) => ({ orcamentoId: r?.orcamento_id ?? undefined, ...normalizarLinkRow(r) }));
+  // 0ª tentativa: com pagamento_informado_em (migration 20260930120300); sem a
+  // coluna (42703), segue a escada antiga.
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('orcamento_id, status, respondido_em, resposta_cliente, visualizado_em, pagamento_informado_em')
+      .eq('user_id', userId);
+    if (!error && Array.isArray(data)) return mapear(data);
+    if (error && (error as any)?.code && (error as any).code !== '42703') return [];
+  } catch {
+    // cai para a escada antiga
+  }
   // 1ª tentativa: com visualizado_em.
   try {
     const { data, error } = await supabase
@@ -416,6 +494,10 @@ export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCli
       eventos.push({ tipo: 'aprovado', em: link.respondidoEm });
     } else if (link.status === 'recusado') {
       eventos.push({ tipo: 'recusado', em: link.respondidoEm, motivo: link.motivo });
+    }
+    // "Já paguei" do cliente — aviso para o prestador conferir, não baixa de pagamento.
+    if (link.pagamentoInformadoEm) {
+      eventos.push({ tipo: 'pagamento_informado', em: link.pagamentoInformadoEm });
     }
     return eventos;
   } catch {

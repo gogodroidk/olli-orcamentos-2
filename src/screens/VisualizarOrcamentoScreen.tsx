@@ -26,6 +26,14 @@ import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../ut
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
 import { estornarPagamento, getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
+import { lerCobrancasEnviadas, registrarCobrancaEnviada } from '../services/registroEnvios';
+import { avisoPix, enviadoHoje, prepararCobranca } from '../utils/cobrancaCliente';
+
+/** Dias inteiros desde um ISO (proxy da aprovação, como no radar de cobrança). 0 se ilegível. */
+function diasDesdeIso(iso?: string): number {
+  const t = iso ? new Date(iso).getTime() : NaN;
+  return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86_400_000)) : 0;
+}
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { RegistrarPagamentoModal, type PagamentoForm } from '../components/RegistrarPagamentoModal';
 import { EstornarPagamentoModal } from '../components/EstornarPagamentoModal';
@@ -106,6 +114,9 @@ export default function VisualizarOrcamentoScreen() {
   // catch(() => setTrilha([])) deixava "falha de rede" indistinguível de
   // "cliente nunca abriu o link" (ambos mostravam a mesma ausência de card).
   const [trilhaErro, setTrilhaErro] = useState(false);
+  // Última cobrança enviada por aqui (1 toque). Leitura que falha = null (a tela só
+  // deixa de mostrar "cobrança enviada hoje"; o botão continua).
+  const [cobradoEm, setCobradoEm] = useState<string | null>(null);
   const [versoesAbertas, setVersoesAbertas] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -170,6 +181,7 @@ export default function VisualizarOrcamentoScreen() {
       setVersoes(vs);
       setRecibos(recibosDoBanco);
       loadTrilha();
+      lerCobrancasEnviadas().then(m => setCobradoEm(m[orcamentoId] ?? null)).catch(() => {});
     } catch {
       setErroCarregamento(true);
     } finally {
@@ -642,6 +654,36 @@ export default function VisualizarOrcamentoScreen() {
   ];
   const fechamentoOk = fechamentoChecks.filter(c => c.ok).length;
 
+  // Cobrança com 1 toque: só quando o comercial é recebível e ainda há saldo. O
+  // saldo (valor − recebido) é o que vai na mensagem e no Pix — nunca o total cheio
+  // para quem já pagou parte.
+  const statusFin = podeFinanceiro ? getStatusFinanceiro(orc, recibos) : null;
+  const saldoEmAberto = Math.max(0, (orc.valorTotal || 0) - totalRecebidoDoOrcamento(orc.id, recibos));
+  const cobrancaPronta = (statusFin === 'aguardando_pagamento' || statusFin === 'parcial') && saldoEmAberto > 0.005
+    ? prepararCobranca({
+        orcamento: orc,
+        empresa,
+        diasParado: diasDesdeIso(orc.atualizadoEm || orc.criadoEm),
+        valorEmAberto: saldoEmAberto,
+      })
+    : null;
+
+  async function handleCobrar() {
+    if (!orc || !cobrancaPronta) return;
+    const telefone = (orc.clienteTelefone || '').trim();
+    if (!telefone) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${orc.clienteNome} para cobrar por aqui.`);
+      return;
+    }
+    try {
+      await abrirWhatsApp(telefone, cobrancaPronta.texto);
+      await registrarCobrancaEnviada(orc.id);
+      setCobradoEm(new Date().toISOString());
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: cores.background }}>
       <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
@@ -891,6 +933,28 @@ export default function VisualizarOrcamentoScreen() {
           {getStatusFinanceiro(orc, recibos) === 'parcial' && (
             <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
           )}
+          {/* COBRAR COM 1 TOQUE — aprovado e ainda com saldo: WhatsApp do cliente com
+              valor, referência e o Pix do prestador (o saldo, se já pagou parte). */}
+          {cobrancaPronta && (
+            <View style={{ marginTop: 10, gap: 8 }}>
+              <OlliPressable style={styles.closePrimary} onPress={handleCobrar} haptic="light" accessibilityLabel={`Cobrar ${formatCurrency(cobrancaPronta.valor)} no WhatsApp`}>
+                <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />
+                <Text style={styles.closePrimaryText}>Cobrar {formatCurrency(cobrancaPronta.valor)} no WhatsApp</Text>
+              </OlliPressable>
+              {cobradoEm ? (
+                <Text style={styles.financeiroNota}>
+                  {enviadoHoje(cobradoEm) ? 'Cobrança enviada hoje.' : `Última cobrança enviada em ${formatDateTime(cobradoEm)}.`}
+                </Text>
+              ) : null}
+              {avisoPix(cobrancaPronta.situacaoPix) && (
+                <TouchableOpacity onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.8} style={styles.cobrancaAviso}>
+                  <MaterialCommunityIcons name="key-variant" size={20} color={cores.warning} />
+                  <Text style={styles.cobrancaAvisoTexto}>{avisoPix(cobrancaPronta.situacaoPix)?.titulo}</Text>
+                  <Text style={styles.cobrancaAvisoAcao}>{avisoPix(cobrancaPronta.situacaoPix)?.acao}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
           {recibos.some((recibo) => recibo.orcamentoId === orc.id && recibo.ledgerStatus === 'pendente') && (
             <Text style={styles.financeiroNota}>O recebimento foi salvo neste aparelho e está aguardando confirmação da nuvem. Não registre o mesmo pagamento novamente.</Text>
           )}
@@ -1030,6 +1094,8 @@ const TRILHA_META: Record<EventoTrilhaCliente['tipo'], { icon: keyof typeof Mate
   visualizado: { icon: 'eye-outline', color: '#8B5CF6', label: 'Cliente visualizou' },
   aprovado: { icon: 'check-circle', color: '#10B981', label: 'Cliente aprovou' },
   recusado: { icon: 'close-circle', color: '#EF4444', label: 'Cliente recusou' },
+  // Aviso do cliente, não confirmação: o rótulo diz "avisou", e quem marca pago é o prestador.
+  pagamento_informado: { icon: 'cash-clock', color: '#F59E0B', label: 'Cliente avisou que já pagou — confira no banco' },
 };
 
 function TrilhaLinha({ evento, ultimo }: { evento: EventoTrilhaCliente; ultimo: boolean }) {

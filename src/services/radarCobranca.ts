@@ -31,8 +31,10 @@
  */
 import { getOrcamentos, getRecibos, getClientes, getEmpresa } from '../database/database';
 import { getReciboDoOrcamento } from './pagamentos';
-import { montarMensagemCobranca } from '../utils/mensagensOrcamento';
-import { gerarPixCopiaECola } from '../utils/pixBrCode';
+import { lerCobrancasEnviadas, registrarCobrancaEnviada } from './registroEnvios';
+import { pagamentosInformadosPeloCliente } from './clienteLink';
+import { enviadoHoje, ordenarParaCobrar, prepararCobranca, type SituacaoPix } from '../utils/cobrancaCliente';
+import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { Cliente, Orcamento } from '../types';
 
 const MS_POR_DIA = 86400000;
@@ -46,10 +48,37 @@ export interface OrcamentoParaCobrar {
   cliente: Cliente | null;
   diasParado: number;
   valor: number;
-  /** Pix Copia e Cola PRONTO (valor embutido) para o WhatsApp; '' quando não há
-   *  chave Pix cadastrada. Pré-computado aqui (empresa lida 1x) para a tela não
-   *  precisar montar o BR Code por item. */
+  /** Pix Copia e Cola PRONTO (valor embutido) para o WhatsApp; '' quando a
+   *  cobrança vai sem Pix (ver `situacaoPix`). Pré-computado aqui (empresa lida 1x)
+   *  para a tela não precisar montar o BR Code por item. */
   pixCopiaECola: string;
+  /** Por que o Pix entrou ou não — a tela mostra "Cadastrar chave Pix" a partir disto. */
+  situacaoPix: SituacaoPix;
+  /** Texto pronto do WhatsApp (o mesmo de `mensagemCobranca`). */
+  mensagem: string;
+  /** ISO da última cobrança enviada por aqui (1 toque), ou null. */
+  cobradoEm: string | null;
+  /** Já cobrado HOJE: o item desce na lista e mostra "cobrado hoje" (não insiste). */
+  cobradoHoje: boolean;
+  /** ISO de quando o cliente tocou "Já paguei" no link — aviso para conferir, ou null. */
+  pagamentoInformadoEm: string | null;
+}
+
+/**
+ * Teto para a leitura dos avisos "Já paguei" (rede). O radar de cobrança é LOCAL
+ * (SQLite) e aparece na hora; o aviso do cliente é só um rótulo. Sem teto, uma rede
+ * ruim (o supabase-js não tem timeout próprio) seguraria o card do dinheiro parado
+ * em "carregando" até a requisição desistir.
+ */
+const PRAZO_AVISOS_MS = 4000;
+
+function avisosDoClienteComPrazo(): Promise<Map<string, string>> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(new Map()), PRAZO_AVISOS_MS);
+    pagamentosInformadosPeloCliente()
+      .then(mapa => { clearTimeout(timer); resolve(mapa); })
+      .catch(() => { clearTimeout(timer); resolve(new Map()); });
+  });
 }
 
 /** Data (ISO) usada como proxy de "quando este orçamento foi aprovado". */
@@ -71,38 +100,40 @@ function diasDesde(iso: string): number {
  * propaga a exceção e é a TELA quem decide o estado de erro (3 estados).
  */
 export async function orcamentosParaCobrar(): Promise<OrcamentoParaCobrar[]> {
-  const [orcamentos, recibos, clientes, empresa] = await Promise.all([
+  const [orcamentos, recibos, clientes, empresa, cobrancas, informados] = await Promise.all([
     getOrcamentos(), getRecibos(), getClientes(), getEmpresa(),
+    // Os dois abaixo só ROTULAM/REORDENAM ("cobrado hoje", "cliente avisou que
+    // pagou") e nunca lançam: falha = mapa vazio = o item aparece sem rótulo. A lista
+    // em si (o dinheiro parado) depende só das leituras locais acima.
+    lerCobrancasEnviadas(), avisosDoClienteComPrazo(),
   ]);
   const clientesPorId = new Map(clientes.map(c => [c.id, c] as const));
+  const agora = new Date();
 
   const resultado: OrcamentoParaCobrar[] = [];
   for (const o of orcamentos) {
     if (o.status !== 'aprovado') continue;
     if (getReciboDoOrcamento(o.id, recibos)) continue; // já tem recibo: não é mais "parado"
-    // Pix pronto (valor = total devido) para a cobrança por WhatsApp. A chave vem do
-    // orçamento ou da empresa; sem chave, string vazia (a mensagem cai no texto padrão).
-    const chave = (o.chavePix || empresa?.chavePix || '').trim();
-    const pixCopiaECola = chave
-      ? gerarPixCopiaECola({
-          chave,
-          valor: o.valorTotal,
-          nome: empresa?.nome || '',
-          cidade: empresa?.cidade || '',
-          txid: o.numero,
-        })
-      : '';
+    const diasParado = diasDesde(dataAprovacao(o));
+    // Mensagem + Pix prontos (valor = total devido), pela MESMA função do painel.
+    // Sem chave válida, a mensagem sai sem Pix e `situacaoPix` diz o porquê.
+    const cobranca = prepararCobranca({ orcamento: o, empresa, diasParado });
+    const cobradoEm = cobrancas[o.id] ?? null;
     resultado.push({
       orcamento: o,
       cliente: clientesPorId.get(o.clienteId) ?? null,
-      diasParado: diasDesde(dataAprovacao(o)),
+      diasParado,
       valor: o.valorTotal,
-      pixCopiaECola,
+      pixCopiaECola: cobranca.pixCopiaECola,
+      situacaoPix: cobranca.situacaoPix,
+      mensagem: cobranca.texto,
+      cobradoEm,
+      cobradoHoje: enviadoHoje(cobradoEm, agora),
+      pagamentoInformadoEm: informados.get(o.id) ?? null,
     });
   }
 
-  resultado.sort((a, b) => b.diasParado - a.diasParado);
-  return resultado;
+  return ordenarParaCobrar(resultado);
 }
 
 /**
@@ -111,5 +142,23 @@ export async function orcamentosParaCobrar(): Promise<OrcamentoParaCobrar[]> {
  * valor, dias parado), nada inventado.
  */
 export function mensagemCobranca(item: OrcamentoParaCobrar): string {
-  return montarMensagemCobranca(item.orcamento, item.diasParado, item.pixCopiaECola || undefined);
+  return item.mensagem;
+}
+
+/** Telefone para cobrar: o denormalizado no orçamento, ou o do cadastro ativo. */
+export function telefoneDaCobranca(item: OrcamentoParaCobrar): string {
+  return (item.orcamento.clienteTelefone || item.cliente?.telefone || '').trim();
+}
+
+/**
+ * Cobrar com 1 toque: abre o WhatsApp do cliente com a mensagem pronta e registra a
+ * data do envio (o radar não insiste no mesmo dia). `false` = sem telefone (a tela
+ * avisa); o registro só acontece depois de o WhatsApp abrir sem erro.
+ */
+export async function cobrarNoWhatsApp(item: OrcamentoParaCobrar): Promise<boolean> {
+  const telefone = telefoneDaCobranca(item);
+  if (!telefone) return false;
+  await abrirWhatsApp(telefone, item.mensagem);
+  await registrarCobrancaEnviada(item.orcamento.id);
+  return true;
 }

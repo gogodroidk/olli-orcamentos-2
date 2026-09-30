@@ -4,7 +4,10 @@
  * Um lugar só para três perguntas que antes moravam em cópias:
  *   1. dinheiro parado ... orçamento GANHO (aprovado/convertido) com saldo > 0;
  *   2. proposta parada .. proposta já enviada ao cliente, sem mexer há >= 3 dias;
- *   3. cliente sumido ... cliente já atendido, sem interação há >= 150 dias.
+ *   3. clientes para lembrar .. PÓS-VENDA: cliente com serviço CONCLUÍDO cujo intervalo
+ *      do ofício já passou (`src/utils/posVenda.ts` — a regra; aqui só a leitura das
+ *      linhas do Supabase). Substituiu, em 30/09/2026, o antigo "cliente sumido"
+ *      (150 dias fixos contando proposta só enviada): um conceito só, com um nome só.
  *
  * QUEM USA (e por isso nada aqui importa rede, storage, React ou React Native):
  *   • painel (webapp/, alias `@radar-dinheiro`) — os cartões da tela Início
@@ -13,14 +16,16 @@
  *   • worker (`worker/src/resumoDinheiroJob.js`) — o RESUMO DIÁRIO por e-mail calcula
  *     o número com as MESMAS funções, em cima das mesmas linhas do Supabase. O e-mail
  *     das 7h e o painel que ele abre não podem discordar sobre quanto o dono tem a
- *     receber: se discordassem, o dono deixaria de acreditar nos dois;
- *   • app (`radarFollowUp.ts`, `radarClientes.ts`) — os limiares e o conjunto de
- *     status de "interação com o cliente" saem daqui. Os services do app continuam
- *     lendo o SQLite do aparelho (não dá para importar leitura local no servidor),
- *     mas o NÚMERO que decide "parado" e "sumido" é um só.
+ *     receber nem sobre quantos clientes ele tem para lembrar: se discordassem, o
+ *     dono deixaria de acreditar nos dois;
+ *   • app (`radarFollowUp.ts`, `radarClientes.ts`) — o limiar de proposta parada sai
+ *     daqui e o pós-venda chama a MESMA `listarClientesParaLembrar` (`utils/posVenda`).
+ *     Os services do app continuam lendo o SQLite do aparelho (não dá para importar
+ *     leitura local no servidor), mas a REGRA que decide "parado" e "para lembrar" é
+ *     uma só.
  *
  * O teste `scripts/teste-radar-dinheiro.ts` confere a regra, e o
- * `worker/scripts/teste-resumo-dinheiro-job.js` confere que o resumo do servidor dá
+ * `worker/scripts/teste-resumo-dinheiro-policy.js` confere que o resumo do servidor dá
  * o mesmo resultado que estas funções aplicadas às linhas completas do painel.
  *
  * ═══ AS REGRAS DA CASA QUE ESTAS CONTAS OBEDECEM ═══
@@ -31,6 +36,15 @@
  * • A lixeira já vem filtrada por quem chama (`excluido_em IS NULL`).
  */
 import { STATUS_PROPOSTA_ENVIADA } from '../types/index.ts';
+import {
+  type ClienteParaLembrar,
+  listarClientesParaLembrar,
+  msDe,
+  msDoRecibo,
+  retornoDoOficio,
+  type ServicoConcluido,
+} from '../utils/posVenda.ts';
+import type { VerticalId } from './verticais.ts';
 
 const MS_POR_DIA = 86_400_000;
 
@@ -43,20 +57,16 @@ export const STATUS_EM_JOGO = STATUS_PROPOSTA_ENVIADA;
 /** Dias sem mexer para uma proposta enviada contar como parada (radar de follow-up). */
 export const LIMIAR_PROPOSTA_PARADA_DIAS = 3;
 
-/** Dias sem interação para um cliente já atendido contar como sumido (~5 meses). */
-export const LIMIAR_CLIENTE_SUMIDO_DIAS = 150;
-
 /**
- * Status de orçamento que contam como INTERAÇÃO com o cliente no radar de clientes.
- * Não é a `STATUS_PROPOSTA_ENVIADA`: 'visualizado' e 'em_negociacao' ficam de fora
- * desde a primeira versão do radar do app. Mudar isso é decisão de produto — e agora
- * muda app, painel e e-mail no mesmo commit, porque todos leem daqui.
+ * Orçamento que prova SERVIÇO FECHADO para o pós-venda ("clientes para lembrar") —
+ * o mesmo par do dinheiro parado. Proposta só enviada NÃO conta: lead que nunca
+ * fechou não é manutenção a lembrar (é o follow-up que cuida dele).
  */
-export const STATUS_INTERACAO_CLIENTE: readonly string[] = ['aprovado', 'enviado', 'aguardando_assinatura'];
+export const STATUS_SERVICO_FECHADO = STATUS_A_RECEBER;
 
 const aReceber = new Set<string>(STATUS_A_RECEBER);
 const emJogo = new Set<string>(STATUS_EM_JOGO);
-const interacao = new Set<string>(STATUS_INTERACAO_CLIENTE);
+const servicoFechado = new Set<string>(STATUS_SERVICO_FECHADO);
 
 const slug = (s?: string | null) => (s ?? '').trim().toLowerCase();
 
@@ -98,6 +108,8 @@ export interface ReciboRadarLinha {
     dataRecebimento?: string | null;
     clienteId?: string | null;
     criadoEm?: string | null;
+    /** Recibo estornado não prova serviço (pós-venda). */
+    estornadoEm?: string | null;
   } | null;
 }
 
@@ -148,33 +160,8 @@ export function ultimaMexidaMs(o: OrcamentoRadarLinha): number {
   return Number.NaN;
 }
 
-/** ms da data, ou `null` quando não dá para ler (nunca vira "hoje" nem 1970). */
-function ms(iso?: string | null): number | null {
-  if (!iso) return null;
-  const t = new Date(iso).getTime();
-  return Number.isFinite(t) ? t : null;
-}
-
-/**
- * 'DD/MM/AAAA' → 'YYYY-MM-DD', ou null. Mesma regra de `brParaYmd`
- * (`webapp/src/olli/datas.ts`), repetida aqui porque este módulo não pode importar
- * o painel. A data do recibo mora no blob em DD/MM/AAAA; `new Date()` direto nela
- * lê MM/DD e 10 de julho vira 7 de outubro.
- */
-function brParaYmd(br: string): string | null {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((br ?? '').trim());
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
-}
-
-/** Quando o dinheiro deste recibo entrou (blob DD/MM/AAAA → criado_em). */
-function msRecibo(r: ReciboRadarLinha): number | null {
-  const br = r.dados?.dataRecebimento;
-  if (br) {
-    const ymd = brParaYmd(br);
-    if (ymd) return ms(ymd);
-  }
-  return ms(r.criado_em ?? r.dados?.criadoEm);
-}
+// Datas do pós-venda (ISO e o DD/MM/AAAA do recibo, sem trocar dia e mês) são lidas
+// por `msDe`/`msDoRecibo` de `utils/posVenda.ts` — as MESMAS que o app usa.
 
 // ─── 1. DINHEIRO PARADO ─────────────────────────────────────────────────────
 
@@ -339,89 +326,79 @@ export function listarPropostasParadas(
   return parados.sort((a, b) => b.dias - a.dias);
 }
 
-// ─── 3. CLIENTES SUMIDOS ────────────────────────────────────────────────────
+// ─── 3. CLIENTES PARA LEMBRAR (pós-venda) ───────────────────────────────────
 
-export interface ClienteSumido {
-  id: string;
-  nome: string;
-  telefone: string;
-  /** ISO da última interação real (nunca vazio: sem interação o cliente não entra). */
-  ultimaInteracao: string;
-  /** Meses arredondados desde então (dias/30, piso de 1) — o número da mensagem. */
-  meses: number;
-  dias: number;
-}
-
-export interface EntradaClientesSumidos {
+export interface EntradaClientesParaLembrar {
   clientes: readonly ClienteRadarLinha[];
   orcamentos: readonly OrcamentoRadarLinha[];
   agendamentos: readonly AgendaRadarLinha[];
   recibos: readonly ReciboRadarLinha[];
   /** clienteId → ISO até quando ficou adiado no celular (`extras_sync`/'radar.snooze'). */
   adiados: Readonly<Record<string, string>>;
+  /** clienteId → ISO do último lembrete enviado, celular OU painel (`extras_sync`/'posvenda.lembrados'). */
+  lembrados: Readonly<Record<string, string>>;
+  /** Ofícios da empresa (`empresa.dados.verticais`): definem o intervalo. Sem ofício = genérico (6 meses). */
+  verticais: readonly VerticalId[] | null | undefined;
 }
 
 /**
- * Clientes que JÁ FORAM ATENDIDOS e sumiram há >= 150 dias — quem sumiu há mais tempo
- * primeiro. Três fontes de última interação: orçamento com status de interação (pelo
- * criado_em), agendamento CONCLUÍDO (pelo fim, senão início) e recibo (pela data de
- * recebimento do blob). Cliente sem NENHUMA interação nunca entra — é lead frio.
- * Respeita o "adiar" feito no celular.
+ * As linhas do Supabase viradas nos sinais de "serviço concluído" da regra de
+ * pós-venda — a MESMA conversão para o painel (tela Início) e para o resumo diário
+ * por e-mail (worker). O app faz a conversão equivalente em cima do SQLite
+ * (`servicosConcluidos` em `radarClientes.ts`); quem mexer num lado mexe no outro.
+ *  • orçamento aprovado ou convertido — data da aprovação ≈ última escrita
+ *    (blob `atualizadoEm` → coluna `atualizado_em` → criação);
+ *  • agendamento CONCLUÍDO — pelo fim (ou início);
+ *  • recibo NÃO estornado — pela data do recebimento em DD/MM/AAAA (lida sem trocar
+ *    dia e mês, `msDoRecibo`), caindo para a criação.
  */
-export function listarClientesSumidos(entrada: EntradaClientesSumidos, agora: Date = new Date()): ClienteSumido[] {
-  const { clientes, orcamentos, agendamentos, recibos, adiados } = entrada;
-
-  const ultima = new Map<string, number>();
-  const registrar = (clienteId?: string | null, quando?: number | null) => {
-    const id = (clienteId ?? '').trim();
-    if (!id || quando === null || quando === undefined) return;
-    const atual = ultima.get(id);
-    if (atual === undefined || quando > atual) ultima.set(id, quando);
-  };
-
-  for (const o of orcamentos) {
-    if (!interacao.has(slug(o.status))) continue;
-    registrar(o.cliente_id ?? o.dados?.clienteId, ms(o.criado_em ?? o.dados?.criadoEm));
-  }
-  for (const a of agendamentos) {
-    if (slug(a.status) !== 'concluido') continue;
-    const fim = ms(a.fim);
-    const inicio = ms(a.inicio);
-    registrar(a.cliente_id, fim === null ? inicio : inicio === null ? fim : Math.max(fim, inicio));
-  }
-  for (const r of recibos) {
-    registrar(r.cliente_id ?? r.dados?.clienteId, msRecibo(r));
-  }
-
-  const agoraMs = agora.getTime();
-  const resultado: ClienteSumido[] = [];
-  for (const c of clientes) {
-    const id = (c.id ?? '').trim();
-    if (!id) continue;
-    const quando = ultima.get(id);
-    if (quando === undefined) continue; // nunca interagiu → lead frio, fora do radar
-
-    const ate = ms(adiados[id]);
-    if (ate !== null && ate > agoraMs) continue; // adiado no celular, ainda vigente
-
-    const dias = Math.floor((agoraMs - quando) / MS_POR_DIA);
-    if (dias < LIMIAR_CLIENTE_SUMIDO_DIAS) continue;
-
-    resultado.push({
-      id,
-      nome: (c.nome ?? '').trim() || 'Cliente sem nome',
-      telefone: (c.telefone ?? '').trim(),
-      ultimaInteracao: new Date(quando).toISOString(),
-      meses: Math.max(1, Math.round(dias / 30)),
-      dias,
+export function servicosConcluidosDasLinhas(
+  entrada: Pick<EntradaClientesParaLembrar, 'orcamentos' | 'agendamentos' | 'recibos'>,
+): ServicoConcluido[] {
+  const servicos: ServicoConcluido[] = [];
+  for (const o of entrada.orcamentos) {
+    if (!servicoFechado.has(slug(o.status))) continue;
+    servicos.push({
+      clienteId: o.cliente_id ?? o.dados?.clienteId,
+      quando: msDe(o.dados?.atualizadoEm ?? o.atualizado_em ?? o.criado_em ?? o.dados?.criadoEm),
     });
   }
-  return resultado.sort((a, b) => b.dias - a.dias);
+  for (const a of entrada.agendamentos) {
+    if (slug(a.status) !== 'concluido') continue;
+    servicos.push({ clienteId: a.cliente_id, quando: msDe(a.fim) ?? msDe(a.inicio) });
+  }
+  for (const r of entrada.recibos) {
+    if (r.dados?.estornadoEm) continue; // recebimento estornado não prova serviço
+    servicos.push({
+      clienteId: r.cliente_id ?? r.dados?.clienteId,
+      quando: msDoRecibo(r.dados?.dataRecebimento, r.criado_em ?? r.dados?.criadoEm),
+    });
+  }
+  return servicos;
+}
+
+/**
+ * Clientes na hora de ser lembrados, a partir das linhas do Supabase — é
+ * `listarClientesParaLembrar` (`utils/posVenda.ts`, a regra do celular) com o
+ * intervalo do ofício da empresa. Mais atrasado primeiro.
+ */
+export function listarClientesParaLembrarDasLinhas(
+  entrada: EntradaClientesParaLembrar,
+  agora: Date = new Date(),
+): ClienteParaLembrar[] {
+  return listarClientesParaLembrar({
+    clientes: entrada.clientes,
+    servicos: servicosConcluidosDasLinhas(entrada),
+    mesesIntervalo: retornoDoOficio(entrada.verticais).meses,
+    lembrados: { ...entrada.lembrados },
+    adiados: { ...entrada.adiados },
+    agora,
+  });
 }
 
 // ─── RESUMO (o número do e-mail das 7h) ─────────────────────────────────────
 
-export interface EntradaResumoDinheiro extends EntradaClientesSumidos {
+export interface EntradaResumoDinheiro extends EntradaClientesParaLembrar {
   /** Ids de orçamento com ordem de serviço concluída (saem do dinheiro parado). */
   orcamentosFinalizados: ReadonlySet<string>;
 }
@@ -435,7 +412,8 @@ export interface ResumoDinheiro {
     diasMaisAntigo: number | null;
   };
   propostasParadas: number;
-  clientesSumidos: number;
+  /** Os MESMOS "Clientes para lembrar" do cartão do painel e da Home do app. */
+  clientesParaLembrar: number;
   /** Há algo para o dono FAZER hoje? Sem isso, nenhum e-mail sai. */
   acionavel: boolean;
 }
@@ -443,14 +421,14 @@ export interface ResumoDinheiro {
 /**
  * O resumo inteiro, só com contagens e valor (sem nome de cliente, sem telefone):
  * é o que cabe num e-mail sem espalhar dado de terceiro. Acionável = há saldo a
- * receber OU proposta parada OU cliente sumido. Orçamento aprovado SEM VALOR sozinho
- * não conta como acionável (não dá para dizer quanto) — ele só aparece como aviso
- * quando o e-mail já sai por outro motivo.
+ * receber OU proposta parada OU cliente para lembrar. Orçamento aprovado SEM VALOR
+ * sozinho não conta como acionável (não dá para dizer quanto) — ele só aparece como
+ * aviso quando o e-mail já sai por outro motivo.
  */
 export function resumirDinheiroParado(entrada: EntradaResumoDinheiro, agora: Date = new Date()): ResumoDinheiro {
   const radar = listarDinheiroParado(entrada.orcamentos, entrada.recibos, agora, entrada.orcamentosFinalizados);
   const parados = listarPropostasParadas(entrada.orcamentos, LIMIAR_PROPOSTA_PARADA_DIAS, agora);
-  const sumidos = listarClientesSumidos(entrada, agora);
+  const paraLembrar = listarClientesParaLembrarDasLinhas(entrada, agora);
   const centavos = Math.max(0, Math.round(radar.total * 100));
   return {
     aReceber: {
@@ -460,7 +438,8 @@ export function resumirDinheiroParado(entrada: EntradaResumoDinheiro, agora: Dat
       diasMaisAntigo: radar.diasMaisAntigo,
     },
     propostasParadas: parados.length,
-    clientesSumidos: sumidos.length,
-    acionavel: (centavos > 0 && radar.itens > 0) || parados.length > 0 || sumidos.length > 0,
+    clientesParaLembrar: paraLembrar.length,
+    acionavel: (centavos > 0 && radar.itens > 0) || parados.length > 0 || paraLembrar.length > 0,
   };
 }
+

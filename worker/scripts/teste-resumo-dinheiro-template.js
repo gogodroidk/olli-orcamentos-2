@@ -3,15 +3,16 @@
  *
  *     node scripts/teste-resumo-dinheiro-template.js   (de dentro de worker/)
  *
- * Protege: valor formatado pela fonte (`reais` de precosPlanos.ts), limiares vindos
- * de radarDinheiro.ts, CTA para a raiz do painel, link "parar de receber o resumo"
+ * Protege: valor formatado pela fonte (`reais` de precosPlanos.ts), limiar de proposta
+ * vindo de radarDinheiro.ts, "clientes para lembrar" com o nome do cartão do painel
+ * (nunca o antigo "sem atendimento há 150 dias"), CTA para a raiz do painel, link "parar de receber o resumo"
  * no HTML e no texto, só linhas com número > 0, sem PII, e falha FECHADA em dado
  * estranho — inclusive o e-mail "você tem R$ 0" (nada acionável).
  */
 import assert from 'node:assert/strict';
 import { renderizarEmailResumoDinheiro } from '../src/resumoDinheiroTemplate.js';
 import { reais } from '../../src/services/precosPlanos.ts';
-import { LIMIAR_CLIENTE_SUMIDO_DIAS, LIMIAR_PROPOSTA_PARADA_DIAS } from '../../src/services/radarDinheiro.ts';
+import { LIMIAR_PROPOSTA_PARADA_DIAS } from '../../src/services/radarDinheiro.ts';
 
 const U = '00000000-0000-4000-8000-000000000001';
 const UNSUB = `https://diagnostico.olliorcamentos.online/email/descadastrar?u=${U}&e=resumo&a=abc`;
@@ -22,12 +23,12 @@ const DADOS = Object.freeze({
   diasMaisAntigo: 12,
   semValor: 0,
   propostasParadas: 2,
-  clientesSumidos: 1,
+  clientesParaLembrar: 1,
 });
 const BASE = Object.freeze({
   eventId: `resumo:dinheiro:${U}:2026-09-30`,
   template: 'resumo_dinheiro',
-  templateVersion: 'resumo_dinheiro.v1',
+  templateVersion: 'resumo_dinheiro.v2',
   purpose: 'money_digest',
   dados: DADOS,
   appUrl: 'https://app.olliorcamentos.online',
@@ -57,7 +58,9 @@ caso('resumo completo: valor da fonte, três linhas, CTA para o painel', () => {
   assert.equal(e.template, 'resumo_dinheiro');
   assert.ok(e.text.includes(`${valor} a receber em 3 orçamentos aprovados — o mais antigo parado há 12 dias.`));
   assert.ok(e.text.includes(`2 propostas enviadas sem resposta há ${LIMIAR_PROPOSTA_PARADA_DIAS} dias ou mais.`));
-  assert.ok(e.text.includes(`1 cliente sem atendimento há ${LIMIAR_CLIENTE_SUMIDO_DIAS} dias ou mais.`));
+  assert.ok(e.text.includes('1 cliente para lembrar: já passou o tempo de repetir o serviço desde o último atendimento.'));
+  assert.equal(/sem atendimento|150 dias|sumid/i.test(e.text), false);
+  assert.ok(e.text.includes('você cobra ou lembra o cliente pelo WhatsApp'));
   assert.ok(e.text.includes('Abrir o painel: https://app.olliorcamentos.online/'));
   assert.ok(e.html.includes('href="https://app.olliorcamentos.online/"'));
   assert.ok(Object.isFrozen(e));
@@ -73,14 +76,17 @@ caso('descadastro próprio do resumo no HTML, no texto e no List-Unsubscribe', (
 });
 
 caso('só aparece o que tem número; assunto segue o que existe', () => {
-  const soPropostas = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, clientesSumidos: 0 });
+  const soPropostas = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, clientesParaLembrar: 0 });
   assert.equal(soPropostas.subject, '2 propostas esperando resposta dos clientes');
-  assert.equal(/a receber|cliente sem atendimento/.test(soPropostas.text), false);
-  const umaProposta = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, clientesSumidos: 0, propostasParadas: 1 });
+  assert.equal(/a receber|para lembrar/.test(soPropostas.text), false);
+  const umaProposta = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, clientesParaLembrar: 0, propostasParadas: 1 });
   assert.equal(umaProposta.subject, '1 proposta esperando resposta do cliente');
-  const soSumidos = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, propostasParadas: 0, clientesSumidos: 4 });
-  assert.equal(soSumidos.subject, '4 clientes sem atendimento há um bom tempo');
-  const umItem = render({ aReceberCentavos: 50000, aReceberItens: 1, diasMaisAntigo: 0, propostasParadas: 0, clientesSumidos: 0 });
+  const soLembrar = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, propostasParadas: 0, clientesParaLembrar: 4 });
+  assert.equal(soLembrar.subject, '4 clientes para lembrar de repetir o serviço');
+  assert.ok(soLembrar.text.includes('4 clientes para lembrar: já passou o tempo de repetir o serviço desde o último atendimento.'));
+  const umLembrar = render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, propostasParadas: 0, clientesParaLembrar: 1 });
+  assert.equal(umLembrar.subject, '1 cliente para lembrar de repetir o serviço');
+  const umItem = render({ aReceberCentavos: 50000, aReceberItens: 1, diasMaisAntigo: 0, propostasParadas: 0, clientesParaLembrar: 0 });
   assert.ok(umItem.text.includes('R$ 500 a receber em 1 orçamento aprovado.'));
   assert.equal(umItem.text.includes('parado há'), false);
 });
@@ -99,7 +105,10 @@ caso('sem PII e sem urgência inventada', () => {
 });
 
 caso('falha fechada: nada acionável, dado incoerente ou fora do catálogo', () => {
-  assert.equal(erro(() => render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, propostasParadas: 0, clientesSumidos: 0 })), 'nada_acionavel');
+  assert.equal(erro(() => render({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, propostasParadas: 0, clientesParaLembrar: 0 })), 'nada_acionavel');
+  // Formato antigo (v1, `clientesSumidos`) não passa: chave fora do catálogo.
+  const { clientesParaLembrar: _c, ...semNovo } = DADOS;
+  assert.equal(erro(() => renderizarEmailResumoDinheiro({ ...BASE, dados: { ...semNovo, clientesSumidos: 1 } })), 'dados_invalidos');
   assert.equal(erro(() => render({ aReceberCentavos: 0 })), 'dados_invalidos'); // itens sem valor
   assert.equal(erro(() => render({ aReceberItens: 0, diasMaisAntigo: null })), 'dados_invalidos'); // valor sem itens
   assert.equal(erro(() => render({ aReceberCentavos: 10.5 })), 'dados_invalidos');
@@ -107,7 +116,7 @@ caso('falha fechada: nada acionável, dado incoerente ou fora do catálogo', () 
   assert.equal(erro(() => render({ data: '30/09/2026' })), 'dados_invalidos');
   assert.equal(erro(() => render({ nomeCliente: 'Maria' })), 'dados_invalidos');
   assert.equal(erro(() => renderizarEmailResumoDinheiro({ ...BASE, template: 'lembrete_assinatura' })), 'template_invalido');
-  assert.equal(erro(() => renderizarEmailResumoDinheiro({ ...BASE, templateVersion: 'resumo_dinheiro.v2' })), 'template_version_divergente');
+  assert.equal(erro(() => renderizarEmailResumoDinheiro({ ...BASE, templateVersion: 'resumo_dinheiro.v1' })), 'template_version_divergente');
   assert.equal(erro(() => renderizarEmailResumoDinheiro({ ...BASE, unsubscribeUrl: 'http://x.test/' })), 'unsubscribe_url_invalida');
   assert.equal(erro(() => renderizarEmailResumoDinheiro({ ...BASE, extra: 1 })), 'input_template_invalido');
 });

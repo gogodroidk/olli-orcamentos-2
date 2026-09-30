@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useOlliList } from "@/olli/data";
+import { lerMapaEnvios, type MapaEnvios, registrarEnvio } from "../../../../../src/utils/cobrancaCliente";
 import type { AgendamentoRow } from "./helpers";
 import { type ClienteRow, COLUNAS_AGENDA_RADAR, COLUNAS_CLIENTES_RADAR } from "./radares";
 
@@ -59,4 +60,65 @@ export function useRadarSnooze() {
 		},
 		staleTime: 60_000,
 	});
+}
+
+/** As duas chaves de `extras_sync` que o app também escreve (ver EXTRAS_ASYNC em cloudSync.ts). */
+export type ChaveRegistroEnvio = "cobranca.enviadas" | "posvenda.lembrados";
+
+/**
+ * Registro de COBRANÇAS / LEMBRETES enviados — o MESMO mapa id → ISO que o celular
+ * grava (`src/services/registroEnvios.ts`), para "cobrado hoje" e "lembrado" valerem
+ * nos dois lados.
+ *
+ * LER: erro NÃO derruba o card (quem consome usa `mapa`, vazio no erro) — sem o
+ * registro, o radar mostra o item como ainda não cobrado/lembrado: de MAIS, nunca de
+ * menos. Nenhum dinheiro nem cliente some da tela por causa desta leitura.
+ *
+ * ESCREVER: relê a linha, junta o envio novo (`registrarEnvio`, que também poda o
+ * velho) e grava com `atualizado_em` de agora — o app aplica a versão mais nova no
+ * próximo sync. Best-effort: o WhatsApp já abriu; uma falha aqui só deixa de rotular.
+ */
+export function useRegistroEnvios(chave: ChaveRegistroEnvio) {
+	const qc = useQueryClient();
+	const queryKey = ["olli", "extras", chave];
+
+	const query = useQuery({
+		queryKey,
+		queryFn: async (): Promise<MapaEnvios> => {
+			const { data, error } = await supabase.from("extras_sync").select("dados").eq("chave", chave).maybeSingle();
+			if (error) throw error;
+			return lerMapaEnvios((data as { dados?: unknown } | null)?.dados);
+		},
+		staleTime: 60_000,
+	});
+
+	const mutacao = useMutation({
+		mutationFn: async (id: string): Promise<MapaEnvios> => {
+			// A releitura PRECISA dar certo antes do upsert: se ela falhasse e seguíssemos
+			// com `data` nulo, gravaríamos um mapa só com este envio — apagando na nuvem
+			// (e, pelo LWW, no celular no próximo sync) todos os outros registros.
+			const { data, error: erroLeitura } = await supabase
+				.from("extras_sync")
+				.select("dados")
+				.eq("chave", chave)
+				.maybeSingle();
+			if (erroLeitura) throw erroLeitura;
+			const mapa = registrarEnvio(lerMapaEnvios((data as { dados?: unknown } | null)?.dados), id);
+			const { error } = await supabase
+				.from("extras_sync")
+				.upsert({ chave, dados: mapa, atualizado_em: new Date().toISOString() }, { onConflict: "user_id,chave" });
+			if (error) throw error;
+			return mapa;
+		},
+		// Otimista: o rótulo aparece na hora do toque, mesmo antes da nuvem responder.
+		onMutate: (id: string) => {
+			qc.setQueryData<MapaEnvios>(queryKey, (atual) => registrarEnvio(atual ?? {}, id));
+		},
+		onSuccess: (mapa) => qc.setQueryData(queryKey, mapa),
+	});
+
+	return {
+		mapa: query.data ?? {},
+		registrar: (id: string) => mutacao.mutate(id),
+	};
 }

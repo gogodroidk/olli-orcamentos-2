@@ -1062,7 +1062,7 @@ export default function ContaScreen() {
               </View>
               <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
                 <Text style={styles.toolLabel}>Bom dia da OLLI</Text>
-                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente sumido)</Text>
+                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente para lembrar)</Text>
               </View>
               <Switch
                 value={ritualBomDia}

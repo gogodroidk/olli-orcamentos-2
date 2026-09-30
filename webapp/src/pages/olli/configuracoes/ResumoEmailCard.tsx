@@ -23,7 +23,7 @@ async function lerEstado() {
  * Notificações), gravada na conta pelo banco (`definir_resumo_dinheiro_email`).
  *
  * O e-mail das 7h resume exatamente o que a tela Início mostra (mesma regra,
- * `@radar-dinheiro`): dinheiro a receber, propostas paradas e clientes sumidos.
+ * `@radar-dinheiro`): dinheiro a receber, propostas paradas e clientes para lembrar.
  * Os textos vêm de `@resumo-email`, iguais aos do celular.
  *
  * 3 estados: carregando (esqueleto) · erro ("não consegui ver", com tentar de novo —

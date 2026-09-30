@@ -207,7 +207,7 @@ export default function ClientesScreen() {
   // Modo de seleção múltipla (exclusão em lote para a Lixeira).
   const [selecionando, setSelecionando] = useState(false);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
-  // Ids de clientes "sumidos" (radar de reconquista, >= 5 meses sem contato).
+  // Ids de clientes "para lembrar" (pós-venda: último serviço há >= o intervalo do ofício).
   // Calculado UMA VEZ por carregamento da tela (não por item da lista) — o
   // card só consulta este Set (services/radarClientes já fez o trabalho pesado).
   const [radarMeses, setRadarMeses] = useState<Map<string, number>>(new Map());

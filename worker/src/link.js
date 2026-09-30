@@ -10,7 +10,17 @@
  *    só para o dono autenticado; o cliente público NÃO consegue ler pela anon key).
  *  - O TOKEN (128 bits) é a única credencial — validado por formato + match exato.
  *  - TODO dado do usuário é escapado antes de entrar no HTML (anti-XSS).
+ *
+ * PAGAR COM PIX (depois de aprovado): a página mostra o Pix Copia e Cola (e o QR)
+ * da chave do PRESTADOR com o valor do orçamento — pagamento do serviço dele, direto
+ * na conta dele; o OLLI não intermedeia nem confirma dinheiro. O BR Code é montado
+ * aqui pelo MESMO gerador do app (`src/utils/pixBrCode.ts`) e só aparece se passar
+ * na conferência completa (EMV + CRC). "Já paguei" (POST acao=informar_pagamento)
+ * só AVISA o prestador (carimba `pagamento_informado_em` + evento na trilha): quem
+ * marca pago é ele, depois de ver o dinheiro no banco.
  */
+import { gerarPixCopiaECola, normalizarChavePix, pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
+import { qrSvg } from '../../src/utils/qrcode.ts';
 
 const ACCENT = '#0B6FCE';
 
@@ -105,8 +115,13 @@ function sbHeaders(env, extra = {}) {
 // inteira (PostgREST 400). O worker grava o motivo em AMBAS, então ler
 // resposta_cliente já basta para a página.
 const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente';
+// Coluna do "Já paguei" (migration 20260930120300_link_pagamento_informado.sql).
+// Pedida numa 1ª tentativa; se o banco ainda não tem a coluna (PostgREST 400), a
+// leitura cai para SELECT_COLS e a linha volta marcada `_semPagamentoInformado` —
+// a página então NÃO mostra o botão "Já paguei" (desligado dizendo que está
+// desligado, nunca um botão que finge funcionar).
+const COL_PAGAMENTO = 'pagamento_informado_em';
 
-/** Retorna a linha, `null` se não existir, ou `{ error:true }` em falha de backend. */
 /**
  * Uma linha pública viva. `revogado_em` é preenchido pelo gatilho do banco quando o
  * orçamento vai para a lixeira ou é excluído de vez (migration
@@ -114,19 +129,85 @@ const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp
  * nome do cliente, valor e itens — e aceitando aprovação — para sempre.
  *
  * ESTE é o único portão: renderLinkPage e responderLink passam os dois por aqui.
+ * Retorna a linha, `null` se não existir, ou `{ error:true }` em falha de backend.
  */
 async function getRow(env, token) {
-  try {
-    const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&select=${SELECT_COLS}&limit=1`,
+  const buscar = (cols) =>
+    fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&select=${cols}&limit=1`,
       { headers: sbHeaders(env) },
     );
+  try {
+    let r = await buscar(`${SELECT_COLS},${COL_PAGAMENTO}`);
+    let semColuna = false;
+    if (r.status === 400) {
+      r = await buscar(SELECT_COLS);
+      semColuna = true;
+    }
     if (!r.ok) return { error: true };
     const arr = await r.json().catch(() => null);
     if (!Array.isArray(arr)) return { error: true };
-    return arr.length ? arr[0] : null;
+    if (!arr.length) return null;
+    return semColuna ? { ...arr[0], _semPagamentoInformado: true } : arr[0];
   } catch {
     return { error: true };
+  }
+}
+
+/**
+ * Carimba o "Já paguei" do cliente. Só em link APROVADO e só na 1ª vez
+ * (`pagamento_informado_em=is.null` na própria query: idempotente, sem corrida).
+ * Retorna { error:true } em falha, ou { rows } (vazio = já avisado / não aprovado).
+ */
+async function patchPagamentoInformado(env, token) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&status=eq.aprovado&${COL_PAGAMENTO}=is.null`,
+      {
+        method: 'PATCH',
+        headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=representation' }),
+        body: JSON.stringify({ [COL_PAGAMENTO]: new Date().toISOString() }),
+      },
+    );
+    if (!r.ok) return { error: true };
+    const arr = await r.json().catch(() => []);
+    return { rows: Array.isArray(arr) ? arr : [] };
+  } catch {
+    return { error: true };
+  }
+}
+
+/**
+ * O Pix do PRESTADOR para esta página, ou `null`. Monta o BR Code com o valor do
+ * orçamento a partir de `dados.pix` (gravado pelo app só com chave reconhecida) e
+ * RECONFERE tudo aqui: chave reconhecida, valor > 0 e código aprovado na conferência
+ * EMV + CRC. Qualquer dúvida = sem Pix na página (nunca um código que o banco recusa).
+ * O QR é opcional: se o texto não couber no gerador, a página fica só com o copia e cola.
+ */
+export function pixDaPagina(dados, total, numero) {
+  try {
+    const p = dados && typeof dados.pix === 'object' && dados.pix ? dados.pix : null;
+    if (!p || typeof p.chave !== 'string') return null;
+    const chave = normalizarChavePix(p.chave);
+    const valor = Math.round((Number(total) || 0) * 100) / 100;
+    if (!chave || !(valor > 0)) return null;
+    const codigo = gerarPixCopiaECola({
+      chave: chave.chave,
+      valor,
+      nome: typeof p.nome === 'string' ? p.nome : '',
+      cidade: typeof p.cidade === 'string' ? p.cidade : '',
+      txid: String(numero || ''),
+    });
+    if (!pixCopiaEColaValido(codigo)) return null;
+    let svg = '';
+    try {
+      svg = qrSvg(codigo).replace('QR code do equipamento', 'QR code do Pix');
+    } catch {
+      svg = '';
+    }
+    return { codigo, svg, valor };
+  } catch {
+    return null;
   }
 }
 
@@ -299,6 +380,7 @@ export async function responderLink(token, request, env) {
     if (raw.length > 4096) return json({ ok: false, erro: 'payload_grande' }, 413);
     if (raw) body = JSON.parse(raw);
   } catch { /* corpo opcional / JSON inválido → segue com body vazio */ }
+  if (body.acao === 'informar_pagamento') return informarPagamento(token, request, env);
   const acao = body.acao === 'recusar' ? 'recusado' : body.acao === 'aprovar' ? 'aprovado' : null;
   if (!acao) return json({ ok: false, erro: 'acao_invalida' }, 400);
   const mensagem = typeof body.mensagem === 'string' ? body.mensagem.slice(0, 500) : null;
@@ -337,6 +419,37 @@ export async function responderLink(token, request, env) {
   if (atual && atual.error) return json({ ok: false, erro: 'indisponivel' }, 503);
   if (!atual) return json({ ok: false, erro: 'nao_encontrado' }, 404);
   return json({ ok: true, status: atual.status, jaRespondido: true });
+}
+
+/**
+ * "Já paguei" — o cliente AVISA o prestador que pagou. Não marca pago, não emite
+ * recibo, não muda o status do orçamento: carimba `pagamento_informado_em` (1ª vez)
+ * e grava 'pagamento_informado' na trilha; o app mostra "cliente avisou que pagou —
+ * confira no banco" e o prestador registra o recebimento quando o dinheiro cair.
+ * Só vale para link APROVADO. Já avisado = ok idempotente.
+ */
+async function informarPagamento(token, request, env) {
+  const row = await getRow(env, token);
+  if (row && row.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (!row) return json({ ok: false, erro: 'nao_encontrado' }, 404);
+  // Banco sem a coluna (migration não aplicada): o recurso está DESLIGADO — diz isso.
+  if (row._semPagamentoInformado) return json({ ok: false, erro: 'recurso_desligado' }, 503);
+  if (row.status !== 'aprovado') return json({ ok: false, erro: 'nao_aprovado' }, 409);
+  if (row[COL_PAGAMENTO]) return json({ ok: true, pagamentoInformado: true, jaInformado: true });
+
+  const res = await patchPagamentoInformado(env, token);
+  if (res.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (res.rows.length) {
+    const ctx = await contextoTrilha(token, request);
+    await registrarEvento(env, token, 'pagamento_informado', { ipHash: ctx.ipHash, uaCurto: ctx.uaCurto });
+    return json({ ok: true, pagamentoInformado: true });
+  }
+  // Não afetou nada: outra aba avisou antes (sucesso) ou o link deixou de estar
+  // aprovado no meio do caminho (recusa). Relê para distinguir — nunca finge.
+  const atual = await getRow(env, token);
+  if (atual && atual.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (atual && atual[COL_PAGAMENTO]) return json({ ok: true, pagamentoInformado: true, jaInformado: true });
+  return json({ ok: false, erro: 'nao_aprovado' }, 409);
 }
 
 // ─── GET /o/<token> — página do cliente ──────────────────────
@@ -465,6 +578,19 @@ function shell(inner, accentRaw = ACCENT) {
   .err-title{font-size:18px;font-weight:800;margin-top:10px}
   .err-sub{font-size:13.5px;color:#6B7686;margin-top:6px;line-height:1.5}
   .robot{width:26px;height:26px}
+  /* Bloco do Pix (só em orçamento aprovado) — dinheiro direto na conta do prestador. */
+  .pix-box{margin-top:16px;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:14px;padding:16px;text-align:center}
+  .pix-t{font-size:11px;font-weight:800;letter-spacing:.6px;color:#5A6575;text-transform:uppercase}
+  .pix-valor{font-family:'Spectral',Georgia,serif;font-size:26px;font-weight:700;color:#1A2230;margin-top:4px}
+  .pix-sub{font-size:12.5px;color:#5A6575;margin-top:4px;line-height:1.4}
+  .pix-qr{margin:14px auto 4px;width:200px;height:200px}
+  .pix-qr svg{width:100%;height:100%}
+  .pix-l{font-size:11px;font-weight:800;color:#5A6575;margin-top:12px;text-align:left}
+  .pix-code{width:100%;margin-top:6px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#1A2230;background:#fff;border:1.5px solid #E0E5EC;border-radius:11px;padding:10px;resize:none;word-break:break-all}
+  .btn-copiar{width:100%;margin-top:10px;background:#1A2230;color:#fff}
+  .btn-paguei{width:100%;margin-top:10px;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
+  .pix-nota{font-size:11.5px;color:#5A6575;margin-top:6px;line-height:1.4}
+  .pix-avisado{margin-top:12px;font-size:12.5px;color:#1A7F4B;background:#E9F9F1;border:1px solid #BFE6CF;border-radius:11px;padding:10px;line-height:1.4}
   .olli-cta{text-align:center;margin:22px auto 10px;font-size:12px}
   .olli-cta a{color:#8A95A6;text-decoration:none;font-weight:600}
   .olli-cta a b{color:#0B6FCE}
@@ -483,6 +609,43 @@ function olliRobot() {
 
 function pageErro(titulo, sub) {
   return shell(`<div class="err"><div class="err-emoji">🔍</div><div class="err-title">${esc(titulo)}</div><div class="err-sub">${esc(sub)}</div><div class="foot" style="margin-top:22px">enviado com OLLI</div></div>`);
+}
+
+/**
+ * Bloco "Pagar com Pix" do orçamento APROVADO. Três casos, todos honestos:
+ *  - com Pix válido: QR + copia e cola (valor embutido) + "Já paguei";
+ *  - cliente já avisou: mostra a data e diz que o prestador vai conferir (não diz "pago");
+ *  - sem Pix do prestador: não inventa meio de pagamento — "combine com o prestador".
+ * "Já paguei" some quando o banco não tem a coluna (`_semPagamentoInformado`).
+ */
+function blocoPagamento(row, d, total, numero, nomePrestador) {
+  const pix = pixDaPagina(d, total, numero);
+  const informadoEm = row && typeof row[COL_PAGAMENTO] === 'string' ? formatData(row[COL_PAGAMENTO]) : '';
+  const podeInformar = pix && !row._semPagamentoInformado && !informadoEm;
+
+  if (!pix) {
+    return `<div class="pix-box"><div class="pix-t">Pagamento</div><div class="pix-sub">Combine a forma de pagamento diretamente com ${esc(nomePrestador)}.</div></div>`;
+  }
+
+  const avisado = informadoEm
+    ? `<div class="pix-avisado">Você avisou que pagou em ${esc(informadoEm)}. ${esc(nomePrestador)} vai conferir e confirmar o recebimento.</div>`
+    : '';
+  const botaoInformar = podeInformar
+    ? `<button id="btnPaguei" class="btn btn-paguei" onclick="informarPagamento()">Já paguei</button>
+       <div class="pix-nota">Isso só avisa ${esc(nomePrestador)}. O pagamento é confirmado por ele quando cair na conta.</div>`
+    : '';
+
+  return `<div class="pix-box">
+      <div class="pix-t">Pagar com Pix</div>
+      <div class="pix-valor">${formatBRL(pix.valor)}</div>
+      <div class="pix-sub">O dinheiro vai direto para a conta de ${esc(nomePrestador)}.</div>
+      ${pix.svg ? `<div class="pix-qr">${pix.svg}</div>` : ''}
+      <div class="pix-l">Pix copia e cola</div>
+      <textarea id="pixCodigo" class="pix-code" readonly rows="3">${esc(pix.codigo)}</textarea>
+      <button id="btnCopiar" class="btn btn-copiar" onclick="copiarPix()">Copiar código Pix</button>
+      ${avisado}
+      ${botaoInformar}
+    </div>`;
 }
 
 function pageOrcamento(row, preSelecao = '') {
@@ -541,6 +704,7 @@ function pageOrcamento(row, preSelecao = '') {
         <div class="status-sub">${ok ? `${esc(nomePrestador)} já foi avisado. Em breve entram em contato.` : 'Sua resposta foi registrada.'}</div>
         ${motivoBloco}
       </div>
+      ${ok ? blocoPagamento(row, d, total, numero, nomePrestador) : ''}
       ${zapHref ? `<div class="actions"><a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener">💬 Falar no WhatsApp</a></div>` : ''}`;
   } else {
     // Passo-a-passo claro do que acontece quando o cliente aprova — só faz sentido
@@ -655,6 +819,41 @@ function pageOrcamento(row, preSelecao = '') {
       enviando = false;
       alvos.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
       alert('Não consegui registrar agora. Verifique a internet e tente de novo.');
+    }
+
+    // Copia o Pix copia e cola. Clipboard API quando existe; senão seleciona o texto
+    // (o cliente copia com o toque longo). Nunca envia nada.
+    function copiarPix(){
+      var t = document.getElementById('pixCodigo');
+      var b = document.getElementById('btnCopiar');
+      if (!t) return;
+      var ok = function(){ if (b){ b.textContent = 'Código copiado ✓'; } };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t.value).then(ok, function(){ t.focus(); t.select(); });
+          return;
+        }
+      } catch(e){}
+      t.focus(); t.select();
+      try { if (document.execCommand('copy')) ok(); } catch(e){}
+    }
+    // "Já paguei": só AVISA o prestador (ele confere no banco e confirma).
+    var avisando = false;
+    async function informarPagamento(){
+      if (avisando) return;
+      avisando = true;
+      var b = document.getElementById('btnPaguei');
+      if (b){ b.style.opacity='.5'; b.style.pointerEvents='none'; }
+      try {
+        var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ acao: 'informar_pagamento' }) });
+        var j = await r.json();
+        if (j && j.ok) { location.reload(); return; }
+        alert(j && j.erro === 'muitas_requisicoes' ? 'Muitas tentativas. Aguarde um instante e tente de novo.' : 'Não consegui avisar agora. Tente de novo em instantes.');
+      } catch(e){
+        alert('Não consegui avisar agora. Verifique a internet e tente de novo.');
+      }
+      avisando = false;
+      if (b){ b.style.opacity='1'; b.style.pointerEvents='auto'; }
     }
 
     // Pré-seleção vinda do botão/link do PDF (?acao=). NÃO envia nada: rola até as ações e,

@@ -75,7 +75,7 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
 	ia_ilimitada: { titulo: "IA incluída com uso justo diário" },
 	relatorios: { titulo: "Relatórios de faturamento e conversão" },
 	metas: { titulo: "Metas de vendas e acompanhamento" },
-	radar_clientes: { titulo: "Radar de clientes sumidos (lista completa)" },
+	radar_clientes: { titulo: "Clientes para lembrar da manutenção (lista completa)" },
 	relatorio_dia: { titulo: "Relatório do dia falado" },
 	modelos_pdf_premium: { titulo: "Todos os modelos premium de documento" },
 	remove_olli_brand: { titulo: "Remove a marca OLLI do PDF" },

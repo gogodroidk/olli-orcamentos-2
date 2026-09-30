@@ -31,6 +31,7 @@ import { GuardaPapel } from '../components/GuardaPapel';
 import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
 import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
 import { isValidCNPJ } from '../utils/masks';
+import { normalizarChavePix } from '../utils/pixBrCode';
 
 /**
  * Empresa EM BRANCO para instalações novas (não há seed: getEmpresa() retorna
@@ -571,10 +572,15 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           />
           <OlliInput label="E-mail" value={empresa.email} onChangeText={v => set('email', v)} keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
           <OlliInput
-            label="Chave Pix (somente recibos)"
+            label="Chave Pix (para receber dos clientes)"
             value={empresa.chavePix}
             onChangeText={v => set('chavePix', v)}
-            helper="Não aparece em orçamentos. O cliente combina e paga diretamente à sua empresa."
+            // Aviso (não bloqueia o salvar): chave que não reconhecemos NÃO vira Pix nas
+            // cobranças — melhor o prestador saber agora do que o cliente não conseguir pagar.
+            error={empresa.chavePix.trim() && !normalizarChavePix(empresa.chavePix)
+              ? 'Não reconhecemos essa chave. Use CPF, CNPJ, e-mail, celular com DDD ou a chave aleatória — até corrigir, as cobranças vão sem Pix.'
+              : undefined}
+            helper="Vai no recibo, na cobrança pelo WhatsApp e no link do orçamento depois que o cliente aprova. O dinheiro cai direto na sua conta — a OLLI não passa por ele."
             leftIcon="key-variant"
           />
           <OlliInput label="Normas técnicas" value={empresa.normas} onChangeText={v => set('normas', v)} multiline containerStyle={{ marginBottom: 0 }} />

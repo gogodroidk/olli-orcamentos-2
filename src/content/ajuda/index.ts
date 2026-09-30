@@ -437,7 +437,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         conteudo: [
           // Preços e cota vêm da fonte (precosPlanos/entitlements), não digitados.
           `Grátis (${reais(0)}) — tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
-          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — IA incluída com uso justo diário, relatórios, metas, radar de clientes, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.`,
+          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — IA incluída com uso justo diário, relatórios, metas, clientes para lembrar da manutenção, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.`,
           // Mapa ao vivo e painel de gestão são concedidos, mas ainda não entregues
           // (ver `emBreve` em web/src/data/recursos.ts) — aqui também dizem "em breve".
           `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais equipe com papéis e permissões. Mapa da equipe ao vivo e painel de gestão da empresa: em breve.`,

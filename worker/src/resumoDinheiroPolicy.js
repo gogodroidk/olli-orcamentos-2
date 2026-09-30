@@ -11,18 +11,26 @@
  *   - os parâmetros mínimos do e-mail (`template_dados`, só números + a data) e a
  *     chave de idempotência por conta + dia.
  *
- * Nada acionável (sem saldo a receber, sem proposta parada, sem cliente sumido) =
- * nenhum e-mail. Lista truncada no banco = "não sei" = nenhum e-mail (um número
+ * "Clientes para lembrar" (pós-venda) é a regra de `src/utils/posVenda.ts` — a MESMA
+ * do cartão do painel e da Home do app: intervalo do OFÍCIO da empresa
+ * (`empresa.dados.verticais`), só serviço concluído, adiamento e lembrete recente
+ * respeitados. Por isso o banco devolve também `verticais` e `lembrados`
+ * (migration 20260930120500); resposta SEM esses campos = RPC antiga = "não sei" =
+ * nenhum e-mail (`dados_sem_posvenda`), nunca uma contagem com a regra errada.
+ *
+ * Nada acionável (sem saldo a receber, sem proposta parada, sem cliente para
+ * lembrar) = nenhum e-mail. Lista truncada no banco = "não sei" = nenhum e-mail (um número
  * calculado em cima de meia lista seria mentira sobre o caixa do dono).
  */
 
 import { resumirDinheiroParado } from '../../src/services/radarDinheiro.ts';
 
-export const RESUMO_DINHEIRO_POLICY_VERSION = '2026-09-30.v1';
+export const RESUMO_DINHEIRO_POLICY_VERSION = '2026-09-30.v2';
 
 export const RESUMO_DINHEIRO = Object.freeze({
   template: 'resumo_dinheiro',
-  templateVersion: 'resumo_dinheiro.v1',
+  // v2 (30/09/2026): `clientesSumidos` (150 dias fixos) virou `clientesParaLembrar`.
+  templateVersion: 'resumo_dinheiro.v2',
   purpose: 'money_digest',
 });
 
@@ -88,10 +96,32 @@ function blob(d, campos) {
 }
 
 const CAMPOS_ORC = [['valorTotal', 'numero'], ['subtotal', 'numero'], ['atualizadoEm'], ['criadoEm'], ['clienteId']];
-const CAMPOS_REC = [['orcamentoId'], ['valorRecebido', 'numero'], ['dataRecebimento'], ['clienteId'], ['criadoEm']];
+const CAMPOS_REC = [['orcamentoId'], ['valorRecebido', 'numero'], ['dataRecebimento'], ['clienteId'], ['criadoEm'], ['estornadoEm']];
 
 function lista(v) {
   return Array.isArray(v) ? v : null;
+}
+
+/** Mapa id → ISO só com pares string→string (mesmo filtro do painel: `useRadarSnooze`/`lerMapaEnvios`). */
+function mapaDeDatas(v) {
+  const saida = {};
+  if (!objeto(v)) return saida;
+  for (const [id, iso] of Object.entries(v)) {
+    if (typeof iso === 'string' && iso) saida[id] = iso;
+  }
+  return saida;
+}
+
+/** Ofícios da empresa: lista de ids (strings) ou `null` (= sem ofício → intervalo genérico). */
+function verticaisDoBanco(v) {
+  if (!Array.isArray(v)) return null;
+  const ids = v.filter((x) => typeof x === 'string' && x);
+  return ids.length > 0 ? ids : null;
+}
+
+/** A RPC já devolve os campos do pós-venda? (Sem a migration 20260930120500, não.) */
+export function temDadosPosVenda(resposta) {
+  return objeto(resposta) && Object.hasOwn(resposta, 'verticais') && Object.hasOwn(resposta, 'lembrados');
 }
 
 /**
@@ -109,13 +139,8 @@ export function entradaDoBanco(resposta) {
   if (!orcamentos || !recibos || !clientes || !agendamentos || !osConcluidas) return null;
   if (typeof resposta.truncado !== 'boolean') return null;
 
-  const adiados = {};
-  if (objeto(resposta.adiados)) {
-    // Mesmo filtro do painel (`useRadarSnooze`): só pares string→string.
-    for (const [id, ate] of Object.entries(resposta.adiados)) {
-      if (typeof ate === 'string' && ate) adiados[id] = ate;
-    }
-  }
+  // Mesmo filtro do painel (`useRadarSnooze`): só pares string→string.
+  const adiados = mapaDeDatas(resposta.adiados);
 
   return {
     truncado: resposta.truncado,
@@ -145,6 +170,8 @@ export function entradaDoBanco(resposta) {
         fim: textoOuNull(a.fim),
       })),
       adiados,
+      lembrados: mapaDeDatas(resposta.lembrados),
+      verticais: verticaisDoBanco(resposta.verticais),
       orcamentosFinalizados: new Set(osConcluidas.filter((id) => typeof id === 'string').map((id) => id.trim())),
     },
   };
@@ -164,6 +191,7 @@ export function decidirResumo(userId, resposta, { agora } = {}) {
   if (typeof userId !== 'string' || !UUID_RE.test(userId)) return decisao('conta_invalida');
   const convertido = entradaDoBanco(resposta);
   if (!convertido) return decisao('dados_invalidos');
+  if (!temDadosPosVenda(resposta)) return decisao('dados_sem_posvenda');
   if (convertido.truncado) return decisao('dados_truncados');
 
   const resumo = resumirDinheiroParado(convertido.entrada, agora);
@@ -179,7 +207,7 @@ export function decidirResumo(userId, resposta, { agora } = {}) {
     diasMaisAntigo: a.itens > 0 && Number.isInteger(a.diasMaisAntigo) ? a.diasMaisAntigo : null,
     semValor: a.semValor,
     propostasParadas: resumo.propostasParadas,
-    clientesSumidos: resumo.clientesSumidos,
+    clientesParaLembrar: resumo.clientesParaLembrar,
   };
   return decisao('acionavel', Object.freeze({
     userId,

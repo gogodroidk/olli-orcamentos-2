@@ -22,7 +22,13 @@ assert.doesNotMatch(step3, /habilitarPix|chavePix|valorSinal/);
 assert.match(step3, /Condições comerciais/);
 assert.doesNotMatch(pdf, /gerarPayloadPix|QR Code Pix|Pagar com Pix|Chave Pix/);
 assert.match(pdf, /Condições comerciais/);
-assert.doesNotMatch(link, /Pagar com Pix|Chave Pix|QR Code Pix/);
+// A PROPOSTA no link continua sem Pix. Desde 30/09 o Pix do prestador aparece só
+// DEPOIS de aprovado (é o pagamento do serviço dele, direto na conta dele): o bloco é
+// montado exclusivamente no ramo `ok` (aprovado) da página — worker/scripts/teste-link-pix.js
+// prova, renderizando, que antes de aprovar e na recusa a página não tem Pix nenhum.
+assert.doesNotMatch(link, /Chave Pix|QR Code Pix/);
+assert.equal((link.match(/blocoPagamento\(/g) ?? []).length, 2, 'uma definição e UMA chamada');
+assert.match(link, /\$\{ok \? blocoPagamento\(row, d, total, numero, nomePrestador\) : ''\}/);
 assert.match(link, /Condições comerciais/);
 
 // Um documento já enviado vira revisão ligada ao original, em vez de ser sobrescrito.

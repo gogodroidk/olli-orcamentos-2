@@ -33,7 +33,7 @@ export const LINHAS_RECURSOS: readonly LinhaRecurso[] = [
 	{ recurso: "ia_ilimitada", rotulo: "IA ampliada (voz, chat e diagnóstico, sujeita a uso justo)" },
 	{ recurso: "relatorios", rotulo: "Relatórios de faturamento e conversão" },
 	{ recurso: "metas", rotulo: "Metas de vendas e acompanhamento" },
-	{ recurso: "radar_clientes", rotulo: "Radar de clientes que sumiram" },
+	{ recurso: "radar_clientes", rotulo: "Clientes para lembrar da manutenção" },
 	{ recurso: "relatorio_dia", rotulo: "Relatório do dia, falado" },
 	{ recurso: "modelos_pdf_premium", rotulo: "Modelos premium de PDF" },
 	{ recurso: "remove_olli_brand", rotulo: "Documento sem a marca OLLI" },

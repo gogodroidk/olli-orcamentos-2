@@ -46,7 +46,7 @@ const COPY_RECURSO: Record<Recurso, string> = {
   ia_ilimitada: 'IA incluída: voz, chat e diagnóstico com uso justo diário.',
   relatorios: 'Veja quanto você faturou e sua taxa de aprovação.',
   metas: 'Defina metas de venda e acompanhe seu progresso.',
-  radar_clientes: 'Descubra os clientes sumidos e traga eles de volta.',
+  radar_clientes: 'Veja quem está na hora da manutenção e lembre com 1 toque.',
   relatorio_dia: 'Ouça o resumo do seu dia em um toque.',
   modelos_pdf_premium: 'Modelos de orçamento premium que vendem por você.',
   equipe: 'Vários técnicos, papéis e permissões.',

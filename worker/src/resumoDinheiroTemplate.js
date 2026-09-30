@@ -7,14 +7,16 @@
  * (e o botão de cobrar pelo WhatsApp com a mensagem pronta) está no painel, para
  * onde o CTA leva.
  *
- * Copy DERIVADA da fonte, nunca de memória: os limiares ("3 dias", "150 dias") vêm
- * de `src/services/radarDinheiro.ts`, o valor em reais é formatado por `reais()` de
+ * Copy DERIVADA da fonte, nunca de memória: o limiar de proposta parada ("3 dias")
+ * vem de `src/services/radarDinheiro.ts`; "clientes para lembrar" é o NOME do cartão
+ * do painel e da Home do app (mesma regra, `src/utils/posVenda.ts`: o intervalo do
+ * ofício passou desde o último serviço); o valor em reais é formatado por `reais()` de
  * `src/services/precosPlanos.ts`. Sem urgência inventada, sem desconto, sem prazo.
  * O link do rodapé desliga SÓ o resumo (escopo `resumo` do descadastro).
  */
 
 import { reais } from '../../src/services/precosPlanos.ts';
-import { LIMIAR_CLIENTE_SUMIDO_DIAS, LIMIAR_PROPOSTA_PARADA_DIAS } from '../../src/services/radarDinheiro.ts';
+import { LIMIAR_PROPOSTA_PARADA_DIAS } from '../../src/services/radarDinheiro.ts';
 import {
   atributoHtml,
   chavesExatas,
@@ -29,7 +31,7 @@ import {
 } from './emailLembretesTemplate.js';
 import { RESUMO_DINHEIRO } from './resumoDinheiroPolicy.js';
 
-export const RESUMO_DINHEIRO_RENDERER_VERSION = '2026-09-30.v1';
+export const RESUMO_DINHEIRO_RENDERER_VERSION = '2026-09-30.v2';
 
 const INPUT_KEYS = Object.freeze([
   'eventId',
@@ -49,7 +51,7 @@ const DADOS_KEYS = Object.freeze([
   'diasMaisAntigo',
   'semValor',
   'propostasParadas',
-  'clientesSumidos',
+  'clientesParaLembrar',
 ]);
 /** Teto de sanidade: acima disso o dado está errado, não o prestador rico. */
 const MAX_CENTAVOS = 100_000_000_000;
@@ -67,7 +69,7 @@ function validarDados(d) {
   chavesExatas(d, DADOS_KEYS, 'dados_invalidos');
   exigir(typeof d.data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.data), 'dados_invalidos');
   exigir(inteiroEntre(d.aReceberCentavos, 0, MAX_CENTAVOS), 'dados_invalidos');
-  for (const k of ['aReceberItens', 'semValor', 'propostasParadas', 'clientesSumidos']) {
+  for (const k of ['aReceberItens', 'semValor', 'propostasParadas', 'clientesParaLembrar']) {
     exigir(inteiroEntre(d[k], 0, MAX_CONTAGEM), 'dados_invalidos');
   }
   exigir(d.diasMaisAntigo === null || inteiroEntre(d.diasMaisAntigo, 0, 36_500), 'dados_invalidos');
@@ -75,7 +77,7 @@ function validarDados(d) {
   exigir((d.aReceberCentavos > 0) === (d.aReceberItens > 0), 'dados_invalidos');
   exigir(d.aReceberItens > 0 || d.diasMaisAntigo === null, 'dados_invalidos');
   // Nunca e-mail sem nada acionável (o banco e a policy já barram; aqui é a 3ª trava).
-  exigir(d.aReceberItens > 0 || d.propostasParadas > 0 || d.clientesSumidos > 0, 'nada_acionavel');
+  exigir(d.aReceberItens > 0 || d.propostasParadas > 0 || d.clientesParaLembrar > 0, 'nada_acionavel');
 }
 
 function conteudo(d, appUrl) {
@@ -92,8 +94,8 @@ function conteudo(d, appUrl) {
   if (d.propostasParadas > 0) {
     itens.push(`${plural(d.propostasParadas, 'proposta enviada', 'propostas enviadas')} sem resposta há ${LIMIAR_PROPOSTA_PARADA_DIAS} dias ou mais.`);
   }
-  if (d.clientesSumidos > 0) {
-    itens.push(`${plural(d.clientesSumidos, 'cliente', 'clientes')} sem atendimento há ${LIMIAR_CLIENTE_SUMIDO_DIAS} dias ou mais.`);
+  if (d.clientesParaLembrar > 0) {
+    itens.push(`${plural(d.clientesParaLembrar, 'cliente para lembrar', 'clientes para lembrar')}: já passou o tempo de repetir o serviço desde o último atendimento.`);
   }
 
   let subject;
@@ -103,9 +105,9 @@ function conteudo(d, appUrl) {
       ? '1 proposta esperando resposta do cliente'
       : `${plural(d.propostasParadas, 'proposta', 'propostas')} esperando resposta dos clientes`;
   } else {
-    subject = d.clientesSumidos === 1
-      ? '1 cliente sem atendimento há um bom tempo'
-      : `${plural(d.clientesSumidos, 'cliente', 'clientes')} sem atendimento há um bom tempo`;
+    subject = d.clientesParaLembrar === 1
+      ? '1 cliente para lembrar de repetir o serviço'
+      : `${plural(d.clientesParaLembrar, 'cliente', 'clientes')} para lembrar de repetir o serviço`;
   }
 
   const depois = [];
@@ -124,7 +126,7 @@ function conteudo(d, appUrl) {
     cta: { rotulo: 'Abrir o painel', href: urlCom(appUrl, '/') },
     depois: [
       ...depois,
-      'No painel, você cobra ou chama o cliente pelo WhatsApp com a mensagem já pronta.',
+      'No painel, você cobra ou lembra o cliente pelo WhatsApp com a mensagem já pronta.',
     ],
     motivo: 'Você recebe este resumo porque usa a OLLI Orçamentos, e ele só chega nos dias em que há algo esperando por você. Também dá para desligar no app ou no painel.',
     rotuloDescadastro: 'Parar de receber o resumo',

@@ -28,7 +28,7 @@ function dadosCom(valor) {
     orcamentos: valor > 0
       ? [{ id: 'o1', status: 'aprovado', valor_total: valor, atualizado_em: new Date(AGORA - 5 * D).toISOString(), dados: { clienteNome: 'Maria Silva' } }]
       : [],
-    recibos: [], clientes: [], agendamentos: [], osConcluidas: [], adiados: {}, truncado: false,
+    recibos: [], clientes: [], agendamentos: [], osConcluidas: [], adiados: {}, lembrados: {}, verticais: null, truncado: false,
   };
 }
 
@@ -115,7 +115,7 @@ try {
       p_idempotency_key: `resumo:dinheiro:${U(1)}:2026-09-30`,
       p_template_dados: {
         data: '2026-09-30', aReceberCentavos: 100000, aReceberItens: 1, diasMaisAntigo: 5,
-        semValor: 0, propostasParadas: 0, clientesSumidos: 0,
+        semValor: 0, propostasParadas: 0, clientesParaLembrar: 0,
       },
       p_max_semana: 3, p_intervalo_min_horas: 44, p_teto_diario: 100, p_now: AGORA.toISOString(),
     });

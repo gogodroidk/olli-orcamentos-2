@@ -55,7 +55,7 @@ export interface LinhaResumoEmail {
   podeAlternar: boolean;
 }
 
-const QUANDO = 'Entre 7h e 8h, só nos dias em que há dinheiro a receber, proposta parada ou cliente sumido. Nunca aos domingos.';
+const QUANDO = 'Entre 7h e 8h, só nos dias em que há dinheiro a receber, proposta parada ou cliente para lembrar. Nunca aos domingos.';
 
 /** O que a linha diz para cada estado (com valor confirmado). */
 export function linhaResumoEmail(estado: EstadoResumoEmail): LinhaResumoEmail {

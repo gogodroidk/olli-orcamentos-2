@@ -32,6 +32,10 @@ import {
   RADAR_SNOOZE_KEY,
   RADAR_SNOOZE_STAMP_KEY,
   EMPRESA_STAMP_KEY,
+  COBRANCAS_ENVIADAS_KEY,
+  COBRANCAS_ENVIADAS_STAMP_KEY,
+  LEMBRETES_ENVIADOS_KEY,
+  LEMBRETES_ENVIADOS_STAMP_KEY,
 } from './storageKeys';
 import type {
   PmocPlano,
@@ -2296,6 +2300,10 @@ interface ExtraAsyncSpec {
 const EXTRAS_ASYNC: ExtraAsyncSpec[] = [
   { chaveNuvem: 'checklist.hoje', valorKey: CHECKLIST_KEY, stampKey: CHECKLIST_STAMP_KEY },
   { chaveNuvem: 'radar.snooze', valorKey: RADAR_SNOOZE_KEY, stampKey: RADAR_SNOOZE_STAMP_KEY },
+  // Cobrança/lembrete enviados (services/registroEnvios): o painel lê e escreve o MESMO
+  // formato (id → ISO), para "cobrado hoje"/"lembrado" valer no celular e no computador.
+  { chaveNuvem: 'cobranca.enviadas', valorKey: COBRANCAS_ENVIADAS_KEY, stampKey: COBRANCAS_ENVIADAS_STAMP_KEY },
+  { chaveNuvem: 'posvenda.lembrados', valorKey: LEMBRETES_ENVIADOS_KEY, stampKey: LEMBRETES_ENVIADOS_STAMP_KEY },
 ];
 
 /** Lê o carimbo local (ISO) de um extra AsyncStorage, ou null. NUNCA lança. */

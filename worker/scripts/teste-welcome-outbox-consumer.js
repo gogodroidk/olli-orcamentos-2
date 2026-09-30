@@ -251,13 +251,13 @@ function claimResumo(dados = {}) {
     event_id: key,
     idempotency_key: key,
     template: 'resumo_dinheiro',
-    template_version: 'resumo_dinheiro.v1',
+    template_version: 'resumo_dinheiro.v2',
     purpose: 'money_digest',
     dispatch_scope: 'production',
     user_id: USER,
     template_dados: {
       data: '2026-09-30', aReceberCentavos: 85000, aReceberItens: 1, diasMaisAntigo: 12,
-      semValor: 0, propostasParadas: 0, clientesSumidos: 0, ...dados,
+      semValor: 0, propostasParadas: 0, clientesParaLembrar: 0, ...dados,
     },
   };
 }

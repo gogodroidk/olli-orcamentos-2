@@ -1,9 +1,10 @@
 /**
- * Verificação da migration 20260930120000 (resumo diário do dinheiro parado) num
- * Postgres REAL (PGlite), com o relógio controlado e paridade com o JS do painel.
+ * Verificação das migrations 20260930120200 (resumo diário do dinheiro parado) e
+ * 20260930120500 (o resumo passa a contar os "clientes para lembrar" do pós-venda,
+ * a MESMA lista da tela) num Postgres REAL (PGlite), com o relógio controlado e
+ * paridade com o JS do painel.
  *
- * NÃO está na cadeia `npm test` (PGlite não é dependência do projeto). Para rodar:
- *     npm i --no-save @electric-sql/pglite@0.3
+ * NÃO está na cadeia `npm test`. Para rodar (PGlite já é devDependency):
  *     node scripts/verificar-sql-resumo-dinheiro.mjs
  *
  * O que faz: cria stubs mínimos das tabelas que a migration lê (auth.users,
@@ -55,6 +56,7 @@ create table public.clientes (id text, user_id uuid, nome text, telefone text, e
 create table public.agendamentos (id text, user_id uuid, cliente_id text, status text, inicio timestamptz, fim timestamptz, excluido_em timestamptz);
 create table public.ordens_servico (id text, user_id uuid, orcamento_id text, status text, excluido_em timestamptz);
 create table public.extras_sync (user_id uuid, chave text, dados jsonb);
+create table public.empresa (user_id uuid primary key, dados jsonb not null, atualizado_em timestamptz not null default now());
 create table public.email_welcome_events (event_id text primary key, recipient text, pii_purged_at timestamptz, created_at timestamptz default now());
 create table public.email_outbox (
   id bigint generated always as identity primary key,
@@ -79,6 +81,9 @@ await db.exec(`alter table public.email_outbox alter column created_at set defau
 const nova = fs.readFileSync(path.join(WT, 'supabase', 'migrations', '20260930120200_resumo_dinheiro_email.sql'), 'utf8')
   .replaceAll('pg_catalog.now()', 'teste.agora()');
 await db.exec(nova);
+const posVenda = fs.readFileSync(path.join(WT, 'supabase', 'migrations', '20260930120500_resumo_clientes_para_lembrar.sql'), 'utf8')
+  .replaceAll('pg_catalog.now()', 'teste.agora()');
+await db.exec(posVenda);
 console.log('migrations aplicadas');
 
 const U = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -110,11 +115,15 @@ await q(`insert into public.orcamentos (id, user_id, status, valor_total, criado
 await q(`insert into public.recibos (id, user_id, orcamento_id, cliente_id, valor_recebido, dados, criado_em) values
   ('r1', $1, 'a', 'c1', 300, null, $2),
   ('r2', $1, null, 'c6', null, '{"valorRecebido": 400, "orcamentoId": "h", "dataRecebimento": "01/09/2026"}', $3),
-  ('r3', $1, null, 'c7', 50, '{"dataRecebimento": "01/03/2026"}', $3)`, [U(1), diasAtras(AGORA, 1), diasAtras(AGORA, 400)]);
+  ('r3', $1, null, 'c7', 50, '{"dataRecebimento": "01/03/2026"}', $3),
+  ('r4', $1, null, 'c4', 80, '{"estornadoEm": "2026-01-10T00:00:00Z"}', $3)`, [U(1), diasAtras(AGORA, 1), diasAtras(AGORA, 400)]);
 for (const c of ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8']) await q('insert into public.clientes values ($1, $2, $3, $4, null)', [c, U(1), `Nome ${c}`, '11999990000']);
 await q(`insert into public.agendamentos values ('ag1', $1, 'c8', 'concluido', $2, $2, null), ('ag2', $1, 'c4', 'agendado', $3, $3, null)`, [U(1), diasAtras(AGORA, 190), diasAtras(AGORA, 400)]);
 await q(`insert into public.ordens_servico values ('os1', $1, 'g', 'concluida', null)`, [U(1)]);
 await q(`insert into public.extras_sync values ($1, 'radar.snooze', $2)`, [U(1), JSON.stringify({ c8: '2026-12-01T00:00:00Z', x: 1 })]);
+// Pós-venda: c7 foi lembrado há 5 dias (sai da lista); ofício = ar-condicionado (6 meses).
+await q(`insert into public.extras_sync values ($1, 'posvenda.lembrados', $2)`, [U(1), JSON.stringify({ c7: diasAtras(AGORA, 5), y: 2 })]);
+await q(`insert into public.empresa (user_id, dados) values ($1, $2)`, [U(1), JSON.stringify({ nome: 'Clima Bom', chavePix: 'segredo@pix', verticais: ['hvac'] })]);
 
 // Painel: as linhas COMPLETAS que ele lê (lixeira fora), direto das tabelas.
 const linhas = async (t) => (await q(`select * from public.${t} where user_id = $1 and excluido_em is null`, [U(1)])).rows;
@@ -126,6 +135,8 @@ const painelAg = (await linhas('agendamentos')).map((a) => ({ ...a, inicio: iso(
 const painel = resumirDinheiroParado({
   orcamentos: painelOrc, recibos: painelRec, clientes: await linhas('clientes'), agendamentos: painelAg,
   adiados: { c8: '2026-12-01T00:00:00Z' },
+  lembrados: { c7: diasAtras(AGORA, 5) },
+  verticais: ['hvac'],
   orcamentosFinalizados: new Set((await linhas('ordens_servico')).filter((s) => s.status === 'concluida').map((s) => s.orcamento_id)),
 }, new Date(AGORA));
 
@@ -137,8 +148,12 @@ assert.equal(servidor.enfileirar, true);
 assert.deepEqual({ ...servidor.pedido.dados }, {
   data: '2026-09-30', aReceberCentavos: painel.aReceber.centavos, aReceberItens: painel.aReceber.itens,
   diasMaisAntigo: painel.aReceber.diasMaisAntigo, semValor: painel.aReceber.semValor,
-  propostasParadas: painel.propostasParadas, clientesSumidos: painel.clientesSumidos,
+  propostasParadas: painel.propostasParadas, clientesParaLembrar: painel.clientesParaLembrar,
 });
+// c5 (aprovado há 200 dias, ofício de 6 meses) é o único: c7 foi lembrado há 5 dias,
+// c8 está adiado, c6 pagou há 29 dias, c4 só tem recibo estornado, c3 é proposta enviada.
+assert.equal(painel.clientesParaLembrar, 1);
+assert.equal(JSON.stringify(dados).includes('segredo@pix') || JSON.stringify(dados).includes('Clima Bom'), false);
 assert.equal(JSON.stringify(dados).includes('Maria') || JSON.stringify(dados).includes('11999990000'), false);
 assert.equal(dados.truncado, false);
 const trunc = (await one('select public.dados_resumo_dinheiro($1, 2) as d', [U(1)])).d;
@@ -207,7 +222,7 @@ const enq = async (uid, dados, now = AGORA, chave = `resumo:dinheiro:${uid}:${da
 assert.deepEqual(await enq(U(1), d1), { enfileirado: true, motivo: 'enfileirado' });
 assert.deepEqual(await enq(U(1), d1), { enfileirado: false, motivo: 'duplicado' });
 const linha = await one(`select template, template_version, purpose, dispatch_scope, recipient, status from public.email_outbox where user_id = $1`, [U(1)]);
-assert.deepEqual(linha, { template: 'resumo_dinheiro', template_version: 'resumo_dinheiro.v1', purpose: 'money_digest', dispatch_scope: 'production', recipient: 'u1@exemplo.com', status: 'pending' });
+assert.deepEqual(linha, { template: 'resumo_dinheiro', template_version: 'resumo_dinheiro.v2', purpose: 'money_digest', dispatch_scope: 'production', recipient: 'u1@exemplo.com', status: 'pending' });
 assert.deepEqual(await cand(), [U(7)]); // já recebeu hoje
 console.log('enqueue + idempotência + escopo production pelo canal: OK');
 
@@ -222,10 +237,15 @@ for (const [dados, chave] of [[d1, `resumo:dinheiro:${U(1)}:2026-09-30`], [{ ...
   try { await enq(U(7), dados, AGORA, chave); } catch (e) { erro = e.message; }
   assert.match(erro, /resumo_chave_divergente/);
 }
-const vazio = { data: '2026-09-30', aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, semValor: 3, propostasParadas: 0, clientesSumidos: 0 };
+const vazio = { data: '2026-09-30', aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null, semValor: 3, propostasParadas: 0, clientesParaLembrar: 0 };
 assert.equal((await enq(U(7), vazio)).motivo, 'nada_acionavel');
 erro = null;
 try { await enq(U(7), { ...d1, aReceberCentavos: 'muito' }); } catch (e) { erro = e.message; }
+assert.match(erro, /resumo_dados_invalidos/);
+// Worker antigo (template_dados v1, `clientesSumidos`) é recusado — nunca vira v2 torta.
+erro = null;
+const { clientesParaLembrar: _c, ...semNovo } = d1;
+try { await enq(U(7), { ...semNovo, clientesSumidos: 1 }); } catch (e) { erro = e.message; }
 assert.match(erro, /resumo_dados_invalidos/);
 assert.equal((await enq(U(6), { ...d1 })).motivo, 'desligado');
 assert.equal((await enq(U(3), { ...d1 })).motivo, 'nao_e_dono');
@@ -257,7 +277,7 @@ console.log('desligar pelo link cancela pendentes: OK');
 erro = null;
 try {
   await q(`insert into public.email_outbox (event_id, user_id, idempotency_key, template, template_version, purpose, recipient, next_attempt_at, template_dados)
-    values ('x', $1, 'x', 'resumo_dinheiro', 'resumo_dinheiro.v2', 'money_digest', 'a@b.c', now(), '{}')`, [U(7)]);
+    values ('x', $1, 'x', 'resumo_dinheiro', 'resumo_dinheiro.v3', 'money_digest', 'a@b.c', now(), '{}')`, [U(7)]);
 } catch (e) { erro = e.message; }
 assert.match(erro, /email_outbox_template_catalogo_check/);
-console.log('\nTUDO OK — migration 20260930120000 verificada no Postgres (PGlite)');
+console.log('\nTUDO OK — migrations 20260930120200 + 20260930120500 verificadas no Postgres (PGlite)');
