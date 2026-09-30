@@ -43,6 +43,7 @@ jobs:
           corepack enable
           pnpm i --frozen-lockfile
           pnpm run build
+          pnpm run test:importacao
       - name: Landing dependencies and build
         working-directory: web
         run: |

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, Pressable, TextInput, StyleSheet, Linking,
-  NativeSyntheticEvent, TextInputKeyPressEventData,
+  NativeSyntheticEvent, TextInputKeyPressEventData, Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, comAlfa, sombrasDe, type Cores } from '../../theme';
@@ -16,8 +16,9 @@ import { enviarFeedback } from '../../services/feedback';
 import { track, Eventos } from '../../services/analytics';
 import {
   CATEGORIAS_AJUDA, ARTIGOS_AJUDA, getCategoria, getArtigosDaCategoria,
-  buscarArtigos, type AjudaArtigo, type AjudaBloco,
+  buscarArtigos, corpoVisivel, type AjudaArtigo, type AjudaBloco,
 } from '../../content/ajuda';
+import { plataformaPodeVender } from '../../services/lembreteAssinaturaLoja';
 import { avisar } from './dialogo';
 
 /** Mesmo e-mail oficial de suporte da AjudaScreen mobile (src/screens/AjudaScreen.tsx). */
@@ -330,7 +331,7 @@ export default function AjudaDesktopScreen() {
               <Text style={styles.artigoTitulo}>{artigoAtivo.titulo}</Text>
               <Text style={styles.artigoResumo}>{artigoAtivo.resumo}</Text>
 
-              {artigoAtivo.corpo.map((b, i) => <Bloco key={i} bloco={b} />)}
+              {corpoVisivel(artigoAtivo, plataformaPodeVender(Platform.OS)).map((b, i) => <Bloco key={i} bloco={b} />)}
 
               <View style={styles.duvidaBox}>
                 <Text style={styles.duvidaTitulo}>Ainda com dúvida?</Text>

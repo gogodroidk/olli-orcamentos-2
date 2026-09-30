@@ -1,3 +1,4 @@
+import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { chamarRpcServico } from './emailRpc.js';
 
@@ -241,6 +242,8 @@ export async function handleResendWebhook(request, env, dependencias = {}) {
     await marcarEvento(env, { origem: 'resend', eventId: normalized.eventId, status: 'processado' });
     return response({ ok: true, tipo: normalized.type });
   } catch (error) {
+    // 500 segurado aqui não chega ao withSentry (ver stripe.js).
+    capturarExcecao(error, { origem: 'webhook', rota: '/resend/webhook' });
     await marcarEvento(env, {
       origem: 'resend',
       eventId: normalized.eventId,

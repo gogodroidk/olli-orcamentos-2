@@ -29,13 +29,15 @@ import {
 	precoNoPeriodo,
 	reais,
 } from "../data/planos";
+import { PIX_PLANO_LIGADO } from "../data/pix";
 import {
 	IA_USOS_GRATIS_MES,
 	ORCAMENTOS_ENVIADOS_GRATIS_MES,
 	RECURSOS_BASE,
+	ROTULO_RECURSO,
 	recursosAdicionais,
-	rotuloBullet,
 } from "../data/recursos";
+import type { Recurso } from "../data/recursos";
 
 // O app (painel) mora em outro subdomínio. CTA de assinatura abre o cadastro
 // direto (?modo=cadastro), Empresa fala no WhatsApp de vendas.
@@ -69,14 +71,30 @@ const doze =
 			}
 		: null;
 
-// Bullets derivados de entitlements — ver data/recursos.ts.
+/**
+ * Bullets derivados de entitlements — ver data/recursos.ts.
+ *
+ * `emBreve` é o terceiro estado: o plano concede, o produto ainda não entrega. O
+ * cartão do Empresa mostrava "Equipe ao vivo no mapa (em breve)" com o MESMO ✓
+ * verde de quem já funciona — um cartão que se vende com item que não existe.
+ * Agora o item em breve sai sem ✓, marcado como "Em breve".
+ */
+interface Bullet {
+	texto: string;
+	emBreve: boolean;
+}
+const pronto = (texto: string): Bullet => ({ texto, emBreve: false });
+const doRecurso = (r: Recurso): Bullet => ({
+	texto: ROTULO_RECURSO[r].titulo,
+	emBreve: ROTULO_RECURSO[r].emBreve === true,
+});
 const bulletsGratis = [
 	`Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
 	...RECURSOS_BASE,
 	`IA de diagnóstico: ${IA_USOS_GRATIS_MES} usos por mês`,
-];
-const bulletsPro = ["Tudo do Grátis", ...recursosAdicionais("pro", "gratis").map(rotuloBullet)];
-const bulletsEmpresa = ["Tudo do Pro", ...recursosAdicionais("empresa", "pro").map(rotuloBullet)];
+].map(pronto);
+const bulletsPro = [pronto("Tudo do Grátis"), ...recursosAdicionais("pro", "gratis").map(doRecurso)];
+const bulletsEmpresa = [pronto("Tudo do Pro"), ...recursosAdicionais("empresa", "pro").map(doRecurso)];
 
 type PrecoPeriodo = ReturnType<typeof precoNoPeriodo>;
 interface Cartao {
@@ -86,7 +104,7 @@ interface Cartao {
 	/** null = plano grátis (preço estático R$ 0, sem alternador). */
 	mensal: PrecoPeriodo | null;
 	anual: PrecoPeriodo | null;
-	bullets: string[];
+	bullets: Bullet[];
 	cta: string;
 	href: string;
 	hrefAnual?: string;
@@ -179,9 +197,16 @@ const cartoes: Cartao[] = [
 				</div>
 
 				<ul class="mt-6 flex-1 space-y-3 text-sm text-slate">
-					{p.bullets.map((b) => (
-						<li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-check">✓</span><span>{b}</span></li>
-					))}
+					{p.bullets.map((b) =>
+						b.emBreve ? (
+							<li class="flex gap-2.5 text-muted">
+								<span class="mt-0.5 shrink-0" aria-hidden="true">◷</span>
+								<span>{b.texto} <span class="whitespace-nowrap rounded-full border border-line px-2 py-0.5 text-xs font-semibold">Em breve</span></span>
+							</li>
+						) : (
+							<li class="flex gap-2.5"><span class="mt-0.5 shrink-0 text-check">✓</span><span>{b.texto}</span></li>
+						),
+					)}
 				</ul>
 
 				{p.doze && (
@@ -210,4 +235,11 @@ const cartoes: Cartao[] = [
 	</div>
 
 	<p class="mt-10 text-center text-sm text-muted">Grátis sem prazo. Depois do primeiro envio, você pode ativar 14 dias de Pro — sem cartão e sem cobrança automática.</p>
+	{/* Pix só aparece quando o worker confirmou no build que está ligado (data/pix.ts).
+	    "Mesmo preço" é verdade travada em teste: PLANO_PIX do worker = data/planos.ts. */}
+	{PIX_PLANO_LIGADO && (
+		<p class="mt-2 text-center text-sm text-muted">
+			Pro e Empresa também podem ser pagos <strong class="text-ink">no Pix</strong>, pelo mesmo preço, por 1 mês ou 1 ano — sem renovação automática.
+		</p>
+	)}
 </div>

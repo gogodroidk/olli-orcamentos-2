@@ -4,6 +4,7 @@ import { OlliMascot } from './OlliMascot';
 import { OlliButton } from './OlliButton';
 import { Spacing, Typography, useCores, useEstilos, type Cores } from '../theme';
 import { enviarFeedback } from '../services/feedback';
+import { capturarExcecao } from '../services/sentryCaptura';
 import { navigationRef } from '../navigation/navigationRef';
 
 interface Props {
@@ -85,16 +86,23 @@ export class ErrorBoundary extends React.Component<Props, State> {
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary] erro de render capturado:', erro, info.componentStack);
 
+    let tela: string | undefined;
+    try {
+      tela = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
+    } catch {
+      tela = undefined;
+    }
+
+    // Sentry: um erro que o boundary SEGURA não chega ao handler global do SDK
+    // (o React o entrega a este componentDidCatch, não ao ErrorUtils). Sem esta
+    // linha o usuário via "Algo deu errado" e o Sentry ficava em silêncio. PII sai
+    // no beforeSend (sentryScrub); aqui vão só origem e nome da tela.
+    capturarExcecao(erro, { origem: 'error-boundary', tela });
+
     // Mesma caixa de diagnóstico que a captura global de JS já usa (errorReport.ts)
     // — o dono vê no /admin também as quedas de RENDER, não só as de JS solto.
     // Best-effort e defensivo: nunca pode derrubar o próprio fallback.
     try {
-      let tela: string | undefined;
-      try {
-        tela = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
-      } catch {
-        tela = undefined;
-      }
       void enviarFeedback('erro', String(erro?.message ?? erro), {
         tela,
         stack: (erro?.stack || '').split('\n').slice(0, 5).join('\n'),

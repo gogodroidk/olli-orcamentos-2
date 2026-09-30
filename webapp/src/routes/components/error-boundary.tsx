@@ -1,11 +1,20 @@
+import { capturarExcecao } from "@sentry-captura";
+import { type CSSProperties, useEffect } from "react";
+import { isRouteErrorResponse, useRouteError } from "react-router";
 import { themeVars } from "@/theme/theme.css";
 import { ScrollArea } from "@/ui/scroll-area";
 import { Title } from "@/ui/typography";
-import type { CSSProperties } from "react";
-import { isRouteErrorResponse, useRouteError } from "react-router";
 
 export default function ErrorBoundary() {
 	const error = useRouteError();
+
+	// O errorElement da rota SEGURA o erro: ele não chega ao window.onerror nem ao
+	// SDK. Sem esta captura o usuário via a tela de erro e o Sentry, nada. Resposta
+	// de rota 4xx (link quebrado, sem permissão) não é bug — só 5xx e exceção vão.
+	useEffect(() => {
+		if (isRouteErrorResponse(error) && error.status < 500) return;
+		capturarExcecao(error, { origem: "rota-painel", rota: window.location.pathname });
+	}, [error]);
 
 	return (
 		<ScrollArea className="w-full h-screen">
