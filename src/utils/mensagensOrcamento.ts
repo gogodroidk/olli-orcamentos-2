@@ -1,6 +1,8 @@
-import { Empresa, Orcamento } from '../types';
-import { formatCurrency } from './currency';
-import { formatDateBR } from './date';
+// Extensão `.ts` explícita e import só de TIPO: este módulo é TypeScript puro e roda
+// também nos testes em Node (type stripping exige o caminho completo) e no worker.
+import type { Empresa, Orcamento } from '../types';
+import { formatCurrency } from './currency.ts';
+import { formatDateBR } from './date.ts';
 
 function primeiroNome(nome?: string): string {
   return (nome ?? '').trim().split(/\s+/)[0] || 'tudo bem';
@@ -84,13 +86,44 @@ export function montarMensagemReconquista(nome: string, meses: number, nomePrest
 }
 
 /**
+ * Mensagem de WhatsApp do PÓS-VENDA ("Clientes para lembrar"): o serviço foi feito há
+ * `meses` e, pelo ofício do prestador, está na hora de repetir (`servico` vem de
+ * `retorno.servico` em `services/verticais.ts` — ex.: "a limpeza do ar-condicionado").
+ * Fala em nome do prestador e oferece o horário; nunca soa a cobrança nem a
+ * propaganda. Quem envia é sempre o prestador, com o toque dele.
+ */
+export function montarMensagemLembreteManutencao(
+  nome: string,
+  meses: number,
+  servico: string,
+  nomePrestador?: string | null,
+): string {
+  const quem = (nomePrestador ?? '').trim();
+  const linhas = [
+    `Oi, ${primeiroNome(nome)}! ${quem ? `Aqui é ${quem}.` : 'Tudo bem?'}`,
+    `Já faz ${meses} ${meses === 1 ? 'mês' : 'meses'} desde o último serviço que fiz aí, e está chegando a hora de ${servico.trim()}.`,
+    'Quer que eu reserve um horário pra você nos próximos dias? É só me responder por aqui.',
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
+
+/**
  * Mensagem de WhatsApp para cobrar um orçamento APROVADO que ainda não tem
  * recibo (Radar de cobrança). O cliente já disse sim — só falta fechar o
  * pagamento — então o tom é direto mas cordial, nunca de pressão. Só menciona
  * "N dias" quando isso ajuda (>= 3 dias parado); orçamento aprovado ontem não
  * precisa soar como cobrança atrasada.
+ *
+ * `valorEmAberto` (opcional) é o SALDO quando parte já foi paga: a mensagem cita o
+ * total aprovado E quanto falta, e o Pix (se vier) precisa ter sido montado com esse
+ * saldo — mandar o valor cheio para quem já pagou o sinal é pedir dinheiro a mais.
  */
-export function montarMensagemCobranca(orc: Orcamento, diasParado: number, pixCopiaECola?: string): string {
+export function montarMensagemCobranca(
+  orc: Orcamento,
+  diasParado: number,
+  pixCopiaECola?: string,
+  valorEmAberto?: number,
+): string {
   // Tom escalonado por tempo parado (dunning cordial): recém-aprovado é leve;
   // quanto mais dias, mais direto — sem nunca soar a cobrança agressiva.
   const corpo =
@@ -100,8 +133,12 @@ export function montarMensagemCobranca(orc: Orcamento, diasParado: number, pixCo
         ? `Já faz ${diasParado} dias e ainda não recebi o pagamento — posso te ajudar a fechar isso?`
         : 'Posso te ajudar a fechar o pagamento?';
 
+  const parcial =
+    typeof valorEmAberto === 'number' && valorEmAberto > 0 && valorEmAberto + 0.005 < orc.valorTotal;
   const linhas = [
-    `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`,
+    parcial
+      ? `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}. Falta ${formatCurrency(valorEmAberto)} para fechar.`
+      : `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`,
     corpo,
   ];
   // Pix Copia e Cola PRONTO (valor já embutido): o cliente copia e paga na hora.

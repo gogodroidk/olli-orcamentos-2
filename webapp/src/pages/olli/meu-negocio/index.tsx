@@ -76,6 +76,7 @@ import {
 	VALIDADE_DIAS_DEFAULT,
 	VALIDADES_PADRAO,
 } from "./constantes";
+import { normalizarChavePix } from "../../../../../src/utils/pixBrCode";
 import { arquivoParaLogoDataUri, LOGO_TIPOS_ACEITOS } from "./logoUpload";
 import {
 	consultarCnpjWeb,
@@ -1003,8 +1004,15 @@ export default function MeuNegocio() {
 						</Campo>
 
 						<Campo
-							rotulo="Chave Pix (somente recibos)"
-							dica="Não aparece em orçamentos. O cliente combina e paga diretamente à sua empresa."
+							rotulo="Chave Pix (para receber dos clientes)"
+							dica="Vai no recibo, na cobrança pelo WhatsApp e no link do orçamento depois que o cliente aprova. O dinheiro cai direto na sua conta — a OLLI não passa por ele."
+							// Aviso (não bloqueia o salvar): chave que não reconhecemos NÃO vira Pix
+							// nas cobranças — mesma regra do app (`normalizarChavePix`).
+							erro={
+								form.chavePix.trim() && !normalizarChavePix(form.chavePix)
+									? "Não reconhecemos essa chave. Use CPF, CNPJ, e-mail, celular com DDD ou a chave aleatória — até corrigir, as cobranças vão sem Pix."
+									: undefined
+							}
 							className="sm:col-span-2"
 						>
 							<Input

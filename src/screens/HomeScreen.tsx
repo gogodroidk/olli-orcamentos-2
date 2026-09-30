@@ -15,12 +15,13 @@ import {
 import { getProximoAgendamento } from '../services/agenda';
 import { onSyncAplicado } from '../services/cloudSync';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
-import { clientesParaReconquistar, mensagemReconquista, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
-import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../services/radarCobranca';
+import { clientesParaReconquistar, lembrarNoWhatsApp, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
+import { orcamentosParaCobrar, cobrarNoWhatsApp as cobrarItemNoWhatsApp, OrcamentoParaCobrar } from '../services/radarCobranca';
 import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
+import { ordenarParaCobrar } from '../utils/cobrancaCliente';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, Orcamento, Agendamento, Cliente, TIPO_AGENDAMENTO_LABELS, STATUS_PROPOSTA_ENVIADA } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
@@ -369,9 +370,12 @@ export default function HomeScreen() {
       return;
     }
     Haptics.selectionAsync().catch(() => {});
-    const mensagem = mensagemReconquista(item.cliente.nome, item.mesesSemContato);
     try {
-      await abrirWhatsApp(item.cliente.telefone, mensagem);
+      // Abre o WhatsApp com o lembrete do ofício e registra: o cliente sai da lista
+      // por 30 dias (não insiste). Some da tela na hora, igual ao "Adiar".
+      if (await lembrarNoWhatsApp(item)) {
+        setRadarTotal(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
+      }
     } catch {
       // silencioso: mesmo padrão de outras chamadas de WhatsApp no app
     }
@@ -398,7 +402,13 @@ export default function HomeScreen() {
     }
     Haptics.selectionAsync().catch(() => {});
     try {
-      await abrirWhatsApp(telefone, mensagemCobranca(item));
+      // Mensagem + Pix do prestador já montados pelo radar; o envio fica registrado
+      // e o item desce com "cobrado hoje" (o radar não insiste no mesmo dia).
+      if (await cobrarItemNoWhatsApp(item)) {
+        const agora = new Date().toISOString();
+        setCobranca(prev => ordenarParaCobrar(prev.map(c =>
+          c.orcamento.id === item.orcamento.id ? { ...c, cobradoEm: agora, cobradoHoje: true } : c)));
+      }
     } catch {
       // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
     }
@@ -539,6 +549,7 @@ export default function HomeScreen() {
             cobrancaErro={cobrancaErro}
             onRecarregarCobranca={loadCobranca}
             onCobrar={cobrarNoWhatsApp}
+            onCadastrarPix={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('MeuNegocio'); }}
             followUp={followUp}
             followUpCarregando={followUpCarregando}
             followUpErro={followUpErro}
@@ -715,7 +726,8 @@ export default function HomeScreen() {
           </AnimatedEntrance>
         )}
 
-        {/* RADAR DE CLIENTES — clientes já atendidos que sumiram (>= 5 meses) */}
+        {/* CLIENTES PARA LEMBRAR (pós-venda) — serviço concluído há o intervalo do
+            ofício (ex.: ar-condicionado 6 meses). Regra em utils/posVenda.ts. */}
         {radarCarregando ? (
           <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
             <OlliSkeleton width="45%" height={16} />
@@ -729,11 +741,11 @@ export default function HomeScreen() {
           </View>
         ) : radarErro ? (
           <>
-            <Text style={styles.sectionTitle}>Radar de clientes</Text>
+            <Text style={styles.sectionTitle}>Clientes para lembrar</Text>
             <View style={{ paddingHorizontal: Spacing.base }}>
               <View style={styles.avisoLinha}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-                <Text style={styles.avisoLinhaTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <Text style={styles.avisoLinhaTexto}>Não deu para ver quem está na hora de lembrar agora.</Text>
                 <TouchableOpacity onPress={loadRadar} activeOpacity={0.8}>
                   <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
                 </TouchableOpacity>
@@ -742,7 +754,7 @@ export default function HomeScreen() {
           </>
         ) : radar.length > 0 ? (
           <>
-            <Text style={styles.sectionTitle}>Radar de clientes</Text>
+            <Text style={styles.sectionTitle}>Clientes para lembrar</Text>
             <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
               {radar.map((item, i) => (
                 <AnimatedEntrance key={item.cliente.id} index={2 + i}>
@@ -753,17 +765,25 @@ export default function HomeScreen() {
                       </View>
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={styles.radarName} numberOfLines={1}>{item.cliente.nome}</Text>
-                        <Text style={styles.radarMeta}>há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'} sem contato</Text>
+                        <Text style={styles.radarMeta}>
+                          último serviço há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'}
+                          {item.lembradoEm ? ` · lembrado em ${formatDate(item.lembradoEm)}` : ''}
+                        </Text>
                       </View>
                     </View>
                     <View style={styles.radarActions}>
-                      <OlliPressable style={styles.radarBtnPrimary} onPress={() => chamarNoWhatsApp(item)} haptic={false}>
+                      <OlliPressable
+                        style={styles.radarBtnPrimary}
+                        onPress={() => chamarNoWhatsApp(item)}
+                        haptic={false}
+                        accessibilityLabel={`Lembrar ${item.cliente.nome} no WhatsApp — último serviço há ${item.mesesSemContato} ${item.mesesSemContato === 1 ? 'mês' : 'meses'}`}
+                      >
                         <MaterialCommunityIcons
                           name="whatsapp"
                           size={16}
                           color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
                         />
-                        <Text style={styles.radarBtnPrimaryText}>Chamar no WhatsApp</Text>
+                        <Text style={styles.radarBtnPrimaryText}>Lembrar no WhatsApp</Text>
                       </OlliPressable>
                       <OlliPressable style={styles.radarBtnGhost} onPress={() => adiarRadar(item)} disabled={adiandoId === item.cliente.id} haptic={false}>
                         <Text style={styles.radarBtnGhostText}>Adiar 30 dias</Text>
@@ -781,9 +801,9 @@ export default function HomeScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.radarTeaserTitle}>
-                        +{radarBloqueados} cliente{radarBloqueados > 1 ? 's' : ''} sumido{radarBloqueados > 1 ? 's' : ''} esperando
+                        +{radarBloqueados} cliente{radarBloqueados > 1 ? 's' : ''} na hora de lembrar
                       </Text>
-                      <Text style={styles.radarTeaserSub}>Veja todos e reative com 1 toque no Pro</Text>
+                      <Text style={styles.radarTeaserSub}>Veja todos e lembre com 1 toque no Pro</Text>
                     </View>
                     <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} />
                   </OlliPressable>

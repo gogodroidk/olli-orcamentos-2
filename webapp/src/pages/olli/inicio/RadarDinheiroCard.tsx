@@ -5,7 +5,9 @@ import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { paramStatus, type RadarDinheiro, STATUS_A_RECEBER, WHATSAPP_TEXTO, WHATSAPP_VERDE } from "./financeiro";
 import { formatBRL, plural } from "./helpers";
-import { linkCobranca } from "./radares";
+import { avisoPix, enviadoHoje } from "../../../../../src/utils/cobrancaCliente";
+import { cobrancaDoItem, linkCobranca } from "./radares";
+import { useRegistroEnvios } from "./useClientesEsfriando";
 
 interface Props {
 	/** `null` enquanto não há resultado (carregando ou erro) — nunca um radar zerado falso. */
@@ -47,13 +49,27 @@ const MOSTRAR = 3;
  * quem abriu o painel com o cliente esperando.
  */
 export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa }: Props) {
+	// "Cobrado hoje" — o MESMO registro do celular. Leitura que falha = mapa vazio (o
+	// item aparece sem rótulo: de mais, nunca de menos). Hook antes dos retornos.
+	const cobrancas = useRegistroEnvios("cobranca.enviadas");
+
 	if (isLoading) return <Carregando />;
 	if (isError) return <Erro onRetry={onRetry} />;
 	if (!radar) return <Carregando />;
 	if (radar.linhas.length === 0) return <Calmo semValor={radar.semValor} />;
 
-	const visiveis = radar.linhas.slice(0, MOSTRAR);
+	// Quem já foi cobrado hoje desce (continua na lista — o dinheiro segue parado —,
+	// mas o radar não insiste no mesmo cliente no mesmo dia). `sort` é estável: o
+	// resto mantém a ordem de "mais parado primeiro".
+	const cobradoHoje = (id: string) => enviadoHoje(cobrancas.mapa[id]);
+	const ordenadas = [...radar.linhas].sort((a, b) => Number(cobradoHoje(a.id)) - Number(cobradoHoje(b.id)));
+	const visiveis = ordenadas.slice(0, MOSTRAR);
 	const restantes = radar.linhas.length - visiveis.length;
+	// A chave Pix é da empresa: basta um item sem Pix para o aviso aparecer (uma vez).
+	const semPix = radar.linhas
+		.map((item) => cobrancaDoItem(item, empresa)?.situacaoPix)
+		.find((s) => s === "sem_chave" || s === "chave_invalida");
+	const aviso = semPix ? avisoPix(semPix) : null;
 
 	return (
 		<Card className="gap-0 overflow-hidden border-warning/30 p-0 shadow-sm">
@@ -105,6 +121,7 @@ export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa 
 									<div className="mt-0.5 truncate text-text-secondary text-xs tabular-nums">
 										{formatBRL(item.saldo)}
 										{frasePeriodo(item.dias) ? ` · ${frasePeriodo(item.dias)}` : ""}
+										{cobradoHoje(item.id) ? " · cobrado hoje" : ""}
 									</div>
 								</div>
 
@@ -113,7 +130,9 @@ export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa 
 										href={url}
 										target="_blank"
 										rel="noopener noreferrer"
-										aria-label={`Cobrar ${item.cliente} pelo WhatsApp — ${formatBRL(item.saldo)}`}
+										// Registra o envio: "cobrado hoje" aqui e no celular.
+										onClick={() => cobrancas.registrar(item.id)}
+										aria-label={`${cobradoHoje(item.id) ? "Cobrar de novo" : "Cobrar"} ${item.cliente} pelo WhatsApp — ${formatBRL(item.saldo)}`}
 										style={{ backgroundColor: WHATSAPP_VERDE, color: WHATSAPP_TEXTO }}
 										className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 font-semibold text-sm shadow-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60"
 									>
@@ -132,6 +151,20 @@ export function RadarDinheiroCard({ radar, isLoading, isError, onRetry, empresa 
 							</li>
 						);
 					})}
+
+					{/* Sem chave (ou chave que não reconhecemos) a cobrança vai SEM Pix — nunca
+					    com Pix vazio — e o aviso leva direto ao cadastro, em 1 clique. */}
+					{aviso && (
+						<li className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-text-secondary text-xs">
+							<span>{aviso.titulo}</span>
+							<Link
+								to="/meu-negocio"
+								className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+							>
+								{aviso.acao}
+							</Link>
+						</li>
+					)}
 
 					{restantes > 0 && (
 						<Link

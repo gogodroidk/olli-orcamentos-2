@@ -54,6 +54,14 @@ export interface Vertical {
   cnaes: readonly string[];
   /** Ferramentas-assinatura sugeridas (o usuário liga/desliga). */
   ferramentas: readonly FerramentaId[];
+  /**
+   * PÓS-VENDA ("Clientes para lembrar", `utils/posVenda.ts`): de quantos em quantos
+   * meses o serviço típico deste ofício se repete, e como a mensagem chama esse
+   * serviço ("está chegando a hora de <servico>"). É um default de mercado, não uma
+   * regra: serve para o prestador lembrar o cliente no momento certo, nunca é
+   * enviado sozinho.
+   */
+  retorno: { meses: number; servico: string };
 }
 
 /** Catálogo de ferramentas por vertical (o "documento que vale dinheiro"). */
@@ -81,6 +89,9 @@ export const VERTICAIS: readonly Vertical[] = [
     // de equipamentos de refrigeração comercial/industrial).
     cnaes: ['4322302', '3314710'],
     ferramentas: ['pmoc', 'qr_equipamento', 'contrato_recorrente'],
+    // Higienização de split residencial: semestral é a recomendação usual dos
+    // fabricantes (o PMOC comercial tem periodicidade própria, por equipamento).
+    retorno: { meses: 6, servico: 'a limpeza do ar-condicionado' },
   },
   {
     id: 'eletrica',
@@ -88,6 +99,7 @@ export const VERTICAIS: readonly Vertical[] = [
     emoji: '⚡',
     cnaes: ['43215'], // 4321-5 Instalação elétrica (todas as subclasses).
     ferramentas: ['checklist_nr10', 'laudo_eletrico'],
+    retorno: { meses: 12, servico: 'uma revisão da parte elétrica' },
   },
   {
     id: 'hidraulica',
@@ -95,6 +107,8 @@ export const VERTICAIS: readonly Vertical[] = [
     emoji: '🚰',
     cnaes: ['4322301'], // 4322-3/01 instalações hidráulicas/sanitárias/gás.
     ferramentas: ['laudo_estanqueidade'],
+    // Limpeza de caixa d'água a cada 6 meses é a orientação das companhias de saneamento.
+    retorno: { meses: 6, servico: "a limpeza da caixa d'água e uma revisão hidráulica" },
   },
   {
     id: 'pintura',
@@ -102,6 +116,7 @@ export const VERTICAIS: readonly Vertical[] = [
     emoji: '🎨',
     cnaes: ['43304'], // 4330-4 Obras de acabamento (inclui pintura de edifícios).
     ferramentas: ['calculadora_tinta'],
+    retorno: { meses: 24, servico: 'um retoque na pintura' },
   },
   {
     id: 'dedetizacao',
@@ -109,6 +124,8 @@ export const VERTICAIS: readonly Vertical[] = [
     emoji: '🐜',
     cnaes: ['81222'], // 8122-2 Imunização e controle de pragas urbanas.
     ferramentas: ['certificado_anvisa', 'contrato_recorrente'],
+    // Reaplicação preventiva semestral é o ciclo mais comum em residência.
+    retorno: { meses: 6, servico: 'a reaplicação da dedetização' },
   },
   {
     id: 'jardinagem',
@@ -116,6 +133,7 @@ export const VERTICAIS: readonly Vertical[] = [
     emoji: '🌿',
     cnaes: ['81303'], // 8130-3 Atividades paisagísticas.
     ferramentas: ['contrato_recorrente'],
+    retorno: { meses: 3, servico: 'a manutenção do jardim (poda e adubação)' },
   },
 ];
 
@@ -126,6 +144,9 @@ export const VERTICAL_GERAL: Vertical = {
   emoji: '🛠️',
   cnaes: [],
   ferramentas: [],
+  // 6 meses: o mesmo horizonte (~150 dias) que o antigo radar de clientes já usava
+  // para todo mundo — quem não escolheu ofício não sente o radar mudar de ritmo.
+  retorno: { meses: 6, servico: 'uma revisão do serviço' },
 };
 
 /** Só os dígitos de um CNAE (remove máscara "0000-0/00" se vier formatado). */

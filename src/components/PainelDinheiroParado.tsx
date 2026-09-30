@@ -34,6 +34,8 @@ import {
   achatarVeu, ajustarParaContraste, comAlfa, type Cores,
 } from '../theme';
 import { formatCurrency } from '../utils/currency';
+import { formatDate } from '../utils/date';
+import { avisoPix, type SituacaoPix } from '../utils/cobrancaCliente';
 import { OlliPressable } from './OlliPressable';
 import { OlliSkeleton } from './OlliSkeleton';
 import { CountUp } from './CountUp';
@@ -103,6 +105,8 @@ interface Props {
   cobrancaErro: boolean;
   onRecarregarCobranca: () => void | Promise<void>;
   onCobrar: (item: OrcamentoParaCobrar) => void;
+  /** Leva a Meu Negócio para cadastrar/corrigir a chave Pix (1 toque). */
+  onCadastrarPix: () => void;
 
   followUp: OrcamentoParaFollowUp[];
   followUpCarregando: boolean;
@@ -173,25 +177,34 @@ function AvisoNaoVerificado({ tons, oQue, onTentar }: { tons: Tons; oQue: string
   );
 }
 
-/** Uma linha de aviso com a ação pronta ao lado: cobrar/chamar sem sair da tela. */
+/**
+ * Uma linha de aviso com a ação pronta ao lado: cobrar/chamar sem sair da tela.
+ * `nota` é o rótulo extra da cobrança ("cobrado hoje", "cliente avisou que pagou");
+ * com `jaFeito`, o botão fica secundário — continua lá (o dinheiro segue parado),
+ * mas não grita para cobrar de novo no mesmo dia.
+ */
 function LinhaAcao({
-  nome, valor, diasParado, rotuloBotao, onPress,
+  nome, valor, diasParado, rotuloBotao, onPress, nota, jaFeito = false,
 }: {
   nome: string;
   valor: number;
   diasParado: number;
   rotuloBotao: string;
   onPress: () => void;
+  nota?: string | null;
+  jaFeito?: boolean;
 }) {
   const styles = useEstilos(criarEstilos);
+  const cores = useCores();
   return (
     <View style={styles.linha}>
       <View style={styles.linhaInfo}>
         <Text style={styles.linhaNome} numberOfLines={1}>{nome}</Text>
         <Text style={styles.linhaMeta}>{formatCurrency(valor)} · parado há {dias(diasParado)}</Text>
+        {nota ? <Text style={styles.linhaNota} numberOfLines={2}>{nota}</Text> : null}
       </View>
       <OlliPressable
-        style={styles.linhaBtn}
+        style={[styles.linhaBtn, jaFeito && styles.linhaBtnFeito]}
         onPress={onPress}
         haptic={false}
         accessibilityLabel={`${rotuloBotao} — ${nome}, ${formatCurrency(valor)} parado há ${dias(diasParado)}`}
@@ -199,12 +212,39 @@ function LinhaAcao({
         <MaterialCommunityIcons
           name="whatsapp"
           size={16}
-          color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+          color={jaFeito ? cores.onSurface : '#0A1626'} // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
         />
-        <Text style={styles.linhaBtnTexto}>{rotuloBotao}</Text>
+        <Text style={[styles.linhaBtnTexto, jaFeito && styles.linhaBtnTextoFeito]}>{rotuloBotao}</Text>
       </OlliPressable>
     </View>
   );
+}
+
+/**
+ * Aviso de Pix: sem chave (ou com chave que não reconhecemos) a cobrança vai SEM Pix
+ * — nunca com Pix vazio — e este aviso leva direto a Meu Negócio para resolver.
+ */
+function AvisoPix({ tons, situacao, onPress }: { tons: Tons; situacao: SituacaoPix; onPress: () => void }) {
+  const styles = useEstilos(criarEstilos);
+  const aviso = avisoPix(situacao);
+  if (!aviso) return null;
+  return (
+    <View style={styles.avisoPix}>
+      <MaterialCommunityIcons name="key-variant" size={17} color={tons.aviso} />
+      <Text style={[styles.avisoPixTexto, { color: tons.forte }]}>{aviso.titulo}</Text>
+      <OlliPressable style={styles.retryBtn} onPress={onPress} haptic="selection" accessibilityLabel={aviso.acao}>
+        <Text style={[styles.retryTexto, { color: tons.link }]}>{aviso.acao}</Text>
+      </OlliPressable>
+    </View>
+  );
+}
+
+/** "cobrado hoje" / "cliente avisou que pagou em DD/MM — confira no banco". */
+function notaCobranca(item: OrcamentoParaCobrar): string | null {
+  const partes: string[] = [];
+  if (item.pagamentoInformadoEm) partes.push(`cliente avisou que pagou em ${formatDate(item.pagamentoInformadoEm)} — confira no banco`);
+  if (item.cobradoHoje) partes.push('cobrado hoje');
+  return partes.length ? partes.join(' · ') : null;
 }
 
 /** "+ N esperando" → abre a lista completa. */
@@ -219,7 +259,7 @@ function VerTodos({ tons, texto, onPress, rotulo }: { tons: Tons; texto: string;
 }
 
 export function PainelDinheiroParado({
-  cobranca, cobrancaCarregando, cobrancaErro, onRecarregarCobranca, onCobrar,
+  cobranca, cobrancaCarregando, cobrancaErro, onRecarregarCobranca, onCobrar, onCadastrarPix,
   followUp, followUpCarregando, followUpErro, onRecarregarFollowUp, onFollowUp,
   temHistorico, onVerTodos,
 }: Props) {
@@ -234,6 +274,12 @@ export function PainelDinheiroParado({
   const totalFollowUp = useMemo(
     () => followUp.reduce((s, i) => s + i.orcamento.valorTotal, 0),
     [followUp],
+  );
+  // A chave Pix é da empresa (a mesma para todos os itens, salvo exceção por
+  // orçamento): basta UM item sem Pix para o aviso aparecer uma vez só.
+  const situacaoSemPix = useMemo<SituacaoPix | null>(
+    () => cobranca.find(i => i.situacaoPix === 'sem_chave' || i.situacaoPix === 'chave_invalida')?.situacaoPix ?? null,
+    [cobranca],
   );
   const maisAntigoCobranca = useMemo(
     () => cobranca.reduce((m, i) => Math.max(m, i.diasParado), 0),
@@ -340,11 +386,16 @@ export function PainelDinheiroParado({
                 nome={item.orcamento.clienteNome}
                 valor={item.valor}
                 diasParado={item.diasParado}
-                rotuloBotao="Cobrar no WhatsApp"
+                rotuloBotao={item.cobradoHoje ? 'Cobrar de novo' : 'Cobrar no WhatsApp'}
                 onPress={() => onCobrar(item)}
+                nota={notaCobranca(item)}
+                jaFeito={item.cobradoHoje}
               />
             ))}
           </View>
+          {situacaoSemPix && (
+            <AvisoPix tons={tons} situacao={situacaoSemPix} onPress={onCadastrarPix} />
+          )}
           {restantesCobranca > 0 && (
             <VerTodos
               tons={tons}
@@ -509,6 +560,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: 14, minHeight: TOQUE_MIN,
   },
   linhaBtnTexto: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+  // Já cobrado hoje: o botão continua (o dinheiro segue parado), mas em superfície
+  // neutra — par padrão onSurface/surfacePressed, sem competir com quem falta cobrar.
+  linhaBtnFeito: { backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline },
+  linhaBtnTextoFeito: { color: c.onSurface },
+  linhaNota: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 2, fontWeight: '700' },
+
+  avisoPix: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: Spacing.md },
+  avisoPixTexto: { flex: 1, fontSize: 12.5, fontWeight: '700', lineHeight: 17 },
 
   verTodos: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,

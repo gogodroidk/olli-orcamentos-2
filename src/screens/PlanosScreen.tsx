@@ -185,7 +185,7 @@ const RECURSO_LABEL: Record<Recurso, string> = {
   ia_ilimitada: 'IA incluída com uso justo diário (voz, chat e diagnóstico)',
   relatorios: 'Relatórios de faturamento e conversão',
   metas: 'Metas de vendas e acompanhamento',
-  radar_clientes: 'Radar de clientes sumidos (lista completa)',
+  radar_clientes: 'Clientes para lembrar da manutenção (lista completa)',
   relatorio_dia: 'Relatório do dia falado',
   modelos_pdf_premium: 'Modelos premium de PDF',
   remove_olli_brand: 'PDF sem a marca OLLI',

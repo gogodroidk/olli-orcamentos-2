@@ -387,7 +387,13 @@ export interface OrcamentoVersao {
  * — não é uma tabela própria, é a leitura normalizada que o app monta para exibir
  * a linha do tempo. `motivo` só existe em recusa (resposta_cliente do worker).
  */
-export type TipoEventoTrilha = 'enviado' | 'visualizado' | 'aprovado' | 'recusado';
+export type TipoEventoTrilha =
+  | 'enviado'
+  | 'visualizado'
+  | 'aprovado'
+  | 'recusado'
+  /** O cliente tocou "Já paguei" no link. É AVISO, não confirmação: o prestador confere e registra. */
+  | 'pagamento_informado';
 
 export interface EventoTrilhaCliente {
   tipo: TipoEventoTrilha;

@@ -269,7 +269,7 @@ async function montarBomDia(alvo: Date): Promise<{ titulo: string; corpo: string
     const item = radar[0];
     return {
       titulo: 'Bom dia da OLLI',
-      corpo: `${item.cliente.nome} sumiu há ${item.mesesSemContato} ${item.mesesSemContato === 1 ? 'mês' : 'meses'} — hora de chamar de volta`,
+      corpo: `${item.cliente.nome}: último serviço há ${item.mesesSemContato} ${item.mesesSemContato === 1 ? 'mês' : 'meses'} — hora de lembrar da manutenção`,
     };
   }
 

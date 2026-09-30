@@ -23,8 +23,9 @@ import {
 import { getProximoAgendamento } from '../../services/agenda';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../../services/eta';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
-import { clientesParaReconquistar, mensagemReconquista, ClienteParaReconquistar } from '../../services/radarClientes';
-import { orcamentosParaCobrar, mensagemCobranca, OrcamentoParaCobrar } from '../../services/radarCobranca';
+import { clientesParaReconquistar, lembrarNoWhatsApp, ClienteParaReconquistar } from '../../services/radarClientes';
+import { orcamentosParaCobrar, cobrarNoWhatsApp as cobrarItemNoWhatsApp, OrcamentoParaCobrar } from '../../services/radarCobranca';
+import { avisoPix, ordenarParaCobrar } from '../../utils/cobrancaCliente';
 import { getCurrentUser } from '../../services/supabase';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { usePermissao } from '../../hooks/usePermissao';
@@ -211,9 +212,11 @@ export default function InicioDesktopScreen() {
       return;
     }
     Haptics.selectionAsync().catch(() => {});
-    const mensagem = mensagemReconquista(item.cliente.nome, item.mesesSemContato);
     try {
-      await abrirWhatsApp(item.cliente.telefone, mensagem);
+      // Lembrete do ofício + registro: o cliente sai da lista por 30 dias.
+      if (await lembrarNoWhatsApp(item)) {
+        setRadar(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
+      }
     } catch {
       // silencioso: mesmo padrão do resto do app
     }
@@ -229,11 +232,21 @@ export default function InicioDesktopScreen() {
     }
     Haptics.selectionAsync().catch(() => {});
     try {
-      await abrirWhatsApp(telefone, mensagemCobranca(item));
+      // Registra o envio: o item desce com "cobrado hoje" (não insiste no mesmo dia).
+      if (await cobrarItemNoWhatsApp(item)) {
+        const agora = new Date().toISOString();
+        setCobranca(prev => ordenarParaCobrar(prev.map(c =>
+          c.orcamento.id === item.orcamento.id ? { ...c, cobradoEm: agora, cobradoHoje: true } : c)));
+      }
     } catch {
       // silencioso: mesmo padrão do resto do app
     }
   }
+
+  // A chave Pix é da empresa: basta um item sem Pix para o aviso (uma vez só).
+  const avisoPixCobranca = avisoPix(
+    cobranca.find(i => i.situacaoPix === 'sem_chave' || i.situacaoPix === 'chave_invalida')?.situacaoPix ?? 'com_pix',
+  );
 
   // ── navegação (rotas existentes; cada KPI leva à lista que o explica) ──
   const irParaAgenda = () => (nav as any).navigate('Tabs', { screen: 'Agenda' });
@@ -587,29 +600,34 @@ export default function InicioDesktopScreen() {
           </View>
 
           <View style={[styles.cartao, styles.cartaoRadar]}>
-            <Text style={styles.cartaoTitulo}>Radar de clientes</Text>
+            <Text style={styles.cartaoTitulo}>Clientes para lembrar</Text>
             {radarCarregando ? (
               <View style={{ gap: 8, marginTop: 10 }}>
                 <OlliSkeleton width="100%" height={44} />
               </View>
             ) : radarErro ? (
               <View style={{ marginTop: 10, gap: 6 }}>
-                <Text style={styles.visitaVazioTexto}>Não deu para carregar o radar de clientes agora.</Text>
+                <Text style={styles.visitaVazioTexto}>Não deu para ver quem está na hora de lembrar agora.</Text>
                 <OlliPressable onPress={loadRadar} haptic={false}>
                   <Text style={styles.verTodos}>Tentar de novo</Text>
                 </OlliPressable>
               </View>
             ) : radar.length === 0 ? (
-              <Text style={styles.visitaVazioTexto}>Nenhum cliente sumido no momento.</Text>
+              <Text style={styles.visitaVazioTexto}>Nenhum cliente na hora da manutenção agora.</Text>
             ) : (
               <View style={{ gap: 8, marginTop: 10 }}>
                 {radar.map((item) => (
                   <View key={item.cliente.id} style={styles.radarLinha}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.radarNome} numberOfLines={1}>{item.cliente.nome}</Text>
-                      <Text style={styles.radarMeta}>há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'} sem contato</Text>
+                      <Text style={styles.radarMeta}>último serviço há {item.mesesSemContato} {item.mesesSemContato === 1 ? 'mês' : 'meses'}</Text>
                     </View>
-                    <OlliPressable style={styles.radarBtn} onPress={() => chamarNoWhatsApp(item)} haptic={false}>
+                    <OlliPressable
+                      style={styles.radarBtn}
+                      onPress={() => chamarNoWhatsApp(item)}
+                      haptic={false}
+                      accessibilityLabel={`Lembrar ${item.cliente.nome} no WhatsApp`}
+                    >
                       <MaterialCommunityIcons
                         name="whatsapp"
                         size={15}
@@ -649,9 +667,20 @@ export default function InicioDesktopScreen() {
                   <View key={item.orcamento.id} style={styles.radarLinha}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.radarNome} numberOfLines={1}>{item.orcamento.clienteNome}</Text>
-                      <Text style={styles.radarMeta}>{formatCurrency(item.valor)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado</Text>
+                      <Text style={styles.radarMeta}>
+                        {formatCurrency(item.valor)} · {item.diasParado} {item.diasParado === 1 ? 'dia' : 'dias'} parado
+                        {item.cobradoHoje ? ' · cobrado hoje' : ''}
+                      </Text>
+                      {item.pagamentoInformadoEm ? (
+                        <Text style={styles.radarMeta}>Cliente avisou que pagou em {formatDate(item.pagamentoInformadoEm)} — confira no banco</Text>
+                      ) : null}
                     </View>
-                    <OlliPressable style={styles.radarBtn} onPress={() => cobrarNoWhatsApp(item)} haptic={false}>
+                    <OlliPressable
+                      style={styles.radarBtn}
+                      onPress={() => cobrarNoWhatsApp(item)}
+                      haptic={false}
+                      accessibilityLabel={`${item.cobradoHoje ? 'Cobrar de novo' : 'Cobrar'} ${item.orcamento.clienteNome} no WhatsApp — ${formatCurrency(item.valor)}`}
+                    >
                       <MaterialCommunityIcons
                         name="whatsapp"
                         size={15}
@@ -660,6 +689,14 @@ export default function InicioDesktopScreen() {
                     </OlliPressable>
                   </View>
                 ))}
+                {/* Sem chave (ou com chave que não reconhecemos) a cobrança vai SEM Pix —
+                    nunca com Pix vazio — e o aviso leva direto a Meu Negócio. */}
+                {avisoPixCobranca && (
+                  <OlliPressable onPress={() => nav.navigate('MeuNegocio')} haptic={false} accessibilityLabel={avisoPixCobranca.acao}>
+                    <Text style={styles.radarMeta}>{avisoPixCobranca.titulo}</Text>
+                    <Text style={styles.verTodos}>{avisoPixCobranca.acao}</Text>
+                  </OlliPressable>
+                )}
               </View>
             )}
           </View>
