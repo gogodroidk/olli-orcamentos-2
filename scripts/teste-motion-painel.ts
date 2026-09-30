@@ -97,6 +97,10 @@ for (const [chave, valor] of cssRaiz) {
   if (chave.startsWith('--motion-distance-')) ok(cssReduzir.get(chave) === '0px', `reduzir: ${chave} vira 0px`);
   if (chave.startsWith('--motion-scale-')) ok(cssReduzir.get(chave) === '1', `reduzir: ${chave} vira 1`);
 }
+ok(
+  /\.surgir\s*\{\s*animation-delay:\s*0m?s\s*!important;?\s*\}/.test(blocoReduzir),
+  'reduzir: escalonamento do surgir zera (o atraso inline não segura o item invisível)',
+);
 for (const v of ['enter-translate-x', 'enter-translate-y', 'enter-scale', 'enter-rotate', 'exit-translate-x', 'exit-translate-y', 'exit-scale', 'exit-rotate']) {
   ok(new RegExp(`--tw-${v}:\\s*[01]\\s*!important`).test(blocoReduzir), `reduzir: overlays do tw-animate sem --tw-${v}`);
 }
@@ -196,6 +200,11 @@ for (const arquivo of arquivos(src)) {
       problemas.push(`${rel}: transição de propriedade de layout (${classes.match(/transition-\[[^\]]*\]/)?.[0]})`);
     }
   }
+  // Atraso inline só onde "Reduzir movimento" o anula: no `surgir` (regra em
+  // tokens.css) ou em animação que some com `motion-reduce:animate-none`.
+  if (/animationDelay\s*:/.test(codigo) && !/\bsurgir\b|motion-reduce:animate-none/.test(codigo)) {
+    problemas.push(`${rel}: animationDelay inline fora do surgir — em "Reduzir movimento" o atraso continuaria`);
+  }
   if (arquivo.startsWith(animate) && /<canvas\b|getContext\(/.test(codigo)) {
     problemas.push(`${rel}: canvas na biblioteca de movimento`);
   }
@@ -214,5 +223,14 @@ const radar = readFileSync(join(src, 'pages', 'olli', 'inicio', 'RadarDinheiroCa
 ok(/initial=\{false\}/.test(radar) && /exit=\{\{/.test(radar) && /surgir/.test(radar), 'radar: entrada em CSS, saída pelo Motion (initial={false})');
 const aprovado = readFileSync(join(src, 'pages', 'olli', 'inicio', 'AprovadoPeloClienteCard.tsx'), 'utf8');
 ok(/assentar/.test(aprovado) && /anel-celebracao/.test(aprovado) && /Agendar o servi/.test(aprovado), 'aprovado: celebração curta que termina numa ação');
+
+// ── 7) LGPD: o valor em reais guardado para "desde a sua última visita" sai no "Sair"
+const valorVisto = readFileSync(join(animate, 'use-valor-visto.ts'), 'utf8');
+const memoria = readFileSync(join(animate, 'memoria-visto.ts'), 'utf8');
+ok(/from\s+["']\.\/memoria-visto["']/.test(valorVisto) && !/["']olli\.visto\.["']/.test(valorVisto), 'use-valor-visto usa o prefixo único de memoria-visto.ts');
+ok(/export function esquecerValoresVistos/.test(memoria) && /startsWith\(PREFIXO_VISTO\)/.test(memoria) && /removeItem/.test(memoria), 'esquecerValoresVistos apaga toda chave do prefixo');
+const userStore = readFileSync(join(src, 'store', 'userStore.ts'), 'utf8');
+const sair = userStore.slice(userStore.indexOf('export const useSignOut'), userStore.indexOf('export function useAuthSync'));
+ok(/finally\s*\{[\s\S]*esquecerValoresVistos\(\)/.test(sair), '"Sair" apaga os valores vistos (computador compartilhado)');
 
 console.log(`\n${passou} verificações passaram.\n`);

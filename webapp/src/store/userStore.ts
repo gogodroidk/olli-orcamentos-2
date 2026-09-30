@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { UserInfo, UserToken } from "#/entity";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
+import { esquecerValoresVistos } from "@/components/animate/memoria-visto";
 import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
 import { resetBrandColor } from "@/olli/branding";
 import { queryClient } from "./queryClient";
@@ -157,6 +158,9 @@ export const useSignOut = () => {
 			await supabase.auth.signOut({ scope: "local" });
 		} finally {
 			limparIndicioDeSessao();
+			// Os valores em reais que o Início guardou para "desde a sua última visita"
+			// não ficam no navegador depois do "Sair" (computador compartilhado).
+			esquecerValoresVistos();
 			clearUserInfoAndToken();
 		}
 	};

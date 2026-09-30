@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useUserInfo } from "@/store/userStore";
-
-const PREFIXO = "olli.visto.";
+import { PREFIXO_VISTO as PREFIXO } from "./memoria-visto";
 
 /**
  * O valor que ESTE número mostrava na última vez que o dono o viu (neste navegador).
@@ -11,7 +10,7 @@ const PREFIXO = "olli.visto.";
  * seria encenação. Lido UMA vez na montagem; o valor atual é gravado assim que chega.
  *
  * Por conta (id do usuário na chave) para não misturar duas contas no mesmo
- * computador. `null` quando não há leitura anterior, a conta ainda não carregou ou o
+ * computador — e apagado no "Sair" (`esquecerValoresVistos`, LGPD). `null` quando não há leitura anterior, a conta ainda não carregou ou o
  * armazenamento está bloqueado (aba anônima) — e aí nada anima: sem referência
  * verdadeira, o número aparece pronto. `chave: null` desliga o hook (componente que
  * só às vezes conta).
