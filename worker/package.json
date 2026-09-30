@@ -28,8 +28,9 @@
     "test:resumo-dinheiro-template": "node scripts/teste-resumo-dinheiro-template.js",
     "test:resumo-dinheiro-job": "node scripts/teste-resumo-dinheiro-job.js",
     "test:link-pix": "node scripts/teste-link-pix.js",
+    "test:auth-email-hook": "node scripts/teste-auth-email-hook.js",
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-descadastro && npm run test:funil-receita && npm run test:revenuecat-webhook && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix && npm run test:contratos-job && npm run test:auth-email-hook",
     "test:contratos-job": "node scripts/teste-contratos-job.js",
-    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-descadastro && npm run test:funil-receita && npm run test:revenuecat-webhook && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix && npm run test:contratos-job",
     "deploy": "npm run types:check && wrangler deploy"
   },
   "dependencies": {

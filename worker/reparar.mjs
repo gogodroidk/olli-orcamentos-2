@@ -79,6 +79,10 @@ const secrets = [
   // x-signature). Ambos vêm do cofre.
   ['MP_ACCESS_TOKEN', env.MP_ACCESS_TOKEN],
   ['MP_WEBHOOK_SECRET', env.MP_WEBHOOK_SECRET],
+  // Send Email Hook do Supabase Auth (`v1,whsec_...`): o MESMO valor gravado em
+  // hook_send_email_secrets no Supabase. Sem ele, /auth/email-hook responde 503
+  // e nenhum e-mail de login/cadastro/recuperação sai.
+  ['SEND_EMAIL_HOOK_SECRET', env.SEND_EMAIL_HOOK_SECRET],
 ];
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {

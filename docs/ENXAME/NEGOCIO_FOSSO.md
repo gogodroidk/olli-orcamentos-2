@@ -323,8 +323,8 @@ baixo. É deles que o plano precisa tratar.
    importante do backlog — mais que qualquer integração nova.)
 2. **Ocupar a cauda longa de SEO agora, enquanto é de graça.** As páginas por
    ofício já existem (`web/src/pages/para/[oficio].astro`); falta o conteúdo
-   que responde a busca de quem tem a dor: NFS-e obrigatória em setembro
-   (Resolução CGSN 189/2026 —
+   que responde a busca de quem tem a dor: NFS-e obrigatória para ME/EPP em 01/11/2026
+   (Resolução CGSN 191/2026, [Receita](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026), que adiou a data de setembro da CGSN 189/2026 —
    [Receita Federal](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)),
    PMOC para autônomo, "quanto cobrar limpeza de split". Conteúdo publicado
    hoje compõe por anos e é o único canal de aquisição que uma pessoa sozinha
@@ -432,6 +432,7 @@ baixo. É deles que o plano precisa tratar.
 - [Agência Sebrae: MEIs = 78% das novas empresas em 2026](https://agenciasebrae.com.br/dados/meis-lideram-abertura-de-empresas-no-pais-e-ja-representam-78-dos-novos-negocios-em-2026/) · [FENACON: recorde de MEIs ativos](https://fenacon.org.br/noticias/brasil-bate-recorde-de-microempreendedores-individuais-em-atividade/)
 - [Auvo — módulo PMOC](https://www.auvo.com/modulo-pmoc) · [Produttivo — programa PMOC](https://www.produttivo.com.br/programa-pmoc/) · [Produttivo — modelo PMOC (SEO)](https://www.produttivo.com.br/blog/pmoc-pdf-modelo/)
 - [Tecniko: plano grátis permanente, a partir de R$ 59,90](https://tecniko.app/blog/alternativa-ao-auvo) · [Conectar: R$ 79,90 usuários ilimitados](https://conectarplay.com/)
-- [Receita Federal: NFS-e nacional obrigatória para o Simples em 01/09/2026](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)
+- [Receita Federal: NFS-e nacional obrigatória para ME/EPP em 01/11/2026 (CGSN 191/2026)](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/simples-nacional-nfs-e-nacional-sera-obrigatoria-para-me-e-epp-a-partir-de-1o-de-novembro-de-2026)
+- [Receita Federal: data original de 01/09/2026, substituída](https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/nfs-e-de-padrao-nacional-sera-obrigatoria-para-optantes-do-simples-nacional)
 
 **Código lido:** `src/screens/` (40 + 21 desktop) · `src/services/{pmoc,radarCobranca,radarClientes,radarFollowUp,calculosOficio,verticais,planos,entitlements,olliIA,clienteLink,equipamentos}.ts` · `src/utils/{pdfGenerator,pixBrCode}.ts` · `webapp/src/pages/olli/` (16 grupos de rota, incl. os novos `radares.ts`/`RadarDinheiroCard.tsx`) · `worker/src/` (17 módulos, incl. `etaSaida.js` novo).

@@ -1,75 +1,42 @@
 import { Empresa } from '../types';
-import { formatDateBR } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
-import { escapeHtml, safeHexColor } from './html';
-import { footerSeloOlliHtml, DEFAULT_ACCENT } from './pdfGenerator';
-import { ajustarParaContraste } from '../theme/cores';
+import { escapeHtml } from './html';
+import { footerSeloOlliHtml } from './pdfGenerator';
+import { corDoDocumento, cssDocumentoOficio, linhaInfo } from './documentoOficioPdf';
+import {
+  BASE_LEGAL_COMPROVANTE_PRAGAS,
+  TITULO_COMPROVANTE_PRAGAS,
+  pragasInformadas,
+  prazoPorExtenso,
+  produtosInformados,
+  somarDiasData,
+  type DadosComprovantePragas,
+} from '../services/documentosOficio';
 
 /**
- * certificadoAnvisaPdf.ts — Certificado de Controle de Pragas (dedetização).
- * Ferramenta ÚNICA da vertical `dedetizacao`. Reúne os campos exigidos pela
- * RDC 52/2009 (art. 19) e RDC 622/2022 da ANVISA: identificação da imunizadora
- * (razão social, CNPJ, licenças sanitária E ambiental, responsável técnico
- * habilitado), do cliente/local, praga-alvo, método, e os PRODUTOS saneantes
- * com princípio ativo + registro na ANVISA, além de garantia/validade.
+ * certificadoAnvisaPdf.ts — Comprovante de execução de serviço de controle de vetores e
+ * pragas urbanas (dedetização). Ferramenta da vertical `dedetizacao`.
  *
- * É um DOCUMENTO (papel) — sempre claro, independente do tema do app, seguindo
- * o mesmo padrão do recibo/orçamento. NÃO é declaração de conformidade legal
- * automática: a validade jurídica depende das licenças e do RT reais preenchidos.
+ * O conteúdo segue o art. 19 da RDC ANVISA nº 622/2022 (que revogou a RDC 52/2009): os
+ * onze incisos estão listados, com a norma de cada um, em `services/documentosOficio.ts`
+ * (CAMPOS_COMPROVANTE_PRAGAS), e a tela só gera o PDF quando nenhum falta
+ * (`pendenciasComprovantePragas`). O nome do arquivo ficou "certificadoAnvisa" porque a
+ * rota e a ferramenta já existem com esse nome em contas reais.
+ *
+ * É um DOCUMENTO (papel) — sempre claro, independente do tema do app. NÃO é declaração
+ * de conformidade: a validade depende das licenças e do responsável técnico reais.
  */
 
-/** Um produto saneante aplicado (composição química — exigência RDC 52 art. 19). */
-export interface ProdutoAnvisa {
-  nome: string;
-  principioAtivo: string;
-  /** Registro do saneante na ANVISA/Ministério da Saúde. */
-  registroAnvisa: string;
-  grupoQuimico?: string;
-}
-
-export interface CertificadoAnvisaDados {
-  numero: string;
-  clienteNome: string;
-  clienteEndereco: string;
-  /** Pragas-alvo (ex.: "Baratas, formigas, ratos"). */
-  pragaAlvo: string;
-  /** Método aplicado (ex.: "Pulverização e iscagem"). */
-  metodo: string;
-  /** Data da execução (ISO YYYY-MM-DD ou já BR). */
-  dataServico: string;
-  /** Validade da garantia, em dias, a partir da data do serviço. */
-  garantiaDias: number;
-  produtos: ProdutoAnvisa[];
-  observacoes?: string;
-}
-
-function hex6(cor: string): string {
-  return /^#[0-9a-fA-F]{3}$/.test(cor)
-    ? '#' + cor.slice(1).split('').map((c) => c + c).join('')
-    : cor;
-}
-
-/** Data ISO/BR + N dias → DD/MM/YYYY (validade da garantia). Nunca lança. */
-function somarDias(dataISO: string, dias: number): string {
-  const base = /^\d{4}-\d{2}-\d{2}/.test(dataISO)
-    ? new Date(dataISO)
-    : new Date(dataISO.split('/').reverse().join('-'));
-  if (isNaN(base.getTime())) return '';
-  base.setDate(base.getDate() + (Number(dias) || 0));
-  return formatDateBR(base.toISOString().slice(0, 10));
-}
-
-/** Linha "rótulo: valor" — omite se o valor estiver vazio. */
-function linha(rotulo: string, valor?: string): string {
-  const v = (valor ?? '').trim();
-  if (!v) return '';
-  return `<div class="info-row"><span class="info-label">${escapeHtml(rotulo)}</span><span class="info-value">${escapeHtml(v)}</span></div>`;
+/** Data ISO ou BR → DD/MM/AAAA para impressão ('' quando ilegível). */
+function dataBr(data: string): string {
+  return somarDiasData(data, 0) ?? '';
 }
 
 export async function montarHtmlCertificadoAnvisa(
-  dados: CertificadoAnvisaDados,
+  dados: DadosComprovantePragas,
   empresa: Empresa,
-  opts?: {
+  opts: {
+    numero: string;
     corMarca?: string;
     /**
      * true (Pro/Empresa) remove o selo OLLI — mesmo entitlement do orçamento e do
@@ -78,31 +45,23 @@ export async function montarHtmlCertificadoAnvisa(
     removerMarca?: boolean;
   },
 ): Promise<string> {
-  const cor = ajustarParaContraste(
-    hex6(safeHexColor(opts?.corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT)),
-    '#FFFFFF',
-    4.5,
-  );
+  const cor = corDoDocumento(opts.corMarca ?? empresa.corMarca);
   const logoData = await imagemParaDataUri(empresa.logoUri);
   const assinaturaData = await imagemParaDataUri(empresa.assinaturaUri);
+  const dataExecucao = dataBr(dados.dataExecucao);
 
-  const dataBR = /^\d{4}-\d{2}-\d{2}/.test(dados.dataServico)
-    ? formatDateBR(dados.dataServico)
-    : escapeHtml(dados.dataServico);
-  const validadeBR = dados.garantiaDias > 0 ? somarDias(dados.dataServico, dados.garantiaDias) : '';
+  const pragasRows = pragasInformadas(dados.pragas)
+    .map((p) => `<tr><td>${escapeHtml(p.praga)}</td><td>${escapeHtml(prazoPorExtenso(p.prazoDias) ?? '')}</td></tr>`)
+    .join('');
 
-  const enderecoEmpresa = [empresa.endereco, [empresa.cidade, empresa.estado].filter(Boolean).join('/')]
-    .filter(Boolean)
-    .join(' · ');
-
-  const produtosRows = dados.produtos
-    .filter((p) => (p.nome || '').trim())
+  const produtosRows = produtosInformados(dados.produtos)
     .map(
       (p) => `<tr>
         <td>${escapeHtml(p.nome)}</td>
-        <td>${escapeHtml(p.principioAtivo)}</td>
-        <td>${escapeHtml(p.grupoQuimico ?? '—')}</td>
-        <td>${escapeHtml(p.registroAnvisa)}</td>
+        <td>${escapeHtml(p.concentracao)}</td>
+        <td>${escapeHtml(p.grupoQuimico)}</td>
+        <td>${escapeHtml(p.principioAtivo || '—')}</td>
+        <td>${escapeHtml(p.registroAnvisa || '—')}</td>
       </tr>`,
     )
     .join('');
@@ -110,95 +69,63 @@ export async function montarHtmlCertificadoAnvisa(
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1B2430; background: #fff; padding: 32px 30px; line-height: 1.5; }
-  .topo { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${cor}; padding-bottom: 16px; margin-bottom: 20px; }
-  .marca { display: flex; align-items: center; gap: 12px; }
-  .marca img { max-height: 54px; max-width: 150px; object-fit: contain; }
-  .marca-nome { font-size: 18px; font-weight: 800; color: #0A2540; }
-  .marca-esp { font-size: 12px; color: #6B7484; }
-  .doc-tit { text-align: right; }
-  .doc-tit .t { font-size: 15px; font-weight: 800; color: ${cor}; text-transform: uppercase; letter-spacing: 0.5px; }
-  .doc-tit .n { font-size: 12px; color: #6B7484; margin-top: 2px; }
-  h2 { font-size: 11px; font-weight: 800; color: ${cor}; text-transform: uppercase; letter-spacing: 1px; margin: 18px 0 8px; }
-  .bloco { border: 1px solid #E7E9EE; border-radius: 10px; padding: 12px 14px; }
-  .info-row { display: flex; gap: 8px; font-size: 12.5px; padding: 2px 0; }
-  .info-label { color: #6B7484; min-width: 148px; }
-  .info-value { color: #1B2430; font-weight: 600; flex: 1; }
-  table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; }
-  th { background: ${cor}14; color: #0A2540; text-align: left; padding: 8px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; }
-  td { padding: 8px 10px; border-bottom: 1px solid #EEF0F3; color: #2C3542; }
-  .garantia { margin-top: 16px; border: 1px dashed ${cor}; border-radius: 10px; padding: 12px 14px; background: ${cor}0F; display: flex; justify-content: space-between; align-items: center; }
-  .garantia .lbl { font-size: 11px; font-weight: 800; color: ${cor}; text-transform: uppercase; letter-spacing: 1px; }
-  .garantia .val { font-size: 15px; font-weight: 800; color: #0A2540; }
-  .obs { margin-top: 14px; font-size: 12px; color: #3C4756; }
-  .assinatura { margin-top: 36px; text-align: center; }
-  .assinatura img { max-height: 60px; margin-bottom: 4px; }
-  .assinatura .linha-ass { border-top: 1px solid #1B2430; width: 260px; margin: 0 auto; padding-top: 6px; font-size: 12px; }
-  .assinatura .rt { font-size: 11px; color: #6B7484; }
-  .base-legal { margin-top: 20px; font-size: 10px; color: #9AA3B2; text-align: center; line-height: 1.5; }
-</style>
+<style>${cssDocumentoOficio(cor)}</style>
 </head>
 <body>
   <div class="topo">
     <div class="marca">
       ${logoData ? `<img src="${escapeHtml(logoData)}"/>` : ''}
       <div>
-        <div class="marca-nome">${escapeHtml(empresa.nome)}</div>
+        <div class="marca-nome">${escapeHtml(dados.empresaRazaoSocial || empresa.nome)}</div>
         ${empresa.especialidade ? `<div class="marca-esp">${escapeHtml(empresa.especialidade)}</div>` : ''}
       </div>
     </div>
     <div class="doc-tit">
-      <div class="t">Certificado de<br/>Controle de Pragas</div>
-      <div class="n">Nº ${escapeHtml(dados.numero)} · ${dataBR}</div>
+      <div class="t">${escapeHtml(TITULO_COMPROVANTE_PRAGAS)}</div>
+      <div class="n">Nº ${escapeHtml(opts.numero)} · ${escapeHtml(dataExecucao)}</div>
     </div>
   </div>
 
-  <h2>Empresa especializada (imunizadora)</h2>
+  <h2>Empresa especializada</h2>
   <div class="bloco">
-    ${linha('Razão social', empresa.nome)}
-    ${linha('CNPJ', empresa.cnpj)}
-    ${linha('Endereço', enderecoEmpresa)}
-    ${linha('Telefone', empresa.telefone || empresa.whatsapp)}
-    ${linha('Licença sanitária', empresa.licencaSanitaria)}
-    ${linha('Licença ambiental', empresa.licencaAmbiental)}
-    ${linha('Responsável técnico', empresa.responsavelTecnico)}
-    ${linha('Registro do RT', empresa.responsavelTecnicoRegistro)}
+    ${linhaInfo('Razão social', dados.empresaRazaoSocial)}
+    ${linhaInfo('CNPJ', empresa.cnpj)}
+    ${linhaInfo('Endereço', dados.empresaEndereco)}
+    ${linhaInfo('Telefone', dados.empresaTelefone)}
+    ${linhaInfo('Licença sanitária', `${dados.licencaSanitaria} · validade ${dados.licencaSanitariaValidade}`)}
+    ${linhaInfo('Licença ambiental', `${dados.licencaAmbiental} · validade ${dados.licencaAmbientalValidade}`)}
+    ${linhaInfo('Responsável técnico', `${dados.responsavelTecnico} · ${dados.registroResponsavelTecnico}`)}
   </div>
 
-  <h2>Contratante / local tratado</h2>
+  <h2>Cliente e serviço</h2>
   <div class="bloco">
-    ${linha('Cliente', dados.clienteNome)}
-    ${linha('Local', dados.clienteEndereco)}
-    ${linha('Pragas-alvo', dados.pragaAlvo)}
-    ${linha('Método', dados.metodo)}
-    ${linha('Data da execução', dataBR)}
+    ${linhaInfo('Cliente', dados.clienteNome)}
+    ${linhaInfo('Endereço do imóvel', dados.enderecoImovel)}
+    ${linhaInfo('Data de execução', dataExecucao)}
   </div>
 
-  <h2>Produtos saneantes aplicados</h2>
-  ${produtosRows
-    ? `<table><thead><tr><th>Produto</th><th>Princípio ativo</th><th>Grupo químico</th><th>Registro ANVISA</th></tr></thead><tbody>${produtosRows}</tbody></table>`
-    : '<div class="bloco" style="color:#9AA3B2;font-size:12px;">Nenhum produto informado.</div>'}
+  <h2>Pragas-alvo e prazo de assistência técnica</h2>
+  <table><thead><tr><th>Praga-alvo</th><th>Prazo de assistência técnica</th></tr></thead><tbody>${pragasRows}</tbody></table>
 
-  ${validadeBR
-    ? `<div class="garantia"><span class="lbl">Garantia até</span><span class="val">${validadeBR}</span></div>`
-    : ''}
+  <h2>Produtos aplicados</h2>
+  <table><thead><tr><th>Produto</th><th>Concentração</th><th>Grupo químico</th><th>Princípio ativo</th><th>Registro</th></tr></thead><tbody>${produtosRows}</tbody></table>
 
-  ${dados.observacoes ? `<div class="obs"><strong>Orientações:</strong> ${escapeHtml(dados.observacoes)}</div>` : ''}
+  <div class="texto"><strong>Orientações:</strong> ${escapeHtml(dados.orientacoes)}</div>
+
+  <div class="destaque"><span class="lbl">Centro de Informação Toxicológica</span><span class="val">${escapeHtml(dados.telefoneCit)}</span></div>
 
   <div class="assinatura">
     ${assinaturaData ? `<img src="${escapeHtml(assinaturaData)}"/>` : ''}
-    <div class="linha-ass">${escapeHtml(empresa.responsavelTecnico || empresa.nomePrestador || empresa.nome)}</div>
-    ${empresa.responsavelTecnicoRegistro ? `<div class="rt">Responsável técnico · ${escapeHtml(empresa.responsavelTecnicoRegistro)}</div>` : ''}
+    <div class="linha-ass">${escapeHtml(dados.responsavelTecnico)}</div>
+    <div class="rt">Responsável técnico · ${escapeHtml(dados.registroResponsavelTecnico)}</div>
   </div>
 
   <div class="base-legal">
-    Documento emitido conforme a RDC ANVISA nº 52/2009 (art. 19) e nº 622/2022. Serviço executado com produtos
-    saneantes desinfestantes registrados na ANVISA, sob responsabilidade do responsável técnico identificado.
+    Conteúdo mínimo do comprovante de execução de serviço conforme a ${escapeHtml(BASE_LEGAL_COMPROVANTE_PRAGAS)}.
+    Serviço executado sob a responsabilidade do responsável técnico identificado acima.
   </div>
 
-  ${opts?.removerMarca === true ? '' : footerSeloOlliHtml()}
+  ${opts.removerMarca === true ? '' : footerSeloOlliHtml()}
 </body>
 </html>`;
 }

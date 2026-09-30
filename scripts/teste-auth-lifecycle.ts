@@ -7,6 +7,8 @@ const register = readFileSync('webapp/src/pages/sys/login/register-form.tsx', 'u
 const loginPage = readFileSync('webapp/src/pages/sys/login/index.tsx', 'utf8');
 const reset = readFileSync('webapp/src/pages/sys/login/reset-form.tsx', 'utf8');
 const novaSenha = readFileSync('webapp/src/pages/sys/login/nova-senha.tsx', 'utf8');
+// O campo de e-mail do "esqueci a senha" mora no trilho compartilhado com o login por código.
+const trilho = readFileSync('webapp/src/pages/sys/login/components/TrilhoCodigo.tsx', 'utf8');
 
 const ok = (nome: string, condicao: boolean) => {
   if (!condicao) throw new Error(`FALHA: ${nome}`);
@@ -23,6 +25,9 @@ ok('cadastro com sessão imediata entra no painel', /if \(data\.session\)[\s\S]*
 ok('cadastro mantém callback fechado e interno', /emailRedirectTo: `\$\{window\.location\.origin\}\$\{callbackAuthPath\}`/.test(register));
 ok('login não renderiza formulário antes da hidratação', /if \(!authHydrated\)/.test(loginPage));
 ok('OTP e QR sem backend não entram na árvore do login', !/MobileForm|QrCodeFrom/.test(loginPage));
-ok('recuperação identifica o campo de e-mail', /<FormLabel>E-mail<\/FormLabel>/.test(reset));
+ok(
+  'recuperação identifica o campo de e-mail',
+  /<TrilhoCodigo/.test(reset) && /<Label htmlFor="trilho-email">E-mail<\/Label>/.test(trilho) && /id="trilho-email"/.test(trilho),
+);
 ok('nova senha identifica os dois campos', /<FormLabel>Nova senha<\/FormLabel>/.test(novaSenha) && /<FormLabel>Confirme a nova senha<\/FormLabel>/.test(novaSenha));
 console.log('PASSOU: sessão local, refresh nativo, hidratação e cadastro validados.');

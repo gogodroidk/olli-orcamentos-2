@@ -80,13 +80,26 @@ export type Segmento =
   | 'eletrica'
   | 'hidraulica'
   | 'pintura'
+  | 'dedetizacao'
+  | 'caixa-dagua'
+  | 'piscina'
+  | 'extintores'
   | 'outro';
 
+/**
+ * Chips de segmento (onboarding e "Meu negócio"). Os ofícios recorrentes (dedetização,
+ * caixa d'água, piscina, extintores) têm chip próprio: antes caíam em "Outro" → vertical
+ * 'geral', que ESCONDE o documento de ofício de quem mais precisa dele.
+ */
 export const SEGMENTOS: { id: Segmento; label: string; icon: string }[] = [
   { id: 'ar-condicionado', label: 'Ar-condicionado', icon: 'air-conditioner' },
   { id: 'eletrica', label: 'Elétrica', icon: 'flash' },
   { id: 'hidraulica', label: 'Hidráulica', icon: 'water-pump' },
   { id: 'pintura', label: 'Pintura', icon: 'format-paint' },
+  { id: 'dedetizacao', label: 'Dedetização', icon: 'bug-outline' },
+  { id: 'caixa-dagua', label: "Caixa d'água", icon: 'water-outline' },
+  { id: 'piscina', label: 'Piscina', icon: 'pool' },
+  { id: 'extintores', label: 'Extintores', icon: 'fire-extinguisher' },
   { id: 'outro', label: 'Outro', icon: 'dots-horizontal' },
 ];
 
@@ -149,14 +162,18 @@ export interface Empresa {
   condicoesPagamentoPadrao?: string;
   observacoesPadrao?: string;
 
-  // DEDETIZAÇÃO (RDC 52/2009 art. 19 · RDC 622/2022) — dados de compliance da
-  // imunizadora usados no Certificado ANVISA. Preenchidos 1x (na 1ª emissão) e
-  // reaproveitados. Schema-less (SQLite id + JSON) → sem migração. Ver
-  // src/utils/certificadoAnvisaPdf.ts e CertificadoAnvisaScreen.
+  // DEDETIZAÇÃO (RDC 622/2022, art. 19, que revogou a RDC 52/2009) — dados de
+  // compliance da empresa usados no comprovante de controle de pragas. Preenchidos 1x
+  // (na 1ª emissão) e reaproveitados. Schema-less (SQLite id + JSON) → sem migração. Ver
+  // src/services/documentosOficio.ts e CertificadoAnvisaScreen.
   licencaSanitaria?: string;
+  licencaSanitariaValidade?: string;
   licencaAmbiental?: string;
+  licencaAmbientalValidade?: string;
   responsavelTecnico?: string;
   responsavelTecnicoRegistro?: string;
+  /** Telefone do Centro de Informação Toxicológica da região (art. 19, X). */
+  telefoneCit?: string;
   /**
    * Cláusulas padrão do CONTRATO de prestação de serviço, ajustadas uma vez em
    * Conta → Modelos de documento e reaproveitadas em todo contrato novo. Tudo
