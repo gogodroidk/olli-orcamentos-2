@@ -52,7 +52,7 @@ async function casoDesligado() {
   );
   assert.equal(calls, 0);
   assert.deepEqual(result, {
-    version: '2026-09-29.v2', mode: 'off', claimed: 0, sent: 0, failed: 0,
+    version: '2026-09-30.v3', mode: 'off', claimed: 0, sent: 0, failed: 0,
   });
 }
 
@@ -90,7 +90,7 @@ async function casoSucesso() {
   const result = await processarWelcomeOutbox(ENV, deps(fetchImpl));
   assert.equal(calls.length, 3);
   assert.deepEqual(result, {
-    version: '2026-09-29.v2', mode: 'simulator', claimed: 1, sent: 1, failed: 0,
+    version: '2026-09-30.v3', mode: 'simulator', claimed: 1, sent: 1, failed: 0,
   });
 }
 
@@ -185,7 +185,7 @@ async function casoProducaoBoasVindasELembrete() {
     throw new Error('url_inesperada');
   };
   const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
-  assert.deepEqual(result, { version: '2026-09-29.v2', mode: 'production', claimed: 2, sent: 2, failed: 0 });
+  assert.deepEqual(result, { version: '2026-09-30.v3', mode: 'production', claimed: 2, sent: 2, failed: 0 });
 
   // Boas-vindas: destinatário real, sem List-Unsubscribe.
   assert.deepEqual(enviados[0].body.to, ['novo@example.com']);
@@ -244,6 +244,64 @@ async function casoSimuladorNaoEnviaLembreteReal() {
   assert.equal(result.sent, 0);
 }
 
+function claimResumo(dados = {}) {
+  const key = `resumo:dinheiro:${USER}:2026-09-30`;
+  return {
+    ...claim('pessoa@example.com'),
+    event_id: key,
+    idempotency_key: key,
+    template: 'resumo_dinheiro',
+    template_version: 'resumo_dinheiro.v1',
+    purpose: 'money_digest',
+    dispatch_scope: 'production',
+    user_id: USER,
+    template_dados: {
+      data: '2026-09-30', aReceberCentavos: 85000, aReceberItens: 1, diasMaisAntigo: 12,
+      semValor: 0, propostasParadas: 0, clientesSumidos: 0, ...dados,
+    },
+  };
+}
+
+async function casoResumoDinheiro() {
+  const enviados = [];
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) return Response.json([claimResumo()]);
+    if (url === 'https://api.resend.com/emails') {
+      enviados.push({ body: JSON.parse(init.body), headers: init.headers });
+      return Response.json({ id: 'email_resumo' }, { status: 200 });
+    }
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'));
+    assert.equal(JSON.parse(init.body).p_status, 'sent');
+    return Response.json([{ applied: true, status: 'sent', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
+  assert.equal(result.sent, 1);
+  const [e] = enviados;
+  assert.equal(e.body.subject, 'Você tem R$ 850 a receber');
+  assert.equal(e.headers['Idempotency-Key'], claimResumo().idempotency_key);
+  // Link do RESUMO (escopo próprio): desliga só o resumo, não os lembretes.
+  const unsub = e.body.headers['List-Unsubscribe'];
+  assert.match(unsub, /^<https:\/\/diagnostico\.olliorcamentos\.online\/email\/descadastrar\?u=00000000-0000-4000-8000-000000000041&e=resumo&a=[A-Za-z0-9_-]{43}>$/);
+  assert.equal(e.body.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+  assert.ok(e.body.html.includes('Parar de receber o resumo</a>'));
+}
+
+async function casoResumoSemNadaAcionavelNaoSai() {
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) {
+      return Response.json([claimResumo({ aReceberCentavos: 0, aReceberItens: 0, diasMaisAntigo: null })]);
+    }
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'), 'resumo vazio não pode chegar à Resend');
+    const body = JSON.parse(init.body);
+    assert.equal(body.p_status, 'dead_letter');
+    assert.equal(body.p_error_code, 'consumer_contract_error');
+    return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
+  assert.equal(result.sent, 0);
+  assert.equal(result.failed, 1);
+}
+
 const originalLog = console.log;
 const originalError = console.error;
 console.log = () => {};
@@ -257,9 +315,11 @@ try {
   await casoLembreteSemDescadastro();
   await casoLembreteComDadosInvalidos();
   await casoSimuladorNaoEnviaLembreteReal();
+  await casoResumoDinheiro();
+  await casoResumoSemNadaAcionavelNaoSai();
 } finally {
   console.log = originalLog;
   console.error = originalError;
 }
 
-console.log('PASSOU: consumer da outbox — off, sucesso, bloqueio de destinatário, retry, produção (boas-vindas + lembrete com List-Unsubscribe) e falhas fechadas do lembrete');
+console.log('PASSOU: consumer da outbox — off, sucesso, bloqueio de destinatário, retry, produção (boas-vindas + lembrete com List-Unsubscribe) e falhas fechadas do lembrete; resumo diário com descadastro próprio');

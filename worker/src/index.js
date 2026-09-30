@@ -85,6 +85,7 @@ import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
+import { processarResumoDinheiro } from './resumoDinheiroJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
@@ -988,6 +989,9 @@ const handler = {
     // no minuto seguinte. Relógio = horário agendado, não o de execução.
     const agendado = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
     ctx.waitUntil(processarLembretesEmail(env, { now: () => agendado }));
+    // Resumo diário do dinheiro parado: 7h00–7h50 de Brasília (de 10 em 10 min),
+    // segunda a sábado, só com EMAIL_RESUMO_MODE=production. Também só enfileira.
+    ctx.waitUntil(processarResumoDinheiro(env, { now: () => agendado }));
   },
 
   async fetch(request, env) {

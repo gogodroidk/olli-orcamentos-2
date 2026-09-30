@@ -1,12 +1,19 @@
 import { EMAIL_OUTBOX_VERSION } from './emailOutbox.js';
 import { renderizarEmailBoasVindas } from './welcomeEmailTemplate.js';
 import { renderizarEmailLembrete } from './emailLembretesTemplate.js';
+import { renderizarEmailResumoDinheiro } from './resumoDinheiroTemplate.js';
+import { RESUMO_DINHEIRO } from './resumoDinheiroPolicy.js';
 import { criarResendTransactionalAdapter } from './resendTransactionalAdapter.js';
 import { aplicarResultadoResendNaOutbox } from './resendOutboxOutcomeContract.js';
-import { chaveDescadastro, linkDescadastro } from './emailDescadastro.js';
+import {
+  chaveDescadastro,
+  EMAIL_DESCADASTRO_ESCOPO,
+  EMAIL_DESCADASTRO_ESCOPO_RESUMO,
+  linkDescadastro,
+} from './emailDescadastro.js';
 import { chamarRpcServico, lerJsonLimitado, sinalTimeout } from './emailRpc.js';
 
-export const WELCOME_OUTBOX_CONSUMER_VERSION = '2026-09-29.v2';
+export const WELCOME_OUTBOX_CONSUMER_VERSION = '2026-09-30.v3';
 
 const SIMULATOR_RECIPIENT = 'delivered@resend.dev';
 const DEFAULT_LEASE_SECONDS = 120;
@@ -151,8 +158,16 @@ async function mensagemDeLembrete(claim, config, chave) {
   const item = claim.claimedItem;
   exigir(claim.userId && claim.templateDados, 'lembrete_claim_incompleto');
   exigir(config.descadastroUrl && chave, 'lembrete_sem_descadastro');
-  const unsubscribeUrl = await linkDescadastro({ baseUrl: config.descadastroUrl, userId: claim.userId, chave });
-  const render = renderizarEmailLembrete({
+  // O resumo diário tem link próprio: "parar de receber o resumo" desliga só ele.
+  const resumo = item.template === RESUMO_DINHEIRO.template;
+  const unsubscribeUrl = await linkDescadastro({
+    baseUrl: config.descadastroUrl,
+    userId: claim.userId,
+    chave,
+    escopo: resumo ? EMAIL_DESCADASTRO_ESCOPO_RESUMO : EMAIL_DESCADASTRO_ESCOPO,
+  });
+  const renderizar = resumo ? renderizarEmailResumoDinheiro : renderizarEmailLembrete;
+  const render = renderizar({
     eventId: item.eventId,
     template: item.template,
     templateVersion: item.templateVersion,

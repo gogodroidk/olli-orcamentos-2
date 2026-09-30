@@ -17,7 +17,11 @@
  * das duas invalida os links antigos — o pior caso é o link pedir para descadastrar
  * de novo pelo próximo e-mail, nunca descadastrar a pessoa errada.
  *
- * Só existe o escopo `lembretes`: e-mail de segurança/conta não tem descadastro.
+ * Escopos (o `e=` do link, dentro da assinatura — trocar o escopo invalida o link):
+ *   - `lembretes` → suprime os lembretes (ativação/assinatura) e, por tabela, o resumo;
+ *   - `resumo`    → desliga SÓ o resumo diário do dinheiro parado (preferência em
+ *                   `public.email_preferencias`); os lembretes continuam.
+ * E-mail de segurança/conta não tem descadastro.
  */
 
 import { chamarRpcServico } from './emailRpc.js';
@@ -25,6 +29,8 @@ import { chamarRpcServico } from './emailRpc.js';
 export const EMAIL_DESCADASTRO_VERSION = '2026-09-29.v1';
 export const EMAIL_DESCADASTRO_PATH = '/email/descadastrar';
 export const EMAIL_DESCADASTRO_ESCOPO = 'lembretes';
+export const EMAIL_DESCADASTRO_ESCOPO_RESUMO = 'resumo';
+const ESCOPOS = new Set([EMAIL_DESCADASTRO_ESCOPO, EMAIL_DESCADASTRO_ESCOPO_RESUMO]);
 
 const ROTULO_DERIVACAO = 'olli.email.descadastro.v1';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -64,12 +70,15 @@ export async function chaveDescadastro(env) {
   return hmac(new TextEncoder().encode(base), ROTULO_DERIVACAO);
 }
 
-function mensagemAssinada(userId) {
-  return `descadastro:v1:${userId}:${EMAIL_DESCADASTRO_ESCOPO}`;
+function mensagemAssinada(userId, escopo) {
+  return `descadastro:v1:${userId}:${escopo}`;
 }
 
 /** Monta a URL assinada. `baseUrl` precisa ser https e terminar no path da rota. */
-export async function linkDescadastro({ baseUrl, userId, chave }) {
+export async function linkDescadastro({ baseUrl, userId, chave, escopo = EMAIL_DESCADASTRO_ESCOPO }) {
+  if (!ESCOPOS.has(escopo)) {
+    throw Object.assign(new Error('descadastro_escopo_invalido'), { codigo: 'descadastro_escopo_invalido' });
+  }
   const id = texto(userId, 64).toLowerCase();
   if (!UUID_RE.test(id)) throw Object.assign(new Error('descadastro_user_invalido'), { codigo: 'descadastro_user_invalido' });
   if (!(chave instanceof Uint8Array) || chave.byteLength < 16) {
@@ -80,10 +89,10 @@ export async function linkDescadastro({ baseUrl, userId, chave }) {
   if (!url || url.protocol !== 'https:' || url.username || url.password || url.pathname !== EMAIL_DESCADASTRO_PATH) {
     throw Object.assign(new Error('descadastro_url_invalida'), { codigo: 'descadastro_url_invalida' });
   }
-  const assinatura = base64Url(await hmac(chave, mensagemAssinada(id)));
+  const assinatura = base64Url(await hmac(chave, mensagemAssinada(id, escopo)));
   url.search = '';
   url.searchParams.set('u', id);
-  url.searchParams.set('e', EMAIL_DESCADASTRO_ESCOPO);
+  url.searchParams.set('e', escopo);
   url.searchParams.set('a', assinatura);
   return url.toString();
 }
@@ -95,16 +104,40 @@ function compararConstante(a, b) {
   return diff === 0;
 }
 
-/** Devolve o userId quando os parâmetros são autênticos; senão `null`. */
-export async function verificarDescadastro(params, chave) {
+/** `{ userId, escopo }` quando os parâmetros são autênticos; senão `null`. */
+export async function verificarDescadastroComEscopo(params, chave) {
   const userId = texto(params?.u, 64).toLowerCase();
   const escopo = texto(params?.e, 20);
   const assinatura = texto(params?.a, 64);
-  if (!UUID_RE.test(userId) || escopo !== EMAIL_DESCADASTRO_ESCOPO || !ASSINATURA_RE.test(assinatura)) return null;
+  if (!UUID_RE.test(userId) || !ESCOPOS.has(escopo) || !ASSINATURA_RE.test(assinatura)) return null;
   if (!(chave instanceof Uint8Array)) return null;
-  const esperada = base64Url(await hmac(chave, mensagemAssinada(userId)));
-  return compararConstante(esperada, assinatura) ? userId : null;
+  const esperada = base64Url(await hmac(chave, mensagemAssinada(userId, escopo)));
+  return compararConstante(esperada, assinatura) ? { userId, escopo } : null;
 }
+
+/** Devolve o userId quando os parâmetros são autênticos (qualquer escopo); senão `null`. */
+export async function verificarDescadastro(params, chave) {
+  const valido = await verificarDescadastroComEscopo(params, chave);
+  return valido ? valido.userId : null;
+}
+
+/** Texto da página de cada escopo. */
+const POR_ESCOPO = Object.freeze({
+  [EMAIL_DESCADASTRO_ESCOPO]: Object.freeze({
+    pergunta: 'Parar de receber lembretes?',
+    explica: 'Você deixará de receber os lembretes por e-mail da OLLI Orçamentos (primeiros passos, avisos de plano e o resumo diário). Avisos essenciais da sua conta continuam chegando.',
+    botao: 'Parar de receber lembretes',
+    pronto: 'Pronto, lembretes desligados',
+    prontoTexto: 'Você não vai mais receber lembretes por e-mail da OLLI Orçamentos. Avisos essenciais da conta continuam chegando.',
+  }),
+  [EMAIL_DESCADASTRO_ESCOPO_RESUMO]: Object.freeze({
+    pergunta: 'Parar de receber o resumo diário?',
+    explica: 'Você deixará de receber o resumo diário do dinheiro parado. Dá para religar quando quiser no app ou no painel. Avisos essenciais da sua conta continuam chegando.',
+    botao: 'Parar de receber o resumo',
+    pronto: 'Pronto, resumo desligado',
+    prontoTexto: 'Você não vai mais receber o resumo diário por e-mail. Para religar, use o app ou o painel da OLLI Orçamentos.',
+  }),
+});
 
 function escaparHtml(valor) {
   return String(valor)
@@ -153,7 +186,7 @@ function paginaInvalida() {
   return pagina(
     400,
     'Link inválido',
-    '<p>Este link de descadastro não é válido. Use o link "Parar de receber lembretes" do e-mail mais recente da OLLI Orçamentos.</p>',
+    '<p>Este link de descadastro não é válido. Use o link "Parar de receber" do e-mail mais recente da OLLI Orçamentos.</p>',
   );
 }
 
@@ -207,24 +240,27 @@ export async function handleDescadastroEmail(request, env, dependencias = {}) {
 
   if (request.method === 'GET') {
     const params = { u: url.searchParams.get('u'), e: url.searchParams.get('e'), a: url.searchParams.get('a') };
-    const userId = await verificarDescadastro(params, chave);
-    if (!userId) return paginaInvalida();
+    const valido = await verificarDescadastroComEscopo(params, chave);
+    if (!valido) return paginaInvalida();
+    const t = POR_ESCOPO[valido.escopo];
     return pagina(
       200,
-      'Parar de receber lembretes?',
-      `<p>Você deixará de receber os lembretes por e-mail da OLLI Orçamentos (primeiros passos e avisos de plano). Avisos essenciais da sua conta continuam chegando.</p>
+      t.pergunta,
+      `<p>${escaparHtml(t.explica)}</p>
 <form method="post" action="${escaparHtml(EMAIL_DESCADASTRO_PATH)}">
-<input type="hidden" name="u" value="${escaparHtml(userId)}">
-<input type="hidden" name="e" value="${escaparHtml(EMAIL_DESCADASTRO_ESCOPO)}">
+<input type="hidden" name="u" value="${escaparHtml(valido.userId)}">
+<input type="hidden" name="e" value="${escaparHtml(valido.escopo)}">
 <input type="hidden" name="a" value="${escaparHtml(texto(params.a, 64))}">
-<button type="submit">Parar de receber lembretes</button>
+<button type="submit">${escaparHtml(t.botao)}</button>
 </form>`,
     );
   }
 
   const { params, oneClick } = await paramsDoPost(request, url);
-  const userId = await verificarDescadastro(params, chave);
-  if (!userId) return paginaInvalida();
+  const valido = await verificarDescadastroComEscopo(params, chave);
+  if (!valido) return paginaInvalida();
+  const { userId, escopo } = valido;
+  const t = POR_ESCOPO[escopo];
 
   const supabaseUrl = texto(env?.SUPABASE_URL, 2048).replace(/\/+$/, '');
   const serviceRoleKey = texto(env?.SUPABASE_SERVICE_ROLE_KEY, 4096);
@@ -233,12 +269,20 @@ export async function handleDescadastroEmail(request, env, dependencias = {}) {
   }
 
   try {
-    const resultado = await chamarRpcServico(
-      { supabaseUrl, serviceRoleKey },
-      dependencias.fetchImpl || fetch,
-      'registrar_supressao_email',
-      { p_user_id: userId, p_motivo: 'descadastro', p_origem: oneClick ? 'one_click' : 'link_email' },
-    );
+    const config = { supabaseUrl, serviceRoleKey };
+    const fetchImpl = dependencias.fetchImpl || fetch;
+    const origem = oneClick ? 'one_click' : 'link_email';
+    // `resumo` desliga só a preferência do resumo; `lembretes` grava a supressão.
+    const resultado = escopo === EMAIL_DESCADASTRO_ESCOPO_RESUMO
+      ? await chamarRpcServico(config, fetchImpl, 'desligar_resumo_dinheiro_email_servico', {
+        p_user_id: userId,
+        p_origem: origem,
+      })
+      : await chamarRpcServico(config, fetchImpl, 'registrar_supressao_email', {
+        p_user_id: userId,
+        p_motivo: 'descadastro',
+        p_origem: origem,
+      });
     if (!resultado || typeof resultado !== 'object' || typeof resultado.registrado !== 'boolean') {
       throw Object.assign(new Error('descadastro_resposta_invalida'), { codigo: 'descadastro_resposta_invalida' });
     }
@@ -248,10 +292,6 @@ export async function handleDescadastroEmail(request, env, dependencias = {}) {
     return pagina(503, 'Não deu certo agora', '<p>Não conseguimos registrar o seu pedido. Tente de novo em alguns minutos.</p>');
   }
 
-  console.log(JSON.stringify({ event: 'email_descadastro_registrado', oneClick }));
-  return pagina(
-    200,
-    'Pronto, lembretes desligados',
-    '<p>Você não vai mais receber lembretes por e-mail da OLLI Orçamentos. Avisos essenciais da conta continuam chegando.</p>',
-  );
+  console.log(JSON.stringify({ event: 'email_descadastro_registrado', oneClick, escopo }));
+  return pagina(200, t.pronto, `<p>${escaparHtml(t.prontoTexto)}</p>`);
 }

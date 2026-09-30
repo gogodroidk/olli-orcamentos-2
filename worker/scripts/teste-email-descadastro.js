@@ -14,6 +14,7 @@ import {
   handleDescadastroEmail,
   linkDescadastro,
   verificarDescadastro,
+  verificarDescadastroComEscopo,
 } from '../src/emailDescadastro.js';
 
 const U1 = '00000000-0000-4000-8000-000000000001';
@@ -152,6 +153,37 @@ try {
     const r = await handleDescadastroEmail(new Request(link), env, {});
     assert.equal(r.status, 429);
   });
+  await caso('escopo "resumo": link próprio, não serve para lembretes (e vice-versa)', async () => {
+    const linkResumo = await linkDescadastro({ baseUrl: BASE, userId: U1, chave, escopo: 'resumo' });
+    const p = Object.fromEntries(new URL(linkResumo).searchParams);
+    assert.equal(p.e, 'resumo');
+    assert.deepEqual(await verificarDescadastroComEscopo(p, chave), { userId: U1, escopo: 'resumo' });
+    assert.equal(await verificarDescadastro({ ...p, e: 'lembretes' }, chave), null);
+    assert.equal(await verificarDescadastro({ ...params, e: 'resumo' }, chave), null);
+    await assert.rejects(linkDescadastro({ baseUrl: BASE, userId: U1, chave, escopo: 'tudo' }), /descadastro_escopo_invalido/);
+  });
+  await caso('resumo: GET pergunta do resumo e NÃO grava; POST desliga só o resumo', async () => {
+    const linkResumo = await linkDescadastro({ baseUrl: BASE, userId: U1, chave, escopo: 'resumo' });
+    const f = fetchFalso({ registrado: true });
+    const g = await handleDescadastroEmail(new Request(linkResumo), ENV, { fetchImpl: f.fetchImpl });
+    const html = await g.text();
+    assert.ok(html.includes('Parar de receber o resumo</button>'));
+    assert.ok(html.includes('name="e" value="resumo"'));
+    assert.equal(f.calls.length, 0);
+    const r = await handleDescadastroEmail(new Request(linkResumo, { method: 'POST', body: 'List-Unsubscribe=One-Click' }), ENV, { fetchImpl: f.fetchImpl });
+    assert.equal(r.status, 200);
+    assert.ok((await r.text()).includes('resumo desligado'));
+    assert.equal(f.calls.length, 1);
+    assert.ok(f.calls[0].url.endsWith('/rpc/desligar_resumo_dinheiro_email_servico'));
+    assert.deepEqual(f.calls[0].body, { p_user_id: U1, p_origem: 'one_click' });
+  });
+  await caso('resumo: banco fora = 503, nunca "pronto"', async () => {
+    const linkResumo = await linkDescadastro({ baseUrl: BASE, userId: U1, chave, escopo: 'resumo' });
+    const f = fetchFalso({}, 500);
+    const r = await handleDescadastroEmail(new Request(linkResumo, { method: 'POST', body: 'List-Unsubscribe=One-Click' }), ENV, { fetchImpl: f.fetchImpl });
+    assert.equal(r.status, 503);
+    assert.equal((await r.text()).includes('desligado'), false);
+  });
   await caso('logs não carregam id de conta', async () => {
     assert.equal(logs.join('\n').includes(U1), false);
   });
@@ -160,4 +192,4 @@ try {
   console.error = originalError;
 }
 
-console.log(`\nPASSOU: ${ok} casos — descadastro de lembretes`);
+console.log(`\nPASSOU: ${ok} casos — descadastro de lembretes e do resumo diário`);

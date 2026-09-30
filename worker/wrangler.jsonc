@@ -29,8 +29,9 @@
       "custom_domain": true
     }
   ],
-  // Cron de minuto: consumer da outbox (boas-vindas + lembretes) a cada minuto;
-  // a seleção de lembretes só age na hora cheia, 8h–20h de Brasília.
+  // Cron de minuto: consumer da outbox (boas-vindas + lembretes + resumo) a cada
+  // minuto; a seleção de lembretes só age na hora cheia, 8h–20h de Brasília, e a
+  // do resumo diário de 10 em 10 min entre 7h00 e 7h50 (seg–sáb).
   "triggers": { "crons": ["* * * * *"] },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put OPENROUTER_API_KEY
@@ -58,6 +59,16 @@
     "EMAIL_LEMBRETES_TETO_DIARIO": "40",
     "EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS": "30",
     "EMAIL_DESCADASTRO_URL": "https://diagnostico.olliorcamentos.online/email/descadastrar",
+    // Resumo diário do dinheiro parado (7h–8h de Brasília, seg–sáb, só com algo
+    // acionável; opt-out com link próprio). Precisa da migration 20260930120000.
+    // Começo conservador: no máximo 3 por semana por conta, 44 h entre dois resumos,
+    // 8 por rodada de 10 min e 100 por dia no total. "off" desliga sem mexer no banco.
+    "EMAIL_RESUMO_MODE": "production",
+    "EMAIL_RESUMO_MAX_SEMANA": "3",
+    "EMAIL_RESUMO_INTERVALO_MIN_HORAS": "44",
+    "EMAIL_RESUMO_MAX_POR_RODADA": "8",
+    "EMAIL_RESUMO_MAX_AVALIACOES": "15",
+    "EMAIL_RESUMO_TETO_DIARIO": "100",
     "AI_PROVIDER": "openrouter",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
     // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
@@ -110,6 +121,7 @@
         "WELCOME_DISPATCH_MODE": "off",
         "WELCOME_BATCH_LIMIT": "1",
         "EMAIL_LEMBRETES_MODE": "off",
+        "EMAIL_RESUMO_MODE": "off",
         "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
         "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
         "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",

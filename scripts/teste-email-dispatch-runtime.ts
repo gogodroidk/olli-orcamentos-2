@@ -81,6 +81,38 @@ checar('claim devolve user_id e template_dados', /dispatch_scope text,\s+user_id
 checar('migration não apaga tabela nem dados (sem DROP TABLE/TRUNCATE/DELETE fora do purge)', !/drop\s+table|truncate/i.test(producaoSemComentario) && (producaoSemComentario.match(/delete from/gi) || []).length === 2);
 checar('não há segredo literal nos novos arquivos', !/(sb_secret_|service_role_key\s*=|re_[A-Za-z0-9]{20,})/.test(sql + consumer + wrangler));
 
+console.log('\nOLLI — resumo diário do dinheiro parado (20260930120000)');
+const resumo = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20260930120200_resumo_dinheiro_email.sql'), 'utf8');
+const resumoSql = resumo.replace(/\r\n/g, '\n').replace(/--[^\n]*/g, '');
+const resumoJob = fs.readFileSync(path.join(root, 'worker', 'src', 'resumoDinheiroJob.js'), 'utf8');
+checar('catálogo inclui resumo_dinheiro sem perder os modelos antigos', /'boas_vindas', 'boas_vindas\.v1', 'account_onboarding'[\s\S]*'lembrete_ativacao'[\s\S]*'lembrete_assinatura'[\s\S]*'resumo_dinheiro', 'resumo_dinheiro\.v1', 'money_digest'/.test(resumoSql));
+checar('canal próprio de dispatch (dá para prender só o resumo)', /values \('resumo_dinheiro', 'production'\)/.test(resumoSql) && /when new\.template = 'resumo_dinheiro' then 'resumo_dinheiro'/.test(resumoSql));
+checar('trigger de escopo continua só em INSERT (não recriado para UPDATE)', !/create trigger/i.test(resumoSql));
+checar('preferência com RLS forçada, leitura só da própria linha, escrita só por RPC', /alter table public\.email_preferencias force row level security/.test(resumoSql) && /grant select on table public\.email_preferencias to authenticated;/.test(resumoSql) && /using \(user_id = \(select auth\.uid\(\)\)\)/.test(resumoSql) && !/grant (insert|update|delete)[^;]*to authenticated/.test(resumoSql));
+checar('bounce/reclamação sempre bloqueiam; descadastro vence um "ligar" antigo', /motivo in \('hard_bounce', 'complaint'\)/.test(resumoSql) && /v_descad_em < v_pref\.atualizado_em/.test(resumoSql));
+checar('descadastro repetido renova a data (vence um "ligar" feito entre os dois)', /on conflict \(user_id, motivo\) do update\s+set criado_em = excluded\.criado_em/.test(resumoSql) && /where public\.email_supressoes\.motivo = 'descadastro'/.test(resumoSql));
+checar('desligar cancela o resumo ainda não enviado', /o\.template = 'resumo_dinheiro'\s+and o\.status in \('pending', 'failed'\)/.test(resumoSql));
+checar('enqueue: chave amarrada à conta E ao dia de Brasília', /'resumo:dinheiro:' \|\| p_user_id::text \|\| ':' \|\| v_dia/.test(resumoSql) && /resumo_chave_divergente/.test(resumoSql));
+checar('enqueue: janela 7h e nunca domingo, no relógio de Brasília', /America\/Sao_Paulo/.test(resumoSql) && /date_part\('hour', v_local\) <> 7/.test(resumoSql) && /date_part\('dow', v_local\) = 0/.test(resumoSql));
+checar('enqueue: nada acionável não entra', /nada_acionavel/.test(resumoSql));
+checar('enqueue: teto semanal, intervalo mínimo e teto diário', /teto_semanal/.test(resumoSql) && /intervalo_minimo/.test(resumoSql) && /teto_diario/.test(resumoSql));
+checar('enqueue serializa por conta (advisory lock)', /olli\.email_resumo:/.test(resumoSql));
+checar('dados da conta sem nome, telefone ou e-mail', !/cliente_nome|telefone|clienteTelefone|clienteNome|u\.email/.test(resumoSql.slice(resumoSql.indexOf('function public.dados_resumo_dinheiro'), resumoSql.indexOf('function public.enqueue_resumo_dinheiro_email'))));
+const rpcsResumo = [
+  'listar_candidatos_resumo_dinheiro(timestamptz, integer, integer, integer, integer, integer)',
+  'dados_resumo_dinheiro(uuid, integer)',
+  'enqueue_resumo_dinheiro_email(uuid, text, jsonb, integer, integer, integer, timestamptz)',
+  'desligar_resumo_dinheiro_email_servico(uuid, text)',
+];
+checar('RPCs de serviço do resumo: só service_role', rpcsResumo.every((f) => resumoSql.includes(`revoke all on function public.${f}\n  from public, anon, authenticated;`) && resumoSql.includes(`grant execute on function public.${f}\n  to service_role;`)));
+checar('RPCs da tela: só authenticated', /grant execute on function public\.meu_resumo_dinheiro_email\(\) to authenticated;/.test(resumoSql) && /grant execute on function public\.definir_resumo_dinheiro_email\(boolean, text\) to authenticated;/.test(resumoSql));
+checar('toda função do resumo fixa search_path vazio', (resumoSql.match(/set search_path = ''/g) || []).length >= (resumoSql.match(/create or replace function/gi) || []).length);
+checar('migration do resumo não apaga nada', !/drop\s+table|drop\s+function|truncate|delete from/i.test(resumoSql));
+checar('resumo ligado só na produção; staging desligado', /"EMAIL_RESUMO_MODE"\s*:\s*"production"/.test(varsProducao) && /"EMAIL_RESUMO_MODE"\s*:\s*"off"/.test(varsStaging));
+checar('começo conservador: 3 por semana', /"EMAIL_RESUMO_MAX_SEMANA"\s*:\s*"3"/.test(varsProducao));
+checar('scheduled roda a seleção do resumo', /ctx\.waitUntil\(processarResumoDinheiro\(env/.test(index));
+checar('job exige descadastro configurado', /descadastro_nao_configurado/.test(resumoJob));
+
 if (falhas) {
   console.error(`\nFALHOU: ${ok} ok, ${falhas} falha(s)`);
   process.exit(1);

@@ -34,7 +34,7 @@ const NOME_PLANO = Object.freeze({ pro: 'Pro', empresa: 'Empresa' });
 const DIAS_SEMANA = Object.freeze(['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']);
 const OFFSET_BRASILIA_MS = -3 * 60 * 60 * 1000;
 
-function exigir(condicao, codigo) {
+export function exigir(condicao, codigo) {
   if (!condicao) {
     const erro = new Error(codigo);
     erro.codigo = codigo;
@@ -46,18 +46,18 @@ function objeto(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-function chavesExatas(valor, esperadas, codigo) {
+export function chavesExatas(valor, esperadas, codigo) {
   exigir(objeto(valor), codigo);
   const recebidas = Object.keys(valor).sort();
   const lista = [...esperadas].sort();
   exigir(recebidas.length === lista.length && recebidas.every((chave, i) => chave === lista[i]), codigo);
 }
 
-function idSeguro(valor) {
+export function idSeguro(valor) {
   return typeof valor === 'string' && /^[a-zA-Z0-9._:-]{1,240}$/.test(valor) ? valor : '';
 }
 
-function urlHttps(valor, codigo) {
+export function urlHttps(valor, codigo) {
   exigir(typeof valor === 'string' && valor.length <= 2048, codigo);
   let url;
   try { url = new URL(valor); } catch { exigir(false, codigo); }
@@ -65,7 +65,7 @@ function urlHttps(valor, codigo) {
   return url;
 }
 
-function atributoHtml(valor) {
+export function atributoHtml(valor) {
   return String(valor)
     .replaceAll('&', '&amp;')
     .replaceAll('"', '&quot;')
@@ -77,7 +77,7 @@ function htmlTexto(valor) {
   return String(valor).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-function congelarProfundo(valor) {
+export function congelarProfundo(valor) {
   if (valor === null || typeof valor !== 'object' || Object.isFrozen(valor)) return valor;
   for (const item of Object.values(valor)) congelarProfundo(item);
   return Object.freeze(valor);
@@ -97,7 +97,7 @@ export function dataCurtaBrasilia(iso) {
   return `${dia}/${mes} (${DIAS_SEMANA[b.getUTCDay()]})`;
 }
 
-function urlCom(base, caminho, params = {}) {
+export function urlCom(base, caminho, params = {}) {
   const url = new URL(base.toString());
   url.pathname = caminho;
   url.search = '';
@@ -239,8 +239,11 @@ function conteudoAssinatura(dados, appUrl) {
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
+// Exportado (com os validadores acima) para o resumo diário do dinheiro parado
+// (`resumoDinheiroTemplate.js`) sair com a MESMA casca — marca, contraste, botão de
+// 44 px e rodapé com descadastro. `c.rotuloDescadastro` troca só o texto do link.
 
-function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
+export function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
   const paragrafos = c.paragrafos
     .map((p) => `<p style="margin:0 0 16px;color:#344454;font-size:16px;line-height:1.6;">${htmlTexto(p)}</p>`)
     .join('\n                  ');
@@ -289,7 +292,7 @@ function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
                 </td>
               </tr>
               <tr>
-                <td style="padding:20px 28px;border-top:1px solid #d9e1e6;color:#5d6b78;font-size:14px;line-height:1.5;text-align:center;">${htmlTexto(c.motivo)} <a href="${unsubscribeHref}" style="color:#5d6b78;text-decoration:underline;">Parar de receber lembretes</a>.</td>
+                <td style="padding:20px 28px;border-top:1px solid #d9e1e6;color:#5d6b78;font-size:14px;line-height:1.5;text-align:center;">${htmlTexto(c.motivo)} <a href="${unsubscribeHref}" style="color:#5d6b78;text-decoration:underline;">${htmlTexto(c.rotuloDescadastro ?? 'Parar de receber lembretes')}</a>.</td>
               </tr>
             </table>
           </td>
@@ -300,7 +303,7 @@ function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
 </html>`;
 }
 
-function montarTexto(c, { supportUrl, unsubscribeUrl }) {
+export function montarTexto(c, { supportUrl, unsubscribeUrl }) {
   const linhas = [c.titulo, '', ...c.paragrafos];
   if (c.passos) {
     linhas.push('');
@@ -309,7 +312,7 @@ function montarTexto(c, { supportUrl, unsubscribeUrl }) {
   linhas.push('', `${c.cta.rotulo}: ${c.cta.href}`);
   if (c.depois.length) linhas.push('', ...c.depois);
   linhas.push('', `Suporte da OLLI Orçamentos: ${supportUrl}`);
-  linhas.push('', c.motivo, `Parar de receber lembretes: ${unsubscribeUrl}`);
+  linhas.push('', c.motivo, `${c.rotuloDescadastro ?? 'Parar de receber lembretes'}: ${unsubscribeUrl}`);
   return linhas.join('\n');
 }
 

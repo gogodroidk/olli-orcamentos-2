@@ -16,6 +16,7 @@ import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import { BotaoPortalStripe, listarFaturasStripe, obterMetodoStripe, obterStatusPortalStripe } from "../planos/portal";
+import { ResumoEmailCard } from "./ResumoEmailCard";
 
 const dinheiro = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const planoNome = (p?: string) => (p === "empresa" ? "Empresa" : p === "pro" ? "Pro" : "Grátis");
@@ -93,6 +94,8 @@ export default function ConfiguracoesPage() {
 				<Card className="p-5"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-warning/10 text-warning"><Palette className="size-5" /></span><div className="min-w-0 flex-1"><h2 className="font-semibold text-text-primary">Aparência</h2><p className="mt-1 text-sm text-text-secondary">Escolha tema e cor aqui, sem precisar encontrar o ícone no topo. A preferência fica salva neste navegador.</p><div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Tema do painel"><Button type="button" size="sm" variant={aparencia.themeMode === ThemeMode.Light ? "default" : "outline"} onClick={() => atualizarAparencia({ themeMode: ThemeMode.Light })} className="gap-1.5"><Sun className="size-4" />Claro {aparencia.themeMode === ThemeMode.Light && <Check className="size-3.5" />}</Button><Button type="button" size="sm" variant={aparencia.themeMode === ThemeMode.Dark ? "default" : "outline"} onClick={() => atualizarAparencia({ themeMode: ThemeMode.Dark })} className="gap-1.5"><Moon className="size-4" />Escuro {aparencia.themeMode === ThemeMode.Dark && <Check className="size-3.5" />}</Button></div><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Cor de destaque"><span className="sr-only">Cor de destaque</span>{Object.values(ThemeColorPresets).map((cor) => <button key={cor} type="button" aria-label={`Usar cor ${cor}`} aria-pressed={aparencia.themeColorPresets === cor} onClick={() => atualizarAparencia({ themeColorPresets: cor })} className={cn("size-7 rounded-full border-2 border-background shadow ring-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", aparencia.themeColorPresets === cor && "ring-2 ring-primary")} style={{ backgroundColor: presetsColors[cor].default }} />)}</div><Badge variant="secondary" className="mt-3">Acessível por teclado e leitor de tela</Badge></div></div></Card>
 				<Card className="p-5"><div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success/10 text-success"><ShieldCheck className="size-5" /></span><div><h2 className="font-semibold text-text-primary">Segurança e privacidade</h2><p className="mt-1 text-sm text-text-secondary">Sessão Supabase e isolamento dos dados por empresa.</p><div className="mt-4 flex flex-wrap gap-2"><LinkExterno href="https://olliorcamentos.online/legal/privacidade/">Privacidade</LinkExterno><LinkExterno href="https://olliorcamentos.online/excluir-conta/">Excluir conta</LinkExterno></div></div></div></Card>
 			</div>
+
+			<ResumoEmailCard />
 
 			<Card className="p-5">
 				<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
