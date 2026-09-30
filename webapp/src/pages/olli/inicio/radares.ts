@@ -21,24 +21,18 @@
  * já puxa o gerador de PDF do app. Estes três módulos são TypeScript puro (só
  * `Intl` e string) — não arrastam react-native, então nem stub do Vite precisam.
  *
- * O que SOBROU e teve de ser espelhado é só a LEITURA (que linha conta como parada,
- * como esfriada) — e cada espelho carrega, no comentário, de onde veio a regra e onde
- * ele difere. Ver `listarDinheiroParado` em `financeiro.ts` e `listarEsfriando` abaixo.
- *
- * ⚠️ NOTA DE MANUTENÇÃO: o aviso gêmeo deste, do lado do app (`src/services/radar*.ts`),
- * não pôde ser escrito — `src/` está fora do alcance de quem escreveu este arquivo.
- * Quem mexer na regra de QUALQUER radar do app precisa passar por aqui.
+ * A LEITURA (que linha conta como parada, como esfriada) deixou de ser espelho em
+ * 30/09/2026: mora em `src/services/radarDinheiro.ts` (alias `@radar-dinheiro`), o
+ * módulo puro que este painel, o resumo diário por e-mail (worker) e os limiares do
+ * app (`radarFollowUp.ts`, `radarClientes.ts`) leem. Quem mexer numa regra de radar
+ * mexe lá, e as três pontas mudam juntas.
  */
 import type { Empresa } from "@dominio";
-import { brParaYmd } from "@/olli/datas";
+import { LIMIAR_CLIENTE_SUMIDO_DIAS, listarClientesSumidos } from "@radar-dinheiro";
 import { montarMensagemCobranca, montarMensagemReconquista } from "../../../../../src/utils/mensagensOrcamento";
 import { gerarPixCopiaECola } from "../../../../../src/utils/pixBrCode";
 import { type DinheiroParado, numeroWhatsapp } from "./financeiro";
 import type { AgendamentoRow, OrcamentoRow, ReciboRow } from "./helpers";
-
-const MS_POR_DIA = 86_400_000;
-
-const slug = (s?: string | null) => (s ?? "").trim().toLowerCase();
 
 /* ═════════════════  1. COBRAR O DINHEIRO PARADO (1 toque)  ═════════════════ */
 
@@ -108,58 +102,8 @@ export const COLUNAS_AGENDA_RADAR = "cliente_id, status, inicio, fim";
 /** Colunas mínimas de `clientes` para o radar. */
 export const COLUNAS_CLIENTES_RADAR = "id, nome, telefone";
 
-/** Limiar de dias sem contato (~5 meses) — o MESMO `DIAS_LIMIAR` de `radarClientes.ts`. */
-export const DIAS_ESFRIANDO = 150;
-
-/**
- * Status de orçamento que contam como interação com o cliente.
- *
- * ESPELHO LITERAL de `radarClientes.ts` (`mapaUltimaInteracao`): lá são exatamente
- * 'aprovado', 'enviado' e 'aguardando_assinatura'. Repare que NÃO é a mesma lista de
- * `STATUS_PROPOSTA_ENVIADA` — 'visualizado' e 'em_negociacao' ficam de fora. Pode
- * parecer descuido do app, mas espelhar é o certo aqui: se o painel incluísse os dois,
- * um cliente sumido há 6 meses apareceria "quente" no computador e "frio" no celular,
- * e o dono não saberia em qual acreditar. Mudar isso é decisão de produto, e tem que
- * mudar nos DOIS lados no mesmo commit.
- */
-const STATUS_INTERACAO = new Set(["aprovado", "enviado", "aguardando_assinatura"]);
-
-/** ms da data, ou `null` quando não dá para ler (nunca vira "hoje" nem 1970). */
-function ms(iso?: string | null): number | null {
-	if (!iso) return null;
-	const t = new Date(iso).getTime();
-	return Number.isFinite(t) ? t : null;
-}
-
-/**
- * Quando o dinheiro deste recibo entrou, em ms.
- *
- * A data honesta do recibo é `dados.dataRecebimento`, em DD/MM/AAAA (ver
- * `webapp/src/olli/datas.ts`). O app faz `new Date('10/07/2026')` direto nessa string
- * e o JavaScript lê MM/DD — 10 de julho vira 7 de outubro, e a "última interação"
- * salta meses. Aqui convertemos antes (`brParaYmd`), então o painel acerta onde o
- * celular erra. É a única diferença deliberada em relação a `radarClientes.ts`, e ela
- * só pode empurrar um cliente para FORA do radar (data mais recente), nunca inventar
- * um cliente esfriado que não existe.
- */
-function msRecibo(r: ReciboRow): number | null {
-	const br = r.dados?.dataRecebimento;
-	if (br) {
-		const ymd = brParaYmd(br);
-		if (ymd) return ms(ymd);
-	}
-	return ms(r.criado_em ?? r.dados?.criadoEm);
-}
-
-/** Maior ms entre os dados (ignorando nulos). */
-function maisRecente(...valores: (number | null)[]): number | null {
-	let melhor: number | null = null;
-	for (const v of valores) {
-		if (v === null) continue;
-		if (melhor === null || v > melhor) melhor = v;
-	}
-	return melhor;
-}
+/** Limiar de dias sem contato (~5 meses) — o MESMO de `radarClientes.ts`, lido de `@radar-dinheiro`. */
+export const DIAS_ESFRIANDO = LIMIAR_CLIENTE_SUMIDO_DIAS;
 
 export interface EntradaEsfriando {
 	clientes: ClienteRow[];
@@ -172,68 +116,17 @@ export interface EntradaEsfriando {
 
 /**
  * Clientes que JÁ FORAM ATENDIDOS e sumiram há >= 150 dias — quem sumiu há mais tempo
- * primeiro. Espelho de `clientesParaReconquistar` (`src/services/radarClientes.ts`):
- * mesmo limiar, mesmas três fontes de "última interação" (orçamento enviado/aprovado/
- * aguardando assinatura pelo `criadoEm`, agendamento CONCLUÍDO pelo fim, recibo), e a
- * mesma trava que importa: cliente sem NENHUMA interação nunca entra — é lead frio,
- * não manutenção perdida.
- *
- * Respeita o "adiar" feito no celular (`extras_sync`, chave `radar.snooze`) para o
- * painel não ressuscitar o cliente que o dono acabou de tirar do radar no aparelho. O
- * painel só LÊ esse mapa; adiar continua sendo do app (lá o adiamento é escrito e
- * sincronizado).
+ * primeiro. É `listarClientesSumidos` de `src/services/radarDinheiro.ts`: mesmo limiar
+ * e mesmo conjunto de status de interação do `radarClientes.ts` do celular (aprovado,
+ * enviado, aguardando_assinatura — sem 'visualizado'/'em_negociacao'), agendamento
+ * CONCLUÍDO, recibo pela data de recebimento do BLOB convertida de DD/MM/AAAA (aqui o
+ * painel acerta onde o celular lê MM/DD — a única diferença, e ela só pode tirar
+ * cliente do radar, nunca inventar um). Cliente sem nenhuma interação nunca entra.
+ * Respeita o "adiar" feito no celular (`extras_sync`/'radar.snooze'); o painel só lê.
+ * O resumo diário por e-mail conta os sumidos com esta mesma função.
  */
 export function listarEsfriando(entrada: EntradaEsfriando, agora: Date = new Date()): ClienteEsfriando[] {
-	const { clientes, orcamentos, agendamentos, recibos, adiados } = entrada;
-
-	const ultima = new Map<string, number>();
-	const registrar = (clienteId?: string | null, quando?: number | null) => {
-		const id = (clienteId ?? "").trim();
-		if (!id || quando === null || quando === undefined) return;
-		const atual = ultima.get(id);
-		if (atual === undefined || quando > atual) ultima.set(id, quando);
-	};
-
-	for (const o of orcamentos) {
-		if (!STATUS_INTERACAO.has(slug(o.status))) continue;
-		registrar(o.cliente_id ?? o.dados?.clienteId, ms(o.criado_em ?? o.dados?.criadoEm));
-	}
-	for (const a of agendamentos) {
-		if (slug(a.status) !== "concluido") continue;
-		registrar(a.cliente_id, maisRecente(ms(a.fim), ms(a.inicio)));
-	}
-	for (const r of recibos) {
-		registrar(r.cliente_id ?? r.dados?.clienteId, msRecibo(r));
-	}
-
-	const agoraMs = agora.getTime();
-	const resultado: ClienteEsfriando[] = [];
-
-	for (const c of clientes) {
-		const id = (c.id ?? "").trim();
-		if (!id) continue;
-		const quando = ultima.get(id);
-		if (quando === undefined) continue; // nunca interagiu → lead frio, fora do radar
-
-		const ate = ms(adiados[id]);
-		if (ate !== null && ate > agoraMs) continue; // adiado no celular, ainda vigente
-
-		const dias = Math.floor((agoraMs - quando) / MS_POR_DIA);
-		if (dias < DIAS_ESFRIANDO) continue;
-
-		resultado.push({
-			id,
-			nome: (c.nome ?? "").trim() || "Cliente sem nome",
-			telefone: (c.telefone ?? "").trim(),
-			ultimaInteracao: new Date(quando).toISOString(),
-			// Mesmo arredondamento do app (`mesesEntre`): dias/30, piso de 1 mês.
-			meses: Math.max(1, Math.round(dias / 30)),
-			dias,
-		});
-	}
-
-	// Sumido há mais tempo primeiro — a mesma ordem do celular.
-	return resultado.sort((a, b) => b.dias - a.dias);
+	return listarClientesSumidos(entrada, agora);
 }
 
 /**

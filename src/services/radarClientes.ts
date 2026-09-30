@@ -29,9 +29,13 @@ import { Cliente } from '../types';
 import { RADAR_SNOOZE_KEY } from './storageKeys';
 import { montarMensagemReconquista } from '../utils/mensagensOrcamento';
 import { pushExtraChave } from './cloudSync';
+import { LIMIAR_CLIENTE_SUMIDO_DIAS, STATUS_INTERACAO_CLIENTE } from './radarDinheiro';
 
-/** Limiar de dias sem contato para o cliente entrar no radar (~5 meses). */
-const DIAS_LIMIAR = 150;
+/** Limiar de dias sem contato para o cliente entrar no radar (~5 meses) — o MESMO
+ *  do painel e do resumo diário por e-mail (`radarDinheiro.ts`). */
+const DIAS_LIMIAR = LIMIAR_CLIENTE_SUMIDO_DIAS;
+/** Status de orçamento que contam como interação (mesma lista do painel e do e-mail). */
+const STATUS_INTERACAO = new Set<string>(STATUS_INTERACAO_CLIENTE);
 const MS_POR_DIA = 86400000;
 
 // Nome do prestador (getEmpresa) cacheado em memória por processo: a
@@ -100,7 +104,7 @@ async function mapaUltimaInteracao(): Promise<Map<string, string | null>> {
 
   for (const o of orcamentos) {
     if (!o.clienteId) continue;
-    if (o.status !== 'aprovado' && o.status !== 'enviado' && o.status !== 'aguardando_assinatura') continue;
+    if (!STATUS_INTERACAO.has(o.status)) continue;
     const atual = mapa.get(o.clienteId) ?? null;
     mapa.set(o.clienteId, maisRecente(atual, o.criadoEm));
   }

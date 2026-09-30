@@ -46,8 +46,12 @@ export async function lerJsonLimitado(response, limite = EMAIL_RPC_MAX_RESPONSE_
   }
 }
 
-/** `config` = { supabaseUrl, serviceRoleKey }. Lança `supabase_rpc_<status>` em erro HTTP. */
-export async function chamarRpcServico(config, fetchImpl, nome, body) {
+/**
+ * `config` = { supabaseUrl, serviceRoleKey }. Lança `supabase_rpc_<status>` em erro HTTP.
+ * `opcoes.limiteBytes` sobe o teto de leitura só para quem precisa (as linhas de uma
+ * conta no resumo diário); passar do teto lança `resposta_grande`, nunca trunca.
+ */
+export async function chamarRpcServico(config, fetchImpl, nome, body, opcoes = {}) {
   const response = await fetchImpl(`${config.supabaseUrl}/rest/v1/rpc/${nome}`, {
     method: 'POST',
     headers: {
@@ -58,7 +62,10 @@ export async function chamarRpcServico(config, fetchImpl, nome, body) {
     body: JSON.stringify(body),
     signal: sinalTimeout(10_000),
   });
-  const payload = await lerJsonLimitado(response);
+  const limite = Number.isInteger(opcoes.limiteBytes) && opcoes.limiteBytes > 0
+    ? opcoes.limiteBytes
+    : EMAIL_RPC_MAX_RESPONSE_BYTES;
+  const payload = await lerJsonLimitado(response, limite);
   if (!response.ok) {
     throw Object.assign(new Error(`supabase_rpc_${response.status}`), {
       codigo: `supabase_rpc_${response.status}`,

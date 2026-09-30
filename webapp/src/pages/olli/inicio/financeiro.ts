@@ -14,25 +14,35 @@
  *    Ver o comentário em `webapp/src/olli/datas.ts`.
  * 3. A lixeira já foi filtrada lá atrás (`useOlliList` só traz `excluido_em IS NULL`).
  */
-import { type Orcamento, STATUS_PROPOSTA_ENVIADA } from "@dominio";
+import type { Orcamento } from "@dominio";
+import {
+	type DinheiroParadoLinha,
+	listarDinheiroParado as listarDinheiroParadoRegra,
+	listarPropostasParadas,
+	type PropostaParada,
+	type RadarDinheiroResultado,
+	STATUS_A_RECEBER,
+	STATUS_EM_JOGO,
+	valorRecibo,
+} from "@radar-dinheiro";
 import { brParaYmd } from "@/olli/datas";
 import type { AgendamentoRow, OrcamentoRow, ReciboRow } from "./helpers";
 import { valorOrcamento } from "./helpers";
 
 /**
- * Proposta VIVA na mão do cliente — ainda pode virar dinheiro.
+ * AS REGRAS DOS RADARES MORAM EM `src/services/radarDinheiro.ts` (alias `@radar-dinheiro`).
  *
- * NÃO é uma lista nova: é a `STATUS_PROPOSTA_ENVIADA` do app (`src/types/index.ts`),
- * a MESMA constante que o `radarFollowUp.ts` do celular usa para decidir "esta
- * proposta já foi ao cliente". Antes o painel tinha uma cópia literal dos 4 slugs e
- * o `listarParados` abaixo olhava só DOIS deles ("enviado"/"visualizado") — app e
- * painel contavam propostas paradas diferentes em cima do mesmo dado, que é pior do
- * que não ter o radar. Importando a constante, divergir vira erro de compilação.
+ * Desde 30/09/2026 o resumo diário por e-mail (worker) calcula o mesmo "dinheiro
+ * parado" que esta tela mostra — e o e-mail manda o dono para cá. Duas cópias da
+ * conta (uma aqui, outra no servidor) garantiriam, um dia, um e-mail dizendo
+ * "R$ 2.340 parado" e um painel dizendo R$ 1.900. Por isso a regra saiu deste arquivo
+ * e virou módulo puro compartilhado; aqui ficam só os tipos da tela e as contas que
+ * são SÓ do painel (em jogo, recebido no mês, taxa de aprovação).
+ *
+ * `STATUS_EM_JOGO` continua sendo a `STATUS_PROPOSTA_ENVIADA` do app (o módulo
+ * compartilhado a importa de `src/types`), e `STATUS_A_RECEBER` = aprovado/convertido.
  */
-export const STATUS_EM_JOGO = STATUS_PROPOSTA_ENVIADA;
-
-/** Proposta GANHA — o dinheiro é seu, falta entrar. */
-export const STATUS_A_RECEBER = ["aprovado", "convertido"] as const;
+export { STATUS_A_RECEBER, STATUS_EM_JOGO, valorRecibo };
 
 const slug = (s?: string | null) => (s ?? "").trim().toLowerCase();
 
@@ -77,81 +87,22 @@ export interface SomaAReceber extends Soma {
 	quitados: number;
 }
 
-/** Valor de um recibo: coluna → blob. `null` = não sei (não vira zero). */
-export function valorRecibo(r: ReciboRow): number | null {
-	const candidatos = [r.valor_recebido, r.dados?.valorRecebido];
-	for (const c of candidatos) {
-		if (typeof c === "number" && Number.isFinite(c)) return c;
-	}
-	return null;
-}
-
-/** Uma linha do dinheiro parado: um orçamento GANHO que ainda não foi pago por inteiro. */
-export interface DinheiroParado {
-	id: string;
-	numero: string;
-	cliente: string;
-	/** Telefone cru do blob (vazio → sem WhatsApp possível). */
-	telefone: string;
-	/** Ainda devido (valor do orçamento − recibos dele). Sempre > 0. */
-	saldo: number;
-	/** Valor CHEIO aprovado — é dele que a mensagem de cobrança fala. */
-	valorTotal: number;
-	/** Quanto já entrou deste orçamento. 0 = ninguém pagou nada ainda. */
-	jaPago: number;
-	/**
-	 * Dias desde a última mexida (proxy de "desde quando está aprovado", igual ao
-	 * app). `null` = nenhuma data legível — o item CONTINUA aparecendo, porque
-	 * esconder dinheiro por falta de data seria apagar o que o dono tem a receber.
-	 */
-	dias: number | null;
-	status: string;
-	/**
-	 * O blob do orçamento. É dele que sai o telefone e é ele que alimenta a MESMA
-	 * função de mensagem que o celular usa (`montarMensagemCobranca`). `null` numa
-	 * linha antiga sem blob: a linha aparece, só não tem botão de cobrar.
-	 */
-	dados: Orcamento | null;
-}
+/** Uma linha do dinheiro parado: um orçamento GANHO que ainda não foi pago por inteiro.
+ *  `dados` é o blob do orçamento — alimenta a MESMA função de mensagem do celular. */
+export type DinheiroParado = DinheiroParadoLinha<Orcamento>;
 
 /** O radar de dinheiro parado inteiro: a lista + os totais que a tela mostra. */
-export interface RadarDinheiro extends SomaAReceber {
-	/** As linhas, mais parado primeiro (sem data legível por último). */
-	linhas: DinheiroParado[];
-	/** Dias do item mais antigo — o "há N dias" do título. `null` = nenhuma data legível. */
-	diasMaisAntigo: number | null;
-}
+export interface RadarDinheiro extends SomaAReceber, RadarDinheiroResultado<Orcamento> {}
 
 /**
  * O RADAR DE DINHEIRO PARADO — orçamento ganho que ainda não virou dinheiro no bolso.
  *
- * ═══ ESPELHO DA REGRA DO APP, COM UMA DIFERENÇA DECLARADA ═══
- * O celular tem esta mesma pergunta em `src/services/radarCobranca.ts`. Não dá para
- * IMPORTAR aquele arquivo: ele lê o SQLite do aparelho (`database/database.ts` →
- * expo-sqlite) e devolve objetos de domínio, enquanto aqui a fonte são as `Row` do
- * Supabase. O que dava para reusar foi reusado de verdade — a mensagem de WhatsApp e
- * o Pix Copia e Cola saem das MESMAS funções do app (ver `radares.ts`).
- *
- * A regra de "quanto tempo parado" é idêntica: `atualizado_em → criado_em` como proxy
- * da aprovação (`dataAprovacao` no app), dias inteiros, mais parado primeiro.
- *
- * A regra de "o que conta como parado" é um SUPERCONJUNTO da do app, de propósito:
- *   • app ....... status === 'aprovado' E nenhum recibo vinculado;
- *   • painel .... status aprovado OU convertido, com SALDO > 0 (abate os recibos).
- * Dois motivos, e nenhum deles é preguiça:
- *   1. Este número tem que bater com o KPI "A receber" que já está na MESMA tela —
- *      duas contas diferentes de dinheiro parado lado a lado é pior que nenhuma. Por
- *      isso `calcularAReceber` agora é derivado DESTA função, não uma segunda soma.
- *   2. Pelo saldo, um orçamento com pagamento PARCIAL (sinal) continua sendo dinheiro
- *      parado. Na regra do app ele some do radar inteiro no instante em que o primeiro
- *      recibo é emitido — o resto vira dinheiro invisível.
- * A garantia que isso dá: o painel NUNCA mostra menos dinheiro parado que o celular
- * (o conjunto do app está contido neste). O erro perigoso — o app avisar "R$ 800
- * esperando" e o painel dizer "nada parado" — é impossível por construção.
- *
- * O saldo é calculado POR ORÇAMENTO e travado em 0 no piso. Sem esse trava-piso, um
- * cliente que pagou a mais num serviço (troco, gorjeta, valor arredondado) abateria a
- * dívida de OUTRO cliente e o dono cobraria de menos — dinheiro que some da tela.
+ * A regra (aprovado OU convertido com SALDO > 0, abatendo recibos por orçamento, com
+ * trava-piso; OS concluída tira do radar; mais parado primeiro) está documentada em
+ * `listarDinheiroParado` de `src/services/radarDinheiro.ts` — é a MESMA função que o
+ * resumo diário por e-mail usa no servidor. O superconjunto em relação ao celular
+ * (`radarCobranca.ts`: aprovado sem recibo) continua de propósito: pagamento parcial
+ * é dinheiro parado, e o painel nunca mostra menos que o app.
  */
 export function listarDinheiroParado(
 	orcamentos: OrcamentoRow[],
@@ -159,74 +110,7 @@ export function listarDinheiroParado(
 	agora: Date = new Date(),
 	orcamentosFinalizados: ReadonlySet<string> = new Set(),
 ): RadarDinheiro {
-	// Quanto já entrou por orçamento.
-	const recebidoPorOrc = new Map<string, number>();
-	for (const r of recibos) {
-		const orcId = (r.orcamento_id ?? r.dados?.orcamentoId ?? "").trim();
-		if (!orcId) continue; // recibo avulso (sem orçamento) não abate ninguém
-		const v = valorRecibo(r);
-		if (v === null) continue;
-		recebidoPorOrc.set(orcId, (recebidoPorOrc.get(orcId) ?? 0) + v);
-	}
-
-	const linhas: DinheiroParado[] = [];
-	let total = 0;
-	let semValor = 0;
-	let jaRecebido = 0;
-	let quitados = 0;
-
-	for (const o of orcamentos) {
-		if (orcamentosFinalizados.has((o.id ?? "").trim())) continue;
-		const s = slug(o.status);
-		if (!aReceber.has(s)) continue;
-		const v = valorOrcamento(o);
-		if (v === null) {
-			semValor++;
-			continue;
-		}
-		const pago = recebidoPorOrc.get((o.id ?? "").trim()) ?? 0;
-		jaRecebido += Math.min(pago, v);
-		const saldo = Math.max(0, v - pago);
-		if (saldo <= 0) {
-			quitados++;
-			continue;
-		}
-		total += saldo;
-
-		const t = ultimaMexida(o);
-		linhas.push({
-			id: (o.id ?? "").trim(),
-			numero: (o.numero ?? o.dados?.numero ?? "").trim(),
-			cliente: (o.cliente_nome ?? o.dados?.clienteNome ?? "").trim() || "Cliente não informado",
-			telefone: (o.dados?.clienteTelefone ?? "").trim(),
-			saldo,
-			valorTotal: v,
-			jaPago: Math.min(pago, v),
-			dias: Number.isFinite(t) ? Math.max(0, Math.floor((agora.getTime() - t) / 86_400_000)) : null,
-			status: s,
-			dados: o.dados ?? null,
-		});
-	}
-
-	// Mais parado primeiro (é quem precisa de cobrança antes). Sem data legível vai
-	// para o fim — não some, só não tem como disputar prioridade por tempo. Empate de
-	// dias desempata pelo maior saldo: entre dois de 12 dias, o de R$ 900 vem antes.
-	linhas.sort((a, b) => {
-		if (a.dias === b.dias) return b.saldo - a.saldo;
-		if (a.dias === null) return 1;
-		if (b.dias === null) return -1;
-		return b.dias - a.dias;
-	});
-
-	return {
-		linhas,
-		total,
-		itens: linhas.length,
-		semValor,
-		jaRecebido,
-		quitados,
-		diasMaisAntigo: linhas.length > 0 ? linhas[0].dias : null,
-	};
+	return listarDinheiroParadoRegra(orcamentos, recibos, agora, orcamentosFinalizados);
 }
 
 /**
@@ -325,59 +209,17 @@ export function calcularTaxaAprovacao(orcamentos: OrcamentoRow[], dias = 30, ago
 
 /* ─────────────────────────  PARADOS / COBRAR  ───────────────────────── */
 
-export interface Parado {
-	id: string;
-	numero: string;
-	cliente: string;
-	/** Telefone cru do blob (pode ser vazio → sem WhatsApp possível). */
-	telefone: string;
-	valor: number | null;
-	status: string;
-	/** Dias inteiros desde a última mexida no orçamento. */
-	dias: number;
-}
-
-/** Última mexida (atualizado_em → criado_em). NaN quando nenhuma data é legível. */
-function ultimaMexida(o: OrcamentoRow): number {
-	for (const iso of [o.atualizado_em, o.dados?.atualizadoEm, o.criado_em, o.dados?.criadoEm]) {
-		if (!iso) continue;
-		const t = new Date(iso).getTime();
-		if (Number.isFinite(t)) return t;
-	}
-	return Number.NaN;
-}
+export type Parado = PropostaParada;
 
 /**
- * Propostas JÁ ENVIADAS ao cliente e esquecidas há mais de `minDias` — o degrau
- * ANTES do dinheiro parado: aqui o cliente ainda nem respondeu. Mais parado
- * primeiro. Sem data legível → fica de fora (não inventamos "0 dias").
- *
- * ESPELHO DO APP: mesma pergunta de `src/services/radarFollowUp.ts` (mesmo limiar
- * de 3 dias, mesmo proxy `atualizado_em → criado_em`, mesma ordem). O status agora
- * sai de `STATUS_EM_JOGO`, que É a `STATUS_PROPOSTA_ENVIADA` do app — antes esta
- * função olhava só "enviado"/"visualizado" e escondia do painel toda proposta em
- * negociação ou aguardando assinatura que o celular mostrava como parada.
+ * Propostas JÁ ENVIADAS ao cliente e esquecidas há `minDias` ou mais — o degrau ANTES
+ * do dinheiro parado. É `listarPropostasParadas` de `src/services/radarDinheiro.ts`
+ * (o mesmo limiar de 3 dias do `radarFollowUp.ts` do celular, o mesmo proxy
+ * `atualizado_em → criado_em`, a mesma `STATUS_PROPOSTA_ENVIADA`) — e é a mesma conta
+ * que o resumo diário por e-mail faz no servidor.
  */
 export function listarParados(orcamentos: OrcamentoRow[], minDias = 3, agora: Date = new Date()): Parado[] {
-	const parados: Parado[] = [];
-	for (const o of orcamentos) {
-		const s = slug(o.status);
-		if (!emJogo.has(s)) continue;
-		const t = ultimaMexida(o);
-		if (!Number.isFinite(t)) continue;
-		const dias = Math.floor((agora.getTime() - t) / 86_400_000);
-		if (dias < minDias) continue;
-		parados.push({
-			id: (o.id ?? "").trim(),
-			numero: (o.numero ?? o.dados?.numero ?? "").trim(),
-			cliente: (o.cliente_nome ?? o.dados?.clienteNome ?? "").trim() || "Cliente não informado",
-			telefone: (o.dados?.clienteTelefone ?? "").trim(),
-			valor: valorOrcamento(o),
-			status: s,
-			dias,
-		});
-	}
-	return parados.sort((a, b) => b.dias - a.dias);
+	return listarPropostasParadas(orcamentos, minDias, agora);
 }
 
 /* ─────────────────────────  WHATSAPP  ───────────────────────── */

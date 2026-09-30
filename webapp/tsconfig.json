@@ -54,6 +54,12 @@
 			// LEMBRETE DE ASSINATURA — a MESMA regra de "que lembrete de pagar esta conta vê"
 			// que o app usa, para painel e celular nunca cobrarem diferente. Módulo puro.
 			"@lembreteAssinatura": ["../src/services/lembreteAssinatura.ts"],
+			// RADAR DE DINHEIRO — a MESMA regra de dinheiro parado / proposta parada /
+			// cliente sumido que o resumo diário por e-mail (worker) usa. Módulo puro.
+			"@radar-dinheiro": ["../src/services/radarDinheiro.ts"],
+			// RESUMO POR E-MAIL — textos e leitura do botão "Receber resumo diário por e-mail",
+			// iguais aos do app (Conta → Notificações). Módulo puro, zero imports.
+			"@resumo-email": ["../src/services/resumoEmailPreferencia.ts"],
 			"@plano-efetivo": ["../src/services/planoEfetivo.ts"],
 			"@verticais": ["../src/services/verticais.ts"],
 			"@vertical-segmento": ["../src/services/verticalSegmento.ts"],

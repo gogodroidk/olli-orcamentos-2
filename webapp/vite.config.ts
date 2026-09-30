@@ -21,6 +21,8 @@ const clienteLinkStub = fileURLToPath(new URL("./src/shims/clienteLink.web.ts", 
 const precosFonte = fileURLToPath(new URL("../web/src/data/planos.ts", import.meta.url));
 const entitlementsFonte = fileURLToPath(new URL("../src/services/entitlements.ts", import.meta.url));
 const lembreteAssinaturaFonte = fileURLToPath(new URL("../src/services/lembreteAssinatura.ts", import.meta.url));
+const radarDinheiroFonte = fileURLToPath(new URL("../src/services/radarDinheiro.ts", import.meta.url));
+const resumoEmailFonte = fileURLToPath(new URL("../src/services/resumoEmailPreferencia.ts", import.meta.url));
 const sentryScrubFonte = fileURLToPath(new URL("../src/services/sentryScrub.ts", import.meta.url));
 const sentryCapturaFonte = fileURLToPath(new URL("../src/services/sentryCaptura.ts", import.meta.url));
 const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", import.meta.url));
@@ -74,6 +76,8 @@ export default defineConfig(({ mode }) => {
 				"@precos": precosFonte,
 				"@entitlements": entitlementsFonte,
 				"@lembreteAssinatura": lembreteAssinaturaFonte,
+				"@radar-dinheiro": radarDinheiroFonte,
+				"@resumo-email": resumoEmailFonte,
 				"@sentry-scrub": sentryScrubFonte,
 				"@sentry-captura": sentryCapturaFonte,
 				"@verticais": verticaisFonte,
