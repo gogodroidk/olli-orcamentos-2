@@ -27,7 +27,6 @@ export type Locale = typeof LocalEnum.pt_BR;
 
 type Language = {
 	locale: Locale;
-	icon: string;
 	label: string;
 	antdLocal: AntdLocal;
 };
@@ -36,7 +35,6 @@ export const LANGUAGE_MAP: Record<Locale, Language> = {
 	[LocalEnum.pt_BR]: {
 		locale: LocalEnum.pt_BR,
 		label: "Português",
-		icon: "flag-br",
 		antdLocal: pt_BR,
 	},
 };

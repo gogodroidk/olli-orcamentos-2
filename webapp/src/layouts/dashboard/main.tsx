@@ -3,6 +3,7 @@ import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
 import { LineLoading } from "@/components/loading";
+import { useTituloDaAba } from "@/hooks/use-titulo-da-aba";
 import Page403 from "@/pages/sys/error/Page403";
 import { useSettings } from "@/store/settingStore";
 import { cn } from "@/utils";
@@ -38,6 +39,9 @@ const Main = () => {
 
 	const { pathname } = useLocation();
 	const currentNavAuth = findAuthByPath(pathname);
+	// Título da aba por tela ("Orçamentos · OLLI"): com várias abas do painel
+	// abertas, todas diziam só "OLLI". Mesmo texto do menu — uma fonte só.
+	useTituloDaAba(allItems.find((item) => item.path === pathname)?.title);
 
 	return (
 		<AuthGuard checkAny={currentNavAuth} fallback={<Page403 />}>
