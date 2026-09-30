@@ -12,6 +12,7 @@
  *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
+ *   POST /auth/email-hook → Send Email Hook do Supabase Auth (Standard Webhooks, sem JWT)
  *   POST /revenuecat/webhook → assinatura da Google Play (Authorization secreto, sem JWT)
  *
  * Segurança:
@@ -58,6 +59,7 @@ import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { handleRevenueCat } from './revenuecat.js';
 import { handleResendWebhook } from './resendWebhook.js';
+import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
@@ -1023,6 +1025,14 @@ const handler = {
     // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
     if (url.pathname === '/resend/webhook') {
       return handleResendWebhook(request, env);
+    }
+
+    // ── E-MAILS DE AUTENTICAÇÃO (Send Email Hook do Supabase → Resend) ──
+    // Servidor-a-servidor: o Supabase Auth chama esta rota no lugar do SMTP.
+    // Autentica pela assinatura Standard Webhooks (SEND_EMAIL_HOOK_SECRET) e fica
+    // DESLIGADA (503) sem ela ou sem a RESEND_API_KEY. Ver worker/src/authEmailHook.js.
+    if (url.pathname === '/auth/email-hook') {
+      return handleAuthEmailHook(request, env);
     }
 
     // ── DESCADASTRO DE LEMBRETES (link assinado no rodapé + List-Unsubscribe) ──
