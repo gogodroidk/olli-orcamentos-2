@@ -49,6 +49,7 @@
 
 import * as Sentry from '@sentry/cloudflare';
 import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
+import { capturarExcecao, conectarSentry } from '../../src/services/sentryCaptura.ts';
 import { renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
@@ -1324,7 +1325,13 @@ const handler = {
       const reservaNegada = reservaCotaDoErro(e);
       if (reservaNegada) return erroDaReservaCota(reservaNegada);
       const overloaded = !!(e && e.overloaded);
-      if (!overloaded) console.error('[olli-worker] falha_ia:', e && e.message ? e.message : 'erro_desconhecido');
+      if (!overloaded) {
+        console.error('[olli-worker] falha_ia:', e && e.message ? e.message : 'erro_desconhecido');
+        // Este catch vira 502 — o withSentry lá embaixo nunca vê a exceção. Era por
+        // isso que "a IA caiu" não chegava a ninguém. Sobrecarga (503) é esperada e
+        // fica de fora; cota negada já saiu acima. PII: beforeSend (sentryScrub).
+        capturarExcecao(e, { origem: 'ia', rota: url.pathname });
+      }
       return json({ ok: false, erro: overloaded ? 'sobrecarregado' : 'falha_ia' }, overloaded ? 503 : 502);
     }
   },
@@ -1378,6 +1385,11 @@ definirAlertaFalhaIA((info) => {
  * webhook de pagamento e prompt de cliente: corpo é dado pessoal (LGPD) e
  * assinatura HMAC. Só metadado vai.
  */
+// Exceção que um catch nosso SEGURA (IA → 502, webhook Stripe → 500) não chega ao
+// withSentry; ela vai pela porta `capturarExcecao` (src/services/sentryCaptura.ts),
+// que chama o SDK dentro do escopo da requisição corrente.
+conectarSentry(Sentry);
+
 export default Sentry.withSentry(
   () => ({
     dsn: 'https://b015159326e49e2534d36452c334611f@o4511745793327104.ingest.us.sentry.io/4511745841889280',

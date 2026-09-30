@@ -1,5 +1,6 @@
+import { capturarExcecao } from "@sentry-captura";
 import { CloudOff, RotateCw, TriangleAlert } from "lucide-react";
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import { ehErroDeChunk } from "./carregar-chunk";
 
 type Props = {
@@ -32,17 +33,13 @@ export class ChunkBoundary extends Component<Props, State> {
 		return { erro };
 	}
 
-	componentDidCatch(erro: unknown, info: ErrorInfo) {
-		// O Sentry entra por import() (ver main.tsx). Se ele próprio não baixar, o
-		// catch segura: perder o relatório não pode custar a tela de recuperação.
-		import("@sentry/react")
-			.then((Sentry) => {
-				Sentry.captureException(erro, {
-					tags: { origem: "chunk-boundary", tipo: ehErroDeChunk(erro) ? "download" : "execucao" },
-					extra: { componentStack: info.componentStack },
-				});
-			})
-			.catch(() => {});
+	componentDidCatch(erro: unknown) {
+		// O Sentry entra por import() depois da pintura (ver main.tsx). A porta
+		// `capturarExcecao` guarda o erro até ele chegar — antes, um import() aqui
+		// chamava captureException num SDK ainda sem init e o relatório sumia. Ela
+		// nunca lança: perder o relatório não pode custar a tela de recuperação.
+		// (O componentStack não vai: o redator apaga `extra` de qualquer jeito.)
+		capturarExcecao(erro, { origem: "chunk-boundary", tipo: ehErroDeChunk(erro) ? "download" : "execucao" });
 	}
 
 	private recarregar = () => {
