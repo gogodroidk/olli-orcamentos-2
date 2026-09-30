@@ -24,6 +24,7 @@ import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 import { REVENUECAT_GOOGLE_KEY } from '../config';
 import { supabase } from './supabase';
 import {
+  comoComprarNaPlay,
   estadoPlayBilling,
   ofertasDoCatalogo,
   traduzirFalhaPlay,
@@ -119,7 +120,17 @@ export async function comprarNaPlay(oferta: OfertaPlay): Promise<ResultadoCompra
     // Sem o pacote da oferta carregada não há o que comprar — nunca montar produto
     // à mão: o preço e o produto têm de ser os que a loja devolveu.
     if (!pacote) return { estado: 'erro', mensagem: 'Os planos da Google Play ainda não carregaram. Tente de novo em instantes.' };
-    await Purchases.purchasePackage(pacote);
+    // Já assina outro plano pela Play? Então é TROCA (substituição), nunca uma
+    // segunda assinatura paralela — ver `comoComprarNaPlay`. Sem conseguir ler o
+    // que está ativo, cai no catch (erro) em vez de arriscar cobrança dupla.
+    const info = await Purchases.getCustomerInfo();
+    const compra = comoComprarNaPlay(info.activeSubscriptions, oferta);
+    if (compra.tipo === 'ja_tem') return traduzirFalhaPlay('6');
+    if (compra.tipo === 'troca') {
+      await Purchases.purchasePackage(pacote, null, { oldProductIdentifier: compra.oldProductIdentifier });
+    } else {
+      await Purchases.purchasePackage(pacote);
+    }
     return { estado: 'confirmada' };
   } catch (e: unknown) {
     const erro = e as { code?: unknown; userCancelled?: unknown } | null;

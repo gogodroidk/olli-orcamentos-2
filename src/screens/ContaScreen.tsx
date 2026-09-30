@@ -1406,7 +1406,13 @@ function ModalExcluirConta({
             ))}
 
             <Text style={styles.excluirNota}>
-              Se você tem uma assinatura ativa, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
+              Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
+              {/* A assinatura da Google Play é cobrada pela loja, e o OLLI não consegue
+                  cancelá-la por aqui: sem este aviso, a exclusão prometeria parar uma
+                  cobrança que continua. iOS: sem citar outra loja (Guideline 2.3.10). */}
+              {Platform.OS === 'ios'
+                ? ''
+                : ' Assinatura feita pela Google Play não é cancelada pela exclusão: cancele antes em Play Store › Pagamentos e assinaturas, senão a cobrança continua.'}
             </Text>
 
             {avisoApple}

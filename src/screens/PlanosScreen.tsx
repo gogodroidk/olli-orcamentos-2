@@ -44,7 +44,8 @@ import {
   restaurarComprasPlay,
   type ResultadoOfertasPlay,
 } from '../services/playBilling';
-import { ofertaPara, type OfertaPlay } from '../services/playBillingRegras';
+import { liberacaoPlayConfirmada, ofertaPara, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
+import { getAssinaturaNaPlay } from '../services/assinatura';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -580,12 +581,16 @@ export default function PlanosScreen() {
    * "liberado" só é dito quando o servidor confirmar. Sem confirmação no prazo, a
    * mensagem é honesta: pago na Play, liberação a caminho.
    */
-  async function aguardarLiberacaoPlay() {
+  async function aguardarLiberacaoPlay(esperado: PlanoPlay | null) {
     for (let tentativa = 0; tentativa < 8; tentativa++) {
       await esperar(2500);
       try {
-        const r = await getPlanoAtual();
-        if (r.fonte === 'servidor' && r.plano !== 'gratis' && r.origem === 'pagamento') {
+        // Plano pago no servidor NÃO basta (quem já pagava por Pix/Stripe, ou sobe do
+        // Pro para o Empresa pela Play, já tem plano pago): só confirma quando a linha
+        // traz o produto da Play gravado pelo webhook — ver liberacaoPlayConfirmada.
+        const [r, play] = await Promise.all([getPlanoAtual(), getAssinaturaNaPlay()]);
+        const produtoNoServidor = play.estado === 'ok' ? play.produto : null;
+        if (liberacaoPlayConfirmada(r, produtoNoServidor, esperado)) {
           await carregarPlano();
           Alert.alert('Plano liberado', `Seu plano ${r.plano === 'empresa' ? 'Empresa' : 'Pro'} está ativo. Obrigado por assinar o OLLI!`);
           return;
@@ -615,7 +620,7 @@ export default function PlanosScreen() {
     setCompraPlayEm(p.id);
     try {
       const r = await comprarNaPlay(oferta);
-      if (r.estado === 'confirmada') await aguardarLiberacaoPlay();
+      if (r.estado === 'confirmada') await aguardarLiberacaoPlay(oferta.plano);
       else if (r.estado === 'pendente') {
         Alert.alert('Pagamento em processamento', 'A Google Play ainda está confirmando o pagamento. Assim que ela confirmar, seu plano é liberado — não pague de novo.');
       } else if (r.estado === 'sem_login') {
@@ -638,7 +643,7 @@ export default function PlanosScreen() {
     try {
       const r = await restaurarComprasPlay();
       if (r.estado === 'ok') {
-        if (r.temAssinaturaAtiva) await aguardarLiberacaoPlay();
+        if (r.temAssinaturaAtiva) await aguardarLiberacaoPlay(null);
         else Alert.alert('Nada para restaurar', 'Não encontramos assinatura ativa do OLLI na conta Google deste aparelho.');
       } else if (r.estado === 'sem_login') {
         Alert.alert('Faça login primeiro', 'Entre com a sua conta OLLI para restaurar a assinatura.', [

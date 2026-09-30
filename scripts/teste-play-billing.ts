@@ -17,7 +17,9 @@
 import { readFileSync } from 'node:fs';
 import {
   chavePlayValida,
+  comoComprarNaPlay,
   estadoPlayBilling,
+  liberacaoPlayConfirmada,
   idProdutoPlay,
   ofertaPara,
   ofertasDoCatalogo,
@@ -131,7 +133,11 @@ console.log('\n7) FLAG DESLIGADA = NADA APARECE — guardas da tela (origem)');
   checar('Stripe/Pix/WhatsApp continuam fora do Android (guarda intacta)', planos.includes("const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';"), true);
   checar('o preço do card na Play é o da loja', planos.includes('const precoLoja = vendaPlay?.oferta?.precoTexto ?? null;'), true);
   checar('a tabela não repete o preço da Stripe quando cobra a Play', planos.includes('precosDaFonte={!VENDA_PELA_PLAY}'), true);
-  checar('"liberado" só depois de o SERVIDOR confirmar', planos.includes("r.fonte === 'servidor' && r.plano !== 'gratis' && r.origem === 'pagamento'"), true);
+  checar('"liberado" só com o produto da Play confirmado no servidor', planos.includes('if (liberacaoPlayConfirmada(r, produtoNoServidor, esperado)) {'), true);
+  checar('compra espera o plano COMPRADO; restauração aceita qualquer um', [
+    planos.includes('await aguardarLiberacaoPlay(oferta.plano);'),
+    planos.includes('await aguardarLiberacaoPlay(null);'),
+  ], [true, true]);
 
   const android = ler('../src/services/playBilling.android.ts');
   for (const fn of ['carregarOfertasPlay', 'comprarNaPlay', 'restaurarComprasPlay']) {
@@ -140,6 +146,8 @@ console.log('\n7) FLAG DESLIGADA = NADA APARECE — guardas da tela (origem)');
       return i >= 0 && android.slice(i, i + 200).includes("if (!playBillingLigado()) return { estado: 'desligado' };");
     })(), true);
   }
+  checar('troca de plano vira SUBSTITUIÇÃO na Play (nunca 2ª assinatura)', android.includes('await Purchases.purchasePackage(pacote, null, { oldProductIdentifier: compra.oldProductIdentifier });'), true);
+  checar('lê as assinaturas ativas ANTES de comprar', android.indexOf('Purchases.getCustomerInfo()') >= 0 && android.indexOf('Purchases.getCustomerInfo()') < android.indexOf('Purchases.purchasePackage('), true);
   checar('SDK configurado com appUserID = usuário do Supabase (nunca anônimo)', android.includes('Purchases.configure({ apiKey: REVENUECAT_GOOGLE_KEY, appUserID: userId });'), true);
   checar('sem sessão não configura o SDK', android.includes("if (!userId) return null;"), true);
   checar('Expo Go detectado pela API do SDK 57 (isRunningInExpoGo)', android.includes("import { isRunningInExpoGo } from 'expo';"), true);
@@ -155,6 +163,27 @@ console.log('\n7) FLAG DESLIGADA = NADA APARECE — guardas da tela (origem)');
   checar('"Gerenciar na Google Play" só com leitura ok e produto da Play', assinatura.includes("const produtoPlay = play.estado === 'ok' ? play.produto : null;"), true);
   checar('...e sem botão para outra loja no iPhone', assinatura.includes("{Platform.OS === 'ios' ? null : ("), true);
   checar('assinante da Play não é mandado ao Portal da Stripe', assinatura.includes("(!semRenovacao && resumo?.renovaPelaPlay !== true) || resumo?.temClienteStripe === true"), true);
+}
+
+console.log('\n7b) Troca de plano e confirmação do servidor (comportamento)');
+{
+  const empresaMensal = { produtoId: 'olli_empresa:mensal' };
+  checar('nada ativo → compra nova', comoComprarNaPlay([], empresaMensal), { tipo: 'nova' });
+  checar('só produto de fora do catálogo ativo → compra nova', comoComprarNaPlay(['outro_app:x', 42], empresaMensal), { tipo: 'nova' });
+  checar('Pro ativo e compra Empresa → TROCA a partir de olli_pro', comoComprarNaPlay(['olli_pro:mensal'], empresaMensal), { tipo: 'troca', oldProductIdentifier: 'olli_pro' });
+  checar('Empresa ativo e compra Pro anual → TROCA a partir de olli_empresa', comoComprarNaPlay(['olli_empresa:mensal'], { produtoId: 'olli_pro:anual' }), { tipo: 'troca', oldProductIdentifier: 'olli_empresa' });
+  checar('mesmo produto já ativo → não compra de novo', comoComprarNaPlay(['olli_empresa:mensal'], empresaMensal), { tipo: 'ja_tem' });
+  checar('lista ausente → compra nova', comoComprarNaPlay(undefined, empresaMensal), { tipo: 'nova' });
+
+  const pago = { fonte: 'servidor', plano: 'pro', origem: 'pagamento' };
+  checar('quem JÁ pagava por Pix/Stripe (sem produto da Play) → ainda NÃO liberado', liberacaoPlayConfirmada(pago, null, 'pro'), false);
+  checar('Pro pela Play subindo p/ Empresa: produto ainda é o Pro → NÃO liberado', liberacaoPlayConfirmada({ ...pago, plano: 'empresa' }, 'olli_pro:mensal', 'empresa'), false);
+  checar('webhook gravou o Empresa → liberado', liberacaoPlayConfirmada({ ...pago, plano: 'empresa' }, 'olli_empresa:mensal', 'empresa'), true);
+  checar('Pix Empresa + Play Pro: produto Pro gravado → liberado (fica o maior nível)', liberacaoPlayConfirmada({ ...pago, plano: 'empresa' }, 'olli_pro:mensal', 'pro'), true);
+  checar('restauração: qualquer produto da Play → liberado', liberacaoPlayConfirmada(pago, 'olli_pro:anual', null), true);
+  checar('cache (não servidor) nunca confirma', liberacaoPlayConfirmada({ ...pago, fonte: 'cache_mesmo_usuario' }, 'olli_pro:mensal', 'pro'), false);
+  checar('plano grátis no servidor nunca confirma', liberacaoPlayConfirmada({ ...pago, plano: 'gratis' }, 'olli_pro:mensal', 'pro'), false);
+  checar('concessão do admin não é compra da Play', liberacaoPlayConfirmada({ ...pago, origem: 'admin' }, 'olli_pro:mensal', 'pro'), false);
 }
 
 console.log('\n8) Assinante da Play NUNCA recebe "Renovar com Pix" (app e painel)');
@@ -175,6 +204,10 @@ console.log('\n8) Assinante da Play NUNCA recebe "Renovar com Pix" (app e painel
   const planosPainel = ler('../webapp/src/pages/olli/planos/index.tsx');
   checar('painel mostra o card da Play em vez do Portal da Stripe', planosPainel.includes('resumo.renovaPelaPlay ? (\n\t\t\t\t\t\t<CardAssinaturaPlay') || planosPainel.includes('resumo.renovaPelaPlay ? (\r\n\t\t\t\t\t\t<CardAssinaturaPlay'), true);
   const app = JSON.parse(ler('../app.json')) as { expo: { android: { package: string } } };
+  const conta = ler('../src/screens/ContaScreen.tsx');
+  const contaDesktop = ler('../src/screens/desktop/ContaDesktopScreen.tsx');
+  checar('excluir conta NÃO promete cancelar a assinatura da Play (Android)', conta.includes('Assinatura feita pela Google Play não é cancelada pela exclusão'), true);
+  checar('...nem no desktop', contaDesktop.includes('Assinatura feita pela Google Play (no app Android) não é cancelada pela exclusão'), true);
   checar('pacote Android do painel = o do app.json', planosPainel.includes(`const PACOTE_ANDROID = "${app.expo.android.package}";`), true);
 }
 

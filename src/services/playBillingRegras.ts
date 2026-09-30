@@ -147,6 +147,57 @@ export function ofertaPara(ofertas: readonly OfertaPlay[], plano: PlanoPlay, per
 }
 
 /**
+ * Como comprar a oferta escolhida SEM abrir uma SEGUNDA assinatura na Play.
+ *
+ * `olli_pro` e `olli_empresa` são assinaturas DIFERENTES no Play Console, e a Play
+ * deixa a mesma conta Google ter as duas ao mesmo tempo. Comprar o Empresa com o
+ * Pro ainda ativo, sem dizer à Play que é uma TROCA, cria duas cobranças mensais —
+ * e a renovação do Pro antigo, ao chegar no webhook, rebaixaria a linha para Pro
+ * (a linha é da Play, então vale o que o evento mais novo diz). Por isso:
+ *  - nenhuma assinatura do catálogo ativa   → 'nova' (compra normal);
+ *  - exatamente o mesmo produto já ativo    → 'ja_tem' (não compra de novo);
+ *  - outra assinatura do catálogo ativa     → 'troca', com o id da assinatura
+ *    antiga (SEM o plano básico — é o id que a Play reconhece na compra) para o
+ *    SDK pedir a SUBSTITUIÇÃO em vez de uma compra paralela.
+ * `ativos` = `customerInfo.activeSubscriptions` do SDK (`olli_pro:mensal`…).
+ */
+export type CompraPlay =
+  | { tipo: 'nova' }
+  | { tipo: 'ja_tem' }
+  | { tipo: 'troca'; oldProductIdentifier: string };
+
+export function comoComprarNaPlay(ativos: readonly unknown[] | null | undefined, alvo: { produtoId: string }): CompraPlay {
+  const doCatalogo = (ativos ?? [])
+    .filter((id): id is string => typeof id === 'string')
+    .map((id) => ({ id: id.trim(), prod: produtoPlay(id) }))
+    .filter((x): x is { id: string; prod: NonNullable<ReturnType<typeof produtoPlay>> } => x.prod !== null);
+  const primeiro = doCatalogo[0];
+  if (!primeiro) return { tipo: 'nova' };
+  if (doCatalogo.some((x) => x.id === alvo.produtoId.trim())) return { tipo: 'ja_tem' };
+  return { tipo: 'troca', oldProductIdentifier: ASSINATURA_PLAY_POR_PLANO[primeiro.prod.plano] };
+}
+
+/**
+ * Depois da compra/restauração, o SERVIDOR já confirmou a assinatura da Play?
+ *
+ * "Plano pago no servidor" sozinho NÃO basta: quem já pagava por Pix ou Stripe (ou
+ * tinha o Pro pela Play e está subindo para o Empresa) teria "Plano liberado" antes
+ * de o webhook chegar. Só confirma quando a linha do servidor traz o PRODUTO DA
+ * PLAY gravado pelo webhook — do plano comprado, quando se sabe qual (`esperado`).
+ * `produtoNoServidor` = `revenuecat_produto_id` ainda vigente (null = não há).
+ */
+export function liberacaoPlayConfirmada(
+  servidor: { fonte: string; plano: string; origem?: string },
+  produtoNoServidor: string | null,
+  esperado: PlanoPlay | null,
+): boolean {
+  if (servidor.fonte !== 'servidor' || servidor.origem !== 'pagamento' || servidor.plano === 'gratis') return false;
+  const prod = produtoPlay(produtoNoServidor);
+  if (!prod) return false;
+  return esperado === null || prod.plano === esperado;
+}
+
+/**
  * Resultado de uma tentativa de compra/restauração, já traduzido do código de erro
  * do SDK (`PURCHASES_ERROR_CODE`, que é string: '1' = cancelada etc.).
  *  - 'cancelado'  → o usuário fechou a folha da Play: silêncio, não é erro.
