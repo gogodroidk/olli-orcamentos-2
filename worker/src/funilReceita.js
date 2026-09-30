@@ -2,7 +2,7 @@
  * Funil de receita por coorte semanal — formato que o painel ADMIN mostra.
  *
  * O cálculo mora no banco (`admin_funil_coortes`, migration
- * 20260930120000_funil_receita.sql); aqui só se valida e se dá forma à resposta.
+ * 20260930120100_funil_receita.sql); aqui só se valida e se dá forma à resposta.
  * Nada de PII: entram e saem contagens e medianas por semana de cadastro.
  *
  * Três estados (armadilha P0 "erro vira vazio"): linha que não veio fica `null`

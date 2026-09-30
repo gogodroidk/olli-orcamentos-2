@@ -1,5 +1,5 @@
 /**
- * Funil de receita — a migration `20260930120000_funil_receita.sql` rodando de
+ * Funil de receita — a migration `20260930120100_funil_receita.sql` rodando de
  * verdade num Postgres (PGlite, em memória), com dados SINTÉTICOS.
  *
  *     node scripts/teste-funil-receita-sql.ts
@@ -26,7 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
-const MIGRATION = readFileSync('supabase/migrations/20260930120000_funil_receita.sql', 'utf8');
+const MIGRATION = readFileSync('supabase/migrations/20260930120100_funil_receita.sql', 'utf8');
 
 let ok = 0;
 let falhas = 0;
