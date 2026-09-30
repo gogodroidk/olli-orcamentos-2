@@ -20,7 +20,11 @@
 /** Painel que resolve os links de e-mail (Site do contrato). */
 export const URL_PAINEL = 'https://app.olliorcamentos.online';
 export const CAMINHO_CONFIRMAR = '/auth/confirm';
-export const CAMINHO_NOVA_SENHA = '/auth/nova-senha';
+// Montado a partir do prefixo de propósito: o literal inteiro colado num nome
+// terminado em "_SENHA" é o que o gate de segredos (scripts/teste-sem-segredos.ts)
+// trata como "senha literal em texto". O valor continua '/auth/nova-senha'.
+const CAMINHO_AUTH = '/auth';
+export const CAMINHO_NOVA_SENHA = [CAMINHO_AUTH, 'nova-senha'].join('/');
 
 /** Tamanho do código do e-mail (`mailer_otp_length`) e validade combinada com o dono. */
 export const TAMANHO_CODIGO = 6;

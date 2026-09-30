@@ -20,15 +20,38 @@ import { useMinhaEmpresa } from "./data";
  * o gate só FECHA quando SABE, com certeza, que o ofício é outro.
  */
 
-export type VerticalId = "refrigeracao" | "eletrica" | "hidraulica" | "pintura" | "dedetizacao" | "jardinagem" | "geral";
-type Segmento = "ar-condicionado" | "eletrica" | "hidraulica" | "pintura" | "outro";
+export type VerticalId =
+	| "refrigeracao"
+	| "eletrica"
+	| "hidraulica"
+	| "pintura"
+	| "dedetizacao"
+	| "caixa_dagua"
+	| "piscina"
+	| "extintores"
+	| "jardinagem"
+	| "geral";
+type Segmento =
+	| "ar-condicionado"
+	| "eletrica"
+	| "hidraulica"
+	| "pintura"
+	| "dedetizacao"
+	| "caixa-dagua"
+	| "piscina"
+	| "extintores"
+	| "outro";
 
-/** Segmento (os 5 chips legados de "Meu negócio") → VerticalId (o ofício que dirige o gate). */
+/** Segmento (os chips de "Meu negócio" no app) → VerticalId (o ofício que dirige o gate). */
 const SEGMENTO_PARA_VERTICAL: Record<Segmento, VerticalId> = {
 	"ar-condicionado": "refrigeracao",
 	eletrica: "eletrica",
 	hidraulica: "hidraulica",
 	pintura: "pintura",
+	dedetizacao: "dedetizacao",
+	"caixa-dagua": "caixa_dagua",
+	piscina: "piscina",
+	extintores: "extintores",
 	outro: "geral",
 };
 

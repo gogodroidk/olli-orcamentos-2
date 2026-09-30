@@ -15,7 +15,11 @@
  * máscara — ex.: "4321-5/00" chega como "4321500", "4322-3/02" como "4322302".
  * O mapa casa por PREFIXO, e o prefixo MAIS LONGO vence (uma subclasse específica
  * ganha da classe genérica) — necessário porque a classe 4322-3 é ambígua
- * (hidráulica em /01, refrigeração/climatização em /02).
+ * (hidráulica em /01, refrigeração/climatização em /02, incêndio em /03).
+ *
+ * Um mesmo CNAE pode servir a MAIS DE UM ofício: 8129-0/00 cobre limpeza de caixa
+ * d'água E tratamento de piscina (IBGE, notas explicativas da subclasse). Nesse caso
+ * as verticais empatadas entram todas, na ordem do catálogo — o dono ajusta depois.
  */
 
 export type VerticalId =
@@ -24,6 +28,9 @@ export type VerticalId =
   | 'hidraulica'
   | 'pintura'
   | 'dedetizacao'
+  | 'caixa_dagua'
+  | 'piscina'
+  | 'extintores'
   | 'jardinagem'
   | 'geral';
 
@@ -34,6 +41,7 @@ export type FerramentaId =
   | 'laudo_eletrico'
   | 'laudo_estanqueidade'
   | 'certificado_anvisa'
+  | 'certificado_caixa_dagua'
   | 'contrato_recorrente'
   | 'calculadora_tinta';
 
@@ -71,23 +79,32 @@ export const FERRAMENTAS: Record<FerramentaId, Ferramenta> = {
   checklist_nr10: { id: 'checklist_nr10', label: 'Checklist NR-10', descricao: 'Inspeção elétrica no padrão da norma, pronta pro laudo.', disponivel: false },
   laudo_eletrico: { id: 'laudo_eletrico', label: 'Laudo elétrico + ART', descricao: 'Laudo estruturado com campo de ART para o engenheiro assinar.', disponivel: false },
   laudo_estanqueidade: { id: 'laudo_estanqueidade', label: 'Laudo de estanqueidade', descricao: 'Teste de pressão (inicial/final, tempo, foto) — laudo avulso custa R$3-7 mil.', disponivel: false },
-  certificado_anvisa: { id: 'certificado_anvisa', label: 'Certificado ANVISA', descricao: 'Certificado de dedetização RDC 52/622 com validade e responsável técnico.', disponivel: true },
+  // O id fica `certificado_anvisa` (já gravado em `ferramentasAtivas` de contas reais);
+  // o documento é o "comprovante de execução de serviço" do art. 19 da RDC 622/2022,
+  // que revogou a RDC 52/2009.
+  certificado_anvisa: { id: 'certificado_anvisa', label: 'Comprovante de controle de pragas', descricao: 'Comprovante de execução de serviço com os campos do art. 19 da RDC ANVISA 622/2022 e o responsável técnico.', disponivel: true },
+  certificado_caixa_dagua: { id: 'certificado_caixa_dagua', label: "Certificado de limpeza de caixa d'água", descricao: 'Certificado de limpeza e desinfecção do reservatório, com lacre e data da próxima limpeza.', disponivel: true },
   contrato_recorrente: { id: 'contrato_recorrente', label: 'Contrato recorrente', descricao: 'Manutenção mensal/semestral com checklist por visita (reusa o motor do PMOC).', disponivel: false },
   calculadora_tinta: { id: 'calculadora_tinta', label: 'Calculadora de tinta', descricao: 'm² → litros e demãos, dentro do item do orçamento.', disponivel: false },
 };
 
 /**
- * Catálogo de verticais. Os CNAEs vêm da tabela CNAE/IBGE (concla.ibge.gov.br);
- * o caso ambíguo 4322-3 é resolvido por subclasse de 7 dígitos.
+ * Catálogo de verticais. Os CNAEs vêm da tabela CNAE 2.3/IBGE, conferidos subclasse
+ * por subclasse em 30/09/2026 na API oficial do IBGE
+ * (https://servicodados.ibge.gov.br/api/v2/cnae/subclasses/<código>); o caso
+ * ambíguo 4322-3 é resolvido por subclasse de 7 dígitos.
+ * A ORDEM importa: é a ordem dos chips de ofício e o desempate de CNAE compartilhado.
  */
 export const VERTICAIS: readonly Vertical[] = [
   {
     id: 'refrigeracao',
     label: 'Refrigeração e Climatização',
     emoji: '❄️',
-    // 4322-3/02 (instalação de ventilação/refrigeração) + 3314-7/10 (manutenção
-    // de equipamentos de refrigeração comercial/industrial).
-    cnaes: ['4322302', '3314710'],
+    // 4322-3/02 (instalação e manutenção de ar-condicionado central, ventilação e
+    // refrigeração) + 3314-7/07 (manutenção de refrigeração e ventilação de uso
+    // industrial e comercial: câmaras frias, balcões, exaustores). O 3314-7/10 NÃO
+    // é refrigeração: é "uso geral não especificado" e inclui extintores (ver abaixo).
+    cnaes: ['4322302', '3314707'],
     ferramentas: ['pmoc', 'qr_equipamento', 'contrato_recorrente'],
     // Higienização de split residencial: semestral é a recomendação usual dos
     // fabricantes (o PMOC comercial tem periodicidade própria, por equipamento).
@@ -122,10 +139,51 @@ export const VERTICAIS: readonly Vertical[] = [
     id: 'dedetizacao',
     label: 'Dedetização e Controle de Pragas',
     emoji: '🐜',
-    cnaes: ['81222'], // 8122-2 Imunização e controle de pragas urbanas.
+    // 8122-2/00 Imunização e controle de pragas urbanas (dedetização, desratização,
+    // descupinização). A classe 8122-2 só tem essa subclasse.
+    cnaes: ['81222'],
     ferramentas: ['certificado_anvisa', 'contrato_recorrente'],
-    // Reaplicação preventiva semestral é o ciclo mais comum em residência.
+    // Reaplicação preventiva semestral é o ciclo mais comum em residência. A RDC
+    // 622/2022 não fixa periodicidade; restaurante e condomínio costumam contratar menor.
     retorno: { meses: 6, servico: 'a reaplicação da dedetização' },
+  },
+  {
+    id: 'caixa_dagua',
+    label: "Limpeza de Caixa d'Água",
+    emoji: '💧',
+    // 8129-0/00 inclui "limpeza de caixas de água e caixas de gordura" (IBGE). A mesma
+    // subclasse cobre piscina: o empate deduz os dois ofícios (ver `deduzirVerticais`).
+    cnaes: ['8129000'],
+    ferramentas: ['certificado_caixa_dagua', 'contrato_recorrente'],
+    // Em SP a lei exige a limpeza a cada 360 dias em comércio, condomínio e escola
+    // (Lei municipal 10.770/1989); as companhias de saneamento orientam a cada 6 meses.
+    // O lembrete usa o prazo menor: avisar cedo nunca faz o cliente perder o prazo legal.
+    retorno: { meses: 6, servico: "a limpeza da caixa d'água" },
+  },
+  {
+    id: 'piscina',
+    label: 'Piscinas',
+    emoji: '🏊',
+    // 8129-0/00 inclui "limpeza e tratamento de piscinas" (IBGE).
+    cnaes: ['8129000'],
+    ferramentas: ['contrato_recorrente'],
+    // Piscina é visita semanal ou quinzenal: cliente sem serviço há 1 mês já saiu da rotina.
+    retorno: { meses: 1, servico: 'a manutenção da piscina' },
+  },
+  {
+    id: 'extintores',
+    label: 'Extintores e Prevenção de Incêndio',
+    emoji: '🧯',
+    // 4322-3/03 Instalações de sistema de prevenção contra incêndio + 3314-7/10, que
+    // inclui "manutenção e reparação de extintores de incêndio" (IBGE). O 3314-7/10 é
+    // mais largo (máquinas de embalar, de venda automática…), mas no público do OLLI
+    // é o recarregador de extintor; a dedução é só o default e o dono ajusta.
+    cnaes: ['4322303', '3314710'],
+    // Sem `qr_equipamento` por enquanto: as telas de equipamento/QR ainda são do gate
+    // de climatização, e a landing anuncia toda ferramenta `disponivel` da vertical.
+    ferramentas: ['contrato_recorrente'],
+    // NBR 12962: inspeção anual; a recarga segue o nível de manutenção de cada extintor.
+    retorno: { meses: 12, servico: 'a inspeção e a recarga dos extintores' },
   },
   {
     id: 'jardinagem',
@@ -159,7 +217,8 @@ export function normalizarCnae(cnae: string | number | null | undefined): string
  * ORDENADA por relevância (o principal primeiro), sem repetição, e cai em
  * ['geral'] quando nada casa. Casa por PREFIXO com o mais longo vencendo — assim
  * '4322302' (refrigeração) ganha de uma regra genérica '4322', e a classe '43215'
- * pega qualquer subclasse elétrica. Nunca lança.
+ * pega qualquer subclasse elétrica. Empate no mesmo prefixo (8129000 → caixa d'água
+ * e piscina) devolve todas as empatadas, na ordem do catálogo. Nunca lança.
  */
 export function deduzirVerticais(
   cnaePrincipal: string | number | null | undefined,
@@ -168,23 +227,28 @@ export function deduzirVerticais(
   const codigos = [cnaePrincipal, ...secundarios].map(normalizarCnae).filter((c) => c.length >= 4);
   const encontradas: VerticalId[] = [];
   for (const codigo of codigos) {
-    const vertical = casarVertical(codigo);
-    if (vertical && !encontradas.includes(vertical)) encontradas.push(vertical);
+    for (const vertical of casarVerticais(codigo)) {
+      if (!encontradas.includes(vertical)) encontradas.push(vertical);
+    }
   }
   return encontradas.length ? encontradas : ['geral'];
 }
 
-/** A vertical cujo prefixo de CNAE mais longo casa com o código. `null` se nenhuma. */
-function casarVertical(codigo: string): VerticalId | null {
-  let melhor: { id: VerticalId; tamanho: number } | null = null;
+/** As verticais cujo prefixo de CNAE mais longo casa com o código (vazio se nenhuma). */
+function casarVerticais(codigo: string): VerticalId[] {
+  let tamanho = 0;
+  let ids: VerticalId[] = [];
   for (const v of VERTICAIS) {
     for (const prefixo of v.cnaes) {
-      if (codigo.startsWith(prefixo) && (!melhor || prefixo.length > melhor.tamanho)) {
-        melhor = { id: v.id, tamanho: prefixo.length };
+      if (!codigo.startsWith(prefixo) || prefixo.length < tamanho) continue;
+      if (prefixo.length > tamanho) {
+        tamanho = prefixo.length;
+        ids = [];
       }
+      if (!ids.includes(v.id)) ids.push(v.id);
     }
   }
-  return melhor ? melhor.id : null;
+  return ids;
 }
 
 /** Busca uma vertical pelo id (cai na genérica). */

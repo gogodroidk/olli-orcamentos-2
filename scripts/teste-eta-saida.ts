@@ -32,6 +32,7 @@
 import { readFileSync } from 'node:fs';
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
 import {
+  handleEtaAgora,
   handleEtaSaida,
   haversineKm,
   folgaPadraoMin,
@@ -517,6 +518,98 @@ console.log('\n17) "você já devia ter saído" — verdade desconfortável, nã
   checar('a chegada real é DEPOIS do horário marcado', Date.parse(r.corpo.sairAgoraChegaEm) > Date.parse(daquiA10), true);
 }
 
+console.log('\n17b) POST /eta ("saindo agora") — trânsito de verdade, e só quando vale pagar');
+{
+  async function chamarAgora(corpo: unknown, mocks: Mocks = {}, opts: Opcoes = {}) {
+    const { f, chamadas } = montarFetch(mocks);
+    const env = {
+      OLLI_ROUTES_API_KEY: CHAVE,
+      ETA_RL: { limit: async () => ({ success: true }) },
+      ...(opts.env || {}),
+    };
+    const request = new Request('https://olli-diagnostico/eta', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-de-teste', 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    });
+    const resp: Response = await handleEtaAgora(request, env, {
+      fetch: f,
+      getUser: async () => (opts.semUsuario ? null : { id: 'usuario-de-teste' }),
+    });
+    const texto = await resp.text();
+    corposVistos.push(texto);
+    return { status: resp.status, corpo: JSON.parse(texto) as any, chamadas };
+  }
+
+  const ok = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: rotaOk() });
+  checar('/eta ok: minutos com trânsito vêm da Google', [ok.corpo.ok, ok.corpo.minutos], [true, 32]);
+  checar('/eta ok: contrato do app instalado mantido', [ok.corpo.distanciaKm, ok.corpo.comTransito], [18.4, true]);
+  checar('/eta ok: minutos sem trânsito ficam visíveis', ok.corpo.minutosSemTransito, 27);
+  checar('/eta ok: SKU declarado na resposta', ok.corpo.sku, 'pro');
+  // "Estou a caminho, chego entre 14:50 e 15:10" precisa do trânsito de agora.
+  checar('/eta pede TRAFFIC_AWARE (é a promessa ao cliente)', corpoRotas(ok.chamadas).routingPreference, 'TRAFFIC_AWARE');
+  checar('/eta não manda departureTime (agora é o padrão da Google)', corpoRotas(ok.chamadas).departureTime, undefined);
+  checar('/eta: FieldMask mínima', mascaraRotas(ok.chamadas), 'routes.duration,routes.staticDuration,routes.distanceMeters');
+
+  const longe = await chamarAgora({ origem: SP, destino: { lat: -3.119, lng: -60.0217 } }, { rotas: rotaOk() });
+  checar('/eta: 2.700 km em linha reta não gasta chamada paga', pediuRotas(longe.chamadas), 0);
+  checar('/eta: distância implausível é falha SEM número', [longe.corpo.ok, longe.corpo.erro, longe.corpo.minutos], [false, 'distancia_implausivel', undefined]);
+
+  const semRota = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: () => respJson({ routes: [] }) });
+  checar('/eta sem rota: ok:false, sem número', [semRota.corpo.ok, semRota.corpo.erro, semRota.corpo.minutos], [false, 'sem_rota', undefined]);
+  const googleFora = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: () => respJson({}, 500) });
+  checar('/eta com a Google fora: 502 rota_indisponivel', [googleFora.status, googleFora.corpo.erro], [502, 'rota_indisponivel']);
+
+  const semLimiter = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: rotaOk() }, { env: { ETA_RL: undefined } });
+  checar('/eta sem limiter: FAIL-CLOSED, 429 e nenhuma chamada paga', [semLimiter.status, pediuRotas(semLimiter.chamadas)], [429, 0]);
+  const negado = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: rotaOk() }, { env: { ETA_RL: { limit: async () => ({ success: false }) } } });
+  checar('/eta acima do limite: muitas_requisicoes', negado.corpo.erro, 'muitas_requisicoes');
+  const anon = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: rotaOk() }, { semUsuario: true });
+  checar('/eta sem sessão: 401 e nenhuma chamada paga', [anon.status, pediuRotas(anon.chamadas)], [401, 0]);
+  const semChave = await chamarAgora({ origem: SP, destino: SANTO_ANDRE }, { rotas: rotaOk() }, { env: { OLLI_ROUTES_API_KEY: '' } });
+  checar('/eta sem chave: desligado dizendo que está desligado', semChave.corpo.motivo, 'eta_nao_configurado');
+  const lixo = await chamarAgora({ origem: { lat: 'x' }, destino: SANTO_ANDRE }, { rotas: rotaOk() });
+  checar('/eta coordenada inválida: 400 sem chamada', [lixo.status, pediuRotas(lixo.chamadas)], [400, 0]);
+
+  // Corpo gigante SEM Content-Length (chunked): a leitura tem de parar no teto,
+  // não bufferizar tudo para depois medir. Em index.js o /eta já lia assim
+  // (bodyMuitoGrande); a mudança para etaSaida.js não pode perder a defesa.
+  for (const [rota, handler] of [['/eta', handleEtaAgora], ['/eta/saida', handleEtaSaida]] as const) {
+    let pedacosLidos = 0;
+    const pedaco = new TextEncoder().encode('x'.repeat(1024));
+    const stream = new ReadableStream<Uint8Array>({
+      pull(ctrl) {
+        pedacosLidos++;
+        if (pedacosLidos > 1000) ctrl.close(); // ~1 MB se ninguém parar a leitura
+        else ctrl.enqueue(pedaco);
+      },
+    });
+    const { f, chamadas } = montarFetch({ rotas: rotaOk() });
+    const req = new Request('https://olli-diagnostico' + rota, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-de-teste', 'Content-Type': 'application/json' },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+    const resp: Response = await handler(req, { OLLI_ROUTES_API_KEY: CHAVE, ETA_RL: { limit: async () => ({ success: true }) } }, {
+      fetch: f,
+      getUser: async () => ({ id: 'usuario-de-teste' }),
+    });
+    checar(`${rota} corpo chunked acima do teto: 413 sem chamada paga`, [resp.status, pediuRotas(chamadas)], [413, 0]);
+    checar(`${rota} corpo chunked: para de ler logo depois do teto`, pedacosLidos < 20, true);
+    const comHeader = new Request('https://olli-diagnostico' + rota, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-de-teste', 'Content-Length': '999999' },
+      body: '{}',
+    });
+    const r2: Response = await handler(comHeader, { OLLI_ROUTES_API_KEY: CHAVE, ETA_RL: { limit: async () => ({ success: true }) } }, {
+      fetch: f,
+      getUser: async () => ({ id: 'usuario-de-teste' }),
+    });
+    checar(`${rota} Content-Length acima do teto: 413 sem ler o corpo`, r2.status, 413);
+  }
+}
+
 console.log('\n18) A CHAVE NUNCA SAI DO WORKER');
 {
   // Varredura sobre TODOS os corpos de resposta produzidos acima. Uma chave de
@@ -538,6 +631,10 @@ console.log('\n18) A CHAVE NUNCA SAI DO WORKER');
   const iResolve = src.indexOf('resolverPonto(corpo.origem');
   checar('o fail-closed está escrito no fonte', iLimite > 0, true);
   checar('rate limit vem ANTES de resolver endereço (geocoding é pago)', iLimite < iResolve, true);
+  const iAgora = src.indexOf('export async function handleEtaAgora');
+  const iLimiteAgora = src.indexOf('deixaPassar(estado, { sensivel: true })', iAgora);
+  const iRotaAgora = src.indexOf('chamarRotas(', iAgora);
+  checar('/eta: rate limit fail-closed vem ANTES da chamada paga', iAgora > 0 && iLimiteAgora > iAgora && iLimiteAgora < iRotaAgora, true);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);

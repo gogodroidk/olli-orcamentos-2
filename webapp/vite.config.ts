@@ -29,6 +29,7 @@ const verticaisFonte = fileURLToPath(new URL("../src/services/verticais.ts", imp
 const verticalSegmentoFonte = fileURLToPath(new URL("../src/services/verticalSegmento.ts", import.meta.url));
 const limitesComerciaisFonte = fileURLToPath(new URL("../src/services/limitesComerciais.ts", import.meta.url));
 const ativacaoFonte = fileURLToPath(new URL("../src/services/ativacao.ts", import.meta.url));
+const documentosOficioFonte = fileURLToPath(new URL("../src/services/documentosOficio.ts", import.meta.url));
 const iaSeguraFonte = fileURLToPath(new URL("../src/services/olliAcoesSeguras.ts", import.meta.url));
 const precificacaoFonte = fileURLToPath(new URL("../src/services/precificacao.ts", import.meta.url));
 const authPolicyFonte = fileURLToPath(new URL("../src/services/authPolicy.ts", import.meta.url));
@@ -90,6 +91,7 @@ export default defineConfig(({ mode }) => {
 				"@vertical-segmento": verticalSegmentoFonte,
 				"@limites-comerciais": limitesComerciaisFonte,
 				"@ativacao": ativacaoFonte,
+				"@documentos-oficio": documentosOficioFonte,
 				"@ia-segura": iaSeguraFonte,
 				"@precificacao": precificacaoFonte,
 				"@auth-policy": authPolicyFonte,
@@ -184,7 +186,6 @@ export default defineConfig(({ mode }) => {
 						"vendor-core": ["react", "react-dom", "react-router"],
 						"vendor-ui": ["antd", "@ant-design/cssinjs", "styled-components"],
 						"vendor-utils": ["dayjs", "i18next", "zustand", "@iconify/react"],
-						"vendor-charts": ["apexcharts", "react-apexcharts"],
 						// Sentry só chega por import() (ver main.tsx). Isolar aqui impede que
 						// o rollup o funda no chunk das features do motion: sem isso, a
 						// animação da primeira tela puxava o SDK de crash junto, ~160 KB gzip

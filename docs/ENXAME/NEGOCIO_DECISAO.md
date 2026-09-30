@@ -127,7 +127,9 @@ engenharia permitida é a que vende sozinha quando você não estiver do lado:
 - **Onboarding de 6 para 3 etapas** (Endereço e Visual migram para depois do
   primeiro PDF).
 - **Página da NFS-e no ar até 15/08** — em 01/09 todo o seu público vira obrigado
-  ao Emissor Nacional; a página precisa indexar antes da onda. É a aquisição da
+  ao Emissor Nacional; a página precisa indexar antes da onda. (Correção de
+  30/09/2026: o MEI já é obrigado desde 01/09/2023 e ME/EPP passam a ser em
+  **01/11/2026**, Resolução CGSN 191/2026. Ver `ALERTA_NFSE_DATA.md`.) É a aquisição da
   leva 11–100, não dos 10.
 
 **Resultado esperado:** o 11º, que instala sem você, chega ao primeiro PDF em vez

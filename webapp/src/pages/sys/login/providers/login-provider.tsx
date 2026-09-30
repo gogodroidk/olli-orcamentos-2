@@ -5,10 +5,8 @@ export enum LoginStateEnum {
 	LOGIN = 0,
 	REGISTER = 1,
 	RESET_PASSWORD = 2,
-	MOBILE = 3,
-	QR_CODE = 4,
 	/** Login sem senha: código de 6 dígitos no e-mail (codigo-form.tsx). */
-	CODIGO = 5,
+	CODIGO = 3,
 }
 
 interface LoginStateContextType {

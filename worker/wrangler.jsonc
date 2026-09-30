@@ -52,6 +52,13 @@
     "WELCOME_APP_URL": "https://app.olliorcamentos.online",
     "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
     "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
+    // E-mails de autenticação (POST /auth/email-hook, Send Email Hook do Supabase).
+    // Remetente/logo/suporte são os WELCOME_* acima. O link de todo e-mail de auth
+    // aponta para esta página do painel (?token_hash=&type=&next=). A validade TEM
+    // de ser igual a mailer_otp_exp/60 do Supabase — é o que o e-mail promete.
+    // O segredo do hook é secret: npx wrangler secret put SEND_EMAIL_HOOK_SECRET
+    "AUTH_EMAIL_CONFIRM_URL": "https://app.olliorcamentos.online/auth/confirm",
+    "AUTH_OTP_VALIDADE_MINUTOS": "10",
     // Lembretes por e-mail (ativação D+3/D+7 e assinatura). Tetos conservadores:
     // 3 por rodada horária, 40 por dia no total, ativação só até 30 dias de conta.
     "EMAIL_LEMBRETES_MODE": "production",
@@ -75,7 +82,7 @@
     // com cada ID na allowlist de worker/src/ai.js, que também manda o teto de
     // preço (max_price) em toda request. Mesma ordem de OPENROUTER_MODELOS_PADRAO
     // — `npm run check:ai-models` (raiz) exige igualdade e valida ao vivo.
-    "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,google/gemini-2.5-flash-lite,mistralai/mistral-small-24b-instruct-2501",
+    "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,openai/gpt-4o-mini,mistralai/mistral-small-24b-instruct-2501",
     "OPENROUTER_PERMITIR_PAGO": "true",
     "OPENROUTER_SITE_URL": "https://olliorcamentos.online",
     "OPENROUTER_APP_NAME": "OLLI Orcamentos",
@@ -127,9 +134,11 @@
         "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",
         "WELCOME_SUPPORT_URL": "https://olliorcamentos.online/ajuda/",
         "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
+        "AUTH_EMAIL_CONFIRM_URL": "https://staging.app.olliorcamentos.online/auth/confirm",
+        "AUTH_OTP_VALIDADE_MINUTOS": "10",
         "AI_PROVIDER": "openrouter",
         "AUTOPILOT_WORKERS_AI_ENABLED": "true",
-        "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,google/gemini-2.5-flash-lite,mistralai/mistral-small-24b-instruct-2501",
+        "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,openai/gpt-4o-mini,mistralai/mistral-small-24b-instruct-2501",
         "OPENROUTER_PERMITIR_PAGO": "true",
         "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
         "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",
@@ -159,7 +168,8 @@
         { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } },
         { "name": "ABACATE_RL", "namespace_id": "2012", "simple": { "limit": 12, "period": 60 } },
         { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } },
-        { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } }
+        { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } },
+        { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } }
       ]
     }
   },
@@ -222,6 +232,13 @@
     // /revenuecat/webhook por IP, conferido ANTES do Authorization secreto: barra
     // quem tenta adivinhar o segredo. Teto alto de propósito (volume real: poucos
     // eventos por assinante por mês); 429 só faz o RevenueCat reenviar.
-    { "name": "RCHOOK_RL", "namespace_id": "1014", "simple": { "limit": 60, "period": 60 } }
+    { "name": "RCHOOK_RL", "namespace_id": "1014", "simple": { "limit": 60, "period": 60 } },
+    // /auth/email-hook por DESTINATÁRIO (hash do e-mail), conferido depois da
+    // assinatura: barra que um cadastro/"esqueci a senha" em loop vire bombardeio
+    // na caixa de alguém e queime a cota da Resend. O próprio Supabase já segura
+    // 1 pedido/min por usuário; 5/min aqui é folga para as duas pontas da troca
+    // de e-mail e reenvios. Fail-closed: sem o binding, a rota responde 503.
+    // Id 1021 (faixa 102x = Auth), longe dos 101x para não colidir com PR paralelo.
+    { "name": "AUTH_EMAIL_RL", "namespace_id": "1021", "simple": { "limit": 5, "period": 60 } }
   ]
 }
