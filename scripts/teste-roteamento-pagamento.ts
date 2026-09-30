@@ -124,7 +124,17 @@ const ALVOS: Alvo[] = [
     donoDoPix: 'src/services/pixCreditos.ts',
     donosDoCartao: ['src/screens/PlanosScreen.tsx', 'src/services/assinatura.ts'],
     donoDoPixPlano: 'src/services/pixPlano.ts',
-    citamAbacate: ['src/components/PixPlanoModal.tsx', 'src/screens/PlanosScreen.tsx', 'src/services/pixPlano.ts'],
+    // Além do código do Pix do plano, os TEXTOS ao usuário que precisam nomear o
+    // provedor: Termos §4 e Privacidade §5 (LGPD: operador que recebe dado de
+    // pagamento) e o artigo de Planos da Central de Ajuda. Texto, não rota.
+    citamAbacate: [
+      'src/components/PixPlanoModal.tsx',
+      'src/content/ajuda/index.ts',
+      'src/content/legal/privacidade.ts',
+      'src/content/legal/termos.ts',
+      'src/screens/PlanosScreen.tsx',
+      'src/services/pixPlano.ts',
+    ],
   },
   {
 		rotulo: 'PAINEL (webapp/src/)',

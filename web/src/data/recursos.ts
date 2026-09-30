@@ -112,12 +112,6 @@ export function recursosAdicionais(plano: PlanoId, base: PlanoId | null): Recurs
 	);
 }
 
-/** Rótulo do recurso para bullet de cartão — com "(em breve)" quando for o caso. */
-export function rotuloBullet(r: Recurso): string {
-	const { titulo, emBreve } = ROTULO_RECURSO[r];
-	return emBreve ? `${titulo} (em breve)` : titulo;
-}
-
 /** Estado de uma célula do comparativo — três estados, nunca dois (P0 da casa). */
 export type Celula =
 	| { tipo: "sim" }
@@ -138,7 +132,8 @@ function todosSim(): Record<PlanoId, Celula> {
  * As LINHAS do comparativo, derivadas de `entitlements`:
  *  1. os recursos base (todos ✓);
  *  2. a IA, numa linha própria — Grátis mostra a cota (`IA_USOS_GRATIS_MES`),
- *     pagos mostram "Ilimitada";
+ *     pagos mostram "Uso justo diário" (NÃO "Ilimitada": o worker aplica cota
+ *     diária aos pagos, e os Termos §4 dizem "uso justo diário");
  *  3. uma linha por recurso gateado (menos `ia_ilimitada`, já coberta na #2),
  *     com ✓/✗/Em breve computado por `temAcessoRecurso`.
  */
@@ -152,8 +147,8 @@ export function linhasComparativo(): LinhaComparativo[] {
 		titulo: "IA de diagnóstico e voz",
 		celulas: {
 			gratis: { tipo: "texto", valor: `${IA_USOS_GRATIS_MES} usos/mês` },
-			pro: { tipo: "texto", valor: "Ilimitada" },
-			empresa: { tipo: "texto", valor: "Ilimitada" },
+			pro: { tipo: "texto", valor: "Uso justo diário" },
+			empresa: { tipo: "texto", valor: "Uso justo diário" },
 		},
 	};
 	const envios: LinhaComparativo = {
