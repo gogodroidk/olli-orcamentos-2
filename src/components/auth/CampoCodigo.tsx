@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../../theme';
 import { Fonts } from '../../theme/fonts';
 import { Motion, useReducedMotion } from '../../theme/motion';
@@ -47,11 +47,11 @@ export function CampoCodigo({ valor, onMudar, estado, erro, autoFocus = true }: 
     if (estadoAnterior.current === estado) return;
     estadoAnterior.current = estado;
     if (estado === 'sucesso') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       return;
     }
     if (estado !== 'erro') return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    vibrar('erro');
     if (reduzir) return;
     const { distancia, ciclos } = Motion.tremida;
     const passo = Motion.dur.base / (ciclos * 2);

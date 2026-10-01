@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Text, TouchableOpacity, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { useCores, useEstilos, type Cores } from '../theme';
 import { enviarDenunciaIA } from '../services/feedback';
 // NAO E ENGANO: este componente e MOBILE (chat, diagnostico e voz o montam) e
@@ -103,7 +103,7 @@ export function SinalizarIA({
     if (emCursoRef.current) return;
     emCursoRef.current = true;
     try {
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
       // Porta unica: sem este "sim", nada sai do aparelho.
       const querEnviar = await confirmar(AVISO_TITULO, AVISO_MENSAGEM);
       if (!querEnviar) return;

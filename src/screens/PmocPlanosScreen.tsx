@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -203,7 +203,7 @@ function PmocPlanosConteudo() {
   }, [planos, filtro]);
 
   function abrirPlano(id: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     nav.navigate('PmocPlano', { id });
   }
 
@@ -274,7 +274,7 @@ function PmocPlanosConteudo() {
           <TouchableOpacity
             style={styles.newBtn}
             activeOpacity={0.85}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); setCriando(true); }}
+            onPress={() => { vibrar('selecao'); setCriando(true); }}
             accessibilityRole="button"
             accessibilityLabel="Novo plano de manutenção"
           >
@@ -403,7 +403,7 @@ function NovoPlanoModal({
     setErro(null);
     try {
       const plano = await criarPlano({ titulo: t, clienteId });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       onCriado(plano);
     } catch {
       setErro('Não foi possível criar o plano. Tente novamente.');

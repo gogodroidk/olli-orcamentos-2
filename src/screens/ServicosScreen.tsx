@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
@@ -130,11 +130,11 @@ function ServicosConteudo() {
     setSalvando(true);
     try {
       await saveServico(s);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       setEditing(null);
       load();
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Erro', 'Não foi possível salvar o serviço agora. Tente novamente.');
     } finally {
       setSalvando(false);

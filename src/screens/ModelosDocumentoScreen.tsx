@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'rea
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -164,7 +164,7 @@ export default function ModelosDocumentoScreen() {
 
   async function escolher(id: ModeloPdfId) {
     if (id === padrao) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!empresa) {
       Alert.alert(
         'Configure seu negócio',
@@ -179,7 +179,7 @@ export default function ModelosDocumentoScreen() {
     try {
       await saveEmpresa({ ...empresa, modeloPdfPadrao: id });
       setEmpresa(e => (e ? { ...e, modeloPdfPadrao: id } : e));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } catch {
       setPadrao(anterior); // reverte se falhar — nunca finge que salvou
       Alert.alert('Ops', 'Não consegui salvar o modelo padrão agora. Tente de novo.');
@@ -190,7 +190,7 @@ export default function ModelosDocumentoScreen() {
 
   async function escolherRecibo(id: ModeloReciboId) {
     if (id === padraoRecibo) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!empresa) {
       Alert.alert(
         'Configure seu negócio',
@@ -205,7 +205,7 @@ export default function ModelosDocumentoScreen() {
     try {
       await saveEmpresa({ ...empresa, modeloReciboPadrao: id });
       setEmpresa(e => (e ? { ...e, modeloReciboPadrao: id } : e));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } catch {
       setPadraoRecibo(anterior); // reverte se falhar
       Alert.alert('Ops', 'Não consegui salvar o modelo de recibo agora. Tente de novo.');
@@ -306,7 +306,7 @@ export default function ModelosDocumentoScreen() {
 
                   <TouchableOpacity
                     style={styles.verBtn}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setPreviewModelo(m.id); }}
+                    onPress={() => { vibrar('selecao'); setPreviewModelo(m.id); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
@@ -365,7 +365,7 @@ export default function ModelosDocumentoScreen() {
 
                   <TouchableOpacity
                     style={styles.verBtn}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setPreviewRecibo(m.id); }}
+                    onPress={() => { vibrar('selecao'); setPreviewRecibo(m.id); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
@@ -416,7 +416,7 @@ export default function ModelosDocumentoScreen() {
                 <View style={styles.acoesDoc}>
                   <TouchableOpacity
                     style={styles.acaoDoc}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setExemploDoc(d.id); }}
+                    onPress={() => { vibrar('selecao'); setExemploDoc(d.id); }}
                     accessibilityRole="button"
                     accessibilityLabel={`Ver exemplo de ${TITULOS_DOCUMENTO[d.id]}`}
                   >
@@ -426,7 +426,7 @@ export default function ModelosDocumentoScreen() {
 
                   <TouchableOpacity
                     style={styles.acaoDoc}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setGerarDoc(d.id); }}
+                    onPress={() => { vibrar('selecao'); setGerarDoc(d.id); }}
                     accessibilityRole="button"
                     accessibilityLabel={`Gerar ${TITULOS_DOCUMENTO[d.id]} a partir de um orçamento`}
                   >
@@ -442,7 +442,7 @@ export default function ModelosDocumentoScreen() {
         <AnimatedEntrance index={3}>
           <TouchableOpacity
             style={styles.card}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); setEditorAberto(true); }}
+            onPress={() => { vibrar('selecao'); setEditorAberto(true); }}
             activeOpacity={0.9}
             accessibilityRole="button"
             accessibilityLabel="Editar as cláusulas padrão do contrato"

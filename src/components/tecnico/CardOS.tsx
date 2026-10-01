@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, corStatusOS, achatarVeu, type Cores } from '../../theme';
 import { AnimatedEntrance } from '../AnimatedEntrance';
 import { OlliButton } from '../OlliButton';
@@ -84,7 +84,7 @@ export function CardOS({ ordem, index = 0, destaque, avancando, onAbrir, onAvanc
   const total = ordem.checklist?.length ?? 0;
 
   function abrir() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     onAbrir();
   }
 

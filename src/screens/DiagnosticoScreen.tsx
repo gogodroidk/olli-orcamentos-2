@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -155,17 +155,17 @@ export default function DiagnosticoScreen() {
   }, [marca, query]);
 
   function pickMarca(m: string | null) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setMarca(prev => (prev === m ? null : m));
   }
 
   function pickSeveridade(s: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setSeveridade(prev => (prev === s ? null : s));
   }
 
   function openDetail(c: CodigoErro) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setSelected(c);
     track(Eventos.errorCodeOpened, { marca: c.marca, codigo: c.codigo });
   }
@@ -185,7 +185,7 @@ export default function DiagnosticoScreen() {
     codigoBuscado?: string | null;
     sintoma?: string | null;
   }) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setSelected(null);
     entregarCasoAoChat(montarContextoDiagnostico(caso));
     nav.navigate('OlliChat');
@@ -198,7 +198,7 @@ export default function DiagnosticoScreen() {
 
   // Cria um orçamento já com um item-serviço descrevendo o reparo do código aberto.
   function criarOrcamentoDoCodigo(c: CodigoErro) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setSelected(null);
     const ctx = [c.marca, c.familia].filter(Boolean).join(' ');
     const nome = [
@@ -228,7 +228,7 @@ export default function DiagnosticoScreen() {
     };
     await saveCasoErro(caso);
     track(Eventos.errorCodeNotFound, { marca: caso.marca, modelo: caso.modelo, codigo: caso.codigo });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    vibrar('sucesso');
     setNaoAchei(null);
     Alert.alert(
       'Anotado!',

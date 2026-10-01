@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { capitalizeFirst } from '../utils/date';
@@ -212,7 +212,7 @@ function PulsoSemana({ onFechar }: { onFechar: () => void }) {
 
   const escolher = useCallback((valor: number) => {
     if (nota !== null) return; // já respondeu — um toque só
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setNota(valor);
     track(Eventos.pulsoRespondido, { nota: valor });
     // `nota` aqui ainda é o valor ANTIGO (null) do closure: o toque grava `valor`.
@@ -222,7 +222,7 @@ function PulsoSemana({ onFechar }: { onFechar: () => void }) {
   const enviarComentario = useCallback(async () => {
     const msg = texto.trim();
     if (!msg || enviandoTexto || nota === null) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setEnviandoTexto(true);
     const r = await enviarFeedback('pulso', msg, { tela: 'HojeScreen', nota });
     setEnviandoTexto(false);
@@ -409,7 +409,7 @@ export default function HojeScreen() {
   const addItem = useCallback(() => {
     const t = novo.trim();
     if (!t) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     animarLayoutChecklist(reduzirMovimento);
     persist([...checklist, { id: generateId(), texto: t, feito: false, data: todayKey() }]);
     setNovo('');
@@ -418,13 +418,13 @@ export default function HojeScreen() {
   const toggle = useCallback((id: string) => {
     const alvo = checklist.find(i => i.id === id);
     // Concluir = "sucesso" (impacto leve); reabrir = seleção neutra.
-    if (alvo && !alvo.feito) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    else Haptics.selectionAsync().catch(() => {});
+    if (alvo && !alvo.feito) vibrar('leve');
+    else vibrar('selecao');
     persist(checklist.map(i => i.id === id ? { ...i, feito: !i.feito } : i));
   }, [checklist, persist]);
 
   const remove = useCallback((id: string) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     animarLayoutChecklist(reduzirMovimento);
     persist(checklist.filter(i => i.id !== id));
   }, [checklist, persist, reduzirMovimento]);
@@ -490,7 +490,7 @@ export default function HojeScreen() {
       Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await abrirWhatsApp(telefone, mensagemFollowUp(item));
     } catch {
@@ -499,7 +499,7 @@ export default function HojeScreen() {
   }, []);
 
   const fecharPulso = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.pulsoDispensado, {});
     setPulsoVisivel(false);
   }, []);
@@ -545,7 +545,7 @@ export default function HojeScreen() {
                   </View>
                   <TouchableOpacity
                     style={styles.lembreteRetry}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); loadFollowUp(); }}
+                    onPress={() => { vibrar('selecao'); loadFollowUp(); }}
                     accessibilityRole="button"
                     accessibilityLabel="Tentar verificar as propostas paradas de novo"
                   >
@@ -671,7 +671,7 @@ export default function HojeScreen() {
               title="Nada agendado para hoje"
               subtitle="Aproveite para organizar a semana ou cadastrar novos orçamentos."
               actionLabel="Abrir agenda"
-              onAction={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }}
+              onAction={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }}
             />
           </View>
         ) : (
@@ -707,7 +707,7 @@ export default function HojeScreen() {
                     {a.endereco?.trim() ? (
                       <TouchableOpacity
                         style={styles.rotaBtn}
-                        onPress={(e) => { e.stopPropagation(); Haptics.selectionAsync().catch(() => {}); abrirRotaGoogleMaps(a.endereco!); }}
+                        onPress={(e) => { e.stopPropagation(); vibrar('selecao'); abrirRotaGoogleMaps(a.endereco!); }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         accessibilityRole="button"
                         accessibilityLabel="Traçar rota no Google Maps"
@@ -780,7 +780,7 @@ export default function HojeScreen() {
             haptic={false}
             accessibilityLabel="Abrir relatório do dia"
             onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
+              vibrar('selecao');
               if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
               nav.navigate('RelatorioDia');
             }}
