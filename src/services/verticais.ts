@@ -21,6 +21,8 @@
  * d'água E tratamento de piscina (IBGE, notas explicativas da subclasse). Nesse caso
  * as verticais empatadas entram todas, na ordem do catálogo — o dono ajusta depois.
  */
+import { DURACAO_PADRAO_AGENDAMENTO_MIN, TIPOS_AGENDAMENTO } from '../types/index.ts';
+import type { RecorrenciaAgendamento, TipoAgendamento } from '../types/index.ts';
 
 export type VerticalId =
   | 'refrigeracao'
@@ -70,6 +72,29 @@ export interface Vertical {
    * enviado sozinho.
    */
   retorno: { meses: number; servico: string };
+  /**
+   * AGENDA: os tipos de visita que este ofício marca no dia a dia, com a duração
+   * típica (alimenta o conflito por técnico) e a repetição que costuma ter. Só os
+   * ESPECÍFICOS do ofício — o "Orçamento" e o "Outro" genéricos entram sempre
+   * (`tiposDeVisita`).
+   */
+  tiposVisita: readonly TipoVisita[];
+}
+
+/**
+ * Um tipo de visita sugerido na agenda. `tipo` é a CATEGORIA gravada no
+ * agendamento (cor, ícone e filtros continuam os de `TIPOS_AGENDAMENTO`, iguais no
+ * app e no painel); `label` vira o título sugerido. Nada aqui muda o banco.
+ */
+export interface TipoVisita {
+  /** Id estável, único no catálogo inteiro (`<vertical>_<visita>`). */
+  id: string;
+  label: string;
+  tipo: TipoAgendamento;
+  /** Duração típica em minutos (vira o `fim` sugerido). */
+  duracaoMin: number;
+  /** Repetição sugerida ao escolher (o prestador muda ou tira). */
+  recorrenciaSugerida?: RecorrenciaAgendamento;
 }
 
 /** Catálogo de ferramentas por vertical (o "documento que vale dinheiro"). */
@@ -111,6 +136,12 @@ export const VERTICAIS: readonly Vertical[] = [
     // Higienização de split residencial: semestral é a recomendação usual dos
     // fabricantes (o PMOC comercial tem periodicidade própria, por equipamento).
     retorno: { meses: 6, servico: 'a limpeza do ar-condicionado' },
+    tiposVisita: [
+      { id: 'refrigeracao_instalacao', label: 'Instalação de ar-condicionado', tipo: 'instalacao', duracaoMin: 180 },
+      { id: 'refrigeracao_limpeza', label: 'Limpeza / higienização de split', tipo: 'limpeza', duracaoMin: 90, recorrenciaSugerida: 'semestral' },
+      { id: 'refrigeracao_preventiva', label: 'Manutenção preventiva (PMOC)', tipo: 'manutencao', duracaoMin: 60, recorrenciaSugerida: 'mensal' },
+      { id: 'refrigeracao_diagnostico', label: 'Visita técnica / diagnóstico', tipo: 'visita', duracaoMin: 60 },
+    ],
   },
   {
     id: 'eletrica',
@@ -119,6 +150,11 @@ export const VERTICAIS: readonly Vertical[] = [
     cnaes: ['43215'], // 4321-5 Instalação elétrica (todas as subclasses).
     ferramentas: ['checklist_nr10', 'laudo_eletrico'],
     retorno: { meses: 12, servico: 'uma revisão da parte elétrica' },
+    tiposVisita: [
+      { id: 'eletrica_instalacao', label: 'Instalação elétrica', tipo: 'instalacao', duracaoMin: 240 },
+      { id: 'eletrica_manutencao', label: 'Manutenção elétrica', tipo: 'manutencao', duracaoMin: 120 },
+      { id: 'eletrica_inspecao', label: 'Inspeção / vistoria elétrica', tipo: 'visita', duracaoMin: 120 },
+    ],
   },
   {
     id: 'hidraulica',
@@ -128,6 +164,11 @@ export const VERTICAIS: readonly Vertical[] = [
     ferramentas: ['laudo_estanqueidade'],
     // Limpeza de caixa d'água a cada 6 meses é a orientação das companhias de saneamento.
     retorno: { meses: 6, servico: "a limpeza da caixa d'água e uma revisão hidráulica" },
+    tiposVisita: [
+      { id: 'hidraulica_desentupimento', label: 'Desentupimento', tipo: 'manutencao', duracaoMin: 90 },
+      { id: 'hidraulica_vazamento', label: 'Caça-vazamento', tipo: 'visita', duracaoMin: 120 },
+      { id: 'hidraulica_instalacao', label: 'Instalação hidráulica', tipo: 'instalacao', duracaoMin: 180 },
+    ],
   },
   {
     id: 'pintura',
@@ -136,6 +177,11 @@ export const VERTICAIS: readonly Vertical[] = [
     cnaes: ['43304'], // 4330-4 Obras de acabamento (inclui pintura de edifícios).
     ferramentas: ['calculadora_tinta'],
     retorno: { meses: 24, servico: 'um retoque na pintura' },
+    tiposVisita: [
+      { id: 'pintura_medicao', label: 'Medição para orçamento', tipo: 'orcamento', duracaoMin: 45 },
+      { id: 'pintura_execucao', label: 'Dia de pintura', tipo: 'instalacao', duracaoMin: 480 },
+      { id: 'pintura_retoque', label: 'Retoque', tipo: 'manutencao', duracaoMin: 120 },
+    ],
   },
   {
     id: 'dedetizacao',
@@ -148,6 +194,12 @@ export const VERTICAIS: readonly Vertical[] = [
     // Reaplicação preventiva semestral é o ciclo mais comum em residência. A RDC
     // 622/2022 não fixa periodicidade; restaurante e condomínio costumam contratar menor.
     retorno: { meses: 6, servico: 'a reaplicação da dedetização' },
+    tiposVisita: [
+      { id: 'dedetizacao_aplicacao', label: 'Dedetização', tipo: 'manutencao', duracaoMin: 90, recorrenciaSugerida: 'semestral' },
+      { id: 'dedetizacao_desratizacao', label: 'Desratização', tipo: 'manutencao', duracaoMin: 90 },
+      { id: 'dedetizacao_cupim', label: 'Descupinização', tipo: 'manutencao', duracaoMin: 120 },
+      { id: 'dedetizacao_vistoria', label: 'Vistoria', tipo: 'visita', duracaoMin: 45 },
+    ],
   },
   {
     id: 'caixa_dagua',
@@ -161,6 +213,10 @@ export const VERTICAIS: readonly Vertical[] = [
     // (Lei municipal 10.770/1989); as companhias de saneamento orientam a cada 6 meses.
     // O lembrete usa o prazo menor: avisar cedo nunca faz o cliente perder o prazo legal.
     retorno: { meses: 6, servico: "a limpeza da caixa d'água" },
+    tiposVisita: [
+      { id: 'caixa_dagua_limpeza', label: "Limpeza de caixa d'água", tipo: 'limpeza', duracaoMin: 180, recorrenciaSugerida: 'semestral' },
+      { id: 'caixa_dagua_vistoria', label: 'Vistoria do reservatório', tipo: 'visita', duracaoMin: 45 },
+    ],
   },
   {
     id: 'piscina',
@@ -171,6 +227,11 @@ export const VERTICAIS: readonly Vertical[] = [
     ferramentas: ['contrato_recorrente'],
     // Piscina é visita semanal ou quinzenal: cliente sem serviço há 1 mês já saiu da rotina.
     retorno: { meses: 1, servico: 'a manutenção da piscina' },
+    tiposVisita: [
+      { id: 'piscina_manutencao', label: 'Manutenção da piscina', tipo: 'manutencao', duracaoMin: 60, recorrenciaSugerida: 'semanal' },
+      { id: 'piscina_choque', label: 'Tratamento de choque', tipo: 'manutencao', duracaoMin: 90 },
+      { id: 'piscina_limpeza_pesada', label: 'Limpeza pesada', tipo: 'limpeza', duracaoMin: 180 },
+    ],
   },
   {
     id: 'extintores',
@@ -186,6 +247,10 @@ export const VERTICAIS: readonly Vertical[] = [
     ferramentas: ['contrato_recorrente'],
     // NBR 12962: inspeção anual; a recarga segue o nível de manutenção de cada extintor.
     retorno: { meses: 12, servico: 'a inspeção e a recarga dos extintores' },
+    tiposVisita: [
+      { id: 'extintores_recarga', label: 'Recarga de extintores', tipo: 'manutencao', duracaoMin: 120, recorrenciaSugerida: 'anual' },
+      { id: 'extintores_inspecao', label: 'Inspeção de extintores', tipo: 'visita', duracaoMin: 60, recorrenciaSugerida: 'anual' },
+    ],
   },
   {
     id: 'jardinagem',
@@ -194,6 +259,11 @@ export const VERTICAIS: readonly Vertical[] = [
     cnaes: ['81303'], // 8130-3 Atividades paisagísticas.
     ferramentas: ['contrato_recorrente'],
     retorno: { meses: 3, servico: 'a manutenção do jardim (poda e adubação)' },
+    tiposVisita: [
+      { id: 'jardinagem_manutencao', label: 'Manutenção do jardim', tipo: 'manutencao', duracaoMin: 120, recorrenciaSugerida: 'mensal' },
+      { id: 'jardinagem_poda', label: 'Poda', tipo: 'manutencao', duracaoMin: 180 },
+      { id: 'jardinagem_implantacao', label: 'Implantação de paisagismo', tipo: 'instalacao', duracaoMin: 480 },
+    ],
   },
 ];
 
@@ -207,6 +277,8 @@ export const VERTICAL_GERAL: Vertical = {
   // 6 meses: o mesmo horizonte (~150 dias) que o antigo radar de clientes já usava
   // para todo mundo — quem não escolheu ofício não sente o radar mudar de ritmo.
   retorno: { meses: 6, servico: 'uma revisão do serviço' },
+  // Serviços em geral: as categorias da agenda, sem especialização (`tiposDeVisita`).
+  tiposVisita: [],
 };
 
 /** Só os dígitos de um CNAE (remove máscara "0000-0/00" se vier formatado). */
@@ -289,4 +361,42 @@ export function empresaMostraVertical(
 /** Atalho: mostrar as ferramentas de HVAC (PMOC, equipamentos, códigos de erro, diagnóstico)? */
 export function empresaMostraHvac(verticaisEmpresa: readonly VerticalId[] | undefined): boolean {
   return empresaMostraVertical(verticaisEmpresa, 'refrigeracao');
+}
+
+// ─── Tipos de visita da agenda ────────────────────────────────────────────────
+
+/** As categorias da agenda como tipos de visita genéricos (rótulo = o da categoria). */
+const TIPOS_VISITA_GENERICOS: readonly TipoVisita[] = TIPOS_AGENDAMENTO.map((t) => ({
+  id: `geral_${t.id}`,
+  label: t.label,
+  tipo: t.id,
+  duracaoMin: DURACAO_PADRAO_AGENDAMENTO_MIN[t.id],
+}));
+
+/** Os genéricos que entram SEMPRE, mesmo para quem escolheu um ofício. */
+const TIPOS_VISITA_SEMPRE: readonly TipoVisita[] = TIPOS_VISITA_GENERICOS.filter((t) => t.tipo === 'orcamento' || t.tipo === 'outro');
+
+/**
+ * Tipos de visita que a agenda oferece para a empresa, na ordem dos chips:
+ *  - SEM ofício (todo usuário antigo) ou só "Serviços em Geral" → as categorias de
+ *    sempre (`TIPOS_AGENDAMENTO`), nada some (mesmo backward-compat de
+ *    `empresaMostraVertical`);
+ *  - com ofício(s) → os de cada ofício escolhido (na ordem escolhida, sem repetir) e,
+ *    no fim, "Orçamento" e "Outro", que todo prestador usa.
+ * Puro; nunca devolve lista vazia.
+ */
+export function tiposDeVisita(verticaisEmpresa: readonly VerticalId[] | undefined): TipoVisita[] {
+  const especificas = (verticaisEmpresa ?? []).filter((id) => id !== 'geral');
+  if (!especificas.length) return [...TIPOS_VISITA_GENERICOS];
+  const out: TipoVisita[] = [];
+  const vistos = new Set<string>();
+  for (const id of especificas) {
+    for (const t of verticalPorId(id).tiposVisita) {
+      if (vistos.has(t.id)) continue;
+      vistos.add(t.id);
+      out.push(t);
+    }
+  }
+  for (const t of TIPOS_VISITA_SEMPRE) out.push(t);
+  return out;
 }
