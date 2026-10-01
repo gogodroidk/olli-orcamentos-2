@@ -480,7 +480,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       valor REAL,
       criado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL,
-      excluido_em TEXT
+      excluido_em TEXT,
+      asset_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
@@ -598,6 +599,10 @@ async function initDb(database: SQLite.SQLiteDatabase) {
   await database.execAsync(
     'CREATE INDEX IF NOT EXISTS idx_ordens_servico_concluido ON ordens_servico (concluido_em) WHERE status = \'concluida\' AND concluido_em IS NOT NULL',
   );
+  // Depende da coluna da migration v10 (histórico do equipamento / check-in pelo QR).
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_ordens_servico_asset ON ordens_servico (asset_id) WHERE asset_id IS NOT NULL',
+  );
   await seedCodigosErro(database);
 
   // Sem dados-semente falsos: instalações novas começam SEM empresa e SEM
@@ -609,7 +614,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -721,6 +726,14 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       await addColumnIfMissing(database, 'clientes', coluna, def);
     }
     await addColumnIfMissing(database, 'agendamentos', 'externa', 'INTEGER');
+  }
+
+  // v < 10 — OS ligada ao EQUIPAMENTO atendido (check-in pelo QR; espelha a
+  // migration da nuvem 20261002153217). Sem backfill: nulo = "OS sem equipamento
+  // ligado", a verdade de toda OS anterior. As visitas PMOC já se ligam ao
+  // equipamento por `pmoc_ordens_geradas` e continuam assim.
+  if (v < 10) {
+    await addColumnIfMissing(database, 'ordens_servico', 'asset_id', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -1894,6 +1907,7 @@ function rowToOrdemServico(r: any): OrdemServico {
     fotos,
     observacoes: r.observacoes ?? undefined,
     valor: r.valor ?? undefined,
+    equipamentoId: r.asset_id ?? undefined,
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
     excluidoEm: r.excluido_em ?? undefined,
@@ -1921,6 +1935,25 @@ export async function getOrdensServicoPagina(limite = 40, offset = 0): Promise<O
   return rows.map(rowToOrdemServico);
 }
 
+/**
+ * OS ATIVAS de um equipamento: as ligadas direto (`asset_id`, check-in pelo QR)
+ * e as visitas PMOC geradas para ele (`pmoc_ordens_geradas.ordem_id`). Uma OS
+ * que aparece pelos dois caminhos vem uma vez só (DISTINCT pelo id).
+ */
+export async function getOrdensServicoDoEquipamento(equipamentoId: string): Promise<OrdemServico[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    `SELECT DISTINCT os.* FROM ordens_servico os
+      WHERE os.excluido_em IS NULL
+        AND (os.asset_id = ?
+             OR os.id IN (SELECT g.ordem_id FROM pmoc_ordens_geradas g
+                           WHERE g.asset_id = ? AND g.excluido_em IS NULL))
+      ORDER BY os.criado_em DESC`,
+    [equipamentoId, equipamentoId],
+  );
+  return rows.map(rowToOrdemServico);
+}
+
 // Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getOrdemServico(id: string): Promise<OrdemServico | null> {
   const db = await getDb();
@@ -1934,12 +1967,13 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
      os.titulo, os.descricao ?? null, os.status, os.concluidoEm ?? null, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
-     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null],
+     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null,
+     os.equipamentoId ?? null],
   );
   // Espelho na nuvem pelo caminho PADRÃO de cloudSync (ordens_servico é SyncTable
   // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
@@ -3429,6 +3463,15 @@ export async function registrarOrdemGerada(g: PmocOrdemGerada): Promise<boolean>
   const inserida = (r?.changes ?? 0) > 0;
   if (inserida) mirrorPush('pmoc_ordens_geradas', { ...g, atualizadoEm: agora });
   return inserida;
+}
+
+/** Visitas PMOC geradas para UM equipamento (histórico/próxima manutenção da ficha). */
+export async function getOrdensGeradasDoEquipamento(equipamentoId: string): Promise<PmocOrdemGerada[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_ordens_geradas WHERE asset_id = ? AND excluido_em IS NULL ORDER BY vencimento ASC', [equipamentoId],
+  );
+  return rows.map(rowToPmocGeradaDb);
 }
 
 /** Todas as visitas já geradas para um plano (para saber o que NÃO regerar). */

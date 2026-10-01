@@ -871,10 +871,35 @@ export interface OrdemServico {
   fotos: string[];
   observacoes?: string;
   valor?: number;
+  /**
+   * Equipamento atendido (`Equipamento.id` → `assets.id`, soft ref). Nasce no
+   * check-in pelo QR ("Iniciar atendimento"); é o que monta o histórico da ficha
+   * do equipamento e a "última manutenção" da etiqueta pública. Ausente = OS sem
+   * equipamento ligado (a verdade de toda OS anterior à migration 20261002153217).
+   */
+  equipamentoId?: string;
   criadoEm: string;
   atualizadoEm: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
   excluidoEm?: string;
+}
+
+/**
+ * Pedido de orçamento feito por quem escaneou a etiqueta QR do equipamento
+ * (página pública /q/<token>). Gravado SÓ pelo worker (service_role) em
+ * `public.pedidos_orcamento_qr`; o app lê e marca como atendido. O primeiro
+ * contato continua humano: o app só mostra o pedido e abre o WhatsApp.
+ */
+export interface PedidoOrcamentoQr {
+  id: string;
+  equipamentoId: string;
+  nome: string;
+  /** Só dígitos, com DDI 55 (normalizado pelo worker). */
+  telefone: string;
+  mensagem?: string;
+  criadoEm: string;
+  /** ISO de quando o prestador marcou como atendido. Ausente = novo. */
+  atendidoEm?: string;
 }
 
 export const STATUS_OS_LABELS: Record<StatusOS, string> = {

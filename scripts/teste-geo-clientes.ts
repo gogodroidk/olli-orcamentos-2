@@ -632,7 +632,9 @@ console.log('\n10) espelhos: SQLite local, cloudSync, agenda, worker e wrangler'
 {
   const semComentario = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const db = semComentario(readFileSync('src/database/database.ts', 'utf8'));
-  checar('SQLite: SCHEMA_VERSION 9', /const SCHEMA_VERSION = 9;/.test(db));
+  // ">= 9", não "=== 9": migrações locais posteriores (ex.: v10, OS ligada ao
+  // equipamento) sobem a versão sem desfazer o bloco v<9 conferido logo abaixo.
+  checar('SQLite: SCHEMA_VERSION 9 ou depois', Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1] ?? 0) >= 9);
   checar('SQLite: v<9 acrescenta lat/lon/ibge/geo_precisao e agendamentos.externa',
     /if \(v < 9\)/.test(db) && /\['lat', 'REAL'\], \['lon', 'REAL'\], \['ibge', 'TEXT'\], \['geo_precisao', 'TEXT'\]/.test(db) &&
     /addColumnIfMissing\(database, 'agendamentos', 'externa', 'INTEGER'\)/.test(db));
