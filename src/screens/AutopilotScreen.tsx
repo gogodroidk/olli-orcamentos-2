@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -12,6 +12,14 @@ import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../them
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { prepararPreviaAutopilot, type AutopilotPrevia, type IntencaoAutopilot } from '../services/iaAutopilot';
 import { goBackOrHome } from '../navigation/safeBack';
+import { getClientes, getProdutos, getServicos, saveCliente, saveProduto, saveServico } from '../database/database';
+import { usePermissao } from '../hooks/usePermissao';
+import { generateId } from '../utils/id';
+import { nowISO } from '../utils/date';
+import {
+  cadastrarSelecionados, montarCandidatosCadastro, montarParamsOrcamento, resolverClienteOrcamento, resumoCadastro,
+  selecaoInicial, textoDuplicado, type CadastroExistente, type CandidatoCadastro, type ResultadoCadastro,
+} from '../utils/autopilotCadastro';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type FonteLocal = { uri: string; nome: string; mimeType: string; tamanhoBytes?: number };
@@ -34,6 +42,73 @@ export default function AutopilotScreen() {
   const [previa, setPrevia] = useState<AutopilotPrevia | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Checklist de cadastro (item 2.13). `existentes` null = ainda lendo o cadastro do aparelho.
+  const { pode, carregando: papelCarregando } = usePermissao();
+  const podeClientes = pode('ver_clientes');
+  const podeCatalogo = pode('ver_valores_agregados');
+  const [existentes, setExistentes] = useState<CadastroExistente | null>(null);
+  const [candidatosCadastro, setCandidatosCadastro] = useState<CandidatoCadastro[]>([]);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [cadastrados, setCadastrados] = useState<Map<string, string>>(new Map());
+  const [resultadoCadastro, setResultadoCadastro] = useState<ResultadoCadastro | null>(null);
+  const [cadastrando, setCadastrando] = useState(false);
+
+  function permitidoCadastrar(chave: string): boolean {
+    return chave.startsWith('cliente:') ? podeClientes : podeCatalogo;
+  }
+
+  // Nova prévia → lê o cadastro atual (para avisar duplicado) e monta o checklist.
+  // Leitura que falha vira `null` (não conferido), nunca "não tem duplicado".
+  useEffect(() => {
+    setExistentes(null); setCandidatosCadastro([]); setSelecionados(new Set());
+    setCadastrados(new Map()); setResultadoCadastro(null);
+    if (!previa || papelCarregando) return;
+    let vivo = true;
+    async function ler<T>(permitido: boolean, fn: () => Promise<T[]>): Promise<T[] | null> {
+      if (!permitido) return null;
+      try { return await fn(); } catch { return null; }
+    }
+    void (async () => {
+      const [clientes, produtos, servicos] = await Promise.all([
+        ler(podeClientes, getClientes), ler(podeCatalogo, getProdutos), ler(podeCatalogo, getServicos),
+      ]);
+      if (!vivo) return;
+      const base: CadastroExistente = { clientes, produtos, servicos };
+      const lista = montarCandidatosCadastro(previa.candidatos, base);
+      setExistentes(base);
+      setCandidatosCadastro(lista);
+      setSelecionados(new Set([...selecaoInicial(lista)].filter((chave) => (chave.startsWith('cliente:') ? podeClientes : podeCatalogo))));
+    })();
+    return () => { vivo = false; };
+  }, [previa, papelCarregando, podeClientes, podeCatalogo]);
+
+  function alternar(chave: string) {
+    if (cadastrados.has(chave) || cadastrando || !permitidoCadastrar(chave)) return;
+    setSelecionados((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(chave)) proximo.delete(chave); else proximo.add(chave);
+      return proximo;
+    });
+  }
+
+  async function cadastrar() {
+    if (!selecionados.size || cadastrando) return;
+    setCadastrando(true);
+    try {
+      const resultado = await cadastrarSelecionados(candidatosCadastro, selecionados, {
+        saveCliente, saveProduto, saveServico, gerarId: generateId, agora: nowISO,
+        permissoes: { clientes: podeClientes, catalogo: podeCatalogo },
+      });
+      const novos = new Map(cadastrados);
+      for (const item of resultado.itens) if (item.ok) novos.set(item.chave, item.id);
+      setCadastrados(novos);
+      // Quem gravou sai da seleção; quem falhou continua marcado para tentar de novo.
+      setSelecionados((atual) => new Set([...atual].filter((chave) => !novos.has(chave))));
+      setResultadoCadastro(resultado);
+    } finally {
+      setCadastrando(false);
+    }
+  }
 
   async function escolherArquivo() {
     const result = await DocumentPicker.getDocumentAsync({
@@ -74,18 +149,30 @@ export default function AutopilotScreen() {
     else setErro(mensagemErro(result.erro));
   }
 
+  // Parâmetros do Orçar: cliente (id do cadastro feito agora ou já existente,
+  // senão só o nome), itens com tipo inferido e preço sugerido como referência.
+  const paramsOrcamento = useMemo(() => {
+    if (!previa) return null;
+    const cliente = resolverClienteOrcamento(previa.candidatos.orcamento, candidatosCadastro, cadastrados, existentes?.clientes ?? null);
+    return montarParamsOrcamento({
+      itens: previa.candidatos.orcamento.itens,
+      nomesProdutos: [...previa.candidatos.produtos.map((p) => p.nome), ...(existentes?.produtos ?? []).map((p) => p.nome)],
+      cliente,
+    });
+  }, [previa, candidatosCadastro, cadastrados, existentes]);
+
   function abrirOrcamento() {
-    const itens = (previa?.candidatos.orcamento.itens ?? []).filter((item): item is typeof item & { tipo: 'servico' | 'produto' } => item.tipo === 'servico' || item.tipo === 'produto');
-    if (!itens.length) return;
-    nav.navigate('NovoOrcamento', { prefillItems: itens.map((item) => ({ tipo: item.tipo, nome: item.nome, descricao: item.descricao, quantidade: item.quantidade })) });
+    if (!paramsOrcamento) return;
+    nav.navigate('NovoOrcamento', paramsOrcamento);
   }
 
   function limpar() {
     setFonte(null); setTexto(''); setPedido(''); setPrevia(null); setErro(null);
   }
 
-  const catalogo = [...(previa?.candidatos.produtos ?? []), ...(previa?.candidatos.servicos ?? [])];
   const itens = previa?.candidatos.orcamento.itens ?? [];
+  const errosPorChave = new Map((resultadoCadastro?.itens ?? []).flatMap((item) => (item.ok ? [] : [[item.chave, item.erro] as const])));
+  const algumNaoConferido = candidatosCadastro.some((c) => !c.conferido);
 
   return (
     <KeyboardAvoidingView style={styles.raiz} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -124,12 +211,49 @@ export default function AutopilotScreen() {
         {previa && <View style={styles.resultado}>
           <View style={styles.resultadoCabecalho}><MaterialCommunityIcons name="shield-check-outline" size={20} color={cores.success} /><View style={{ flex: 1 }}><Text style={styles.resultadoTitulo}>Prévia aguardando confirmação</Text><Text style={styles.resultadoSub}>{previa.fonte.nome} · {previa.fonte.parser}</Text></View></View>
           <View style={styles.contadores}>{[['Clientes', previa.candidatos.clientes.length], ['Produtos', previa.candidatos.produtos.length], ['Serviços', previa.candidatos.servicos.length], ['Itens', itens.length]].map(([label, count]) => <View key={String(label)} style={styles.contador}><Text style={styles.contadorLabel}>{label}</Text><Text style={styles.contadorValor}>{String(count)}</Text></View>)}</View>
-          {previa.candidatos.clientes.map((item) => <View key={`cliente-${item.nome}-${item.telefone}`} style={styles.linha}><MaterialCommunityIcons name="account-outline" size={18} color={cores.primaryLight} /><View style={{ flex: 1 }}><Text style={styles.linhaTitulo}>{item.nome}</Text><Text style={styles.linhaSub}>{item.telefone || 'Telefone não identificado'}{item.evidencia ? ` · ${item.evidencia}` : ''}</Text></View><Text style={styles.confianca}>{Math.round(item.confianca * 100)}%</Text></View>)}
-          {catalogo.slice(0, 12).map((item, index) => <View key={`catalogo-${item.nome}-${index}`} style={styles.linha}><MaterialCommunityIcons name="package-variant-closed" size={18} color={cores.accentLight} /><View style={{ flex: 1 }}><Text style={styles.linhaTitulo}>{item.nome}</Text><Text style={styles.linhaSub}>R$ {item.precoSugerido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sugerido · {item.unidade}</Text></View><Text style={styles.confianca}>{Math.round(item.confianca * 100)}%</Text></View>)}
+          {previa.candidatos.clientes.length + previa.candidatos.produtos.length + previa.candidatos.servicos.length > 0 && <View style={styles.checklist}>
+            <Text style={styles.checklistTitulo}>Cadastrar no OLLI</Text>
+            <Text style={styles.checklistSub}>Marque o que entra no seu cadastro. Possíveis duplicados vêm desmarcados.</Text>
+            {!existentes && <View style={styles.carregando}><ActivityIndicator color={cores.primary} /><Text style={styles.carregandoTexto}>Conferindo o que você já tem cadastrado…</Text></View>}
+            {existentes && algumNaoConferido && <Text style={styles.naoConferido}>Não consegui conferir parte do seu cadastro; revise se algum item já existe antes de cadastrar.</Text>}
+            {candidatosCadastro.map((c) => {
+              const marcado = selecionados.has(c.chave);
+              const feito = cadastrados.has(c.chave);
+              const permitido = permitidoCadastrar(c.chave);
+              const erroItem = errosPorChave.get(c.chave);
+              const icone = c.tipo === 'cliente' ? 'account-outline' : c.tipo === 'produto' ? 'package-variant-closed' : 'wrench-outline';
+              const sub = c.tipo === 'cliente'
+                ? (c.telefone || 'Telefone não identificado')
+                : `${c.precoSugerido > 0 ? `R$ ${c.precoSugerido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sugerido` : 'Sem preço — defina depois'} · ${c.unidade} · ${c.tipo === 'produto' ? 'produto' : 'serviço'}`;
+              return (
+                <TouchableOpacity key={c.chave} style={[styles.linha, (feito || !permitido) && styles.linhaInativa]} onPress={() => alternar(c.chave)} disabled={feito || cadastrando || !permitido} accessibilityRole="checkbox" accessibilityState={{ checked: feito || marcado, disabled: feito || cadastrando || !permitido }} accessibilityLabel={`${c.nome}${c.duplicado ? `, ${textoDuplicado(c.duplicado)}` : ''}`}>
+                  <MaterialCommunityIcons name={feito ? 'check-circle' : marcado ? 'checkbox-marked' : 'checkbox-blank-outline'} size={22} color={feito ? cores.success : marcado ? cores.primary : cores.onSurfaceMuted} />
+                  <MaterialCommunityIcons name={icone} size={18} color={c.tipo === 'cliente' ? cores.primaryLight : cores.accentLight} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.linhaTitulo}>{c.nome}</Text>
+                    <Text style={styles.linhaSub}>{sub}{c.evidencia ? ` · ${c.evidencia}` : ''}</Text>
+                    {c.duplicado && !feito && <Text style={styles.duplicado}>{textoDuplicado(c.duplicado)}</Text>}
+                    {!permitido && <Text style={styles.duplicado}>Seu papel não permite cadastrar este item.</Text>}
+                    {feito && <Text style={styles.cadastradoTexto}>Cadastrado</Text>}
+                    {!feito && erroItem && <Text style={styles.erroItem}>{erroItem}</Text>}
+                  </View>
+                  <Text style={styles.confianca}>{Math.round(c.confianca * 100)}%</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {resultadoCadastro && <View style={[styles.resultadoCadastro, resultadoCadastro.falhas > 0 && styles.resultadoCadastroErro]} accessibilityRole={resultadoCadastro.falhas > 0 ? 'alert' : undefined} accessibilityLiveRegion="polite">
+              <MaterialCommunityIcons name={resultadoCadastro.falhas > 0 ? 'alert-circle-outline' : 'check-circle-outline'} size={19} color={resultadoCadastro.falhas > 0 ? cores.danger : cores.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resultadoCadastroTitulo}>{resumoCadastro(resultadoCadastro)}</Text>
+                {resultadoCadastro.itens.map((item) => (item.ok ? null : <Text key={item.chave} style={styles.erroItem}>• {item.nome}: {item.erro}</Text>))}
+              </View>
+            </View>}
+            <OlliButton label={cadastrando ? 'Cadastrando…' : `Cadastrar selecionados (${selecionados.size})`} variant="outline" size="lg" fullWidth onPress={() => { void cadastrar(); }} disabled={!existentes || cadastrando || selecionados.size === 0} loading={cadastrando} icon={!cadastrando ? <MaterialCommunityIcons name="account-multiple-plus-outline" size={20} color={cores.primary} /> : undefined} style={{ marginTop: Spacing.md }} />
+          </View>}
           {itens.slice(0, 12).map((item, index) => <View key={`item-${item.nome}-${index}`} style={styles.linha}><MaterialCommunityIcons name="file-document-outline" size={18} color={cores.accentLight} /><View style={{ flex: 1 }}><Text style={styles.linhaTitulo}>{item.quantidade} {item.unidade} · {item.nome}</Text><Text style={styles.linhaSub}>R$ {item.precoSugerido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sugerido</Text></View><Text style={styles.confianca}>{Math.round(item.confianca * 100)}%</Text></View>)}
           {previa.candidatos.documentos.map((doc) => <View key={`doc-${doc.titulo}`} style={styles.documento}><MaterialCommunityIcons name="file-edit-outline" size={18} color={cores.primaryLight} /><View style={{ flex: 1 }}><Text style={styles.linhaTitulo}>{doc.titulo}</Text><Text style={styles.linhaSub} numberOfLines={3}>{doc.texto || 'Documento identificado; abra a origem para revisar o texto completo.'}</Text></View></View>)}
           {previa.candidatos.avisos.length > 0 && <View style={styles.aviso}><Text style={styles.avisoTitulo}>Revise antes de usar</Text>{previa.candidatos.avisos.map((aviso) => <Text key={aviso} style={styles.avisoTexto}>• {aviso}</Text>)}</View>}
-          <OlliButton label="Abrir orçamento rascunho" variant="gradient" size="lg" fullWidth onPress={abrirOrcamento} disabled={!itens.length} icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />} style={{ marginTop: Spacing.md }} />
+          <OlliButton label="Abrir orçamento rascunho" variant="gradient" size="lg" fullWidth onPress={abrirOrcamento} disabled={!paramsOrcamento} icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />} style={{ marginTop: Spacing.md }} />
           <TouchableOpacity style={styles.limpar} onPress={limpar} accessibilityRole="button"><MaterialCommunityIcons name="refresh" size={16} color={cores.accentLight} /><Text style={styles.limparTexto}>Começar outra prévia</Text></TouchableOpacity>
         </View>}
 
@@ -164,5 +288,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   textarea: { minHeight: 112, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, padding: 12, color: c.onSurface, fontSize: 14, lineHeight: 20, textAlignVertical: 'top', backgroundColor: c.background }, input: { minHeight: 46, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, paddingHorizontal: 12, color: c.onSurface, fontSize: 13, marginTop: 9, backgroundColor: c.background },
   fonteAcoes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }, fonteSelecionada: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, padding: 10, borderRadius: BorderRadius.md, backgroundColor: c.success + '12', borderWidth: 1, borderColor: c.success + '44' }, fonteTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 12 }, previewImagem: { width: '100%', height: 160, borderRadius: BorderRadius.md, marginTop: 10, backgroundColor: c.surfaceVariant },
   erro: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: Spacing.md, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.warning + '55', backgroundColor: c.warning + '12' }, erroTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 13, lineHeight: 19 }, carregando: { alignItems: 'center', gap: 8, paddingVertical: Spacing.base }, carregandoTexto: { color: c.onSurfaceVariant, fontSize: 13 },
-  resultado: { padding: Spacing.base, borderRadius: BorderRadius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: c.primary + '55' }, resultadoCabecalho: { flexDirection: 'row', alignItems: 'center', gap: 10 }, resultadoTitulo: { color: c.onSurface, fontSize: 15, fontWeight: '800' }, resultadoSub: { color: c.onSurfaceMuted, fontSize: 11.5, marginTop: 2 }, contadores: { flexDirection: 'row', gap: 7, marginVertical: Spacing.md }, contador: { flex: 1, minHeight: 58, padding: 8, borderRadius: BorderRadius.sm, backgroundColor: c.surfaceVariant }, contadorLabel: { color: c.onSurfaceMuted, fontSize: 10 }, contadorValor: { color: c.onSurface, fontSize: 20, fontWeight: '800', marginTop: 3 }, linha: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.outline }, linhaTitulo: { color: c.onSurface, fontSize: 13, fontWeight: '700' }, linhaSub: { color: c.onSurfaceMuted, fontSize: 11.5, lineHeight: 17, marginTop: 2 }, confianca: { color: c.accentLight, fontSize: 11, fontWeight: '800' }, documento: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 10, borderRadius: BorderRadius.md, backgroundColor: c.primary + '10', marginTop: 10 }, aviso: { padding: 12, borderRadius: BorderRadius.md, backgroundColor: c.warning + '12', borderWidth: 1, borderColor: c.warning + '44', marginTop: 12 }, avisoTitulo: { color: c.onSurface, fontSize: 12.5, fontWeight: '800', marginBottom: 4 }, avisoTexto: { color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 17 }, limpar: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 4 }, limparTexto: { color: c.accentLight, fontSize: 12.5, fontWeight: '800' }, nota: { color: c.onSurfaceMuted, textAlign: 'center', fontSize: 11.5, lineHeight: 17, paddingHorizontal: 8 },
+  resultado: { padding: Spacing.base, borderRadius: BorderRadius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: c.primary + '55' }, resultadoCabecalho: { flexDirection: 'row', alignItems: 'center', gap: 10 }, resultadoTitulo: { color: c.onSurface, fontSize: 15, fontWeight: '800' }, resultadoSub: { color: c.onSurfaceMuted, fontSize: 11.5, marginTop: 2 }, contadores: { flexDirection: 'row', gap: 7, marginVertical: Spacing.md }, contador: { flex: 1, minHeight: 58, padding: 8, borderRadius: BorderRadius.sm, backgroundColor: c.surfaceVariant }, contadorLabel: { color: c.onSurfaceMuted, fontSize: 10 }, contadorValor: { color: c.onSurface, fontSize: 20, fontWeight: '800', marginTop: 3 }, linha: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.outline }, linhaTitulo: { color: c.onSurface, fontSize: 13, fontWeight: '700' }, linhaSub: { color: c.onSurfaceMuted, fontSize: 11.5, lineHeight: 17, marginTop: 2 }, confianca: { color: c.accentLight, fontSize: 11, fontWeight: '800' }, documento: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 10, borderRadius: BorderRadius.md, backgroundColor: c.primary + '10', marginTop: 10 }, aviso: { padding: 12, borderRadius: BorderRadius.md, backgroundColor: c.warning + '12', borderWidth: 1, borderColor: c.warning + '44', marginTop: 12 }, avisoTitulo: { color: c.onSurface, fontSize: 12.5, fontWeight: '800', marginBottom: 4 }, avisoTexto: { color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 17 }, checklist: { marginTop: 4 }, checklistTitulo: { color: c.onSurface, fontSize: 14, fontWeight: '800' }, checklistSub: { color: c.onSurfaceMuted, fontSize: 11.5, lineHeight: 17, marginTop: 2, marginBottom: 4 }, naoConferido: { color: c.warning, fontSize: 11.5, lineHeight: 17, marginTop: 6 }, linhaInativa: { opacity: 0.75 }, duplicado: { color: c.warning, fontSize: 11.5, fontWeight: '700', marginTop: 3 }, cadastradoTexto: { color: c.success, fontSize: 11.5, fontWeight: '800', marginTop: 3 }, erroItem: { color: c.danger, fontSize: 11.5, lineHeight: 17, marginTop: 3 }, resultadoCadastro: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.success + '55', backgroundColor: c.success + '12', marginTop: 12 }, resultadoCadastroErro: { borderColor: c.danger + '55', backgroundColor: c.danger + '10' }, resultadoCadastroTitulo: { color: c.onSurface, fontSize: 12.5, fontWeight: '800' }, limpar: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 4 }, limparTexto: { color: c.accentLight, fontSize: 12.5, fontWeight: '800' }, nota: { color: c.onSurfaceMuted, textAlign: 'center', fontSize: 11.5, lineHeight: 17, paddingHorizontal: 8 },
 });
