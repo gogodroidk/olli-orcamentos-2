@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, getCurrentUser } from './supabase';
 import { LINK_BASE_URL } from '../config';
 import { track, Eventos } from './analytics';
@@ -292,6 +293,9 @@ interface LinkRow {
   pagamentoInformadoEm?: string;
 }
 
+/** Marca de "a leitura FALHOU" (rede, RLS, backend) — diferente de "não há link". */
+const FALHA_LEITURA_LINK = Symbol('falha_leitura_link');
+
 /**
  * Lê a linha do link de um orçamento com resiliência a schema: tenta o SELECT
  * completo (com `visualizado_em`); se a coluna ainda não existir na nuvem (erro
@@ -299,6 +303,17 @@ interface LinkRow {
  * antes de a migration 20260708_versoes.sql ser aplicada. NUNCA lança.
  */
 async function lerLinkRow(orcamentoId: string, userId: string): Promise<LinkRow | null> {
+  const r = await lerLinkRowOuFalha(orcamentoId, userId);
+  return r === FALHA_LEITURA_LINK ? null : r;
+}
+
+/**
+ * Mesma leitura de `lerLinkRow`, com TRÊS respostas (nunca colapsar erro em
+ * vazio): a linha, `null` (não há link) ou `FALHA_LEITURA_LINK` (não deu para
+ * ler). É o que permite à linha do tempo dizer "não deu para consultar" em vez
+ * de "o cliente não abriu". NUNCA lança.
+ */
+async function lerLinkRowOuFalha(orcamentoId: string, userId: string): Promise<LinkRow | null | typeof FALHA_LEITURA_LINK> {
   if (!supabase) return null;
   // 0ª tentativa: com pagamento_informado_em ("Já paguei" do cliente, migration
   // 20260930120300). Sem a coluna (42703), segue a escada antiga abaixo.
@@ -311,7 +326,7 @@ async function lerLinkRow(orcamentoId: string, userId: string): Promise<LinkRow 
       .limit(1)
       .maybeSingle();
     if (!error) return data ? normalizarLinkRow(data) : null;
-    if ((error as any)?.code && (error as any).code !== '42703') return null;
+    if ((error as any)?.code && (error as any).code !== '42703') return FALHA_LEITURA_LINK;
   } catch {
     // cai para a escada antiga
   }
@@ -325,22 +340,23 @@ async function lerLinkRow(orcamentoId: string, userId: string): Promise<LinkRow 
       .limit(1)
       .maybeSingle();
     if (!error && data) return normalizarLinkRow(data);
-    if (error && (error as any)?.code && (error as any).code !== '42703') return null;
+    if (error && (error as any)?.code && (error as any).code !== '42703') return FALHA_LEITURA_LINK;
   } catch {
     // cai para o fallback abaixo
   }
   // 2ª tentativa (fallback): sem visualizado_em (coluna ausente em banco antigo).
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from(TABLE)
       .select('status, respondido_em, resposta_cliente')
       .eq('orcamento_id', orcamentoId)
       .eq('user_id', userId)
       .limit(1)
       .maybeSingle();
+    if (error) return FALHA_LEITURA_LINK;
     return data ? normalizarLinkRow(data) : null;
   } catch {
-    return null;
+    return FALHA_LEITURA_LINK;
   }
 }
 
@@ -540,40 +556,83 @@ function statusLocalAlvo(statusLocal: StatusOrcamento, link: LinkDonoRow): Statu
  * Monta a TRILHA do cliente (mestre 13) de um orçamento a partir da linha do link
  * na nuvem: enviado → visualizado → aprovado/recusado (com motivo, se recusou). É
  * uma leitura VIVA (não persistida no orçamento) — a tela chama no foco. Ordem
- * cronológica (mais antigo → mais recente). Se o orçamento nunca teve link ou a
- * nuvem está indisponível, devolve [] (a tela simplesmente não mostra a seção).
- * NUNCA lança. LGPD: o `motivo` é texto que o próprio cliente digitou; devolvido
- * só para exibição ao dono, jamais logado.
+ * cronológica (mais antigo → mais recente).
+ *
+ * Três respostas, nunca duas: lista de eventos; `[]` quando o orçamento nunca teve
+ * link, não há nuvem ou ninguém está logado; e REJEITA quando a leitura falhou
+ * (rede, backend). Antes a falha também virava `[]` e a tela dizia, sem saber, que
+ * o cliente não tinha aberto. LGPD: o `motivo` é texto que o próprio cliente
+ * digitou; devolvido só para exibição ao dono, jamais logado.
  */
 export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCliente[]> {
-  try {
-    const link = await statusDoLink(orcamentoId);
-    if (!link) return [];
-    const eventos: EventoTrilhaCliente[] = [];
-    // 'enviado': a existência da linha do link já significa que a proposta foi
-    // publicada. Sem carimbo próprio de envio na tabela, deixamos `em` indefinido.
-    eventos.push({ tipo: 'enviado' });
-    if (link.visualizadoEm) {
-      eventos.push({ tipo: 'visualizado', em: link.visualizadoEm });
-    } else if (link.status === 'visualizado' || link.status === 'aprovado' || link.status === 'recusado') {
-      // O cliente respondeu (logo visualizou), mas o banco não tem visualizado_em
-      // (worker antigo): registramos a visualização sem timestamp, para a trilha
-      // não pular direto de "enviado" para a resposta.
-      eventos.push({ tipo: 'visualizado' });
-    }
-    if (link.status === 'aprovado') {
-      eventos.push({ tipo: 'aprovado', em: link.respondidoEm });
-    } else if (link.status === 'recusado') {
-      eventos.push({ tipo: 'recusado', em: link.respondidoEm, motivo: link.motivo });
-    }
-    // "Já paguei" do cliente — aviso para o prestador conferir, não baixa de pagamento.
-    if (link.pagamentoInformadoEm) {
-      eventos.push({ tipo: 'pagamento_informado', em: link.pagamentoInformadoEm });
-    }
-    return eventos;
-  } catch {
-    return [];
+  if (!supabase) return [];
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const link = await lerLinkRowOuFalha(orcamentoId, user.id);
+  if (link === FALHA_LEITURA_LINK) throw new Error('Não deu para consultar o link do cliente agora.');
+  if (!link) return [];
+  const eventos: EventoTrilhaCliente[] = [];
+  // 'enviado': a existência da linha do link já significa que a proposta foi
+  // publicada. Sem carimbo próprio de envio na tabela, deixamos `em` indefinido.
+  eventos.push({ tipo: 'enviado' });
+  if (link.visualizadoEm) {
+    eventos.push({ tipo: 'visualizado', em: link.visualizadoEm });
+  } else if (link.status === 'visualizado' || link.status === 'aprovado' || link.status === 'recusado') {
+    // O cliente respondeu (logo visualizou), mas o banco não tem visualizado_em
+    // (worker antigo): registramos a visualização sem timestamp, para a trilha
+    // não pular direto de "enviado" para a resposta.
+    eventos.push({ tipo: 'visualizado' });
   }
+  if (link.status === 'aprovado') {
+    eventos.push({ tipo: 'aprovado', em: link.respondidoEm });
+  } else if (link.status === 'recusado') {
+    eventos.push({ tipo: 'recusado', em: link.respondidoEm, motivo: link.motivo });
+  }
+  // "Já paguei" do cliente — aviso para o prestador conferir, não baixa de pagamento.
+  if (link.pagamentoInformadoEm) {
+    eventos.push({ tipo: 'pagamento_informado', em: link.pagamentoInformadoEm });
+  }
+  return eventos;
+}
+
+/**
+ * Escuta (Supabase Realtime, plano gratuito) as mudanças na linha do link deste
+ * orçamento: o cliente abriu, aprovou, recusou ou avisou que pagou. Cada mudança
+ * chama `aoMudar` — a tela relê o status e a trilha do jeito de sempre; o payload
+ * do evento NÃO é usado como dado (a fonte continua sendo a leitura com RLS).
+ *
+ * Complemento, não dependência: sem a migration 20261001150000 (tabela fora da
+ * publicação), sem nuvem ou sem login, simplesmente não chega evento e a tela
+ * segue atualizando no foco e no "puxar para atualizar". Por isso nenhum texto
+ * do app promete "ao vivo". Devolve a função que cancela a escuta. NUNCA lança.
+ */
+let escutasDoLink = 0;
+
+export function escutarMudancasDoLink(orcamentoId: string, aoMudar: () => void): () => void {
+  const cliente = supabase;
+  if (!cliente || !orcamentoId) return () => {};
+  let canal: ReturnType<SupabaseClient['channel']> | null = null;
+  try {
+    // Tópico único por escuta: o mesmo orçamento aberto duas vezes na pilha não
+    // reaproveita (nem derruba, ao sair) o canal da outra tela.
+    escutasDoLink += 1;
+    canal = cliente
+      .channel(`orcamento-link-${orcamentoId}-${escutasDoLink}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: TABLE, filter: `orcamento_id=eq.${orcamentoId}` },
+        () => aoMudar(),
+      )
+      .subscribe();
+  } catch {
+    canal = null;
+  }
+  return () => {
+    if (!canal) return;
+    const c = canal;
+    canal = null;
+    cliente.removeChannel(c).catch(() => {});
+  };
 }
 
 /**

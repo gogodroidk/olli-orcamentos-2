@@ -2,8 +2,10 @@ import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, Share, ActivityIndicator, Image, Modal,
+  Share, ActivityIndicator, Image, Modal, RefreshControl,
+  type LayoutChangeEvent,
 } from 'react-native';
+import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,12 +13,26 @@ import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, com
 import { OlliCard } from '../components/OlliCard';
 import { OlliButton } from '../components/OlliButton';
 import { GradientHeader } from '../components/GradientHeader';
-import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
 import { AssinaturaClienteModal } from '../components/assinatura/AssinaturaClienteModal';
 import { OverlayProgresso } from '../components/OverlayProgresso';
+import { BarraStatusCompacta, CabecalhoStatus } from '../components/orcamento/CabecalhoStatus';
+import { TimelineOrcamento } from '../components/orcamento/TimelineOrcamento';
+import { FolhaAcoes, ItemFolha } from '../components/orcamento/FolhaAcoes';
+import { Aparecer, PressableAnimado, Skeleton } from '../components/motion';
+import {
+  celebracaoDaTransicao,
+  financeiroQuitado,
+  montarLinhaDoTempo,
+  proximoPassoDoStatus,
+  type LeituraLink,
+  type MotivoCelebracao,
+  type RetratoCelebracao,
+} from '../components/orcamento/linhaDoTempo';
+import { jaCelebrou, marcarCelebrado } from '../services/celebracoes';
+import { toast } from '../components/feedback';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -33,9 +49,17 @@ import {
   montarMensagemPedidoAvaliacao,
 } from '../utils/mensagensOrcamento';
 import { PixCobrancaModal } from '../components/PixCobrancaModal';
-import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, statusDoLink, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
+import {
+  escutarMudancasDoLink,
+  gerarLinkOrcamento,
+  linkConfigurado,
+  puxarVersoesNuvemParaOrcamento,
+  sincronizarStatusLinks,
+  statusDoLink,
+  trilhaDoLink,
+} from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
-import { estornarPagamento, getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
+import { estornarPagamento, getReciboDoOrcamento, getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
 import { lerCobrancasEnviadas, registrarCobrancaEnviada } from '../services/registroEnvios';
 import { avisoPix, enviadoHoje, prepararCobranca } from '../utils/cobrancaCliente';
 
@@ -94,6 +118,13 @@ const STATUS_PRE_APROVACAO: StatusOrcamento[] = [
 const STATUS_POS_APROVACAO: StatusOrcamento[] = ['aprovado', 'convertido'];
 
 /**
+ * Espera para abrir um Modal depois que outro começou a sair (folha, pad de
+ * assinatura, registrar pagamento). No iOS, o segundo pedido durante a saída do
+ * primeiro é ignorado. Não é duração de animação: é folga de ciclo de vida.
+ */
+const ESPERA_MODAL_SAIR_MS = 450;
+
+/**
  * Mensagem aberta no WhatsApp esperando o prestador dizer se SAIU. Abrir o WhatsApp
  * não é enviar: quem volta sem mandar não pode ficar com o orçamento "Enviado" nem
  * com a cota gasta, e a cobrança não pode constar como "enviada hoje".
@@ -138,11 +169,10 @@ export default function VisualizarOrcamentoScreen() {
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [versoes, setVersoes] = useState<OrcamentoVersao[]>([]);
   const [trilha, setTrilha] = useState<EventoTrilhaCliente[]>([]);
-  // 3 estados explícitos (nunca colapsar erro em vazio): `trilhaErro` só vira
-  // `true` se a leitura da trilha (link público) de fato falhar — antes um
-  // catch(() => setTrilha([])) deixava "falha de rede" indistinguível de
-  // "cliente nunca abriu o link" (ambos mostravam a mesma ausência de card).
-  const [trilhaErro, setTrilhaErro] = useState(false);
+  // 3 estados explícitos (nunca colapsar erro em vazio): a leitura do link
+  // público está consultando, leu (com ou sem eventos) ou FALHOU. Com falha, a
+  // linha do tempo diz "não deu para consultar" — nunca "o cliente não abriu".
+  const [leituraLink, setLeituraLink] = useState<LeituraLink>('carregando');
   // Última cobrança enviada por aqui (1 toque). Leitura que falha = null (a tela só
   // deixa de mostrar "cobrança enviada hoje"; o botão continua).
   const [cobradoEm, setCobradoEm] = useState<string | null>(null);
@@ -159,11 +189,29 @@ export default function VisualizarOrcamentoScreen() {
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
   const [estornoAberto, setEstornoAberto] = useState(false);
   const [estornando, setEstornando] = useState(false);
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  // Folha aberta agora: compartilhar, ações secundárias (⋯), troca de status ou
+  // os próximos passos logo depois de aprovar.
+  const [folha, setFolha] = useState<'compartilhar' | 'mais' | 'status' | 'proximos' | null>(null);
+  // Cabeçalho que encolhe: rolagem e o ponto em que o card do cabeçalho sai da tela.
+  const rolagem = useSharedValue(0);
+  const limiarCabecalho = useSharedValue(0);
+  const aoRolar = useAnimatedScrollHandler((e) => {
+    rolagem.set(e.contentOffset.y);
+  });
+  const [atualizando, setAtualizando] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erroCarregamento, setErroCarregamento] = useState(false);
   const [naoEncontrado, setNaoEncontrado] = useState(false);
-  const [celebrando, setCelebrando] = useState(false);
+  // Celebração em cena (aprovado/pago). Sai UMA vez por orçamento: ver `celebrar`.
+  const [celebracao, setCelebracao] = useState<MotivoCelebracao | null>(null);
+  // O que fazer quando o confete termina (ex.: oferecer a OS depois de aprovar).
+  const depoisDaCelebracaoRef = useRef<(() => void) | null>(null);
+  // Último retrato (status + quitado) que a tela VIU. A celebração só sai na
+  // TRANSIÇÃO entre dois retratos — abrir um orçamento aprovado há meses não é festa.
+  const retratoRef = useRef<RetratoCelebracao | null>(null);
+  // Permissão de ver valores com que o retrato foi tirado. Ela resolve depois do
+  // 1º load; sem isto, "não sabia do recibo" → "quitado" pareceria um pagamento novo.
+  const retratoPodeFinanceiroRef = useRef<boolean | null>(null);
   // ASSINATURA DO CLIENTE — três estados, nunca dois:
   //   assinado      = `orc.assinaturaClienteUri` existe (só é setado DEPOIS de
   //                   `saveOrcamento` resolver, em `gravarAssinaturaCliente`);
@@ -178,53 +226,128 @@ export default function VisualizarOrcamentoScreen() {
   // PDF ou link do cliente (mensagem varia conforme a ação em andamento).
   const [overlayInfo, setOverlayInfo] = useState<{ titulo: string; subtitulo: string } | null>(null);
   const statusAnteriorRef = useRef<StatusOrcamento | null>(null);
-  // Aprovou AGORA (não já vinha aprovado): dispara a celebração e, quando ela
-  // termina, oferece criar a OS na hora — poupa os 4-5 toques de ir até a aba
-  // Ordens > + > De um orçamento > achar > selecionar.
-  const ofertarOSRef = useRef(false);
-  // A oferta da OS ficou esperando o cliente assinar; volta assim que o pad sair
-  // da frente (assinou ou desistiu). Sem isso, quem assina perde a oferta da OS.
-  const osDepoisDaAssinaturaRef = useRef(false);
+  // A assinatura foi pedida pela folha "Próximos passos": quando o pad sai da
+  // frente (assinou ou desistiu), a folha volta com o que falta (OS, agenda).
+  const proximosDepoisDaAssinaturaRef = useRef(false);
+  // Abre "Próximos passos" a partir de callbacks estáveis (load), sem closure velha.
+  const abrirProximosRef = useRef<() => void>(() => {});
 
   // Trilha do cliente (link público) — leitura VIVA, não bloqueia a tela: a
   // página já mostra os dados locais e a trilha aparece quando a nuvem responde.
   // Isolada em callback próprio para o botão "Tentar de novo" poder rechamar
   // sem precisar recarregar o orçamento inteiro.
   const loadTrilha = useCallback(() => {
-    setTrilhaErro(false);
-    trilhaDoLink(orcamentoId).then(setTrilha).catch(() => setTrilhaErro(true));
+    // Releitura com a trilha já lida não volta a "consultando": a linha do tempo
+    // não pisca a cada foco. Só a primeira leitura e o "tentar de novo" mostram.
+    setLeituraLink(atual => (atual === 'ok' ? 'ok' : 'carregando'));
+    trilhaDoLink(orcamentoId)
+      .then((eventos) => {
+        setTrilha(eventos);
+        setLeituraLink('ok');
+      })
+      .catch(() => setLeituraLink('erro'));
   }, [orcamentoId]);
 
+  /**
+   * Festa curta (confete) quando o orçamento FICA aprovado ou pago — uma vez por
+   * orçamento e motivo, guardado no aparelho. Se já celebrou (ou a leitura falhou,
+   * que conta como "já"), segue direto para o `depois`.
+   */
+  const celebrar = useCallback(async (motivo: MotivoCelebracao, depois?: () => void) => {
+    if (await jaCelebrou(orcamentoId, motivo)) {
+      depois?.();
+      return;
+    }
+    void marcarCelebrado(orcamentoId, motivo);
+    depoisDaCelebracaoRef.current = depois ?? null;
+    setCelebracao(motivo);
+  }, [orcamentoId]);
+
+  /** Guarda o retrato novo e devolve a celebração que a mudança merece (ou null). */
+  const registrarRetrato = useCallback((depois: RetratoCelebracao): MotivoCelebracao | null => {
+    const motivo = celebracaoDaTransicao(retratoRef.current, depois);
+    retratoRef.current = depois;
+    return motivo;
+  }, []);
+
+  // Já há orçamento na tela: as próximas leituras (voltar de outra tela, puxar
+  // para atualizar, resposta do cliente) não trocam a tela pelo spinner.
+  const temDadosRef = useRef(false);
+
   const load = useCallback(async () => {
-    setCarregando(true);
-    setErroCarregamento(false);
+    const silencioso = temDadosRef.current;
+    if (!silencioso) {
+      setCarregando(true);
+      setErroCarregamento(false);
+    }
     setNaoEncontrado(false);
     try {
       const [o, e, deps, vs, recibosDoBanco] = await Promise.all([
         getOrcamento(orcamentoId), getEmpresa(), getDepoimentos(), getVersoesOrcamento(orcamentoId), podeFinanceiro ? getRecibos() : Promise.resolve<Recibo[]>([]),
       ]);
       if (!o) {
+        temDadosRef.current = false;
         setOrc(null);
         setNaoEncontrado(true);
         return;
       }
       statusAnteriorRef.current = o.status;
+      if (retratoPodeFinanceiroRef.current !== podeFinanceiro) {
+        retratoPodeFinanceiroRef.current = podeFinanceiro;
+        retratoRef.current = null;
+      }
+      // O cliente aprovou pelo link (o sync trouxe) ou o pagamento quitou em outra
+      // tela: a transição aparece aqui, entre duas leituras.
+      const motivo = registrarRetrato({
+        status: o.status,
+        quitado: podeFinanceiro && financeiroQuitado(getStatusFinanceiro(o, recibosDoBanco)),
+      });
+      // Aprovou pelo link com a tela aberta: depois da festa, os próximos passos.
+      if (motivo) void celebrar(motivo, motivo === 'aprovado' ? () => abrirProximosRef.current() : undefined);
       setOrc(o);
       setEmpresa(e);
       setDepoimentos(deps);
       setVersoes(vs);
       setRecibos(recibosDoBanco);
+      temDadosRef.current = true;
       loadTrilha();
       lerCobrancasEnviadas().then(m => setCobradoEm(m[orcamentoId] ?? null)).catch(() => {});
     } catch {
-      setErroCarregamento(true);
+      // Sem nada na tela, a falha vira a tela de erro. Com o orçamento já
+      // exibido, ele FICA (é o último dado lido) e o aviso diz que não atualizou.
+      if (silencioso) toast.erro('Não deu para atualizar o orçamento agora. Puxe a tela para tentar de novo.');
+      else setErroCarregamento(true);
     } finally {
       setCarregando(false);
     }
-  }, [orcamentoId, loadTrilha, podeFinanceiro]);
+  }, [orcamentoId, loadTrilha, podeFinanceiro, registrarRetrato, celebrar]);
 
   useFocusEffect(useCallback(() => {
     void load();
+    // Com a tela em foco, cada mudança no link do cliente (abriu, aprovou, recusou,
+    // avisou que pagou) traz o status de volta e relê. Sem Realtime na nuvem, não
+    // chega evento e nada muda: o foco e o "puxar para atualizar" seguem valendo.
+    // O worker grava "abriu" e "respondeu" em sequência: eventos em rajada viram
+    // UMA releitura por vez (+ uma final, se chegou algo no meio).
+    let relendo = false;
+    let deNovo = false;
+    const reler = () => {
+      if (relendo) {
+        deNovo = true;
+        return;
+      }
+      relendo = true;
+      void sincronizarStatusLinks()
+        .then(() => load())
+        .finally(() => {
+          relendo = false;
+          if (deNovo) {
+            deNovo = false;
+            reler();
+          }
+        });
+    };
+    const pararDeEscutar = escutarMudancasDoLink(orcamentoId, reler);
     // sincronizarStatusLinks() nunca lança — traz de volta o status que o
     // cliente deu pelo link público (visualizado/aprovado/recusado). Não é
     // aguardado: a tela abre instantaneamente com os dados locais, e só recarrega
@@ -237,23 +360,32 @@ export default function VisualizarOrcamentoScreen() {
     puxarVersoesNuvemParaOrcamento(orcamentoId).then(aplicadas => {
       if (aplicadas > 0) getVersoesOrcamento(orcamentoId).then(setVersoes).catch(() => {});
     }).catch(() => {});
+    return pararDeEscutar;
   }, [orcamentoId, load]));
+
+  /** Puxar para atualizar: traz a resposta do cliente pelo link e relê tudo. */
+  async function atualizarTudo() {
+    setAtualizando(true);
+    try {
+      await sincronizarStatusLinks();
+      await load();
+    } finally {
+      setAtualizando(false);
+    }
+  }
 
   async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
     if (!orc) return null;
     const reserva = await reservarEnvioOrcamento(orc.id, canal);
     if (reserva.permitido) return reserva;
-    const botoes = reserva.motivo === 'cota_esgotada'
-      ? [
-          { text: 'Agora não', style: 'cancel' as const },
-          { text: 'Ver planos', onPress: () => nav.navigate('Planos') },
-        ]
-      : [{ text: 'OK' }];
-    Alert.alert(
-      reserva.motivo === 'cota_esgotada' ? 'Cota mensal utilizada' : 'Não foi possível verificar a cota',
-      mensagemBloqueioEnvio(reserva),
-      botoes,
-    );
+    if (reserva.motivo === 'cota_esgotada') {
+      toast.info(mensagemBloqueioEnvio(reserva), {
+        titulo: 'Cota mensal utilizada',
+        acao: { rotulo: 'Ver planos', aoTocar: () => nav.navigate('Planos') },
+      });
+    } else {
+      toast.erro(mensagemBloqueioEnvio(reserva), { titulo: 'Não foi possível verificar a cota' });
+    }
     return null;
   }
 
@@ -299,7 +431,7 @@ export default function VisualizarOrcamentoScreen() {
       // Quando o compartilhamento não está disponível no dispositivo, a
       // mensagem já vem específica (e diz onde o PDF foi salvo); nos demais
       // casos cai no texto genérico.
-      Alert.alert('Erro', e?.message || 'Não foi possível gerar o PDF.');
+      toast.erro(e?.message || 'Não foi possível gerar o PDF.');
     } finally {
       // SEMPRE volta o loading — inclusive na web, onde a impressão é assíncrona.
       setSharing(false);
@@ -321,7 +453,7 @@ export default function VisualizarOrcamentoScreen() {
     if (!orc || enviandoWhats) return;
     const telefone = (orc.clienteTelefone || '').trim();
     if (!telefone) {
-      Alert.alert('WhatsApp', `Cadastre o WhatsApp de ${orc.clienteNome} para enviar por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para enviar por aqui.`);
       return;
     }
     setEnviandoWhats(true);
@@ -330,7 +462,7 @@ export default function VisualizarOrcamentoScreen() {
       reserva = await autorizarEntrega('whatsapp');
     } catch {
       setEnviandoWhats(false);
-      Alert.alert('Não foi possível verificar a cota', 'Confira a conexão e tente de novo.');
+      toast.erro('Confira a conexão e tente de novo.', { titulo: 'Não foi possível verificar a cota' });
       return;
     }
     if (!reserva) {
@@ -358,7 +490,7 @@ export default function VisualizarOrcamentoScreen() {
       await abrirWhatsApp(telefone, mensagem);
     } catch {
       if (reserva.requerConfirmacao) await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
-      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
+      toast.erro('Confira se o WhatsApp está instalado e tente de novo.', { titulo: 'Não consegui abrir o WhatsApp' });
       return;
     } finally {
       setEnviandoWhats(false);
@@ -396,20 +528,20 @@ export default function VisualizarOrcamentoScreen() {
       await registrarCobrancaEnviada(orc.id);
       setCobradoEm(new Date().toISOString());
     } catch {
-      Alert.alert('Não consegui registrar a cobrança', 'A mensagem saiu, mas o registro de "cobrado hoje" não foi gravado agora.');
+      toast.erro('A mensagem saiu, mas o registro de "cobrado hoje" não foi gravado agora.', { titulo: 'Não consegui registrar a cobrança' });
     }
     // Sem link de pagamento, o código Pix vai numa SEGUNDA mensagem, sozinho.
     // Espera a folha terminar de fechar: no iOS, abrir um Modal enquanto outro
     // ainda está saindo faz o segundo simplesmente não aparecer.
-    if (pendente.ofertarCodigo) setTimeout(() => setQrAberto(true), 450);
+    if (pendente.ofertarCodigo) setTimeout(() => setQrAberto(true), ESPERA_MODAL_SAIR_MS);
   }
 
   async function handleLinkCliente() {
     if (!orc) return;
     if (!linkConfigurado()) {
-      Alert.alert(
-        'Link do cliente',
-        'Para enviar um link onde o cliente aprova com 1 toque, ative o backup na nuvem (tela Conta) e configure o domínio do app. Por enquanto, use o WhatsApp ou o PDF.',
+      toast.info(
+        'Para enviar um link onde o cliente aprova com 1 toque, ative o backup na nuvem (tela Conta). Por enquanto, use o WhatsApp ou o PDF.',
+        { titulo: 'Link do cliente' },
       );
       return;
     }
@@ -429,7 +561,7 @@ export default function VisualizarOrcamentoScreen() {
       if (reserva?.requerConfirmacao) {
         await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
       }
-      Alert.alert('Não consegui gerar o link', e?.message ?? 'Tente novamente.');
+      toast.erro(e?.message ?? 'Tente novamente.', { titulo: 'Não consegui gerar o link' });
     } finally {
       setLinking(false);
       setOverlayInfo(null);
@@ -450,63 +582,56 @@ export default function VisualizarOrcamentoScreen() {
    * `impressaoComercial`, que ignora campos voláteis) — então uma falha aqui é
    * técnica de verdade, e "tente de novo" é a orientação honesta.
    */
-  async function updateStatus(s: StatusOrcamento) {
+  async function updateStatus(s: StatusOrcamento, opcoes?: { avisar?: boolean }) {
     if (!orc) return;
     const updated = { ...orc, status: s, atualizadoEm: nowISO() };
     try {
       await saveOrcamento(updated);
     } catch (e: any) {
-      setShowStatusMenu(false);
-      Alert.alert(
-        'Não consegui mudar o status',
+      toast.erro(
         e?.message ?? 'O orçamento continua como estava. Tente novamente em instantes.',
+        { titulo: 'Não consegui mudar o status' },
       );
       return;
     }
     const acabouDeAprovar = s === 'aprovado' && statusAnteriorRef.current !== 'aprovado';
-    if (acabouDeAprovar) {
-      setCelebrando(true);
-      track(Eventos.quoteApproved, { valorTotal: updated.valorTotal });
-    }
-    ofertarOSRef.current = acabouDeAprovar;
+    if (acabouDeAprovar) track(Eventos.quoteApproved, { valorTotal: updated.valorTotal });
     statusAnteriorRef.current = s;
     setOrc(updated);
-    setShowStatusMenu(false);
+    const motivo = registrarRetrato({ status: s, quitado: retratoRef.current?.quitado ?? false });
+    // Aprovou AGORA (não já vinha aprovado): depois da festa, os próximos passos
+    // na hora — poupa os 4-5 toques de ir até Ordens > + > De um orçamento.
+    const depois = acabouDeAprovar ? oferecerProximosPassos : undefined;
+    if (motivo) void celebrar(motivo, depois);
+    else depois?.();
+    if (opcoes?.avisar && !motivo) toast.sucesso(`Status alterado para ${STATUS_LABELS[s]}.`);
   }
 
-  function ofertarOS() {
-    Alert.alert(
-      'Orçamento aprovado!',
-      'Quer criar a ordem de serviço agora?',
-      [
-        { text: 'Depois', style: 'cancel' },
-        { text: 'Criar OS', onPress: () => handleCriarOS() },
-      ],
-    );
-  }
-
-  // Fecha a celebração de aprovação e, se foi ELA quem aprovou agora (não um
-  // orçamento que já chegou aprovado), age no momento em que o prestador está
-  // com o cliente na frente e o aparelho na mão:
-  //
-  //   1º a ASSINATURA, quando este documento ainda não tem a do cliente. O aceite
-  //      acabou de acontecer AGORA; mandar o prestador procurar um botão depois é
-  //      pedir para a assinatura nunca ser colhida (era o estado anterior: o PDF
-  //      sabia imprimir a assinatura e nenhuma tela sabia colher). Zero toque a
-  //      mais — o pad ocupa o lugar do alerta, que volta em seguida;
-  //   2º a OS, exatamente como antes.
-  //
-  // Sair do pad por qualquer porta (assinou ou "agora não") devolve a oferta da OS.
+  /** O confete terminou: segue para o que estava esperando por ele (se houver). */
   function finalizarCelebracao() {
-    setCelebrando(false);
-    if (!ofertarOSRef.current) return;
-    ofertarOSRef.current = false;
-    if (podeColherAssinatura && !orc?.assinaturaClienteUri) {
-      osDepoisDaAssinaturaRef.current = true;
-      setAssinaturaAberta(true);
-      return;
-    }
-    ofertarOS();
+    setCelebracao(null);
+    const depois = depoisDaCelebracaoRef.current;
+    depoisDaCelebracaoRef.current = null;
+    depois?.();
+  }
+
+  // Logo depois de APROVAR (à mão ou pelo link, com a tela aberta), a aprovação
+  // vira a folha "Próximos passos": colher a assinatura (quando falta), criar a
+  // OS, agendar e registrar pagamento — o prestador está com o cliente na frente
+  // e o aparelho na mão. Substitui a antiga pergunta "Criar OS?" e o pad que
+  // abria sozinho: agora é ele quem escolhe, e "Depois" não perde nada (tudo
+  // continua no card do topo e no ⋯).
+  function oferecerProximosPassos() {
+    // Outra folha aberta (o cliente aprovou pelo link enquanto o prestador
+    // mexia no ⋯): não atropela — Modal trocado por Modal no meio da saída some no iOS.
+    setFolha(atual => (atual === null ? 'proximos' : atual));
+  }
+  abrirProximosRef.current = oferecerProximosPassos;
+
+  /** "Cliente assinar agora" pela folha de próximos passos: ao sair do pad, a folha volta. */
+  function assinarPelosProximos() {
+    proximosDepoisDaAssinaturaRef.current = true;
+    setAssinaturaAberta(true);
   }
 
   /**
@@ -544,9 +669,11 @@ export default function VisualizarOrcamentoScreen() {
 
   function fecharAssinatura() {
     setAssinaturaAberta(false);
-    if (osDepoisDaAssinaturaRef.current) {
-      osDepoisDaAssinaturaRef.current = false;
-      ofertarOS();
+    if (proximosDepoisDaAssinaturaRef.current) {
+      proximosDepoisDaAssinaturaRef.current = false;
+      // Espera o pad terminar de sair: no iOS, um Modal pedido enquanto outro
+      // ainda está saindo simplesmente não aparece.
+      setTimeout(() => setFolha('proximos'), ESPERA_MODAL_SAIR_MS);
     }
   }
 
@@ -558,8 +685,12 @@ export default function VisualizarOrcamentoScreen() {
    * do documento antigo, validade recalculada a partir de hoje.
    */
   async function criarDocumentoNovo(modo: ModoNovoDocumento) {
-    if (!orc) return;
+    if (!orc || duplicando) return;
     setDuplicando(true);
+    setOverlayInfo({
+      titulo: modo === 'revisao' ? 'Criando a revisão...' : 'Duplicando o orçamento...',
+      subtitulo: 'Já abre no editor.',
+    });
     try {
       const numero = await getNextOrcamentoNumber();
       const novo = baseParaNovoDocumento({
@@ -573,14 +704,14 @@ export default function VisualizarOrcamentoScreen() {
       await saveOrcamento(novo);
       nav.navigate('EditarOrcamento', { orcamentoId: novo.id });
     } catch (e: any) {
-      Alert.alert(
-        'Erro',
+      toast.erro(
         e?.message || (modo === 'revisao'
           ? 'Não foi possível criar a revisão deste orçamento.'
           : 'Não foi possível duplicar o orçamento.'),
       );
     } finally {
       setDuplicando(false);
+      setOverlayInfo(null);
     }
   }
 
@@ -590,7 +721,7 @@ export default function VisualizarOrcamentoScreen() {
   async function salvarPagamento(form: PagamentoForm) {
     if (!orc) return;
     if (!podeFinanceiro) {
-      Alert.alert('Acesso restrito', 'Somente o dono ou um papel financeiro autorizado pode registrar recebimentos.');
+      toast.erro('Somente o dono ou um papel financeiro autorizado pode registrar recebimentos.', { titulo: 'Acesso restrito' });
       return;
     }
     await registrarPagamento({ orcamento: orc, ...form });
@@ -598,12 +729,18 @@ export default function VisualizarOrcamentoScreen() {
     setRecibos(atualizados);
     setPagamentoAberto(false);
     const estado = getStatusFinanceiro(orc, atualizados);
-    Alert.alert(
-      estado === 'pago' || estado === 'recibo_emitido' ? 'Orçamento quitado' : 'Recebimento registrado',
-      estado === 'pago' || estado === 'recibo_emitido'
-        ? 'O saldo foi quitado. Se quiser, gere ou reenvie o recibo em seguida.'
-        : 'O saldo continua aberto e o próximo recebimento pode ser registrado depois.',
-    );
+    const quitou = financeiroQuitado(estado);
+    const motivo = registrarRetrato({ status: orc.status, quitado: quitou });
+    // O modal de pagamento ainda está saindo: a festa espera ele sumir.
+    if (motivo) setTimeout(() => { void celebrar(motivo); }, ESPERA_MODAL_SAIR_MS);
+    if (quitou) {
+      toast.sucesso('Se quiser, gere ou reenvie o recibo agora.', {
+        titulo: 'Orçamento quitado',
+        acao: { rotulo: 'Recibo', aoTocar: () => nav.navigate('EmitirRecibo', { orcamentoId: orc.id }) },
+      });
+    } else {
+      toast.sucesso('O saldo continua aberto e o próximo recebimento pode ser registrado depois.', { titulo: 'Recebimento registrado' });
+    }
   }
 
   async function salvarEstorno(motivo: string) {
@@ -616,7 +753,8 @@ export default function VisualizarOrcamentoScreen() {
       const atualizados = await getRecibos();
       setRecibos(atualizados);
       setEstornoAberto(false);
-      Alert.alert('Recebimento estornado', 'O evento continua no histórico e o saldo do orçamento foi recalculado.');
+      if (orc) registrarRetrato({ status: orc.status, quitado: financeiroQuitado(getStatusFinanceiro(orc, atualizados)) });
+      toast.sucesso('O evento continua no histórico e o saldo do orçamento foi recalculado.', { titulo: 'Recebimento estornado' });
     } finally {
       setEstornando(false);
     }
@@ -626,17 +764,19 @@ export default function VisualizarOrcamentoScreen() {
   // usada pelo fluxo "De um orçamento aprovado" em OrdemServicoScreen, chamada
   // direto daqui para poupar os 4-5 toques do caminho normal — e abre a OS criada.
   async function handleCriarOS() {
-    if (!orc) return;
+    if (!orc || criandoOS) return;
     setCriandoOS(true);
+    setOverlayInfo({ titulo: 'Criando a ordem de serviço...', subtitulo: 'Já abre a OS em seguida.' });
     try {
       const os = await criarOSDeOrcamento(orc.id);
       // Abre a OS que acabou de nascer (antes levava à lista e o prestador tinha
       // que procurá-la).
       nav.navigate('OrdemServico', { ordemId: os.id });
     } catch (e: any) {
-      Alert.alert('Não deu', e?.message ?? 'Não consegui criar a OS agora.');
+      toast.erro(e?.message ?? 'Não consegui criar a OS agora.', { titulo: 'A OS não foi criada' });
     } finally {
       setCriandoOS(false);
+      setOverlayInfo(null);
     }
   }
 
@@ -659,7 +799,7 @@ export default function VisualizarOrcamentoScreen() {
   function verCliente() {
     if (!orc) return;
     if (!orc.clienteId) {
-      Alert.alert('Cliente', 'Este orçamento não está vinculado a um cliente cadastrado.');
+      toast.info('Este orçamento não está vinculado a um cliente cadastrado.');
       return;
     }
     nav.navigate('Orcamentos', { clienteId: orc.clienteId, clienteNome: orc.clienteNome });
@@ -696,9 +836,16 @@ export default function VisualizarOrcamentoScreen() {
   }
 
   if (carregando) {
+    // Esqueleto no formato da tela (cabeçalho, ação, linha do tempo): a página
+    // "acende" no lugar em vez de pular de um spinner para o conteúdo.
     return (
-      <View style={{ flex: 1, backgroundColor: cores.background, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator color={cores.primary} accessibilityLabel="Carregando orçamento" />
+      <View style={{ flex: 1, backgroundColor: cores.background }} accessibilityLabel="Carregando orçamento">
+        <GradientHeader title="Orçamento" onBack={() => goBackOrHome(nav)} compact />
+        <View style={{ padding: Spacing.base, gap: 12 }}>
+          <Skeleton height={148} radius={BorderRadius.xl} />
+          <Skeleton height={176} radius={BorderRadius.xl} />
+          <Skeleton height={220} radius={BorderRadius.xl} />
+        </View>
       </View>
     );
   }
@@ -721,6 +868,8 @@ export default function VisualizarOrcamentoScreen() {
     { label: 'Aprovação ativa', ok: orc.exibirAprovacao !== false || linkConfigurado() },
   ];
   const fechamentoOk = fechamentoChecks.filter(c => c.ok).length;
+  // Assinatura ainda por colher neste documento (vai para "Próximos passos").
+  const precisaAssinatura = podeColherAssinatura && !orc.assinaturaClienteUri;
 
   // Cobrança com 1 toque: só quando o comercial é recebível e ainda há saldo. O
   // saldo (valor − recebido) é o que vai na mensagem e no Pix — nunca o total cheio
@@ -747,6 +896,28 @@ export default function VisualizarOrcamentoScreen() {
         ? 'pos_venda'
         : null;
 
+  // Linha do tempo: status local + trilha do link + recebimentos (ver linhaDoTempo.ts).
+  const etapasLinha = montarLinhaDoTempo({
+    status: orc.status,
+    criadoEm: orc.criadoEm,
+    decididoEm: orc.decididoEm,
+    trilha,
+    leituraLink,
+    financeiro: podeFinanceiro
+      ? {
+          estado: statusFin,
+          pagoEm: getReciboDoOrcamento(orc.id, recibos)?.dataRecebimento,
+          resumoParcial: `Recebido ${formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de ${formatCurrency(orc.valorTotal)}`,
+        }
+      : null,
+  });
+
+  /** Onde o card do cabeçalho termina na rolagem: dali para baixo, a faixa compacta aparece. */
+  function aoMedirCabecalho(e: LayoutChangeEvent) {
+    const { y, height } = e.nativeEvent.layout;
+    limiarCabecalho.set(y + height);
+  }
+
   /**
    * Cobra o saldo no WhatsApp do cliente com o LINK de pagamento
    * (`.../o/<token>#pagar`) em vez do código Pix cru no meio do texto (achado B22:
@@ -761,7 +932,7 @@ export default function VisualizarOrcamentoScreen() {
     if (!orc || !cobrancaPronta || cobrando) return;
     const telefone = (orc.clienteTelefone || '').trim();
     if (!telefone) {
-      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${orc.clienteNome} para cobrar por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para cobrar por aqui.`, { titulo: 'Sem telefone' });
       return;
     }
     const comPix = cobrancaPronta.situacaoPix === 'com_pix';
@@ -792,7 +963,7 @@ export default function VisualizarOrcamentoScreen() {
     try {
       await abrirWhatsApp(telefone, mensagem);
     } catch {
-      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
+      toast.erro('Confira se o WhatsApp está instalado e tente de novo.', { titulo: 'Não consegui abrir o WhatsApp' });
       return;
     } finally {
       setCobrando(false);
@@ -810,494 +981,502 @@ export default function VisualizarOrcamentoScreen() {
       return;
     }
     if (!telefone) {
-      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${orc.clienteNome} para pedir a avaliação por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para pedir a avaliação por aqui.`, { titulo: 'Sem telefone' });
       return;
     }
     try {
       await abrirWhatsApp(telefone, montarMensagemPedidoAvaliacao(orc.clienteNome, link, empresa));
     } catch {
-      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
+      toast.erro('Confira se o WhatsApp está instalado e tente de novo.', { titulo: 'Não consegui abrir o WhatsApp' });
     }
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: cores.background }}>
-      <GradientHeader title={`Orçamento nº ${formatarNumeroExibicao(orc.numero)}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
-        <View style={styles.actionBar}>
-          {edicaoBloqueada(orc.status) ? (
-            <ActionBtn icon="file-document-edit-outline" label="Criar revisão" onPress={handleCriarRevisao} loading={duplicando} />
-          ) : (
-            <ActionBtn icon="pencil" label="Editar" onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })} />
-          )}
-          <ActionBtn icon="content-copy" label="Duplicar" onPress={handleDuplicar} loading={duplicando} />
-          <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
-          <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} loading={enviandoWhats} />
-          <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
-          {podeFinanceiro && <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />}
-          {podeFinanceiro && (getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' || getStatusFinanceiro(orc, recibos) === 'parcial') && (
-            <ActionBtn icon="cash-check" label="Registrar pagamento" onPress={() => setPagamentoAberto(true)} />
-          )}
-          {orc.status === 'aprovado' && (
-            <ActionBtn icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
-          )}
-          <ActionBtn icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
-        </View>
-      </GradientHeader>
-
-      <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }}>
-        {orc.revisaoDeNumero ? (
-          <View style={styles.revisaoAviso}>
-            <MaterialCommunityIcons name="file-document-edit-outline" size={21} color={cores.primary} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.revisaoTitulo}>Revisão do orçamento nº {formatarNumeroExibicao(orc.revisaoDeNumero)}</Text>
-              <Text style={styles.revisaoTexto}>
-                Este é o documento atualizado. O original continua preservado; envie este orçamento ao cliente.
-              </Text>
-            </View>
+      <GradientHeader
+        title={`Orçamento nº ${formatarNumeroExibicao(orc.numero)}`}
+        subtitle={orc.clienteNome}
+        onBack={() => goBackOrHome(nav)}
+        compact
+        right={(
+          <View style={styles.topoAcoes}>
+            <BotaoTopo
+              icon="share-variant"
+              label="Compartilhar orçamento"
+              onPress={() => setFolha('compartilhar')}
+              loading={sharing || linking || enviandoWhats}
+            />
+            <BotaoTopo icon="dots-horizontal" label="Mais ações" onPress={() => setFolha('mais')} />
           </View>
-        ) : null}
-        {orc.editadoEm ? (
-          <Text style={styles.editadoEm}>Conteúdo editado em {formatDateTime(orc.editadoEm)}</Text>
-        ) : null}
-        {/* STATUS */}
-        <View style={styles.statusRow}>
-          <View>
-            <Text style={styles.numLabel}>Orçamento nº {formatarNumeroExibicao(orc.numero)}</Text>
-            <Text style={styles.dateLabel}>{formatDateTime(orc.criadoEm)}</Text>
-          </View>
-          <TouchableOpacity onPress={() => setShowStatusMenu(!showStatusMenu)}>
-            <StatusBadge status={orc.status} />
-          </TouchableOpacity>
-        </View>
-
-        {/* STATUS MENU */}
-        {showStatusMenu && (
-          <OlliCard style={{ padding: 4, marginBottom: Spacing.base }}>
-            <Text style={styles.menuTitle}>Alterar status:</Text>
-            {STATUS_ACTIONS.map(a => (
-              <TouchableOpacity
-                key={a.status}
-                style={[styles.menuItem, orc.status === a.status && { backgroundColor: a.corBase + '15' }]}
-                onPress={() => updateStatus(a.status)}
-              >
-                <View style={[styles.menuDot, { backgroundColor: a.corBase }]} />
-                <Text style={[styles.menuLabel, orc.status === a.status && { color: a.color, fontWeight: '700' }]}>{a.label}</Text>
-                {orc.status === a.status && <MaterialCommunityIcons name="check" size={16} color={a.color} />}
-              </TouchableOpacity>
-            ))}
-          </OlliCard>
         )}
+      />
 
-        {/* CARD DE AÇÃO POR STATUS — antes da aprovação, fechar; com saldo aberto,
-            cobrar; aprovado e sem saldo, o próximo passo (agendar, avaliação). */}
-        {cardAcao === 'fechar' && (
-          <OlliCard style={styles.closeCard}>
-            <View style={styles.closeTop}>
-              <View style={styles.closeIcon}>
-                <MaterialCommunityIcons name="handshake-outline" size={24} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.closeEyebrow}>Fechar negócio</Text>
-                <Text style={styles.closeTitle}>
-                  {orc.status === 'rascunho' ? 'Envie uma proposta pronta para aprovação' : 'A proposta está com o cliente'}
-                </Text>
-                <Text style={styles.closeSub}>
-                  {fechamentoOk}/{fechamentoChecks.length} sinais de confiança configurados
-                </Text>
-              </View>
-            </View>
-
-            <OlliPressable style={styles.closePrimary} onPress={handleWhatsApp} haptic="light" disabled={enviandoWhats}>
-              {enviandoWhats
-                ? <ActivityIndicator size="small" color={textoSobreAccent} />
-                : <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />}
-              <Text style={styles.closePrimaryText}>
-                {orc.status === 'rascunho' ? 'Enviar no WhatsApp' : 'Reenviar no WhatsApp'}
-              </Text>
-            </OlliPressable>
-
-            <View style={styles.closeActions}>
-              <CloseAction icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
-              <CloseAction icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
-              <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
-            </View>
-
-            <View style={styles.closeChecklist}>
-              {fechamentoChecks.map(check => (
-                <View key={check.label} style={styles.closeCheck}>
-                  <MaterialCommunityIcons
-                    name={check.ok ? 'check-circle' : 'alert-circle-outline'}
-                    size={15}
-                    color={check.ok ? cores.success : cores.warning}
-                  />
-                  <Text style={[styles.closeCheckText, !check.ok && styles.closeCheckTextWarn]}>{check.label}</Text>
-                </View>
-              ))}
-            </View>
-          </OlliCard>
-        )}
-
-        {cardAcao === 'cobrar' && cobrancaPronta && (
-          <OlliCard style={styles.closeCard}>
-            <View style={styles.closeTop}>
-              <View style={styles.closeIcon}>
-                <MaterialCommunityIcons name="cash-clock" size={24} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.closeEyebrow}>Receber</Text>
-                <Text style={styles.closeTitle}>Falta receber {formatCurrency(cobrancaPronta.valor)}</Text>
-                <Text style={styles.closeSub}>
-                  {statusFin === 'parcial'
-                    ? `Recebido ${formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de ${formatCurrency(orc.valorTotal)}.`
-                    : 'Cobre no WhatsApp ou mostre o QR do Pix para o cliente pagar na hora.'}
-                </Text>
-              </View>
-            </View>
-
-            <OlliPressable
-              style={styles.closePrimary}
-              onPress={handleCobrar}
-              haptic="light"
-              disabled={cobrando}
-              accessibilityLabel={`Cobrar ${formatCurrency(cobrancaPronta.valor)} no WhatsApp`}
-            >
-              {cobrando
-                ? <ActivityIndicator size="small" color={textoSobreAccent} />
-                : <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />}
-              <Text style={styles.closePrimaryText}>Cobrar {formatCurrency(cobrancaPronta.valor)} no WhatsApp</Text>
-            </OlliPressable>
-
-            <View style={styles.closeActions}>
-              {cobrancaPronta.situacaoPix === 'com_pix' && (
-                <CloseAction icon="qrcode" label="Mostrar QR" onPress={() => setQrAberto(true)} />
-              )}
-              <CloseAction icon="cash-check" label="Registrar" onPress={() => setPagamentoAberto(true)} />
-              {orc.status === 'aprovado' && (
-                <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
-              )}
-            </View>
-
-            {cobradoEm ? (
-              <Text style={[styles.financeiroNota, { marginTop: 10, marginBottom: 0 }]}>
-                {enviadoHoje(cobradoEm) ? 'Cobrança enviada hoje.' : `Última cobrança enviada em ${formatDateTime(cobradoEm)}.`}
-              </Text>
-            ) : null}
-            {avisoPix(cobrancaPronta.situacaoPix) && (
-              <TouchableOpacity onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.8} style={styles.cobrancaAviso}>
-                <MaterialCommunityIcons name="key-variant" size={20} color={cores.warning} />
-                <Text style={styles.cobrancaAvisoTexto}>{avisoPix(cobrancaPronta.situacaoPix)?.titulo}</Text>
-                <Text style={styles.cobrancaAvisoAcao}>{avisoPix(cobrancaPronta.situacaoPix)?.acao}</Text>
-              </TouchableOpacity>
-            )}
-          </OlliCard>
-        )}
-
-        {cardAcao === 'pos_venda' && (
-          <OlliCard style={styles.closeCard}>
-            <View style={styles.closeTop}>
-              <View style={styles.closeIcon}>
-                <MaterialCommunityIcons name={servicoPago ? 'check-decagram' : 'calendar-check'} size={24} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.closeEyebrow}>Próximo passo</Text>
-                <Text style={styles.closeTitle}>{servicoPago ? 'Serviço pago' : 'Orçamento aprovado'}</Text>
-                <Text style={styles.closeSub}>
-                  {servicoPago
-                    ? 'Peça uma avaliação enquanto o cliente está satisfeito e combine o próximo serviço.'
-                    : 'Agende o serviço e crie a ordem de serviço para a equipe.'}
-                </Text>
-              </View>
-            </View>
-
-            {servicoPago ? (
-              <OlliPressable style={styles.closePrimary} onPress={handlePedirAvaliacao} haptic="light">
-                <MaterialCommunityIcons
-                  name={linkAvaliacao ? 'star-outline' : 'link-variant-plus'}
-                  size={20}
-                  color={textoSobreAccent}
-                />
-                <Text style={styles.closePrimaryText}>
-                  {linkAvaliacao ? 'Pedir avaliação no WhatsApp' : 'Cadastrar link de avaliação do Google'}
-                </Text>
-              </OlliPressable>
-            ) : (
-              <OlliPressable style={styles.closePrimary} onPress={agendarVisita} haptic="light">
-                <MaterialCommunityIcons name="calendar-plus" size={20} color={textoSobreAccent} />
-                <Text style={styles.closePrimaryText}>Agendar o serviço</Text>
-              </OlliPressable>
-            )}
-
-            <View style={styles.closeActions}>
-              {servicoPago && <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />}
-              {orc.status === 'aprovado' && (
-                <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
-              )}
-              {podeFinanceiro && (
-                <CloseAction icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
-              )}
-            </View>
-          </OlliCard>
-        )}
-
-        {/* ACEITE DO CLIENTE (assinatura no dedo) — o palco do gesto que fecha o
-            serviço em campo. Fica ALTO na página de propósito: o motor já sabia
-            imprimir a assinatura no PDF, o que faltava era o prestador enxergar
-            onde colher. Três estados, sempre distintos. */}
-        {podeColherAssinatura && (
-          <OlliCard style={styles.assinCard}>
-            <View style={styles.closeTop}>
-              <View style={styles.assinIcon}>
-                <MaterialCommunityIcons
-                  name={assinaturaDoCliente ? 'check-decagram' : 'signature-freehand'}
-                  size={24}
-                  color={assinaturaDoCliente ? cores.success : cores.accentLight}
-                />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.closeEyebrow}>Aceite do cliente</Text>
-                <Text style={styles.closeTitle}>
-                  {assinaturaDoCliente ? 'Assinado pelo cliente' : 'Colha a assinatura no aparelho'}
-                </Text>
-                <Text style={styles.closeSub}>
-                  {assinaturaDoCliente
-                    ? 'A assinatura entra no PDF deste orçamento.'
-                    : 'Acabou o serviço? O cliente assina com o dedo aqui e o PDF já sai assinado.'}
-                </Text>
-              </View>
-            </View>
-
-            {assinaturaDoCliente ? (
-              <>
-                {/* Fundo claro fixo: a tinta é preta (como no papel do PDF) e
-                    sumiria contra a superfície escura do tema. */}
-                <View style={styles.assinPreview}>
-                  <Image
-                    source={{ uri: assinaturaDoCliente }}
-                    style={styles.assinImagem}
-                    resizeMode="contain"
-                    accessibilityLabel={`Assinatura de ${orc.clienteNome}`}
-                  />
-                </View>
-                <Text style={styles.assinMeta}>
-                  {orc.clienteNome}
-                  {orc.dataAssinaturaCliente ? ` · ${formatDateTime(orc.dataAssinaturaCliente)}` : ''}
-                </Text>
-                <TouchableOpacity
-                  style={styles.assinRefazer}
-                  onPress={() => setAssinaturaAberta(true)}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                >
-                  <MaterialCommunityIcons name="refresh" size={16} color={cores.onSurfaceVariant} />
-                  <Text style={styles.assinRefazerTexto}>Assinar de novo</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                {/* Falha de GRAVAÇÃO tem card próprio: o cliente assinou e o
-                    documento não guardou. Some da tela = ninguém tenta de novo. */}
-                {assinaturaFalhou && (
-                  <View style={styles.cobrancaAviso}>
-                    <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-                    <Text style={styles.cobrancaAvisoTexto}>
-                      A última assinatura não foi salva. Nada foi gravado no documento.
-                    </Text>
-                  </View>
-                )}
-                <OlliPressable style={styles.closePrimary} onPress={() => setAssinaturaAberta(true)} haptic="light">
-                  <MaterialCommunityIcons name="draw" size={20} color={textoSobreAccent} />
-                  <Text style={styles.closePrimaryText}>
-                    {assinaturaFalhou ? 'Tentar de novo' : 'Cliente assinar agora'}
-                  </Text>
-                </OlliPressable>
-              </>
-            )}
-
-            <Text style={styles.assinNota}>
-              Comprovação de aceite e execução entre as partes. Não é assinatura
-              digital certificada (ICP-Brasil).
-            </Text>
-          </OlliCard>
-        )}
-
-        {/* CLIENTE — toque para ver os orçamentos deste cliente (CRM) */}
-        <OlliCard onPress={verCliente} style={{ padding: Spacing.base, marginBottom: 12 }}>
-          <View style={styles.clientHeader}>
-            <Text style={styles.cardTitle}>Cliente</Text>
-            {orc.clienteId ? (
-              <View style={styles.clientLink}>
-                <Text style={styles.clientLinkText}>ver orçamentos</Text>
-                <MaterialCommunityIcons name="chevron-right" size={16} color={cores.accentLight} />
-              </View>
-            ) : null}
-          </View>
-          <Text style={styles.clientName}>{orc.clienteNome}</Text>
-          <Text style={styles.clientInfo}>{orc.clienteTelefone}</Text>
-          {orc.clienteCpfCnpj && <Text style={styles.clientInfo}>CPF/CNPJ: {orc.clienteCpfCnpj}</Text>}
-          {orc.clienteEndereco && <Text style={styles.clientInfo}>{orc.clienteEndereco}</Text>}
-        </OlliCard>
-
-        {/* ITENS */}
-        {orc.itens.length > 0 && (
-          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-            <Text style={styles.cardTitle}>Itens ({orc.itens.length})</Text>
-            {orc.itens.map(item => (
-              <View key={item.id} style={styles.itemRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.itemName}>{item.nome}</Text>
-                  <Text style={styles.itemQty}>{item.quantidade} {item.unidade} × {formatCurrency(item.preco)}</Text>
-                </View>
-                <Text style={styles.itemSubtotal}>{formatCurrency(item.subtotal)}</Text>
-              </View>
-            ))}
-          </OlliCard>
-        )}
-
-        {/* FOTOS DO SERVIÇO — faixa horizontal (registro fotográfico entra no PDF também) */}
-        {!!orc.fotosServico?.length && (
-          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-            <Text style={styles.cardTitle}>Fotos do serviço ({orc.fotosServico.length})</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fotosRow}>
-              {orc.fotosServico.map(uri => (
-                <Image key={uri} source={{ uri }} style={styles.fotoStrip} />
-              ))}
-            </ScrollView>
-          </OlliCard>
-        )}
-
-        {/* TOTAIS */}
-        {podeFinanceiro && <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-          <Text style={styles.cardTitle}>Resumo financeiro</Text>
-          <View style={styles.financeiroLinha}>
-            <Text style={styles.rowLabel}>Recebimento</Text>
-            <FinanceiroBadge status={getStatusFinanceiro(orc, recibos)} />
-          </View>
-          {getStatusFinanceiro(orc, recibos) === 'pago' && (
-            <Text style={styles.financeiroNota}>Pagamento registrado. O recibo em PDF continua disponível no botão “Recibo”.</Text>
-          )}
-          {getStatusFinanceiro(orc, recibos) === 'recibo_emitido' && (
-            <Text style={styles.financeiroNota}>Pagamento quitado e recibo emitido. O status comercial continua separado deste registro.</Text>
-          )}
-          {getStatusFinanceiro(orc, recibos) === 'parcial' && (
-            <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
-          )}
-          {recibos.some((recibo) => recibo.orcamentoId === orc.id && recibo.ledgerStatus === 'pendente') && (
-            <Text style={styles.financeiroNota}>O recebimento foi salvo neste aparelho e está aguardando confirmação da nuvem. Não registre o mesmo pagamento novamente.</Text>
-          )}
-          {recibos.some((recibo) => recibo.orcamentoId === orc.id && !!recibo.pagamentoId && !recibo.estornadoEm) && (
-            <OlliButton
-              label="Estornar último recebimento"
-              variant="outline"
-              size="sm"
-              loading={estornando}
-              disabled={estornando}
-              onPress={() => setEstornoAberto(true)}
-              icon={<MaterialCommunityIcons name="undo-variant" size={17} color={cores.primary} />}
-              style={{ marginTop: Spacing.sm }}
+      <View style={styles.palco}>
+        <Animated.ScrollView
+          contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }}
+          onScroll={aoRolar}
+          scrollEventThrottle={16}
+          refreshControl={(
+            <RefreshControl
+              refreshing={atualizando}
+              onRefresh={() => { void atualizarTudo(); }}
+              tintColor={cores.accentLight}
+              colors={[cores.accentLight]}
+              progressBackgroundColor={cores.surface}
             />
           )}
-          {/* NOTA FISCAL: o OLLI prepara os dados de cada recibo para o Emissor Nacional
-              (não emite). Estornado não vira nota. */}
-          {recibos
-            .filter((recibo) => recibo.orcamentoId === orc.id && !recibo.estornadoEm)
-            .map((recibo) => (
+        >
+          {orc.revisaoDeNumero ? (
+            <View style={styles.revisaoAviso}>
+              <MaterialCommunityIcons name="file-document-edit-outline" size={21} color={cores.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.revisaoTitulo}>Revisão do orçamento nº {formatarNumeroExibicao(orc.revisaoDeNumero)}</Text>
+                <Text style={styles.revisaoTexto}>
+                  Este é o documento atualizado. O original continua preservado; envie este orçamento ao cliente.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+          {orc.editadoEm ? (
+            <Text style={styles.editadoEm}>Conteúdo editado em {formatDateTime(orc.editadoEm)}</Text>
+          ) : null}
+
+          {/* CABEÇALHO — status animado (toque troca o status), número, total e
+              a frase "em que pé está". */}
+          <View onLayout={aoMedirCabecalho}>
+            <Aparecer>
+              <CabecalhoStatus
+                status={orc.status}
+                quando={`Criado em ${formatDateTime(orc.criadoEm)}`}
+                total={podeFinanceiro ? orc.valorTotal : null}
+                proximoPasso={proximoPassoDoStatus(orc.status, statusFin)}
+                aoTocarStatus={() => setFolha('status')}
+              >
+                Orçamento nº {formatarNumeroExibicao(orc.numero)}
+              </CabecalhoStatus>
+            </Aparecer>
+          </View>
+
+          {/* CARD DE AÇÃO POR STATUS — antes da aprovação, fechar; com saldo aberto,
+              cobrar; aprovado e sem saldo, o próximo passo (agendar, avaliação). */}
+          {cardAcao === 'fechar' && (
+            <OlliCard style={styles.closeCard}>
+              <View style={styles.closeTop}>
+                <View style={styles.closeIcon}>
+                  <MaterialCommunityIcons name="handshake-outline" size={24} color={cores.accentLight} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.closeEyebrow}>Fechar negócio</Text>
+                  <Text style={styles.closeTitle}>
+                    {orc.status === 'rascunho' ? 'Envie uma proposta pronta para aprovação' : 'A proposta está com o cliente'}
+                  </Text>
+                  <Text style={styles.closeSub}>
+                    {fechamentoOk}/{fechamentoChecks.length} sinais de confiança configurados
+                  </Text>
+                </View>
+              </View>
+
+              <OlliPressable
+                style={styles.closePrimary}
+                onPress={handleWhatsApp}
+                haptic="light"
+                disabled={enviandoWhats}
+                accessibilityLabel={enviandoWhats ? 'Preparando o envio no WhatsApp' : undefined}
+              >
+                {enviandoWhats
+                  ? <ActivityIndicator size="small" color={textoSobreAccent} />
+                  : <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />}
+                <Text style={styles.closePrimaryText}>
+                  {orc.status === 'rascunho' ? 'Enviar no WhatsApp' : 'Reenviar no WhatsApp'}
+                </Text>
+              </OlliPressable>
+
+              <View style={styles.closeActions}>
+                <CloseAction
+                  icon="share-variant"
+                  label="Link ou PDF"
+                  onPress={() => setFolha('compartilhar')}
+                  loading={linking || sharing}
+                />
+                <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
+              </View>
+
+              <View style={styles.closeChecklist}>
+                {fechamentoChecks.map(check => (
+                  <View key={check.label} style={styles.closeCheck}>
+                    <MaterialCommunityIcons
+                      name={check.ok ? 'check-circle' : 'alert-circle-outline'}
+                      size={15}
+                      color={check.ok ? cores.success : cores.warning}
+                    />
+                    <Text style={[styles.closeCheckText, !check.ok && styles.closeCheckTextWarn]}>{check.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </OlliCard>
+          )}
+
+          {cardAcao === 'cobrar' && cobrancaPronta && (
+            <OlliCard style={styles.closeCard}>
+              <View style={styles.closeTop}>
+                <View style={styles.closeIcon}>
+                  <MaterialCommunityIcons name="cash-clock" size={24} color={cores.accentLight} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.closeEyebrow}>Receber</Text>
+                  <Text style={styles.closeTitle}>Falta receber {formatCurrency(cobrancaPronta.valor)}</Text>
+                  <Text style={styles.closeSub}>
+                    {statusFin === 'parcial'
+                      ? `Recebido ${formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de ${formatCurrency(orc.valorTotal)}.`
+                      : 'Cobre no WhatsApp ou mostre o QR do Pix para o cliente pagar na hora.'}
+                  </Text>
+                </View>
+              </View>
+
+              <OlliPressable
+                style={styles.closePrimary}
+                onPress={handleCobrar}
+                haptic="light"
+                disabled={cobrando}
+                accessibilityLabel={`Cobrar ${formatCurrency(cobrancaPronta.valor)} no WhatsApp`}
+              >
+                {cobrando
+                  ? <ActivityIndicator size="small" color={textoSobreAccent} />
+                  : <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />}
+                <Text style={styles.closePrimaryText}>Cobrar {formatCurrency(cobrancaPronta.valor)} no WhatsApp</Text>
+              </OlliPressable>
+
+              <View style={styles.closeActions}>
+                {cobrancaPronta.situacaoPix === 'com_pix' && (
+                  <CloseAction icon="qrcode" label="Mostrar QR" onPress={() => setQrAberto(true)} />
+                )}
+                <CloseAction icon="cash-check" label="Registrar" onPress={() => setPagamentoAberto(true)} />
+                {orc.status === 'aprovado' && (
+                  <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+                )}
+              </View>
+
+              {cobradoEm ? (
+                <Text style={[styles.financeiroNota, { marginTop: 10, marginBottom: 0 }]}>
+                  {enviadoHoje(cobradoEm) ? 'Cobrança enviada hoje.' : `Última cobrança enviada em ${formatDateTime(cobradoEm)}.`}
+                </Text>
+              ) : null}
+              {avisoPix(cobrancaPronta.situacaoPix) && (
+                <TouchableOpacity onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.8} style={styles.cobrancaAviso}>
+                  <MaterialCommunityIcons name="key-variant" size={20} color={cores.warning} />
+                  <Text style={styles.cobrancaAvisoTexto}>{avisoPix(cobrancaPronta.situacaoPix)?.titulo}</Text>
+                  <Text style={styles.cobrancaAvisoAcao}>{avisoPix(cobrancaPronta.situacaoPix)?.acao}</Text>
+                </TouchableOpacity>
+              )}
+            </OlliCard>
+          )}
+
+          {cardAcao === 'pos_venda' && (
+            <OlliCard style={styles.closeCard}>
+              <View style={styles.closeTop}>
+                <View style={styles.closeIcon}>
+                  <MaterialCommunityIcons name={servicoPago ? 'check-decagram' : 'calendar-check'} size={24} color={cores.accentLight} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.closeEyebrow}>Próximo passo</Text>
+                  <Text style={styles.closeTitle}>{servicoPago ? 'Serviço pago' : 'Orçamento aprovado'}</Text>
+                  <Text style={styles.closeSub}>
+                    {servicoPago
+                      ? 'Peça uma avaliação enquanto o cliente está satisfeito e combine o próximo serviço.'
+                      : 'Agende o serviço e crie a ordem de serviço para a equipe.'}
+                  </Text>
+                </View>
+              </View>
+
+              {servicoPago ? (
+                <OlliPressable style={styles.closePrimary} onPress={handlePedirAvaliacao} haptic="light">
+                  <MaterialCommunityIcons
+                    name={linkAvaliacao ? 'star-outline' : 'link-variant-plus'}
+                    size={20}
+                    color={textoSobreAccent}
+                  />
+                  <Text style={styles.closePrimaryText}>
+                    {linkAvaliacao ? 'Pedir avaliação no WhatsApp' : 'Cadastrar link de avaliação do Google'}
+                  </Text>
+                </OlliPressable>
+              ) : (
+                <OlliPressable style={styles.closePrimary} onPress={agendarVisita} haptic="light">
+                  <MaterialCommunityIcons name="calendar-plus" size={20} color={textoSobreAccent} />
+                  <Text style={styles.closePrimaryText}>Agendar o serviço</Text>
+                </OlliPressable>
+              )}
+
+              <View style={styles.closeActions}>
+                {servicoPago && <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />}
+                {orc.status === 'aprovado' && (
+                  <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+                )}
+                {podeFinanceiro && (
+                  <CloseAction icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+                )}
+              </View>
+            </OlliCard>
+          )}
+
+          {/* LINHA DO TEMPO — criado, enviado, visualizado, aprovação, pago. Junta o
+              status local, a trilha do link público e os recebimentos. */}
+          <Aparecer indice={1}>
+            <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+              <Text style={styles.cardTitle}>Linha do tempo</Text>
+              <TimelineOrcamento etapas={etapasLinha} leituraLink={leituraLink} aoTentarDeNovo={loadTrilha} />
+            </OlliCard>
+          </Aparecer>
+
+          {/* ACEITE DO CLIENTE (assinatura no dedo) — o palco do gesto que fecha o
+              serviço em campo. Fica ALTO na página de propósito: o motor já sabia
+              imprimir a assinatura no PDF, o que faltava era o prestador enxergar
+              onde colher. Três estados, sempre distintos. */}
+          {podeColherAssinatura && (
+            <OlliCard style={styles.assinCard}>
+              <View style={styles.closeTop}>
+                <View style={styles.assinIcon}>
+                  <MaterialCommunityIcons
+                    name={assinaturaDoCliente ? 'check-decagram' : 'signature-freehand'}
+                    size={24}
+                    color={assinaturaDoCliente ? cores.success : cores.accentLight}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.closeEyebrow}>Aceite do cliente</Text>
+                  <Text style={styles.closeTitle}>
+                    {assinaturaDoCliente ? 'Assinado pelo cliente' : 'Colha a assinatura no aparelho'}
+                  </Text>
+                  <Text style={styles.closeSub}>
+                    {assinaturaDoCliente
+                      ? 'A assinatura entra no PDF deste orçamento.'
+                      : 'Acabou o serviço? O cliente assina com o dedo aqui e o PDF já sai assinado.'}
+                  </Text>
+                </View>
+              </View>
+
+              {assinaturaDoCliente ? (
+                <>
+                  {/* Fundo claro fixo: a tinta é preta (como no papel do PDF) e
+                      sumiria contra a superfície escura do tema. */}
+                  <View style={styles.assinPreview}>
+                    <Image
+                      source={{ uri: assinaturaDoCliente }}
+                      style={styles.assinImagem}
+                      resizeMode="contain"
+                      accessibilityLabel={`Assinatura de ${orc.clienteNome}`}
+                    />
+                  </View>
+                  <Text style={styles.assinMeta}>
+                    {orc.clienteNome}
+                    {orc.dataAssinaturaCliente ? ` · ${formatDateTime(orc.dataAssinaturaCliente)}` : ''}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.assinRefazer}
+                    onPress={() => setAssinaturaAberta(true)}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                  >
+                    <MaterialCommunityIcons name="refresh" size={16} color={cores.onSurfaceVariant} />
+                    <Text style={styles.assinRefazerTexto}>Assinar de novo</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  {/* Falha de GRAVAÇÃO tem card próprio: o cliente assinou e o
+                      documento não guardou. Some da tela = ninguém tenta de novo. */}
+                  {assinaturaFalhou && (
+                    <View style={styles.cobrancaAviso}>
+                      <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                      <Text style={styles.cobrancaAvisoTexto}>
+                        A última assinatura não foi salva. Nada foi gravado no documento.
+                      </Text>
+                    </View>
+                  )}
+                  {/* Uma ação principal por tela: com o card de ação acima, assinar
+                      vira botão secundário (contorno); sozinho, é o principal. */}
+                  <OlliPressable
+                    style={cardAcao ? styles.closeSecundario : styles.closePrimary}
+                    onPress={() => setAssinaturaAberta(true)}
+                    haptic="light"
+                  >
+                    <MaterialCommunityIcons name="draw" size={20} color={cardAcao ? cores.accentLight : textoSobreAccent} />
+                    <Text style={cardAcao ? styles.closeSecundarioText : styles.closePrimaryText}>
+                      {assinaturaFalhou ? 'Tentar de novo' : 'Cliente assinar agora'}
+                    </Text>
+                  </OlliPressable>
+                </>
+              )}
+
+              <Text style={styles.assinNota}>
+                Comprovação de aceite e execução entre as partes. Não é assinatura
+                digital certificada (ICP-Brasil).
+              </Text>
+            </OlliCard>
+          )}
+
+          {/* CLIENTE — toque para ver os orçamentos deste cliente (CRM) */}
+          <OlliCard onPress={verCliente} style={{ padding: Spacing.base, marginBottom: 12 }}>
+            <View style={styles.clientHeader}>
+              <Text style={styles.cardTitle}>Cliente</Text>
+              {orc.clienteId ? (
+                <View style={styles.clientLink}>
+                  <Text style={styles.clientLinkText}>ver orçamentos</Text>
+                  <MaterialCommunityIcons name="chevron-right" size={16} color={cores.accentLight} />
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.clientName}>{orc.clienteNome}</Text>
+            <Text style={styles.clientInfo}>{orc.clienteTelefone}</Text>
+            {orc.clienteCpfCnpj && <Text style={styles.clientInfo}>CPF/CNPJ: {orc.clienteCpfCnpj}</Text>}
+            {orc.clienteEndereco && <Text style={styles.clientInfo}>{orc.clienteEndereco}</Text>}
+          </OlliCard>
+
+          {/* ITENS */}
+          {orc.itens.length > 0 && (
+            <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+              <Text style={styles.cardTitle}>Itens ({orc.itens.length})</Text>
+              {orc.itens.map(item => (
+                <View key={item.id} style={styles.itemRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemName}>{item.nome}</Text>
+                    <Text style={styles.itemQty}>{item.quantidade} {item.unidade} × {formatCurrency(item.preco)}</Text>
+                  </View>
+                  <Text style={styles.itemSubtotal}>{formatCurrency(item.subtotal)}</Text>
+                </View>
+              ))}
+            </OlliCard>
+          )}
+
+          {/* FOTOS DO SERVIÇO — faixa horizontal (registro fotográfico entra no PDF também) */}
+          {!!orc.fotosServico?.length && (
+            <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+              <Text style={styles.cardTitle}>Fotos do serviço ({orc.fotosServico.length})</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.fotosRow}>
+                {orc.fotosServico.map(uri => (
+                  <Image key={uri} source={{ uri }} style={styles.fotoStrip} />
+                ))}
+              </ScrollView>
+            </OlliCard>
+          )}
+
+          {/* TOTAIS */}
+          {podeFinanceiro && <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+            <Text style={styles.cardTitle}>Resumo financeiro</Text>
+            <View style={styles.financeiroLinha}>
+              <Text style={styles.rowLabel}>Recebimento</Text>
+              <FinanceiroBadge status={getStatusFinanceiro(orc, recibos)} />
+            </View>
+            {getStatusFinanceiro(orc, recibos) === 'pago' && (
+              <Text style={styles.financeiroNota}>Pagamento registrado. O recibo em PDF continua disponível no botão “Recibo”.</Text>
+            )}
+            {getStatusFinanceiro(orc, recibos) === 'recibo_emitido' && (
+              <Text style={styles.financeiroNota}>Pagamento quitado e recibo emitido. O status comercial continua separado deste registro.</Text>
+            )}
+            {getStatusFinanceiro(orc, recibos) === 'parcial' && (
+              <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
+            )}
+            {recibos.some((recibo) => recibo.orcamentoId === orc.id && recibo.ledgerStatus === 'pendente') && (
+              <Text style={styles.financeiroNota}>O recebimento foi salvo neste aparelho e está aguardando confirmação da nuvem. Não registre o mesmo pagamento novamente.</Text>
+            )}
+            {recibos.some((recibo) => recibo.orcamentoId === orc.id && !!recibo.pagamentoId && !recibo.estornadoEm) && (
               <OlliButton
-                key={`nota-${recibo.id}`}
-                label={`Preparar nota fiscal · recibo ${formatarNumeroExibicao(recibo.numero)}`}
+                label="Estornar último recebimento"
                 variant="outline"
                 size="sm"
-                onPress={() => nav.navigate('PrepararNota', { reciboId: recibo.id })}
-                icon={<MaterialCommunityIcons name="file-certificate-outline" size={17} color={cores.primary} />}
+                loading={estornando}
+                disabled={estornando}
+                onPress={() => setEstornoAberto(true)}
+                icon={<MaterialCommunityIcons name="undo-variant" size={17} color={cores.primary} />}
                 style={{ marginTop: Spacing.sm }}
               />
-            ))}
-          {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
-          {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
-          {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatCurrency(orc.valorTotal)}</Text>
-          </View>
-        </OlliCard>}
-
-        {/* DETALHES */}
-        <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-          <Text style={styles.cardTitle}>Detalhes</Text>
-          {orc.modeloNome && <Row label="Modelo PDF" value={orc.modeloNome} />}
-          {orc.validadeOrcamento && <Row label="Válido até" value={formatarDataBR(orc.validadeOrcamento)} />}
-          {orc.dataVisitaTecnica && <Row label="Visita técnica" value={formatarDataBR(orc.dataVisitaTecnica)} />}
-          {orc.agendamentoServico && <Row label="Agendamento" value={formatarDataBR(orc.agendamentoServico)} />}
-          {orc.condicoesPagamento && <Row label="Condições comerciais" value={orc.condicoesPagamento} />}
-          {orc.garantia && <Row label="Garantia" value={orc.garantia} />}
-          {orc.condicoesContratuais && (
-            <View style={styles.textBlock}>
-              <Text style={styles.rowLabel}>Condições contratuais</Text>
-              <Text style={styles.textBlockContent}>{orc.condicoesContratuais}</Text>
+            )}
+            {/* NOTA FISCAL: o OLLI prepara os dados de cada recibo para o Emissor Nacional
+                (não emite). Estornado não vira nota. */}
+            {recibos
+              .filter((recibo) => recibo.orcamentoId === orc.id && !recibo.estornadoEm)
+              .map((recibo) => (
+                <OlliButton
+                  key={`nota-${recibo.id}`}
+                  label={`Preparar nota fiscal · recibo ${formatarNumeroExibicao(recibo.numero)}`}
+                  variant="outline"
+                  size="sm"
+                  onPress={() => nav.navigate('PrepararNota', { reciboId: recibo.id })}
+                  icon={<MaterialCommunityIcons name="file-certificate-outline" size={17} color={cores.primary} />}
+                  style={{ marginTop: Spacing.sm }}
+                />
+              ))}
+            {orc.subtotalServicos > 0 && <Row label="Serviços" value={formatCurrency(orc.subtotalServicos)} />}
+            {orc.subtotalProdutos > 0 && <Row label="Produtos" value={formatCurrency(orc.subtotalProdutos)} />}
+            {orc.subtotal - orc.valorTotal > 0 && <Row label="Desconto" value={`-${formatCurrency(orc.subtotal - orc.valorTotal)}`} />}
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>{formatCurrency(orc.valorTotal)}</Text>
             </View>
-          )}
-        </OlliCard>
+          </OlliCard>}
 
-        {/* TRILHA DO CLIENTE (link público) — o que o cliente fez com a proposta.
-            Ramo de erro ANTES do "vazio": falha de rede nunca deve parecer
-            "cliente nunca abriu o link" (que simplesmente não mostra o card). */}
-        {trilhaErro ? (
+          {/* DETALHES */}
           <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-            <Text style={styles.cardTitle}>Trilha do cliente</Text>
-            <View style={styles.cobrancaAviso}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
-              <Text style={styles.cobrancaAvisoTexto}>Não deu para carregar a trilha do cliente agora.</Text>
-              <TouchableOpacity onPress={loadTrilha} activeOpacity={0.8}>
-                <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
-              </TouchableOpacity>
-            </View>
-          </OlliCard>
-        ) : trilha.length > 0 && (
-          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-            <Text style={styles.cardTitle}>Trilha do cliente</Text>
-            {trilha.map((ev, i) => (
-              <TrilhaLinha key={`${ev.tipo}-${i}`} evento={ev} ultimo={i === trilha.length - 1} />
-            ))}
-          </OlliCard>
-        )}
-
-        {/* HISTÓRICO DE VERSÕES — snapshots congelados antes de cada edição enviada */}
-        {versoes.length > 0 && (
-          <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
-            <TouchableOpacity
-              style={styles.versoesHeader}
-              onPress={() => setVersoesAbertas(v => !v)}
-              activeOpacity={0.7}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>Versões anteriores ({versoes.length})</Text>
-                <Text style={styles.versoesHint}>
-                  Guardamos o que o cliente viu antes de cada alteração.
-                </Text>
+            <Text style={styles.cardTitle}>Detalhes</Text>
+            {orc.modeloNome && <Row label="Modelo PDF" value={orc.modeloNome} />}
+            {orc.validadeOrcamento && <Row label="Válido até" value={formatarDataBR(orc.validadeOrcamento)} />}
+            {orc.dataVisitaTecnica && <Row label="Visita técnica" value={formatarDataBR(orc.dataVisitaTecnica)} />}
+            {orc.agendamentoServico && <Row label="Agendamento" value={formatarDataBR(orc.agendamentoServico)} />}
+            {orc.condicoesPagamento && <Row label="Condições comerciais" value={orc.condicoesPagamento} />}
+            {orc.garantia && <Row label="Garantia" value={orc.garantia} />}
+            {orc.condicoesContratuais && (
+              <View style={styles.textBlock}>
+                <Text style={styles.rowLabel}>Condições contratuais</Text>
+                <Text style={styles.textBlockContent}>{orc.condicoesContratuais}</Text>
               </View>
-              <MaterialCommunityIcons
-                name={versoesAbertas ? 'chevron-up' : 'chevron-down'}
-                size={22}
-                color={cores.onSurfaceVariant}
-              />
-            </TouchableOpacity>
-            {versoesAbertas && versoes.map(v => (
-              <View key={v.id} style={styles.versaoItem}>
-                <View style={styles.versaoTop}>
-                  <View style={styles.versaoBadge}>
-                    <Text style={styles.versaoBadgeText}>v{v.numeroVersao}</Text>
-                  </View>
-                  <Text style={styles.versaoData}>{formatDateTime(v.criadoEm)}</Text>
-                  <Text style={styles.versaoValor}>{formatCurrency(v.dados.valorTotal ?? 0)}</Text>
+            )}
+          </OlliCard>
+
+          {/* HISTÓRICO DE VERSÕES — snapshots congelados antes de cada edição enviada */}
+          {versoes.length > 0 && (
+            <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+              <TouchableOpacity
+                style={styles.versoesHeader}
+                onPress={() => setVersoesAbertas(v => !v)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>Versões anteriores ({versoes.length})</Text>
+                  <Text style={styles.versoesHint}>
+                    Guardamos o que o cliente viu antes de cada alteração.
+                  </Text>
                 </View>
-                <Text style={styles.versaoResumo}>
-                  {(v.dados.itens?.length ?? 0)} {(v.dados.itens?.length ?? 0) === 1 ? 'item' : 'itens'}
-                  {v.dados.validadeOrcamento ? ` · válido até ${formatarDataBR(v.dados.validadeOrcamento)}` : ''}
-                </Text>
-              </View>
-            ))}
-          </OlliCard>
-        )}
-      </ScrollView>
+                <MaterialCommunityIcons
+                  name={versoesAbertas ? 'chevron-up' : 'chevron-down'}
+                  size={22}
+                  color={cores.onSurfaceVariant}
+                />
+              </TouchableOpacity>
+              {versoesAbertas && versoes.map(v => (
+                <View key={v.id} style={styles.versaoItem}>
+                  <View style={styles.versaoTop}>
+                    <View style={styles.versaoBadge}>
+                      <Text style={styles.versaoBadgeText}>v{v.numeroVersao}</Text>
+                    </View>
+                    <Text style={styles.versaoData}>{formatDateTime(v.criadoEm)}</Text>
+                    <Text style={styles.versaoValor}>{formatCurrency(v.dados.valorTotal ?? 0)}</Text>
+                  </View>
+                  <Text style={styles.versaoResumo}>
+                    {(v.dados.itens?.length ?? 0)} {(v.dados.itens?.length ?? 0) === 1 ? 'item' : 'itens'}
+                    {v.dados.validadeOrcamento ? ` · válido até ${formatarDataBR(v.dados.validadeOrcamento)}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </OlliCard>
+          )}
+        </Animated.ScrollView>
+        {/* Cabeçalho que encolhe: some o card, fica a faixa com status e total. */}
+        <BarraStatusCompacta
+          status={orc.status}
+          total={podeFinanceiro ? orc.valorTotal : null}
+          rolagem={rolagem}
+          limiar={limiarCabecalho}
+        />
+      </View>
 
       <AssinaturaClienteModal
         visivel={assinaturaAberta}
@@ -1306,7 +1485,192 @@ export default function VisualizarOrcamentoScreen() {
         aoConfirmar={gravarAssinaturaCliente}
         aoCancelar={fecharAssinatura}
       />
-      <Celebracao visible={celebrando} tipo="aprovado" onDone={finalizarCelebracao} />
+      <Celebracao visible={!!celebracao} tipo={celebracao ?? 'aprovado'} onDone={finalizarCelebracao} />
+
+      {/* COMPARTILHAR — os canais de envio, com o que acontece em cada um. */}
+      <FolhaAcoes
+        visivel={folha === 'compartilhar'}
+        titulo="Compartilhar orçamento"
+        subtitulo={orc.clienteNome}
+        aoFechar={() => setFolha(null)}
+      >
+        <ItemFolha
+          icon="whatsapp"
+          destaque
+          label={orc.status === 'rascunho' ? 'Enviar no WhatsApp' : 'Reenviar no WhatsApp'}
+          descricao={linkConfigurado()
+            ? 'Abre o WhatsApp do cliente com o link de aprovação.'
+            : 'Abre o WhatsApp do cliente com o resumo; ele aprova respondendo.'}
+          onPress={handleWhatsApp}
+          disabled={enviandoWhats}
+        />
+        <ItemFolha
+          icon="link-variant"
+          label="Compartilhar link de aprovação"
+          descricao={linkConfigurado()
+            ? 'Escolha o app: e-mail, SMS ou outra conversa.'
+            : 'Precisa do backup na nuvem ligado (tela Conta).'}
+          onPress={handleLinkCliente}
+          disabled={linking}
+        />
+        <ItemFolha
+          icon="file-pdf-box"
+          label="Compartilhar PDF"
+          descricao="Gera o PDF e abre o compartilhar do aparelho."
+          onPress={handleShare}
+          disabled={sharing}
+        />
+        {cobrancaPronta && cobrancaPronta.situacaoPix === 'com_pix' ? (
+          <ItemFolha
+            icon="qrcode"
+            label="Mostrar QR do Pix"
+            descricao={`Para o cliente pagar ${formatCurrency(cobrancaPronta.valor)} na hora.`}
+            onPress={() => setQrAberto(true)}
+          />
+        ) : null}
+      </FolhaAcoes>
+
+      {/* MAIS AÇÕES (⋯) — tudo que não é o próximo passo do status. */}
+      <FolhaAcoes visivel={folha === 'mais'} titulo="Mais ações" aoFechar={() => setFolha(null)}>
+        {edicaoBloqueada(orc.status) ? (
+          <ItemFolha
+            icon="file-document-edit-outline"
+            label="Criar revisão"
+            descricao="O original fica guardado; a revisão nasce como rascunho."
+            onPress={handleCriarRevisao}
+            disabled={duplicando}
+          />
+        ) : (
+          <ItemFolha
+            icon="pencil"
+            label="Editar"
+            descricao="Itens, valores e condições."
+            onPress={() => nav.navigate('EditarOrcamento', { orcamentoId: orc.id })}
+          />
+        )}
+        <ItemFolha
+          icon="content-copy"
+          label="Duplicar"
+          descricao="Novo rascunho com os mesmos itens."
+          onPress={handleDuplicar}
+          disabled={duplicando}
+        />
+        <ItemFolha
+          icon="swap-horizontal"
+          label="Alterar status"
+          descricao={`Agora: ${STATUS_LABELS[orc.status]}.`}
+          onPress={() => setFolha('status')}
+        />
+        <ItemFolha
+          icon="calendar-plus"
+          label="Agendar visita"
+          descricao="Abre a agenda já com este cliente."
+          onPress={agendarVisita}
+        />
+        {orc.status === 'aprovado' ? (
+          <ItemFolha
+            icon="clipboard-check-outline"
+            label="Criar ordem de serviço"
+            descricao="A partir deste orçamento aprovado."
+            onPress={handleCriarOS}
+            disabled={criandoOS}
+          />
+        ) : null}
+        {podeFinanceiro && (statusFin === 'aguardando_pagamento' || statusFin === 'parcial') ? (
+          <ItemFolha
+            icon="cash-check"
+            label="Registrar pagamento"
+            descricao="Anota o que o cliente pagou (total ou parte)."
+            onPress={() => setPagamentoAberto(true)}
+          />
+        ) : null}
+        {podeFinanceiro ? (
+          <ItemFolha
+            icon="receipt"
+            label="Recibo"
+            descricao="Emitir ou reenviar o recibo deste orçamento."
+            onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })}
+          />
+        ) : null}
+        {orc.clienteId ? (
+          <ItemFolha
+            icon="account-outline"
+            label="Ver orçamentos do cliente"
+            descricao={orc.clienteNome}
+            onPress={verCliente}
+          />
+        ) : null}
+      </FolhaAcoes>
+
+      {/* STATUS — troca manual. "Visualizado" fica de fora: quem marca é o cliente, pelo link. */}
+      <FolhaAcoes
+        visivel={folha === 'status'}
+        titulo="Alterar status"
+        subtitulo="Mude à mão quando o cliente responder fora do link."
+        aoFechar={() => setFolha(null)}
+      >
+        {STATUS_ACTIONS.map(a => (
+          <ItemFolha
+            key={a.status}
+            icon="circle"
+            corPonto={a.corBase}
+            label={a.label}
+            selecionado={orc.status === a.status}
+            onPress={() => {
+              if (orc.status !== a.status) void updateStatus(a.status, { avisar: true });
+            }}
+          />
+        ))}
+      </FolhaAcoes>
+      {/* PRÓXIMOS PASSOS — a aprovação vira esta folha (no lugar da antiga
+          pergunta "Criar OS?"). Cada item diz o que acontece; "Depois" não perde
+          nada: tudo continua no card do topo e no ⋯. */}
+      <FolhaAcoes
+        visivel={folha === 'proximos'}
+        titulo="Orçamento aprovado!"
+        subtitulo={`Próximos passos com ${orc.clienteNome}`}
+        aoFechar={() => setFolha(null)}
+      >
+        {precisaAssinatura ? (
+          <ItemFolha
+            icon="draw"
+            destaque
+            label="Cliente assinar agora"
+            descricao="Ele assina com o dedo e o PDF já sai assinado."
+            onPress={assinarPelosProximos}
+          />
+        ) : null}
+        {orc.status === 'aprovado' ? (
+          <ItemFolha
+            icon="clipboard-check-outline"
+            destaque={!precisaAssinatura}
+            label="Criar ordem de serviço"
+            descricao="Já abre a OS deste orçamento para a equipe."
+            onPress={handleCriarOS}
+            disabled={criandoOS}
+          />
+        ) : null}
+        <ItemFolha
+          icon="calendar-plus"
+          label="Agendar o serviço"
+          descricao="Abre a agenda já com este cliente."
+          onPress={agendarVisita}
+        />
+        {podeFinanceiro && (statusFin === 'aguardando_pagamento' || statusFin === 'parcial') ? (
+          <ItemFolha
+            icon="cash-check"
+            label="Registrar pagamento"
+            descricao="Se o cliente já pagou, total ou parte."
+            onPress={() => setPagamentoAberto(true)}
+          />
+        ) : null}
+        <ItemFolha
+          icon="clock-outline"
+          label="Depois"
+          descricao="Tudo isso continua no card do topo e no ⋯."
+          onPress={() => {}}
+        />
+      </FolhaAcoes>
       <OverlayProgresso
         visible={!!overlayInfo}
         titulo={overlayInfo?.titulo}
@@ -1408,48 +1772,30 @@ function ConfirmarEnvioSheet({ visivel, titulo, mensagem, ocupado, aoResponder }
   );
 }
 
-// Metadados visuais de cada tipo de evento da trilha do cliente.
-const TRILHA_META: Record<EventoTrilhaCliente['tipo'], { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; label: string }> = {
-  enviado: { icon: 'send', color: '#3B82F6', label: 'Proposta enviada' },
-  visualizado: { icon: 'eye-outline', color: '#8B5CF6', label: 'Cliente visualizou' },
-  aprovado: { icon: 'check-circle', color: '#10B981', label: 'Cliente aprovou' },
-  recusado: { icon: 'close-circle', color: '#EF4444', label: 'Cliente recusou' },
-  // Aviso do cliente, não confirmação: o rótulo diz "avisou", e quem marca pago é o prestador.
-  pagamento_informado: { icon: 'cash-clock', color: '#F59E0B', label: 'Cliente avisou que já pagou — confira no banco' },
-};
-
-function TrilhaLinha({ evento, ultimo }: { evento: EventoTrilhaCliente; ultimo: boolean }) {
-  const styles = useEstilos(criarEstilos);
-  const meta = TRILHA_META[evento.tipo];
-  return (
-    <View style={styles.trilhaRow}>
-      <View style={styles.trilhaGutter}>
-        <View style={[styles.trilhaDot, { backgroundColor: meta.color }]}>
-          <MaterialCommunityIcons name={meta.icon} size={12} color="#fff" />
-        </View>
-        {!ultimo && <View style={styles.trilhaLine} />}
-      </View>
-      <View style={{ flex: 1, paddingBottom: ultimo ? 0 : 14 }}>
-        <Text style={styles.trilhaLabel}>{meta.label}</Text>
-        {evento.em ? <Text style={styles.trilhaData}>{formatDateTime(evento.em)}</Text> : null}
-        {evento.tipo === 'recusado' && evento.motivo ? (
-          <View style={styles.trilhaMotivo}>
-            <Text style={styles.trilhaMotivoLabel}>Motivo informado</Text>
-            <Text style={styles.trilhaMotivoText}>{evento.motivo}</Text>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-function ActionBtn({ icon, label, onPress, loading }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; loading?: boolean }) {
+/**
+ * Botão redondo do topo (Compartilhar, ⋯) — vidro branco sobre o gradiente do
+ * cabeçalho, mesma convenção do botão de voltar. Mostra "carregando" no lugar do
+ * ícone enquanto a ação dele roda.
+ */
+function BotaoTopo({ icon, label, onPress, loading }: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  label: string;
+  onPress: () => void;
+  loading?: boolean;
+}) {
   const styles = useEstilos(criarEstilos);
   return (
-    <OlliPressable style={styles.actionBarBtn} onPress={onPress} disabled={loading}>
+    <PressableAnimado
+      style={styles.topoBotao}
+      onPress={onPress}
+      disabled={loading}
+      haptic="light"
+      hitSlop={6}
+      accessibilityLabel={label}
+      accessibilityState={loading ? { busy: true } : undefined}
+    >
       {loading ? <ActivityIndicator size="small" color="#fff" /> : <MaterialCommunityIcons name={icon} size={22} color="#fff" />}
-      <Text style={styles.actionBarLabel}>{label}</Text>
-    </OlliPressable>
+    </PressableAnimado>
   );
 }
 
@@ -1465,32 +1811,17 @@ function CloseAction({ icon, label, onPress, loading }: { icon: keyof typeof Mat
 }
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
+  // Área da rolagem: a faixa compacta do cabeçalho fica por cima, colada no topo.
+  palco: { flex: 1 },
   // Dentro do GradientHeader (sempre colorido, nos dois modos) — glass branco
-  // fixo, mesma convenção do próprio GradientHeader. Até 9 botões: flexWrap
-  // (em vez de flex:1 numa row sem wrap) deixa a barra "quebrar" em várias
-  // linhas com folga em vez de espremer os botões numa tela estreita.
-  actionBar: {
-    flexDirection: 'row', flexWrap: 'wrap', paddingTop: 14, gap: 8,
-  },
-  actionBarBtn: {
-    // Largura fixa (não `flex:1`) — com wrap, flex:1 faria cada linha dividir o
-    // espaço de forma diferente conforme quantos botões coube nela, deixando
-    // os botões com tamanhos inconsistentes entre as linhas.
-    width: 84, alignItems: 'center', gap: 4,
+  // fixo, mesma convenção do próprio GradientHeader.
+  topoAcoes: { flexDirection: 'row', gap: 8, marginLeft: 8 },
+  topoBotao: {
+    width: 42, height: 42, borderRadius: 21,
+    alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
-    paddingVertical: 12, borderRadius: BorderRadius.md,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
   },
-  actionBarLabel: { fontSize: 11, color: '#fff', fontWeight: '700' },
-
-  statusRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    backgroundColor: c.surface, borderRadius: BorderRadius.lg,
-    padding: Spacing.base, marginBottom: 12, ...sombrasDe(c).sm,
-    borderWidth: 1, borderColor: c.outline,
-  },
-  numLabel: { fontSize: 18, fontWeight: '800', color: c.onSurface },
-  dateLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
   revisaoAviso: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
@@ -1504,11 +1835,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant,
     textAlign: 'right', marginBottom: 8,
   },
-
-  menuTitle: { fontSize: 12, color: c.onSurfaceVariant, fontWeight: '600', padding: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, borderRadius: BorderRadius.md },
-  menuDot: { width: 10, height: 10, borderRadius: 5 },
-  menuLabel: { flex: 1, fontSize: 14, color: c.onSurface },
 
   closeCard: { padding: Spacing.base, marginBottom: 12, borderColor: c.strokeGlow },
   closeTop: { flexDirection: 'row', alignItems: 'center' },
@@ -1534,6 +1860,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
   closePrimaryText: { fontSize: 14.5, fontWeight: '800', color: textoSobre(c.accentLight) },
+  // Ação secundária com o mesmo tamanho da principal: contorno, sem preenchimento.
+  closeSecundario: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1.5,
+    borderColor: c.strokeGlow,
+    paddingVertical: 12,
+  },
+  closeSecundarioText: { fontSize: 14.5, fontWeight: '800', color: c.accentLight },
   closeActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   closeActionBtn: {
     flex: 1,
@@ -1602,22 +1941,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   textBlock: { paddingTop: 8 },
   textBlockContent: { fontSize: 13, color: c.onSurface, lineHeight: 20, marginTop: 4 },
-
-  // Trilha do cliente (timeline) — cores dos eventos (TRILHA_META) são fixas
-  // por design, iguais nos dois modos (mesma lógica de "cor de evento" que um
-  // diff de git), não seguem o tema. Mantidas.
-  trilhaRow: { flexDirection: 'row', gap: 12 },
-  trilhaGutter: { alignItems: 'center', width: 24 },
-  trilhaDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  trilhaLine: { width: 2, flex: 1, backgroundColor: c.outline, marginTop: 2 },
-  trilhaLabel: { fontSize: 14, fontWeight: '700', color: c.onSurface },
-  trilhaData: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
-  trilhaMotivo: {
-    marginTop: 8, padding: 10, borderRadius: BorderRadius.md,
-    backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.22)',
-  },
-  trilhaMotivoLabel: { fontSize: 10.5, fontWeight: '800', color: '#EF4444', textTransform: 'uppercase', letterSpacing: 0.4 },
-  trilhaMotivoText: { fontSize: 13, color: c.onSurface, lineHeight: 19, marginTop: 3 },
 
   // Banner de erro (mesmo visual do usado em HomeScreen para radar/cobrança).
   cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginTop: 8 },
