@@ -153,7 +153,7 @@ function LinhaOrcamentoBase({
           <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
           <Text style={styles.itemMeta}>Nº {formatarNumeroExibicao(o.numero)} · {formatDate(o.criadoEm)}</Text>
           {o.revisaoDeNumero ? (
-            <Text style={styles.revisaoMeta}>Revisão do nº {o.revisaoDeNumero}</Text>
+            <Text style={styles.revisaoMeta}>Revisão do nº {formatarNumeroExibicao(o.revisaoDeNumero)}</Text>
           ) : o.editadoEm ? (
             <Text style={styles.revisaoMeta}>Editado em {formatDate(o.editadoEm)}</Text>
           ) : null}

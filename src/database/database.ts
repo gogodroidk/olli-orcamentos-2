@@ -1243,10 +1243,12 @@ function whereOrcamentosFiltro(filtro: FiltroOrcamentos): { clausula: string; pa
   if (filtro.busca && filtro.busca.trim()) {
     // Nome: sem-acento+minúsculo dos dois lados (acento-insensível como o app).
     // Número: minúsculo (dígitos não mudam). Curingas do usuário escapados.
+    // A lista MOSTRA `011/26` mas grava `01126` (item 2.16): a barra sai dos dois
+    // lados para quem digita o que vê achar o orçamento.
     const nomeSql = semAcentoLowerSql("json_extract(data, '$.clienteNome')");
-    condicoes.push(`(${nomeSql} LIKE ? ESCAPE '\\' OR LOWER(numero) LIKE ? ESCAPE '\\')`);
-    const like = `%${escaparLike(semAcentoLower(filtro.busca.trim()))}%`;
-    params.push(like, like);
+    condicoes.push(`(${nomeSql} LIKE ? ESCAPE '\\' OR REPLACE(LOWER(numero), '/', '') LIKE ? ESCAPE '\\')`);
+    const termo = semAcentoLower(filtro.busca.trim());
+    params.push(`%${escaparLike(termo)}%`, `%${escaparLike(termo.replace(/\//g, '') || termo)}%`);
   }
   return { clausula: condicoes.join(' AND '), params };
 }

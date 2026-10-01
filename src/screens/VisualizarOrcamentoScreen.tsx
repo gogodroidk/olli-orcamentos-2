@@ -849,7 +849,7 @@ export default function VisualizarOrcamentoScreen() {
           <View style={styles.revisaoAviso}>
             <MaterialCommunityIcons name="file-document-edit-outline" size={21} color={cores.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.revisaoTitulo}>Revisão do orçamento nº {orc.revisaoDeNumero}</Text>
+              <Text style={styles.revisaoTitulo}>Revisão do orçamento nº {formatarNumeroExibicao(orc.revisaoDeNumero)}</Text>
               <Text style={styles.revisaoTexto}>
                 Este é o documento atualizado. O original continua preservado; envie este orçamento ao cliente.
               </Text>

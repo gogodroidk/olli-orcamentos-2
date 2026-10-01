@@ -146,5 +146,37 @@ for (const arq of [
 }
 checar('txid do Pix continua com o armazenado', ler('src/utils/cobrancaCliente.ts').includes('txid: orcamento.numero,'), true);
 
+console.log('\n6. Mesmo documento não mistura os dois formatos');
+const pdfFonte = ler('src/utils/pdfGenerator.ts');
+checar('PDF: "Revisão do nº" usa a exibição (capa e cabeçalho)', (pdfFonte.match(/Revisão do nº \$\{escapeHtml\(formatarNumeroExibicao\(o\.revisaoDeNumero\)\)\}/g) ?? []).length, 2);
+checar('PDF: nenhum "Revisão do nº" cru', /Revisão do nº \$\{escapeHtml\(o\.revisaoDeNumero\)\}/.test(pdfFonte), false);
+for (const arq of ['src/screens/OrcamentosScreen.tsx', 'src/screens/NovoOrcamentoScreen.tsx', 'src/screens/VisualizarOrcamentoScreen.tsx', 'src/steps/Step4Personalizacao.tsx']) {
+  checar(`${arq}: revisão exibida legível`, /\{(o|orc)\.revisaoDeNumero\}/.test(ler(arq)), false);
+}
+for (const arq of ['src/utils/contratoPdf.ts', 'src/utils/termosPdf.ts']) {
+  const fonte = ler(arq);
+  checar(`${arq}: cabeçalho "Nº" legível`, /Nº \$\{formatarNumeroExibicao\((o|d)\.numero\)\}/.test(fonte), true);
+  checar(`${arq}: nome de arquivo continua com o armazenado`, /-\$\{(o|d)\.numero\}`/.test(fonte), true);
+}
+
+console.log('\n7. Busca do celular acha o número como ele aparece');
+// A lista mostra `011/26`; o SQLite guarda `01126`. A cláusula real tira a barra
+// dos dois lados — roda aqui num SQLite de verdade.
+checar('busca SQL tira a barra do número', banco.includes("REPLACE(LOWER(numero), '/', '') LIKE ? ESCAPE"), true);
+checar('termo da busca tira a barra', banco.includes("escaparLike(termo.replace(/\\//g, '') || termo)"), true);
+const { DatabaseSync } = await import('node:sqlite');
+const sqlite = new DatabaseSync(':memory:');
+sqlite.exec('CREATE TABLE orcamentos (numero TEXT)');
+for (const n of ['01126', '02726', 'REC-00926']) sqlite.prepare('INSERT INTO orcamentos (numero) VALUES (?)').run(n);
+const achar = (digitado: string): string[] => {
+  const termo = digitado.trim().toLowerCase().replace(/\//g, '') || digitado.trim().toLowerCase();
+  const like = `%${termo.replace(/[\\%_]/g, (ch) => '\\' + ch)}%`;
+  return (sqlite.prepare(String.raw`SELECT numero FROM orcamentos WHERE REPLACE(LOWER(numero), '/', '') LIKE ? ESCAPE '\' ORDER BY numero`).all(like) as { numero: string }[]).map((r) => r.numero);
+};
+checar('digitar "011/26" acha 01126', achar('011/26').join(','), '01126');
+checar('digitar "01126" continua achando', achar('01126').join(','), '01126');
+checar('digitar "rec-009/26" acha o recibo', achar('rec-009/26').join(','), 'REC-00926');
+checar('digitar "27/26" acha 02726', achar('27/26').join(','), '02726');
+
 console.log(`\n${falhas ? 'FALHOU' : 'PASSOU'}: ${passes} ok, ${falhas} falha(s)`);
 process.exit(falhas ? 1 : 0);

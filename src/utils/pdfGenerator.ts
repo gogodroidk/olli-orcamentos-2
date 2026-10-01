@@ -299,7 +299,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
   const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
   const logoSrc = img(empresa.logoUri);
   const revisaoLinha = o.revisaoDeNumero
-    ? `<div class="cover-num">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>`
+    ? `<div class="cover-num">Revisão do nº ${escapeHtml(formatarNumeroExibicao(o.revisaoDeNumero))}</div>`
     : '';
 
   if (plano.tipo === 'foto') {
@@ -754,7 +754,7 @@ ${renderCapa(o, empresa, planoCapa)}
       <div class="header-right">
         <div class="doc-title">Orçamento</div>
         <div class="doc-num">Nº ${escapeHtml(formatarNumeroExibicao(o.numero))}</div>
-        ${o.revisaoDeNumero ? `<div class="doc-date">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>` : ''}
+        ${o.revisaoDeNumero ? `<div class="doc-date">Revisão do nº ${escapeHtml(formatarNumeroExibicao(o.revisaoDeNumero))}</div>` : ''}
         <div class="doc-date">Emitido em ${emitidoEm}</div>
         ${o.validadeOrcamento ? `<div class="pill">Válido até ${formatDateBR(o.validadeOrcamento)}</div>` : `<div class="pill">Válido por 15 dias</div>`}
       </div>

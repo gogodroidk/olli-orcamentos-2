@@ -568,7 +568,7 @@ export default function NovoOrcamentoScreen() {
           <View style={styles.revisionBanner} accessible accessibilityRole="summary">
             <MaterialCommunityIcons name="file-document-edit-outline" size={17} color="#fff" />
             <Text style={styles.revisionBannerText}>
-              Revisão do nº {orc.revisaoDeNumero}: o original está preservado. Salve e envie este novo orçamento.
+              Revisão do nº {formatarNumeroExibicao(orc.revisaoDeNumero)}: o original está preservado. Salve e envie este novo orçamento.
             </Text>
           </View>
         ) : null}

@@ -2,6 +2,7 @@ import type { Orcamento, Empresa, ItemOrcamento } from '../types';
 import { formatCurrency, formatNumber } from './currency';
 import { formatDateBR, formatDateTime, todayISO } from './date';
 import { escapeHtml } from './html';
+import { formatarNumeroExibicao } from './numeroDocumento';
 import {
   blocoAssinaturas,
   cabecalhoDocumento,
@@ -193,7 +194,7 @@ export function gerarHtmlTermoGarantia(
   const prazoTxt = Number.isFinite(d.prazoDias) ? `${Math.round(d.prazoDias)} dias` : '';
 
   const corpo = `
-${cabecalhoDocumento(empresa, imagens.logo, 'Termo de Garantia', `Nº ${d.numero} · ${conclusaoBR}`)}
+${cabecalhoDocumento(empresa, imagens.logo, 'Termo de Garantia', `Nº ${formatarNumeroExibicao(d.numero)} · ${conclusaoBR}`)}
 
 <h2>Prestador (garantidor)</h2>
 <div class="bloco">
@@ -256,7 +257,7 @@ ${blocoAssinaturas({
 ${rodapeDocumento(opts?.removerMarca)}
 `;
 
-  return paginaDocumento(cor, `Termo de garantia ${d.numero} - ${d.clienteNome}`, corpo);
+  return paginaDocumento(cor, `Termo de garantia ${formatarNumeroExibicao(d.numero)} - ${d.clienteNome}`, corpo);
 }
 
 export async function montarHtmlTermoGarantia(
@@ -277,7 +278,7 @@ export async function compartilharPdfTermoGarantia(
   const html = await montarHtmlTermoGarantia(d, empresa, opts);
   const { exportarHtmlComoPdf, safeFileName } = await import('./exportarDocumento');
   await exportarHtmlComoPdf(html, `Garantia-${safeFileName(d.clienteNome)}-${d.numero}`, {
-    dialogTitle: `Termo de garantia ${d.numero} - ${d.clienteNome}`,
+    dialogTitle: `Termo de garantia ${formatarNumeroExibicao(d.numero)} - ${d.clienteNome}`,
   });
 }
 
@@ -340,7 +341,7 @@ export function gerarHtmlTermoConclusao(
   const pendencias = (d.pendencias ?? '').trim();
 
   const corpo = `
-${cabecalhoDocumento(empresa, imagens.logo, ['Termo de Conclusão', 'e Aceite de Serviço'], `Nº ${d.numero} · ${conclusaoBR}`)}
+${cabecalhoDocumento(empresa, imagens.logo, ['Termo de Conclusão', 'e Aceite de Serviço'], `Nº ${formatarNumeroExibicao(d.numero)} · ${conclusaoBR}`)}
 
 <h2>Partes</h2>
 <div class="bloco">
@@ -394,7 +395,7 @@ ${blocoAssinaturas({
 ${rodapeDocumento(opts?.removerMarca)}
 `;
 
-  return paginaDocumento(cor, `Termo de conclusão ${d.numero} - ${d.clienteNome}`, corpo);
+  return paginaDocumento(cor, `Termo de conclusão ${formatarNumeroExibicao(d.numero)} - ${d.clienteNome}`, corpo);
 }
 
 export async function montarHtmlTermoConclusao(
@@ -414,6 +415,6 @@ export async function compartilharPdfTermoConclusao(
   const html = await montarHtmlTermoConclusao(d, empresa, opts);
   const { exportarHtmlComoPdf, safeFileName } = await import('./exportarDocumento');
   await exportarHtmlComoPdf(html, `Conclusao-${safeFileName(d.clienteNome)}-${d.numero}`, {
-    dialogTitle: `Termo de conclusão ${d.numero} - ${d.clienteNome}`,
+    dialogTitle: `Termo de conclusão ${formatarNumeroExibicao(d.numero)} - ${d.clienteNome}`,
   });
 }
