@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image, Platform, Linking } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -27,12 +27,14 @@ import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/c
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
 import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
-import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
+import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
+import { APP_VERSION, APP_VERSION_CODE } from '../config';
+import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP, TEXTOS_LOJA, URL_EXCLUIR_CONTA_WEB } from '../config/loja';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
-import { cancelarTodosLembretes, temPermissaoNotificacao, pedirPermissaoNotificacao } from '../services/agenda';
+import { cancelarTodosLembretes, temPermissaoNotificacao, pedirPermissaoNotificacao, estadoPermissaoNotificacao } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import {
   cancelarRitualDiario, reagendarRitualDiario, getPreferenciasRitual, setPreferenciaRitual,
@@ -54,16 +56,29 @@ import { abortarSyncEmAndamento, onSyncAplicado } from '../services/cloudSync';
 import { formatDateTime } from '../utils/date';
 import { AUTO_BACKUP_TOGGLE_KEY, APP_DATA_STORAGE_KEYS } from '../services/storageKeys';
 
-/**
+/*
  * iOS (Guideline 3.1.1): sem StoreKit, a assinatura não pode ser vendida dentro
- * do app nem apontada para fora (link-out também é proibido). A tela de Planos já
- * respeita isso (PlanosScreen.tsx, mesma constante); aqui o card do PRO ainda
- * prometia "Assine direto no app" num aparelho onde nada disso acontece. Ver os
- * planos continua permitido — o proibido é vender —, então o botão fica, sem a
- * promessa de compra e sem mandar ninguém para o site.
+ * do app nem apontada para fora (link-out também é proibido). Ver os planos
+ * continua permitido — o proibido é vender —, então o botão do card PRO fica, sem
+ * a promessa de compra e sem mandar ninguém para o site. As flags
+ * (`COMPRA_NO_APP`, `BUILD_PLAY_SEM_COMPRA_EXTERNA`) e os textos que dependem da
+ * loja (`TEXTOS_LOJA`) vêm de config/loja.ts, o lugar único.
  */
-const COMPRA_NO_APP = Platform.OS !== 'ios';
-const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
+
+/**
+ * Erro técnico (inglês, de rede) nunca chega cru ao usuário. Mensagem que o
+ * próprio app já escreveu em português passa; o resto vira a explicação humana.
+ */
+function mensagemDeErro(e: unknown, semInternet: string, generica: string): string {
+  const bruta = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
+  if (!bruta) return generica;
+  if (/network|fetch|timeout|timed out|abort|internet|offline|ECONN|ENOTFOUND|socket/i.test(bruta)) return semInternet;
+  // Texto técnico em inglês (stack, JSON, código HTTP) não é mensagem para gente.
+  if (!/[À-ÿ]/.test(bruta) && /\b(error|failed|unexpected|invalid|undefined|null|status)\b/i.test(bruta)) return generica;
+  return bruta;
+}
+
+const SEM_INTERNET = 'Sem internet agora. Verifique a conexão e tente de novo.';
 
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
@@ -161,7 +176,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: c.primaryLight, route: 'OlliChat' },
     { key: 'autopilot', icon: 'robot-happy-outline', label: 'Autopilot IA', desc: 'Anexe conversa, foto ou PDF', color: c.accentLight, route: 'Autopilot' },
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
-    { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos', ocultarTecnico: true },
+    { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais, marcas e preços', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
     { key: 'contratos', icon: 'calendar-sync-outline', label: 'Contratos recorrentes', desc: 'Visitas e cobrança todo mês', color: c.success, route: 'Contratos', ocultarTecnico: true },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
@@ -169,7 +184,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'anvisa', icon: 'file-certificate-outline', label: 'Comprovante de controle de pragas', desc: 'Dedetização · RDC 622/2022, art. 19', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
     { key: 'caixaDagua', icon: 'water-check-outline', label: "Certificado de caixa d'água", desc: 'Limpeza e desinfecção com lacre e validade', color: c.accentLight, route: 'CertificadoCaixaDagua', vertical: 'caixa_dagua' },
     { key: 'calcOficio', icon: 'calculator-variant-outline', label: 'Calculadoras do ofício', desc: 'Cálculos técnicos do seu ramo', color: c.accentLight, route: 'FerramentasOficio', calcHub: true },
-    { key: 'creditos', icon: 'lightning-bolt', label: 'Créditos', desc: 'Saldo e recarga por Pix', color: '#F7B23B', route: 'Creditos' },
+    { key: 'creditos', icon: 'lightning-bolt', label: 'Créditos', desc: TEXTOS_LOJA.creditosMenu, color: '#F7B23B', route: 'Creditos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
     { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
@@ -199,7 +214,7 @@ export default function ContaScreen() {
       !(f.calcHub && !haCalculoParaOficio(mostraVertical)),
   );
   // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
-  const { plano } = usePlano();
+  const { plano, carregando: carregandoPlano, temAcesso } = usePlano();
   const [showCriarEmpresa, setShowCriarEmpresa] = useState(false);
   const [showEntrarEquipe, setShowEntrarEquipe] = useState(false);
 
@@ -231,7 +246,13 @@ export default function ContaScreen() {
   // backup.ts recusa — o técnico se achava protegido e o único sinal contrário
   // era um console.warn que ninguém lê.
   const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Um estado por ação: com um `busy` só, "Fazer backup" fazia girar o "Sair da conta".
+  const [fazendoBackup, setFazendoBackup] = useState(false);
+  const [saindo, setSaindo] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+  // Permissão de notificação do SISTEMA (3 estados: null = não sei / web). Sem
+  // isto o switch "Bom dia da OLLI" ficava ligado com o Android bloqueando tudo.
+  const [notifBloqueada, setNotifBloqueada] = useState<boolean | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   // Toggle "Mostrar dicas contextuais" (onboarding.ts) — carregado no foco.
@@ -277,6 +298,13 @@ export default function ContaScreen() {
       setRitualBomDia(ritual.bomDia);
       setRitualFecharDia(ritual.fecharDia);
       setRitualDomingo(ritual.domingo);
+      if (Platform.OS !== 'web') {
+        // Relido a cada foco, para refletir o que a pessoa mudou nos ajustes do
+        // aparelho. Só 'negada' é bloqueio; "ainda não perguntou" o switch resolve
+        // pedindo, e falha de leitura (null) não vira aviso de bloqueio.
+        const permissao = await estadoPermissaoNotificacao();
+        setNotifBloqueada(permissao === null ? null : permissao === 'negada');
+      }
       if (configured) {
         const u = await getCurrentUser();
         if (u) {
@@ -334,17 +362,25 @@ export default function ContaScreen() {
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   async function handleBackup() {
-    setBusy(true);
+    setFazendoBackup(true);
     try {
       const when = await backupManualVersionado();
       setLastBackup(when);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       Alert.alert('Backup feito!', 'Seus dados estão seguros na nuvem.');
-    } catch (e: any) {
+    } catch (e: unknown) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      Alert.alert('Erro', e?.message ?? 'Falha ao fazer backup.');
+      Alert.alert(
+        'Backup não feito',
+        mensagemDeErro(
+          e,
+          'Sem internet agora — o backup automático tenta de novo quando a conexão voltar.',
+          'Não foi possível fazer o backup agora. Tente de novo em instantes.',
+        ),
+      );
+    } finally {
+      setFazendoBackup(false);
     }
-    setBusy(false);
   }
 
   /** Liga/desliga o backup automático (respeitado por services/autoBackup.ts). Persistido de imediato. */
@@ -384,10 +420,19 @@ export default function ContaScreen() {
     const setters = { bomDia: setRitualBomDia, fecharDia: setRitualFecharDia, domingo: setRitualDomingo };
     setters[canal](v);
     try {
-      await setPreferenciaRitual(canal, v);
       if (v && canal !== 'domingo' && Platform.OS !== 'web' && !(await temPermissaoNotificacao())) {
-        await pedirPermissaoNotificacao();
+        const concedida = await pedirPermissaoNotificacao();
+        if (!concedida) {
+          // O sistema negou: o aviso nunca chegaria. O switch volta (a preferência
+          // não é gravada) e o card abaixo explica e leva aos ajustes.
+          setters[canal](false);
+          setNotifBloqueada(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+          return;
+        }
+        setNotifBloqueada(false);
       }
+      await setPreferenciaRitual(canal, v);
       void reagendarRitualDiario().catch(() => {});
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
@@ -480,7 +525,7 @@ export default function ContaScreen() {
         {
           text: 'Sair e manter dados neste aparelho',
           onPress: async () => {
-            setBusy(true);
+            setSaindo(true);
             try {
               // Interrompe o sync ANTES do signOut (o "apagar dados" já fazia isso;
               // aqui faltava): um pull em voo continuaria gravando no SQLite depois
@@ -518,10 +563,10 @@ export default function ContaScreen() {
               // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
               // competir com ele (corrida de navegação).
               await signOut();
-            } catch (e: any) {
-              Alert.alert('Erro', e?.message ?? 'Não foi possível sair agora.');
+            } catch (e: unknown) {
+              Alert.alert('Não deu para sair', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível sair agora. Tente de novo.'));
             }
-            setBusy(false);
+            setSaindo(false);
           },
         },
         {
@@ -536,7 +581,7 @@ export default function ContaScreen() {
                 {
                   text: 'Apagar e sair', style: 'destructive',
                   onPress: async () => {
-                    setBusy(true);
+                    setSaindo(true);
                     try {
                       // Interrompe qualquer sync em segundo plano ANTES de apagar:
                       // sem isso, um pull que já buscou dados da nuvem pode gravá-los
@@ -550,10 +595,10 @@ export default function ContaScreen() {
                       await signOut();
                       setEmpresa(null);
                       // O reset para 'Entrar' vem do listener global (SIGNED_OUT).
-                    } catch (e: any) {
-                      Alert.alert('Erro', e?.message ?? 'Não foi possível apagar os dados agora.');
+                    } catch (e: unknown) {
+                      Alert.alert('Não deu para sair', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível apagar os dados agora. Tente de novo.'));
                     }
-                    setBusy(false);
+                    setSaindo(false);
                   },
                 },
               ],
@@ -644,7 +689,7 @@ export default function ContaScreen() {
           text: 'Excluir para sempre',
           style: 'destructive',
           onPress: async () => {
-            setBusy(true);
+            setExcluindo(true);
             try {
               const res = await excluirConta();
               if (!res.ok) {
@@ -655,6 +700,8 @@ export default function ContaScreen() {
                       ? 'Sua sessão expirou. Entre de novo e tente outra vez.'
                       : res.motivo === 'rede'
                         ? 'Sem conexão agora. Verifique a internet e tente novamente.'
+                        : res.motivo === 'muitas_requisicoes'
+                          ? 'Muitas tentativas seguidas. Aguarde 1 minuto e tente de novo — nada foi apagado.'
                         : res.motivo === 'falha_cancelamento'
                           // O servidor não apagou NADA de propósito: apagar a conta com a
                           // assinatura viva deixaria o cartão sendo cobrado sem nenhuma
@@ -664,16 +711,16 @@ export default function ContaScreen() {
                           : 'Não foi possível excluir a conta agora. Tente novamente em instantes.';
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
                 Alert.alert('Não deu', msg);
-                setBusy(false);
+                setExcluindo(false);
                 return;
               }
               // Sucesso: o SIGNED_OUT (logout local no serviço) reseta a navegação
               // para 'Entrar'. Fecha o modal por garantia; a tela será desmontada.
               setShowExcluir(false);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            } catch (e: any) {
-              Alert.alert('Erro', e?.message ?? 'Falha ao excluir a conta.');
-              setBusy(false);
+            } catch (e: unknown) {
+              Alert.alert('Não deu', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível excluir a conta agora. Nada foi apagado.'));
+              setExcluindo(false);
             }
           },
         },
@@ -690,6 +737,18 @@ export default function ContaScreen() {
   // a logo da empresa (regra do produto); por fim, a inicial do nome.
   const avatarUri = (!avatarErro && user?.avatarUrl) ? user.avatarUrl : (empresa?.logoUri || null);
   const temAssinaturaPaga = plano !== 'gratis';
+  // Membro (não dono) de conta empresa: o plano que vale é o da empresa, pago pelo
+  // dono. Vender o PRO ao técnico seria cobrar dele o que o patrão já paga.
+  const membroDeEmpresa = tipo === 'empresa' && !!org && org.papel !== 'owner';
+  // Enquanto plano ou conta carregam, o card não se decide: o hook nasce em
+  // 'gratis' e o pagante via o anúncio do PRO piscar antes do "Sua assinatura".
+  const cardPlanoCarregando = carregandoPlano || (configured && carregandoConta);
+  // Convidar técnicos é recurso do Empresa (GateEquipe). Uma org criada agora não
+  // é grandfathered, então o plano decide.
+  const podeConvidarEquipe = temAcesso('equipe');
+  const rotuloVersao = APP_VERSION
+    ? `OLLI ${APP_VERSION}${Platform.OS === 'android' && APP_VERSION_CODE !== null ? ` (${APP_VERSION_CODE})` : ''}`
+    : 'OLLI';
 
   // GUARDA DEFENSIVO: sessão expirada dentro das Tabs → botão para voltar à porta.
   if (sessaoPerdida) {
@@ -823,7 +882,25 @@ export default function ContaScreen() {
         {/* ASSINATURA — pagante vê um card discreto "Sua assinatura"; grátis vê o
             convite para conhecer os planos (sem propaganda para quem já paga). */}
         <AnimatedEntrance index={1}>
-          {temAssinaturaPaga ? (
+          {cardPlanoCarregando ? (
+            <View style={styles.assinaturaCard}>
+              <OlliSkeleton width={40} height={40} radius={12} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                <OlliSkeleton width="45%" height={14} />
+                <OlliSkeleton width="70%" height={12} />
+              </View>
+            </View>
+          ) : membroDeEmpresa && org ? (
+            <View style={styles.assinaturaCard}>
+              <View style={styles.assinaturaIcon}>
+                <MaterialCommunityIcons name="office-building-outline" size={20} color={cores.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.assinaturaTitle} numberOfLines={1}>Você usa o plano da empresa {org.nome}</Text>
+                <Text style={styles.assinaturaSub}>Quem cuida da assinatura é o dono da conta empresa.</Text>
+              </View>
+            </View>
+          ) : temAssinaturaPaga ? (
             <OlliPressable
               style={styles.assinaturaCard}
               haptic={false}
@@ -836,7 +913,7 @@ export default function ContaScreen() {
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.assinaturaTitle}>Sua assinatura</Text>
-                <Text style={styles.assinaturaSub}>Plano {PLANO_LABEL[plano]} · faturas, cobrança e cancelamento</Text>
+                <Text style={styles.assinaturaSub}>{TEXTOS_LOJA.assinaturaMenu(PLANO_LABEL[plano])}</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
             </OlliPressable>
@@ -906,7 +983,11 @@ export default function ContaScreen() {
                   </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.empresaNome}>Trabalha com uma equipe?</Text>
-                    <Text style={styles.empresaPapel}>Crie a conta empresa e convide seus técnicos</Text>
+                    <Text style={styles.empresaPapel}>
+                      {podeConvidarEquipe
+                        ? 'Crie a conta empresa e convide seus técnicos'
+                        : 'Convidar técnicos é recurso do plano Empresa'}
+                    </Text>
                   </View>
                 </View>
                 <OlliPressable
@@ -960,9 +1041,10 @@ export default function ContaScreen() {
           </View>
         </AnimatedEntrance>
 
-        {/* APARÊNCIA — modo claro/escuro e cor da marca. O app abre SEMPRE no claro
-            (TemaProvider não lê `useColorScheme()` de propósito); esta é a única porta
-            para o escuro. As 12 cores oferecidas passam pelo gate `check:contraste`. */}
+        {/* APARÊNCIA — modo claro/escuro e cor da marca. O app abre no ESCURO
+            (PADRAO_MODO no TemaProvider, que não lê `useColorScheme()` de propósito);
+            esta é a única porta para o claro. As 12 cores oferecidas passam pelo gate
+            `check:contraste`. */}
         <AnimatedEntrance index={4}>
           <Text style={styles.sectionTitle}>Aparência</Text>
           <View style={styles.blocoAparencia}>
@@ -1050,6 +1132,67 @@ export default function ContaScreen() {
           </View>
         </AnimatedEntrance>
 
+        {/* PRIVACIDADE E TERMOS — a Play exige a política acessível DENTRO do app, e a
+            exclusão de conta também fora dele (página web pública). */}
+        <AnimatedEntrance index={5}>
+          <Text style={styles.sectionTitle}>Privacidade e termos</Text>
+          <View style={styles.toolsCard}>
+            <OlliPressable
+              style={[styles.toolRow, styles.toolDivider]}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Privacidade'); }}
+              haptic={false}
+              scaleTo={0.985}
+              accessibilityLabel="Política de privacidade"
+            >
+              <View style={[styles.toolIcon, { backgroundColor: cores.success + '1E', borderColor: cores.success + '3A' }]}>
+                <MaterialCommunityIcons name="shield-lock-outline" size={20} color={cores.success} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolLabel}>Política de privacidade</Text>
+                <Text style={styles.toolDesc}>Quais dados o OLLI usa e por quê</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+            </OlliPressable>
+            <OlliPressable
+              style={[styles.toolRow, styles.toolDivider]}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Termos'); }}
+              haptic={false}
+              scaleTo={0.985}
+              accessibilityLabel="Termos de uso"
+            >
+              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
+                <MaterialCommunityIcons name="file-document-outline" size={20} color={cores.primaryLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolLabel}>Termos de uso</Text>
+                <Text style={styles.toolDesc}>As regras de uso do OLLI</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+            </OlliPressable>
+            <OlliPressable
+              style={styles.toolRow}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                Linking.openURL(URL_EXCLUIR_CONTA_WEB).catch(() => {
+                  Alert.alert('Excluir conta pela web', `Não consegui abrir o navegador. Acesse ${URL_EXCLUIR_CONTA_WEB}`);
+                });
+              }}
+              haptic={false}
+              scaleTo={0.985}
+              accessibilityLabel="Excluir conta pela web"
+            >
+              <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
+                <MaterialCommunityIcons name="open-in-new" size={20} color={cores.onSurfaceVariant} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolLabel}>Excluir conta pela web</Text>
+                <Text style={styles.toolDesc}>Pedir a exclusão pelo site, sem precisar do app</Text>
+              </View>
+              <MaterialCommunityIcons name="open-in-new" size={18} color={cores.onSurfaceMuted} />
+            </OlliPressable>
+          </View>
+        </AnimatedEntrance>
+
         {/* NOTIFICAÇÕES — Ritual diário (services/ritualDiario.ts): "Bom dia da
             OLLI" (~7h, só com sinal real) e "Fechar o dia" (~18h, só com
             movimento no dia), com domingo mudo por padrão. Cada canal é
@@ -1057,6 +1200,27 @@ export default function ContaScreen() {
             reagenda depois de salvar — sem esperar o próximo boot/sync). */}
         <AnimatedEntrance index={5}>
           <Text style={styles.sectionTitle}>Notificações</Text>
+          {notifBloqueada ? (
+            <View style={styles.notifBloqueadaCard}>
+              <MaterialCommunityIcons name="bell-off-outline" size={20} color={cores.warning} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.notifBloqueadaTitulo}>
+                  Notificações bloqueadas {Platform.OS === 'ios' ? 'no iPhone' : 'no Android'}
+                </Text>
+                <Text style={styles.notifBloqueadaTexto}>
+                  Os avisos abaixo só chegam depois que você liberar as notificações do OLLI nos ajustes do aparelho.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { Haptics.selectionAsync().catch(() => {}); void abrirConfiguracoesPermissao(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Abrir ajustes do aparelho"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.notifBloqueadaLink}>Abrir ajustes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.toolsCard}>
             <View style={[styles.toolRow, styles.toolDivider]}>
               <View style={[styles.toolIcon, { backgroundColor: cores.accent + '1E', borderColor: cores.accent + '3A' }]}>
@@ -1204,19 +1368,19 @@ export default function ContaScreen() {
                     />
                   </View>
 
-                  <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={busy} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
+                  <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={fazendoBackup} disabled={saindo} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
                 </>
               )}
               <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={cores.primary} />} />
             </View>
 
-            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={busy} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={cores.danger} />} textStyle={{ color: cores.danger }} />
+            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={saindo} disabled={fazendoBackup || excluindo} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={cores.danger} />} textStyle={{ color: cores.danger }} />
 
             {/* ZONA DE PERIGO — exclusão de conta (requisito Apple + LGPD) */}
             <TouchableOpacity
               style={styles.excluirLink}
               onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowExcluir(true); }}
-              disabled={busy}
+              disabled={saindo || excluindo}
               accessibilityRole="button"
               accessibilityLabel="Excluir minha conta"
             >
@@ -1228,7 +1392,8 @@ export default function ContaScreen() {
         </>
         )}
 
-        <Text style={styles.version}>OLLI · Orçamentos que fecham negócio</Text>
+        {/* Versão no rodapé: é o que o suporte pergunta primeiro. Selecionável para copiar. */}
+        <Text style={styles.version} selectable>{rotuloVersao} · Orçamentos que fecham negócio</Text>
       </ScrollView>
 
       {/* MODAL: VER CÓPIAS DE SEGURANÇA */}
@@ -1289,6 +1454,7 @@ export default function ContaScreen() {
       {showCriarEmpresa && (
         <ModalCriarEmpresa
           nomeSugerido={empresa?.nome || empresa?.nomePrestador || ''}
+          podeConvidar={podeConvidarEquipe}
           onFechar={() => setShowCriarEmpresa(false)}
           onCriada={async () => {
             setShowCriarEmpresa(false);
@@ -1346,8 +1512,10 @@ export default function ContaScreen() {
       {/* MODAL: EXCLUIR MINHA CONTA (dupla confirmação — digitar EXCLUIR) */}
       {showExcluir && (
         <ModalExcluirConta
-          busy={busy}
+          busy={excluindo}
           loginApple={loginApple}
+          tipoConta={tipo}
+          org={org}
           onFechar={() => setShowExcluir(false)}
           onConfirmar={confirmarExclusaoFinal}
         />
@@ -1365,12 +1533,58 @@ export default function ContaScreen() {
  * "Entrar com a Apple" — ver `avisoApple` abaixo.
  */
 function ModalExcluirConta({
-  busy, loginApple, onFechar, onConfirmar,
-}: { busy: boolean; loginApple: boolean | null; onFechar: () => void; onConfirmar: () => void }) {
+  busy, loginApple, tipoConta, org, onFechar, onConfirmar,
+}: {
+  busy: boolean;
+  loginApple: boolean | null;
+  tipoConta: ReturnType<typeof useTipoConta>['tipo'];
+  org: Organizacao | null;
+  onFechar: () => void;
+  onConfirmar: () => void;
+}) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [texto, setTexto] = useState('');
   const confirmado = texto.trim().toUpperCase() === 'EXCLUIR';
+
+  /**
+   * DONO DE EMPRESA: a org e as linhas de membro saem em cascata com o usuário
+   * (organizacoes.owner_user_id on delete cascade) — os técnicos perdem a base da
+   * empresa no próximo sync. O modal precisa dizer isso ANTES, com o número de
+   * pessoas afetadas. `null` = não sei quantos (leitura falhou ou ainda não
+   * voltou): o texto fala de "todos os membros" em vez de inventar zero.
+   */
+  const donoDeEmpresa = tipoConta === 'empresa' && !!org && org.papel === 'owner';
+  const [outrosMembros, setOutrosMembros] = useState<number | null>(null);
+  useEffect(() => {
+    if (!donoDeEmpresa || !org) return;
+    let vivo = true;
+    listarMembros(org.id)
+      .then((lista) => {
+        if (!vivo) return;
+        // listarMembros devolve [] também em erro; a lista de verdade sempre traz o
+        // próprio dono. Vazia = não sei, não "ninguém".
+        if (lista.length === 0) return;
+        setOutrosMembros(lista.filter((m) => m.ativo && m.userId !== org.ownerUserId).length);
+      })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [donoDeEmpresa, org]);
+
+  const avisoEmpresa = !org || tipoConta !== 'empresa' ? null : (
+    <View style={styles.excluirEmpresaNota}>
+      <MaterialCommunityIcons name="office-building-remove-outline" size={18} color={cores.danger} />
+      <Text style={styles.excluirEmpresaTexto}>
+        {donoDeEmpresa
+          ? outrosMembros === null
+            ? `A empresa ${org.nome} é apagada junto com a sua conta, e todos os membros da equipe perdem o acesso a ela.`
+            : outrosMembros === 0
+              ? `A empresa ${org.nome} é apagada junto com a sua conta.`
+              : `A empresa ${org.nome} é apagada junto com a sua conta, e ${outrosMembros === 1 ? '1 membro da equipe perde' : `${outrosMembros} membros da equipe perdem`} o acesso a ela.`
+          : `Você sai da equipe ${org.nome}.`}
+      </Text>
+    </View>
+  );
 
   /**
    * SIGN IN WITH APPLE — a metade da exclusão que não é nossa.
@@ -1385,9 +1599,11 @@ function ModalExcluirConta({
    *
    * Três estados, um texto para cada — e a dúvida (`null`) mostra a versão
    * condicional em vez de esconder: quem entrou com a Apple e não vir o aviso
-   * sai achando que não sobrou nada.
+   * sai achando que não sobrou nada. Fora do iPhone a dúvida NÃO mostra o aviso:
+   * "Ajustes → seu nome → …" não existe no Android e só confundia; quem tem certeza
+   * de que entrou com a Apple (`true`) vê em qualquer aparelho.
    */
-  const avisoApple = loginApple === false ? null : (
+  const avisoApple = loginApple === false || (Platform.OS !== 'ios' && loginApple !== true) ? null : (
     <View style={styles.excluirAppleNota}>
       <MaterialCommunityIcons name="apple" size={16} color={cores.onSurfaceVariant} />
       <Text style={styles.excluirAppleTexto}>
@@ -1432,7 +1648,11 @@ function ModalExcluirConta({
             ))}
 
             <Text style={styles.excluirNota}>
-              Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.
+              {/* "Assinatura → Gerenciar assinatura" não existe no Android da Play
+                  (a tela só mostra status): lá o texto não aponta para o botão. */}
+              {BUILD_PLAY_SEM_COMPRA_EXTERNA
+                ? 'Se você tem uma assinatura ativa no cartão, ela é cancelada automaticamente ao excluir a conta.'
+                : 'Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.'}
               {/* A assinatura da Google Play é cobrada pela loja, e o OLLI não consegue
                   cancelá-la por aqui: sem este aviso, a exclusão prometeria parar uma
                   cobrança que continua. iOS: sem citar outra loja (Guideline 2.3.10). */}
@@ -1440,6 +1660,8 @@ function ModalExcluirConta({
                 ? ''
                 : ' Assinatura feita pela Google Play não é cancelada pela exclusão: cancele antes em Play Store › Pagamentos e assinaturas, senão a cobrança continua.'}
             </Text>
+
+            {avisoEmpresa}
 
             {avisoApple}
 
@@ -1478,8 +1700,8 @@ function ModalExcluirConta({
 
 /** Modal "Criar conta empresa": pede o nome e cria a org com o user como owner. */
 function ModalCriarEmpresa({
-  nomeSugerido, onFechar, onCriada,
-}: { nomeSugerido: string; onFechar: () => void; onCriada: () => void }) {
+  nomeSugerido, podeConvidar, onFechar, onCriada,
+}: { nomeSugerido: string; podeConvidar: boolean; onFechar: () => void; onCriada: () => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [nome, setNome] = useState(nomeSugerido);
@@ -1490,7 +1712,14 @@ function ModalCriarEmpresa({
     try {
       await criarOrganizacao(nome);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert('Empresa criada!', 'Agora você pode convidar sua equipe pela tela Equipe.');
+      // Só promete convite a quem o plano libera: sem o Empresa, a tela Equipe mostra
+      // o muro do plano, e "agora você pode convidar" seria mentira.
+      Alert.alert(
+        'Empresa criada!',
+        podeConvidar
+          ? 'Agora você pode convidar sua equipe pela tela Equipe.'
+          : 'Convidar técnicos é um recurso do plano Empresa. Veja os planos para saber como liberar.',
+      );
       onCriada();
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
@@ -1512,6 +1741,7 @@ function ModalCriarEmpresa({
           <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetSub}>
               A conta empresa deixa você convidar técnicos, definir papéis e ver a equipe. Seus orçamentos e clientes continuam os mesmos — a empresa é uma camada por cima.
+              {podeConvidar ? '' : ' Convidar técnicos é recurso do plano Empresa.'}
             </Text>
             <Text style={styles.sheetLabel}>Nome da empresa</Text>
             <TextInput
@@ -1670,6 +1900,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // ação irreversível). Ver `avisoApple` em ModalExcluirConta.
   excluirAppleNota: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, padding: 12, marginTop: 10 },
   excluirAppleTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
+  excluirEmpresaNota: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: c.dangerLight, borderRadius: BorderRadius.md, padding: 12, marginTop: 10 },
+  excluirEmpresaTexto: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 18, fontWeight: '600' },
+  notifBloqueadaCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.warningLight, borderRadius: BorderRadius.lg, padding: 12, marginHorizontal: Spacing.base, marginBottom: Spacing.sm },
+  notifBloqueadaTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
+  notifBloqueadaTexto: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
+  notifBloqueadaLink: { fontSize: 13, fontWeight: '800', color: c.accentLight, marginTop: 6 },
   excluirAppleForte: { fontWeight: '700', color: c.onSurface },
   excluirCancelar: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
   excluirCancelarText: { fontSize: 14, fontWeight: '700', color: c.onSurfaceVariant },

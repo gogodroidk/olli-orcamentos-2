@@ -23,14 +23,17 @@ import {
   getPacotesPix, criarCobrancaPix, checarStatusPix, formatarPrecoCentavos,
   type PacotePix, type CobrancaPix,
 } from '../services/pixCreditos';
+import { COMPRA_EXTERNA_HABILITADA } from '../config/loja';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * CreditosScreen — saldo de Créditos OLLI + RECARGA POR PIX (Mercado Pago).
  *
- * Créditos custeiam voz na nuvem, WhatsApp e consultas (ver worker/creditos.js).
- * Aqui o prestador vê o saldo, escolhe um pacote e paga por Pix: o worker cria a
+ * Créditos custeiam a voz na nuvem e a IA — os únicos consumidores com rota hoje
+ * (ver worker/creditos.js: os pesos de WhatsApp e consultas existem na tabela, mas
+ * nenhuma rota os debita; o texto só volta a citá-los quando debitarem de verdade).
+ * Na web o prestador vê o saldo, escolhe um pacote e paga por Pix: o worker cria a
  * cobrança (QR + copia-e-cola), o app faz polling de UX do status, e o CRÉDITO
  * cai pelo WEBHOOK (nunca otimista). O QR usa o PNG do gateway (brCodeBase64) —
  * sempre válido — com fallback pro gerador local do brCode.
@@ -40,11 +43,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * Android da Play (sem pacotes, QR, copia-e-cola ou chamada a criarCobrancaPix). O
  * saldo e o extrato continuam visíveis; a web mantém a recarga existente.
  */
-const COMPRA_NO_APP = Platform.OS !== 'ios';
-/** Flag explícita desta branch: o build Android da Play é somente consumo/consulta
- * e não oferece Pix ou qualquer outra compra externa de créditos digitais. */
-const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
-const COMPRA_EXTERNA_HABILITADA = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;
 
 /** "há 3 dias" / data curta a partir do ISO do lançamento. */
 function dataCurta(iso: string): string {
@@ -103,8 +101,8 @@ export default function CreditosScreen() {
 
   useEffect(() => {
     recarregarSaldo();
-    // No iOS a compra fica escondida (ver COMPRA_NO_APP acima) — não há motivo
-    // para buscar o catálogo de pacotes que nunca vai aparecer na tela.
+    // No iOS e no Android da Play a compra fica escondida (config/loja.ts) — não
+    // há motivo para buscar o catálogo de pacotes que nunca vai aparecer na tela.
     if (COMPRA_EXTERNA_HABILITADA) carregarPacotes();
   }, [recarregarSaldo, carregarPacotes]);
 
@@ -196,7 +194,7 @@ export default function CreditosScreen() {
     <View style={styles.tela}>
       <GradientHeader
         title="Créditos"
-        subtitle="Voz na nuvem, WhatsApp e consultas"
+        subtitle="Voz na nuvem e IA"
         onBack={() => (cobranca ? fecharCobranca() : goBackOrHome(nav))}
       />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -346,7 +344,19 @@ export default function CreditosScreen() {
                   ))}
                 </OlliCard>
               </>
-            ) : null}
+            ) : (
+              // Extrato VAZIO (resposta válida, não erro): diz que não há nada e
+              // para que serve o saldo, em vez de deixar a tela muda.
+              <>
+                <Text style={styles.secaoTitulo}>Últimos lançamentos</Text>
+                <OlliCard style={styles.card} padding={Spacing.lg}>
+                  <Text style={styles.extVazioTitulo}>Nenhum lançamento ainda</Text>
+                  <Text style={styles.indisponivel}>
+                    Os créditos pagam o uso da voz na nuvem e da IA. Cada uso que gastar créditos aparece aqui, com a data.
+                  </Text>
+                </OlliCard>
+              </>
+            )}
           </>
         )}
       </ScrollView>
@@ -405,5 +415,6 @@ const criarEstilos = (c: Cores) =>
     extDir: { alignItems: 'flex-end' },
     extDelta: { fontSize: 15, fontFamily: Fonts.semiBold },
     extData: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
+    extVazioTitulo: { fontSize: 14.5, fontFamily: Fonts.semiBold, color: c.onSurface, textAlign: 'center', marginBottom: Spacing.xs },
     extErro: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.sm },
   });

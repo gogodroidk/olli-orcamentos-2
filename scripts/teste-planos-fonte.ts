@@ -104,7 +104,7 @@ checar('comparativo varre os recursos gateados da fonte', tela.includes('RECURSO
 checar('linha do 12x nomeia a fonte da verdade (texto12xPro)', tela.includes('texto12xPro('), true);
 
 console.log('\n5) lojas nativas — info completa, compra externa escondida');
-checar('COMPRA_NO_APP definido', tela.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
+checar('COMPRA_NO_APP vem da flag única (config/loja)', /import \{[^}]*\bCOMPRA_NO_APP\b[^}]*\} from '\.\.\/config\/loja';/.test(tela), true);
 checar('CTA de compra condicionado a COMPRA_NO_APP', tela.includes(') : !COMPRA_NO_APP ? ('), true);
 checar('abas de período escondidas fora de compra', tela.includes('{COMPRA_NO_APP && ('), true);
 checar('linha 12x só onde há compra e nunca no Android Play', tela.includes('COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && linha12x'), true);
