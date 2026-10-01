@@ -5,16 +5,24 @@
  * `saidaCalculo.ts`): assim `node` executa direto e `scripts/teste-clima-app.ts`
  * prova o comportamento REAL. O que tem rede/React fica em `clima.ts`.
  *
+ * Fonte: MET Norway (Locationforecast 2.0), CC BY 4.0 — a licença EXIGE
+ * atribuição. Toda tela que mostrar clima mostra também `atribuicaoClima(estado)`
+ * ("Previsão: MET Norway").
+ *
  * Contrato do worker (`GET /clima?lat=&lon=` — ver `worker/src/clima.js`):
- *   200 { ok:true, local, fuso, atual:{temperatura,codigo,ehDia},
- *         hoje:{data,max,min}, chuvaPorHora:[{inicio,hora,probabilidade,codigo}],
- *         atualizadoEm, cache }
+ *   200 { ok:true, fonte:'MET Norway', licenca, local, fuso,
+ *         atual:{temperatura,simbolo,ehDia,medidoEm}, hoje:{data,max,min},
+ *         chuvaPorHora:[{inicio,hora,mm,simbolo}], atualizadoEm, cache }
  *   4xx/5xx { ok:false, motivo }
  *
+ * O MET não dá PROBABILIDADE de chuva no produto usado: dá os MILÍMETROS
+ * previstos para cada hora e um símbolo do tempo ('rain', 'cloudy',
+ * 'partlycloudy_day'…). O texto fala em "chuva prevista", nunca em "%".
+ *
  * ─── A REGRA DURA ──────────────────────────────────────────────────────────
- * `probabilidade: null` é "não sei", e "não sei" NUNCA vira "sem chuva". Se
- * qualquer hora da janela está sem dado, o texto não afirma céu limpo — fala só
- * da temperatura. Prestador que sai sem capa porque o app chutou "sem chuva"
+ * `mm: null` é "não sei", e "não sei" NUNCA vira "sem chuva". Se qualquer hora
+ * da janela está sem dado, o texto não afirma céu limpo — fala só da
+ * temperatura. Prestador que sai sem capa porque o app chutou "sem chuva"
  * perde a tarde (e o equipamento molhado é dele).
  */
 
@@ -33,41 +41,52 @@ export interface FalhaClima {
 }
 
 export interface HoraChuva {
-  /** 'AAAA-MM-DDTHH:MM' no horário LOCAL do lugar. */
+  /** 'AAAA-MM-DDTHH:MM' no horário LOCAL (America/Sao_Paulo). */
   inicio: string;
   /** 'HH:MM' */
   hora: string;
-  /** 0–100, ou `null` quando o upstream não informou (≠ 0%). */
-  probabilidade: number | null;
-  /** Código WMO da hora, ou `null`. */
-  codigo: number | null;
+  /** Milímetros previstos para a hora, ou `null` quando o MET não informou (≠ 0 mm). */
+  mm: number | null;
+  /** Símbolo do MET da hora ('rain', 'cloudy'…), ou `null`. */
+  simbolo: string | null;
 }
 
 export interface DadosClima {
   ok: true;
   temperatura: number;
-  /** Código WMO do tempo agora. */
-  codigo: number;
-  /** "Parcialmente nublado", "Chuva fraca"… derivado de `codigo`. */
+  /** Símbolo do MET para agora ('partlycloudy_day', 'rain'…). */
+  simbolo: string;
+  /** "Parcialmente nublado", "Chuva fraca"… derivado de `simbolo`. */
   descricao: string;
-  ehDia: boolean;
+  /** `null` quando o símbolo não diz se é dia ou noite ('rain', 'fog'). */
+  ehDia: boolean | null;
   max: number | null;
   min: number | null;
   /** Próximas 12h a partir da hora cheia corrente. */
   chuvaPorHora: HoraChuva[];
   /** ISO de quando o worker obteve a previsão (pode ter até 30 min). */
   atualizadoEm: string | null;
-  /** Frase curta pronta para a UI: "Chuva às 15h — leve capa". */
+  /** Frase curta pronta para a UI: "Chuva prevista às 15h — leve capa". */
   resumo: string;
+  /** Crédito exigido pela CC BY 4.0: "Previsão: MET Norway". */
+  atribuicao: string;
 }
 
 /** Os 3 estados que a UI enxerga. */
 export type EstadoClima = 'carregando' | FalhaClima | DadosClima;
 
-/** Probabilidade a partir da qual o app diz "Chuva às Xh". */
-export const LIMIAR_CHUVA = 50;
-/** Probabilidade a partir da qual o app diz "Pode chover às Xh". */
-export const LIMIAR_TALVEZ = 30;
+/** Nome da fonte (CC BY 4.0). */
+export const FONTE_CLIMA = 'MET Norway';
+/** Texto de crédito que acompanha o clima na tela. */
+export const ATRIBUICAO_CLIMA = `Previsão: ${FONTE_CLIMA}`;
+/** Links da atribuição (para um crédito tocável, se a tela quiser). */
+export const FONTE_CLIMA_URL = 'https://www.met.no/en';
+export const LICENCA_CLIMA_URL = 'https://creativecommons.org/licenses/by/4.0/';
+
+/** mm/h a partir do qual o app diz "Chuva prevista às Xh — leve capa". */
+export const LIMIAR_MM_CHUVA = 0.5;
+/** mm/h a partir do qual o app diz "Pode chover às Xh (0,2 mm)". */
+export const LIMIAR_MM_TALVEZ = 0.1;
 
 const MOTIVOS: readonly MotivoFalhaClima[] = [
   'sem_localizacao',
@@ -85,28 +104,27 @@ export function motivoDeFalha(bruto: unknown): MotivoFalhaClima {
     : 'clima_indisponivel';
 }
 
-/** Códigos WMO de precipitação líquida/tempestade (garoa, chuva, pancadas, trovoada). */
-export function codigoEhChuva(codigo: number | null | undefined): boolean {
-  if (typeof codigo !== 'number') return false;
-  return (codigo >= 51 && codigo <= 67) || (codigo >= 80 && codigo <= 82) || codigo >= 95;
+/** Símbolo do MET de chuva/pancada/trovoada/chuva com neve. `null` não é chuva (nem "seco"). */
+export function simboloEhChuva(simbolo: string | null | undefined): boolean {
+  if (typeof simbolo !== 'string') return false;
+  return /rain|shower|thunder|sleet/.test(simbolo);
 }
 
-/** Código WMO → texto pt-BR curto. Desconhecido não vira "céu limpo": vira "Tempo variável". */
-export function descricaoTempo(codigo: number): string {
-  if (codigo === 0) return 'Céu limpo';
-  if (codigo === 1) return 'Poucas nuvens';
-  if (codigo === 2) return 'Parcialmente nublado';
-  if (codigo === 3) return 'Nublado';
-  if (codigo === 45 || codigo === 48) return 'Neblina';
-  if (codigo >= 51 && codigo <= 57) return 'Garoa';
-  if (codigo === 61 || codigo === 66) return 'Chuva fraca';
-  if (codigo === 63) return 'Chuva';
-  if (codigo === 65 || codigo === 67) return 'Chuva forte';
-  if (codigo >= 71 && codigo <= 77) return 'Neve';
-  if (codigo === 80) return 'Pancadas de chuva';
-  if (codigo === 81 || codigo === 82) return 'Pancadas fortes';
-  if (codigo === 85 || codigo === 86) return 'Pancadas de neve';
-  if (codigo >= 95) return 'Trovoada';
+/** Símbolo do MET → texto pt-BR curto. Desconhecido não vira "céu limpo": vira "Tempo variável". */
+export function descricaoTempo(simbolo: string): string {
+  const base = String(simbolo).replace(/_(day|night|polartwilight)$/, '');
+  const leve = base.startsWith('light');
+  const forte = base.startsWith('heavy');
+  if (base.includes('thunder')) return 'Trovoada';
+  if (base.includes('sleet')) return 'Chuva com neve';
+  if (base.includes('snow')) return 'Neve';
+  if (base.includes('rainshowers')) return leve ? 'Pancadas de chuva fraca' : forte ? 'Pancadas fortes' : 'Pancadas de chuva';
+  if (base.includes('rain')) return leve ? 'Chuva fraca' : forte ? 'Chuva forte' : 'Chuva';
+  if (base === 'clearsky') return 'Céu limpo';
+  if (base === 'fair') return 'Poucas nuvens';
+  if (base === 'partlycloudy') return 'Parcialmente nublado';
+  if (base === 'cloudy') return 'Nublado';
+  if (base === 'fog') return 'Neblina';
   return 'Tempo variável';
 }
 
@@ -118,6 +136,11 @@ export function horaCurta(hhmm: string): string {
   return m[2] === '00' ? `${h}h` : `${h}h${m[2]}`;
 }
 
+/** 0.2 → '0,2 mm'. */
+export function mmCurto(mm: number): string {
+  return `${mm.toFixed(1).replace('.', ',')} mm`;
+}
+
 function grau(n: number): string {
   return `${Math.round(n)}°`;
 }
@@ -127,35 +150,36 @@ function textoTemperatura(temperatura: number, max: number | null): string {
   return max === null ? `${grau(temperatura)} agora` : `${grau(temperatura)} agora · máx ${grau(max)}`;
 }
 
+/** Hora com chuva prevista: símbolo de chuva OU ≥ 0,5 mm. */
+function horaComChuva(h: HoraChuva): boolean {
+  return simboloEhChuva(h.simbolo) || (h.mm !== null && h.mm >= LIMIAR_MM_CHUVA);
+}
+
 /**
  * Frase curta para a UI. Ordem de prioridade:
- *  1. chovendo agora (código atual ou da hora corrente) → "Chovendo agora — leve capa"
- *  2. 1ª hora com ≥50% → "Chuva às 15h — leve capa"
- *  3. 1ª hora com ≥30% → "Pode chover às 15h (35%)"
- *  4. 1ª hora com código WMO de chuva (probabilidade baixa) → "Pode chover às 15h"
- *  5. janela inteira conhecida, abaixo de 30% e sem código de chuva → "Sem chuva nas próximas 12h · 27°"
- *  6. qualquer hora sem dado → só a temperatura (não afirma "sem chuva")
+ *  1. símbolo de agora (ou da hora corrente) é chuva → "Chuva prevista agora — leve capa"
+ *  2. 1ª hora com símbolo de chuva ou ≥0,5 mm → "Chuva prevista às 15h — leve capa"
+ *  3. 1ª hora com ≥0,1 mm → "Pode chover às 15h (0,2 mm)"
+ *  4. janela inteira com mm CONHECIDO, abaixo disso e sem símbolo de chuva
+ *     → "Sem chuva prevista nas próximas 12h · 27°"
+ *  5. qualquer hora sem dado → só a temperatura (não afirma "sem chuva")
  */
 export function resumoClima(d: {
   temperatura: number;
-  codigo: number;
+  simbolo: string;
   max: number | null;
   chuvaPorHora: HoraChuva[];
 }): string {
   const horas = d.chuvaPorHora;
-  if (codigoEhChuva(d.codigo) || codigoEhChuva(horas[0]?.codigo)) {
-    return 'Chovendo agora — leve capa';
+  if (simboloEhChuva(d.simbolo) || simboloEhChuva(horas[0]?.simbolo)) {
+    return 'Chuva prevista agora — leve capa';
   }
-  const chuva = horas.find((h) => h.probabilidade !== null && h.probabilidade >= LIMIAR_CHUVA);
-  if (chuva) return `Chuva às ${horaCurta(chuva.hora)} — leve capa`;
-  const talvez = horas.find((h) => h.probabilidade !== null && h.probabilidade >= LIMIAR_TALVEZ);
-  if (talvez) return `Pode chover às ${horaCurta(talvez.hora)} (${talvez.probabilidade}%)`;
-  // O código WMO da hora também é previsão: chuva no código com probabilidade
-  // baixa NÃO autoriza "Sem chuva nas próximas 12h" — o texto se contradiria.
-  const porCodigo = horas.find((h) => codigoEhChuva(h.codigo));
-  if (porCodigo) return `Pode chover às ${horaCurta(porCodigo.hora)}`;
-  const tudoConhecido = horas.length > 0 && horas.every((h) => h.probabilidade !== null);
-  if (tudoConhecido) return `Sem chuva nas próximas ${horas.length}h · ${grau(d.temperatura)}`;
+  const chuva = horas.find(horaComChuva);
+  if (chuva) return `Chuva prevista às ${horaCurta(chuva.hora)} — leve capa`;
+  const talvez = horas.find((h) => h.mm !== null && h.mm >= LIMIAR_MM_TALVEZ);
+  if (talvez && talvez.mm !== null) return `Pode chover às ${horaCurta(talvez.hora)} (${mmCurto(talvez.mm)})`;
+  const tudoConhecido = horas.length > 0 && horas.every((h) => h.mm !== null);
+  if (tudoConhecido) return `Sem chuva prevista nas próximas ${horas.length}h · ${grau(d.temperatura)}`;
   return textoTemperatura(d.temperatura, d.max);
 }
 
@@ -163,17 +187,21 @@ function numOuNull(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+function textoOuNull(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
+}
+
 /**
  * Valida a resposta do worker. `null` = corpo que não entendemos — e isso é
  * `clima_indisponivel`, não "tempo bom". Worker mais novo/velho não pode virar
- * previsão fantasma.
+ * previsão fantasma (um worker antigo com `probabilidade`/`codigo` não passa).
  */
 export function normalizarRespostaClima(data: unknown): DadosClima | null {
   const d = data as any;
   if (!d || d.ok !== true || !d.atual) return null;
   const temperatura = numOuNull(d.atual.temperatura);
-  const codigo = numOuNull(d.atual.codigo);
-  if (temperatura === null || codigo === null) return null;
+  const simbolo = textoOuNull(d.atual.simbolo);
+  if (temperatura === null || simbolo === null) return null;
   if (!Array.isArray(d.chuvaPorHora)) return null;
 
   const chuvaPorHora: HoraChuva[] = [];
@@ -181,29 +209,31 @@ export function normalizarRespostaClima(data: unknown): DadosClima | null {
     const inicio = String(h?.inicio ?? '');
     const hora = String(h?.hora ?? '');
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(inicio) || !/^\d{2}:\d{2}$/.test(hora)) return null;
-    const p = numOuNull(h?.probabilidade);
+    const mm = numOuNull(h?.mm);
     chuvaPorHora.push({
       inicio,
       hora,
-      probabilidade: p === null ? null : Math.max(0, Math.min(100, Math.round(p))),
-      codigo: numOuNull(h?.codigo),
+      // Negativo é lixo: vira "não sei", não "seco".
+      mm: mm === null || mm < 0 ? null : mm,
+      simbolo: textoOuNull(h?.simbolo),
     });
   }
 
   const max = numOuNull(d.hoje?.max);
   const min = numOuNull(d.hoje?.min);
-  const base = { temperatura, codigo, max, chuvaPorHora };
+  const ehDia = d.atual.ehDia === true ? true : d.atual.ehDia === false ? false : null;
   return {
     ok: true,
     temperatura,
-    codigo,
-    descricao: descricaoTempo(codigo),
-    ehDia: d.atual.ehDia === true,
+    simbolo,
+    descricao: descricaoTempo(simbolo),
+    ehDia,
     max,
     min,
     chuvaPorHora,
     atualizadoEm: typeof d.atualizadoEm === 'string' ? d.atualizadoEm : null,
-    resumo: resumoClima(base),
+    resumo: resumoClima({ temperatura, simbolo, max, chuvaPorHora }),
+    atribuicao: ATRIBUICAO_CLIMA,
   };
 }
 
@@ -211,12 +241,24 @@ export function normalizarRespostaClima(data: unknown): DadosClima | null {
  * Texto pronto para qualquer estado — a UI NUNCA some calada:
  *   carregando → "Carregando clima…"
  *   falha      → "Clima indisponível"
- *   dados      → o resumo ("Chuva às 15h — leve capa")
+ *   dados      → o resumo ("Chuva prevista às 15h — leve capa")
  */
 export function textoClima(estado: EstadoClima): string {
   if (estado === 'carregando') return 'Carregando clima…';
   if (estado.ok === false) return 'Clima indisponível';
   return estado.resumo;
+}
+
+/**
+ * Crédito da previsão (CC BY 4.0). Com estado: devolve "Previsão: MET Norway"
+ * quando há previsão na tela e `null` quando não há (carregando/falha não
+ * mostram dado do MET, então não há o que creditar). Sem argumento: sempre o
+ * texto — para rodapé/tela "Sobre".
+ */
+export function atribuicaoClima(estado?: EstadoClima): string | null {
+  if (estado === undefined) return ATRIBUICAO_CLIMA;
+  if (estado === 'carregando' || estado.ok === false) return null;
+  return estado.atribuicao;
 }
 
 /** Coordenada aceitável para pedir clima (mesma régua do worker, inclusive recusar 0,0). */

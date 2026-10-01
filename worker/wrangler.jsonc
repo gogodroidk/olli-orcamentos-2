@@ -249,7 +249,7 @@
     // de e-mail e reenvios. Fail-closed: sem o binding, a rota responde 503.
     // Id 1021 (faixa 102x = Auth), longe dos 101x para não colidir com PR paralelo.
     { "name": "AUTH_EMAIL_RL", "namespace_id": "1021", "simple": { "limit": 5, "period": 60 } },
-    // /clima por IP (rota pública, sem login). Upstream grátis (Open-Meteo, sem
+    // /clima por IP (rota pública, sem login). Upstream grátis (MET Norway, sem
     // chave): o teto protege o fair-use dele, não fatura. Acerto de cache (30 min
     // por geohash de ~5 km) não consome balde. Id 1030 de propósito: fora da
     // sequência 1022+ que outras rotas da Onda 2 podem estar pegando em paralelo

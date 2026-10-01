@@ -1121,7 +1121,7 @@ const handler = {
       return handleFeriados(request, env, url.pathname.slice('/feriados/'.length));
     }
 
-    // Clima do dia — GET /clima?lat=&lon= (Open-Meteo, sem chave). PÚBLICO e
+    // Clima do dia — GET /clima?lat=&lon= (MET Norway, grátis, CC BY 4.0). PÚBLICO e
     // limitado por IP (CLIMA_RL): o dado é público e o upstream é grátis. Cache
     // de 30 min por geohash de ~5 km na Cache API. Ver o docblock de clima.js.
     if (url.pathname === '/clima' && request.method === 'GET') {
