@@ -513,6 +513,8 @@ export default function AgendaScreen() {
       recorrencia: a.recorrencia,
       recorrenciaAteBR: a.recorrenciaAte ? isoToBR(a.recorrenciaAte) : '',
       contratoId: a.contratoId,
+      excecoes: a.excecoes,
+      ordemServicoId: a.ordemServicoId,
     });
   }
 
@@ -590,6 +592,10 @@ export default function AgendaScreen() {
       recorrencia: e.contratoId ? undefined : e.recorrencia,
       recorrenciaAte: !e.contratoId && e.recorrencia && recorrenciaAte ? recorrenciaAte : undefined,
       contratoId: e.contratoId,
+      // Preservados da linha aberta (o formulário não os mostra). Exceção só vale em
+      // série: tirar a repetição as descarta (o save grava nulo sem `recorrencia`).
+      excecoes: e.excecoes,
+      ordemServicoId: e.ordemServicoId,
     };
     setSalvando(true);
     try {
@@ -1090,6 +1096,13 @@ interface EditState {
   /** 'dd/mm/aaaa' digitado (ou ''). */
   recorrenciaAteBR: string;
   contratoId?: string;
+  /**
+   * Campos que o formulário NÃO edita, mas que a linha tem: sem carregá-los até o
+   * save, salvar a série pelo formulário apagaria as exceções por ocorrência
+   * (canceladas/movidas/concluídas só ela) e a OS ligada — local e na nuvem.
+   */
+  excecoes?: Agendamento['excecoes'];
+  ordemServicoId?: string;
 }
 
 function combinarDataHora(data: Date, hora: string): Date {
