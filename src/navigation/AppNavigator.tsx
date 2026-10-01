@@ -196,7 +196,8 @@ export type RootStackParamList = {
 export type TabParamList = {
   Home: undefined;
   // Agenda pode abrir já criando um agendamento para um cliente/orçamento (CRM).
-  Agenda: { novoParaClienteId?: string; novoParaClienteNome?: string; novoParaOrcamentoId?: string; novoEndereco?: string; novoTitulo?: string } | undefined;
+  // `abrirAgendamentoId`: toque na notificação "Visita em 1h" foca o dia e abre o compromisso.
+  Agenda: { novoParaClienteId?: string; novoParaClienteNome?: string; novoParaOrcamentoId?: string; novoEndereco?: string; novoTitulo?: string; abrirAgendamentoId?: string } | undefined;
   Orcar: undefined;     // botão central elevado → abre NovoOrcamento (stack)
   Hoje: undefined;
   Conta: undefined;

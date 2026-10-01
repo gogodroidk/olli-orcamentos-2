@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, LayoutAnimation,
-  RefreshControl, Animated, KeyboardAvoidingView, Switch,
+  RefreshControl, Animated, KeyboardAvoidingView, Switch, FlatList,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,11 +13,12 @@ import {
   addDays, addWeeks, addMonths, isSameDay, isSameMonth, eachDayOfInterval, isToday,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { TimePickerModal } from 'react-native-paper-dates';
+import { TimePickerModal, DatePickerModal } from 'react-native-paper-dates';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, corCategoriaEmChip, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
+import { FieldLabel } from '../components/FieldLabel';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
@@ -32,6 +33,12 @@ import {
 } from '../services/agenda';
 import { SeletorResponsavel, CamposRecorrencia } from '../components/agenda/CamposEquipeRecorrencia';
 import { useEquipeResponsaveis } from '../hooks/useEquipeResponsaveis';
+import { usePermissao } from '../hooks/usePermissao';
+import { useTipoConta } from '../hooks/useTipoConta';
+import {
+  aplicarEscopo, agendamentoNoPassado, diaDaOcorrencia, duracaoEstimadaMin, filtrarClientes, horaFimSugerida,
+  inicioPadraoNovo, ordenarDoDia, paraHHMM, resolverEscopoAgenda, rotuloDuracao, semHoraMarcada, type EntradaEscopo,
+} from '../utils/agendaDominio';
 import {
   filtrarPorResponsavel, idBaseDaOcorrencia, rotuloRecorrencia, type FiltroResponsavel, type OcorrenciaAgendamento,
 } from '../utils/contratoRecorrente';
@@ -44,7 +51,10 @@ import {
 import { RootStackParamList, TabParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { nowISO, capitalizeFirst, parseHoraHHMM, formatHoraHHMM } from '../utils/date';
-import { onSyncAplicado } from '../services/cloudSync';
+import { onSyncAplicado, syncOnLogin } from '../services/cloudSync';
+import { getCurrentUser } from '../services/supabase';
+import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
+import { confirmar as confirmarNaWeb } from './desktop/dialogo';
 import { NOTIF_EXPLICADO_KEY } from '../services/storageKeys';
 import {
   googleAgendaDisponivel, estaConectado, conectarGoogleAgenda, desconectarGoogleAgenda,
@@ -89,6 +99,21 @@ function SincronizandoPill({ onDone, texto = 'Sincronizando...', icon = 'cloud-s
   );
 }
 
+/**
+ * Confirmação de ação destrutiva. No celular, o Alert nativo; no navegador o
+ * Alert.alert é no-op (react-native-web), então usa o diálogo do app
+ * (DialogoDesktopHost, montado no App). Fechar sem escolher = não.
+ */
+function pedirConfirmacao(titulo: string, mensagem: string, acao: string): Promise<boolean> {
+  if (Platform.OS === 'web') return confirmarNaWeb(titulo, mensagem);
+  return new Promise(resolve => {
+    Alert.alert(titulo, mensagem, [
+      { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+      { text: acao, style: 'destructive', onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
+
 // Chave para lembrar se já explicamos ao usuário por que pedimos notificação
 // (mostra o aviso amigável só na primeira vez que ele salva um agendamento).
 
@@ -131,6 +156,29 @@ export default function AgendaScreen() {
   // filtro só aparece quando ela carregou e existe).
   const equipe = useEquipeResponsaveis();
   const [filtroTecnico, setFiltroTecnico] = useState<FiltroResponsavel>('todos');
+  // QUEM VÊ O QUÊ — técnico vê só a própria agenda (matriz em usePermissao).
+  // Enquanto o papel não é conhecido, a lista não aparece (nem vazia, nem a da
+  // equipe inteira); se a leitura falhar, a tela diz isso e deixa tentar de novo.
+  const { pode } = usePermissao();
+  const tipoConta = useTipoConta();
+  const [usuario, setUsuario] = useState<EntradaEscopo['usuario']>({ status: 'carregando' });
+  const lerUsuario = useCallback(() => {
+    setUsuario({ status: 'carregando' });
+    getCurrentUser()
+      .then(u => setUsuario({ status: 'ok', id: u?.id ?? null }))
+      .catch(() => setUsuario({ status: 'ok', id: null }));
+  }, []);
+  useEffect(() => { lerUsuario(); }, [lerUsuario]);
+  const escopo = useMemo(() => resolverEscopoAgenda({
+    papelResolvido: tipoConta.resolvido,
+    papelCarregando: tipoConta.carregando,
+    podeVerEquipe: pode('ver_agenda_equipe'),
+    usuario,
+  }), [tipoConta.resolvido, tipoConta.carregando, pode, usuario]);
+  const podeVerEquipe = escopo.status === 'equipe';
+  const itensVisiveis = useMemo(() => aplicarEscopo(itens, escopo), [itens, escopo]);
+  // "Ir para a data" (DatePickerModal) — antes só dava para andar semana a semana.
+  const [irParaData, setIrParaData] = useState(false);
   const [editing, setEditing] = useState<EditState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
@@ -212,30 +260,49 @@ export default function AgendaScreen() {
     }
   }
 
-  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  // Puxar para atualizar busca da NUVEM (antes só relia o SQLite local, e a visita
+  // recém-atribuída ao técnico não descia). `syncOnLogin` já tem trava de
+  // reentrada e nunca lança; o teto de 15 s só solta o indicador numa rede ruim
+  // (o sync segue e, ao terminar, o onSyncAplicado recarrega a tela sozinho).
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.race([
+        syncOnLogin().catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 15_000)),
+      ]);
+    } finally {
+      await load();
+      setRefreshing(false);
+    }
+  }, [load]);
+  const refreshControl = (
+    <RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />
+  );
 
   // FILTROS (1.6) — chips de tipo/status com contagem, client-side sobre `itens`
   // (a lista já carregada do período; nenhuma query nova). "Todos" sempre é a
   // contagem total do período, independente do OUTRO filtro estar ativo.
   const chipsTipo: ItemChipFiltro<FiltroTipoAgenda>[] = useMemo(() => [
-    { chave: 'todos', rotulo: 'Todos', contagem: itens.length },
+    { chave: 'todos', rotulo: 'Todos', contagem: itensVisiveis.length },
     ...TIPOS_AGENDAMENTO.map(t => ({
       chave: t.id as FiltroTipoAgenda,
       rotulo: t.label,
       cor: t.color,
-      contagem: itens.filter(a => a.tipo === t.id).length,
+      contagem: itensVisiveis.filter(a => a.tipo === t.id).length,
     })),
-  ], [itens]);
+  ], [itensVisiveis]);
 
   const chipsStatus: ItemChipFiltro<FiltroStatusAgenda>[] = useMemo(() => [
-    { chave: 'todos', rotulo: 'Todos', contagem: itens.length },
-    { chave: 'agendado', rotulo: STATUS_AGENDAMENTO_LABELS.agendado, cor: cores.accent, contagem: itens.filter(a => a.status === 'agendado').length },
-    { chave: 'concluido', rotulo: STATUS_AGENDAMENTO_LABELS.concluido, cor: cores.success, contagem: itens.filter(a => a.status === 'concluido').length },
-    { chave: 'cancelado', rotulo: STATUS_AGENDAMENTO_LABELS.cancelado, cor: cores.danger, contagem: itens.filter(a => a.status === 'cancelado').length },
-  ], [itens, cores]);
+    { chave: 'todos', rotulo: 'Todos', contagem: itensVisiveis.length },
+    { chave: 'agendado', rotulo: STATUS_AGENDAMENTO_LABELS.agendado, cor: cores.accent, contagem: itensVisiveis.filter(a => a.status === 'agendado').length },
+    { chave: 'concluido', rotulo: STATUS_AGENDAMENTO_LABELS.concluido, cor: cores.success, contagem: itensVisiveis.filter(a => a.status === 'concluido').length },
+    { chave: 'cancelado', rotulo: STATUS_AGENDAMENTO_LABELS.cancelado, cor: cores.danger, contagem: itensVisiveis.filter(a => a.status === 'cancelado').length },
+  ], [itensVisiveis, cores]);
 
   const chipsTecnico: ItemChipFiltro<FiltroResponsavel>[] = useMemo(() => {
-    if (equipe.estado.status !== 'ok' || equipe.estado.semEquipe) return [];
+    // Técnico não escolhe de quem ver: a lista dele já é só a dele.
+    if (!podeVerEquipe || equipe.estado.status !== 'ok' || equipe.estado.semEquipe) return [];
     return [
       { chave: 'todos', rotulo: 'Toda a equipe', contagem: itens.length },
       { chave: 'sem', rotulo: 'Sem responsável', contagem: filtrarPorResponsavel(itens, 'sem').length },
@@ -245,12 +312,12 @@ export default function AgendaScreen() {
         contagem: filtrarPorResponsavel(itens, m.userId).length,
       })),
     ];
-  }, [itens, equipe.estado]);
+  }, [itens, equipe.estado, podeVerEquipe]);
 
-  const itensFiltrados = useMemo(() => filtrarPorResponsavel(itens, filtroTecnico).filter(a =>
+  const itensFiltrados = useMemo(() => filtrarPorResponsavel(itensVisiveis, podeVerEquipe ? filtroTecnico : 'todos').filter(a =>
     (filtroTipo === 'todos' || a.tipo === filtroTipo) &&
     (filtroStatus === 'todos' || a.status === filtroStatus)
-  ), [itens, filtroTipo, filtroStatus, filtroTecnico]);
+  ), [itensVisiveis, podeVerEquipe, filtroTipo, filtroStatus, filtroTecnico]);
 
   const diasSemana = useMemo(() => eachDayOfInterval({
     start: startOfWeek(ref, { weekStartsOn: 1 }),
@@ -275,13 +342,12 @@ export default function AgendaScreen() {
     return mapa;
   }, [itensFiltrados]);
 
-  const itensDoDiaSemFiltro = useMemo(() => itens
-    .filter(a => isSameDay(new Date(a.inicio), ref))
-    .sort((a, b) => a.inicio.localeCompare(b.inicio)), [itens, ref]);
+  // "Dia todo" (sem hora marcada) vem no topo do dia, depois pela hora.
+  const itensDoDiaSemFiltro = useMemo(() => ordenarDoDia(itensVisiveis
+    .filter(a => isSameDay(new Date(a.inicio), ref))), [itensVisiveis, ref]);
 
-  const itensDoDia = useMemo(() => itensFiltrados
-    .filter(a => isSameDay(new Date(a.inicio), ref))
-    .sort((a, b) => a.inicio.localeCompare(b.inicio)), [itensFiltrados, ref]);
+  const itensDoDia = useMemo(() => ordenarDoDia(itensFiltrados
+    .filter(a => isSameDay(new Date(a.inicio), ref))), [itensFiltrados, ref]);
 
   function passo(delta: number) {
     Haptics.selectionAsync().catch(() => {});
@@ -304,20 +370,31 @@ export default function AgendaScreen() {
 
   function abrirNovo(prefill?: Partial<EditState>) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const base = ref;
-    const inicioPadrao = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 9, 0, 0, 0);
+    // Hoje: próximo meio-hora (às 15h o padrão era 09:00, um horário já passado e
+    // sem lembrete). Outro dia: 09:00. O fim já vem com a duração do tipo.
+    const inicioPadrao = inicioPadraoNovo(ref, new Date());
+    const tipo = prefill?.tipo ?? 'visita';
+    // Técnico só agenda para si: o seletor de responsável não aparece para ele, e
+    // uma visita sem responsável sumiria da agenda dele logo depois de salvar.
+    const meu = escopo.status === 'propria' ? escopo.userId : undefined;
+    const meuNome = meu && equipe.estado.status === 'ok'
+      ? equipe.estado.membros.find(m => m.userId === meu)?.nome
+      : undefined;
     setEditing({
       id: undefined,
       clienteId: undefined,
       clienteNome: '',
       titulo: '',
-      tipo: 'visita',
+      tipo,
       data: inicioPadrao,
-      horaInicio: '09:00',
-      horaFim: '',
+      horaInicio: paraHHMM(inicioPadrao),
+      horaFim: horaFimSugerida(inicioPadrao, tipo),
+      fimAutomatico: true,
       endereco: '',
       observacao: '',
       recorrenciaAteBR: '',
+      responsavelId: meu,
+      responsavelNome: meuNome,
       ...prefill,
     });
   }
@@ -345,6 +422,46 @@ export default function AgendaScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params]));
+
+  // Toque na notificação "Visita em 1h": o App navega com
+  // ('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId } }). Foca o dia e
+  // abre o compromisso. O id fica pendente até o escopo resolver: no app frio o
+  // papel ainda está em leitura, e técnico só abre o que é dele.
+  const [abrirPendente, setAbrirPendente] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: só reage ao id novo da notificação (nav é estável).
+  useFocusEffect(useCallback(() => {
+    const id = route.params?.abrirAgendamentoId;
+    if (!id) return;
+    setAbrirPendente(id);
+    nav.setParams({ abrirAgendamentoId: undefined } as any);
+  }, [route.params?.abrirAgendamentoId]));
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: abrirEdicao é função local recriada a cada render; o disparo é o id pendente + escopo.
+  useEffect(() => {
+    if (!abrirPendente || escopo.status === 'carregando') return;
+    const id = abrirPendente;
+    setAbrirPendente(null);
+    // Sem papel confirmado a tela já mostra o erro de acesso; não abre nada.
+    if (escopo.status === 'erro') return;
+    void (async () => {
+      try {
+        const a = await getAgendamento(idBaseDaOcorrencia(id));
+        if (!a || a.excluidoEm) {
+          Alert.alert('Compromisso não encontrado', 'Ele pode ter sido excluído ou ainda não chegou neste aparelho. Puxe a lista para baixo para atualizar.');
+          return;
+        }
+        const dia = diaDaOcorrencia(id) ?? new Date(a.inicio);
+        if (!isNaN(dia.getTime())) { setModo('semana'); setRef(dia); }
+        if (escopo.status === 'propria' && a.responsavelId !== escopo.userId) {
+          Alert.alert('Compromisso de outro técnico', 'Este compromisso está com outra pessoa da equipe. Fale com a gestão se ele for seu.');
+          return;
+        }
+        abrirEdicao(a);
+      } catch {
+        Alert.alert('Erro', 'Não foi possível abrir este compromisso agora.');
+      }
+    })();
+  }, [abrirPendente, escopo]);
 
   // Para campos do form: 'HH:mm' válido, ou '' (vazio) quando inválido/ausente.
   function hhmmRaw(iso?: string | null): string {
@@ -377,8 +494,11 @@ export default function AgendaScreen() {
       titulo: a.titulo,
       tipo: a.tipo,
       data: ini,
-      horaInicio: format(ini, 'HH:mm'),
+      // "Dia todo" (meia-noite e sem fim, a marca do painel) abre sem hora, e não
+      // como "00:00" — salvar sem mexer mantém o compromisso sem hora.
+      horaInicio: semHoraMarcada(a) ? '' : format(ini, 'HH:mm'),
       horaFim: hhmmRaw(a.fim),
+      fimAutomatico: false,
       endereco: a.endereco ?? '',
       observacao: a.observacao ?? '',
       status: a.status,
@@ -428,6 +548,10 @@ export default function AgendaScreen() {
   }
 
   async function salvar(e: EditState) {
+    if (!e.horaInicio && e.horaFim) {
+      Alert.alert('Falta o início', 'Escolha o horário de início, ou tire o horário de fim para o compromisso ficar como "Dia todo".');
+      return;
+    }
     const ini = combinarDataHora(e.data, e.horaInicio);
     const fimDt = e.horaFim ? combinarDataHora(e.data, e.horaFim) : undefined;
     // Valida só quando ambos os horários existem: o fim precisa ser depois do início.
@@ -440,6 +564,9 @@ export default function AgendaScreen() {
       Alert.alert('Data inválida', 'Confira a data de "Repetir até" (dd/mm/aaaa) ou deixe em branco.');
       return;
     }
+    // Técnico: o compromisso é sempre dele (sem seletor na tela). Sem isto, um
+    // agendamento aberto antes do papel carregar sairia sem responsável e sumiria.
+    const responsavelId = e.responsavelId ?? (escopo.status === 'propria' ? escopo.userId : undefined);
     const a: Agendamento = {
       id: e.id ?? generateId(),
       clienteId: e.clienteId,
@@ -454,8 +581,8 @@ export default function AgendaScreen() {
       observacao: e.observacao.trim() || undefined,
       criadoEm: e.criadoEm ?? nowISO(),
       atualizadoEm: nowISO(),
-      responsavelId: e.responsavelId,
-      responsavelNome: e.responsavelId ? e.responsavelNome : undefined,
+      responsavelId,
+      responsavelNome: responsavelId ? e.responsavelNome : undefined,
       recorrencia: e.contratoId ? undefined : e.recorrencia,
       recorrenciaAte: !e.contratoId && e.recorrencia && recorrenciaAte ? recorrenciaAte : undefined,
       contratoId: e.contratoId,
@@ -478,7 +605,18 @@ export default function AgendaScreen() {
     }
   }
 
-  async function remover(id: string) {
+  async function remover(e: EditState) {
+    if (!e.id) return;
+    const id = e.id;
+    const nome = e.titulo.trim() || TIPO_AGENDAMENTO_LABELS[e.tipo];
+    const serie = !!e.recorrencia;
+    // Um toque apagava (inclusive a série inteira). Agora pergunta e diz para onde vai.
+    const ok = await pedirConfirmacao(
+      serie ? 'Excluir a série inteira?' : 'Excluir agendamento?',
+      `${serie ? `"${nome}" e todas as repetições vão` : `"${nome}" vai`} para a Lixeira. Dá para restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      'Excluir',
+    );
+    if (!ok) return;
     const alvo = itens.find(it => it.id === id);
     setSalvando(true);
     try {
@@ -498,7 +636,7 @@ export default function AgendaScreen() {
   // Dois estados de "vazio" distintos: dia sem NENHUM agendamento (mostra o
   // CTA "Agendar visita") vs. dia com itens mas o FILTRO escondeu todos
   // (mostra um jeito de limpar o filtro, não repete o CTA de criar).
-  const semAgendamentosNoPeriodo = itens.length === 0;
+  const semAgendamentosNoPeriodo = itensVisiveis.length === 0;
   const semAgendamentosNoDia = itensDoDiaSemFiltro.length === 0;
   const semResultadoDoFiltro = !semAgendamentosNoDia && itensDoDia.length === 0;
 
@@ -523,7 +661,7 @@ export default function AgendaScreen() {
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
-        subtitle={`${itensDoDia.length} compromisso${itensDoDia.length === 1 ? '' : 's'} em ${format(ref, "d 'de' MMM", { locale: ptBR })}`}
+        subtitle={`${itensDoDia.length} compromisso${itensDoDia.length === 1 ? '' : 's'}${escopo.status === 'propria' ? (itensDoDia.length === 1 ? ' seu' : ' seus') : ''} em ${format(ref, "d 'de' MMM", { locale: ptBR })}`}
         right={
           <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); setModo('semana'); }} activeOpacity={0.85}>
             <Text style={[styles.todayBtnText, { color: gradientes.sobreHeader }]}>Hoje</Text>
@@ -538,7 +676,16 @@ export default function AgendaScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => passo(-1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Período anterior">
             <MaterialCommunityIcons name="chevron-left" size={24} color={gradientes.sobreHeader} />
           </TouchableOpacity>
-          <Text style={[styles.navLabel, { color: gradientes.sobreHeader }]}>{rotuloPeriodo(modo, ref)}</Text>
+          <TouchableOpacity
+            style={styles.navLabelBtn}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); setIrParaData(true); }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`${rotuloPeriodo(modo, ref)}. Escolher outra data`}
+          >
+            <Text style={[styles.navLabel, { color: gradientes.sobreHeader }]}>{rotuloPeriodo(modo, ref)}</Text>
+            <MaterialCommunityIcons name="calendar-search" size={16} color={gradientes.sobreHeader} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.navBtn} onPress={() => passo(1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Próximo período">
             <MaterialCommunityIcons name="chevron-right" size={24} color={gradientes.sobreHeader} />
           </TouchableOpacity>
@@ -684,7 +831,7 @@ export default function AgendaScreen() {
       )}
 
       {/* LISTA */}
-      {carregando ? (
+      {carregando || escopo.status === 'carregando' ? (
         <View style={{ padding: Spacing.base, gap: 10 }}>
           {[0, 1, 2].map(i => (
             // Entrada escalonada também no loading: os placeholders surgem no
@@ -702,18 +849,32 @@ export default function AgendaScreen() {
             </AnimatedEntrance>
           ))}
         </View>
+      ) : escopo.status === 'erro' ? (
+        // Não sei o papel: nem "agenda vazia" (o técnico acharia que não tem
+        // visita) nem a agenda da equipe inteira (não sei se ele pode ver).
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} refreshControl={refreshControl}>
+          <EmptyState
+            icon="account-lock-outline"
+            title="Não deu para confirmar seu acesso"
+            subtitle="Sem saber se você é da gestão ou técnico, a agenda pode mostrar visitas erradas. Verifique a conexão e tente de novo."
+            actionLabel="Tentar de novo"
+            onAction={() => { tipoConta.recarregar(); lerUsuario(); }}
+          />
+        </ScrollView>
       ) : carregandoErro ? (
-        <View style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} refreshControl={refreshControl}>
           <EmptyState
             icon="alert-circle-outline"
             title="Não deu para carregar"
             subtitle="Não conseguimos buscar seus agendamentos agora. Verifique a conexão e tente de novo."
             actionLabel="Tentar de novo"
-            onAction={load}
+            onAction={() => { void refresh(); }}
           />
-        </View>
+        </ScrollView>
       ) : semAgendamentosNoDia ? (
-        <View style={{ flex: 1 }}>
+        // Também com "puxar para atualizar": é aqui que o técnico espera a visita
+        // recém-atribuída aparecer.
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} refreshControl={refreshControl}>
           <EmptyState
             icon="calendar-blank-outline"
             title="Este dia está livre"
@@ -721,9 +882,9 @@ export default function AgendaScreen() {
             actionLabel="Agendar visita"
             onAction={() => abrirNovo()}
           />
-        </View>
+        </ScrollView>
       ) : semResultadoDoFiltro ? (
-        <View style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} refreshControl={refreshControl}>
           <EmptyState
             icon="filter-remove-outline"
             title="Nada com esse filtro"
@@ -731,12 +892,12 @@ export default function AgendaScreen() {
             actionLabel="Limpar filtros"
             onAction={() => { setFiltroTipo('todos'); setFiltroStatus('todos'); setFiltroTecnico('todos'); }}
           />
-        </View>
+        </ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: Spacing.base, paddingBottom: insets.bottom + 110 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
+          refreshControl={refreshControl}
         >
           <AnimatedEntrance index={0}>
             <View style={styles.dayHeader}>
@@ -774,17 +935,36 @@ export default function AgendaScreen() {
           <AgendamentoForm
             state={editing}
             clientes={clientes}
-            itens={itens}
+            // Conflito só contra o que esta pessoa vê, e sem os "Dia todo" (não
+            // ocupam horário: a meia-noite deles não é uma visita às 00:00).
+            itens={itensVisiveis.filter(a => !semHoraMarcada(a))}
+            podeEscolherResponsavel={podeVerEquipe}
+            equipe={equipe}
             salvando={salvando}
             onChange={setEditing}
             onClose={() => setEditing(null)}
             onSave={salvar}
-            onDelete={editing.id ? () => remover(editing.id!) : undefined}
+            onDelete={editing.id ? () => { void remover(editing); } : undefined}
             onAbrirOrcamento={editing.orcamentoId ? () => { const id = editing.orcamentoId!; setEditing(null); nav.navigate('VisualizarOrcamento', { orcamentoId: id }); } : undefined}
             onVerCliente={editing.clienteId ? () => { const c = { id: editing.clienteId!, nome: editing.clienteNome }; setEditing(null); nav.navigate('Orcamentos', { clienteId: c.id, clienteNome: c.nome }); } : undefined}
           />
         )}
       </Modal>
+
+      <DatePickerModal
+        locale="pt-BR"
+        mode="single"
+        visible={irParaData}
+        date={ref}
+        startWeekOnMonday
+        label="Ir para a data"
+        saveLabel="Ir"
+        onDismiss={() => setIrParaData(false)}
+        onConfirm={({ date }) => {
+          setIrParaData(false);
+          if (date) selecionarDia(date, true);
+        }}
+      />
     </View>
   );
 }
@@ -808,12 +988,20 @@ function AgendaItem({ item, onPress }: { item: OcorrenciaAgendamento; onPress: (
   const iniTxt = hhmm(item.inicio);
   const fimTxt = item.fim ? hhmm(item.fim) : '';
   const cancelado = item.status === 'cancelado';
+  // Sem hora marcada (o painel grava meia-noite e sem fim): "Dia todo", não "00:00".
+  const diaTodo = semHoraMarcada(item);
   return (
-    <OlliPressable style={styles.item} onPress={onPress} haptic="selection" accessibilityLabel={`Agendamento ${item.titulo}`}>
+    <OlliPressable style={styles.item} onPress={onPress} haptic="selection" accessibilityLabel={`Agendamento ${item.titulo}, ${diaTodo ? 'dia todo' : `às ${iniTxt}`}`}>
       <View style={[styles.itemBar, { backgroundColor: cor }]} />
       <View style={styles.itemTime}>
-        <Text style={styles.itemHour}>{iniTxt}</Text>
-        <Text style={styles.itemHourEnd}>{fimTxt}</Text>
+        {diaTodo ? (
+          <Text style={styles.itemDiaTodo}>Dia todo</Text>
+        ) : (
+          <>
+            <Text style={styles.itemHour}>{iniTxt}</Text>
+            <Text style={styles.itemHourEnd}>{fimTxt}</Text>
+          </>
+        )}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.itemTitle, cancelado && styles.strike]} numberOfLines={1}>{item.titulo}</Text>
@@ -868,8 +1056,11 @@ interface EditState {
   titulo: string;
   tipo: TipoAgendamento;
   data: Date;
+  /** 'HH:mm', ou '' = "Dia todo" (sem hora marcada). */
   horaInicio: string;
   horaFim: string;
+  /** O fim ainda é o sugerido pela duração do tipo (acompanha início e tipo). */
+  fimAutomatico?: boolean;
   endereco: string;
   observacao: string;
   status?: Agendamento['status'];
@@ -884,17 +1075,27 @@ interface EditState {
 }
 
 function combinarDataHora(data: Date, hora: string): Date {
-  const [h, m] = (hora || '09:00').split(':').map(n => parseInt(n, 10));
+  // '' = "Dia todo": meia-noite e sem fim, a mesma marca do painel (semHoraMarcada).
+  if (!hora) {
+    const d0 = new Date(data);
+    d0.setHours(0, 0, 0, 0);
+    return d0;
+  }
+  const [h, m] = hora.split(':').map(n => parseInt(n, 10));
   const d = new Date(data);
   d.setHours(isNaN(h) ? 9 : Math.min(23, h), isNaN(m) ? 0 : Math.min(59, m), 0, 0);
   return d;
 }
 
 function AgendamentoForm({
-  state, clientes, itens, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
+  state, clientes, itens, podeEscolherResponsavel, equipe, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
 }: {
   state: EditState;
   clientes: Cliente[];
+  /** Gestão/conta pessoal escolhe o técnico; o técnico agenda só para si. */
+  podeEscolherResponsavel: boolean;
+  /** Equipe já carregada pela tela (o seletor não lê de novo). */
+  equipe: ReturnType<typeof useEquipeResponsaveis>;
   /** Agendamentos JÁ carregados do período — usados só pra detectar SOBREPOSIÇÃO (1.5), sem query nova. */
   itens: Agendamento[];
   salvando: boolean;
@@ -909,10 +1110,34 @@ function AgendamentoForm({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [showClientes, setShowClientes] = useState(false);
+  const [buscaCliente, setBuscaCliente] = useState('');
   // Qual campo de hora o TimePickerModal está editando agora (1.7).
   const [timePicker, setTimePicker] = useState<'inicio' | 'fim' | null>(null);
+  const [datePicker, setDatePicker] = useState(false);
 
   const set = (patch: Partial<EditState>) => onChange({ ...state, ...patch });
+
+  // Busca em TODOS os clientes (antes a lista parava nos 30 primeiros, sem busca).
+  const clientesFiltrados = useMemo(() => filtrarClientes(clientes, buscaCliente), [clientes, buscaCliente]);
+  const nomeLivre = buscaCliente.trim();
+
+  function escolherCliente(c: Cliente) {
+    Haptics.selectionAsync().catch(() => {});
+    set({ clienteId: c.id, clienteNome: c.nome, endereco: state.endereco || c.endereco || '' });
+    setShowClientes(false);
+  }
+
+  function usarNomeLivre(nome: string) {
+    Haptics.selectionAsync().catch(() => {});
+    set({ clienteId: undefined, clienteNome: nome });
+    setShowClientes(false);
+  }
+
+  /** Fim sugerido de novo quando ele ainda é o automático. */
+  function fimPara(horaInicio: string, tipo: TipoAgendamento): Partial<EditState> {
+    if (!state.fimAutomatico || !horaInicio) return {};
+    return { horaFim: horaFimSugerida(combinarDataHora(state.data, horaInicio), tipo) };
+  }
 
   function deslocarDia(delta: number) {
     Haptics.selectionAsync().catch(() => {});
@@ -928,6 +1153,12 @@ function AgendamentoForm({
     const fimDt = state.horaFim ? combinarDataHora(state.data, state.horaFim) : undefined;
     return encontrarConflitoDeHorario(itens, { inicio: ini, fim: fimDt }, state.id);
   }, [itens, state.data, state.horaInicio, state.horaFim, state.id]);
+
+  // AGENDAR NO PASSADO — aviso, não bloqueio (registrar uma visita que já
+  // aconteceu é legítimo). Só para o que ainda está "agendado".
+  const noPassado = useMemo(() => (state.status ?? 'agendado') === 'agendado'
+    && agendamentoNoPassado(combinarDataHora(state.data, state.horaInicio), !!state.horaInicio, new Date()),
+  [state.status, state.data, state.horaInicio]);
 
   return (
     <KeyboardAvoidingView style={styles.formContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -958,7 +1189,7 @@ function AgendamentoForm({
         )}
 
         {/* TIPO */}
-        <Text style={styles.fieldLabel}>Tipo</Text>
+        <FieldLabel>Tipo</FieldLabel>
         <View style={styles.tipoGrid}>
           {TIPOS_AGENDAMENTO.map(t => {
             const active = t.id === state.tipo;
@@ -966,7 +1197,7 @@ function AgendamentoForm({
               <TouchableOpacity
                 key={t.id}
                 style={[styles.tipoOption, active && { backgroundColor: t.color + '22', borderColor: t.color }]}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ tipo: t.id }); }}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ tipo: t.id, ...fimPara(state.horaInicio, t.id) }); }}
                 activeOpacity={0.85}
               >
                 <MaterialCommunityIcons name={t.icon as any} size={18} color={active ? corCategoriaEmChip(t.color, cores.surface) : cores.onSurfaceVariant} />
@@ -976,45 +1207,37 @@ function AgendamentoForm({
           })}
         </View>
 
-        {/* CLIENTE */}
-        <Text style={[styles.fieldLabel, { marginTop: Spacing.base }]}>Cliente</Text>
-        <TouchableOpacity style={styles.clientePicker} onPress={() => setShowClientes(v => !v)} activeOpacity={0.85}>
+        {/* CLIENTE — um campo só: busca nos cadastrados ou usa o nome digitado
+            sem cadastro (antes eram dois campos e a lista parava em 30). */}
+        <FieldLabel style={{ marginTop: Spacing.base }}>Cliente</FieldLabel>
+        <TouchableOpacity
+          style={styles.clientePicker}
+          onPress={() => { setBuscaCliente(''); setShowClientes(true); }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={state.clienteNome ? `Cliente: ${state.clienteNome}. Trocar` : 'Buscar cliente'}
+        >
           <MaterialCommunityIcons name="account-outline" size={20} color={cores.onSurfaceMuted} />
           <Text style={[styles.clientePickerText, !state.clienteNome && { color: cores.onSurfaceMuted }]} numberOfLines={1}>
-            {state.clienteNome || 'Selecionar cliente (opcional)'}
+            {state.clienteNome || 'Buscar cliente (opcional)'}
           </Text>
-          <MaterialCommunityIcons name={showClientes ? 'chevron-up' : 'chevron-down'} size={20} color={cores.onSurfaceMuted} />
+          {state.clienteNome ? (
+            <TouchableOpacity
+              onPress={() => set({ clienteId: undefined, clienteNome: '' })}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Tirar o cliente"
+            >
+              <MaterialCommunityIcons name="close-circle" size={20} color={cores.onSurfaceMuted} />
+            </TouchableOpacity>
+          ) : (
+            <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceMuted} />
+          )}
         </TouchableOpacity>
-        {showClientes && (
-          <View style={styles.clienteList}>
-            {clientes.length === 0 ? (
-              <Text style={styles.clienteEmpty}>Nenhum cliente cadastrado ainda.</Text>
-            ) : (
-              clientes.slice(0, 30).map(c => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.clienteRow}
-                  onPress={() => { set({ clienteId: c.id, clienteNome: c.nome, endereco: state.endereco || c.endereco || '' }); setShowClientes(false); }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.clienteRowName}>{c.nome}</Text>
-                  {c.telefone ? <Text style={styles.clienteRowMeta}>{c.telefone}</Text> : null}
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        )}
-
-        {/* Nome do cliente (livre) */}
-        <View style={{ marginTop: Spacing.base }}>
-          <OlliInput
-            label="Nome do cliente"
-            value={state.clienteNome}
-            onChangeText={v => set({ clienteNome: v, clienteId: undefined })}
-            placeholder="Ex: D. Helena Souza"
-            leftIcon="account"
-          />
-        </View>
+        {state.clienteNome && !state.clienteId ? (
+          <Text style={styles.ajuda}>Sem cadastro: o nome fica só neste compromisso.</Text>
+        ) : null}
+        <View style={{ height: Spacing.base }} />
 
         {/* TÍTULO */}
         <OlliInput
@@ -1025,20 +1248,40 @@ function AgendamentoForm({
           leftIcon="text"
         />
 
-        {/* DATA */}
-        <Text style={styles.fieldLabel}>Data</Text>
+        {/* DATA — tocar na data abre o calendário (antes só ±1 dia por toque). */}
+        <FieldLabel>Data</FieldLabel>
         <View style={styles.dateRow}>
           <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Dia anterior">
             <MaterialCommunityIcons name="chevron-left" size={22} color={cores.accentLight} />
           </TouchableOpacity>
-          <View style={styles.dateDisplay}>
+          <TouchableOpacity
+            style={styles.dateDisplay}
+            onPress={() => { Haptics.selectionAsync().catch(() => {}); setDatePicker(true); }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Data: ${format(state.data, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}. Escolher outra`}
+          >
             <MaterialCommunityIcons name="calendar" size={18} color={cores.accentLight} />
             <Text style={styles.dateText}>{capitalizeFirst(format(state.data, "EEE, d 'de' MMM 'de' yyyy", { locale: ptBR }))}</Text>
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.dateNav} onPress={() => deslocarDia(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Próximo dia">
             <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
           </TouchableOpacity>
         </View>
+        <DatePickerModal
+          locale="pt-BR"
+          mode="single"
+          visible={datePicker}
+          date={state.data}
+          startWeekOnMonday
+          label="Data do compromisso"
+          saveLabel="Definir"
+          onDismiss={() => setDatePicker(false)}
+          onConfirm={({ date }) => {
+            setDatePicker(false);
+            if (date) set({ data: date });
+          }}
+        />
         <View style={styles.quickDates}>
           <QuickDate label="Hoje" onPress={() => set({ data: new Date() })} />
           <QuickDate label="Amanhã" onPress={() => set({ data: addDays(new Date(), 1) })} />
@@ -1049,7 +1292,7 @@ function AgendamentoForm({
             da máscara de texto manual (frágil: aceitava "25:99"). */}
         <View style={styles.rowFields}>
           <View style={{ flex: 1, marginRight: 10 }}>
-            <Text style={styles.fieldLabel}>Início</Text>
+            <FieldLabel>Início</FieldLabel>
             <TouchableOpacity
               style={styles.clientePicker}
               onPress={() => { Haptics.selectionAsync().catch(() => {}); setTimePicker('inicio'); }}
@@ -1058,11 +1301,11 @@ function AgendamentoForm({
               accessibilityLabel="Escolher horário de início"
             >
               <MaterialCommunityIcons name="clock-outline" size={20} color={cores.onSurfaceMuted} />
-              <Text style={styles.clientePickerText}>{state.horaInicio || '09:00'}</Text>
+              <Text style={styles.clientePickerText}>{state.horaInicio || 'Dia todo'}</Text>
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.fieldLabel}>Fim (opcional)</Text>
+            <FieldLabel>Fim (opcional)</FieldLabel>
             <TouchableOpacity
               style={styles.clientePicker}
               onPress={() => { Haptics.selectionAsync().catch(() => {}); setTimePicker('fim'); }}
@@ -1074,9 +1317,25 @@ function AgendamentoForm({
               <Text style={[styles.clientePickerText, !state.horaFim && { color: cores.onSurfaceMuted }]}>
                 {state.horaFim || 'Não definido'}
               </Text>
+              {state.horaFim ? (
+                <TouchableOpacity
+                  onPress={() => set({ horaFim: '', fimAutomatico: false })}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tirar o horário de fim"
+                >
+                  <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
+                </TouchableOpacity>
+              ) : null}
             </TouchableOpacity>
           </View>
         </View>
+        {state.fimAutomatico && state.horaFim ? (
+          <Text style={styles.ajuda}>
+            Fim estimado: {TIPO_AGENDAMENTO_LABELS[state.tipo].toLowerCase()} costuma levar {rotuloDuracao(duracaoEstimadaMin(state.tipo))}. Toque para mudar.
+          </Text>
+        ) : null}
+        <View style={{ height: Spacing.base }} />
 
         {/* SOBREPOSIÇÃO (1.5) — aviso não-bloqueante: some sozinho quando o
             horário deixa de colidir; o botão Confirmar continua ativo. */}
@@ -1086,6 +1345,14 @@ function AgendamentoForm({
             <Text style={styles.avisoConflitoText}>
               Esse horário colide com "{conflito.titulo}" das {hhmm(conflito.inicio)}
               {conflito.fim ? `–${hhmm(conflito.fim)}` : ''}.
+            </Text>
+          </View>
+        )}
+        {noPassado && (
+          <View style={styles.avisoConflito}>
+            <MaterialCommunityIcons name="clock-alert-outline" size={16} color={cores.warning} />
+            <Text style={styles.avisoConflitoText}>
+              Esse horário já passou. Dá para salvar (para registrar uma visita feita, por exemplo), mas não vai ter lembrete.
             </Text>
           </View>
         )}
@@ -1103,20 +1370,27 @@ function AgendamentoForm({
           onDismiss={() => setTimePicker(null)}
           onConfirm={({ hours, minutes }) => {
             const hhmmSel = formatHoraHHMM(hours, minutes);
-            if (timePicker === 'inicio') set({ horaInicio: hhmmSel }); else set({ horaFim: hhmmSel });
+            // Mudar o início leva o fim junto enquanto ele for o sugerido; escolher o
+            // fim na mão desliga a sugestão.
+            if (timePicker === 'inicio') set({ horaInicio: hhmmSel, ...fimPara(hhmmSel, state.tipo) });
+            else set({ horaFim: hhmmSel, fimAutomatico: false });
             setTimePicker(null);
           }}
         />
 
         {/* RESPONSÁVEL (técnico da equipe) e REPETIÇÃO — a visita de contrato
             repete pelo contrato, não por aqui. */}
-        <SeletorResponsavel
-          responsavelId={state.responsavelId}
-          responsavelNome={state.responsavelNome}
-          onChange={r => set(r)}
-        />
+        {/* Técnico não escolhe responsável: agenda só para si (ver abrirNovo/salvar). */}
+        {podeEscolherResponsavel ? (
+          <SeletorResponsavel
+            responsavelId={state.responsavelId}
+            responsavelNome={state.responsavelNome}
+            onChange={r => set(r)}
+            equipe={equipe}
+          />
+        ) : null}
         {state.contratoId ? (
-          <Text style={[styles.fieldLabel, { marginTop: Spacing.base }]}>Visita gerada por um contrato recorrente — a repetição vem do contrato.</Text>
+          <Text style={[styles.ajuda, { marginTop: Spacing.base }]}>Visita gerada por um contrato recorrente — a repetição vem do contrato.</Text>
         ) : (
           <CamposRecorrencia
             recorrencia={state.recorrencia}
@@ -1152,7 +1426,7 @@ function AgendamentoForm({
         {/* STATUS (só na edição) */}
         {state.id && (
           <>
-            <Text style={styles.fieldLabel}>Status</Text>
+            <FieldLabel>Status</FieldLabel>
             <View style={styles.statusRow}>
               {(['agendado', 'concluido', 'cancelado'] as const).map(s => {
                 const active = (state.status ?? 'agendado') === s;
@@ -1193,6 +1467,56 @@ function AgendamentoForm({
           icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />}
         />
       </View>
+
+      {/* BUSCA DE CLIENTE — camada por cima do formulário (não outro Modal):
+          FlatList com todos os clientes, filtro sem acento por nome ou telefone. */}
+      {showClientes && (
+        <View style={[styles.buscaOverlay, { paddingTop: insets.top + 10 }]}>
+          <View style={styles.buscaHeader}>
+            <Text style={styles.formTitle}>Escolher cliente</Text>
+            <TouchableOpacity onPress={() => setShowClientes(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Fechar busca de cliente">
+              <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
+            </TouchableOpacity>
+          </View>
+          <View style={{ paddingHorizontal: Spacing.base }}>
+            <OlliInput
+              label="Buscar"
+              value={buscaCliente}
+              onChangeText={setBuscaCliente}
+              placeholder="Nome ou telefone"
+              leftIcon="magnify"
+              autoFocus
+              returnKeyType="search"
+            />
+          </View>
+          <FlatList
+            data={clientesFiltrados}
+            keyExtractor={c => c.id}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={20}
+            contentContainerStyle={{ paddingHorizontal: Spacing.base, paddingBottom: insets.bottom + 24 }}
+            ListHeaderComponent={nomeLivre ? (
+              <TouchableOpacity style={styles.usarNomeLivre} onPress={() => usarNomeLivre(nomeLivre)} activeOpacity={0.85} accessibilityRole="button">
+                <MaterialCommunityIcons name="account-plus-outline" size={18} color={cores.accentLight} />
+                <Text style={styles.usarNomeLivreText} numberOfLines={2}>Usar "{nomeLivre}" sem cadastro</Text>
+              </TouchableOpacity>
+            ) : null}
+            ListEmptyComponent={
+              <Text style={styles.clienteEmpty}>
+                {clientes.length === 0
+                  ? 'Nenhum cliente cadastrado ainda. Digite o nome acima para usar sem cadastro.'
+                  : 'Nenhum cliente com esse nome ou telefone.'}
+              </Text>
+            }
+            renderItem={({ item: c }) => (
+              <TouchableOpacity style={styles.clienteRow} onPress={() => escolherCliente(c)} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={`Escolher ${c.nome}`}>
+                <Text style={styles.clienteRowName}>{c.nome}</Text>
+                {c.telefone ? <Text style={styles.clienteRowMeta}>{c.telefone}</Text> : null}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1233,7 +1557,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.base },
   navBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.10)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
-  navLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700' },
+  navLabelBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44 },
+  navLabel: { textAlign: 'center', fontSize: 15, fontWeight: '700' },
   viewToggle: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, minHeight: 36, paddingHorizontal: 14, borderRadius: BorderRadius.full, backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
   viewToggleText: { fontSize: 12.5, fontWeight: '800' },
 
@@ -1279,6 +1604,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   itemTime: { width: 48, marginRight: 8 },
   itemHour: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   itemHourEnd: { fontSize: 11, color: c.onSurfaceMuted, marginTop: 1 },
+  itemDiaTodo: { fontSize: 12, lineHeight: 15, fontWeight: '800', color: c.accentLight },
   itemTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   itemClient: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   itemMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
@@ -1296,7 +1622,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   formContainer: { flex: 1, backgroundColor: c.background },
   formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: Spacing.base, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
   formTitle: { fontSize: 20, fontWeight: '800', color: c.onSurface },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
+  ajuda: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 6, lineHeight: 16 },
 
   linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
   // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
@@ -1309,7 +1635,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   clientePicker: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.outline, paddingHorizontal: 14, minHeight: 50 },
   clientePickerText: { flex: 1, fontSize: 15, color: c.onSurface },
-  clienteList: { backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, marginTop: 6, overflow: 'hidden' },
+  buscaOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.background, zIndex: 10 },
+  buscaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingBottom: Spacing.base },
+  usarNomeLivre: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.accentLight, marginBottom: 8 },
+  usarNomeLivreText: { flex: 1, fontSize: 14, fontWeight: '700', color: c.accentLight },
   clienteRow: { paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.outline },
   clienteRowName: { fontSize: 14, fontWeight: '600', color: c.onSurface },
   clienteRowMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
