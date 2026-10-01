@@ -77,6 +77,48 @@ export function paramsBuscaCatalogo(q: string): [string, string] {
   return [like, like];
 }
 
+/**
+ * Sugestões do passo "Itens" (item 2.11, "Você mais usa"): só os itens do catálogo
+ * que JÁ entraram em algum orçamento ativo, do mesmo tipo, mais usados primeiro
+ * (empate → nome sem acento). Item nunca usado NÃO entra: a seção diz "mais usa",
+ * e um catálogo novo não tem o que sugerir — aí a seção some, honesta.
+ * Mesma contagem de uso de `sqlBuscaCatalogo`. Parâmetros: [limite].
+ */
+export function sqlCatalogoMaisUsados(tabela: TabelaCatalogo): string {
+  const tipo = tabela === 'servicos' ? 'servico' : 'produto';
+  return `
+SELECT c.*, u.uso AS uso
+  FROM ${tabela} c
+  JOIN (
+    SELECT json_extract(i.value, '$.catalogoId') AS catalogo_id, COUNT(*) AS uso
+      FROM orcamentos o, json_each(o.data, '$.itens') i
+     WHERE json_extract(o.data, '$.excluidoEm') IS NULL
+       AND json_extract(i.value, '$.tipo') = '${tipo}'
+     GROUP BY catalogo_id
+  ) u ON u.catalogo_id = c.id
+ WHERE c.excluido_em IS NULL
+   AND u.uso > 0
+ ORDER BY u.uso DESC, ${semAcentoLowerSql('c.nome')} ASC
+ LIMIT ?`;
+}
+
+/**
+ * "Repetir o último orçamento deste cliente" (item 2.11): o orçamento ATIVO mais
+ * recente do cliente (pelo id do cadastro, nunca pelo nome — dois "João" não se
+ * misturam) que tenha pelo menos 1 item, fora o que está sendo editado. Lixeira
+ * não conta. Mesma ordem de `getOrcamentos` (criadoEm, depois número).
+ * Parâmetros: [clienteId, idDoOrcamentoAtual].
+ */
+export const SQL_ULTIMO_ORCAMENTO_DO_CLIENTE = `
+SELECT data
+  FROM orcamentos
+ WHERE json_extract(data, '$.excluidoEm') IS NULL
+   AND json_extract(data, '$.clienteId') = ?
+   AND id <> ?
+   AND COALESCE(json_array_length(data, '$.itens'), 0) > 0
+ ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC
+ LIMIT 1`;
+
 // ─── KPIs do mês de orçamentos ───────────────────────────────────────────────
 
 /**

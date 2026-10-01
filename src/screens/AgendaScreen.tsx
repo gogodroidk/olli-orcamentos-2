@@ -467,6 +467,12 @@ export default function AgendaScreen() {
   // Consome os params UMA vez (limpa depois) para não reabrir o form ao voltar.
   useFocusEffect(useCallback(() => {
     const p = route.params;
+    // "Agendar" de 1 toque do Início: abre o formulário em branco.
+    if (p?.novo && !p.novoParaClienteId && !p.novoParaOrcamentoId && !p.novoParaClienteNome) {
+      abrirNovo();
+      nav.setParams({ novo: undefined } as any);
+      return;
+    }
     if (p && (p.novoParaClienteId || p.novoParaOrcamentoId || p.novoParaClienteNome)) {
       abrirNovo({
         clienteId: p.novoParaClienteId,
@@ -477,6 +483,7 @@ export default function AgendaScreen() {
         orcamentoId: p.novoParaOrcamentoId,
       });
       nav.setParams({
+        novo: undefined,
         novoParaClienteId: undefined,
         novoParaClienteNome: undefined,
         novoParaOrcamentoId: undefined,

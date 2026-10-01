@@ -206,7 +206,13 @@ checar('BrasilAPI: sem cidade = null (não é endereço)', lerBrasilApiCep({ ...
 checar('BrasilAPI: sem UF = null', lerBrasilApiCep({ ...BRASILAPI_SE, state: '' }, '01001000'), null);
 checar('BrasilAPI: o corpo do 404 NÃO é lido como endereço', lerBrasilApiCep(BRASILAPI_404, '00000000'), null);
 
-checar('ViaCEP: corpo real vira endereço', lerViaCep(VIACEP_SE, '01001000'), {
+// O `ibge` (7 dígitos) vem junto desde a Onda I1: é a chave dos alertas oficiais
+// por município. Sem os 7 dígitos, o campo não aparece (ver o caso logo abaixo).
+checar('ViaCEP: corpo real vira endereço (com o código IBGE)', lerViaCep(VIACEP_SE, '01001000'), {
+  estado: 'ok',
+  endereco: { cep: '01001000', logradouro: 'Praça da Sé', bairro: 'Sé', cidade: 'São Paulo', uf: 'SP', ibge: '3550308' },
+});
+checar('ViaCEP: IBGE fora do formato não aparece (nunca código inventado)', lerViaCep({ ...VIACEP_SE, ibge: '' }, '01001000'), {
   estado: 'ok',
   endereco: { cep: '01001000', logradouro: 'Praça da Sé', bairro: 'Sé', cidade: 'São Paulo', uf: 'SP' },
 });

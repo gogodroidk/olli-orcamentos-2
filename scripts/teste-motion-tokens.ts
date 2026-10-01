@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'node:fs';
 import {
-  CICLO, CURVA, DISTANCIA, DURACAO, MOLA, STAGGER, TOQUE,
+  CICLO, CURVA, DISTANCIA, DURACAO, MOLA, PULSO, STAGGER, TOQUE,
   atrasoEscalonado, duracaoAcessivel, duracoesAcessiveis,
 } from '../src/theme/motionTokens.ts';
 
@@ -57,6 +57,8 @@ checar('stagger tem passo e teto', STAGGER.passo > 0 && STAGGER.maxItens > 0, tr
 checar('escala do toque = 0.97', TOQUE.escalaPressionado, 0.97);
 checar('opacidade do toque < 1', TOQUE.opacidadePressionado < 1 && TOQUE.opacidadePressionado > 0, true);
 checar('ciclos de contagem e shimmer existem', CICLO.contagem > 0 && CICLO.shimmer > 0, true);
+checar('pulso do "agora" tem ciclo e é FINITO (1 a 5 ondas)', CICLO.pulso > 0 && Number.isInteger(PULSO.repeticoes) && PULSO.repeticoes >= 1 && PULSO.repeticoes <= 5, true);
+checar('halo do pulso cresce e começa translúcido', PULSO.escalaHalo > 1 && PULSO.opacidadeHalo > 0 && PULSO.opacidadeHalo < 1, true);
 
 // ─── 3. Reduzir movimento zera durações ─────────────────────────────────────
 console.log('\n3) "Reduzir movimento" zera as durações');
@@ -99,6 +101,11 @@ for (const nome of componentes) {
   checar(`${nome} anima só transform/opacity`, /\b(width|height|margin\w*|padding\w*|top|left|right|bottom|backgroundColor)\s*:/.test(blocos), false);
   if (nome !== 'Skeleton') checar(`${nome} sem loop infinito`, /withRepeat\(/.test(src), false);
 }
+const pulsoAgora = semComentarios(ler('../src/components/motion/PulsoAgora.tsx'));
+checar('PulsoAgora respeita Reduzir movimento', /useReduzirMovimento\(\)/.test(pulsoAgora), true);
+checar('PulsoAgora cancela a animação ao desmontar', /cancelAnimation\(/.test(pulsoAgora), true);
+checar('PulsoAgora repete PULSO.repeticoes vezes (nunca -1)', /PULSO\.repeticoes/.test(pulsoAgora) && !/withRepeat\([\s\S]*?,\s*-1\s*,/.test(pulsoAgora), true);
+checar('PulsoAgora não tem número mágico de duração', /duration:\s*\d/.test(pulsoAgora), false);
 checar('Skeleton é o único loop e desliga no web/reduzir', /!reduzir && Platform\.OS !== 'web'/.test(fontes.Skeleton), true);
 checar('PressableAnimado escala com o token', /TOQUE\.escalaPressionado/.test(fontes.PressableAnimado), true);
 checar('PressableAnimado volta com a mola snappy', /withSpring\(0, MOLA\.snappy\)/.test(fontes.PressableAnimado), true);
