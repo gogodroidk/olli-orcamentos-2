@@ -2909,6 +2909,21 @@ export async function syncOnLogin(): Promise<void> {
     // via extras_sync, com last-write-wins. Por último: não compete com o pipeline
     // relacional e uma falha aqui não pode afetar o sync principal.
     await sincronizarExtras(geracao);
+    if (syncAbortado(geracao)) return;
+    // Link público (/o/<token>): o pull traz os orçamentos, mas a VISUALIZAÇÃO e a
+    // RESPOSTA do cliente moram em `orcamentos_publicos`. Depois de cada pull,
+    // `sincronizarStatusLinks` espelha enviado→visualizado→aprovado/recusado no
+    // SQLite e dispara "Cliente aprovou/recusou" UMA vez por orçamento; em seguida
+    // `reagendarFollowUps` reconcilia os lembretes D+2/D+5 e o aviso de rascunhos
+    // com o status novo (quem respondeu perde o lembrete). Ver followUpLembretes.ts.
+    // Import tardio pelo mesmo motivo de ciclo de carga; os dois nunca lançam.
+    await import('./clienteLink')
+      .then(m => m.sincronizarStatusLinks())
+      .catch(() => 0);
+    if (syncAbortado(geracao)) return;
+    void import('./followUpLembretes')
+      .then(m => m.reagendarFollowUps())
+      .catch(() => {});
     // O pull gravou agendamentos direto no SQLite sem tocar nas notificações:
     // reconcilia os lembretes locais com o estado novo (reagenda/cancela). Import
     // tardio p/ não acoplar cloudSync ao módulo de agenda no grafo estático (evita

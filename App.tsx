@@ -129,8 +129,16 @@ const ROTA_DESLOGADO: keyof RootStackParamList = Platform.OS === 'web' ? 'Landin
  */
 // navigationRef mora em src/navigation/navigationRef (modulo folha, sem ciclos).
 
-/** Payload que os lembretes locais gravam em `content.data` (agenda, PMOC, ritual). */
-type NotificacaoPendente = { ordemId?: string; agendamentoId?: string; ritual?: 'bomDia' | 'fecharDia' };
+/** Payload que os lembretes locais gravam em `content.data` (agenda, PMOC, ritual, follow-up). */
+type NotificacaoPendente = {
+  ordemId?: string;
+  agendamentoId?: string;
+  ritual?: 'bomDia' | 'fecharDia';
+  /** Follow-up D+2/D+5 ou "Cliente aprovou/recusou" (services/followUpLembretes). */
+  orcamentoId?: string;
+  /** Lembrete agrupado de follow-up ou aviso de rascunhos: abre a lista. */
+  listaOrcamentos?: 'followUp' | 'rascunhos';
+};
 
 /**
  * Leva o toque na notificação para a área certa. Usado no app quente (listener)
@@ -159,6 +167,10 @@ function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
     );
   } else if (data.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
   else if (data.ritual === 'bomDia') (navigationRef.navigate as any)('Tabs', { screen: 'Home' }, { pop: true });
+  // Follow-up/resposta do cliente: VisualizarOrcamento e Orcamentos são rotas do
+  // stack raiz (não abas), então o navigate direto funciona com app frio ou quente.
+  else if (data.orcamentoId) (navigationRef.navigate as any)('VisualizarOrcamento', { orcamentoId: data.orcamentoId });
+  else if (data.listaOrcamentos) navigationRef.navigate('Orcamentos' as never);
 }
 
 const useNativeAnimations = Platform.OS !== 'web';
@@ -269,7 +281,7 @@ function AppConteudo() {
       if (!resposta) return;
       try {
         const data = resposta.notification.request.content.data as NotificacaoPendente;
-        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual) return;
+        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos) return;
         if (!navigationRef.isReady()) {
           notificacaoPendenteRef.current = data;
           return;
