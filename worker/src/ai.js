@@ -653,7 +653,8 @@ export function sanitizarContextoDiagnostico(bruto) {
   const sintoma = textoContexto(bruto.sintoma, L.sintoma);
   if (!codigos.length && !marcaInformada && !modelo && !codigoBuscado && !sintoma) return null;
 
-  const marcasDosCodigos = [...new Set(codigos.map((c) => c.marca).filter(Boolean))];
+  // Marca do registro que virou marcador de injeção não conta como marca conhecida.
+  const marcasDosCodigos = [...new Set(codigos.map((c) => c.marca).filter((m) => m && m !== MARCADOR_REMOVIDO))];
   const marcaUtil = marcaInformada && marcaInformada !== MARCADOR_REMOVIDO ? marcaInformada : '';
   const marca = marcaUtil || (marcasDosCodigos.length === 1 ? marcasDosCodigos[0] : '');
   const modeloUtil = modelo && modelo !== MARCADOR_REMOVIDO ? modelo : '';
