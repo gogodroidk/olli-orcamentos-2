@@ -132,8 +132,9 @@ function textoTemperatura(temperatura: number, max: number | null): string {
  *  1. chovendo agora (código atual ou da hora corrente) → "Chovendo agora — leve capa"
  *  2. 1ª hora com ≥50% → "Chuva às 15h — leve capa"
  *  3. 1ª hora com ≥30% → "Pode chover às 15h (35%)"
- *  4. janela inteira conhecida e abaixo de 30% → "Sem chuva nas próximas 12h · 27°"
- *  5. qualquer hora sem dado → só a temperatura (não afirma "sem chuva")
+ *  4. 1ª hora com código WMO de chuva (probabilidade baixa) → "Pode chover às 15h"
+ *  5. janela inteira conhecida, abaixo de 30% e sem código de chuva → "Sem chuva nas próximas 12h · 27°"
+ *  6. qualquer hora sem dado → só a temperatura (não afirma "sem chuva")
  */
 export function resumoClima(d: {
   temperatura: number;
@@ -149,6 +150,10 @@ export function resumoClima(d: {
   if (chuva) return `Chuva às ${horaCurta(chuva.hora)} — leve capa`;
   const talvez = horas.find((h) => h.probabilidade !== null && h.probabilidade >= LIMIAR_TALVEZ);
   if (talvez) return `Pode chover às ${horaCurta(talvez.hora)} (${talvez.probabilidade}%)`;
+  // O código WMO da hora também é previsão: chuva no código com probabilidade
+  // baixa NÃO autoriza "Sem chuva nas próximas 12h" — o texto se contradiria.
+  const porCodigo = horas.find((h) => codigoEhChuva(h.codigo));
+  if (porCodigo) return `Pode chover às ${horaCurta(porCodigo.hora)}`;
   const tudoConhecido = horas.length > 0 && horas.every((h) => h.probabilidade !== null);
   if (tudoConhecido) return `Sem chuva nas próximas ${horas.length}h · ${grau(d.temperatura)}`;
   return textoTemperatura(d.temperatura, d.max);

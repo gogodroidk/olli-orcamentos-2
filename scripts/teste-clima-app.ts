@@ -81,6 +81,12 @@ checar('REGRA DURA: uma hora sem dado → NÃO afirma "sem chuva", fala só a te
 checar('janela vazia não vira "sem chuva"',
   resumoClima({ temperatura: 27.4, codigo: 1, max: null, chuvaPorHora: [] }),
   '27° agora');
+checar('código WMO de chuva com % baixa NÃO vira "Sem chuva nas próximas 12h"',
+  resumoClima({
+    temperatura: 27.4, codigo: 1, max: 31,
+    chuvaPorHora: horas(DOZE_SECAS, 14, [2, 2, 2, 2, 61, 2, 2, 2, 2, 2, 2, 2]),
+  }),
+  'Pode chover às 18h');
 checar('null de probabilidade não conta como 0 para o limiar',
   resumoClima({ temperatura: 20, codigo: 1, max: 22, chuvaPorHora: horas([null, null, 55]) }),
   'Chuva às 16h — leve capa');
