@@ -5,7 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { isSameDay } from 'date-fns';
-import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../../theme';
+import { BorderRadius, Spacing, textoSobre, useCores, useEstilos, type Cores } from '../../theme';
 import { DURACAO, MOLA, useReduzirMovimento } from '../../theme/motion';
 import { PressableAnimado } from '../motion';
 import { vibrar } from '../../utils/haptico';
@@ -306,7 +306,7 @@ function BlocoArrastavel({
         ) : null}
         {previa ? (
           <View style={[styles.previa, { backgroundColor: cor }]} pointerEvents="none">
-            <Text style={styles.previaTexto}>{previa}</Text>
+            <Text style={[styles.previaTexto, { color: textoSobre(cor) }]}>{previa}</Text>
           </View>
         ) : null}
         {salvando ? (
@@ -339,6 +339,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   blocoSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },
   riscado: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
   previa: { position: 'absolute', right: 4, top: 4, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  previaTexto: { fontSize: 11, fontWeight: '900', color: '#07111F' },
+  previaTexto: { fontSize: 11, fontWeight: '900' },
   salvando: { position: 'absolute', right: 4, bottom: 4 },
 });

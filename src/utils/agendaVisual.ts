@@ -317,6 +317,13 @@ export async function atualizarDaNuvem(d: DepsAtualizacao): Promise<ResultadoAtu
       try { await voo; } catch { /* o sync em voo nunca deveria lançar */ }
     }
     try { await d.sincronizar(); } catch { /* idem */ }
+    // Outro sync entrou no meio (ex.: o app voltou do fundo) e a trava de
+    // reentrância devolveu na hora: espera ESSE terminar antes de ler o resultado,
+    // senão o pull dele ainda não aconteceu e a resposta seria "falhou" sem motivo.
+    const outro = d.emVoo();
+    if (outro && outro !== voo) {
+      try { await outro; } catch { /* idem */ }
+    }
     return 'feito' as const;
   })();
   const venceu = await Promise.race([trabalho, d.esperar(d.tetoMs).then(() => 'teto' as const)]);

@@ -170,6 +170,23 @@ async function cenarioAtualizar(): Promise<void> {
     tetoMs: 5, agora: () => 1_000, esperar: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
   });
   checar('passou do teto = demorou', demorou, 'demorou');
+
+  // Outro sync entrou entre o em-voo e o nosso: a trava devolve na hora e o pull
+  // que importa é o DELE. Espera ele terminar antes de ler o resultado.
+  let pullDoOutro: { em: string; falhas: string[]; abortado: boolean } | null = null;
+  let emVooAgora: Promise<void> | null = null;
+  let liberarOutro!: () => void;
+  const outro = new Promise<void>((r) => { liberarOutro = r; });
+  const pendOutro = atualizarDaNuvem({
+    emVoo: () => emVooAgora,
+    sincronizar: async () => { emVooAgora = outro; },
+    ultimoPull: () => pullDoOutro,
+    tetoMs: 10_000, agora: () => 1_000, esperar: () => new Promise<void>(() => {}),
+  });
+  await Promise.resolve();
+  pullDoOutro = { em: new Date(3_000).toISOString(), falhas: [], abortado: false };
+  liberarOutro();
+  checar('sync que entrou no meio: espera ele e responde ok', await pendOutro, 'ok');
 }
 
 console.log('Ligação na tela (fonte)');
@@ -182,6 +199,7 @@ checar('arrastar usa editarRecorrente/saveAgendamento', tela.includes('editarRec
 checar('conflito por técnico no formulário', tela.includes('encontrarConflitosPorTecnico(doDia.itens'), true);
 checar('conflito por técnico ao arrastar', /encontrarConflitosPorTecnico\(\s*itensVisiveis/.test(tela), true);
 checar('FAB some ao rolar', tela.includes('moverFab(1)') && tela.includes('estiloFab'), true);
+checar('lista e grade reservam o espaço do FAB', tela.includes('paddingBottom: paddingLista') && tela.includes('paddingInferior={paddingLista}'), true);
 checar('sem LayoutAnimation', tela.includes('LayoutAnimation'), false);
 checar('três visões', ['dia', 'semana', 'mes'].every(v => tela.includes(`visao === '${v}'`)), true);
 

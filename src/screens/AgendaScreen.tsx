@@ -88,13 +88,16 @@ const VISOES: readonly VisaoAgenda[] = ['dia', 'semana', 'mes'];
 function SincronizandoPill({ onDone, texto = 'Sincronizando...', icon = 'cloud-sync-outline' }: { onDone: () => void; texto?: string; icon?: keyof typeof MaterialCommunityIcons.glyphMap }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const reduzir = useReduzirMovimento();
   const opacity = useRef(new Animated.Value(0)).current;
 
+  // Só opacidade, com os tokens de duração; "Reduzir movimento" troca o fade por corte seco.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roda uma vez por exibição (onDone muda a cada render do pai).
   useEffect(() => {
     Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: duracaoAcessivel(DURACAO.fast, reduzir), useNativeDriver: true }),
       Animated.delay(900),
-      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: duracaoAcessivel(DURACAO.slow, reduzir), useNativeDriver: true }),
     ]).start(({ finished }) => { if (finished) onDone(); });
   }, [opacity]);
 
