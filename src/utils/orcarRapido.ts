@@ -186,10 +186,17 @@ export function repetirDoUltimo(
 }
 
 /**
- * Itens R$ 0,00 que vieram de um orçamento JÁ SALVO: lá eles passaram pela
- * confirmação de cortesia, então entram confirmados (mesma regra da edição).
+ * Itens R$ 0,00 que vieram de um orçamento JÁ SALVO e que entram confirmados
+ * como cortesia. Só vale para origem FORA de rascunho: o "Rascunho" salva sem
+ * passar pela confirmação de cortesia (item do Autopilot sem preço, por exemplo),
+ * então item R$ 0,00 de rascunho NÃO vira cortesia sozinho — o técnico informa o
+ * preço ou confirma, como em qualquer item novo.
  */
-export function idsDeCortesia(itens: readonly ItemOrcamento[]): string[] {
+export function idsDeCortesia(
+  itens: readonly ItemOrcamento[],
+  statusOrigem: Orcamento['status'] | undefined,
+): string[] {
+  if (!statusOrigem || statusOrigem === 'rascunho') return [];
   return itens.filter(i => i.preco <= 0).map(i => i.id);
 }
 

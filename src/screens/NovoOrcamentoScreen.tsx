@@ -402,8 +402,9 @@ export default function NovoOrcamentoScreen() {
   function repetirUltimo(origem: Orcamento) {
     const parcial = repetirDoUltimo(origem, generateId);
     update(parcial);
-    // Itens R$ 0,00 de um orçamento já salvo passaram pela confirmação lá.
-    const cortesias = idsDeCortesia(parcial.itens ?? []);
+    // Itens R$ 0,00 de um orçamento já salvo FORA de rascunho passaram pela
+    // confirmação lá; os de rascunho, não (ver `idsDeCortesia`).
+    const cortesias = idsDeCortesia(parcial.itens ?? [], origem.status);
     if (cortesias.length) setItensZeroConfirmados(prev => new Set([...prev, ...cortesias]));
     vibrar('sucesso');
     toast.sucesso(`Itens, desconto e condições do orçamento nº ${formatarNumeroExibicao(origem.numero)} copiados. Confira os preços antes de enviar.`);
@@ -698,7 +699,7 @@ export default function NovoOrcamentoScreen() {
         <View style={styles.footerCompacto}>
           <View style={{ flex: 1 }} accessible accessibilityLabel={`Total ${formatCurrency(orc.valorTotal)}`}>
             <Text style={styles.summaryLabel}>Valor total</Text>
-            <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.summaryTotalCompacto} />
+            <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.summaryTotalCompacto} numberOfLines={1} />
           </View>
           <OlliButton
             label={rotuloPrincipal}
@@ -720,7 +721,7 @@ export default function NovoOrcamentoScreen() {
       >
         <View style={styles.summaryTotalBlock}>
           <Text style={styles.summaryLabel}>Valor total</Text>
-          <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.summaryTotal} />
+          <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.summaryTotal} numberOfLines={1} />
         </View>
 
         <View style={styles.summaryMeta}>

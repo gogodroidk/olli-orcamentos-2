@@ -185,7 +185,13 @@ caso('itens com ids NOVOS e os preços daquele orçamento', () => {
   assert.ok(r.itens?.every(i => !i.id.startsWith('velho')), 'ids novos');
   assert.equal(r.itens?.[0].preco, 150);
   assert.equal(r.itens?.[0].subtotal, 300);
-  assert.deepEqual(idsDeCortesia(r.itens ?? []), [r.itens?.[1].id]);
+  assert.deepEqual(idsDeCortesia(r.itens ?? [], 'enviado'), [r.itens?.[1].id]);
+});
+caso('item R$ 0,00 de RASCUNHO não vira cortesia sozinho (rascunho não pede a confirmação)', () => {
+  const origem = orc({ status: 'rascunho', itens: [item({ id: 'v1', preco: 0, subtotal: 0 })] });
+  const r = repetirDoUltimo(origem, gerarId);
+  assert.deepEqual(idsDeCortesia(r.itens ?? [], origem.status), []);
+  assert.deepEqual(idsDeCortesia(r.itens ?? [], undefined), []);
 });
 caso('vem desconto e textos comerciais preenchidos', () => {
   const r = repetirDoUltimo(orc({

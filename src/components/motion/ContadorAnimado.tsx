@@ -18,6 +18,8 @@ interface Props {
   /** `brl` = R$ com centavos; `inteiro` = número sem casas. Padrão `inteiro`. */
   formato?: Formato;
   style?: StyleProp<TextStyle>;
+  /** Repassado ao `Text` (ex.: 1 no rodapé, para total grande não quebrar linha). */
+  numberOfLines?: number;
 }
 
 function formatar(v: number, formato: Formato): string {
@@ -35,7 +37,7 @@ function formatar(v: number, formato: Formato): string {
  * Leitor de tela: anuncia SEMPRE o valor final, nunca os intermediários.
  * "Reduzir movimento": o número aparece direto no valor final.
  */
-export function ContadorAnimado({ valor, formato = 'inteiro', style }: Props) {
+export function ContadorAnimado({ valor, formato = 'inteiro', style, numberOfLines }: Props) {
   const reduzir = useReduzirMovimento();
   const alvo = Number.isFinite(valor) ? valor : 0;
   // Passo de exibição: centavo no BRL, unidade no inteiro.
@@ -73,7 +75,7 @@ export function ContadorAnimado({ valor, formato = 'inteiro', style }: Props) {
 
   const textoFinal = formatar(alvo, formato);
   return (
-    <Text style={style} accessibilityLabel={textoFinal}>
+    <Text style={style} numberOfLines={numberOfLines} accessibilityLabel={textoFinal}>
       {formatar(exibido, formato)}
     </Text>
   );

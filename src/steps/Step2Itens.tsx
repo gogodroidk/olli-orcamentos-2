@@ -265,7 +265,14 @@ export default function Step2Itens({
                 label="Usar estes itens"
                 variant="outline"
                 size="sm"
-                onPress={() => { if (ultimo.estado === 'pronto' && ultimo.orcamento) onRepetirUltimo?.(ultimo.orcamento); }}
+                onPress={() => {
+                  if (ultimo.estado !== 'pronto' || !ultimo.orcamento) return;
+                  // O desconto vem do anterior: o texto local do campo % não pode
+                  // ficar mostrando o que foi digitado antes (diria um valor e
+                  // aplicaria outro).
+                  setDescontoPercentText(null);
+                  onRepetirUltimo?.(ultimo.orcamento);
+                }}
                 icon={<MaterialCommunityIcons name="content-copy" size={16} color={cores.accentLight} />}
                 style={styles.repetirBotao}
               />
