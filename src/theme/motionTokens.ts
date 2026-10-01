@@ -74,9 +74,31 @@ export const STAGGER = {
   maxItens: 8,
 } as const;
 
+/**
+ * Gestos de arrastar para dispensar (toast que sobe, folha que desce). O limiar
+ * é em dp OU em fração da altura do elemento; a velocidade em dp/s pega o
+ * "peteleco" rápido que não chegou a andar muito.
+ */
+export const GESTO = {
+  /** Toast: arrastou pra cima mais que isso → some. */
+  limiarDispensa: 24,
+  /** Folha: arrastou pra baixo mais que esta fração da própria altura → fecha. */
+  fracaoFechar: 0.3,
+  /** Peteleco: acima disso (dp/s) dispensa mesmo com pouco deslocamento. */
+  velocidadeDispensa: 700,
+  /** Arrastar no sentido "errado" anda só esta fração do dedo (borracha). */
+  resistencia: 0.15,
+  /** Ignora tremida do dedo antes de virar arrasto (dp) — o toque ainda é toque. */
+  folgaAtivacao: 8,
+} as const;
+
 /** Escala e opacidade do toque. */
 export const TOQUE = {
   escalaPressionado: 0.97,
+  /** Card/linha larga: a mesma redução em pixel de 0.97 parece um pulo numa área grande. */
+  escalaCard: 0.98,
+  /** Botão de destaque pequeno e redondo (o "Orçar" central): afunda mais, de propósito. */
+  escalaDestaque: 0.92,
   opacidadePressionado: 0.9,
   opacidadeDesabilitado: 0.55,
 } as const;

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Alert, Linking, RefreshControl, Tou
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -216,7 +216,7 @@ export default function AssinaturaScreen() {
   }, []);
 
   const tentarDeNovo = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setCarregando(true);
     void carregar({ forcar: true });
   }, [carregar]);
@@ -238,7 +238,7 @@ export default function AssinaturaScreen() {
 
   async function gerenciar() {
     if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setAbrindoPortal(true);
     try {
       const res = await abrirPortalAssinatura();
@@ -265,7 +265,7 @@ export default function AssinaturaScreen() {
 
   async function renovarComPix(plano: 'pro' | 'empresa', periodo: 'mensal' | 'anual') {
     if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixLigado || gerandoPix) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setGerandoPix(periodo);
     try {
       const c = await criarPixPlano(chavePixPlano(plano, periodo));
@@ -289,7 +289,7 @@ export default function AssinaturaScreen() {
       Alert.alert('Recibo', 'Esta fatura ainda não tem um recibo disponível.');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await Linking.openURL(f.recibo);
     } catch {
@@ -496,7 +496,7 @@ export default function AssinaturaScreen() {
                         variant="outline"
                         fullWidth
                         onPress={() => {
-                          Haptics.selectionAsync().catch(() => {});
+                          vibrar('selecao');
                           Linking.openURL(urlGerenciarNaPlay(ANDROID_PACKAGE, produtoPlay)).catch(() => {
                             Alert.alert('Google Play', 'Não consegui abrir a Play Store. Abra a Play Store › Pagamentos e assinaturas.');
                           });
@@ -585,7 +585,7 @@ export default function AssinaturaScreen() {
                       variant="gradient"
                       size="lg"
                       fullWidth
-                      onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
+                      onPress={() => { vibrar('selecao'); nav.navigate('Planos'); }}
                       icon={<MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />}
                       style={{ marginTop: Spacing.base }}
                     />

@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -107,7 +107,7 @@ export default function DiagnosticoIAScreen() {
 
   async function pedirDiagnostico() {
     if (!podeEnviar) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
@@ -144,7 +144,7 @@ export default function DiagnosticoIAScreen() {
   }
 
   function cancelarDiagnostico() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     abortRef.current?.abort();
   }
 
@@ -177,7 +177,7 @@ export default function DiagnosticoIAScreen() {
   // O técnico só ajusta preço/quantidade no fluxo do orçamento.
   function criarOrcamento() {
     if (!d) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const partes = [marca.trim(), modelo.trim()].filter(Boolean).join(' ');
     const ref = codigo.trim() ? `código ${codigo.trim()}` : sintoma.trim();
     const nome = [

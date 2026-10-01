@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, Fonts, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -55,7 +55,7 @@ export default function EscanearQrScreen() {
     if (!token) return; // QR que não é do OLLI — ignora e continua escaneando
     travado.current = true;
     setLido(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    vibrar('sucesso');
     // Volta para a lista de equipamentos, que abre o detalhe pelo token.
     nav.navigate('Equipamento', { abrirToken: token });
   }

@@ -5,7 +5,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BarChart } from 'react-native-gifted-charts';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, textoSobre, corStatusOS, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { KpiCard } from '../../components/web/KpiCard';
@@ -203,7 +203,7 @@ export default function InicioDesktopScreen() {
       avisar('Sem telefone', `Cadastre o WhatsApp de ${item.cliente.nome} em Clientes para chamar por aqui.`);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       // Lembrete do ofício + registro: o cliente sai da lista por 30 dias.
       if (await lembrarNoWhatsApp(item)) {
@@ -222,7 +222,7 @@ export default function InicioDesktopScreen() {
       avisar('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para cobrar por aqui.`);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       // Registra o envio: o item desce com "cobrado hoje" (não insiste no mesmo dia).
       if (await cobrarItemNoWhatsApp(item)) {
@@ -832,7 +832,7 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
   // localização não mostra nem o chip nem este botão, só endereço/mapa.
   const estouACaminho = useCallback(async () => {
     if (!telefoneCliente) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await abrirWhatsApp(telefoneCliente, mensagemEstouACaminho(proxima.clienteNome, etaRes));
     } catch {

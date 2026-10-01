@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliInput } from '../../components/OlliInput';
 import { OlliButton } from '../../components/OlliButton';
@@ -76,7 +76,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
     if (telDigits.length > 0 && telDigits.length < 10) proximosErros.telefone = 'Telefone incompleto (informe DDD + número)';
     if (proximosErros.cpf || proximosErros.cnpj || proximosErros.telefone) {
       setErros(proximosErros);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       return;
     }
     setErros({});
@@ -93,11 +93,11 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
     setSalvando(true);
     try {
       await saveCliente(c);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       aoSalvar();
       aoFechar();
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       avisar('Erro', 'Não foi possível salvar o cliente agora. Tente novamente.');
     } finally {
       setSalvando(false);

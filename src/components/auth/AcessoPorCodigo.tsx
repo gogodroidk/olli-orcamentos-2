@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 import { OlliInput } from '../OlliInput';
 import { OlliButton } from '../OlliButton';
 import { CampoCodigo } from './CampoCodigo';
@@ -101,7 +101,7 @@ export function AcessoPorCodigo({ fluxo, emailInicial, onEntrou, onVoltar, onCri
   async function enviar() {
     if (enviando || segundos > 0) return;
     if (!emailOk) { setAvisoEnvio('Digite um e-mail válido.'); return; }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setEnviando(true);
     setAvisoEnvio(null);
     let erro: unknown = null;
@@ -173,13 +173,13 @@ export function AcessoPorCodigo({ fluxo, emailInicial, onEntrou, onVoltar, onCri
     setErroSenha(null);
     try {
       await definirNovaSenha(senha);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       await onEntrou();
     } catch (e) {
       if (!vivo.current) return;
       const { texto } = traduzirErroAuth(e);
       setErroSenha(texto);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
     }
     if (vivo.current) setSalvando(false);
   }

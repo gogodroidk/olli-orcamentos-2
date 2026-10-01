@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, 
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { TimePickerModal } from 'react-native-paper-dates';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -198,7 +198,7 @@ function ContratoConteudo() {
     setErro(null);
     try {
       const { geracao } = await salvarContrato(montado);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       const frase = geracao
         ? resumoDaGeracao(geracao) || 'A próxima visita já estava na agenda.'
         : 'Contrato salvo. Não consegui gerar as visitas agora — tento de novo na próxima vez que o app abrir.';

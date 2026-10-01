@@ -1,19 +1,16 @@
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 
 /** Retorno tátil do toque. `false` = sem vibração. */
 export type HapticKind = 'light' | 'medium' | 'selection' | false;
 
 /**
- * Dispara o háptico pedido. Aparelho sem motor de vibração (ou web) rejeita a
- * promessa: o toque continua valendo, só não vibra — por isso o `catch` vazio é
- * de propósito e não esconde erro de negócio nenhum.
+ * Dispara o háptico pedido pelo helper único (src/utils/haptico.ts) — o mesmo
+ * vocabulário que as telas usam para sucesso/erro/seleção. Nunca lança.
  */
 export function dispararHaptico(kind: HapticKind): void {
   if (kind === false) return;
-  if (kind === 'light') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); return; }
-  if (kind === 'medium') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); return; }
-  Haptics.selectionAsync().catch(() => {});
+  vibrar(kind === 'light' ? 'leve' : kind === 'medium' ? 'medio' : 'selecao');
 }
 
 // Chaves que afetam o LAYOUT no container pai — precisam morar no Pressable
