@@ -79,6 +79,16 @@ async function processarECopiar(uriOrigem: string): Promise<string | null> {
   }
 }
 
+/**
+ * Mesmo tratamento (comprime + copia para a pasta permanente) para uma URI que
+ * NÃO veio de `adicionarFotoCamera/Galeria` — a foto recuperada pelo
+ * `ImagePicker.getPendingResultAsync` depois de o Android matar o app no meio da
+ * câmera (services/capturaFotoOSNativa). Null se falhar.
+ */
+export function processarFotoTemporaria(uriOrigem: string): Promise<string | null> {
+  return processarECopiar(uriOrigem);
+}
+
 /** Quantas fotos ainda cabem até o limite de MAX_FOTOS_ORCAMENTO. */
 function vagasRestantes(fotosAtuais: string[]): number {
   return Math.max(0, MAX_FOTOS_ORCAMENTO - fotosAtuais.length);

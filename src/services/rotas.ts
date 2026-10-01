@@ -5,6 +5,7 @@
 // no card de agendamento da AgendaScreen.
 
 import { Linking, Alert } from 'react-native';
+import { urlRotaDoDia } from '../utils/rotaDoDia';
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -23,6 +24,23 @@ export async function abrirRotaGoogleMaps(endereco: string): Promise<void> {
     await Linking.openURL(url);
   } catch {
     Alert.alert('Ops', 'Não consegui abrir o Maps.');
+  }
+}
+
+/**
+ * Abre o Google Maps com a ROTA DO DIA inteira (várias paradas, na ordem dos
+ * horários). Mesmo deep link público do `abrirRotaGoogleMaps` — sem chave e sem
+ * billing. Devolve `false` quando não abriu (nenhum endereço utilizável ou o
+ * sistema recusou), para a tela avisar; nunca lança.
+ */
+export async function abrirRotaDoDia(enderecos: readonly (string | null | undefined)[]): Promise<boolean> {
+  const url = urlRotaDoDia(enderecos);
+  if (!url) return false;
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
   }
 }
 
