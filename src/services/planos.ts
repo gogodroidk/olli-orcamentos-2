@@ -10,19 +10,23 @@ import {
   type DadosPlanoCache,
 } from './planoCachePolicy';
 
-export type { PlanoId, Recurso } from './entitlements';
+export type { PlanoId, Recurso, EstadoAcessoRecurso, LeituraPlano, AcessoServico, FontePlano } from './entitlements';
 export {
+  acessoDeServico,
+  planoConfirmado,
   RECURSOS_POR_PLANO,
   RECURSO_REMOVE_MARCA,
   RECURSOS_EM_BREVE,
+  RECURSOS_EM_ORDEM,
   disponibilidadeRecurso,
+  estadoAcessoRecurso,
+  planoMinimoDoRecurso,
   temAcessoRecurso,
   IA_USOS_GRATIS_MES,
-  ORCAMENTOS_ENVIADOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
 } from './entitlements';
-import type { PlanoId, Recurso } from './entitlements';
-import { temAcessoRecurso, IA_USOS_GRATIS_MES } from './entitlements';
+import type { AcessoServico, PlanoId, Recurso } from './entitlements';
+import { acessoDeServico, temAcessoRecurso, IA_USOS_GRATIS_MES } from './entitlements';
 
 export interface PlanoAtual {
   plano: PlanoId;
@@ -31,6 +35,12 @@ export interface PlanoAtual {
   origem?: 'gratis' | 'pagamento' | 'admin' | 'trial';
   /** Distingue estado confirmado, graça offline da mesma conta e incerteza. */
   fonte: 'servidor' | 'cache_mesmo_usuario' | 'sessao_ausente' | 'indisponivel';
+  /**
+   * Plano da empresa (tenant) lido do servidor — só aparece quando é MAIOR que o
+   * da conta (membro de equipe de uma empresa paga). Vale apenas para os
+   * recursos de `RECURSOS_DO_TENANT`; o `plano` acima continua sendo o da conta.
+   */
+  planoTenant?: PlanoId;
 }
 
 async function lerCache() {
@@ -103,6 +113,11 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
           validoAte: oferta.trialTerminaEm,
           origem: 'trial',
         };
+      } else if (oferta && oferta.planoEfetivo !== 'gratis') {
+        // Conta sem assinatura própria, mas a EMPRESA dela (tenant) é paga: é o
+        // técnico/gestor de uma equipe. O servidor resolveu o tenant; guardamos à
+        // parte — só os recursos de campo (RECURSOS_DO_TENANT) usam isto.
+        resultado = { ...resultado, planoTenant: oferta.planoEfetivo };
       }
     }
     await salvarCache(resultado, ownerUserId);
@@ -117,9 +132,26 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
         validoAte: cache.validoAte,
         origem: cache.origem,
         fonte: 'cache_mesmo_usuario',
+        ...(cache.planoTenant ? { planoTenant: cache.planoTenant } : {}),
       };
     }
     return { plano: 'gratis', origem: 'gratis', fonte: 'indisponivel' };
+  }
+}
+
+/**
+ * Pode um SERVIÇO em segundo plano usar este recurso agora? Lê o plano (servidor,
+ * com a graça do cache da mesma conta) e devolve os 3 estados de
+ * `acessoDeServico`. Nunca lança: falha vira `indeterminado` — e quem chama não
+ * mexe em nada nesse caso. Usado pelos agendadores (follow-up, hora de sair) e
+ * pelas chamadas de API paga (ETA).
+ */
+export async function acessoRecursoAgora(recurso: Recurso): Promise<AcessoServico> {
+  try {
+    const { plano, fonte, planoTenant } = await getPlanoAtual();
+    return acessoDeServico(plano, fonte, recurso, planoTenant);
+  } catch {
+    return 'indeterminado';
   }
 }
 
@@ -143,7 +175,8 @@ export function invalidarCachePlano(): void {
 // ─── Contrato de recursos por plano (Onda 1) ────────────────────────────────
 // Mapa ÚNICO de quais recursos cada plano libera. Fonte de verdade para o hook
 // usePlano().temAcesso(recurso) e para o componente <GatePro>. NUNCA gatear o
-// fluxo de criar orçamento/recibo/cliente/agenda — é a alma do plano Grátis.
+// fluxo de criar orçamento/recibo/cliente/agenda — é a alma do plano Grátis
+// (que, desde 01/10/2026, tem orçamentos ILIMITADOS: ver limitesComerciais.ts).
 
 /**
  * Identificadores dos recursos gateáveis. String union para dar autocomplete e

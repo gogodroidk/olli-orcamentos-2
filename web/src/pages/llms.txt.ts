@@ -37,7 +37,7 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
+import { FRASE_GRATIS } from "../data/recursos";
 
 const ORIGEM = "https://olliorcamentos.online";
 
@@ -47,7 +47,7 @@ const ORIGEM = "https://olliorcamentos.online";
  * três lugares" foi paga: o número mora num lugar só e todo o resto importa dele.
  */
 const PLANOS_LLM = [
-	{ nome: "Grátis", preco: reais(0), nota: `permanente, sem cartão, com ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês` },
+	{ nome: "Grátis", preco: reais(0), nota: `permanente, sem cartão, com ${FRASE_GRATIS}` },
 	{
 		nome: "Pro",
 		preco: `${reais(PRECO_PRO.mensalCentavos)}/mês`,

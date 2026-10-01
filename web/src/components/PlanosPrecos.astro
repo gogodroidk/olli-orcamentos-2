@@ -8,8 +8,10 @@
  *
  * ═══ TUDO DERIVADO DA FONTE ═══
  *  - Preços: `data/planos.ts` (espelho da Stripe live). Zero literal de R$ aqui.
- *  - Bullets de feature: `data/recursos.ts` → `entitlements.ts`. Os itens "Tudo do
- *    X, mais…" são a DIFERENÇA dos conjuntos de entitlements, não uma lista digitada.
+ *  - Bullets de feature: a tabela única `src/services/planosBase.ts` (via
+ *    `data/recursos.ts`) — a MESMA do app, do painel e dos e-mails. Ela confere no
+ *    import que cada bullet pago vende exatamente o que `entitlements.ts` libera.
+ *    Desde 01/10/2026 o Grátis é ILIMITADO, com o selo "Feito com OLLI" dito às claras.
  *  - O 12× vem com a verdade (ver abaixo), nunca vendido como desconto.
  *
  * ═══ O ALTERNADOR NÃO HIDRATA NADA ═══
@@ -30,14 +32,8 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import {
-	IA_USOS_GRATIS_MES,
-	ORCAMENTOS_ENVIADOS_GRATIS_MES,
-	RECURSOS_BASE,
-	ROTULO_RECURSO,
-	recursosAdicionais,
-} from "../data/recursos";
-import type { Recurso } from "../data/recursos";
+import { TRIAL_PRO_DIAS } from "../../../src/services/entitlements";
+import { planoBase } from "../data/recursos";
 
 // O app (painel) mora em outro subdomínio. CTA de assinatura abre o cadastro
 // direto (?modo=cadastro), Empresa fala no WhatsApp de vendas.
@@ -83,18 +79,11 @@ interface Bullet {
 	texto: string;
 	emBreve: boolean;
 }
-const pronto = (texto: string): Bullet => ({ texto, emBreve: false });
-const doRecurso = (r: Recurso): Bullet => ({
-	texto: ROTULO_RECURSO[r].titulo,
-	emBreve: ROTULO_RECURSO[r].emBreve === true,
-});
-const bulletsGratis = [
-	`Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
-	...RECURSOS_BASE,
-	`IA de diagnóstico: ${IA_USOS_GRATIS_MES} usos por mês`,
-].map(pronto);
-const bulletsPro = [pronto("Tudo do Grátis"), ...recursosAdicionais("pro", "gratis").map(doRecurso)];
-const bulletsEmpresa = [pronto("Tudo do Pro"), ...recursosAdicionais("empresa", "pro").map(doRecurso)];
+const bulletsDe = (id: "gratis" | "pro" | "empresa"): Bullet[] =>
+	planoBase(id).bullets.map((b) => ({ texto: b.texto, emBreve: b.emBreve }));
+const bulletsGratis = bulletsDe("gratis");
+const bulletsPro = bulletsDe("pro");
+const bulletsEmpresa = bulletsDe("empresa");
 
 type PrecoPeriodo = ReturnType<typeof precoNoPeriodo>;
 interface Cartao {
@@ -234,7 +223,7 @@ const cartoes: Cartao[] = [
 		))}
 	</div>
 
-	<p class="mt-10 text-center text-sm text-muted">Grátis sem prazo. Depois do primeiro envio, você pode ativar 14 dias de Pro — sem cartão e sem cobrança automática.</p>
+	<p class="mt-10 text-center text-sm text-muted">Grátis sem prazo e sem limite de orçamentos. Depois do primeiro envio, você pode ativar {TRIAL_PRO_DIAS} dias de Pro — sem cartão e sem cobrança automática.</p>
 	{/* Pix só aparece quando o worker confirmou no build que está ligado (data/pix.ts).
 	    "Mesmo preço" é verdade travada em teste: PLANO_PIX do worker = data/planos.ts. */}
 	{PIX_PLANO_LIGADO && (

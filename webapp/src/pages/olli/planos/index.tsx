@@ -30,7 +30,7 @@
  * Qualquer falha vira um estado honesto com "Tentar de novo" e o WhatsApp como
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
-import { AlertTriangle, Check, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, Check, Clock, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { paraBr } from "@/olli/datas";
@@ -50,7 +50,7 @@ import { cn } from "@/utils";
 import { type FalhaCheckout, iniciarCheckout, type PlanoCheckout } from "./checkout";
 import { DialogPix } from "./DialogPix";
 import { type PlanoPix, pixDisponivel } from "./pix";
-import { nomeDoPlano, type PlanoBase, PLANOS_BASE } from "./planos-base";
+import { FRASE_GRATIS, nomeDoPlano, type PlanoBase, PLANOS_BASE, RECURSOS_GRATIS } from "./planos-base";
 import {
 	DESCONTO_ANUAL_ROTULO,
 	type PeriodoCobranca,
@@ -62,7 +62,7 @@ import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurs
 import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
 import { urlGerenciarNaPlay } from "@play-billing-regras";
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from "@limites-comerciais";
+import { TRIAL_PRO_DIAS } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
 import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
 import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
@@ -574,7 +574,7 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 		<Faixa
 			tom="neutro"
 			titulo="Você está no plano Grátis"
-			texto={`Rascunhos, recibos, clientes e histórico ficam sem limite; você pode enviar ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos por mês. Sem prazo e sem cartão.`}
+			texto={`O Grátis tem ${FRASE_GRATIS}. Sem prazo e sem cartão.`}
 			acao={{
 				rotulo: "Quero assinar o Pro",
 				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
@@ -764,10 +764,18 @@ function CardPlano({
 			<p className="mt-1 min-h-[1rem] text-xs font-medium text-success-darker dark:text-success-light">{nota ?? ""}</p>
 
 			<ul className="mt-5 space-y-2.5">
-				{plano.beneficios.map((b) => (
-					<li key={b} className="flex items-start gap-2 text-sm text-text-primary">
-						<Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
-						<span>{b}</span>
+				{plano.bullets.map((b) => (
+					<li key={b.texto} className="flex items-start gap-2 text-sm text-text-primary">
+						{/* "Em breve" sem o ✓ de quem já funciona — três estados, nunca dois. */}
+						{b.emBreve ? (
+							<Clock className="mt-0.5 size-4 shrink-0 text-text-secondary" aria-hidden />
+						) : (
+							<Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+						)}
+						<span>
+							{b.texto}
+							{b.emBreve && <span className="text-text-secondary"> (em breve)</span>}
+						</span>
 					</li>
 				))}
 			</ul>
@@ -886,7 +894,8 @@ function Celula({ plano, recurso, emBreve }: { plano: PlanoId; recurso: (typeof 
 }
 
 function TabelaComparativo() {
-	const base = PLANOS_BASE.find((p) => p.id === "gratis")?.beneficios ?? [];
+	// "Em todos os planos" = a alma do Grátis, sem a nota do selo (o selo é só do Grátis).
+	const base = RECURSOS_GRATIS;
 	const colClass = "px-4 py-3 text-center text-sm font-semibold text-text-primary";
 	const grupoClass = "bg-bg-neutral/40 px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary";
 	const linhaClass = "border-t border-border/60";

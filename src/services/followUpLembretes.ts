@@ -24,8 +24,12 @@
  * Quem pede é a Agenda ou o toggle em Conta. Sem permissão, os lembretes deste
  * módulo são cancelados e nada é agendado.
  *
- * ERRO NUNCA VIRA VAZIO: se a leitura dos orçamentos, dos lembretes já agendados
- * ou do estado de "já avisados" falha, NADA é cancelado nem disparado — "não sei" não
+ * PLANO: os lembretes D+2/D+5 são o "follow-up automático" do Pro
+ * (`followup_automatico`). No Grátis só ficam o aviso de rascunhos e o "Cliente
+ * aprovou/recusou". Plano que não deu para ler = não mexe (`followUpsDoPlano`).
+ *
+ * ERRO NUNCA VIRA VAZIO: se a leitura dos orçamentos, dos lembretes já agendados,
+ * do plano ou do estado de "já avisados" falha, NADA é cancelado nem disparado — "não sei" não
  * pode virar "não tem follow-up" (cancelaria lembretes válidos) nem "nunca avisei"
  * (repetiria o "Cliente aprovou" de todo o histórico).
  */
@@ -36,9 +40,11 @@ import { getOrcamentos, getRecibos } from '../database/database';
 import { temPermissaoNotificacao } from './agenda';
 import { getPreferenciasRitual } from './ritualDiario';
 import { RESPOSTAS_AVISADAS_KEY } from './storageKeys';
+import { acessoRecursoAgora } from './planos';
 import {
   ORIGEM_FOLLOWUP,
   decidirAvisosDeResposta,
+  followUpsDoPlano,
   lerEstadoRespostas,
   planejarAvisoRascunhos,
   planejarFollowUps,
@@ -175,7 +181,13 @@ async function reagendarFollowUpsAgora(agora: Date): Promise<void> {
 
     const { domingo } = await getPreferenciasRitual();
     const prefs = { domingoAtivo: domingo };
-    const plano = planejarFollowUps(orcamentos, recibos, agora, prefs);
+    // Follow-up automático é do Pro. Plano ilegível = não mexe em nada (nem nos
+    // rascunhos: reconciliar só uma parte cancelaria os D+2/D+5 de quem paga).
+    const plano = followUpsDoPlano(
+      await acessoRecursoAgora('followup_automatico'),
+      planejarFollowUps(orcamentos, recibos, agora, prefs),
+    );
+    if (!plano) return;
     const rascunhos = planejarAvisoRascunhos(orcamentos, agora, prefs);
     if (rascunhos) plano.push(rascunhos);
 

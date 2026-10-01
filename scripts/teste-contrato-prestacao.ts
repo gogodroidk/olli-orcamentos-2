@@ -235,9 +235,9 @@ checar('o aviso diz que não passou por advogado', AVISO_JURIDICO.includes('não
 checar('o aviso informa a garantia legal do CDC', AVISO_JURIDICO.includes('não pode ser afastada por contrato'), true);
 // O aviso NÃO é um selo de marca: nenhum plano pago pode removê-lo.
 const pago = texto(contrato(ORCAMENTO, EMPRESA, undefined, { removerMarca: true }));
-checar('plano pago remove o selo OLLI', pago.includes('Gerado com OLLI Orçamentos'), false);
+checar('plano pago remove o selo OLLI', pago.includes('utm_medium=selo'), false);
 checar('mas o aviso jurídico PERMANECE', pago.includes(texto(AVISO_JURIDICO)), true);
-checar('no grátis o selo OLLI aparece', t.includes('Gerado com OLLI Orçamentos'), true);
+checar('no grátis o selo "Feito com OLLI" aparece', t.includes('utm_medium=selo') && t.includes('Feito com'), true);
 // Nenhuma superfície — papel, módulos ou telas — pode prometer blindagem legal.
 const FONTES_COPY: Array<[string, string]> = [
   ['o contrato gerado', html],

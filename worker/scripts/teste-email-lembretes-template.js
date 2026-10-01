@@ -3,18 +3,19 @@
  *
  *     node scripts/teste-email-lembretes-template.js   (de dentro de worker/)
  *
- * Protege: preço derivado da fonte (precosPlanos.ts), CTA certo por tipo
- * (/planos e /planos?renovar=pix), link de descadastro no HTML e no texto, sem
- * PII, sem urgência inventada, HTML acessível e falha fechada em dado estranho.
+ * Protege: CTA certo por tipo (/planos?renovar=pix), link de descadastro no HTML
+ * e no texto, sem PII, sem urgência inventada, HTML acessível e falha fechada em
+ * dado estranho. Desde 01/10/2026 (Grátis ilimitado) os e-mails de cota não
+ * existem: um pedido antigo desses na fila falha com `tipo_descontinuado`.
  */
 import assert from 'node:assert/strict';
 import { renderizarEmailLembrete, dataCurtaBrasilia } from '../src/emailLembretesTemplate.js';
-import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 
-const PRECO = reais(PRECO_PRO.mensalCentavos);
+const VENCE = '2026-10-02T02:00:00.000Z';
+const RENOVAR = Object.freeze({ tipo: 'renovar_pix', plano: 'pro', venceEm: VENCE, momento: 'D-3', sequencia: `renovacao:${VENCE}` });
 const UNSUB = 'https://diagnostico.olliorcamentos.online/email/descadastrar?u=00000000-0000-4000-8000-000000000001&e=lembretes&a=abc';
 const BASE = Object.freeze({
-  eventId: 'lembrete:assinatura:00000000-0000-4000-8000-000000000001:cota_quase:2026-09',
+  eventId: `lembrete:assinatura:00000000-0000-4000-8000-000000000001:renovacao:${'2026-10-02T02:00:00.000Z'}:D-3`,
   template: 'lembrete_assinatura',
   templateVersion: 'lembrete_assinatura.v1',
   purpose: 'billing_reminder',
@@ -82,24 +83,9 @@ caso('janela D+1 não tem e-mail (renderer recusa)', () => {
 });
 
 console.log('\n2. Assinatura');
-caso('cota_quase: preço da fonte e CTA /planos', () => {
-  const email = renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 } });
-  comum(email);
-  assert.equal(email.subject, 'Faltam 2 orçamentos grátis este mês');
-  assert.ok(email.text.includes(`${PRECO}/mês`));
-  assert.ok(email.text.includes('Ver o plano Pro: https://app.olliorcamentos.online/planos'));
-  assert.ok(email.text.includes('3 de 5'));
-});
-caso('cota_quase com 1 restante usa o singular', () => {
-  const email = renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_quase', limite: 5, usados: 4, restantes: 1 } });
-  assert.equal(email.subject, 'Falta 1 orçamento grátis este mês');
-});
-caso('cota_esgotada: preço da fonte, dados preservados', () => {
-  const email = renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_esgotada', limite: 5, usados: 5, restantes: 0 } });
-  comum(email);
-  assert.equal(email.subject, 'Você usou os 5 orçamentos grátis deste mês');
-  assert.ok(email.text.includes(`assine o Pro por ${PRECO}/mês`));
-  assert.ok(email.text.includes('continuam salvos'));
+caso('Grátis ilimitado: e-mail de cota (pedido antigo na fila) é recusado, nunca enviado', () => {
+  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 } })), 'tipo_descontinuado');
+  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_esgotada', limite: 5, usados: 5, restantes: 0 } })), 'tipo_descontinuado');
 });
 caso('renovar_pix: data em Brasília e CTA /planos?renovar=pix', () => {
   const venceEm = '2026-10-02T02:00:00.000Z'; // 01/10 23h em Brasília
@@ -132,11 +118,10 @@ caso('tipo desconhecido', () => {
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'assinar' } })), 'tipo_invalido');
 });
 caso('campo extra nos dados (ex.: e-mail) é recusado', () => {
-  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2, email: 'a@b.co' } })), 'dados_invalidos');
+  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { ...RENOVAR, email: 'a@b.co' } })), 'dados_invalidos');
 });
-caso('números incoerentes são recusados', () => {
-  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_quase', limite: 5, usados: 5, restantes: 2 } })), 'dados_invalidos');
-  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_esgotada', limite: 5, usados: 2, restantes: 0 } })), 'dados_invalidos');
+caso('plano fora da lista é recusado', () => {
+  assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { ...RENOVAR, plano: 'gratis' } })), 'dados_invalidos');
 });
 caso('sequência que não bate com o vencimento é recusada', () => {
   const venceEm = '2026-10-02T02:00:00.000Z';
@@ -153,19 +138,19 @@ caso('momento errado para o tipo é recusado', () => {
   })), 'dados_invalidos');
 });
 caso('template/versão/purpose divergentes', () => {
-  const dados = { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 };
+  const dados = RENOVAR;
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados, template: 'marketing' })), 'template_invalido');
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados, templateVersion: 'lembrete_assinatura.v9' })), 'template_version_divergente');
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados, purpose: 'activation_reminder' })), 'purpose_invalido');
 });
 caso('descadastro obrigatório e em https', () => {
-  const dados = { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 };
+  const dados = RENOVAR;
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados, unsubscribeUrl: 'http://x.test/email/descadastrar' })), 'unsubscribe_url_invalida');
   const { unsubscribeUrl, ...semLink } = BASE;
   assert.equal(erro(() => renderizarEmailLembrete({ ...semLink, dados })), 'input_template_invalido');
 });
 caso('render é determinístico', () => {
-  const dados = { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 };
+  const dados = RENOVAR;
   assert.equal(JSON.stringify(renderizarEmailLembrete({ ...BASE, dados })), JSON.stringify(renderizarEmailLembrete({ ...BASE, dados })));
 });
 

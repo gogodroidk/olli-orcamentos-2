@@ -10,8 +10,8 @@
  *    nem Play Billing, então NÃO pode haver botão de compra nem texto que mande
  *    pagar por fora (preço, Pix, "renove", "assine"). Mesma decisão de
  *    `COMPRA_NO_APP` / `BUILD_PLAY_SEM_COMPRA_EXTERNA` na PlanosScreen.
- *    O que é INFORMAÇÃO (limite do mês, data de vencimento, fim do teste) fica;
- *    o teste grátis do Pro fica também — não envolve pagamento nenhum.
+ *    O que é INFORMAÇÃO (data de vencimento, fim do teste) fica; o teste grátis
+ *    do Pro fica também — não envolve pagamento nenhum.
  *  - Web: tudo aparece como a regra escreveu.
  *
  * Fail-closed: qualquer plataforma que não seja explicitamente a web é tratada
@@ -52,12 +52,11 @@ function textoNeutro(tipo: TipoLembrete): string | null {
       return 'Você voltou ao Grátis — seus dados continuam salvos.';
     case 'trial_acabando':
       return 'Depois disso sua conta volta ao Grátis — seus dados continuam salvos.';
-    case 'cota_esgotada':
-    case 'cota_quase':
-      return 'O limite volta no dia 1.';
     case 'trial_disponivel':
-      // O texto da regra já é só sobre o teste (sem preço, sem Pix): mantém.
-      return null;
+      // A regra lista o que o Pro dá — e um dos itens é "link com pagamento por
+      // Pix" (o cliente pagando o PRESTADOR). Correto, mas nas lojas qualquer
+      // menção a pagamento num aviso de plano é risco de revisão: texto neutro.
+      return 'Sem cartão e sem cobrança automática. Depois, a conta volta ao Grátis — seus dados continuam salvos.';
     case 'assinar':
       // Lembrete leve cujo único propósito é "assine": sem botão e sem preço,
       // vira faixa sem ação ocupando o topo da Home. Não aparece nas lojas.

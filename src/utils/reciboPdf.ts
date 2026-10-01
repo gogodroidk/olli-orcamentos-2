@@ -186,7 +186,7 @@ export async function montarHtmlRecibo(
   </div>
 
   <div class="footer">${empresaNome} · CNPJ: ${empresaCnpj} · ${empresaTelefone}</div>
-  ${opts?.removerMarca === true ? '' : `<div class="footer-seal">${footerSeloOlliHtml()}</div>`}
+  ${opts?.removerMarca === true ? '' : `<div class="footer-seal">${footerSeloOlliHtml('recibo')}</div>`}
 </div>
 </body>
 </html>`;

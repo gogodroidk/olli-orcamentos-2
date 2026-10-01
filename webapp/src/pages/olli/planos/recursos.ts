@@ -3,16 +3,21 @@
  *
  * As colunas de "incluído / não incluído" NÃO são digitadas à mão: elas perguntam ao
  * `temAcessoRecurso` de `src/services/entitlements.ts` (via ponte `@entitlements`), a
- * mesma função que decide o acesso de verdade no produto. Assim o comparativo não pode
- * prometer um recurso que o plano não libera — se a tabela de entitlements mudar, esta
- * tela muda junto, sem ninguém reescrever de memória (o erro que já vendeu recurso
- * inexistente neste projeto — ver `planos-base.ts`).
- *
- * O RÓTULO de cada linha é copy comercial derivada dos próprios comentários de
- * `entitlements.ts` e do `PLANOS_BASE` do app. O "(em breve)" acompanha exatamente o
- * que a tela do app marca como ainda em desenvolvimento (mapa/painel da equipe).
+ * mesma função que decide o acesso de verdade no produto. As LINHAS também não: a ordem
+ * é `RECURSOS_EM_ORDEM`, o rótulo é o da tabela única `src/services/planosBase.ts` e o
+ * "(em breve)" é `RECURSOS_EM_BREVE`. Se o Pro ganhar um recurso, a linha aparece aqui
+ * sozinha — sem ninguém reescrever de memória (o erro que já vendeu recurso inexistente
+ * neste projeto).
  */
-import { IA_USOS_GRATIS_MES, type PlanoId, type Recurso, temAcessoRecurso } from "@entitlements";
+import {
+	IA_USOS_GRATIS_MES,
+	type PlanoId,
+	RECURSOS_EM_BREVE,
+	RECURSOS_EM_ORDEM,
+	type Recurso,
+	temAcessoRecurso,
+} from "@entitlements";
+import { ROTULO_RECURSO } from "../../../../../src/services/planosBase";
 
 export { IA_USOS_GRATIS_MES, temAcessoRecurso };
 export type { PlanoId, Recurso };
@@ -21,26 +26,16 @@ export type { PlanoId, Recurso };
 export interface LinhaRecurso {
 	recurso: Recurso;
 	rotulo: string;
-	/** Marcado "(em breve)" na tela do app — não vendemos como pronto. */
+	/** O plano concede, o produto ainda não entrega — não vendemos como pronto. */
 	emBreve?: boolean;
 }
 
-/**
- * As linhas pagas, na ordem em que valem a pena de cima para baixo. A cobertura por
- * plano é resolvida em runtime por `temAcessoRecurso`, não fixada aqui.
- */
-export const LINHAS_RECURSOS: readonly LinhaRecurso[] = [
-	{ recurso: "ia_ilimitada", rotulo: "IA ampliada (voz, chat e diagnóstico, sujeita a uso justo)" },
-	{ recurso: "relatorios", rotulo: "Relatórios de faturamento e conversão" },
-	{ recurso: "metas", rotulo: "Metas de vendas e acompanhamento" },
-	{ recurso: "radar_clientes", rotulo: "Clientes para lembrar da manutenção" },
-	{ recurso: "relatorio_dia", rotulo: "Relatório do dia, falado" },
-	{ recurso: "modelos_pdf_premium", rotulo: "Modelos premium de PDF" },
-	{ recurso: "remove_olli_brand", rotulo: "Documento sem a marca OLLI" },
-	{ recurso: "equipe", rotulo: "Vários técnicos e permissões por papel" },
-	{ recurso: "mapa_equipe", rotulo: "Equipe ao vivo no mapa", emBreve: true },
-	{ recurso: "dashboard_empresa", rotulo: "Painel de gestão da empresa", emBreve: true },
-];
+/** As linhas pagas, na ordem da fonte. A cobertura por plano é resolvida em runtime. */
+export const LINHAS_RECURSOS: readonly LinhaRecurso[] = RECURSOS_EM_ORDEM.map((recurso) => ({
+	recurso,
+	rotulo: ROTULO_RECURSO[recurso].titulo,
+	...(RECURSOS_EM_BREVE.has(recurso) ? { emBreve: true } : {}),
+}));
 
 /** A ordem das colunas do comparativo. */
 export const PLANOS_COMPARADOS: readonly PlanoId[] = ["gratis", "pro", "empresa"];

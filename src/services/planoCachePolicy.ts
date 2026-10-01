@@ -10,6 +10,13 @@ export interface DadosPlanoCache {
   status?: string;
   validoAte?: string;
   origem: OrigemPlanoCache;
+  /**
+   * Plano da EMPRESA a que a conta pertence (`meu_estado_oferta_comercial`, que o
+   * servidor resolve pelo tenant). Só difere de `plano` para membro de equipe:
+   * a assinatura é do dono e a RLS não entrega a linha dele ao técnico. Opcional:
+   * cache antigo sem o campo continua válido.
+   */
+  planoTenant?: PlanoId;
 }
 
 export interface PlanoCachePersistido extends DadosPlanoCache {
@@ -21,7 +28,7 @@ export interface PlanoCachePersistido extends DadosPlanoCache {
 const PLANOS = new Set<PlanoId>(['gratis', 'pro', 'empresa']);
 const ORIGENS = new Set<OrigemPlanoCache>(['gratis', 'pagamento', 'admin', 'trial']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CHAVES = new Set(['schemaVersion', 'ownerUserId', 'lidoEm', 'plano', 'status', 'validoAte', 'origem']);
+const CHAVES = new Set(['schemaVersion', 'ownerUserId', 'lidoEm', 'plano', 'status', 'validoAte', 'origem', 'planoTenant']);
 
 function textoOpcionalSeguro(valor: unknown, maximo: number): valor is string | undefined {
   return valor === undefined || (typeof valor === 'string' && valor.length > 0 && valor.length <= maximo);
@@ -38,6 +45,7 @@ export function criarPlanoCache(
 ): PlanoCachePersistido {
   if (!UUID.test(ownerUserId)) throw new Error('plano_cache_owner_invalido');
   if (!PLANOS.has(dados.plano) || !ORIGENS.has(dados.origem)) throw new Error('plano_cache_dados_invalidos');
+  if (dados.planoTenant !== undefined && !PLANOS.has(dados.planoTenant)) throw new Error('plano_cache_dados_invalidos');
   if (!Number.isFinite(lidoEm) || lidoEm < 0) throw new Error('plano_cache_relogio_invalido');
   return {
     schemaVersion: 2,
@@ -47,6 +55,7 @@ export function criarPlanoCache(
     origem: dados.origem,
     ...(dados.status ? { status: dados.status } : {}),
     ...(dados.validoAte ? { validoAte: dados.validoAte } : {}),
+    ...(dados.planoTenant ? { planoTenant: dados.planoTenant } : {}),
   };
 }
 
@@ -62,6 +71,7 @@ export function interpretarPlanoCache(raw: string | null): PlanoCachePersistido 
     if (typeof obj.lidoEm !== 'number' || !Number.isFinite(obj.lidoEm) || obj.lidoEm < 0) return null;
     if (typeof obj.plano !== 'string' || !PLANOS.has(obj.plano as PlanoId)) return null;
     if (typeof obj.origem !== 'string' || !ORIGENS.has(obj.origem as OrigemPlanoCache)) return null;
+    if (obj.planoTenant !== undefined && (typeof obj.planoTenant !== 'string' || !PLANOS.has(obj.planoTenant as PlanoId))) return null;
     if (!textoOpcionalSeguro(obj.status, 64) || !textoOpcionalSeguro(obj.validoAte, 64)) return null;
     if (obj.validoAte !== undefined && !Number.isFinite(Date.parse(obj.validoAte))) return null;
     return obj as unknown as PlanoCachePersistido;

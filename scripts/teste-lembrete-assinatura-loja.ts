@@ -38,7 +38,7 @@ function gratis(usados: number, trial: Trial = 'ended'): EntradaLembrete {
     precoProMensal: 'R$ 39',
     assinatura: { planoEfetivo: 'gratis', planoContratado: 'gratis', origem: 'gratis' },
     oferta: {
-      planoEfetivo: 'gratis', limiteEnvios: 5, enviosUsados: usados, enviosRestantes: Math.max(0, 5 - usados),
+      planoEfetivo: 'gratis', enviosUsados: usados,
       trialEstado: trial, trialTerminaEm: null, trialDias: 14,
     },
   };
@@ -56,17 +56,15 @@ function pagoPix(dias: number): EntradaLembrete {
 }
 const trialAcabando: EntradaLembrete = {
   agora: AGORA, precoProMensal: 'R$ 39', assinatura: null,
-  oferta: { planoEfetivo: 'pro', limiteEnvios: null, enviosUsados: 0, enviosRestantes: null, trialEstado: 'active', trialTerminaEm: emDias(2), trialDias: 14 },
+  oferta: { planoEfetivo: 'pro', enviosUsados: 0, trialEstado: 'active', trialTerminaEm: emDias(2), trialDias: 14 },
 };
 
 // Todos os tipos da regra, com e sem teste disponível.
 const casos: [string, EntradaLembrete][] = [
   ['assinar', gratis(1)],
   ['trial_disponivel', gratis(1, 'eligible')],
-  ['cota_quase', gratis(3)],
-  ['cota_quase + teste', gratis(3, 'eligible')],
-  ['cota_esgotada', gratis(5)],
-  ['cota_esgotada + teste', gratis(5, 'eligible')],
+  ['assinar (6 enviados, Grátis ilimitado)', gratis(6)],
+  ['trial_disponivel (6 enviados)', gratis(6, 'eligible')],
   ['renovar_pix', pagoPix(2)],
   ['plano_vencido', pagoPix(-3)],
   ['trial_acabando', trialAcabando],
@@ -91,11 +89,11 @@ for (const plataforma of ['ios', 'android', 'windows']) {
 }
 
 console.log('\nteste grátis continua nas lojas');
-const esgotadoTeste = lembreteParaPlataforma(lembreteAssinatura(gratis(5, 'eligible'))!, 'ios');
-checar('cota_esgotada + teste → só o teste, como primário', [esgotadoTeste?.cta?.acao, esgotadoTeste?.ctaSecundario], ['iniciar_trial', null]);
-const quaseTeste = lembreteParaPlataforma(lembreteAssinatura(gratis(3, 'eligible'))!, 'android');
-checar('cota_quase + teste → teste sobe de secundário para primário', [quaseTeste?.cta?.acao, quaseTeste?.ctaSecundario], ['iniciar_trial', null]);
-checar('cota_esgotada no iOS → texto neutro', lembreteParaPlataforma(lembreteAssinatura(gratis(5))!, 'ios')?.texto, 'O limite volta no dia 1.');
+const comTeste = lembreteParaPlataforma(lembreteAssinatura(gratis(5, 'eligible'))!, 'ios');
+checar('trial_disponivel no iOS → só o teste, como primário', [comTeste?.cta?.acao, comTeste?.ctaSecundario], ['iniciar_trial', null]);
+checar('trial_disponivel no Android → texto neutro (sem "pagamento" do item link com Pix)',
+  lembreteParaPlataforma(lembreteAssinatura(gratis(3, 'eligible'))!, 'android')?.texto,
+  'Sem cartão e sem cobrança automática. Depois, a conta volta ao Grátis — seus dados continuam salvos.');
 checar('"assinar" leve não aparece na loja', lembreteParaPlataforma(lembreteAssinatura(gratis(1))!, 'ios'), null);
 
 console.log('\nweb');

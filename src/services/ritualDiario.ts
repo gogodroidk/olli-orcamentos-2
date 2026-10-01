@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAgendamentosDoDia, getProximaSaida, temPermissaoNotificacao } from './agenda';
 import { getClientes, getEmpresa } from '../database/database';
 import { reagendarAvisoSaida } from './avisoSaida';
+import { acessoRecursoAgora } from './planos';
 import { calcularSaida } from './etaSaida';
 import { enderecoDoAgendamento, linhaBomDiaSaida, origemParaVisita } from './saidaCalculo';
 import { orcamentosParaCobrar } from './radarCobranca';
@@ -203,6 +204,12 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
  */
 export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
   try {
+    // "Hora de sair" é inteligência do Pro (`hora_de_sair`) — e cada cálculo é uma
+    // chamada PAGA da Routes API. Sem o recurso confirmado não calcula; e plano
+    // ilegível ou Grátis NÃO cancelam o que já está agendado: o aviso calculado
+    // substituiu o lembrete fixo de 1h daquela visita, e apagá-lo deixaria o
+    // prestador sem aviso nenhum. As próximas visitas seguem com o lembrete fixo.
+    if ((await acessoRecursoAgora('hora_de_sair')) !== 'liberado') return;
     // Próxima SAÍDA, não Próxima parada: a visita em andamento (14h–16h) é a
     // parada do Início, mas o aviso de sair tem que ser o da visita seguinte.
     const proxima = await getProximaSaida().catch(() => null);
