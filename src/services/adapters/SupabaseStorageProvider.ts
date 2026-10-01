@@ -5,6 +5,7 @@ import type {
   StorageProvider,
 } from '../ports/StorageProvider';
 import type { MotivoFalhaPorta, ResultadoPorta } from '../ports/comum';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '../supabase';
 
 const BUCKET: Record<CategoriaArquivo, string> = {
@@ -94,7 +95,10 @@ export class SupabaseStorageProvider implements StorageProvider {
     if (!/^[0-9a-f-]{36}$/i.test(tenantId)) return falha('invalido', 'Tenant inválido.');
 
     const bucket = BUCKET[input.categoria];
-    const caminho = `${tenantId}/${input.categoria}/${crypto.randomUUID()}.${EXTENSAO[input.mimeType] ?? 'bin'}`;
+    // `Crypto.randomUUID()` do expo-crypto, e não o `crypto` global: o Hermes do
+    // APK não tem `globalThis.crypto` — o global lançava ReferenceError e TODO
+    // upload nativo (fotos da OS, comprovantes) falhava em silêncio.
+    const caminho = `${tenantId}/${input.categoria}/${Crypto.randomUUID()}.${EXTENSAO[input.mimeType] ?? 'bin'}`;
     const { error } = await supabase.storage.from(bucket).upload(caminho, conteudo, {
       contentType: input.mimeType,
       cacheControl: '3600',

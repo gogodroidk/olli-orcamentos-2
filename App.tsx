@@ -541,6 +541,11 @@ function AppConteudo() {
                   // matou o app enquanto a pessoa fotografava para uma OS, recupera
                   // a foto pendente do picker, anexa e REABRE aquela OS. Sem o
                   // marcador gravado pela OS, não faz nada (services/capturaFotoOS).
+                  // Só com a porta aberta: na porta (Entrar/Landing, rotas públicas
+                  // que passam pelo guard acima) ou no Onboarding, reabrir a OS
+                  // empurraria alguém sem sessão para DENTRO do app e gravaria a foto
+                  // num banco sem dono. O marcador vence sozinho (30 min).
+                  if (precisaDePorta) return;
                   void retomarCapturaOSInterrompida().then((retomada) => {
                     if (retomada.tipo !== 'reabrir' || !navigationRef.isReady()) return;
                     navigationRef.navigate('OrdemServico', { ordemId: retomada.ordemId });

@@ -190,6 +190,8 @@ console.log('\n6) o app usa a regra nos lugares certos');
     /export async function getCurrentUser[\s\S]*?\n\}/.exec(supa)?.[0].includes('sessaoComOrigem') ?? true, false);
   checar('App.tsx confere a sessão guardada antes de expulsar no INITIAL_SESSION',
     /INITIAL_SESSION' && !session[\s\S]{0,400}sessaoAtiva\(\)[\s\S]{0,200}if \(!guardada/.test(app), true);
+  checar('usuarioDaSessaoLocal lê a sessão guardada ANTES do getSession (sem os ~25 s de renovação offline por foto)',
+    /export async function usuarioDaSessaoLocal[\s\S]{0,200}interpretarSessaoGuardada\(await lerSessaoGuardada\(\)\)[\s\S]{0,120}sessaoComOrigem\(\)/.test(supa), true);
   checar('refresh automático pausa fora do primeiro plano (não gasta bateria offline)',
     /else cliente\.auth\.stopAutoRefresh\(\)/.test(autoRefresh), true);
   checar('sessão nativa no Keystore/Keychain, sem prazo nosso',

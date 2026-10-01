@@ -375,6 +375,8 @@ console.log('\n5) fiação nos pontos certos');
   checar('OS: técnico sem id não vira "Nenhuma OS" (erro ≠ vazio)', /userId === null\) \{\s*setOrdensErro\(true\)/.test(os), true);
   checar('App: retomada da câmera no onReady reabre a OS',
     /retomarCapturaOSInterrompida\(\)\.then[\s\S]{0,200}navigate\('OrdemServico', \{ ordemId: retomada\.ordemId \}\)/.test(app), true);
+  checar('App: retomada da câmera NÃO roda com a porta fechada (Entrar/Landing/Onboarding)',
+    /if \(precisaDePorta\) return;\s*void retomarCapturaOSInterrompida\(\)/.test(app), true);
   checar('cloudSync: sync sobe as fotos pendentes', /import\('\.\/filaFotosNativa'\)\s*\.then\(m => m\.enviarFotosPendentes\(\)\)/.test(sync), true);
   checar('cloudSync: [Tentar agora] força o envio', /export async function tentarSincronizarAgora[\s\S]{0,300}enviarFotosPendentes\(\{ forcar: true \}\)/.test(sync), true);
   checar('logout apaga o marcador da câmera', APP_DATA_STORAGE_KEYS.includes(CAPTURA_OS_KEY as never), true);

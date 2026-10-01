@@ -13,7 +13,7 @@ import {
   novaTentativaOAuth,
 } from './oauthRetorno';
 import { urlRecuperacaoSenha } from './acessoCodigo';
-import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, type DecisaoSessao } from './sessaoOffline';
+import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, interpretarSessaoGuardada, type DecisaoSessao } from './sessaoOffline';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -217,8 +217,17 @@ export async function sessaoComOrigem(): Promise<DecisaoSessao<Session>> {
  * do técnico, chave da fila de fotos) — inclusive offline com o token vencido.
  * NÃO use para decidir se pode falar com a nuvem: para isso é `getCurrentUser`,
  * que devolve null enquanto a sessão não for renovada.
+ *
+ * Lê a sessão GUARDADA primeiro, sem passar pelo `getSession()`: com o token
+ * vencido e sem rede, cada `getSession()` tenta renovar com espera crescente
+ * (até ~25 s no auth-js) — e este helper roda a cada foto registrada e a cada
+ * leitura do selo. Para saber QUEM está no aparelho a sessão guardada basta (o
+ * auth-js a apaga quando o servidor a recusa ou no "sair"). Sem nada guardado,
+ * cai no caminho normal.
  */
 export async function usuarioDaSessaoLocal(): Promise<{ id: string; email?: string | null } | null> {
+  const guardada = interpretarSessaoGuardada(await lerSessaoGuardada());
+  if (guardada) return guardada.user;
   const { sessao } = await sessaoComOrigem();
   return sessao?.user ?? null;
 }
