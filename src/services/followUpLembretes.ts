@@ -163,8 +163,8 @@ async function reagendarFollowUpsAgora(agora: Date): Promise<void> {
 
     // Leituras ANTES de qualquer cancelamento: se uma falhar, o agendamento atual
     // fica como está (erro não vira "não há follow-up").
-    let orcamentos;
-    let recibos;
+    let orcamentos: Awaited<ReturnType<typeof getOrcamentos>>;
+    let recibos: Awaited<ReturnType<typeof getRecibos>>;
     try {
       [orcamentos, recibos] = await Promise.all([getOrcamentos(), getRecibos()]);
     } catch {
