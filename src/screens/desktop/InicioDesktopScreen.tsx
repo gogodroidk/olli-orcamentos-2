@@ -491,16 +491,21 @@ export default function InicioDesktopScreen() {
         />
         <KpiCard
           titulo="Contas a receber"
-          valor={carregando ? '—' : formatCurrency(valorAReceber)}
+          // NÃO SEI ≠ ZERO: só ganhos sem valor legível → "—", nunca "R$ 0,00".
+          valor={carregando || (!contasAReceberResumo.contagem && contasAReceberResumo.semValor) ? '—' : formatCurrency(valorAReceber)}
           icone="cash-clock"
           corIcone={cores.accentLight}
-          rodape={
-            contasAReceberResumo.contagem
-              ? `${contasAReceberResumo.contagem} orçamento${contasAReceberResumo.contagem === 1 ? '' : 's'} com saldo a receber`
-              : contasAReceberResumo.semValor
-                ? `${contasAReceberResumo.semValor} sem valor informado`
-                : 'tudo recebido'
-          }
+          rodape={(() => {
+            const n = contasAReceberResumo.contagem;
+            const sv = contasAReceberResumo.semValor ?? 0;
+            // Quem ficou fora da soma (sem valor) aparece SEMPRE, inclusive ao lado do saldo.
+            const semValorTxt = sv ? `${sv} sem valor informado` : '';
+            if (n) {
+              const base = `${n} orçamento${n === 1 ? '' : 's'} com saldo a receber`;
+              return semValorTxt ? `${base} · ${semValorTxt}` : base;
+            }
+            return semValorTxt || 'tudo recebido';
+          })()}
           onPress={() => irParaOrcamentos('a_receber')}
           style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
