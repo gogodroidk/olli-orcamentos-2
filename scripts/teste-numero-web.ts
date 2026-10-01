@@ -154,14 +154,21 @@ checar(
 const listaMobileSrc = ler('../src/screens/OrcamentosScreen.tsx');
 const detalheMobileSrc = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
 const desktopSrc = ler('../src/screens/desktop/OrcamentosDesktopScreen.tsx');
-checar('lista mobile troca Editar por Revisar quando edicaoBloqueada',
-  /edicaoBloqueada\(o\.status\) \? 'Revisar' : 'Editar'/.test(listaMobileSrc), true);
+// Duplicar/revisar saem de UMA base pura (src/utils/novoDocumento.ts), usada pela
+// lista e pelo detalhe: é ela que liga a revisão ao original.
+const novoDocumentoSrc = ler('../src/utils/novoDocumento.ts');
+checar('base única liga a revisão ao documento original',
+  /revisaoDeId: revisao \? \(origem\.revisaoDeId \?\? origem\.id\) : undefined/.test(novoDocumentoSrc), true);
+checar('lista mobile troca Editar por Criar revisão quando edicaoBloqueada',
+  /edicaoBloqueada\(menuDe\.status\) \? 'Criar revisão' : 'Editar'/.test(listaMobileSrc), true);
 checar('lista mobile cria novo número para a revisão',
-  /revisaoDeId: o\.revisaoDeId \?\? o\.id/.test(listaMobileSrc) && /getNextOrcamentoNumber\(\)/.test(listaMobileSrc), true);
+  /handleRevision = useCallback\(\(o: Orcamento\) => criarDocumentoNovo\(o, 'revisao'\)/.test(listaMobileSrc)
+    && /baseParaNovoDocumento\(/.test(listaMobileSrc) && /getNextOrcamentoNumber\(\)/.test(listaMobileSrc), true);
 checar('detalhe troca Editar por Criar revisão quando edicaoBloqueada',
   /edicaoBloqueada\(orc\.status\) \? \([\s\S]{0,300}label="Criar revisão"/.test(detalheMobileSrc), true);
 checar('detalhe liga a revisão ao documento original',
-  /revisaoDeId: orc\.revisaoDeId \?\? orc\.id/.test(detalheMobileSrc), true);
+  /handleCriarRevisao = \(\) => criarDocumentoNovo\('revisao'\)/.test(detalheMobileSrc)
+    && /baseParaNovoDocumento\(/.test(detalheMobileSrc), true);
 checar('tabela desktop oferece Revisar para bloqueado e Editar para rascunho',
   /edicaoBloqueada\(o\.status\) \? \([\s\S]{0,260}rotulo="Revisar"[\s\S]{0,260}rotulo="Editar"/.test(desktopSrc), true);
 

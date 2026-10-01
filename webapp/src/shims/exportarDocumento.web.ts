@@ -16,6 +16,10 @@
  * seu próprio helper (olli/pdf/imprimirOrcamento) e não chama estes.
  */
 
+import { linkWaMe } from "../../../src/utils/telefoneWhatsapp";
+
+export { linkApiWhatsApp, linkWaMe, numeroWhatsAppBR } from "../../../src/utils/telefoneWhatsapp";
+
 export interface OpcoesCompartilhar {
 	dialogTitle?: string;
 }
@@ -46,9 +50,12 @@ export async function exportarHtmlComoPdf(html: string, _nome: string, _opcoes?:
 	win.print();
 }
 
-/** Passthrough web do abrirWhatsApp (o original usa Linking do react-native). */
-export async function abrirWhatsApp(telefone: string, mensagem: string): Promise<void> {
-	const numero = String(telefone).replace(/\D/g, "");
-	const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+/**
+ * Versão web do abrirWhatsApp (o original usa Linking do react-native). Mesma regra
+ * de número do app (`numeroWhatsAppBR`, com o 55 e o DDD 55 certos); sem número
+ * válido abre o seletor de contato (`wa.me/?text=`) em vez de um número torto.
+ */
+export async function abrirWhatsApp(telefone: string | null | undefined, mensagem: string): Promise<void> {
+	const url = linkWaMe(telefone, mensagem);
 	if (typeof window !== "undefined") window.open(url, "_blank", "noopener");
 }

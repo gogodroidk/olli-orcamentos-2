@@ -22,6 +22,7 @@ import {
   getOrcamentosAgregadoPorStatus, getContasAReceberAgregado, getUltimosOrcamentos,
 } from '../../database/database';
 import { getProximoAgendamento } from '../../services/agenda';
+import { rotuloQuandoVisita } from '../../utils/agendaDia';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../../services/eta';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
 import { clientesParaReconquistar, lembrarNoWhatsApp, ClienteParaReconquistar } from '../../services/radarClientes';
@@ -69,18 +70,6 @@ function saudacao(): string {
 const mesmoDia = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-/** Rótulo amigável do horário da próxima parada: "Hoje · 14:30", "Amanhã · 09:00" ou "18/06 · 14:30". */
-function quandoLabel(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const hoje = new Date();
-  const amanha = new Date(); amanha.setDate(hoje.getDate() + 1);
-  if (mesmoDia(d, hoje)) return `Hoje · ${hh}`;
-  if (mesmoDia(d, amanha)) return `Amanhã · ${hh}`;
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} · ${hh}`;
-}
-
 /** Abre o endereço no Google Maps (sem precisar de API key — só um link de busca). */
 function abrirMapa(endereco?: string) {
   if (!endereco) return;
@@ -121,7 +110,8 @@ export default function InicioDesktopScreen() {
   const [aprovadosResumo, setAprovadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
   const [enviadosResumo, setEnviadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
   const [emAbertoResumo, setEmAbertoResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
-  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  // `semValor`: ganhos sem valor legível — ficam fora da soma, mas não viram "tudo recebido".
+  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos & { semValor?: number }>(RESUMO_VAZIO);
   const [ultimosOito, setUltimosOito] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -490,10 +480,21 @@ export default function InicioDesktopScreen() {
         />
         <KpiCard
           titulo="Contas a receber"
-          valor={carregando ? '—' : formatCurrency(valorAReceber)}
+          // NÃO SEI ≠ ZERO: só ganhos sem valor legível → "—", nunca "R$ 0,00".
+          valor={carregando || (!contasAReceberResumo.contagem && contasAReceberResumo.semValor) ? '—' : formatCurrency(valorAReceber)}
           icone="cash-clock"
           corIcone={cores.accentLight}
-          rodape={contasAReceberResumo.contagem ? `${contasAReceberResumo.contagem} aprovado${contasAReceberResumo.contagem === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
+          rodape={(() => {
+            const n = contasAReceberResumo.contagem;
+            const sv = contasAReceberResumo.semValor ?? 0;
+            // Quem ficou fora da soma (sem valor) aparece SEMPRE, inclusive ao lado do saldo.
+            const semValorTxt = sv ? `${sv} sem valor informado` : '';
+            if (n) {
+              const base = `${n} orçamento${n === 1 ? '' : 's'} com saldo a receber`;
+              return semValorTxt ? `${base} · ${semValorTxt}` : base;
+            }
+            return semValorTxt || 'tudo recebido';
+          })()}
           onPress={() => irParaOrcamentos('a_receber')}
           style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
@@ -840,7 +841,7 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
 
   return (
     <View style={{ marginTop: 10, gap: 4 }}>
-      <Text style={styles.visitaQuando}>{quandoLabel(proxima.inicio)}</Text>
+      <Text style={styles.visitaQuando}>{rotuloQuandoVisita(proxima)}</Text>
       <Text style={styles.visitaCliente} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
       <Text style={styles.visitaTipo} numberOfLines={1}>
         {TIPO_AGENDAMENTO_LABELS[proxima.tipo]}{proxima.titulo && proxima.clienteNome ? ` · ${proxima.titulo}` : ''}
