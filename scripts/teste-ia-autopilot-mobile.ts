@@ -21,7 +21,7 @@ ok("envia JWT ao Worker", service.includes("supabase.auth.getSession") && servic
 ok("UI oferece PDF/arquivo e foto", screen.includes("Anexar PDF/arquivo") && screen.includes("Escolher foto"));
 ok("UI mostra prévia e confiança", screen.includes("Prévia aguardando confirmação") && screen.includes("confianca"));
 ok("resultado abre orçamento sem salvar automaticamente", screen.includes("Abrir orçamento rascunho") && screen.includes("nav.navigate('NovoOrcamento'") && !screen.includes("saveOrcamento"));
-ok("orçamento recebe todos os itens válidos da prévia", screen.includes("prefillItems") && screen.includes("itens.map"));
+ok("orçamento recebe todos os itens válidos da prévia", screen.includes("montarParamsOrcamento(") && screen.includes("itens: previa.candidatos.orcamento.itens"));
 ok("rota Autopilot registrada no stack", nav.includes("AutopilotScreen") && nav.includes("Autopilot: undefined") && nav.includes('name="Autopilot"'));
 ok("Autopilot aparece nas ferramentas da Conta", conta.includes("label: 'Autopilot IA'") && conta.includes("route: 'Autopilot'"));
 ok("Chat possui atalho para anexar", chat.includes("Abrir Autopilot para anexar arquivo") && chat.includes("nav.navigate('Autopilot')"));

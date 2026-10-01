@@ -4,7 +4,7 @@
 // outro cadastro já ativo. Avisa, NUNCA bloqueia — dois clientes podem
 // legitimamente dividir telefone (marido/esposa, duas filiais da mesma
 // empresa). A decisão de cadastrar mesmo assim é sempre do usuário.
-import { Cliente } from '../types';
+import type { Cliente } from '../types';
 
 const onlyDigits = (v?: string | null): string => (v ?? '').replace(/\D/g, '');
 
