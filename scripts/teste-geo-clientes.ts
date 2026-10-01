@@ -661,7 +661,10 @@ console.log('\n10) espelhos: SQLite local, cloudSync, agenda, worker e wrangler'
   checar('worker: GET / diz se o backfill está ligado', /geo_backfill: modoGeoBackfill\(env\) === 'production' \? 'on' : 'off'/.test(idx));
 
   const wr = readFileSync('worker/wrangler.jsonc', 'utf8');
-  checar('wrangler: backfill DESLIGADO até a migration (prod e staging)', (wr.match(/"GEO_BACKFILL_MODE": "off"/g) || []).length === 2);
+  // A migration 20261002100000 foi aplicada em produção em 01/10/2026: prod liga, staging segue desligado.
+  checar('wrangler: backfill LIGADO em prod (migration aplicada) e DESLIGADO no staging',
+    (wr.match(/"GEO_BACKFILL_MODE": "production"/g) || []).length === 1 &&
+    (wr.match(/"GEO_BACKFILL_MODE": "off"/g) || []).length === 1);
   checar('wrangler: teto global do Nominatim em prod e staging, abaixo de 1 req/s',
     /"NOMINATIM_RL", "namespace_id": "1045", "simple": \{ "limit": 50, "period": 60 \}/.test(wr) &&
     /"NOMINATIM_RL", "namespace_id": "2045", "simple": \{ "limit": 50, "period": 60 \}/.test(wr));
