@@ -107,7 +107,13 @@ export class SupabaseStorageProvider implements StorageProvider {
     if (error) return falha(error.message.toLowerCase().includes('unauthorized') ? 'auth' : 'servidor');
 
     const url = await this.urlDe(`${bucket}/${caminho}`);
-    if (!url.ok) return url;
+    if (!url.ok) {
+      // O arquivo subiu mas a URL falhou: quem chamou vai tentar de novo (a fila
+      // de fotos repete sozinha) e subiria uma SEGUNDA cópia com outro nome.
+      // Remove esta antes de devolver a falha — sem órfão ocupando o bucket.
+      await this.remover(`${bucket}/${caminho}`).catch(() => {});
+      return url;
+    }
     return {
       ok: true,
       dados: { chave: `${bucket}/${caminho}`, url: url.dados.url, tamanhoBytes: conteudo.byteLength },

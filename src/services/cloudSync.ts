@@ -2965,10 +2965,12 @@ export async function syncOnLogin(): Promise<void> {
     // aparelho desde o clique; aqui só sobe a cópia para o bucket privado. Vem
     // DEPOIS das linhas (a OS existe na nuvem antes da foto) e respeita a espera
     // crescente de cada foto. Fila própria e por usuário (filaFotosNativa).
-    await import('./filaFotosNativa')
+    // SEM await: subir dezenas de fotos em 3G leva minutos, e enquanto o
+    // syncOnLogin não termina (`syncing`) nenhum outro sync roda — o orçamento
+    // editado ficaria preso atrás das fotos. A fila se serializa sozinha.
+    void import('./filaFotosNativa')
       .then(m => m.enviarFotosPendentes())
       .catch(() => null);
-    if (syncAbortado(geracao)) return;
     await podarTombstonesAntigos();
     if (syncAbortado(geracao)) return;
     // Extras chave-valor (checklist do Hoje, snooze do radar, relatórios diários)

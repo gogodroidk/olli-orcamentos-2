@@ -93,12 +93,17 @@ export function SeloSync({
         { backgroundColor: visual.fundo, borderColor: comAlfa(visual.cor, 0.35) },
         style,
       ]}
-      accessible
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={texto.detalhe ? `${texto.titulo}. ${texto.detalhe}` : texto.titulo}
     >
       <MaterialCommunityIcons name={visual.icone} size={ehCartao ? 20 : 16} color={visual.cor} />
-      <View style={{ flex: 1 }}>
+      {/* O texto é UM elemento para o leitor de tela; o [Tentar agora] fica de
+          fora dele. Com `accessible` no contêiner, o TalkBack/VoiceOver juntava
+          tudo num nó só e o botão ficava inalcançável. */}
+      <View
+        style={{ flex: 1 }}
+        accessible
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={texto.detalhe ? `${texto.titulo}. ${texto.detalhe}` : texto.titulo}
+      >
         <Text style={[estilos.titulo, { color: visual.cor }]} numberOfLines={2}>{texto.titulo}</Text>
         {ehCartao && texto.detalhe ? (
           <Text style={[estilos.detalhe, { color: cores.onSurfaceVariant }]}>{texto.detalhe}</Text>
@@ -136,6 +141,7 @@ export function SeloFoto({ estado }: { estado: EstadoFoto | 'sem_registro' | nul
   return (
     <View
       style={[estilos.seloFoto, { backgroundColor: comAlfa(cores.surface, 0.92), borderColor: comAlfa(visual.cor, 0.5) }]}
+      accessible
       accessibilityLabel={`Foto: ${rotulo.texto}`}
     >
       <MaterialCommunityIcons name={visual.icone} size={11} color={visual.cor} />

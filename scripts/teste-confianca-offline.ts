@@ -351,6 +351,10 @@ console.log('\n4) textos do SeloSync (copy honesta)');
   checar('selo da foto: enviada', rotuloSeloFoto('enviada')?.texto, 'Enviada');
   checar('selo da foto: no aparelho', rotuloSeloFoto('no_aparelho')?.texto, 'No aparelho');
   checar('selo da foto: fila ilegível = sem selo', rotuloSeloFoto(null), null);
+  const semConta = textoSeloSync({ status: 'sem_conta' }, T0);
+  checar('sem conta: NÃO promete "sobe quando a internet voltar"', semConta?.tom, 'desligado');
+  checar('sem conta: diz que fica só no celular', semConta?.titulo, 'Fotos só neste celular');
+  checar('sem conta: sem [Tentar agora] que não faria nada', semConta?.tentarAgora, false);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -361,6 +365,17 @@ console.log('\n5) fiação nos pontos certos');
   const app = ler('../App.tsx');
   const sync = ler('../src/services/cloudSync.ts');
   const db = ler('../src/database/database.ts');
+  const filaNativa = ler('../src/services/filaFotosNativa.ts');
+  const provider = ler('../src/services/adapters/SupabaseStorageProvider.ts');
+  const selo = ler('../src/components/SeloSync.tsx');
+  checar('fila: sem conta não tenta subir (nem soma falha)', /if \(dono === SEM_CONTA\) return null;/.test(filaNativa), true);
+  checar('fila: resumo sem conta vira "sem_conta"', /leituraDoDono\(dono, await motorDe\(dono\)\.resumo\(\)\)/.test(filaNativa), true);
+  checar('cloudSync: fotos NÃO seguram o syncOnLogin (sem await)',
+    /void import\('\.\/filaFotosNativa'\)\s*\.then\(m => m\.enviarFotosPendentes\(\)\)/.test(sync), true);
+  checar('storage: upload sem URL remove a cópia (sem órfão no bucket)',
+    /if \(!url\.ok\) \{[\s\S]{0,400}await this\.remover\(`\$\{bucket\}\/\$\{caminho\}`\)/.test(provider), true);
+  checar('SeloSync: [Tentar agora] alcançável pelo leitor de tela (contêiner não agrupa)',
+    /\]\}\s*>\s*<MaterialCommunityIcons name=\{visual\.icone\}/.test(selo), true);
   const tirar = /async function tirarFoto[\s\S]*?\n {2}\}/.exec(os)?.[0] ?? '';
   checar('OS: marcador gravado ANTES de abrir a câmera',
     tirar.indexOf('marcarCapturaOS(') > -1 && tirar.indexOf('marcarCapturaOS(') < tirar.indexOf('adicionarFotoCamera('), true);

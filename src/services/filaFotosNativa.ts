@@ -23,13 +23,21 @@ import {
 import { FILA_FOTOS_PREFIX } from './storageKeys';
 import { isSupabaseConfigured, usuarioDaSessaoLocal } from './supabase';
 
+/** Dono da fila quando ninguém está conectado neste aparelho. */
+const SEM_CONTA = 'sem-conta';
+
 /** Fila de quem? Id da sessão (mesmo offline com token vencido) ou 'sem-conta'. */
 async function donoDaFila(): Promise<string> {
   try {
-    return (await usuarioDaSessaoLocal())?.id ?? 'sem-conta';
+    return (await usuarioDaSessaoLocal())?.id ?? SEM_CONTA;
   } catch {
-    return 'sem-conta';
+    return SEM_CONTA;
   }
+}
+
+/** Sem conta não há para onde subir: o selo diz isso, nunca "aguardando sinal". */
+function leituraDoDono(dono: string, leitura: LeituraResumo): LeituraResumo {
+  return dono === SEM_CONTA && leitura.status === 'ok' ? { status: 'sem_conta' } : leitura;
 }
 
 async function enviarArquivo(dono: string, reg: RegistroFoto): Promise<ResultadoEnvio> {
@@ -80,7 +88,8 @@ function motorDe(dono: string): MotorFila {
     existe: arquivoExiste,
     agora: () => Date.now(),
   });
-  motor.ouvir((leitura) => {
+  motor.ouvir((bruta) => {
+    const leitura = leituraDoDono(dono, bruta);
     for (const fn of ouvintes) {
       try {
         fn(leitura);
@@ -121,7 +130,10 @@ export async function garantirFotosNaFila(ordemId: string, uris: string[]): Prom
 export async function enviarFotosPendentes(opcoes?: { forcar?: boolean }): Promise<ResultadoProcessamento | null> {
   try {
     if (!isSupabaseConfigured()) return null;
-    return await (await motorAtual()).processar(opcoes);
+    const dono = await donoDaFila();
+    // Sem conta, cada tentativa só somaria falha 'auth' e esticaria a espera.
+    if (dono === SEM_CONTA) return null;
+    return await motorDe(dono).processar(opcoes);
   } catch {
     return null;
   }
@@ -130,7 +142,8 @@ export async function enviarFotosPendentes(opcoes?: { forcar?: boolean }): Promi
 /** Resumo para o SeloSync. Falha de leitura = 'indisponivel' (nunca "zero pendências"). */
 export async function lerResumoFotos(): Promise<LeituraResumo> {
   try {
-    return await (await motorAtual()).resumo();
+    const dono = await donoDaFila();
+    return leituraDoDono(dono, await motorDe(dono).resumo());
   } catch {
     return { status: 'indisponivel' };
   }

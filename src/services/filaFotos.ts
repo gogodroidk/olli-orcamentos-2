@@ -205,7 +205,14 @@ export interface ResultadoProcessamento {
   erroLeitura: boolean;
 }
 
-export type LeituraResumo = { status: 'ok'; resumo: ResumoPendencias } | { status: 'indisponivel' };
+/**
+ * `sem_conta` = ninguém conectado neste aparelho: não há para onde subir, então a
+ * tela diz "só neste celular" em vez de prometer "sobe quando a internet voltar".
+ */
+export type LeituraResumo =
+  | { status: 'ok'; resumo: ResumoPendencias }
+  | { status: 'indisponivel' }
+  | { status: 'sem_conta' };
 
 export interface MotorFila {
   registrar: (ordemId: string, uri: string) => Promise<void>;

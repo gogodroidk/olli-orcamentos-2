@@ -50,6 +50,16 @@ export function textoSeloSync(leitura: LeituraResumo | null, agora: number, nuve
     };
   }
   if (leitura === null) return null; // carregando: não afirma nada
+  if (leitura.status === 'sem_conta') {
+    // Sem conta conectada não há nuvem para onde subir: prometer "sobe quando a
+    // internet voltar" seria mentira (e o alerta de 24h apareceria para sempre).
+    return {
+      tom: 'desligado',
+      titulo: 'Fotos só neste celular',
+      detalhe: 'Sem conta conectada, elas não vão para a nuvem. Entre na sua conta para guardar uma cópia.',
+      tentarAgora: false,
+    };
+  }
   if (leitura.status === 'indisponivel') {
     return {
       tom: 'indisponivel',
