@@ -83,6 +83,13 @@
     "CONTRATOS_MOTOR_MODE": "off",
     "CONTRATOS_MOTOR_MAX_CONTRATOS": "200",
     "CONTRATOS_MOTOR_MAX_VISITAS": "10",
+    // Backfill da coordenada e do IBGE dos clientes (Onda I1, worker/src/geoClientes.js).
+    // DESLIGADO até a migration 20261002100000 estar aplicada; aí trocar para
+    // "production". Por rodada (1/min): 5 clientes e no máximo 10 consultas ao
+    // Nominatim (política: 1 req/s para o app inteiro).
+    "GEO_BACKFILL_MODE": "off",
+    "GEO_BACKFILL_MAX_POR_RODADA": "5",
+    "GEO_BACKFILL_MAX_NOMINATIM": "10",
     "AI_PROVIDER": "openrouter",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
     // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
@@ -137,6 +144,7 @@
         "EMAIL_LEMBRETES_MODE": "off",
         "EMAIL_RESUMO_MODE": "off",
         "CONTRATOS_MOTOR_MODE": "off",
+        "GEO_BACKFILL_MODE": "off",
         "WELCOME_FROM": "OLLI Orçamentos <nao-responda@olliorcamentos.online>",
         "WELCOME_REPLY_TO": "contato@olliorcamentos.online",
         "WELCOME_APP_URL": "https://staging.app.olliorcamentos.online",
@@ -178,7 +186,8 @@
         { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } },
         { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } },
         { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } },
-        { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } }
+        { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } },
+        { "name": "NOMINATIM_RL", "namespace_id": "2045", "simple": { "limit": 50, "period": 60 } }
       ]
     }
   },
@@ -254,6 +263,12 @@
     // por geohash de ~5 km) não consome balde. Id 1030 de propósito: fora da
     // sequência 1022+ que outras rotas da Onda 2 podem estar pegando em paralelo
     // — dois bindings com o mesmo namespace_id DIVIDIRIAM o mesmo contador.
-    { "name": "CLIMA_RL", "namespace_id": "1030", "simple": { "limit": 30, "period": 60 } }
+    { "name": "CLIMA_RL", "namespace_id": "1030", "simple": { "limit": 30, "period": 60 } },
+    // Teto GLOBAL do Nominatim/OpenStreetMap (chave única 'nominatim-global', não
+    // por usuário): a política do serviço é no máximo 1 req/s para o app inteiro,
+    // e quem estoura é bloqueado por IP. 50/min fica abaixo disso somando a rota
+    // /geo e o backfill do cron. FAIL-CLOSED: sem este binding o worker não chama
+    // o Nominatim (ver geoClientes.js). Id 1045 longe das sequências em uso.
+    { "name": "NOMINATIM_RL", "namespace_id": "1045", "simple": { "limit": 50, "period": 60 } }
   ]
 }
