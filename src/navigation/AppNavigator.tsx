@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { BorderRadius, comAlfa, sombrasDe, useCores, useEstilos, useGradientes, type Cores } from '../theme';
 import { useEhDesktop } from '../hooks/useEhDesktop';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
+import { OlliButton } from '../components/OlliButton';
 import { SidebarNav } from '../components/web/SidebarNav';
 import type { Recurso } from '../services/entitlements';
 import type { VerticalId } from '../services/verticais';
@@ -196,7 +197,8 @@ export type RootStackParamList = {
 export type TabParamList = {
   Home: undefined;
   // Agenda pode abrir já criando um agendamento para um cliente/orçamento (CRM).
-  // `abrirAgendamentoId`: toque na notificação "Visita em 1h" foca o dia e abre o compromisso.
+  // `abrirAgendamentoId`: vem do toque na notificação "Visita em 1h" (App.tsx);
+  // a tela foca o dia e abre aquele compromisso.
   Agenda: { novoParaClienteId?: string; novoParaClienteNome?: string; novoParaOrcamentoId?: string; novoEndereco?: string; novoTitulo?: string; abrirAgendamentoId?: string } | undefined;
   Orcar: undefined;     // botão central elevado → abre NovoOrcamento (stack)
   Hoje: undefined;
@@ -259,37 +261,86 @@ const AutopilotCentro = comCentroDesktop(AutopilotScreen);
  * Enquanto ela estiver incompleta, a porta das abas permanece fechada e aponta
  * para a edição do cadastro. O dado é relido ao voltar da tela, sem confiar num
  * flag local que poderia estar desatualizado.
+ *
+ * Revalidação SILENCIOSA (item 1.2 da onda 1): o card "Preparando seu espaço…"
+ * aparece só na PRIMEIRA checagem. Antes, todo foco da rota 'Tabs' (voltar de
+ * qualquer tela do stack) fazia `setEstado('verificando')`, o que desmontava o
+ * <TabNavigator/> inteiro: a aba atual se perdia (Agenda → Início), as entradas
+ * animadas rodavam de novo e tudo era buscado outra vez. Agora:
+ * - depois de liberado, o foco relê o cadastro em segundo plano e só fecha a
+ *   porta se faltar campo DE VERDADE;
+ * - um erro de leitura nunca fecha a porta de quem já entrou (o aviso fica para
+ *   a tela Meu Negócio);
+ * - na 1ª checagem, erro é estado próprio ('erro'), não "cadastro incompleto":
+ *   "não sei" não vira "falta preencher".
  */
+type EstadoPerfilGuard = 'verificando' | 'liberado' | 'incompleto' | 'erro';
+
 function TabsComPerfilGuard() {
   const nav = useNavigation<any>();
   const cores = useCores();
   const insets = useSafeAreaInsets();
-  const [estado, setEstado] = React.useState<'verificando' | 'liberado' | 'incompleto'>('verificando');
+  const [estado, setEstado] = React.useState<EstadoPerfilGuard>('verificando');
   const [pendentes, setPendentes] = React.useState<string[]>([]);
+  // Espelho do estado para o callback de foco (que é estável e não deve ser
+  // recriado a cada troca de estado — isso refaria a checagem em loop).
+  const estadoRef = React.useRef<EstadoPerfilGuard>('verificando');
+  // Só a resposta da checagem MAIS RECENTE vale (focos rápidos em sequência).
+  const checagemRef = React.useRef(0);
 
-  useFocusEffect(React.useCallback(() => {
-    let ativo = true;
-    setEstado('verificando');
+  const mudarEstado = React.useCallback((novo: EstadoPerfilGuard) => {
+    estadoRef.current = novo;
+    setEstado(novo);
+  }, []);
+
+  const verificar = React.useCallback(() => {
+    checagemRef.current += 1;
+    const id = checagemRef.current;
+    // "Verificando" só aparece enquanto ainda não se sabe nada (1ª checagem) ou
+    // quando a pessoa pede "Tentar de novo" depois de um erro. Quem já está
+    // liberado (ou já vê o card de pendência) revalida em silêncio.
+    if (estadoRef.current === 'erro') mudarEstado('verificando');
     getEmpresa()
       .then((empresa) => {
-        if (!ativo) return;
+        if (id !== checagemRef.current) return;
         // Instalação de desenvolvimento sem empresa segue compatível; contas
         // autenticadas novas chegam aqui somente depois do Onboarding.
         if (!empresa) {
-          setEstado('liberado');
+          mudarEstado('liberado');
           return;
         }
         const faltantes = camposPendentesPerfil(empresa);
         setPendentes(faltantes.map(campo => ROTULO_CAMPO_PERFIL[campo]));
-        setEstado(faltantes.length ? 'incompleto' : 'liberado');
+        mudarEstado(faltantes.length ? 'incompleto' : 'liberado');
       })
       .catch(() => {
-        if (ativo) setEstado('incompleto');
+        if (id !== checagemRef.current) return;
+        // Erro de leitura não fecha a porta de quem já entrou.
+        if (estadoRef.current === 'liberado') return;
+        mudarEstado('erro');
       });
-    return () => { ativo = false; };
-  }, []));
+  }, [mudarEstado]);
+
+  useFocusEffect(React.useCallback(() => {
+    verificar();
+    // Ao perder o foco, respostas em voo deixam de valer.
+    return () => { checagemRef.current += 1; };
+  }, [verificar]));
 
   if (estado === 'liberado') return <TabNavigator />;
+
+  const titulo = estado === 'verificando'
+    ? 'Preparando seu espaço…'
+    : estado === 'erro'
+      ? 'Não conseguimos abrir seu cadastro'
+      : 'Complete seu negócio para continuar';
+  const texto = estado === 'verificando'
+    ? 'Conferindo os dados que identificam sua empresa nos orçamentos.'
+    : estado === 'erro'
+      ? 'A leitura dos dados do negócio falhou. Tente de novo; se continuar, abra os dados do negócio.'
+      : pendentes.length
+        ? `Falta preencher: ${pendentes.join(', ')}.`
+        : 'Falta completar os dados do negócio.';
 
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: cores.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }}>
@@ -297,26 +348,42 @@ function TabsComPerfilGuard() {
         {estado === 'verificando' ? (
           <ActivityIndicator size="large" color={cores.primary} />
         ) : (
-          <MaterialCommunityIcons name="store-cog-outline" size={44} color={cores.primary} />
+          <MaterialCommunityIcons
+            name={estado === 'erro' ? 'alert-circle-outline' : 'store-cog-outline'}
+            size={44}
+            color={estado === 'erro' ? cores.danger : cores.primary}
+          />
         )}
         <Text style={{ marginTop: 16, color: cores.onSurface, fontWeight: '800', fontSize: 21, textAlign: 'center' }}>
-          {estado === 'verificando' ? 'Preparando seu espaço…' : 'Complete seu negócio para continuar'}
+          {titulo}
         </Text>
         <Text style={{ marginTop: 8, color: cores.onSurfaceVariant, fontSize: 14, lineHeight: 21, textAlign: 'center' }}>
-          {estado === 'verificando'
-            ? 'Conferindo os dados que identificam sua empresa nos orçamentos.'
-            : pendentes.length
-              ? `Falta preencher: ${pendentes.join(', ')}.`
-              : 'Não conseguimos confirmar o cadastro agora. Tente abrir os dados do negócio.'}
+          {texto}
         </Text>
         {estado === 'incompleto' && (
-          <TouchableOpacity
-            accessibilityRole="button"
+          <OlliButton
+            label="Completar agora"
             onPress={() => nav.navigate('MeuNegocio')}
-            style={{ marginTop: 20, minHeight: 48, paddingHorizontal: 20, borderRadius: 14, backgroundColor: cores.primary, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 15 }}>Completar agora</Text>
-          </TouchableOpacity>
+            fullWidth
+            style={{ marginTop: 20 }}
+          />
+        )}
+        {estado === 'erro' && (
+          <>
+            <OlliButton
+              label="Tentar de novo"
+              onPress={verificar}
+              fullWidth
+              style={{ marginTop: 20 }}
+            />
+            <OlliButton
+              label="Abrir dados do negócio"
+              variant="ghost"
+              onPress={() => nav.navigate('MeuNegocio')}
+              fullWidth
+              style={{ marginTop: 8 }}
+            />
+          </>
         )}
       </View>
     </View>

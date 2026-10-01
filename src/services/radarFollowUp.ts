@@ -17,6 +17,11 @@
  *    (`getOrcamentosAgregadoPorStatus`/`getOrcamentosParadosAgregado`).
  *    Nenhuma regra nova de "o que conta como proposta enviada" nasce aqui.
  *
+ * A REGRA (quem entra, em que ordem, quando vence) mora em
+ * `radarFollowUpRegra.ts`, pura e testada (scripts/teste-radar-followup.ts):
+ * quem já tem recibo/pagamento NÃO entra; a ordem é valor × recência; passada a
+ * validade (ou 30 dias da emissão, sem validade) a ação vira "renovar".
+ *
  * "Dias parado" usa `atualizadoEm` do orçamento (carimbado pelo BANCO a
  * cada escrita — ver `Cliente.atualizadoEm` em types/index.ts) como proxy de
  * "desde quando ninguém mexe nesta proposta" — mesma regra de
@@ -28,25 +33,18 @@
  * itens aparecem de graça, isso é decisão da TELA que consome
  * `orcamentosParaFollowUp()`, não deste service.
  */
-import { getOrcamentos, getClientes, getEmpresa } from '../database/database';
+import { getOrcamentos, getClientes, getEmpresa, getRecibos } from '../database/database';
 import { montarMensagemFollowUpOrcamento } from '../utils/mensagensOrcamento';
-import { Cliente, Empresa, Orcamento, propostaJaEnviada } from '../types';
+import { formatCurrency } from '../utils/currency';
+import type { Empresa } from '../types';
 import { LIMIAR_PROPOSTA_PARADA_DIAS } from './radarDinheiro';
+import { montarMensagemPropostaVencida, selecionarFollowUp, type OrcamentoParaFollowUp } from './radarFollowUpRegra';
 
-const MS_POR_DIA = 86400000;
+export type { OrcamentoParaFollowUp } from './radarFollowUpRegra';
+
 /** Limiar de dias parado (sem resposta do cliente) para entrar no radar — o MESMO
  *  do painel e do resumo diário por e-mail (`radarDinheiro.ts`). */
 const DIAS_LIMIAR = LIMIAR_PROPOSTA_PARADA_DIAS;
-
-export interface OrcamentoParaFollowUp {
-  orcamento: Orcamento;
-  /** Cadastro ATIVO do cliente (getClientes), ou `null` se foi excluído depois
-   *  do envio. O orçamento já guarda `clienteNome`/`clienteTelefone`
-   *  denormalizados — o follow-up por WhatsApp continua funcionando mesmo com
-   *  `cliente: null` (ver `mensagemFollowUp`, que usa o próprio orçamento). */
-  cliente: Cliente | null;
-  diasParado: number;
-}
 
 // Empresa (getEmpresa) cacheada em memória por processo: a mensagem de
 // follow-up precisa ser SÍNCRONA (chamada direto no onPress do botão "Chamar
@@ -56,57 +54,38 @@ export interface OrcamentoParaFollowUp {
 // `radarClientes.ts` (`nomePrestadorCache`).
 let empresaCache: Empresa | null = null;
 
-/** Data (ISO) usada como proxy de "desde quando esta proposta está parada". */
-function dataUltimaMovimentacao(o: Orcamento): string {
-  return o.atualizadoEm || o.criadoEm;
-}
-
-function diasDesde(iso: string): number {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (isNaN(ms)) return 0;
-  return Math.max(0, Math.floor(ms / MS_POR_DIA));
-}
-
 /**
  * Propostas enviadas (status em `STATUS_PROPOSTA_ENVIADA`) sem resposta do
- * cliente há >= 3 dias — ordenadas do que está parado há MAIS tempo primeiro
- * (prioridade de follow-up). Nunca lança: uma falha de leitura (SQLite/rede)
- * deve aparecer como erro explícito para quem chama, não virar lista vazia
+ * cliente há >= 3 dias e SEM pagamento registrado — ordenadas por prioridade
+ * (valor × recência). Não engole erro: uma falha de leitura (SQLite) deve
+ * aparecer como erro explícito para quem chama, não virar lista vazia
  * silenciosa — por isso este service propaga a exceção e é a TELA quem
  * decide o estado de erro (3 estados).
  */
 export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]> {
-  const [orcamentos, clientes, empresa] = await Promise.all([
-    getOrcamentos(), getClientes(), getEmpresa(),
+  const [orcamentos, clientes, empresa, recibos] = await Promise.all([
+    getOrcamentos(), getClientes(), getEmpresa(), getRecibos(),
   ]);
   empresaCache = empresa;
-  const clientesPorId = new Map(clientes.map(c => [c.id, c] as const));
-
-  const resultado: OrcamentoParaFollowUp[] = [];
-  for (const o of orcamentos) {
-    if (!propostaJaEnviada(o.status)) continue;
-    const diasParado = diasDesde(dataUltimaMovimentacao(o));
-    if (diasParado < DIAS_LIMIAR) continue;
-    resultado.push({
-      orcamento: o,
-      cliente: clientesPorId.get(o.clienteId) ?? null,
-      diasParado,
-    });
-  }
-
-  resultado.sort((a, b) => b.diasParado - a.diasParado);
-  return resultado;
+  return selecionarFollowUp(orcamentos, recibos, clientes, DIAS_LIMIAR);
 }
 
 /**
  * Mensagem de WhatsApp pronta para o follow-up de uma proposta parada —
  * 100% derivada dos dados reais do próprio orçamento (número, valor,
- * validade), nada inventado. Síncrona de propósito (usada direto no onPress
- * do botão "Chamar no WhatsApp"): a empresa vem do cache preenchido pela
- * última chamada a `orcamentosParaFollowUp` — sempre chamada antes, ao
- * carregar a tela. Sem cache ainda (ex.: uso isolado), a mensagem sai sem o
- * contato da empresa.
+ * validade), nada inventado. Proposta vencida pede para RENOVAR (dizer "vale
+ * até" uma data passada seria mentir). Síncrona de propósito (usada direto no
+ * onPress do botão): a empresa vem do cache preenchido pela última chamada a
+ * `orcamentosParaFollowUp` — sempre chamada antes, ao carregar a tela. Sem
+ * cache ainda (ex.: uso isolado), a mensagem sai sem o contato da empresa.
  */
 export function mensagemFollowUp(item: OrcamentoParaFollowUp): string {
+  if (item.expirada) {
+    return montarMensagemPropostaVencida(
+      item,
+      formatCurrency(item.orcamento.valorTotal),
+      empresaCache?.telefone || empresaCache?.whatsapp || null,
+    );
+  }
   return montarMensagemFollowUpOrcamento(item.orcamento, empresaCache);
 }
