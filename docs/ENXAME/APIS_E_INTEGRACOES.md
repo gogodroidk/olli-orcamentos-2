@@ -349,6 +349,16 @@ bloqueio **B3**. **Custo: zero.** Não é decisão de engenharia, é 10 minutos 
 
 ### 5.1. Clima — 🟢 ENTRA JÁ (a de maior retorno do documento)
 
+> **Atualização 01/10/2026 — decisão final: MET Norway, não Open-Meteo.** O dono proibiu
+> qualquer serviço pago, e o Open-Meteo grátis é só não comercial. O `GET /clima`
+> (`worker/src/clima.js`) usa o **MET Norway Locationforecast 2.0 /compact**: grátis, sem
+> chave, uso comercial permitido sob **CC BY 4.0 com atribuição** ("Previsão: MET Norway" —
+> `atribuicaoClima` em `src/services/climaTexto.ts`). Exige User-Agent com contato e no máx.
+> 4 casas decimais; cache ≥30 min por célula de ~5 km, respeitando `Expires` e
+> `If-Modified-Since`. O compact não tem probabilidade de chuva: o app fala em **mm
+> previstos/símbolo** ("Chuva prevista às 15h — leve capa"). Termos:
+> https://api.met.no/doc/TermsOfService. O texto abaixo é o histórico da análise.
+
 **Provedor escolhido: Open-Meteo, plano comercial.** Comparei três:
 
 | Fonte | Preço | Problema |

@@ -564,6 +564,8 @@ MP, depois codar.**
    terceiro, para substituir um `wa.me` que funciona de graça em 9 telas.
 6. **NÃO usar Open-Meteo no plano grátis.** Licença **não-comercial** explícita e o OLLI cobra
    assinatura. Ou Visual Crossing (grátis, comercial ✅), ou Open-Meteo Standard pago.
+   **Decidido em 01/10/2026:** nenhum pago (ordem do dono) — o `/clima` usa **MET Norway**
+   (Locationforecast 2.0, grátis, comercial sob CC BY 4.0 com atribuição "Previsão: MET Norway").
 7. **NÃO tentar assinatura ICP-Brasil no aceite do serviço.** Exigiria certificado do **cliente**
    do prestador. Morre na primeira dona de casa.
 8. **NÃO trocar o modal de assinatura atual por plataforma de assinatura online.** O atual

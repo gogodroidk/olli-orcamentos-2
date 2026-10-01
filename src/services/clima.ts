@@ -2,13 +2,14 @@
  * clima.ts — clima do dia, app-side (item 2.5 da Onda 2).
  *
  * Contrato: worker `olli-diagnostico`, `GET /clima?lat=&lon=` (público, sem
- * login — ver `worker/src/clima.js`). A lógica pura (validação da resposta,
- * texto curto, WMO → pt-BR) mora em `climaTexto.ts`, testável por `node`.
+ * login — ver `worker/src/clima.js`). Fonte: MET Norway (CC BY 4.0, exige
+ * crédito). A lógica pura (validação da resposta, texto curto, símbolo do MET
+ * → pt-BR, atribuição) mora em `climaTexto.ts`, testável por `node`.
  *
  * ─── TRÊS ESTADOS (regra da casa `olli-gate-erro-vira-vazio`) ──────────────
  *   'carregando'          → ainda buscando
  *   { ok:false, motivo }  → a tela mostra "Clima indisponível" (NUNCA some calada)
- *   DadosClima            → { ok:true, temperatura, max, min, chuvaPorHora, resumo… }
+ *   DadosClima            → { ok:true, temperatura, max, min, chuvaPorHora, resumo, atribuicao… }
  *
  * ─── DE ONDE VEM A COORDENADA ──────────────────────────────────────────────
  * Só da localização JÁ CONCEDIDA — este recurso nunca abre prompt de
@@ -24,7 +25,8 @@
  *
  * Uso típico (a Home liga isto em outro item):
  *   const clima = useClimaDoDia(coordDoProximoAgendamento);
- *   <Text>{textoClima(clima)}</Text>   // "Chuva às 15h — leve capa"
+ *   <Text>{textoClima(clima)}</Text>   // "Chuva prevista às 15h — leve capa"
+ *   {atribuicaoClima(clima) && <Text>{atribuicaoClima(clima)}</Text>}  // "Previsão: MET Norway" (CC BY 4.0)
  */
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -40,7 +42,19 @@ import {
 } from './climaTexto';
 
 export type { DadosClima, EstadoClima, FalhaClima, HoraChuva, MotivoFalhaClima } from './climaTexto';
-export { textoClima, descricaoTempo, horaCurta, resumoClima, codigoEhChuva } from './climaTexto';
+export {
+  textoClima,
+  atribuicaoClima,
+  ATRIBUICAO_CLIMA,
+  FONTE_CLIMA,
+  FONTE_CLIMA_URL,
+  LICENCA_CLIMA_URL,
+  descricaoTempo,
+  horaCurta,
+  mmCurto,
+  resumoClima,
+  simboloEhChuva,
+} from './climaTexto';
 
 export interface CoordenadaClima {
   lat: number;
