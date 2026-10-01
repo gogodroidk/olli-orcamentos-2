@@ -187,6 +187,11 @@ export const PULL_INICIAL_OK_PREFIX = 'olli.sync.pull_inicial_ok_';
  * quais tabelas a nuvem NÃO entregou. Diagnóstico de conta — entra na allow-list.
  */
 export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
+/**
+ * Última visão da Agenda (Dia/Semana/Mês). Preferência do APARELHO (como o
+ * onboarding): fica fora da allow-list de limpeza; perder é inofensivo (volta "Dia").
+ */
+export const AGENDA_VISAO_KEY = 'olli.agenda.visao';
 
 /**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma

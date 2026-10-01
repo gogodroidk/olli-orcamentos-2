@@ -59,6 +59,7 @@ import type {
 } from '../types';
 import { dataBrParaIsoSeguro } from '../utils/date';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
+import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
 import {
   erroEhColisaoNumero,
   numeroDocumentoAposColisao,
@@ -2879,6 +2880,43 @@ function syncAbortado(geracao: number | undefined): boolean {
  * Cancelável por `abortarSyncEmAndamento` (checagem de geração antes de gravar).
  */
 export async function syncOnLogin(): Promise<void> {
+  if (syncing) return;
+  const p = executarSyncOnLogin();
+  syncEmVoo = p;
+  void p.finally(() => {
+    if (syncEmVoo === p) syncEmVoo = null;
+  });
+  return p;
+}
+
+/** O sync que está rodando agora (para "puxar para atualizar" esperar por ele), ou null. */
+let syncEmVoo: Promise<void> | null = null;
+
+/**
+ * PUXAR PARA ATUALIZAR — busca da nuvem AGORA. Antes as telas chamavam
+ * `syncOnLogin` direto: se o sync do boot ainda estava rodando (push longo), a
+ * trava de reentrância devolvia na hora, a tela relia só o SQLite e a visita
+ * recém-atribuída só aparecia reabrindo o app. Aqui: espera o sync em voo e roda
+ * um NOVO pull. Responde 'ok' (veio da nuvem), 'falhou' (o que está na tela é o
+ * do aparelho) ou 'demorou' (passou do teto; segue em segundo plano e a tela
+ * recarrega sozinha pelo `onSyncAplicado`). Nunca lança.
+ */
+export async function sincronizarAgora(tetoMs = 20_000): Promise<ResultadoAtualizacao> {
+  try {
+    return await atualizarDaNuvem({
+      emVoo: () => syncEmVoo,
+      sincronizar: () => syncOnLogin(),
+      ultimoPull: () => ultimoPull,
+      tetoMs,
+      agora: () => Date.now(),
+      esperar: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    });
+  } catch {
+    return 'falhou';
+  }
+}
+
+async function executarSyncOnLogin(): Promise<void> {
   if (syncing) return;
   syncing = true;
   const geracao = syncGeneration;
