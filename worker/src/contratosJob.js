@@ -139,8 +139,17 @@ export function portaServico(rest) {
   };
 }
 
+/**
+ * O motor está ligado neste ambiente? Só o valor exato "production" liga (fail-closed).
+ * Exposto também no GET / público (`contratos_motor: on|off`) para a tela de Contratos
+ * dizer a verdade sobre a geração automática em vez de prometer o que está desligado.
+ */
+export function modoMotorContratos(env) {
+  return texto(env?.CONTRATOS_MOTOR_MODE, 20).toLowerCase() === 'production' ? 'production' : 'off';
+}
+
 export async function processarContratos(env, dependencias = {}) {
-  const modo = texto(env?.CONTRATOS_MOTOR_MODE, 20).toLowerCase() === 'production' ? 'production' : 'off';
+  const modo = modoMotorContratos(env);
   if (modo === 'off') return resumo({ mode: 'off', motivo: 'desligado', contratos: 0, criadas: 0 });
 
   const now = dependencias.now || (() => new Date());

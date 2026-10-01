@@ -104,7 +104,7 @@ checar('comparativo varre os recursos gateados da fonte', tela.includes('RECURSO
 checar('linha do 12x nomeia a fonte da verdade (texto12xPro)', tela.includes('texto12xPro('), true);
 
 console.log('\n5) lojas nativas — info completa, compra externa escondida');
-checar('COMPRA_NO_APP definido', tela.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
+checar('COMPRA_NO_APP vem da flag única (config/loja)', /import \{[^}]*\bCOMPRA_NO_APP\b[^}]*\} from '\.\.\/config\/loja';/.test(tela), true);
 checar('CTA de compra condicionado a COMPRA_NO_APP', tela.includes(') : !COMPRA_NO_APP ? ('), true);
 checar('abas de período escondidas fora de compra', tela.includes('{COMPRA_NO_APP && ('), true);
 checar('linha 12x só onde há compra e nunca no Android Play', tela.includes('COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && linha12x'), true);
@@ -119,7 +119,7 @@ checar('app não vende dashboard como pronto', tela.includes('Painel de gestão 
 // GPS: o expo-location não está instalado. Nenhuma tela promete localização
 // "no próximo update" nem vende "onde cada técnico está agora" (faxina 30/09).
 checar('paywall do mapa não vende como pronto', gatePro.includes("mapa_equipe: 'Equipe ao vivo no mapa (em breve).'"), true);
-checar('Equipe ao vivo diz que a localização pelo app não está disponível', equipeAoVivo.includes('Localização pelo app: ainda não disponível'), true);
+checar('Equipe ao vivo diz que a localização pelo app está desligada', equipeAoVivo.includes('Em breve — localização desligada'), true);
 checar('Equipe ao vivo não promete o "próximo update"', /pr[oó]ximo update/i.test(equipeAoVivo), false);
 checar('Equipe ao vivo não promete "onde cada técnico está agora"', equipeAoVivo.includes('onde cada técnico está agora'), false);
 checar('comparativo possui estado Em breve', tela.includes("? 'Em breve'"), true);

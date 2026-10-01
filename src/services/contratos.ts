@@ -11,6 +11,8 @@ import { supabase, getCurrentUser } from './supabase';
 import { garantirContextoEquipe } from './cloudSync';
 import { resolverTenantEquipe } from './contextoEquipe';
 import { carregarMinhaOrganizacao } from './equipe';
+import { DIAGNOSTICO_URL } from '../config';
+import { interpretarStatusMotor, type StatusMotorContratos } from '../utils/contratosMotorStatus';
 import type { ContratoRecorrente } from '../types';
 import {
   excluirContrato as excluirContratoRemoto,
@@ -92,5 +94,28 @@ export async function gerarVisitasAutomatico(): Promise<ResultadoGeracaoContrato
     return await gerarVisitas(supabase, leitura.contratos);
   } catch {
     return null;
+  }
+}
+
+/** Teto de espera pelo GET / do worker: a tela não pode ficar presa num aviso. */
+const TIMEOUT_STATUS_MOTOR_MS = 5000;
+
+/**
+ * O motor de contratos do SERVIDOR está ligado? Lê `contratos_motor` do GET / público
+ * do worker (sem login, sem custo). Três estados: rede fora, app sem URL do worker ou
+ * worker antigo sem o campo = `desconhecido` — nunca "ligado" por dúvida. Nunca lança.
+ */
+export async function lerStatusMotorContratos(): Promise<StatusMotorContratos> {
+  if (!DIAGNOSTICO_URL) return 'desconhecido';
+  const controle = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = setTimeout(() => controle?.abort(), TIMEOUT_STATUS_MOTOR_MS);
+  try {
+    const r = await fetch(`${DIAGNOSTICO_URL}/`, { method: 'GET', signal: controle?.signal });
+    if (!r.ok) return 'desconhecido';
+    return interpretarStatusMotor(await r.json());
+  } catch {
+    return 'desconhecido';
+  } finally {
+    clearTimeout(timer);
   }
 }

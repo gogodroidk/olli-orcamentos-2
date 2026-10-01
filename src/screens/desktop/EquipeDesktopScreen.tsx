@@ -26,6 +26,7 @@ import {
   type Papel,
 } from '../../services/equipe';
 import { formatDate } from '../../utils/date';
+import { LOCALIZACAO_DISPONIVEL } from '../../services/localizacaoEquipe';
 import { avisar } from './dialogo';
 
 type LinhaMembro = MembroEquipe & { id: string };
@@ -190,16 +191,24 @@ function EquipeDesktopConteudo() {
       acoes={
         <>
           <BarraBusca valor={busca} aoMudar={setBusca} placeholder="Buscar por nome ou e-mail…" />
-          {/* Onda 2 — atalho para a Equipe ao vivo no mapa (plano Empresa). A tela de
-              destino já traz o próprio GateEquipe/GuardaPapel — este botão só navega. */}
+          {/* Atalho para a Equipe ao vivo (plano Empresa). A tela de destino já traz o
+              próprio GateEquipe/GuardaPapel — este botão só navega. Com a localização
+              desligada (LOCALIZACAO_DISPONIVEL=false), leva o selo "Em breve". */}
           <Pressable
             onPress={() => nav.navigate('EquipeAoVivo')}
             accessibilityRole="button"
-            accessibilityLabel="Ver equipe ao vivo no mapa"
+            accessibilityLabel={LOCALIZACAO_DISPONIVEL
+              ? 'Ver equipe ao vivo'
+              : 'Equipe ao vivo, em breve: localização desligada'}
             style={({ hovered, focused }: PressableWebState) => [styles.botaoMapa, hovered && styles.botaoMapaHover, focused && styles.focoVisivel]}
           >
             <MaterialCommunityIcons name="map-marker-radius-outline" size={18} color={cores.onSurface} />
             <Text style={styles.botaoMapaLabel}>Equipe ao vivo</Text>
+            {!LOCALIZACAO_DISPONIVEL && (
+              <View style={styles.seloEmBreve}>
+                <Text style={styles.seloEmBreveTexto}>Em breve — localização desligada</Text>
+              </View>
+            )}
           </Pressable>
           {podeGerenciar && (
             <Pressable
@@ -565,6 +574,18 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     ...Typography.button,
     color: c.onSurface,
     fontSize: 13,
+  },
+  // Selo neutro: o recurso existe na navegação, mas a localização ainda está desligada.
+  seloEmBreve: {
+    backgroundColor: c.surfaceVariant,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  seloEmBreveTexto: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: c.onSurfaceVariant,
   },
   celulaTexto: {
     ...Typography.bodySmall,

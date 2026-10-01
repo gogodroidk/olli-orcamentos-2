@@ -46,6 +46,7 @@ import {
 } from '../services/playBilling';
 import { liberacaoPlayConfirmada, ofertaPara, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
 import { getAssinaturaNaPlay } from '../services/assinatura';
+import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -86,11 +87,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * tela (AssinaturaScreen, via o botão "Sua assinatura" abaixo) — não há portal
  * Stripe nem código dele nesta tela.
  */
-const COMPRA_NO_APP = Platform.OS !== 'ios';
-/** Flag explícita e fail-closed desta branch de release: Android da Google Play
- * não abre Stripe, Mercado Pago, WhatsApp comercial nem outro caminho externo de
- * compra de bens digitais. Só a web mantém contratação; o Android apenas informa. */
-const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
+// `COMPRA_NO_APP` e `BUILD_PLAY_SEM_COMPRA_EXTERNA` (Android da Google Play não abre
+// Stripe, Mercado Pago, WhatsApp comercial nem outro caminho externo de compra de
+// bens digitais; só a web contrata) moram em config/loja.ts — flag única do app.
 
 /**
  * VENDA PELA PRÓPRIA GOOGLE PLAY (Play Billing via RevenueCat). Não é compra

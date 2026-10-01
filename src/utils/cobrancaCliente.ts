@@ -172,3 +172,90 @@ export function enviadoHoje(quando: string | null | undefined, agora: Date = new
 export function ordenarParaCobrar<T extends { diasParado: number; cobradoHoje: boolean }>(itens: T[]): T[] {
   return [...itens].sort((a, b) => Number(a.cobradoHoje) - Number(b.cobradoHoje) || b.diasParado - a.diasParado);
 }
+
+/* ═════════════  COBRANÇA NO LINK PÚBLICO (/o/<token>)  ═════════════
+ * O que o snapshot do link leva para a página do cliente cobrar O MESMO valor que o
+ * WhatsApp cobraria. Antes a página só conhecia o total: quem já tinha pago a entrada
+ * via o QR do valor inteiro (e pagava a mais), e o Pix só aparecia se o CLIENTE
+ * tivesse tocado "Aprovar" no link — o prestador que fechou na conversa e marcou
+ * "aprovado" no app mandava o link e a página pedia aprovação de novo.
+ */
+
+/** Entrada/sinal configurado no orçamento (o mesmo cálculo do PDF), ou `null`. */
+export interface SinalDoOrcamento {
+  valor: number;
+  percentual: number | null;
+  /** Data combinada para a entrada, como o prestador digitou (DD/MM/AAAA). */
+  data: string;
+}
+
+/** O que vai em `dados` do link para a página cobrar certo. */
+export interface CobrancaDoLink {
+  /** Status do orçamento no app no momento do envio (a decisão do prestador). */
+  statusApp: Orcamento['status'];
+  /**
+   * `true` = o prestador já fechou (aprovado/convertido no app) e há valor a receber:
+   * a página mostra o Pix mesmo que o cliente nunca tenha tocado "Aprovar".
+   */
+  cobrarAgora: boolean;
+  /**
+   * Quanto o Pix da página cobra: a entrada (se há sinal e nada foi pago), senão o
+   * saldo em aberto. `0` = já está tudo pago. `null` = NÃO SEI (não deu para ler os
+   * recebimentos) — a página então não monta Pix nenhum, em vez de cobrar o total
+   * de quem talvez já tenha pago parte.
+   */
+  valorACobrar: number | null;
+  /** Rótulo do valor cobrado: entrada, saldo (já pagou parte) ou o total. */
+  cobrancaTipo: 'sinal' | 'saldo' | 'total' | null;
+  sinal: SinalDoOrcamento | null;
+}
+
+/** Entrada/sinal do orçamento, limitada ao total — mesma regra do `renderSinal` do PDF. */
+export function sinalDoOrcamento(
+  orcamento: Pick<Orcamento, 'valorTotal' | 'sinalValor' | 'sinalPercentual' | 'sinalData'>,
+): SinalDoOrcamento | null {
+  const total = Math.max(0, Number(orcamento.valorTotal) || 0);
+  let valor = 0;
+  let percentual: number | null = null;
+  if (typeof orcamento.sinalValor === 'number' && orcamento.sinalValor > 0) {
+    valor = Math.min(orcamento.sinalValor, total);
+    percentual = total > 0 ? Math.round((valor / total) * 100) : null;
+  } else if (typeof orcamento.sinalPercentual === 'number' && orcamento.sinalPercentual > 0 && total > 0) {
+    percentual = Math.min(100, Math.max(0, orcamento.sinalPercentual));
+    valor = total * (percentual / 100);
+  }
+  if (!(valor > 0)) return null;
+  return { valor: centavos(valor), percentual, data: orcamento.sinalData ?? '' };
+}
+
+/**
+ * Monta a cobrança do link. `recebido` = soma dos recebimentos (recibos não
+ * estornados) deste orçamento; `null` quando a leitura falhou (3 estados: o "não
+ * sei" nunca vira "nada pago"). Nunca lança.
+ */
+export function cobrancaDoLink(
+  orcamento: Pick<Orcamento, 'status' | 'valorTotal' | 'sinalValor' | 'sinalPercentual' | 'sinalData'>,
+  recebido: number | null,
+): CobrancaDoLink {
+  const total = centavos(Math.max(0, Number(orcamento.valorTotal) || 0));
+  const sinal = sinalDoOrcamento(orcamento);
+  const statusApp = orcamento.status;
+  const fechado = statusApp === 'aprovado' || statusApp === 'convertido';
+
+  if (recebido === null || !Number.isFinite(recebido)) {
+    return { statusApp, cobrarAgora: false, valorACobrar: null, cobrancaTipo: null, sinal };
+  }
+
+  const pago = centavos(Math.max(0, recebido));
+  const saldo = centavos(Math.max(0, total - pago));
+  let valorACobrar = saldo;
+  let cobrancaTipo: CobrancaDoLink['cobrancaTipo'] = pago > 0 ? 'saldo' : 'total';
+  // Entrada: só enquanto nada foi pago e ela é menor que o total (entrada = total é o total).
+  if (pago <= 0 && sinal && sinal.valor + 0.005 < total) {
+    valorACobrar = sinal.valor;
+    cobrancaTipo = 'sinal';
+  }
+  if (!(valorACobrar > 0)) cobrancaTipo = null;
+
+  return { statusApp, cobrarAgora: fechado && valorACobrar > 0, valorACobrar, cobrancaTipo, sinal };
+}

@@ -178,6 +178,17 @@ function AvisoNaoVerificado({ tons, oQue, onTentar }: { tons: Tons; oQue: string
 }
 
 /**
+ * Rótulo extra da proposta VENCIDA (passou da validade, ou de 30 dias da emissão
+ * sem validade — regra em services/radarFollowUpRegra.ts): a ação vira renovar.
+ */
+function notaFollowUp(item: OrcamentoParaFollowUp): string | null {
+  if (!item.expirada) return null;
+  if (!item.validaAte) return 'Proposta vencida: ofereça renovar';
+  const [y, m, d] = item.validaAte.split('-');
+  return `Proposta vencida em ${d}/${m}/${y}: ofereça renovar`;
+}
+
+/**
  * Uma linha de aviso com a ação pronta ao lado: cobrar/chamar sem sair da tela.
  * `nota` é o rótulo extra da cobrança ("cobrado hoje", "cliente avisou que pagou");
  * com `jaFeito`, o botão fica secundário — continua lá (o dinheiro segue parado),
@@ -438,7 +449,8 @@ export function PainelDinheiroParado({
                     nome={item.orcamento.clienteNome}
                     valor={item.orcamento.valorTotal}
                     diasParado={item.diasParado}
-                    rotuloBotao="Chamar no WhatsApp"
+                    rotuloBotao={item.expirada ? 'Renovar no WhatsApp' : 'Chamar no WhatsApp'}
+                    nota={notaFollowUp(item)}
                     onPress={() => onFollowUp(item)}
                   />
                 ))}
@@ -477,7 +489,8 @@ export function PainelDinheiroParado({
                 nome={item.orcamento.clienteNome}
                 valor={item.orcamento.valorTotal}
                 diasParado={item.diasParado}
-                rotuloBotao="Chamar no WhatsApp"
+                rotuloBotao={item.expirada ? 'Renovar no WhatsApp' : 'Chamar no WhatsApp'}
+                nota={notaFollowUp(item)}
                 onPress={() => onFollowUp(item)}
               />
             ))}

@@ -130,7 +130,10 @@ console.log('\n7) FLAG DESLIGADA = NADA APARECE — guardas da tela (origem)');
   })(), true);
   checar('"Restaurar compras" só com a flag', planos.includes('{VENDA_PELA_PLAY ? (\n          <View style={styles.playRodape}>') || planos.includes('{VENDA_PELA_PLAY ? (\r\n          <View style={styles.playRodape}>'), true);
   checar('abas mensal/anual no Android só com a flag', planos.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? null : ('), true);
-  checar('Stripe/Pix/WhatsApp continuam fora do Android (guarda intacta)', planos.includes("const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';"), true);
+  checar('Stripe/Pix/WhatsApp continuam fora do Android (guarda intacta)', [
+    /import \{[^}]*\bBUILD_PLAY_SEM_COMPRA_EXTERNA\b[^}]*\} from '\.\.\/config\/loja';/.test(planos),
+    ler('../src/config/lojaRegras.ts').includes("const buildPlaySemCompraExterna = os === 'android';"),
+  ], [true, true]);
   checar('o preço do card na Play é o da loja', planos.includes('const precoLoja = vendaPlay?.oferta?.precoTexto ?? null;'), true);
   checar('a tabela não repete o preço da Stripe quando cobra a Play', planos.includes('precosDaFonte={!VENDA_PELA_PLAY}'), true);
   checar('"liberado" só com o produto da Play confirmado no servidor', planos.includes('if (liberacaoPlayConfirmada(r, produtoNoServidor, esperado)) {'), true);
@@ -162,7 +165,12 @@ console.log('\n7) FLAG DESLIGADA = NADA APARECE — guardas da tela (origem)');
   const assinatura = ler('../src/screens/AssinaturaScreen.tsx');
   checar('"Gerenciar na Google Play" só com leitura ok e produto da Play', assinatura.includes("const produtoPlay = play.estado === 'ok' ? play.produto : null;"), true);
   checar('...e sem botão para outra loja no iPhone', assinatura.includes("{Platform.OS === 'ios' ? null : ("), true);
-  checar('assinante da Play não é mandado ao Portal da Stripe', assinatura.includes("(!semRenovacao && resumo?.renovaPelaPlay !== true) || resumo?.temClienteStripe === true"), true);
+  // O portal só aparece para quem já foi cliente da Stripe — assinante só da Play
+  // (sem cliente Stripe) não é mandado para lá.
+  checar('assinante da Play não é mandado ao Portal da Stripe', [
+    assinatura.includes('mostraPortalStripe(resumo)'),
+    ler('../src/services/assinaturaTextos.ts').includes('return r.temClienteStripe === true;'),
+  ], [true, true]);
 }
 
 console.log('\n7b) Troca de plano e confirmação do servidor (comportamento)');

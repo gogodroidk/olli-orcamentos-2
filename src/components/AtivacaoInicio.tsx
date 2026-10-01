@@ -7,15 +7,17 @@ import * as Haptics from 'expo-haptics';
 import { BorderRadius, Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
 import { OlliButton } from './OlliButton';
 import { AnimatedEntrance } from './AnimatedEntrance';
+import { OlliSkeleton } from './OlliSkeleton';
 import {
   getEmpresa, saveEmpresa, getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getRecibosPagina,
 } from '../database/database';
 import { onSyncAplicado } from '../services/cloudSync';
 import { recarregarVerticais } from '../hooks/useVerticais';
 import { usePermissao } from '../hooks/usePermissao';
+import { useSyncInicial } from '../hooks/useSyncInicial';
 import {
   AVISO_EXEMPLO, STATUS_JA_ENVIADO, TITULO_PRIMEIRO_ORCAMENTO,
-  calcularChecklistAtivacao, exemploOrcamentoPara, fatosDaEmpresa, itensPrefillDoExemplo,
+  calcularChecklistAtivacao, contaMadura, exemploOrcamentoPara, fatosDaEmpresa, itensPrefillDoExemplo,
   mostrarCartaoPrimeiroOrcamento, totalDoExemplo, verticalDoExemplo,
   type ChecklistAtivacao, type PassoAtivacaoId,
 } from '../services/ativacao';
@@ -44,7 +46,7 @@ const DESTINO: Record<PassoAtivacaoId, keyof RootStackParamList | 'exemplo'> = {
 type Leitura =
   | { estado: 'carregando' }
   | { estado: 'erro' }
-  | { estado: 'pronto'; totalOrcamentos: number; vertical: VerticalId | undefined; checklist: ChecklistAtivacao };
+  | { estado: 'pronto'; totalOrcamentos: number; temRecibo: boolean; vertical: VerticalId | undefined; checklist: ChecklistAtivacao };
 
 /**
  * ATIVAÇÃO NA TELA DE INÍCIO (mobile e desktop do app) — dois blocos, um objetivo:
@@ -57,6 +59,11 @@ type Leitura =
  *  2. Checklist de 4 passos com progresso — visível até concluir; some depois.
  *
  * Regra de ouro (3 estados): enquanto lê ou se a leitura falhar, NÃO desenha nada.
+ * E o SQLite vazio antes do primeiro download da nuvem (`useSyncInicial` ainda
+ * 'baixando') não é "conta nova": mostra um esqueleto "Baixando seus dados da
+ * nuvem…" no lugar do convite. Download que falhou também não desenha nada (o
+ * Início oferece "tentar de novo"). Conta que já trabalha (3+ orçamentos e 1
+ * recibo) não vê o checklist (`contaMadura`).
  * Este bloco é um empurrão, não um dado — escondê-lo num erro não custa nada;
  * mostrar "crie o primeiro orçamento" para quem já tem 40 (erro virando vazio)
  * custaria a confiança do dono. A regra mora em services/ativacao.ts (testada).
@@ -73,6 +80,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   const [salvandoOficio, setSalvandoOficio] = useState(false);
   const { pode, carregando: papelCarregando } = usePermissao();
   const ehDono = !papelCarregando && pode('gerenciar_faturamento');
+  const { estado: download } = useSyncInicial();
 
   const carregar = useCallback(async () => {
     try {
@@ -82,12 +90,21 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
         getEmpresa(),
         getRecibosPagina(1, 0),
       ]);
-      const checklist = calcularChecklistAtivacao({
-        ...fatosDaEmpresa(empresa),
-        primeiroOrcamentoEnviado: enviados.contagem > 0,
-        primeiroRecibo: recibos.length > 0,
+      const checklist = calcularChecklistAtivacao(
+        {
+          ...fatosDaEmpresa(empresa),
+          primeiroOrcamentoEnviado: enviados.contagem > 0,
+          primeiroRecibo: recibos.length > 0,
+        },
+        { totalOrcamentos: total },
+      );
+      setLeitura({
+        estado: 'pronto',
+        totalOrcamentos: total,
+        temRecibo: recibos.length > 0,
+        vertical: verticalDoExemplo(empresa),
+        checklist,
       });
-      setLeitura({ estado: 'pronto', totalOrcamentos: total, vertical: verticalDoExemplo(empresa), checklist });
     } catch {
       setLeitura({ estado: 'erro' });
     }
@@ -152,8 +169,21 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   }, [nav, abrirExemplo]);
 
   if (!ehDono || leitura.estado !== 'pronto') return null;
-  const { totalOrcamentos, vertical, checklist } = leitura;
-  const mostrarPrimeiro = mostrarCartaoPrimeiroOrcamento(totalOrcamentos);
+  const { totalOrcamentos, temRecibo, vertical, checklist } = leitura;
+  if (download !== 'pronto') {
+    // O local só pode CRESCER com o download: quem já é conta madura aqui
+    // continua madura depois — não há o que esperar. O resto espera o download.
+    if (contaMadura(totalOrcamentos, temRecibo) || download === 'falhou') return null;
+    return (
+      <View style={[styles.card, style]} accessibilityRole="progressbar" accessibilityLabel="Baixando seus dados da nuvem">
+        <Text style={styles.texto}>Baixando seus dados da nuvem…</Text>
+        <OlliSkeleton width="70%" height={15} />
+        <OlliSkeleton width="100%" height={6} radius={3} />
+        <OlliSkeleton width="55%" height={12} />
+      </View>
+    );
+  }
+  const mostrarPrimeiro = mostrarCartaoPrimeiroOrcamento(totalOrcamentos, true);
   if (!mostrarPrimeiro && checklist.estado !== 'pendente') return null;
   const exemplo = exemploOrcamentoPara(vertical);
 

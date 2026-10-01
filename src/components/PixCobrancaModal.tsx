@@ -13,8 +13,9 @@ import { formatCurrency } from '../utils/currency';
  * (qrSvg) e o "copia e cola" é só a string do banco — NÃO processa pagamento.
  *
  * O QR sai do MESMO gerador puro do PDF (utils/qrcode.ts), renderizado in-app via
- * react-native-svg (SvgXml). "Compartilhar" manda o código pronto por qualquer app
- * (WhatsApp, etc.), sem depender de expo-clipboard.
+ * react-native-svg (SvgXml). "Enviar só o código" manda o BR Code SOZINHO por
+ * qualquer app (WhatsApp, etc.), sem depender de expo-clipboard: com texto junto, o
+ * cliente segura a mensagem, copia tudo e o banco recusa o código.
  */
 export interface PixCobrancaModalProps {
   visivel: boolean;
@@ -33,11 +34,9 @@ export function PixCobrancaModal({ visivel, aoFechar, brcode, valor, referencia 
 
   async function compartilhar() {
     if (!brcode) return;
-    const ref = referencia ? ` (${referencia})` : '';
     try {
-      await Share.share({
-        message: `Pix para pagar${ref} — ${formatCurrency(valor)}.\nÉ só copiar o código abaixo e pagar no app do banco:\n\n${brcode}`,
-      });
+      // Só o código, nada mais: é a mensagem que o cliente vai copiar inteira.
+      await Share.share({ message: brcode });
     } catch {
       // usuário cancelou o compartilhamento — sem ação
     }
@@ -67,7 +66,10 @@ export function PixCobrancaModal({ visivel, aoFechar, brcode, valor, referencia 
               <View style={styles.codeBox}>
                 <Text style={styles.code} selectable numberOfLines={4}>{brcode}</Text>
               </View>
-              <OlliButton label="Compartilhar código" icon={<MaterialCommunityIcons name="share-variant" size={18} color="#fff" />} variant="gradient" fullWidth onPress={compartilhar} style={styles.cta} />
+              <OlliButton label="Enviar só o código" icon={<MaterialCommunityIcons name="share-variant" size={18} color="#fff" />} variant="gradient" fullWidth onPress={compartilhar} style={styles.cta} />
+              <Text style={styles.nota}>
+                O OLLI não confirma o pagamento. Confira no app do seu banco se o valor caiu antes de registrar o recebimento.
+              </Text>
             </ScrollView>
           ) : (
             <View style={styles.corpo}>
@@ -106,4 +108,5 @@ const criarEstilos = (c: Cores) =>
     codeBox: { alignSelf: 'stretch', backgroundColor: c.background, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
     code: { fontSize: 11, fontFamily: 'monospace', color: c.onSurface, lineHeight: 16 },
     cta: { alignSelf: 'stretch', marginTop: Spacing.xs },
+    nota: { fontSize: 12, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 17 },
   });
