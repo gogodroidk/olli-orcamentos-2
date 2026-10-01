@@ -184,9 +184,16 @@ export function aplicarEscopo<T extends Pick<Agendamento, 'responsavelId'>>(iten
 
 /* ─────────────────────────────  Busca de cliente  ──────────────────────────── */
 
+/**
+ * Acentos que o `normalize('NFD')` separa da letra. Escape em texto (não o
+ * caractere combinante literal, invisível no editor e apagado calado por um
+ * salvamento com encoding errado). Mesma regra de `services/cep.ts`.
+ */
+const DIACRITICOS = new RegExp('[\u0300-\u036f]', 'g');
+
 /** Minúsculas e sem acento: "José" acha "jose" e vice-versa. */
 export function normalizarBusca(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  return s.normalize('NFD').replace(DIACRITICOS, '').toLowerCase().trim();
 }
 
 /**

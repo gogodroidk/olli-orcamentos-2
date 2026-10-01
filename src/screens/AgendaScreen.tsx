@@ -180,6 +180,10 @@ export default function AgendaScreen() {
   // "Ir para a data" (DatePickerModal) — antes só dava para andar semana a semana.
   const [irParaData, setIrParaData] = useState(false);
   const [editing, setEditing] = useState<EditState | null>(null);
+  // Voltar do Android dentro do formulário: se a busca de cliente (camada por
+  // cima do form) estiver aberta, fecha só ela. Sem isto o voltar descartava o
+  // formulário inteiro, sem aviso, quando a pessoa só queria sair da busca.
+  const voltarDoForm = useRef<(() => boolean) | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
   // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
@@ -852,13 +856,26 @@ export default function AgendaScreen() {
       ) : escopo.status === 'erro' ? (
         // Não sei o papel: nem "agenda vazia" (o técnico acharia que não tem
         // visita) nem a agenda da equipe inteira (não sei se ele pode ver).
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} refreshControl={refreshControl}>
+        // Puxar para atualizar aqui também relê o papel (senão só sincronizaria e
+        // a tela continuaria presa neste aviso).
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          refreshControl={(
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { void tipoConta.recarregar(); lerUsuario(); void refresh(); }}
+              colors={[cores.accentLight]}
+              tintColor={cores.accentLight}
+            />
+          )}
+        >
           <EmptyState
             icon="account-lock-outline"
             title="Não deu para confirmar seu acesso"
             subtitle="Sem saber se você é da gestão ou técnico, a agenda pode mostrar visitas erradas. Verifique a conexão e tente de novo."
             actionLabel="Tentar de novo"
-            onAction={() => { tipoConta.recarregar(); lerUsuario(); }}
+            onAction={() => { void tipoConta.recarregar(); lerUsuario(); }}
           />
         </ScrollView>
       ) : carregandoErro ? (
@@ -930,7 +947,7 @@ export default function AgendaScreen() {
       )}
 
       {/* FORM MODAL */}
-      <Modal visible={!!editing} animationType="slide" onRequestClose={() => setEditing(null)} transparent={false}>
+      <Modal visible={!!editing} animationType="slide" onRequestClose={() => { if (voltarDoForm.current?.()) return; setEditing(null); }} transparent={false}>
         {editing && (
           <AgendamentoForm
             state={editing}
@@ -942,6 +959,7 @@ export default function AgendaScreen() {
             equipe={equipe}
             salvando={salvando}
             onChange={setEditing}
+            voltarRef={voltarDoForm}
             onClose={() => setEditing(null)}
             onSave={salvar}
             onDelete={editing.id ? () => { void remover(editing); } : undefined}
@@ -1088,7 +1106,7 @@ function combinarDataHora(data: Date, hora: string): Date {
 }
 
 function AgendamentoForm({
-  state, clientes, itens, podeEscolherResponsavel, equipe, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
+  state, clientes, itens, podeEscolherResponsavel, equipe, voltarRef, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
 }: {
   state: EditState;
   clientes: Cliente[];
@@ -1096,6 +1114,8 @@ function AgendamentoForm({
   podeEscolherResponsavel: boolean;
   /** Equipe já carregada pela tela (o seletor não lê de novo). */
   equipe: ReturnType<typeof useEquipeResponsaveis>;
+  /** A tela pergunta aqui, no voltar do Android, se o form fechou uma camada interna. */
+  voltarRef?: React.MutableRefObject<(() => boolean) | null>;
   /** Agendamentos JÁ carregados do período — usados só pra detectar SOBREPOSIÇÃO (1.5), sem query nova. */
   itens: Agendamento[];
   salvando: boolean;
@@ -1110,6 +1130,15 @@ function AgendamentoForm({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [showClientes, setShowClientes] = useState(false);
+  useEffect(() => {
+    if (!voltarRef) return;
+    voltarRef.current = () => {
+      if (!showClientes) return false;
+      setShowClientes(false);
+      return true;
+    };
+    return () => { voltarRef.current = null; };
+  }, [voltarRef, showClientes]);
   const [buscaCliente, setBuscaCliente] = useState('');
   // Qual campo de hora o TimePickerModal está editando agora (1.7).
   const [timePicker, setTimePicker] = useState<'inicio' | 'fim' | null>(null);
@@ -1156,9 +1185,12 @@ function AgendamentoForm({
 
   // AGENDAR NO PASSADO — aviso, não bloqueio (registrar uma visita que já
   // aconteceu é legítimo). Só para o que ainda está "agendado".
+  // Série repetida fica de fora: a base costuma ser a 1ª ocorrência (já passada)
+  // e as próximas ainda vêm, então "esse horário já passou" seria mentira.
   const noPassado = useMemo(() => (state.status ?? 'agendado') === 'agendado'
+    && !state.recorrencia
     && agendamentoNoPassado(combinarDataHora(state.data, state.horaInicio), !!state.horaInicio, new Date()),
-  [state.status, state.data, state.horaInicio]);
+  [state.status, state.recorrencia, state.data, state.horaInicio]);
 
   return (
     <KeyboardAvoidingView style={styles.formContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
