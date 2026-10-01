@@ -10,7 +10,7 @@ import { cancelarTodosLembretes, concluirVisitasDaOS, resincronizarLembretes } f
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import { cancelarRitualDiario } from '../services/ritualDiario';
 import { cancelarFollowUpLembretes } from '../services/followUpLembretes';
-import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
+import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY, RASCUNHO_CAMPO_PREFIX } from '../services/storageKeys';
 import {
   DB_LEGADO,
   donoDoBanco,
@@ -3194,6 +3194,15 @@ export async function clearAllLocalData(): Promise<void> {
   // Best-effort: uma falha aqui não deve impedir o logout (o SQLite já foi limpo).
   try {
     await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS);
+  } catch {
+    // não bloqueia o logout
+  }
+  // 3b) Rascunhos por campo (texto digitado: nome de cliente, título de OS) têm
+  // chave dinâmica — saem por prefixo. Best-effort, igual ao passo 3.
+  try {
+    const chaves = await AsyncStorage.getAllKeys();
+    const rascunhos = chaves.filter((k) => k.startsWith(RASCUNHO_CAMPO_PREFIX));
+    if (rascunhos.length > 0) await AsyncStorage.multiRemove(rascunhos);
   } catch {
     // não bloqueia o logout
   }

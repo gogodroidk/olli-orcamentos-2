@@ -189,6 +189,33 @@ export const PULL_INICIAL_OK_PREFIX = 'olli.sync.pull_inicial_ok_';
 export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
 
 /**
+ * Marcador "estou fotografando para a OS X" (services/capturaFotoOS). Gravado
+ * ANTES de abrir a câmera; se o Android matar o app no meio, o boot o encontra e
+ * reabre a OS com a foto. Dado de conta (id de OS) → entra na allow-list.
+ */
+export const CAPTURA_OS_KEY = 'olli.os.capturaEmAndamento';
+
+/**
+ * Prefixo dos rascunhos por campo (`olli.rascunho.campo.<escopo>.<campo>`,
+ * services/rascunhoCampo). Texto digitado pela pessoa (nome de cliente, título
+ * de OS): é dado de conta, então some no logout — mas a chave é dinâmica e não
+ * cabe na allow-list; `clearAllLocalData` apaga por prefixo.
+ */
+export const RASCUNHO_CAMPO_PREFIX = 'olli.rascunho.campo.';
+
+/**
+ * Prefixo da fila de envio de fotos da OS, UMA POR USUÁRIO
+ * (`olli.sync.fotos.v1.<userId>`, services/filaFotosNativa).
+ *
+ * ⚠️ **NÃO** entra na allow-list e NÃO é apagada no logout, de propósito: ela é
+ * a única lembrança de que uma foto tirada sem sinal ainda não subiu. Apagá-la
+ * no "sair" faria a foto ficar para sempre só no aparelho, sem selo e sem
+ * alerta. Por ser por usuário, outra conta no mesmo aparelho nunca a lê nem a
+ * envia (o envio confere que a sessão é do dono da fila).
+ */
+export const FILA_FOTOS_PREFIX = 'olli.sync.fotos.v1.';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -220,5 +247,6 @@ export const APP_DATA_STORAGE_KEYS = [
   COBRANCAS_ENVIADAS_STAMP_KEY,
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
+  CAPTURA_OS_KEY,
   ULTIMO_PULL_KEY,
 ];
