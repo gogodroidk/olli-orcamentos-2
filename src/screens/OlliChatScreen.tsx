@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, Animated, Easing,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +34,13 @@ import { CHAT_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
 import { track, Eventos } from '../services/analytics';
 import { IA_USOS_GRATIS_MES } from '../services/planos';
+import {
+  aberturaDoCaso,
+  perguntaSugerida,
+  retirarCasoDoDiagnostico,
+  tituloDoCaso,
+  type ContextoDiagnostico,
+} from '../services/diagnosticoContexto';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -44,6 +51,8 @@ interface Bolha {
   texto: string;
   /** true quando esta bolha é uma resposta de erro da IA (permite "Tentar de novo"). */
   falhou?: boolean;
+  /** Fala montada no aparelho (abertura do caso do Diagnóstico) — não é IA. */
+  local?: boolean;
 }
 
 /** Depois de quantos segundos de "digitando" o botão "Cancelar" aparece. */
@@ -81,6 +90,9 @@ export default function OlliChatScreen() {
   const [modoChat, setModoChat] = useState<ModoChat>('consulta');
   const [rascunhoAcao, setRascunhoAcao] = useState<RascunhoAcaoChat | null>(null);
   const [processandoAcao, setProcessandoAcao] = useState(false);
+  // Caso aberto pela tela Diagnóstico: vai em cada pergunta (modo consulta)
+  // até o técnico encerrar o caso ou limpar a conversa. Só em memória.
+  const [casoDiag, setCasoDiag] = useState<ContextoDiagnostico | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -148,7 +160,11 @@ export default function OlliChatScreen() {
       .map(b => ({ role: b.role, texto: b.texto }));
 
     try {
-      const res = await enviarChat(historico, controller.signal, { ...opcoesCredito, modo });
+      const res = await enviarChat(historico, controller.signal, {
+        ...opcoesCredito,
+        modo,
+        contextoDiagnostico: modo === 'consulta' ? casoDiag : null,
+      });
       if (res.semCreditos) {
         // O servidor — não o contador local — decidiu que a cota acabou ou que
         // não há saldo. Não poluímos o histórico com uma falsa "falha de IA":
@@ -178,7 +194,23 @@ export default function OlliChatScreen() {
       setPodeCancelar(false);
       abortRef.current = null;
     }
-  }, [consumirUsoIa]);
+  }, [consumirUsoIa, casoDiag]);
+
+  // Recebe o caso do Diagnóstico (repasse em memória, uma vez). Espera o
+  // histórico carregar: senão o load do AsyncStorage sobrescreveria a abertura.
+  // A abertura é LOCAL (não gasta IA) e, se faltar marca/modelo, já pergunta.
+  useFocusEffect(useCallback(() => {
+    if (!carregado) return;
+    const caso = retirarCasoDoDiagnostico();
+    if (!caso) return;
+    setCasoDiag(caso);
+    setModoChat('consulta');
+    setRascunhoAcao(null);
+    setPendenciaCredito(null);
+    creditoRefRef.current = null;
+    setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: aberturaDoCaso(caso), local: true }]);
+    setTexto(perguntaSugerida(caso));
+  }, [carregado]));
 
   const irParaPlanos = useCallback((origem: string) => {
     Haptics.selectionAsync().catch(() => {});
@@ -245,6 +277,7 @@ export default function OlliChatScreen() {
     setSaldoCreditos(undefined);
     creditoRefRef.current = null;
     setRascunhoAcao(null);
+    setCasoDiag(null);
     AsyncStorage.removeItem(CHAT_KEY).catch(() => {});
   }, []);
 
@@ -273,7 +306,7 @@ export default function OlliChatScreen() {
 
   // Leva a última resposta da OLLI direto para um orçamento novo, já com um
   // item de serviço pré-preenchido — fecha o loop de "perguntei o preço" para
-  // "montei o orçamento", igual ao padrão de CodigosErroScreen/DiagnosticoIA.
+  // "montei o orçamento", igual ao padrão de DiagnosticoScreen/DiagnosticoIA.
   const criarOrcamentoDaResposta = useCallback((texto: string) => {
     Haptics.selectionAsync().catch(() => {});
     const nome = texto.split('\n')[0].slice(0, 80).trim() || 'Serviço sugerido pela OLLI';
@@ -335,9 +368,10 @@ export default function OlliChatScreen() {
               texto={b.texto}
               falhou={b.falhou}
               onTentarDeNovo={() => tentarDeNovo(b.id)}
-              onTransformarEmOrcamento={b.id !== 'olli-hello' ? () => criarOrcamentoDaResposta(b.texto) : undefined}
-              // A saudação fixa não é conteúdo gerado — não tem o que revisar nela.
-              podeSinalizar={b.id !== 'olli-hello'}
+              onTransformarEmOrcamento={b.id !== 'olli-hello' && !b.local ? () => criarOrcamentoDaResposta(b.texto) : undefined}
+              // A saudação fixa e a abertura do caso não são conteúdo gerado —
+              // não tem o que revisar nelas.
+              podeSinalizar={b.id !== 'olli-hello' && !b.local}
               pedido={pedidoAntesDe(bolhas, i)}
             />
           </AnimatedEntrance>
@@ -418,6 +452,24 @@ export default function OlliChatScreen() {
       </ScrollView>
 
       {/* INPUT */}
+      {casoDiag && (
+        <View style={styles.casoBar} accessibilityLabel={`Caso do Diagnóstico: ${tituloDoCaso(casoDiag)}`}>
+          <MaterialCommunityIcons name="card-search-outline" size={15} color={cores.accentLight} />
+          <Text style={styles.casoBarTexto} numberOfLines={1}>
+            {modoChat === 'consulta' ? 'Caso: ' : 'Caso pausado no modo preparar: '}
+            <Text style={styles.casoBarDestaque}>{tituloDoCaso(casoDiag)}</Text>
+            {casoDiag.encontradoNaBase ? '' : ' · fora da base offline'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setCasoDiag(null)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Encerrar caso do Diagnóstico"
+          >
+            <MaterialCommunityIcons name="close" size={16} color={cores.onSurfaceVariant} />
+          </TouchableOpacity>
+        </View>
+      )}
       {modoChat === 'rascunho_acao' && (
         <View style={styles.modoAviso}>
           <MaterialCommunityIcons name="shield-check-outline" size={15} color={cores.accentLight} />
@@ -649,6 +701,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   creditoBotao: { alignSelf: 'stretch', marginTop: 0 },
   creditoAviso: { color: c.onSurfaceVariant, fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 2 },
 
+  casoBar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.base, paddingTop: 8, paddingBottom: 2, backgroundColor: c.surface },
+  casoBarTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 16 },
+  casoBarDestaque: { color: c.onSurface, fontWeight: '800' },
   modoAviso: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.base, paddingTop: 8, paddingBottom: 2, backgroundColor: c.surface },
   modoAvisoTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 16 },
   acaoCard: { marginBottom: 12, padding: Spacing.base, borderRadius: BorderRadius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.45), ...sombrasDe(c).sm },

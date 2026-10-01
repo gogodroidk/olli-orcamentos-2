@@ -85,7 +85,7 @@ const ROTEIRO_LOJA = [
     // única do conjunto que responde "e quando eu estiver no telhado sem sinal?".
     //
     // A rota é /diagnostico e não /codigos-erro: em `AppNavigator.tsx` a rota
-    // `Diagnostico` é a `CodigosErroScreen` (a tela de códigos de erro), e o
+    // `Diagnostico` é a `DiagnosticoScreen` (a tela de códigos de erro), e o
     // linking mapeia `Diagnostico: 'diagnostico'`.
     id: 'codigos-erro',
     rota: '/diagnostico',

@@ -6,6 +6,7 @@ import { supabase } from './supabase';
 import { verticalParaIA } from '../hooks/useVerticais';
 import { respostaSemCreditos } from './creditos';
 import { mensagemLimiteIA } from './erroIA';
+import type { ContextoDiagnostico } from './diagnosticoContexto';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -403,6 +404,11 @@ export interface ChatOpcoesCredito {
   creditoRef?: string;
   /** O modo de ação só prepara diff; a aplicação passa por endpoint separado. */
   modo?: ModoChat;
+  /**
+   * Caso aberto pela tela Diagnóstico: códigos achados na base offline. Só vai
+   * no modo consulta; o Worker sanitiza, limita e trata como dado delimitado.
+   */
+  contextoDiagnostico?: ContextoDiagnostico | null;
 }
 
 const CHAT_SEM_IA =
@@ -442,6 +448,7 @@ export async function enviarChat(
   try {
     const corpo: Record<string, unknown> = { mensagens };
     if (opcoesCredito?.modo === 'rascunho_acao') corpo.modo = 'rascunho_acao';
+    else if (opcoesCredito?.contextoDiagnostico) corpo.contextoDiagnostico = opcoesCredito.contextoDiagnostico;
     if (vertical) corpo.vertical = vertical;
     if (opcoesCredito?.confirmarCredito === true) corpo.confirmarCredito = true;
     if (opcoesCredito?.confirmarCredito === true && opcoesCredito.creditoRef?.trim()) {
