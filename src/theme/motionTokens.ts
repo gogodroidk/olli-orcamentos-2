@@ -32,6 +32,22 @@ export const CICLO = {
   contagem: 720,
   /** Uma passada do brilho do Skeleton. Único loop infinito permitido no app. */
   shimmer: 1200,
+  /** Uma onda do pulso do "agora" (PulsoAgora). Repete `PULSO.repeticoes` vezes e PARA. */
+  pulso: 1400,
+} as const;
+
+/**
+ * Pulso do ponto "agora" na linha do tempo do Hoje: um halo que cresce e some.
+ * Número FINITO de ondas de propósito — chama o olho quando a tela abre e depois
+ * fica quieto (nada de loop infinito gastando bateria no bolso do prestador).
+ */
+export const PULSO = {
+  /** Quantas ondas por disparo (tela abriu / voltou ao foco). */
+  repeticoes: 3,
+  /** Até quanto o halo cresce em relação ao ponto. */
+  escalaHalo: 2.4,
+  /** Opacidade do halo no começo da onda (some até 0). */
+  opacidadeHalo: 0.45,
 } as const;
 
 export type Mola = { readonly damping: number; readonly stiffness: number; readonly mass: number };
