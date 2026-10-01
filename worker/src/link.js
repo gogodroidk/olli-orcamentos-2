@@ -18,9 +18,17 @@
  * na conferência completa (EMV + CRC). "Já paguei" (POST acao=informar_pagamento)
  * só AVISA o prestador (carimba `pagamento_informado_em` + evento na trilha): quem
  * marca pago é ele, depois de ver o dinheiro no banco.
+ *
+ * O Pix aparece quando o CLIENTE aprovou aqui OU quando o PRESTADOR já fechou no app
+ * (`dados.cobrarAgora`, gravado pelo app ao publicar). O valor é `dados.valorACobrar`
+ * (entrada ou saldo, nunca acima do total); snapshot antigo sem o campo cobra o total;
+ * `valorACobrar: null` (o app não soube quanto já foi pago) = sem Pix, nunca o total.
+ * `#pagar` no fim do link rola até o bloco de pagamento. Proposta vencida não aceita
+ * aprovação (409) e a página diz que venceu.
  */
 import { gerarPixCopiaECola, normalizarChavePix, pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
 import { qrSvg } from '../../src/utils/qrcode.ts';
+import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
 const ACCENT = '#0B6FCE';
 
@@ -32,10 +40,6 @@ function esc(v) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function digits(v) {
-  return String(v ?? '').replace(/\D/g, '');
 }
 
 function formatBRL(v) {
@@ -155,14 +159,18 @@ async function getRow(env, token) {
 }
 
 /**
- * Carimba o "Já paguei" do cliente. Só em link APROVADO e só na 1ª vez
+ * Carimba o "Já paguei" do cliente. Só em link APROVADO (pelo cliente ou pelo
+ * prestador, via `cobrarAgora`) e só na 1ª vez
  * (`pagamento_informado_em=is.null` na própria query: idempotente, sem corrida).
  * Retorna { error:true } em falha, ou { rows } (vazio = já avisado / não aprovado).
  */
-async function patchPagamentoInformado(env, token) {
+async function patchPagamentoInformado(env, token, peloPrestador = false) {
+  // Aprovado aqui pelo cliente, OU fechado pelo prestador no app (cobrarAgora) e sem
+  // recusa registrada — a mesma condição que mostrou o Pix, repetida NA QUERY.
+  const condicao = peloPrestador ? 'status=neq.recusado&dados->>cobrarAgora=eq.true' : 'status=eq.aprovado';
   try {
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&status=eq.aprovado&${COL_PAGAMENTO}=is.null`,
+      `${env.SUPABASE_URL}/rest/v1/orcamentos_publicos?token=eq.${encodeURIComponent(token)}&revogado_em=is.null&${condicao}&${COL_PAGAMENTO}=is.null`,
       {
         method: 'PATCH',
         headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=representation' }),
@@ -178,19 +186,70 @@ async function patchPagamentoInformado(env, token) {
 }
 
 /**
- * O Pix do PRESTADOR para esta página, ou `null`. Monta o BR Code com o valor do
- * orçamento a partir de `dados.pix` (gravado pelo app só com chave reconhecida) e
- * RECONFERE tudo aqui: chave reconhecida, valor > 0 e código aprovado na conferência
- * EMV + CRC. Qualquer dúvida = sem Pix na página (nunca um código que o banco recusa).
- * O QR é opcional: se o texto não couber no gerador, a página fica só com o copia e cola.
+ * Quanto o Pix desta página cobra. Três estados, nunca um chute:
+ *  - snapshot ANTIGO (sem `valorACobrar`): o total, como sempre foi;
+ *  - `valorACobrar` número: ele mesmo, com teto no total (entrada ou saldo); 0 = quitado;
+ *  - `valorACobrar` presente mas não-número (`null`): o app NÃO SOUBE quanto já foi
+ *    pago → `null` (sem Pix), em vez de cobrar o total de quem pagou a entrada.
+ */
+export function valorDoPix(dados, total) {
+  const teto = Math.round((Number(total) || 0) * 100) / 100;
+  if (!dados || typeof dados !== 'object' || !('valorACobrar' in dados)) return teto > 0 ? teto : 0;
+  const v = dados.valorACobrar;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  const c = Math.round(v * 100) / 100;
+  if (!(c > 0) || !(teto > 0)) return 0;
+  return Math.min(c, teto);
+}
+
+/**
+ * Data de validade da proposta (DD/MM/AAAA do app ou ISO do painel) já passou?
+ * Vale até o FIM do dia no horário de Brasília (UTC−3). Sem validade, ou num formato
+ * que não dá para ler, NÃO vence (não bloqueia o cliente por um dado que não existe).
+ */
+export function validadeVencida(validade, agora = new Date()) {
+  const s = String(validade ?? '').trim();
+  let m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  let dia;
+  let mes;
+  let ano;
+  if (m) {
+    [dia, mes, ano] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  } else {
+    m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (!m) return false;
+    [ano, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  }
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return false;
+  // 23:59:59 em Brasília = 02:59:59 UTC do dia seguinte.
+  const fimDoDia = Date.UTC(ano, mes - 1, dia + 1, 2, 59, 59);
+  return agora.getTime() > fimDoDia;
+}
+
+/**
+ * O PRESTADOR já fechou o serviço no app (`dados.cobrarAgora`) e a página pode cobrar
+ * mesmo sem o cliente ter tocado "Aprovar". Uma recusa registrada aqui vence: a página
+ * nunca mostra Pix para quem recusou.
+ */
+function fechadoPeloPrestador(row, dados) {
+  return !!dados && dados.cobrarAgora === true && row.status !== 'recusado';
+}
+
+/**
+ * O Pix do PRESTADOR para esta página, ou `null`. Monta o BR Code com o valor a
+ * cobrar (`valorDoPix`: entrada, saldo ou total) a partir de `dados.pix` (gravado pelo
+ * app só com chave reconhecida) e RECONFERE tudo aqui: chave reconhecida, valor > 0 e
+ * código aprovado na conferência EMV + CRC. Qualquer dúvida = sem Pix na página (nunca
+ * um código que o banco recusa). O QR é opcional: se o texto não couber no gerador, a
+ * página fica só com o copia e cola.
  */
 export function pixDaPagina(dados, total, numero) {
   try {
     const p = dados && typeof dados.pix === 'object' && dados.pix ? dados.pix : null;
     if (!p || typeof p.chave !== 'string') return null;
     const chave = normalizarChavePix(p.chave);
-    const valor = Math.round((Number(total) || 0) * 100) / 100;
-    if (!chave || !(valor > 0)) return null;
+    const valor = valorDoPix(dados, total);
+    if (!chave || valor === null || !(valor > 0)) return null;
     const codigo = gerarPixCopiaECola({
       chave: chave.chave,
       valor,
@@ -398,6 +457,11 @@ export async function responderLink(token, request, env) {
   if (row.status === 'aprovado' || row.status === 'recusado') {
     return json({ ok: true, status: row.status, jaRespondido: true });
   }
+  // Proposta vencida não se aprova: o preço e o prazo podem ter mudado. 409 (conflito
+  // com o estado da proposta), e a página já mostra "proposta vencida".
+  if (acao === 'aprovado' && validadeVencida(dados.validade)) {
+    return json({ ok: false, erro: 'proposta_vencida' }, 409);
+  }
 
   // Escrita atômica: só grava se ainda não foi respondido (first-writer-wins).
   const res = await patchStatus(env, token, acao, mensagem);
@@ -426,7 +490,8 @@ export async function responderLink(token, request, env) {
  * recibo, não muda o status do orçamento: carimba `pagamento_informado_em` (1ª vez)
  * e grava 'pagamento_informado' na trilha; o app mostra "cliente avisou que pagou —
  * confira no banco" e o prestador registra o recebimento quando o dinheiro cair.
- * Só vale para link APROVADO. Já avisado = ok idempotente.
+ * Só vale para link APROVADO (pelo cliente, ou pelo prestador no app com
+ * `cobrarAgora`). Já avisado = ok idempotente.
  */
 async function informarPagamento(token, request, env) {
   const row = await getRow(env, token);
@@ -434,10 +499,12 @@ async function informarPagamento(token, request, env) {
   if (!row) return json({ ok: false, erro: 'nao_encontrado' }, 404);
   // Banco sem a coluna (migration não aplicada): o recurso está DESLIGADO — diz isso.
   if (row._semPagamentoInformado) return json({ ok: false, erro: 'recurso_desligado' }, 503);
-  if (row.status !== 'aprovado') return json({ ok: false, erro: 'nao_aprovado' }, 409);
+  const dados = row && typeof row.dados === 'object' && row.dados ? row.dados : {};
+  const peloPrestador = row.status !== 'aprovado' && fechadoPeloPrestador(row, dados);
+  if (row.status !== 'aprovado' && !peloPrestador) return json({ ok: false, erro: 'nao_aprovado' }, 409);
   if (row[COL_PAGAMENTO]) return json({ ok: true, pagamentoInformado: true, jaInformado: true });
 
-  const res = await patchPagamentoInformado(env, token);
+  const res = await patchPagamentoInformado(env, token, peloPrestador);
   if (res.error) return json({ ok: false, erro: 'indisponivel' }, 503);
   if (res.rows.length) {
     const ctx = await contextoTrilha(token, request);
@@ -546,6 +613,8 @@ function shell(inner, accentRaw = ACCENT) {
   .btn{border:none;border-radius:14px;padding:15px;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
   .btn-aprovar{background:#15B66E;color:#fff;box-shadow:0 8px 20px rgba(21,182,110,.32)}
   .destacado{outline:3px solid rgba(255,255,255,.65);outline-offset:3px}
+  .destacado-escuro{outline:3px solid ${accent};outline-offset:3px}
+  #pagar{scroll-margin-top:16px}
   .btn-row{display:flex;gap:10px}
   .btn-recusar{flex:1;background:#fff;color:#C0392B;border:1.5px solid #F0D2CE}
   .btn-zap{flex:1;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
@@ -624,8 +693,22 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
   const podeInformar = pix && !row._semPagamentoInformado && !informadoEm;
 
   if (!pix) {
-    return `<div class="pix-box"><div class="pix-t">Pagamento</div><div class="pix-sub">Combine a forma de pagamento diretamente com ${esc(nomePrestador)}.</div></div>`;
+    // Quitado: o app registrou recebimentos que cobrem o total (valorACobrar 0).
+    if (valorDoPix(d, total) === 0 && Number(total) > 0 && 'valorACobrar' in d) {
+      return `<div class="pix-box" id="pagar"><div class="pix-t">Pagamento</div><div class="pix-sub">${esc(nomePrestador)} já registrou o pagamento deste orçamento. Obrigado!</div></div>`;
+    }
+    return `<div class="pix-box" id="pagar"><div class="pix-t">Pagamento</div><div class="pix-sub">Combine a forma de pagamento diretamente com ${esc(nomePrestador)}.</div></div>`;
   }
+
+  // O que este valor é: a entrada, o saldo que falta ou o total (vem do app).
+  const tipo = d && typeof d.cobrancaTipo === 'string' ? d.cobrancaTipo : '';
+  const totalTxt = formatBRL(total);
+  const rotulo =
+    tipo === 'sinal' && pix.valor + 0.005 < Number(total)
+      ? `<div class="pix-sub"><strong>Entrada</strong> para começar o serviço. Total do orçamento: ${totalTxt}.</div>`
+      : tipo === 'saldo' && pix.valor + 0.005 < Number(total)
+        ? `<div class="pix-sub"><strong>Saldo em aberto</strong>. Total do orçamento: ${totalTxt}.</div>`
+        : '';
 
   const avisado = informadoEm
     ? `<div class="pix-avisado">Você avisou que pagou em ${esc(informadoEm)}. ${esc(nomePrestador)} vai conferir e confirmar o recebimento.</div>`
@@ -635,14 +718,18 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
        <div class="pix-nota">Isso só avisa ${esc(nomePrestador)}. O pagamento é confirmado por ele quando cair na conta.</div>`
     : '';
 
-  return `<div class="pix-box">
+  // "Copiar código Pix" vem logo abaixo do valor: no celular o cliente paga colando o
+  // código no app do banco; o QR serve para quem abre o link em outro aparelho.
+  return `<div class="pix-box" id="pagar">
       <div class="pix-t">Pagar com Pix</div>
       <div class="pix-valor">${formatBRL(pix.valor)}</div>
+      ${rotulo}
+      <button id="btnCopiar" class="btn btn-copiar" onclick="copiarPix()">Copiar código Pix</button>
+      <div class="pix-nota">Depois, abra o app do seu banco, escolha Pix copia e cola e cole o código.</div>
       <div class="pix-sub">O dinheiro vai direto para a conta de ${esc(nomePrestador)}.</div>
       ${pix.svg ? `<div class="pix-qr">${pix.svg}</div>` : ''}
       <div class="pix-l">Pix copia e cola</div>
       <textarea id="pixCodigo" class="pix-code" readonly rows="3">${esc(pix.codigo)}</textarea>
-      <button id="btnCopiar" class="btn btn-copiar" onclick="copiarPix()">Copiar código Pix</button>
       ${avisado}
       ${botaoInformar}
     </div>`;
@@ -659,9 +746,14 @@ function pageOrcamento(row, preSelecao = '') {
   const validade = formatData(d.validade);
   const total = (typeof d.valorTotal === 'number') ? d.valorTotal : Number(row.valor_total) || 0;
   const itens = (Array.isArray(d.itens) ? d.itens : []).filter((it) => it && typeof it === 'object');
-  const whats = digits(prestador.whatsapp || row.prestador_whatsapp || '');
+  // Número pela regra única (DDD 55 certo; número torto = sem botão, nunca um chute).
+  const whats = numeroWhatsAppBR(prestador.whatsapp || row.prestador_whatsapp || '');
   const status = row.status || 'enviado';
-  const respondido = status === 'aprovado' || status === 'recusado';
+  // Aprovado pelo cliente aqui OU fechado pelo prestador no app (cobrarAgora).
+  const aprovadoAqui = status === 'aprovado';
+  const aprovadoPeloPrestador = !aprovadoAqui && fechadoPeloPrestador(row, d);
+  const respondido = aprovadoAqui || aprovadoPeloPrestador || status === 'recusado';
+  const vencida = !respondido && validadeVencida(d.validade);
   const accent = safeHexColor(d.corMarca, ACCENT);
   const allowApprove = d.exibirAprovacao !== false;
   const allowReject = d.exibirRecusa !== false;
@@ -686,41 +778,59 @@ function pageOrcamento(row, preSelecao = '') {
   // número do orçamento, valor e (quando houver) o nome do cliente, para ele
   // não precisar perguntar "de qual orçamento é" antes de poder ajudar.
   const duvidaTexto = `Olá! ${cliente ? `Sou ${cliente}, ` : ''}quero falar sobre o orçamento nº ${numero} (${formatBRL(total)}).`;
-  const zapHref = whats ? `https://wa.me/${whats.startsWith('55') ? whats : '55' + whats}?text=${encodeURIComponent(duvidaTexto)}` : '';
+  const zapHref = whats ? linkWaMe(whats, duvidaTexto) : '';
 
   // Motivo que o cliente deixou ao recusar (o worker grava em resposta_cliente).
   const motivoRecusa = typeof row.resposta_cliente === 'string' ? row.resposta_cliente.trim() : '';
 
   let actionsHtml;
   if (respondido) {
-    const ok = status === 'aprovado';
+    const ok = aprovadoAqui || aprovadoPeloPrestador;
     // Na recusa, se o cliente deixou motivo, reexibe para ele ("registramos isto").
     const motivoBloco = (!ok && motivoRecusa)
       ? `<div class="status-sub" style="margin-top:8px"><strong>Seu motivo:</strong> “${esc(motivoRecusa)}”</div>`
       : '';
+    // Texto HONESTO: não existe aviso instantâneo ao prestador (push/e-mail). A resposta
+    // fica registrada e aparece para ele no OLLI — por isso o WhatsApp para quem tem pressa.
+    const subOk = aprovadoAqui
+      ? `Sua aprovação foi registrada e aparece para ${esc(nomePrestador)} no OLLI.${zapHref ? ' Se tiver pressa, chame no WhatsApp.' : ''}`
+      : `${esc(nomePrestador)} confirmou este serviço com você.`;
     actionsHtml = `<div class="status-box ${ok ? 'status-ok' : 'status-no'}">
         <div class="status-emoji">${ok ? '✅' : '❌'}</div>
         <div class="status-title">${ok ? 'Orçamento aprovado' : 'Orçamento recusado'}</div>
-        <div class="status-sub">${ok ? `${esc(nomePrestador)} já foi avisado. Em breve entram em contato.` : 'Sua resposta foi registrada.'}</div>
+        <div class="status-sub">${ok ? subOk : 'Sua resposta foi registrada.'}</div>
         ${motivoBloco}
       </div>
       ${ok ? blocoPagamento(row, d, total, numero, nomePrestador) : ''}
       ${zapHref ? `<div class="actions"><a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener">💬 Falar no WhatsApp</a></div>` : ''}`;
+  } else if (vencida) {
+    // Validade passou: preço e prazo podem ter mudado. Nada de aprovar (o POST também
+    // recusa com 409); o caminho é pedir uma proposta atualizada.
+    const pedirAtualizada = whats
+      ? linkWaMe(whats, `Olá! ${cliente ? `Sou ${cliente}. ` : ''}O orçamento nº ${numero} venceu. Pode me mandar uma proposta atualizada?`)
+      : '';
+    actionsHtml = `<div class="status-box status-no" id="actions">
+        <div class="status-emoji">⏳</div>
+        <div class="status-title">Proposta vencida</div>
+        <div class="status-sub">A validade desta proposta terminou em ${esc(validade)}. Fale com ${esc(nomePrestador)} para receber uma proposta atualizada.</div>
+      </div>
+      ${pedirAtualizada ? `<div class="actions"><a class="btn btn-zap" href="${esc(pedirAtualizada)}" target="_blank" rel="noopener">💬 Pedir proposta atualizada</a></div>` : ''}`;
   } else {
     // Passo-a-passo claro do que acontece quando o cliente aprova — só faz sentido
-    // exibir quando aprovar está disponível (é o passo que dispara o restante).
+    // exibir quando aprovar está disponível (é o passo que dispara o restante). Sem
+    // prometer "aviso na hora": a resposta fica registrada e aparece no OLLI dele.
     const comoFunciona = allowApprove
       ? `<div class="comofunciona">
           <div class="cf-t">Como funciona</div>
           <div class="cf-step"><span class="cf-n">1</span><span>Você aprova aqui, neste link — sem app, sem cadastro.</span></div>
-          <div class="cf-step"><span class="cf-n">2</span><span>${esc(nomePrestador)} é avisado na hora e já organiza o seu serviço.</span></div>
+          <div class="cf-step"><span class="cf-n">2</span><span>A sua resposta fica registrada e aparece para ${esc(nomePrestador)} no OLLI.</span></div>
           <div class="cf-step"><span class="cf-n">3</span><span>Vocês combinam os detalhes${whats ? ' pelo WhatsApp' : ''} e o trabalho começa.</span></div>
         </div>`
       : '';
 
     actionsHtml = `${comoFunciona}
       <div class="actions" id="actions">
-        ${allowApprove ? `<div class="approve-hint">Aprovando, ${esc(nomePrestador)} já é avisado e agenda seu serviço — sem burocracia.</div>` : ''}
+        ${allowApprove ? `<div class="approve-hint">Aprovando aqui, a sua resposta fica registrada para ${esc(nomePrestador)} — sem cadastro e sem burocracia.</div>` : ''}
         ${allowApprove ? `<button id="btnAprovar" class="btn btn-aprovar" onclick="responder('aprovar')">✓ Aprovar orçamento</button>` : ''}
         <div class="btn-row">
           ${allowReject ? `<button class="btn btn-recusar" onclick="abrirRecusa()">Recusar</button>` : ''}
@@ -745,7 +855,7 @@ function pageOrcamento(row, preSelecao = '') {
   // Só mostra o selo de validade quando o prestador de fato definiu um prazo —
   // "Válido por 15 dias" fixo criaria uma condição comercial que ele nunca configurou.
   const validadePill = validade
-    ? `<span class="pill">Válido até ${esc(validade)}</span>`
+    ? `<span class="pill">${vencida ? 'Venceu em' : 'Válido até'} ${esc(validade)}</span>`
     : '';
 
   const inner = `<div class="card">
@@ -811,6 +921,11 @@ function pageOrcamento(row, preSelecao = '') {
         var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo) });
         var j = await r.json();
         if (j && j.ok) { location.reload(); return; }
+        if (j && j.erro === 'proposta_vencida') {
+          alert('A validade desta proposta terminou. Peça uma proposta atualizada ao prestador.');
+          location.reload();
+          return;
+        }
         enviando = false;
         alvos.forEach(function(b){ b.style.opacity='1'; b.style.pointerEvents='auto'; });
         alert(j && j.erro === 'muitas_requisicoes' ? 'Muitas tentativas. Aguarde um instante e tente de novo.' : 'Não consegui registrar agora. Tente de novo.');
@@ -855,6 +970,16 @@ function pageOrcamento(row, preSelecao = '') {
       avisando = false;
       if (b){ b.style.opacity='1'; b.style.pointerEvents='auto'; }
     }
+
+    // Link de cobrança (/o/<token>#pagar): rola até o pagamento e destaca "Copiar código
+    // Pix". Sem bloco de pagamento (ainda não aprovado), rola até as ações. Não envia nada.
+    (function(){
+      if (location.hash !== '#pagar') return;
+      var alvo = document.getElementById('pagar') || document.getElementById('actions');
+      if (alvo && alvo.scrollIntoView) { alvo.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      var c = document.getElementById('btnCopiar');
+      if (c) { c.classList.add('destacado-escuro'); if (c.focus) c.focus({ preventScroll: true }); }
+    })();
 
     // Pré-seleção vinda do botão/link do PDF (?acao=). NÃO envia nada: rola até as ações e,
     // na recusa, abre o campo de motivo. O cliente ainda confirma com um toque.

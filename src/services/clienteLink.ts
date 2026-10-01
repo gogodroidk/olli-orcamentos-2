@@ -10,10 +10,12 @@ import {
   proximoNumeroVersao,
   getVersoesPendentesEspelho,
   marcarVersaoEspelhoConcluido,
+  getRecibos,
 } from '../database/database';
+import { totalRecebidoDoOrcamento } from './pagamentos';
 import { nowISO } from '../utils/date';
 import { normalizarChavePix } from '../utils/pixBrCode';
-import { chavePixDoOrcamento } from '../utils/cobrancaCliente';
+import { chavePixDoOrcamento, cobrancaDoLink, type CobrancaDoLink } from '../utils/cobrancaCliente';
 
 const TABLE = 'orcamentos_publicos';
 const TABLE_VERSOES = 'orcamento_versoes';
@@ -77,7 +79,7 @@ function base64url(bytes: Uint8Array): string {
   return saida;
 }
 
-function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
+function snapshotPublico(orc: Orcamento, empresa: Empresa | null, cobranca: CobrancaDoLink) {
   return {
     numero: orc.numero,
     revisaoDeNumero: orc.revisaoDeNumero ?? '',
@@ -122,7 +124,29 @@ function snapshotPublico(orc: Orcamento, empresa: Empresa | null) {
     // chave que reconhecemos (`normalizarChavePix`): chave duvidosa não sai do
     // aparelho, e a página cai no "combine o pagamento com o prestador".
     pix: pixPublico(orc, empresa),
+    // Quanto e quando cobrar (ver `cobrancaDoLink`): o status do app (decisão do
+    // prestador), `cobrarAgora` (fechado no app com valor a receber → a página mostra o
+    // Pix mesmo sem o cliente ter tocado "Aprovar"), `valorACobrar` (entrada ou saldo;
+    // `null` = não sei quanto já foi pago → a página não monta Pix) e o sinal.
+    statusApp: cobranca.statusApp,
+    cobrarAgora: cobranca.cobrarAgora,
+    valorACobrar: cobranca.valorACobrar,
+    cobrancaTipo: cobranca.cobrancaTipo,
+    sinal: cobranca.sinal,
   };
+}
+
+/**
+ * Quanto já foi recebido deste orçamento (recibos não estornados), ou `null` se a
+ * leitura falhou. `null` NÃO é zero: com ele a página deixa de mostrar o Pix, em vez
+ * de cobrar o total de quem talvez já tenha pago a entrada.
+ */
+async function recebidoDoOrcamento(orcamentoId: string): Promise<number | null> {
+  try {
+    return totalRecebidoDoOrcamento(orcamentoId, await getRecibos());
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -139,15 +163,22 @@ function pixPublico(orc: Orcamento, empresa: Empresa | null): { chave: string; n
   };
 }
 
+/**
+ * Token do link que este orçamento já tem, `null` se ainda não tem. Erro de leitura
+ * LANÇA: "não consegui ver" não pode virar "não existe" — senão nasce um SEGUNDO link
+ * (status 'enviado') e o cliente que já aprovou no primeiro vê o pedido de aprovação
+ * de novo no segundo.
+ */
 async function tokenExistente(orcamentoId: string, userId: string): Promise<string | null> {
   if (!supabase) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from(TABLE)
     .select('token')
     .eq('orcamento_id', orcamentoId)
     .eq('user_id', userId)
     .limit(1)
     .maybeSingle();
+  if (error) throw error;
   return (data as any)?.token ?? null;
 }
 
@@ -161,27 +192,38 @@ export async function gerarLinkOrcamento(orc: Orcamento, empresa: Empresa | null
   const user = await getCurrentUser();
   if (!user) throw new Error('Faça login (tela Conta) para gerar o link do cliente.');
 
-  const baseRow = {
-    user_id: user.id,
-    orcamento_id: orc.id,
+  const cobranca = cobrancaDoLink(orc, await recebidoDoOrcamento(orc.id));
+  // Conteúdo do link SEM o status: o status é a resposta do CLIENTE e só o worker o
+  // escreve (aprovar/recusar). Republicar o snapshot não pode mexer nele.
+  const conteudo = {
     numero: orc.numero,
     cliente_nome: orc.clienteNome,
     valor_total: orc.valorTotal,
     prestador_nome: empresa?.nome ?? '',
     prestador_whatsapp: (empresa?.whatsapp ?? '').replace(/\D/g, ''),
-    dados: snapshotPublico(orc, empresa),
-    status: 'enviado',
+    dados: snapshotPublico(orc, empresa, cobranca),
   };
+  const baseRow = { user_id: user.id, orcamento_id: orc.id, ...conteudo, status: 'enviado' };
 
   const reusado = await tokenExistente(orc.id, user.id);
   let token = '';
 
   if (reusado) {
-    // Token já existe para este orçamento: atualiza o snapshot (link não muda).
-    token = reusado;
-    const { error } = await supabase.from(TABLE).upsert({ token, ...baseRow }, { onConflict: 'token' });
+    // Token já existe: atualiza SÓ o snapshot (link não muda). Antes era um upsert com
+    // status 'enviado' — reenviar o link ou gerar o PDF depois da aprovação voltava o
+    // link para "enviado": o Pix sumia e o cliente tinha de aprovar de novo.
+    const { data, error } = await supabase
+      .from(TABLE)
+      .update(conteudo)
+      .eq('token', reusado)
+      .eq('user_id', user.id)
+      .select('token');
     if (error) throw error;
-  } else {
+    if (Array.isArray(data) && data.length > 0) token = reusado;
+    // 0 linhas: a linha sumiu entre a leitura e a escrita — cai na criação abaixo.
+  }
+
+  if (!token) {
     // Token NOVO: insere e, na colisão de PK (token já usado por outro registro),
     // gera outro e tenta de novo (1-2 retries). Com 128 bits a colisão é
     // praticamente impossível, mas tratamos para nunca sobrescrever outro link.
